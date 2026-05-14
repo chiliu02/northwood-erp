@@ -145,23 +145,13 @@ User wants to drive the README's tone and voice themselves (it's a public-facing
 
 ---
 
-## 1F. Event-flow consumer coverage gaps (PLANNED 2026-05-14, not started)
+## 1F. Event-flow consumer coverage gaps (PLANNED 2026-05-14, partial)
 
 `event-flow.html` (added 2026-05-14) audits every domain event and its consumer set; the **§ Coverage gaps** section there identified 9 events with no consumer plus 3 partial-coverage cases. Items below are the actionable backlog — full symptom → impact → suggested-handler analysis lives in `event-flow.html`; this section is the work list. Critical first (correctness gaps), then staleness, then explicit deferrals.
 
+§1F.1 (`ProductDiscontinued` consumers across 5 services) shipped 2026-05-14 — see `dev-done.md` for the five per-service slice entries. Remaining items below.
+
 ### 1F Critical — business-incorrect decisions today
-
-**1F.1 `ProductDiscontinued` consumers across 5 services**
-
-`ProductDiscontinued` is emitted by product-service but has zero consumers, so sales / purchasing / manufacturing / reporting / inventory all silently keep treating discontinued products as live. Five handlers needed (each in its own service's inbox):
-
-- ~~`sales.product-discontinued` — flag the product (add `discontinued_at` to `sales.product_pricing` or a parallel `sales.product_status` projection); reject `placeOrder` lines for discontinued products.~~ **Shipped 2026-05-14.**
-- ~~`manufacturing.product-discontinued` — set `manufacturing.product_replenishment.is_purchased=false, is_manufactured=false` (existing rejection path covers it then); clear `manufacturing.product_active_bom` (drives `BomActivated` with `newBomHeaderId=null` — see §2.13).~~ **Shipped 2026-05-14.**
-- ~~`purchasing.product-discontinued` — block new POs/PRs for the product.~~ **Shipped 2026-05-14.**
-- ~~`reporting.atp.product-discontinued` — stamp `discontinued_at` on `reporting.available_to_promise_view` so the UI can grey-out / filter.~~ **Shipped 2026-05-14.**
-- ~~`inventory.product-discontinued` — suppress reorder alerts in `inventory.stock_item`.~~ **Shipped 2026-05-14.**
-
-Recommend shipping sales + manufacturing first (highest correctness leverage; the other three are reporting / housekeeping follow-ups).
 
 **1F.2 `ProductCreated` has no inventory consumer**
 

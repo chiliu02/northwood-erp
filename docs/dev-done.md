@@ -6,6 +6,24 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-14 — §1F.1 finalize: event-flow.html + dev-todo close-out
+
+Closes §1F.1 after all five per-service consumer slices shipped (sales / manufacturing / purchasing / reporting / inventory — see the five preceding entries). Doc cleanup only; no code or schema changes.
+
+### Changes
+
+- **`docs/event-flow.html` source-first table** — `ProductDiscontinued` row expanded from a single "no current consumer" placeholder to a 5-row block listing each of the new consumers with their per-service write target / read-side use.
+- **`docs/event-flow.html` destination-first table** — `ProductDiscontinued` added under the `product → Product` slot for each of the 5 destinations; rowspans on the destination, aggregate, and event cells bumped accordingly.
+- **`docs/event-flow.html` Notes section** — `ProductDiscontinued` removed from the "published by their aggregates but have no inbox handler yet" list.
+- **`docs/event-flow.html` Coverage gaps section** — the §1 critical gap entry for `ProductDiscontinued` deleted; remaining gap entries renumbered (3 → 2, 4 → 3, etc.). Lead-in count "Nine events have no consumer at all" → "Eight".
+- **`docs/dev-todo.md`** — §1F.1 entry collapsed; the 5 sub-bullets, recommendation note, and section body removed. A one-line pointer to `dev-done.md` replaces the block. §1F.2 onward unchanged.
+
+### Smoke
+
+`mvn install -DskipTests` reactor green. `mvn test` 19/19 modules green (test-harness end-to-end flows all pass).
+
+---
+
 ## 2026-05-14 — §1F.1 inventory: ProductDiscontinued consumer (stamp on stock_item)
 
 Last of five §1F.1 service-level slices. Inventory stamps `inventory.stock_item.discontinued_at`; future reorder-alert logic (none today) treats `IS NOT NULL` as suppressed. Schema-only addition — no reader exists yet, so the slice is the minimum viable plumbing to land the signal.

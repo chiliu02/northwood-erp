@@ -205,10 +205,30 @@
   <td class="desc"><code>reporting.available_to_promise_view.product_sku</code>, <code>product_name</code> — backfills identity onto pending-stub rows</td>
 </tr>
 <tr>
-  <td class="merge-event">ProductDiscontinued</td>
-  <td class="no-consumer">—</td>
-  <td class="no-consumer">(no current consumer)</td>
-  <td class="no-consumer">—</td>
+  <td class="merge-event" rowspan="5">ProductDiscontinued</td>
+  <td>sales</td>
+  <td class="consumer">sales.product-discontinued</td>
+  <td class="desc"><code>sales.product_pricing.discontinued_at</code> — read by <code>SalesOrderService.placeOrder</code> to reject lines for retired SKUs (HTTP 409)</td>
+</tr>
+<tr>
+  <td>manufacturing</td>
+  <td class="consumer">manufacturing.product-discontinued</td>
+  <td class="desc"><code>manufacturing.product_replenishment.is_purchased=false, is_manufactured=false</code> (existing <code>!isManufactured()</code> guard then rejects new sales-lines); <code>manufacturing.product_active_bom.active_bom_header_id=null</code></td>
+</tr>
+<tr>
+  <td>purchasing</td>
+  <td class="consumer">purchasing.product-discontinued</td>
+  <td class="desc"><code>purchasing.product_discontinued (product_id, discontinued_at)</code> — read by <code>PurchaseRequisitionService.buildLines</code> to reject new PRs / shortage-driven POs (HTTP 409)</td>
+</tr>
+<tr>
+  <td>reporting</td>
+  <td class="consumer">reporting.atp.product-discontinued</td>
+  <td class="desc"><code>reporting.available_to_promise_view.discontinued_at</code> — UI consumers filter / grey-out on <code>IS NOT NULL</code></td>
+</tr>
+<tr>
+  <td>inventory</td>
+  <td class="consumer">inventory.product-discontinued</td>
+  <td class="desc"><code>inventory.stock_item.discontinued_at</code> — placeholder for future reorder-alert suppression</td>
 </tr>
 <tr>
   <td class="merge-event">ReorderPolicyChanged</td>
@@ -696,11 +716,14 @@
   <td>ShipmentPosted</td>
 </tr>
 
-<!-- ============ Destination: inventory (9 rows) ============ -->
+<!-- ============ Destination: inventory (10 rows) ============ -->
 <tr>
-  <td class="merge-src" rowspan="9">inventory</td>
-  <td class="merge-agg">product</td>
-  <td class="merge-event">Product</td>
+  <td class="merge-src" rowspan="10">inventory</td>
+  <td class="merge-agg" rowspan="2">product</td>
+  <td class="merge-event" rowspan="2">Product</td>
+  <td>ProductDiscontinued</td>
+</tr>
+<tr>
   <td>ReorderPolicyChanged</td>
 </tr>
 <tr>
@@ -734,11 +757,11 @@
   <td>WorkOrderManufacturingCompleted</td>
 </tr>
 
-<!-- ============ Destination: manufacturing (9 rows) ============ -->
+<!-- ============ Destination: manufacturing (10 rows) ============ -->
 <tr>
-  <td class="merge-src" rowspan="9">manufacturing</td>
-  <td class="merge-agg" rowspan="4">product</td>
-  <td class="merge-event" rowspan="4">Product</td>
+  <td class="merge-src" rowspan="10">manufacturing</td>
+  <td class="merge-agg" rowspan="5">product</td>
+  <td class="merge-event" rowspan="5">Product</td>
   <td>ApprovedVendorListChanged</td>
 </tr>
 <tr>
@@ -749,6 +772,9 @@
 </tr>
 <tr>
   <td>ProductCreated</td>
+</tr>
+<tr>
+  <td>ProductDiscontinued</td>
 </tr>
 <tr>
   <td class="merge-agg" rowspan="2">sales</td>
@@ -773,12 +799,15 @@
   <td>RawMaterialsReserved</td>
 </tr>
 
-<!-- ============ Destination: purchasing (5 rows) ============ -->
+<!-- ============ Destination: purchasing (6 rows) ============ -->
 <tr>
-  <td class="merge-src" rowspan="5">purchasing</td>
-  <td class="merge-agg">product</td>
-  <td class="merge-event">Product</td>
+  <td class="merge-src" rowspan="6">purchasing</td>
+  <td class="merge-agg" rowspan="2">product</td>
+  <td class="merge-event" rowspan="2">Product</td>
   <td>ApprovedVendorListChanged</td>
+</tr>
+<tr>
+  <td>ProductDiscontinued</td>
 </tr>
 <tr>
   <td class="merge-agg">inventory</td>
@@ -800,12 +829,15 @@
   <td>SupplierInvoiceApproved</td>
 </tr>
 
-<!-- ============ Destination: reporting (20 rows) ============ -->
+<!-- ============ Destination: reporting (21 rows) ============ -->
 <tr>
-  <td class="merge-src" rowspan="20">reporting</td>
-  <td class="merge-agg" rowspan="2">product</td>
-  <td class="merge-event" rowspan="2">Product</td>
+  <td class="merge-src" rowspan="21">reporting</td>
+  <td class="merge-agg" rowspan="3">product</td>
+  <td class="merge-event" rowspan="3">Product</td>
   <td>ProductCreated</td>
+</tr>
+<tr>
+  <td>ProductDiscontinued</td>
 </tr>
 <tr>
   <td>StandardCostChanged</td>
@@ -880,11 +912,14 @@
   <td>SupplierInvoiceApproved</td>
 </tr>
 
-<!-- ============ Destination: sales (10 rows) ============ -->
+<!-- ============ Destination: sales (11 rows) ============ -->
 <tr>
-  <td class="merge-src" rowspan="10">sales</td>
-  <td class="merge-agg">product</td>
-  <td class="merge-event">Product</td>
+  <td class="merge-src" rowspan="11">sales</td>
+  <td class="merge-agg" rowspan="2">product</td>
+  <td class="merge-event" rowspan="2">Product</td>
+  <td>ProductDiscontinued</td>
+</tr>
+<tr>
   <td>SalesPriceChanged</td>
 </tr>
 <tr>
@@ -932,47 +967,26 @@
 <ul>
   <li>Inventory's and manufacturing's compensation acks are two physically distinct events — <code>InventorySalesOrderCancellationApplied</code> in <code>inventory-events</code> (aggregate <code>StockReservation</code>) and <code>ManufacturingSalesOrderCancellationApplied</code> in <code>manufacturing-events</code> (aggregate <code>WorkOrder</code>) — each acknowledged by its own sales-side handler. The Java class names are prefixed to avoid a flat-namespace collision; the wire formats (<code>inventory.SalesOrderCancellationApplied</code> / <code>manufacturing.SalesOrderCancellationApplied</code>) deliberately keep the bare event name since the service prefix already conveys the source — see the Javadoc on either event class for the why.</li>
   <li><strong>Cross-context aggregate-root stamping is intentional</strong>, not a pragmatic compromise. The rule: an event names the aggregate the fact is <em>about</em>, not the module that emits it — logical ownership and physical emission are decoupled. A module-A-emits-event-about-aggregate-B arrangement is legitimate when (a) the named aggregate is genuinely the subject of the fact, (b) the emitter is the natural source of authority for that fact, and (c) the emitter isn't claiming jurisdiction over the named aggregate's invariants. Two events in Northwood take this path today: <code>manufacturing.ManufacturingDispatched</code> stamped <code>SalesOrder</code> (manufacturing reports an outcome the SalesOrder needs to advance its saga) and <code>manufacturing.ProductMaterialsCostComputed</code> stamped <code>Product</code> (manufacturing computes a fact about a Product owned upstream). Both pass all three criteria. The Kafka co-partition benefit (every event for a saga's correlation aggregate lands on the same partition) is a happy consequence of correct modeling, not the reason for the choice. Full rule + counter-examples in <code>docs/architecture.md</code> § <em>Aggregate-root stamping</em> and <code>docs/design-notes.md</code> § <em>Cross-context aggregate-root stamping on events</em>.</li>
-  <li>Customer master events (<code>CustomerRegistered</code>, <code>CustomerAddressChanged</code>, <code>CustomerContactChanged</code>, <code>CustomerNameChanged</code>, <code>CustomerDeactivated</code>), <code>ProductDiscontinued</code>, <code>PurchaseOrderApproved</code>, and <code>ProductMaterialsCostComputed</code> are published by their aggregates but have no inbox handler yet.</li>
+  <li>Customer master events (<code>CustomerRegistered</code>, <code>CustomerAddressChanged</code>, <code>CustomerContactChanged</code>, <code>CustomerNameChanged</code>, <code>CustomerDeactivated</code>), <code>PurchaseOrderApproved</code>, and <code>ProductMaterialsCostComputed</code> are published by their aggregates but have no inbox handler yet.</li>
   <li><code>StockReserved</code> in <code>sales</code> uses the bare consumer name <code>sales.fulfilment-saga</code> (not <code>sales.fulfilment-saga.stock-reserved</code>) — this is the saga's primary entry point and predates the suffix convention used by later additions.</li>
   <li>Reporting projections (<code>*_view</code>, <code>production_planning_board</code>, <code>financial_dashboard_daily</code>, <code>material_shortage_view</code>) are all order-tolerant: every write is <code>INSERT ... ON CONFLICT DO UPDATE</code>. Stub rows (e.g. <code>product_sku='(pending)'</code>) get backfilled by whichever event arrives first carrying the missing identity.</li>
   <li>"+=" in the Description column denotes an additive bump (so partial-then-full events sum correctly); plain "→" denotes an overwrite.</li>
 </ul>
 
 <h2>Coverage gaps</h2>
-<p>Nine events have no consumer at all, plus a few events whose consumer coverage is incomplete. Listed in priority order — symptom → impact → suggested handler(s). <strong>Critical</strong> means a downstream service makes business-wrong decisions today; <strong>Staleness</strong> means a read model drifts but no transaction goes wrong; <strong>Likely acceptable</strong> is documented for completeness.</p>
+<p>Eight events have no consumer at all, plus a few events whose consumer coverage is incomplete. Listed in priority order — symptom → impact → suggested handler(s). <strong>Critical</strong> means a downstream service makes business-wrong decisions today; <strong>Staleness</strong> means a read model drifts but no transaction goes wrong; <strong>Likely acceptable</strong> is documented for completeness.</p>
 
 <h3>Critical — business-incorrect decisions today<span class="badge badge-critical">Critical</span></h3>
 
 <div class="gap-critical">
-  <h4>1. <code>ProductDiscontinued</code> has zero consumers</h4>
-  <p>Symptom: a product can be marked discontinued in product-service, but no other service learns of it.</p>
-  <p>Impact:</p>
-  <ul>
-    <li><code>sales</code> — <code>SalesOrderService.placeOrder</code> checks <code>customer.status</code> but not product status; new orders accept discontinued products.</li>
-    <li><code>purchasing</code> — <code>PurchaseRequisitionService</code> / PO creation will still procure a discontinued product.</li>
-    <li><code>manufacturing</code> — <code>ManufacturingRequestedHandler</code> rejects on <code>is_manufactured=false</code>, but <code>ProductDiscontinued</code> doesn't flip that flag, so work orders still spawn for discontinued finished goods. Active BOMs also stay active.</li>
-    <li><code>reporting</code> — <code>available_to_promise_view</code> and <code>production_planning_board</code> keep showing discontinued items as orderable / plannable.</li>
-    <li><code>inventory</code> — <code>stock_item</code> keeps firing reorder calculations for a product nobody is buying.</li>
-  </ul>
-  <p>Suggested handlers:</p>
-  <ul>
-    <li><code>sales.product-discontinued</code> → flag the product in <code>sales.product_pricing</code> (or a parallel <code>sales.product_status</code> projection) and reject orders for those products at <code>placeOrder</code>.</li>
-    <li><code>manufacturing.product-discontinued</code> → set <code>manufacturing.product_replenishment.is_purchased=false, is_manufactured=false</code> so the existing rejection path covers the case; clear <code>manufacturing.product_active_bom</code> for the product.</li>
-    <li><code>purchasing.product-discontinued</code> → block new POs/PRs.</li>
-    <li><code>reporting.atp.product-discontinued</code> → stamp <code>discontinued_at</code> on the ATP row so the UI can grey it out.</li>
-    <li><code>inventory.product-discontinued</code> → suppress reorder alerts on <code>stock_item</code>.</li>
-  </ul>
-</div>
-
-<div class="gap-critical">
-  <h4>2. <code>ProductCreated</code> has no inventory consumer</h4>
+  <h4>1. <code>ProductCreated</code> has no inventory consumer</h4>
   <p>Symptom: <code>inventory.StockItemProjection.applyReorderPolicy</code> documents this gap explicitly — <em>"if we have no row for the product yet, the projection silently no-ops … when inventory grows a ProductCreated consumer the row will appear."</em> The Liquibase seed pre-creates <code>stock_item</code> rows for the 5 demo SKUs, which masks the gap during the demo.</p>
   <p>Impact: any product registered after boot via <code>POST /api/products</code> cannot have a reorder policy applied — <code>ReorderPolicyChanged</code> projects to a missing row and silently no-ops with a WARN log.</p>
   <p>Suggested handler: <code>inventory.product-created</code> → insert an empty <code>inventory.stock_item</code> row (default warehouse MAIN, zero on-hand) at product registration so the later <code>ReorderPolicyChanged</code> has something to update.</p>
 </div>
 
 <div class="gap-critical">
-  <h4>3. <code>CustomerDeactivated</code> has no consumers</h4>
+  <h4>2. <code>CustomerDeactivated</code> has no consumers</h4>
   <p>Symptom: sales already enforces <code>customer.status == ACTIVE</code> locally on order placement (direct DB read of its own customer table), so this isn't a sales-side correctness gap. Downstream services have no signal.</p>
   <p>Impact:</p>
   <ul>
@@ -985,14 +999,14 @@
 <h3>Staleness — read models drift<span class="badge badge-staleness">Staleness</span></h3>
 
 <div class="gap-staleness">
-  <h4>4. <code>PurchaseOrderApproved</code> has no consumer</h4>
+  <h4>3. <code>PurchaseOrderApproved</code> has no consumer</h4>
   <p>Symptom: the event is published, but the purchasing P2P saga worker polls saga rows directly (state-driven) rather than subscribing via inbox. No other service receives the event.</p>
   <p>Impact: <code>reporting.purchase_order_tracking_view.po_status</code> is set once by the <code>po-created</code> handler with whatever status the PO has at creation time. When a draft PO is later approved via <code>POST /api/purchase-orders/{id}/approve</code> and the aggregate transitions to <code>'sent'</code>, the tracking view's <code>po_status</code> stays at <code>'draft'</code> indefinitely. The shortage-driven auto-approve path masks this because approval fires in the same transaction as creation and the create event already carries the post-approval status.</p>
   <p>Suggested handler: <code>reporting.po-tracking.po-approved</code> → update <code>purchase_order_tracking_view.po_status='sent'</code> and stamp <code>approved_at</code>.</p>
 </div>
 
 <div class="gap-staleness">
-  <h4>5. <code>ProductMaterialsCostComputed</code> has no consumer</h4>
+  <h4>4. <code>ProductMaterialsCostComputed</code> has no consumer</h4>
   <p>Symptom: manufacturing rolls up materials cost into <code>manufacturing.product_materials_cost</code> and emits this event, but nothing downstream reacts. Manufacturing's own UI read is the only sink.</p>
   <p>Impact: the rollup is a dead-end. When a supplier price drops and triggers a rebased <code>materials_cost</code>, none of:</p>
   <ul>
@@ -1007,12 +1021,12 @@
 <h3>Likely acceptable — documented for completeness<span class="badge badge-deferred">Deferred</span></h3>
 
 <div class="gap-deferred">
-  <h4>6. Customer master events: <code>CustomerRegistered</code>, <code>CustomerNameChanged</code>, <code>CustomerAddressChanged</code>, <code>CustomerContactChanged</code></h4>
+  <h4>5. Customer master events: <code>CustomerRegistered</code>, <code>CustomerNameChanged</code>, <code>CustomerAddressChanged</code>, <code>CustomerContactChanged</code></h4>
   <p>Sales owns the customer aggregate and reads it directly for its own checks. Downstream services (finance invoice headers, reporting <code>sales_order_360_view</code>) snapshot customer name + currency from event payloads at order placement time, which is <em>historically correct</em> — overwriting old invoice names after a customer rename would arguably destroy audit value. Only a gap if a UI requirement explicitly says "show current customer name on past orders"; not assumed here.</p>
 </div>
 
 <div class="gap-deferred">
-  <h4>7. <code>ManufacturingDispatched</code> to production-planning</h4>
+  <h4>6. <code>ManufacturingDispatched</code> to production-planning</h4>
   <p>The production-planning board only gets a row when a work order is actually created. Rejected lines (no BOM, not manufactured) generate <code>ManufacturingDispatched</code> outcomes but no work orders, so there's nothing on the board to update. A "manufacturing rejection rate" dashboard widget could subscribe, but no current read model needs the signal.</p>
 </div>
 
