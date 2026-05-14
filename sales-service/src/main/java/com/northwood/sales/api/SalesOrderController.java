@@ -7,6 +7,7 @@ import com.northwood.sales.application.SalesOrderService.CustomerInactiveExcepti
 import com.northwood.sales.application.SalesOrderService.CustomerNotFoundException;
 import com.northwood.sales.application.SalesOrderService.OrderNotCancellableException;
 import com.northwood.sales.application.SalesOrderService.OrderNotFoundException;
+import com.northwood.sales.application.SalesOrderService.ProductDiscontinuedException;
 import com.northwood.sales.application.SalesOrderService.SagaNotFoundException;
 import com.northwood.sales.application.SalesOrderService.UnknownPriceException;
 import com.northwood.sales.application.dto.CancelOrderCommand;
@@ -73,7 +74,7 @@ public class SalesOrderController {
         return ResponseEntity.status(404).body(e.getMessage());
     }
 
-    @ExceptionHandler({OrderNotCancellableException.class, CustomerInactiveException.class})
+    @ExceptionHandler({OrderNotCancellableException.class, CustomerInactiveException.class, ProductDiscontinuedException.class})
     public ResponseEntity<String> handleConflict(RuntimeException e) {
         return ResponseEntity.status(409).body(e.getMessage());
     }

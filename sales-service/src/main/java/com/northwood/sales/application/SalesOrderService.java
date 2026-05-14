@@ -174,6 +174,15 @@ public class SalesOrderService {
     private BigDecimal resolveUnitPrice(OrderLine req, String orderCurrency) {
         Optional<CatalogPrice> catalog = productPricing.findByProductId(req.productId());
 
+        // Discontinued check fires regardless of whether caller passed a
+        // unitPrice — a manual override doesn't override product-service's
+        // retirement of the SKU.
+        catalog.ifPresent(cp -> {
+            if (cp.discontinuedAt() != null) {
+                throw new ProductDiscontinuedException(req.productSku(), cp.discontinuedAt());
+            }
+        });
+
         if (req.unitPrice() == null) {
             CatalogPrice cp = catalog.orElseThrow(() -> new UnknownPriceException(req.productSku()));
             assertCurrency(req.productSku(), orderCurrency, cp.currencyCode());
@@ -242,6 +251,13 @@ public class SalesOrderService {
         public CurrencyMismatchException(String sku, String orderCurrency, String catalogCurrency) {
             super("Order currency " + orderCurrency + " does not match catalog currency "
                 + catalogCurrency + " for sku=" + sku);
+        }
+    }
+
+    public static class ProductDiscontinuedException extends RuntimeException {
+        public ProductDiscontinuedException(String sku, java.time.Instant discontinuedAt) {
+            super("Product sku=" + sku + " was discontinued at " + discontinuedAt
+                + "; cannot accept new order lines for it");
         }
     }
 }

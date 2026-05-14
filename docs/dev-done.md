@@ -6,6 +6,34 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-14 — §1F.1 sales: ProductDiscontinued consumer + placeOrder gating
+
+First of five §1F.1 service-level slices closing the `ProductDiscontinued` consumer gap. Sales now stamps `sales.product_pricing.discontinued_at` on the inbox event, and `SalesOrderService.placeOrder` rejects any line whose product carries a non-null `discontinued_at` — the rejection fires regardless of whether the caller passed a `unitPrice` (a manual override doesn't override the producer's retirement of the SKU).
+
+### Changes
+
+- **Liquibase changeset** `sales-service/.../changes/2026-05-14-add-product-pricing-discontinued-at.sql` adds `discontinued_at TIMESTAMPTZ NULL` to `sales.product_pricing`; the previously-empty master changelog now includes it. First per-service changeset in this codebase since the v3 → northwood_erp.sql rebase.
+- **`sales.ProductDiscontinuedHandler`** (new, consumer name `sales.product-discontinued`) — calls `ProductDiscontinuedProjection.applyDiscontinued(productId, occurredAt)`.
+- **`ProductDiscontinuedProjection`** interface + `JdbcProductDiscontinuedProjection` implementation. Upsert against `sales.product_pricing`: if no row exists yet (discontinue races ahead of any `SalesPriceChanged` for the SKU), inserts a stub row carrying just the stamp (`sales_price=0, currency_code='AUD'`).
+- **`ProductPricingLookup.CatalogPrice`** record gains a third field `Instant discontinuedAt`; `JdbcProductPricingLookup` reads the new column.
+- **`SalesOrderService.resolveUnitPrice`** — new guard checks `catalog.discontinuedAt() != null` before currency/price resolution; throws `ProductDiscontinuedException` (mapped to HTTP 409 on `SalesOrderController`, joining `CustomerInactiveException` and `OrderNotCancellableException` in the same handler — closest-analog status: the entity is in a state that blocks the operation, not a request-payload problem).
+- **`InMemoryProductPricingLookup`** (test-harness) updated to the new record signature, with a `markDiscontinued(productId, instant)` helper for future end-to-end coverage.
+- **Tests**: `ProductDiscontinuedHandlerTest` (happy path + idempotent short-circuit on already-processed). `SalesOrderServicePlaceOrderTest` (3 cases: discontinued with caller-supplied unit price, discontinued with catalog-resolved unit price, live product). Both pass; full sales-service suite 129/129.
+
+### Drive-by fix
+
+`JdbcSalesOrderFulfilmentSagaManagerTest$ApplyCancellationApplied.no_saga_returns_null` had been stale since the `recordCompensationAck` refactor switched orphan acks from WARN+null to throwing — test renamed `no_saga_throws_illegal_state` and asserts the new behaviour with the now-mandatory `EVENT_TYPE` in the exception message.
+
+### Smoke
+
+`mvn -pl sales-service test` → 129 tests, 0 failures. Full `mvn install -DskipTests` reactor green.
+
+### Follow-ups (still in §1F.1)
+
+Four sibling slices remain: manufacturing, purchasing, reporting (atp), inventory. Each adds its own service-side handler against the same producer event; no further changes to product-service or to the event class itself.
+
+---
+
 ## 2026-05-14 — Sales fulfilment saga: route fully-reserved orders past the manufacturing leg
 
 Fix for the latent over-production bug surfaced this session: `applyStockReserved` previously transitioned every reservation outcome (RESERVED / PARTIALLY_RESERVED / FAILED) to `STOCK_RESERVED`, after which the worker would call `requestManufacturing` and emit a `ManufacturingRequested` for the full ordered quantity. For a finished_good that was fully reserved from stock, `ManufacturingRequestedHandler` would not reject it (`is_manufactured=true`, active BOM present) and would cut a work order for the full ordered quantity → over-production.

@@ -1,6 +1,7 @@
 package com.northwood.sales.infrastructure.persistence;
 
 import com.northwood.sales.application.ProductPricingLookup;
+import java.sql.Timestamp;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -21,14 +22,18 @@ public class JdbcProductPricingLookup implements ProductPricingLookup {
         try {
             return Optional.ofNullable(jdbc.queryForObject(
                 """
-                SELECT sales_price, currency_code
+                SELECT sales_price, currency_code, discontinued_at
                 FROM sales.product_pricing
                 WHERE product_id = ?
                 """,
-                (rs, n) -> new CatalogPrice(
-                    rs.getBigDecimal("sales_price"),
-                    rs.getString("currency_code")
-                ),
+                (rs, n) -> {
+                    Timestamp ts = rs.getTimestamp("discontinued_at");
+                    return new CatalogPrice(
+                        rs.getBigDecimal("sales_price"),
+                        rs.getString("currency_code"),
+                        ts == null ? null : ts.toInstant()
+                    );
+                },
                 productId
             ));
         } catch (EmptyResultDataAccessException e) {

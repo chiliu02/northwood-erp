@@ -365,12 +365,17 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             assertThat(state).isEqualTo(COMPENSATED);
         }
 
-        @Test void no_saga_returns_null() {
+        @Test void no_saga_throws_illegal_state() {
+            // Consistency with every other apply method — an orphan ack with no
+            // saga row is a genuine invariant violation that inbox redelivery /
+            // dead-letter handling should surface, not silently swallow.
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.empty());
 
-            String state = manager.applyInventoryCancellationApplied(SO);
-
-            assertThat(state).isNull();
+            org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> manager.applyInventoryCancellationApplied(SO)
+            )
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("inventory.SalesOrderCancellationApplied");
             verify(sagas, never()).save(any());
         }
     }
