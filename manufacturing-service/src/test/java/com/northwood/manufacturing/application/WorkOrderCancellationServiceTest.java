@@ -14,7 +14,7 @@ import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderMaterial;
 import com.northwood.manufacturing.domain.WorkOrderOperation;
 import com.northwood.manufacturing.domain.WorkOrderRepository;
-import com.northwood.manufacturing.domain.events.SalesOrderCancellationApplied;
+import com.northwood.manufacturing.domain.events.ManufacturingSalesOrderCancellationApplied;
 import com.northwood.shared.application.outbox.OutboxPort;
 import com.northwood.shared.application.outbox.OutboxRow;
 import java.math.BigDecimal;
@@ -69,13 +69,13 @@ class WorkOrderCancellationServiceTest {
         return wo;
     }
 
-    private SalesOrderCancellationApplied capturedAck() {
+    private ManufacturingSalesOrderCancellationApplied capturedAck() {
         ArgumentCaptor<OutboxRow> cap = ArgumentCaptor.forClass(OutboxRow.class);
         verify(outbox).appendPending(cap.capture());
         OutboxRow row = cap.getValue();
-        assertThat(row.getEventType()).isEqualTo(com.northwood.manufacturing.domain.events.SalesOrderCancellationApplied.EVENT_TYPE);
+        assertThat(row.getEventType()).isEqualTo(ManufacturingSalesOrderCancellationApplied.EVENT_TYPE);
         assertThat(row.getAggregateId()).isEqualTo(SO);
-        return json.readValue(row.getPayload(), SalesOrderCancellationApplied.class);
+        return json.readValue(row.getPayload(), ManufacturingSalesOrderCancellationApplied.class);
     }
 
     @Test void no_active_work_orders_still_emits_ack_with_zero_count() {

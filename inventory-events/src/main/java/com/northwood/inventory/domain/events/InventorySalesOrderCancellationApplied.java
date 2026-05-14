@@ -14,8 +14,16 @@ import java.util.UUID;
  * released), the ack still fires with {@code reservationsReleased = 0} so the
  * sales fulfilment saga can advance to {@code compensated} without a special
  * case.
+ *
+ * <p><b>Java name vs wire format.</b> The class is prefixed with
+ * {@code Inventory} only to disambiguate from manufacturing's equivalent ack
+ * (Java's flat namespace can't carry both as {@code SalesOrderCancellationApplied}
+ * without forcing FQNs at every dual-import site). The wire format
+ * {@code "inventory.SalesOrderCancellationApplied"} is unchanged — the
+ * {@code inventory.} prefix already conveys the source service, so doubling it
+ * in the event name would read awkwardly to consumers.
  */
-public record SalesOrderCancellationApplied(
+public record InventorySalesOrderCancellationApplied(
     UUID eventId,
     UUID aggregateId,         // sales_order_header_id (saga finds saga by this)
     int reservationsReleased,

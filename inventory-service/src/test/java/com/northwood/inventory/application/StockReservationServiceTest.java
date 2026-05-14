@@ -211,7 +211,7 @@ class StockReservationServiceTest {
             ArgumentCaptor<OutboxRow> cap = ArgumentCaptor.forClass(OutboxRow.class);
             verify(outbox).appendPending(cap.capture());
             OutboxRow row = cap.getValue();
-            assertThat(row.getEventType()).isEqualTo(com.northwood.inventory.domain.events.SalesOrderCancellationApplied.EVENT_TYPE);
+            assertThat(row.getEventType()).isEqualTo(com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied.EVENT_TYPE);
             assertThat(row.getAggregateId()).isEqualTo(SO);
             assertThat(row.getAggregateType()).isEqualTo("StockReservation");
             assertThat(json.readTree(row.getPayload()).get("reservationsReleased").asInt()).isEqualTo(1);

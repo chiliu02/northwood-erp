@@ -6,7 +6,7 @@ import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderRepository;
 import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
-import com.northwood.manufacturing.domain.events.SalesOrderCancellationApplied;
+import com.northwood.manufacturing.domain.events.ManufacturingSalesOrderCancellationApplied;
 import com.northwood.shared.application.outbox.OutboxPort;
 import com.northwood.shared.application.outbox.OutboxRow;
 import java.time.Instant;
@@ -96,7 +96,7 @@ public class WorkOrderCancellationService {
             sagaManager.cancelForWorkOrder(woId);
         }
 
-        SalesOrderCancellationApplied ack = new SalesOrderCancellationApplied(
+        ManufacturingSalesOrderCancellationApplied ack = new ManufacturingSalesOrderCancellationApplied(
             UUID.randomUUID(), salesOrderHeaderId, cancelled, Instant.now()
         );
         try {
@@ -111,7 +111,7 @@ public class WorkOrderCancellationService {
                 null  // actor: saga-driven; propagation from inbound envelope is a B2 follow-up
             ));
         } catch (JacksonException e) {
-            throw new IllegalStateException("Failed to serialise " + SalesOrderCancellationApplied.EVENT_TYPE, e);
+            throw new IllegalStateException("Failed to serialise " + ManufacturingSalesOrderCancellationApplied.EVENT_TYPE, e);
         }
 
         log.info("cancelled {} work order(s) for sales_order={} (reason={})",

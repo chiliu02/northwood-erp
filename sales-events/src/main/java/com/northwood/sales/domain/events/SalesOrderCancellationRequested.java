@@ -10,10 +10,12 @@ import java.util.UUID;
  * downstream services (inventory, manufacturing) to compensate — release the
  * stock reservation, cancel any in-progress work orders, etc.
  *
- * <p>Inventory and manufacturing each ack with their own
- * {@code SalesOrderCancellationApplied} event; the sales fulfilment saga waits
- * in {@code compensating} until both acks land, then transitions to
- * {@code compensated}.
+ * <p>Inventory and manufacturing each ack with their own event
+ * ({@code InventorySalesOrderCancellationApplied} /
+ * {@code ManufacturingSalesOrderCancellationApplied}, both carrying the wire
+ * suffix {@code SalesOrderCancellationApplied} under their service prefix);
+ * the sales fulfilment saga waits in {@code compensating} until both acks
+ * land, then transitions to {@code compensated}.
  */
 public record SalesOrderCancellationRequested(
     UUID eventId,

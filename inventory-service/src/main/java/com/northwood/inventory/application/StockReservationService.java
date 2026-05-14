@@ -8,7 +8,7 @@ import com.northwood.inventory.domain.StockReservation;
 import com.northwood.inventory.domain.StockReservationLine;
 import com.northwood.inventory.domain.StockReservationRepository;
 import com.northwood.inventory.domain.StockReservationRepository.ReservedLineSnapshot;
-import com.northwood.inventory.domain.events.SalesOrderCancellationApplied;
+import com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied;
 import com.northwood.shared.application.outbox.OutboxPort;
 import com.northwood.shared.application.outbox.OutboxRow;
 import java.math.BigDecimal;
@@ -152,7 +152,7 @@ public class StockReservationService {
             log.info("no live reservation to release for sales_order={}", salesOrderHeaderId);
         }
 
-        SalesOrderCancellationApplied ack = new SalesOrderCancellationApplied(
+        InventorySalesOrderCancellationApplied ack = new InventorySalesOrderCancellationApplied(
             UUID.randomUUID(), salesOrderHeaderId, released, Instant.now()
         );
         try {
@@ -167,7 +167,7 @@ public class StockReservationService {
                 null  // actor: saga-driven; propagation from inbound envelope is a B2 follow-up
             ));
         } catch (JacksonException e) {
-            throw new IllegalStateException("Failed to serialise " + SalesOrderCancellationApplied.EVENT_TYPE, e);
+            throw new IllegalStateException("Failed to serialise " + InventorySalesOrderCancellationApplied.EVENT_TYPE, e);
         }
     }
 

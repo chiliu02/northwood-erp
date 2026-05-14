@@ -2,7 +2,7 @@ package com.northwood.sales.application.inbox;
 
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.COMPENSATED;
 
-import com.northwood.inventory.domain.events.SalesOrderCancellationApplied;
+import com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied;
 import com.northwood.sales.application.SalesOrderCompensationEmitter;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.shared.application.inbox.InboxPort;
@@ -19,7 +19,7 @@ import tools.jackson.databind.ObjectMapper;
  * {@link SalesOrderCompensationEmitter}.
  */
 @Component
-public class InventoryCancellationAppliedHandler extends AbstractInboxHandler<SalesOrderCancellationApplied> {
+public class InventoryCancellationAppliedHandler extends AbstractInboxHandler<InventorySalesOrderCancellationApplied> {
 
     public static final String CONSUMER_NAME = "sales.compensation-inventory-ack";
 
@@ -32,13 +32,13 @@ public class InventoryCancellationAppliedHandler extends AbstractInboxHandler<Sa
         SalesOrderCompensationEmitter compensationEmitter,
         ObjectMapper json
     ) {
-        super(inbox, json, SalesOrderCancellationApplied.class, SalesOrderCancellationApplied.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, InventorySalesOrderCancellationApplied.class, InventorySalesOrderCancellationApplied.EVENT_TYPE, CONSUMER_NAME);
         this.sagaManager = sagaManager;
         this.compensationEmitter = compensationEmitter;
     }
 
     @Override
-    protected void apply(SalesOrderCancellationApplied payload, EventEnvelope envelope) {
+    protected void apply(InventorySalesOrderCancellationApplied payload, EventEnvelope envelope) {
         String newState = sagaManager.applyInventoryCancellationApplied(payload.aggregateId());
         if (COMPENSATED.equals(newState)) {
             compensationEmitter.emitCompensated(payload.aggregateId());

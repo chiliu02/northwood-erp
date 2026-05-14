@@ -2,7 +2,7 @@ package com.northwood.sales.application.inbox;
 
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.COMPENSATED;
 
-import com.northwood.manufacturing.domain.events.SalesOrderCancellationApplied;
+import com.northwood.manufacturing.domain.events.ManufacturingSalesOrderCancellationApplied;
 import com.northwood.sales.application.SalesOrderCompensationEmitter;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.shared.application.inbox.InboxPort;
@@ -18,7 +18,7 @@ import tools.jackson.databind.ObjectMapper;
  * count is informational.
  */
 @Component
-public class ManufacturingCancellationAppliedHandler extends AbstractInboxHandler<SalesOrderCancellationApplied> {
+public class ManufacturingCancellationAppliedHandler extends AbstractInboxHandler<ManufacturingSalesOrderCancellationApplied> {
 
     public static final String CONSUMER_NAME = "sales.compensation-manufacturing-ack";
 
@@ -31,13 +31,13 @@ public class ManufacturingCancellationAppliedHandler extends AbstractInboxHandle
         SalesOrderCompensationEmitter compensationEmitter,
         ObjectMapper json
     ) {
-        super(inbox, json, SalesOrderCancellationApplied.class, SalesOrderCancellationApplied.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ManufacturingSalesOrderCancellationApplied.class, ManufacturingSalesOrderCancellationApplied.EVENT_TYPE, CONSUMER_NAME);
         this.sagaManager = sagaManager;
         this.compensationEmitter = compensationEmitter;
     }
 
     @Override
-    protected void apply(SalesOrderCancellationApplied payload, EventEnvelope envelope) {
+    protected void apply(ManufacturingSalesOrderCancellationApplied payload, EventEnvelope envelope) {
         String newState = sagaManager.applyManufacturingCancellationApplied(payload.aggregateId());
         if (COMPENSATED.equals(newState)) {
             compensationEmitter.emitCompensated(payload.aggregateId());

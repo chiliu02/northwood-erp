@@ -426,7 +426,7 @@
   <td class="desc"><code>reporting.available_to_promise_view.production_reserved_quantity</code> (+= qty) — stub row created if product identity unknown</td>
 </tr>
 <tr>
-  <td class="merge-event">SalesOrderCancellationApplied (inventory)</td>
+  <td class="merge-event">InventorySalesOrderCancellationApplied</td>
   <td>sales</td>
   <td class="consumer">sales.compensation-inventory-ack</td>
   <td class="desc">Records inventory ack on <code>sales.sales_order_fulfilment_saga</code>; when both acks present, flips to <code>compensated</code> and emits <code>sales.SalesOrderCompensated</code> via outbox</td>
@@ -502,7 +502,7 @@
   <td class="desc">Upserts <code>reporting.material_shortage_view</code> per component (material_sku, material_name, shortage_quantity, detected_at)</td>
 </tr>
 <tr>
-  <td class="merge-event">SalesOrderCancellationApplied (manufacturing)</td>
+  <td class="merge-event">ManufacturingSalesOrderCancellationApplied</td>
   <td>sales</td>
   <td class="consumer">sales.compensation-manufacturing-ack</td>
   <td class="desc">Records manufacturing ack on <code>sales.sales_order_fulfilment_saga</code>; when both acks present, flips to <code>compensated</code> and emits <code>sales.SalesOrderCompensated</code> via outbox</td>
@@ -890,7 +890,7 @@
 <tr>
   <td class="merge-agg" rowspan="3">inventory</td>
   <td class="merge-event" rowspan="2">StockReservation</td>
-  <td>SalesOrderCancellationApplied (inventory)</td>
+  <td>InventorySalesOrderCancellationApplied</td>
 </tr>
 <tr>
   <td>StockReserved</td>
@@ -906,7 +906,7 @@
 </tr>
 <tr>
   <td class="merge-event" rowspan="3">WorkOrder</td>
-  <td>SalesOrderCancellationApplied (manufacturing)</td>
+  <td>ManufacturingSalesOrderCancellationApplied</td>
 </tr>
 <tr>
   <td>WorkOrderCreated</td>
@@ -930,7 +930,7 @@
 
 <h2>Notes</h2>
 <ul>
-  <li><code>SalesOrderCancellationApplied</code> exists as two physically distinct events — one in <code>inventory-events</code> (aggregate <code>StockReservation</code>), one in <code>manufacturing-events</code> (aggregate <code>WorkOrder</code>) — each acknowledged by its own sales-side handler. They share a class name but are different topics/types.</li>
+  <li>Inventory's and manufacturing's compensation acks are two physically distinct events — <code>InventorySalesOrderCancellationApplied</code> in <code>inventory-events</code> (aggregate <code>StockReservation</code>) and <code>ManufacturingSalesOrderCancellationApplied</code> in <code>manufacturing-events</code> (aggregate <code>WorkOrder</code>) — each acknowledged by its own sales-side handler. The Java class names are prefixed to avoid a flat-namespace collision; the wire formats (<code>inventory.SalesOrderCancellationApplied</code> / <code>manufacturing.SalesOrderCancellationApplied</code>) deliberately keep the bare event name since the service prefix already conveys the source — see the Javadoc on either event class for the why.</li>
   <li><strong>Cross-context aggregate-root stamping is intentional</strong>, not a pragmatic compromise. The rule: an event names the aggregate the fact is <em>about</em>, not the module that emits it — logical ownership and physical emission are decoupled. A module-A-emits-event-about-aggregate-B arrangement is legitimate when (a) the named aggregate is genuinely the subject of the fact, (b) the emitter is the natural source of authority for that fact, and (c) the emitter isn't claiming jurisdiction over the named aggregate's invariants. Two events in Northwood take this path today: <code>manufacturing.ManufacturingDispatched</code> stamped <code>SalesOrder</code> (manufacturing reports an outcome the SalesOrder needs to advance its saga) and <code>manufacturing.ProductMaterialsCostComputed</code> stamped <code>Product</code> (manufacturing computes a fact about a Product owned upstream). Both pass all three criteria. The Kafka co-partition benefit (every event for a saga's correlation aggregate lands on the same partition) is a happy consequence of correct modeling, not the reason for the choice. Full rule + counter-examples in <code>docs/architecture.md</code> § <em>Aggregate-root stamping</em> and <code>docs/design-notes.md</code> § <em>Cross-context aggregate-root stamping on events</em>.</li>
   <li>Customer master events (<code>CustomerRegistered</code>, <code>CustomerAddressChanged</code>, <code>CustomerContactChanged</code>, <code>CustomerNameChanged</code>, <code>CustomerDeactivated</code>), <code>ProductDiscontinued</code>, <code>PurchaseOrderApproved</code>, and <code>ProductMaterialsCostComputed</code> are published by their aggregates but have no inbox handler yet.</li>
   <li><code>StockReserved</code> in <code>sales</code> uses the bare consumer name <code>sales.fulfilment-saga</code> (not <code>sales.fulfilment-saga.stock-reserved</code>) — this is the saga's primary entry point and predates the suffix convention used by later additions.</li>

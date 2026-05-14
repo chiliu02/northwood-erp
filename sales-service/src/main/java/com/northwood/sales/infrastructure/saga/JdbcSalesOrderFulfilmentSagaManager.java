@@ -2,9 +2,11 @@ package com.northwood.sales.infrastructure.saga;
 
 import com.northwood.finance.domain.events.CustomerInvoiceCreated;
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
+import com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied;
 import com.northwood.inventory.domain.events.ShipmentPosted;
 import com.northwood.inventory.domain.events.StockReserved;
 import com.northwood.manufacturing.domain.events.ManufacturingDispatched;
+import com.northwood.manufacturing.domain.events.ManufacturingSalesOrderCancellationApplied;
 import com.northwood.manufacturing.domain.events.WorkOrderCreated;
 import com.northwood.manufacturing.domain.events.WorkOrderManufacturingCompleted;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
@@ -269,14 +271,14 @@ public class JdbcSalesOrderFulfilmentSagaManager
     @Transactional
     public String applyInventoryCancellationApplied(UUID salesOrderHeaderId) {
         return recordCompensationAck(salesOrderHeaderId, true,
-            com.northwood.inventory.domain.events.SalesOrderCancellationApplied.EVENT_TYPE);
+            InventorySalesOrderCancellationApplied.EVENT_TYPE);
     }
 
     @Override
     @Transactional
     public String applyManufacturingCancellationApplied(UUID salesOrderHeaderId) {
         return recordCompensationAck(salesOrderHeaderId, false,
-            com.northwood.manufacturing.domain.events.SalesOrderCancellationApplied.EVENT_TYPE);
+            ManufacturingSalesOrderCancellationApplied.EVENT_TYPE);
     }
 
     private String recordCompensationAck(UUID salesOrderHeaderId, boolean inventorySide, String eventName) {

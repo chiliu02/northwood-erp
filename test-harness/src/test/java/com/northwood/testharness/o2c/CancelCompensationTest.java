@@ -92,7 +92,7 @@ class CancelCompensationTest {
             mfgAckId,
             "WorkOrder",
             orderId,
-            com.northwood.manufacturing.domain.events.SalesOrderCancellationApplied.EVENT_TYPE,
+            com.northwood.manufacturing.domain.events.ManufacturingSalesOrderCancellationApplied.EVENT_TYPE,
             1,
             json.writeValueAsString(mfgAckPayload),
             null, null, null, null
@@ -112,7 +112,7 @@ class CancelCompensationTest {
 
         assertThat(inventory.outbox.all())
             .extracting(OutboxRow::getEventType)
-            .contains(com.northwood.inventory.domain.events.SalesOrderCancellationApplied.EVENT_TYPE);
+            .contains(com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied.EVENT_TYPE);
 
         assertThat(sales.outbox.findPending(100)).isEmpty();
         assertThat(inventory.outbox.findPending(100)).isEmpty();

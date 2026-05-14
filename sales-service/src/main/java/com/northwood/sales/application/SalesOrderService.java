@@ -67,8 +67,8 @@ public class SalesOrderService {
      * {@code sales.SalesOrderCancellationRequested} event is written to the
      * outbox. The fulfilment saga is moved to {@code 'compensating'}; the
      * downstream services (inventory, manufacturing) ack via their own
-     * {@code SalesOrderCancellationApplied} events, after which the saga
-     * advances to {@code 'compensated'}.
+     * {@code InventorySalesOrderCancellationApplied} / {@code ManufacturingSalesOrderCancellationApplied}
+     * events, after which the saga advances to {@code 'compensated'}.
      *
      * <p>Cancellable up to (and including) {@code ready_to_ship}; once
      * {@code goods_shipped} or beyond, the credit-note / return-goods flow
