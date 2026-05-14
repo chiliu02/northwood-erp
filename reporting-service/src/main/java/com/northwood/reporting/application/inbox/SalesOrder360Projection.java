@@ -1,0 +1,51 @@
+package com.northwood.reporting.application.inbox;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.UUID;
+
+/**
+ * Maintains {@code reporting.sales_order_360_view}. One row per sales-order
+ * header, stitched together from events emitted by every upstream service.
+ *
+ * <p>Order-tolerant by design: every method uses
+ * {@code INSERT ... ON CONFLICT DO UPDATE}.
+ *
+ * <p>Application-side port; JDBC implementation lives in
+ * {@code infrastructure/persistence/JdbcSalesOrder360Projection}.
+ */
+public interface SalesOrder360Projection {
+
+    void createFromOrder(
+        UUID salesOrderHeaderId,
+        String orderNumber,
+        UUID customerId,
+        String customerName,
+        LocalDate orderDate,
+        LocalDate requestedDeliveryDate,
+        String currencyCode,
+        BigDecimal totalAmount,
+        Instant occurredAt,
+        String eventType,
+        String actorUserId);
+
+    void recordManufacturingCompleted(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
+
+    /**
+     * Record that the sales fulfilment saga has finished compensation: flip
+     * {@code order_status} to {@code 'cancelled'}.
+     */
+    void recordCancellation(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
+
+    void recordShipment(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
+
+    void recordInvoice(UUID salesOrderHeaderId, BigDecimal invoiced, Instant occurredAt, String actorUserId);
+
+    void recordPayment(
+        UUID salesOrderHeaderId,
+        BigDecimal allocated,
+        String invoiceStatusAfter,
+        Instant occurredAt,
+        String actorUserId);
+}

@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.northwood</groupId>
+        <artifactId>northwood-erp</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>shared</artifactId>
+    <name>Northwood :: Shared</name>
+    <description>
+        Cross-context Spring-aware shared layer. Internally split: `shared.application.*`
+        holds framework-free ports + DTOs + abstract orchestration bases (outbox/inbox
+        ports, event envelope, saga manager base, audit entry, current-user accessor);
+        `shared.infrastructure.*` holds the concrete JDBC + Kafka adapters, Spring
+        `@AutoConfiguration` classes, the `@Scheduled` outbox publisher, Liquibase, and
+        OAuth2 resource-server wiring; `shared.api.audit` exposes the generic audit-log
+        REST endpoint each service inherits. Each service brings its own outbox table
+        (schema is per-context) but the polling/publishing logic is here. Sibling
+        `shared-kernel` stays separate so the `*-events` wire-contract jars don't drag
+        Spring along — do not merge.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.northwood</groupId>
+            <artifactId>shared-kernel</artifactId>
+        </dependency>
+
+        <!-- Spring Data JDBC matches the schema design (aggregate-friendly, no ORM
+             magic, no lazy-loading surprises). Pulls in spring-jdbc transitively. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jdbc</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-json</artifactId>
+        </dependency>
+
+        <!-- Spring Kafka. Boot 4 ships KafkaAutoConfiguration, so the producer
+             and consumer factories are wired automatically from spring.kafka.*
+             properties. KafkaEventPublisher is gated on @Profile("kafka") so
+             services launched on the default `dev` profile never connect to
+             a broker; the autoconfig just leaves an unused KafkaTemplate bean
+             in the context. Wire format is JSON via Jackson 3 — no schema
+             registry by design. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-kafka</artifactId>
+        </dependency>
+
+        <!-- Liquibase manages schema migrations. Spring Boot 4 does not ship a
+             LiquibaseAutoConfiguration, so this module provides a
+             SpringLiquibase @Bean (see infrastructure/db/LiquibaseConfig). -->
+        <dependency>
+            <groupId>org.liquibase</groupId>
+            <artifactId>liquibase-core</artifactId>
+        </dependency>
+
+        <!-- OAuth2 resource-server: every service requires a valid Keycloak JWT
+             on every request. The shared SecurityConfig in
+             infrastructure/security/ is registered as @AutoConfiguration and
+             applies uniformly to all 7 services. The starter transitively
+             pulls spring-boot-starter-security. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+
+        <!-- Servlet API at compile-time only (provided scope) so the shared
+             DemoBypassAuthenticationFilter can extend OncePerRequestFilter and
+             reference jakarta.servlet.http.* directly. Services that consume
+             this module bring spring-boot-starter-web which supplies the
+             runtime servlet container. -->
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

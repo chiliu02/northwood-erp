@@ -1,0 +1,19 @@
+# Loaded only when SPRING_PROFILES_ACTIVE=kafka. Activates the
+# transactional-outbox → KafkaEventPublisher pipeline; under default `dev`
+# profile this file is not loaded and product-service runs with the outbox
+# accumulating events but no broker connection.
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+    # consumer.group-id required so KafkaInboxDispatcher (if present) can
+    # interpolate it. product-service today is producer-only — no
+    # subscribe-topics, so the dispatcher bean is not created — but the
+    # property must be defined for the placeholder to resolve.
+    consumer:
+      group-id: product-service
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer

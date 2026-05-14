@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.northwood</groupId>
+        <artifactId>northwood-erp</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>finance-events</artifactId>
+    <name>Northwood :: Finance Events</name>
+    <description>
+        Wire-format event records emitted by finance-service. Consumed by sales
+        (customer-invoice + customer-payment fulfilment-saga advances),
+        purchasing (supplier-invoice + supplier-payment P2P-saga advances), and
+        reporting. Contains com.northwood.finance.domain.events.* records.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.northwood</groupId>
+            <artifactId>shared-kernel</artifactId>
+        </dependency>
+    </dependencies>
+</project>

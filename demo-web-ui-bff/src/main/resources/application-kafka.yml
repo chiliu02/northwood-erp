@@ -1,0 +1,21 @@
+# Loaded only when SPRING_PROFILES_ACTIVE=kafka. Activates the BFF's
+# events aggregator: subscribes to every *.events topic and fans out the
+# decoded EventEnvelope JSON to SSE clients connected on /api/events.
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      # group-id ties the BFF to its own offsets so events flow regardless
+      # of which other consumer groups are also reading the topic.
+      group-id: demo-web-ui-bff
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # Start from "now" — we don't replay the full topic history into the
+      # event drawer. The drawer is a real-time peek, not an audit log.
+      auto-offset-reset: latest
+
+northwood:
+  events:
+    # All six event-emitting services. Reporting is inbox-only (no outbox)
+    # so it doesn't appear here.
+    subscribe-topics: product.events,sales.events,inventory.events,manufacturing.events,purchasing.events,finance.events

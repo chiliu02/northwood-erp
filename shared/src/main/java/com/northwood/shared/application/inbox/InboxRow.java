@@ -1,0 +1,74 @@
+package com.northwood.shared.application.inbox;
+
+import java.time.Instant;
+import java.util.UUID;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.relational.core.mapping.Column;
+
+/**
+ * Inbox row. Used to make event consumption idempotent: a consumer records
+ * (message_id, consumer_name) before applying the event, so a redelivery
+ * doesn't double-apply.
+ */
+public final class InboxRow {
+
+    @Id
+    @Column("inbox_message_id")
+    private UUID inboxMessageId;
+
+    @Column("message_id")
+    private UUID messageId;
+
+    @Column("consumer_name")
+    private String consumerName;
+
+    @Column("event_type")
+    private String eventType;
+
+    @Column("event_version")
+    private int eventVersion;
+
+    @Column("source_sequence_number")
+    private Long sourceSequenceNumber;
+
+    private String payload;
+
+    private String status;
+
+    @Column("processed_at")
+    private Instant processedAt;
+
+    public InboxRow() {}
+
+    public static InboxRow processed(
+        UUID inboxMessageId,
+        UUID messageId,
+        String consumerName,
+        String eventType,
+        int eventVersion,
+        Long sourceSequenceNumber,
+        String payloadJson
+    ) {
+        InboxRow r = new InboxRow();
+        r.inboxMessageId = inboxMessageId;
+        r.messageId = messageId;
+        r.consumerName = consumerName;
+        r.eventType = eventType;
+        r.eventVersion = eventVersion;
+        r.sourceSequenceNumber = sourceSequenceNumber;
+        r.payload = payloadJson;
+        r.status = "processed";
+        r.processedAt = Instant.now();
+        return r;
+    }
+
+    public UUID getInboxMessageId()       { return inboxMessageId; }
+    public UUID getMessageId()            { return messageId; }
+    public String getConsumerName()       { return consumerName; }
+    public String getEventType()          { return eventType; }
+    public int getEventVersion()          { return eventVersion; }
+    public Long getSourceSequenceNumber() { return sourceSequenceNumber; }
+    public String getPayload()            { return payload; }
+    public String getStatus()             { return status; }
+    public Instant getProcessedAt()       { return processedAt; }
+}

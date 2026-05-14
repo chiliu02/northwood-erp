@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: purchasing-service
+  profiles:
+    default: dev
+  datasource:
+    url: ${PURCHASING_DB_URL:jdbc:postgresql://localhost:5432/northwood_erp?currentSchema=purchasing,shared}
+    username: ${PURCHASING_DB_USER:postgres}
+    password: ${PURCHASING_DB_PASSWORD:postgres}
+    hikari:
+      pool-name: purchasing-pool
+      maximum-pool-size: 10
+      connection-init-sql: SET search_path TO purchasing, shared
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Slice A: every endpoint requires a valid Keycloak JWT.
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/northwood}
+
+server:
+  port: ${PURCHASING_PORT:8085}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+
+northwood:
+  outbox:
+    poll-interval: 1000
+  liquibase:
+    enabled: true
+    default-schema: purchasing
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+  purchasing:
+    # §1.2 PO draft / approve workflow. Manual PRs always land at draft and
+    # require POST /api/purchase-orders/{id}/approve. Shortage-driven PRs
+    # auto-approve when this flag is true (default) so the make-to-order
+    # saga can flow without a human; flip to false to force human approval
+    # of every PO regardless of source.
+    shortagePoAutoApprove: true
+
+logging:
+  level:
+    com.northwood: DEBUG
+    liquibase: INFO

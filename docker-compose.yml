@@ -1,0 +1,127 @@
+# Northwood ERP — local development infrastructure.
+#
+# Showcase mode runs all 7 services against a single PostgreSQL database with
+# schema-per-service isolation. To approximate production (database-per-service),
+# duplicate the postgres service per microservice and point each service's
+# *_DB_URL env var at its own instance.
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: northwood-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: northwood_erp
+    ports:
+      - "5432:5432"
+    volumes:
+      - northwood-pgdata:/var/lib/postgresql/data
+      # Mounted into Postgres's init-script directory; the official image runs
+      # any *.sql / *.sh placed here exactly once, on the first boot of a fresh
+      # data volume. This loads the full baseline schema, role grants, and
+      # seed data. To re-seed: `docker compose down -v` then `up -d`.
+      - ./db/northwood_erp.sql:/docker-entrypoint-initdb.d/01-northwood_erp.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Single-broker Kafka in KRaft mode (no ZooKeeper). The only wired
+  # EventPublisher in the codebase is KafkaEventPublisher, registered under
+  # @Profile("kafka") together with each service's outbox drainer — without
+  # SPRING_PROFILES_ACTIVE=kafka, no event bus is registered at all and
+  # cross-service flows silently never fire. No schema registry by design —
+  # wire format is JSON via Jackson 3. The image version matches the
+  # kafka-clients 4.1.2 that Spring Boot 4.0.5's BOM ships.
+  kafka:
+    image: apache/kafka:4.1.2
+    container_name: northwood-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      # KRaft single-node setup (broker + controller in one process).
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      # Clients on the host connect via localhost:9092. When services are moved
+      # into the docker-compose network, swap PLAINTEXT for an INTERNAL listener
+      # advertised as kafka:9092 alongside the existing PLAINTEXT://localhost:9092.
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      # Auto-create event topics (`product.events`, `inventory.events`, ...) on
+      # first publish. We can flip this off and pre-declare topics later.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # Single-broker overrides. Kafka's defaults assume a 3-broker cluster;
+      # without these the internal topics __consumer_offsets and
+      # __transaction_state can't be created (replicas=3 > brokers=1) and
+      # consumer groups silently fail FIND_COORDINATOR.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      # Fixed cluster ID so a recreated container reattaches to a kept volume.
+      # Any base64-encoded 16-byte UUID works; this one is the apache/kafka
+      # quickstart's example value.
+      CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
+    volumes:
+      - northwood-kafkadata:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+
+  # Identity provider for the §1 Security slice. Realm `northwood` carries
+  # the 13 roles + 13 demo users + two clients (northwood-bff for the
+  # confidential code flow, northwood-spa reserved for direct PKCE later).
+  # Realm import runs once on first start of a fresh data volume; to re-seed,
+  # `docker compose down -v` then `up -d keycloak`. Dev mode (`start-dev`)
+  # disables HTTPS — fine for the local showcase, never production.
+  #
+  # Bootstrap admin (KC_BOOTSTRAP_ADMIN_*) creates an initial admin user the
+  # first time the volume is empty; subsequent boots ignore the env vars.
+  # Keycloak admin console at http://localhost:8090/.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: northwood-keycloak
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: 8080
+      KC_HOSTNAME_STRICT: "false"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8090:8080"
+    volumes:
+      - ./db/keycloak/northwood-realm.json:/opt/keycloak/data/import/northwood-realm.json:ro
+      - northwood-keycloakdata:/opt/keycloak/data
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '\"status\": \"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # Optional: pgAdmin for database inspection. Uncomment to enable.
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: admin@northwood.local
+  #     PGADMIN_DEFAULT_PASSWORD: admin
+  #   ports:
+  #     - "5050:80"
+  #   depends_on:
+  #     - postgres
+
+volumes:
+  northwood-pgdata:
+  northwood-kafkadata:
+  northwood-keycloakdata:

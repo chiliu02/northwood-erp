@@ -1,0 +1,17 @@
+# Master changelog for sales-service.
+#
+# The northwood_erp database is provisioned directly from db/northwood_erp.sql
+# (mounted into Postgres's docker init dir on first boot of a fresh volume).
+# This master changelog is intentionally empty: Liquibase creates the
+# databasechangelog and databasechangeloglock bookkeeping tables in the
+# sales schema on first boot but applies no changesets.
+#
+# To add a future migration:
+#   1. Drop a Liquibase formatted-SQL file in changes/, e.g.
+#      changes/2026-06-01-add-customer-tier.sql
+#   2. Append an include entry below pointing at it.
+#
+# Example:
+#   - include:
+#       file: db/changelog/changes/2026-06-01-add-customer-tier.sql
+databaseChangeLog: []

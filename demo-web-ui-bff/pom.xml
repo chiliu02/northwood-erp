@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.northwood</groupId>
+        <artifactId>northwood-erp</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>demo-web-ui-bff</artifactId>
+    <name>Northwood :: Demo Web UI BFF</name>
+    <description>
+        Backend-for-Frontend that fronts the seven services for the technical
+        demo SPA (demo-web-ui — Saga Console, event drawer, scenario runner).
+        Generic HTTP reverse proxy by path prefix + aggregated saga SSE that
+        merges the three per-service saga streams into one. No domain logic.
+        Sibling: erp-web-ui-bff fronts the operational ERP SPA on port 8089.
+    </description>
+
+    <dependencies>
+        <!-- Deliberately NO dependency on the shared module. The BFF is
+             stateless; pulling shared would drag the JDBC / Liquibase / Kafka
+             starters along with it and force us to wire a DataSource we don't
+             need. Upstream wire shapes (SagaRow) are duplicated as small local
+             records instead. -->
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- §2.3 events aggregator: subscribe to all *.events topics under
+             @Profile("kafka") and fan out via SSE on GET /api/events. Use
+             spring-boot-starter-kafka (not bare spring-kafka) so Spring Boot's
+             KafkaAutoConfiguration is on the classpath and the
+             kafkaListenerContainerFactory bean is auto-created. With only
+             spring-kafka, @EnableKafka registers the annotation processor but
+             no listener container factory bean exists, so startup fails with
+             "A component required a bean named 'kafkaListenerContainerFactory'
+             that could not be found." -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-kafka</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

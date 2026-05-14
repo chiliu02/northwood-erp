@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+/* Tailwind v4 theme tokens — corporate-blue, light-mode ERP palette.
+   Anchored on Fiori-with-Odoo-restraint: deep blue primary, cool grays,
+   1px borders over shadows, status colors that match across modules.
+
+   Sibling demo SPA (web-ui/) uses a dark technical-demo palette; the two
+   are deliberately distinct so the family resemblance is via typography
+   and structure, not color. */
+@theme {
+  --font-sans: "Inter", "Geist Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Surfaces */
+  --color-bg-base: #f5f7fa;        /* page background */
+  --color-bg-surface: #ffffff;      /* cards, tables, forms */
+  --color-bg-subtle: #f9fafb;       /* alt rows, hover backgrounds */
+  --color-bg-sidebar: #1e293b;      /* slate-800; left nav rail */
+  --color-bg-sidebar-hover: #334155;
+  --color-bg-sidebar-active: #1e3a8a;
+
+  /* Borders — 1px subtle dividers throughout, not shadows */
+  --color-border-default: #e5e7eb;  /* gray-200 */
+  --color-border-strong: #d1d5db;   /* gray-300 — focused inputs, hovered table rows */
+  --color-border-focus: #1e3a8a;    /* primary on focus ring */
+
+  /* Brand */
+  --color-brand-primary: #1e3a8a;        /* deep corporate blue */
+  --color-brand-primary-hover: #1e40af;
+  --color-brand-primary-soft: #dbeafe;   /* tinted background for primary pills/banners */
+
+  /* Text */
+  --color-text-primary: #111827;    /* gray-900 */
+  --color-text-secondary: #4b5563;  /* gray-600 — labels, secondary lines */
+  --color-text-muted: #6b7280;      /* gray-500 — table meta, hints */
+  --color-text-faint: #9ca3af;      /* gray-400 — placeholder, disabled */
+  --color-text-on-brand: #ffffff;
+  --color-text-sidebar: #cbd5e1;    /* slate-300 on dark sidebar */
+  --color-text-sidebar-active: #ffffff;
+
+  /* Status — used for pills, banners, indicators across every module.
+     A 'cancelled' order and a 'cancelled' PO render identically. */
+  --color-status-info: #2563eb;     /* blue-600 — submitted, draft */
+  --color-status-info-soft: #dbeafe;
+  --color-status-success: #16a34a;  /* green-600 — completed, paid, received */
+  --color-status-success-soft: #dcfce7;
+  --color-status-warn: #d97706;     /* amber-600 — pending, partial */
+  --color-status-warn-soft: #fef3c7;
+  --color-status-error: #dc2626;    /* red-600 — cancelled, rejected, failed */
+  --color-status-error-soft: #fee2e2;
+  --color-status-neutral: #6b7280;  /* gray-500 — closed, archived */
+  --color-status-neutral-soft: #f3f4f6;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tabular figures for monetary columns and ID columns. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Thin scrollbars in panels with overflow */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+/* Focus ring matches the brand color rather than the default browser blue. */
+*:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+/* Reset the default link color across the app — components opt in. */
+a {
+  color: inherit;
+  text-decoration: none;
+}

@@ -1,0 +1,7 @@
+com.northwood.shared.infrastructure.db.LiquibaseConfig
+com.northwood.shared.infrastructure.inbox.jdbc.JdbcInboxAutoConfiguration
+com.northwood.shared.infrastructure.outbox.jdbc.JdbcOutboxAutoConfiguration
+com.northwood.shared.infrastructure.messaging.kafka.KafkaMessagingAutoConfiguration
+com.northwood.shared.infrastructure.saga.SagaInvariantsAutoConfiguration
+com.northwood.shared.infrastructure.security.OAuth2ResourceServerSecurityConfig
+com.northwood.shared.infrastructure.audit.AuditAutoConfiguration

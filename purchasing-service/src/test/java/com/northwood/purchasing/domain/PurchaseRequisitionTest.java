@@ -1,0 +1,121 @@
+package com.northwood.purchasing.domain;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.northwood.purchasing.domain.events.PurchaseRequisitionCreated;
+import com.northwood.shared.domain.DomainEvent;
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+
+class PurchaseRequisitionTest {
+
+    private static final UUID PRODUCT = UUID.randomUUID();
+    private static final UUID WO = UUID.randomUUID();
+    private static final UUID SUPPLIER = UUID.randomUUID();
+
+    private static PurchaseRequisitionLine line() {
+        return new PurchaseRequisitionLine(
+            UUID.randomUUID(), 10,
+            PRODUCT, "RM-X", "X",
+            BigDecimal.TEN, null,
+            SUPPLIER, "Acme", "open"
+        );
+    }
+
+    @Nested
+    class Create {
+        @Test void rejects_empty_lines() {
+            assertThatThrownBy(() -> PurchaseRequisition.create(
+                "PR-001", "manual", null, null, "buyer", List.of()
+            )).isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test void manual_must_not_have_source_ids() {
+            assertThatThrownBy(() -> PurchaseRequisition.create(
+                "PR-001", "manual", WO, null, "buyer", List.of(line())
+            )).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> PurchaseRequisition.create(
+                "PR-001", "manual", null, PRODUCT, "buyer", List.of(line())
+            )).isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test void low_stock_requires_source_product_only() {
+            assertThatThrownBy(() -> PurchaseRequisition.create(
+                "PR-001", "low_stock", null, null, "system", List.of(line())
+            )).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> PurchaseRequisition.create(
+                "PR-001", "low_stock", WO, PRODUCT, "system", List.of(line())
+            )).isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test void work_order_shortage_requires_source_work_order_only() {
+            assertThatThrownBy(() -> PurchaseRequisition.create(
+                "PR-001", "work_order_shortage", null, null, "system", List.of(line())
+            )).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> PurchaseRequisition.create(
+                "PR-001", "work_order_shortage", WO, PRODUCT, "system", List.of(line())
+            )).isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test void rejects_unknown_source_type() {
+            assertThatThrownBy(() -> PurchaseRequisition.create(
+                "PR-001", "weird_source", null, null, "system", List.of(line())
+            )).isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test void manual_requisition_auto_approved() {
+            PurchaseRequisition pr = PurchaseRequisition.create(
+                "PR-001", "manual", null, null, "buyer", List.of(line())
+            );
+            assertThat(pr.status()).isEqualTo("approved");
+        }
+
+        @Test void emits_PurchaseRequisitionCreated_with_full_lines() {
+            PurchaseRequisition pr = PurchaseRequisition.create(
+                "PR-001", "work_order_shortage", WO, null, "system",
+                List.of(line(), line())
+            );
+            List<DomainEvent> events = pr.pullPendingEvents();
+            assertThat(events).hasSize(1).first().isInstanceOf(PurchaseRequisitionCreated.class);
+            PurchaseRequisitionCreated e = (PurchaseRequisitionCreated) events.get(0);
+            assertThat(e.lines()).hasSize(2);
+            assertThat(e.sourceType()).isEqualTo("work_order_shortage");
+            assertThat(e.sourceWorkOrderId()).isEqualTo(WO);
+        }
+    }
+
+    @Nested
+    class MarkConverted {
+        @Test void flips_approved_to_converted() {
+            PurchaseRequisition pr = PurchaseRequisition.create(
+                "PR", "manual", null, null, "buyer", List.of(line())
+            );
+            pr.pullPendingEvents();
+            pr.markConverted();
+            assertThat(pr.status()).isEqualTo("converted");
+        }
+
+        @Test void is_idempotent_when_already_converted() {
+            PurchaseRequisition pr = PurchaseRequisition.create(
+                "PR", "manual", null, null, "buyer", List.of(line())
+            );
+            pr.pullPendingEvents();
+            pr.markConverted();
+            pr.markConverted();   // second call should be a no-op
+            assertThat(pr.status()).isEqualTo("converted");
+        }
+
+        @Test void rejects_when_in_terminal_states() {
+            PurchaseRequisition pr = PurchaseRequisition.reconstitute(
+                PurchaseRequisitionId.newId(),
+                "PR", "manual", null, null,
+                "rejected", "buyer", List.of(line()), 3L
+            );
+            assertThatThrownBy(pr::markConverted).isInstanceOf(IllegalStateException.class);
+        }
+    }
+}

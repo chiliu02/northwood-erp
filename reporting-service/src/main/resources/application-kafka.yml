@@ -1,0 +1,29 @@
+# Loaded only when SPRING_PROFILES_ACTIVE=kafka. Reporting is inbox-only —
+# it subscribes to events from every other producer service and maintains
+# read-side projections (sales_order_360_view, purchase_order_tracking_view).
+# No outbox / EventPublisher.
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: reporting-service
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+
+northwood:
+  kafka:
+    # Reporting subscribes to:
+    # - sales.events         for SalesOrderPlaced (creates 360 row).
+    # - inventory.events     for ShipmentPosted (sales 360 shipment_status) +
+    #   GoodsReceived (po_tracking received_amount + receipt_status).
+    # - manufacturing.events for WorkOrderManufacturingCompleted
+    #   (sales 360 manufacturing_status).
+    # - finance.events       for CustomerInvoiceCreated + CustomerPaymentReceived
+    #   (sales 360 invoice + payment status), SupplierInvoiceApproved +
+    #   SupplierPaymentMade (po_tracking invoice + payment).
+    # - purchasing.events    for PurchaseOrderCreated (creates po_tracking row).
+    # - product.events       for StandardCostChanged (reporting.product_standard_cost
+    #                        cache, joined with ATP at snapshot time for
+    #                        inventory_value).
+    subscribe-topics: sales.events,inventory.events,manufacturing.events,finance.events,purchasing.events,product.events

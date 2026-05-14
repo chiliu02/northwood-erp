@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.northwood</groupId>
+        <artifactId>northwood-erp</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>manufacturing-events</artifactId>
+    <name>Northwood :: Manufacturing Events</name>
+    <description>
+        Wire-format event records emitted by manufacturing-service. Consumed by
+        sales, inventory, purchasing, and reporting. Contains the
+        com.northwood.manufacturing.domain.events.* records. No Spring, no JDBC,
+        no domain behaviour.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.northwood</groupId>
+            <artifactId>shared-kernel</artifactId>
+        </dependency>
+    </dependencies>
+</project>

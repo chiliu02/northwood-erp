@@ -1,0 +1,30 @@
+# Loaded only when SPRING_PROFILES_ACTIVE=kafka. Purchasing is both a producer
+# (PurchaseRequisitionCreated, eventually PurchaseOrderCreated, GoodsReceived)
+# and a consumer (RawMaterialShortageDetected from manufacturing).
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+    consumer:
+      group-id: purchasing-service
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+
+northwood:
+  outbox:
+    poll-interval: 1000
+  kafka:
+    # Purchasing subscribes to:
+    # - manufacturing.events for RawMaterialShortageDetected (auto-creates a
+    #   work_order_shortage requisition).
+    # - inventory.events for GoodsReceived (advances PO lines + P2P saga to
+    #   goods_received).
+    # - finance.events for SupplierInvoiceApproved (advances P2P saga to
+    #   supplier_invoice_approved, parking for payment in phase 5+).
+    # - product.events for ApprovedVendorListChanged (Shape A consumer
+    #   projection in purchasing.product_approved_vendor).
+    subscribe-topics: manufacturing.events,inventory.events,finance.events,product.events

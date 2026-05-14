@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Northwood — Domain Event Flow</title>
+<style>
+  :root {
+    --border: #d0d7de;
+    --border-strong: #8c959f;
+    --bg: #ffffff;
+    --bg-alt: #f6f8fa;
+    --bg-merged: #eef4f9;
+    --code-bg: #eff1f3;
+    --text: #1f2328;
+    --muted: #57606a;
+    --accent: #0969da;
+    --critical: #cf222e;
+    --staleness: #9a6700;
+    --deferred: #57606a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    margin: 0;
+    padding: 2rem 3rem 4rem;
+    line-height: 1.55;
+    max-width: 1700px;
+  }
+  h1 { font-size: 1.85rem; margin: 0 0 0.5rem; }
+  h2 {
+    font-size: 1.35rem;
+    margin: 2.25rem 0 0.75rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--border);
+  }
+  h3 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; }
+  h4 { font-size: 1rem; margin: 1.1rem 0 0.4rem; }
+  p { margin: 0.5rem 0 0.8rem; }
+  code {
+    background: var(--code-bg);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+    font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.88em;
+  }
+  ul { margin: 0.4rem 0 0.8rem 0; padding-left: 1.4rem; }
+  li { margin: 0.15rem 0; }
+
+  .table-wrap { overflow-x: auto; margin: 1rem 0 1.5rem; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.88rem;
+    background: var(--bg);
+  }
+  thead th {
+    background: #eaeef2;
+    border: 1px solid var(--border-strong);
+    padding: 0.55rem 0.75rem;
+    text-align: left;
+    position: sticky;
+    top: 0;
+    font-weight: 600;
+  }
+  tbody td {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    vertical-align: top;
+  }
+  /* Merged columns get progressively lighter tints so the hierarchy reads at a glance.
+     In the source-first table these are semantic (source / aggregate / event / destination);
+     in the destination-first table they're reused as visual-depth markers (1st / 2nd / 3rd level). */
+  td.merge-src     { background: #d4e4f1; font-weight: 600; }
+  td.merge-agg     { background: #e2ecf5; font-weight: 600; }
+  td.merge-event   { background: #ecf2f8; font-weight: 600; }
+  td.merge-dest    { background: var(--bg-merged); }
+  td.consumer      { font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.84rem; white-space: nowrap; }
+  td.no-consumer   { color: var(--muted); font-style: italic; }
+  td.desc          { font-size: 0.84rem; }
+  td.desc code     { font-size: 0.94em; }
+
+  /* Collapsible group affordance: clickable merge cells in the Source/Aggregate/Destination
+     columns. Click toggles between expanded (▼) and collapsed (▶) state. */
+  td.clickable-cell {
+    cursor: pointer;
+    user-select: none;
+  }
+  td.clickable-cell:hover {
+    filter: brightness(0.96);
+  }
+  td.clickable-cell .toggle-marker {
+    display: inline-block;
+    font-size: 0.7em;
+    color: var(--muted);
+    margin-right: 0.25em;
+    width: 0.8em;
+    text-align: center;
+  }
+  td.clickable-cell .toggle-count {
+    font-weight: normal;
+    font-size: 0.85em;
+    color: var(--muted);
+    margin-left: 0.35em;
+  }
+  td.clickable-cell.collapsed .toggle-marker {
+    color: var(--accent);
+  }
+
+  .expand-all-btn {
+    margin: 0 0 0.5rem 0;
+    padding: 0.35rem 0.8rem;
+    cursor: pointer;
+    background: #eaeef2;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    color: var(--text);
+  }
+  .expand-all-btn:hover { background: #d4e4f1; }
+
+  .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 1rem; }
+
+  .gap-critical  { border-left: 4px solid var(--critical); padding-left: 0.9rem; margin: 1rem 0; }
+  .gap-staleness { border-left: 4px solid var(--staleness); padding-left: 0.9rem; margin: 1rem 0; }
+  .gap-deferred  { border-left: 4px solid var(--deferred); padding-left: 0.9rem; margin: 1rem 0; }
+
+  .badge {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    vertical-align: middle;
+    margin-left: 0.5rem;
+  }
+  .badge-critical  { background: #ffebe9; color: var(--critical); }
+  .badge-staleness { background: #fff8c5; color: var(--staleness); }
+  .badge-deferred  { background: #eaeef2; color: var(--deferred); }
+</style>
+</head>
+<body>
+
+<h1>Northwood — Domain Event Flow</h1>
+<p class="meta">Service-name suffix <code>-service</code> stripped for compactness. Two views below: the <strong>source-first</strong> table answers <em>"when this event fires, who hears it and what do they do?"</em> (full consumer + description detail); the <strong>destination-first</strong> table answers <em>"which events does this service receive, and from whom?"</em> (compact 4-column summary). Cells are merged via <code>rowspan</code> wherever the same value repeats in adjacent rows. <strong>Click any value with a ▼ marker</strong> to collapse / expand that group — Source Service or Aggregate Root in the first table, Destination Service in the second. Nested collapses are tracked, so collapsing an aggregate and then its source (or vice versa) restores correctly when you expand.</p>
+
+<p>Each row maps a published domain event to a single consumer. Events with multiple consumers occupy multiple rows. The <strong>Aggregate Root</strong> column reflects the <code>aggregate_type</code> string written to the outbox (and carried on the event envelope). Consumer names come from the <code>CONSUMER_NAME</code> constant on each <code>*Handler</code> in <code>application/inbox/</code>. The <strong>Description</strong> column names the table(s) and field(s) each consumer writes. Events with no current consumer are listed for completeness.</p>
+
+<h2>Source-first view</h2>
+<p>Grouped by Source Service → Aggregate Root → Domain Event → Destination Service. One row per consumer (so an event with multiple consumers in the same destination service occupies multiple rows).</p>
+
+<div class="table-wrap">
+<table>
+<thead>
+  <tr>
+    <th>Source Service</th>
+    <th>Aggregate Root</th>
+    <th>Domain Event</th>
+    <th>Destination Service</th>
+    <th>Consumer</th>
+    <th>Description</th>
+  </tr>
+</thead>
+<tbody>
+
+<!-- ============ product (12 rows; all Product aggregate) ============ -->
+<tr>
+  <td class="merge-src" rowspan="12">product</td>
+  <td class="merge-agg" rowspan="12">Product</td>
+  <td class="merge-event" rowspan="2">ApprovedVendorListChanged</td>
+  <td>manufacturing</td>
+  <td class="consumer">manufacturing.approved-vendor-projector</td>
+  <td class="desc"><code>manufacturing.product_approved_vendor</code> — replace-all rows for the product (supplier_id, is_preferred, …)</td>
+</tr>
+<tr>
+  <td>purchasing</td>
+  <td class="consumer">purchasing.approved-vendor-projector</td>
+  <td class="desc"><code>purchasing.product_approved_vendor</code> — replace-all rows for the product (supplier_id, is_preferred, …)</td>
+</tr>
+<tr>
+  <td class="merge-event">BomActivated</td>
+  <td>manufacturing</td>
+  <td class="consumer">manufacturing.product-active-bom-projector</td>
+  <td class="desc"><code>manufacturing.product_active_bom</code> — upserts (product_id, active_bom_id); <code>null</code> newBomHeaderId path retires the active BOM (see <code>BomActivated</code> Javadoc)</td>
+</tr>
+<tr>
+  <td class="merge-event">MakeVsBuyChanged</td>
+  <td>manufacturing</td>
+  <td class="consumer">manufacturing.product-replenishment-projector</td>
+  <td class="desc"><code>manufacturing.product_replenishment.is_purchased</code>, <code>is_manufactured</code></td>
+</tr>
+<tr>
+  <td class="merge-event" rowspan="2">ProductCreated</td>
+  <td>manufacturing</td>
+  <td class="consumer">manufacturing.product-replenishment-seeder</td>
+  <td class="desc"><code>manufacturing.product_replenishment</code> — seeds default <code>is_purchased</code> / <code>is_manufactured</code> from <code>product_type</code> (ON CONFLICT DO NOTHING)</td>
+</tr>
+<tr>
+  <td>reporting</td>
+  <td class="consumer">reporting.atp.product-created</td>
+  <td class="desc"><code>reporting.available_to_promise_view.product_sku</code>, <code>product_name</code> — backfills identity onto pending-stub rows</td>
+</tr>
+<tr>
+  <td class="merge-event">ProductDiscontinued</td>
+  <td class="no-consumer">—</td>
+  <td class="no-consumer">(no current consumer)</td>
+  <td class="no-consumer">—</td>
+</tr>
+<tr>
+  <td class="merge-event">ReorderPolicyChanged</td>
+  <td>inventory</td>
+  <td class="consumer">inventory.stock-item-projector</td>
+  <td class="desc"><code>inventory.stock_item.reorder_point</code>, <code>reorder_quantity</code> (via aggregate save, bumps <code>version</code>)</td>
+</tr>
+<tr>
+  <td class="merge-event">SalesPriceChanged</td>
+  <td>sales</td>
+  <td class="consumer">sales.product-pricing-projector</td>
+  <td class="desc"><code>sales.product_pricing.sales_price</code>, <code>currency_code</code></td>
+</tr>
+<tr>
+  <td class="merge-event" rowspan="2">StandardCostChanged</td>
+  <td>finance</td>
+  <td class="consumer">finance.product-standard-cost-projector</td>
+  <td class="desc"><code>finance.product_standard_cost.standard_cost</code>, <code>currency_code</code></td>
+</tr>
+<tr>
+  <td>reporting</td>
+  <td class="consumer">reporting.product-standard-cost-projector</td>
+  <td class="desc"><code>reporting.product_standard_cost.standard_cost</code>, <code>currency_code</code></td>
+</tr>
+<tr>
+  <td class="merge-event">ValuationClassChanged</td>
+  <td>finance</td>
+  <td class="consumer">finance.product-valuation-class-projector</td>
+  <td class="desc"><code>finance.product_valuation_class.valuation_class</code></td>
+</tr>
+
+<!-- ============ sales (14 rows: Customer 5 + SalesOrder 9) ============ -->
+<tr>
+  <td class="merge-src" rowspan="14">sales</td>
+  <td class="merge-agg" rowspan="5">Customer</td>
+  <td class="merge-event">CustomerAddressChanged</td>
+  <td class="no-consumer">—</td>
+  <td class="no-consumer">(no current consumer)</td>
+  <td class="no-consumer">—</td>
+</tr>
+<tr>
+  <td class="merge-event">CustomerContactChanged</td>
+  <td class="no-consumer">—</td>
+  <td class="no-consumer">(no current consumer)</td>
+  <td class="no-consumer">—</td>
+</tr>
+<tr>
+  <td class="merge-event">CustomerDeactivated</td>
+  <td class="no-consumer">—</td>
+  <td class="no-consumer">(no current consumer)</td>
+  <td class="no-consumer">—</td>
+</tr>
+<tr>
+  <td class="merge-event">CustomerNameChanged</td>
+  <td class="no-consumer">—</td>
+  <td class="no-consumer">(no current consumer)</td>
+  <td class="no-consumer">—</td>
+</tr>
+<tr>
+  <td class="merge-event">CustomerRegistered</td>
+  <td class="no-consumer">—</td>
+  <td class="no-consumer">(no current consumer)</td>
+  <td class="no-consumer">—</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="9">SalesOrder</td>
+  <td class="merge-event">ManufacturingRequested</td>
+  <td>manufacturing</td>
+  <td class="consumer">manufacturing.make-to-order</td>
+  <td class="desc">Per accepted line: inserts <code>manufacturing.make_to_order_saga</code> row in <code>status='started'</code>; lines without active BOM / not-manufactured rejected. Always emits <code>manufacturing.ManufacturingDispatched</code> via outbox carrying per-line outcomes</td>
+</tr>
+<tr>
+  <td class="merge-event" rowspan="2">SalesOrderCancellationRequested</td>
+  <td>inventory</td>
+  <td class="consumer">inventory.sales-cancel</td>
+  <td class="desc">Updates <code>inventory.stock_reservation.status</code> (released), releases <code>inventory.stock_balance.reserved_quantity</code>; emits <code>inventory.SalesOrderCancellationApplied</code></td>
+</tr>
+<tr>
+  <td>manufacturing</td>
+  <td class="consumer">manufacturing.sales-cancel</td>
+  <td class="desc">Flips active <code>manufacturing.work_order_header.status</code> to <code>cancelled</code>, force-flips related <code>make_to_order_saga.current_state</code> to <code>compensated</code>; emits <code>manufacturing.WorkOrderCancelled</code> + <code>manufacturing.SalesOrderCancellationApplied</code></td>
+</tr>
+<tr>
+  <td class="merge-event">SalesOrderCompensated</td>
+  <td>reporting</td>
+  <td class="consumer">reporting.sales-order-360.compensated</td>
+  <td class="desc"><code>reporting.sales_order_360_view.order_status</code> → <code>cancelled</code> (plus <code>last_event_at</code>, <code>last_event_type</code>, <code>last_actor_user_id</code>)</td>
+</tr>
+<tr>
+  <td class="merge-event" rowspan="3">SalesOrderPlaced</td>
+  <td>inventory</td>
+  <td class="consumer">inventory.sales-order-line-facts</td>
+  <td class="desc">Seeds <code>inventory.sales_order_line_facts</code> (sales_order_header_id, sales_order_line_id, product_id) — used by shipment-line validation</td>
+</tr>
+<tr>
+  <td class="merge-dest" rowspan="2">reporting</td>
+  <td class="consumer">reporting.sales-order-360.order-placed</td>
+  <td class="desc">Creates <code>reporting.sales_order_360_view</code> row (order_number, customer_id, customer_name, order_date, requested_delivery_date, currency_code, total_amount, order_status)</td>
+</tr>
+<tr>
+  <td class="consumer">reporting.dashboard.sales-order-placed</td>
+  <td class="desc"><code>reporting.financial_dashboard_daily.sales_orders_placed_count</code> (per dashboard_date, currency_code)</td>
+</tr>
+<tr>
+  <td class="merge-event">SalesOrderShipped</td>
+  <td>finance</td>
+  <td class="consumer">finance.customer-invoice.shipped-order</td>
+  <td class="desc">Creates <code>finance.customer_invoice_header</code> + <code>customer_invoice_line</code> rows from shipped lines (qty × price + tax); emits <code>finance.CustomerInvoiceCreated</code> via outbox</td>
+</tr>
+<tr>
+  <td class="merge-event">StockReservationRequested</td>
+  <td>inventory</td>
+  <td class="consumer">inventory.stock-reservation</td>
+  <td class="desc">Inserts <code>inventory.stock_reservation</code> + <code>stock_reservation_line</code>; bumps <code>inventory.stock_balance.reserved_quantity</code>; emits <code>inventory.StockReserved</code></td>
+</tr>
+
+<!-- ============ purchasing (9 rows: PurchaseOrder 7 + PurchaseRequisition 1 + SupplierProductPrice 1) ============ -->
+<tr>
+  <td class="merge-src" rowspan="9">purchasing</td>
+  <td class="merge-agg" rowspan="7">PurchaseOrder</td>
+  <td class="merge-event">PurchaseOrderApproved</td>
+  <td class="no-consumer">—</td>
+  <td class="no-consumer">(no current consumer)</td>
+  <td class="no-consumer">—</td>
+</tr>
+<tr>
+  <td class="merge-event" rowspan="6">PurchaseOrderCreated</td>
+  <td>finance</td>
+  <td class="consumer">finance.po-line-facts.po-created</td>
+  <td class="desc">Inserts <code>finance.purchase_order_line_facts</code> rows (supplier_id, supplier_name, currency_code, product_id, product_sku, product_name, ordered_quantity, unit_price) — 3-way-match source</td>
+</tr>
+<tr>
+  <td>inventory</td>
+  <td class="consumer">inventory.purchase-order-line-facts</td>
+  <td class="desc">Seeds <code>inventory.purchase_order_line_facts</code> (purchase_order_header_id, purchase_order_line_id, product_id) — used by goods-receipt validation</td>
+</tr>
+<tr>
+  <td class="merge-dest" rowspan="4">reporting</td>
+  <td class="consumer">reporting.po-tracking.po-created</td>
+  <td class="desc">Creates <code>reporting.purchase_order_tracking_view</code> row (po_number, supplier_id/name, po_status, currency_code, ordered_amount, source_work_order_id)</td>
+</tr>
+<tr>
+  <td class="consumer">reporting.atp.po-created</td>
+  <td class="desc"><code>reporting.available_to_promise_view.ordered_quantity</code> (+= line qty), <code>product_sku</code> / <code>product_name</code> backfill</td>
+</tr>
+<tr>
+  <td class="consumer">reporting.dashboard.po-created</td>
+  <td class="desc"><code>reporting.financial_dashboard_daily.purchase_orders_created_count</code> (per dashboard_date, currency_code)</td>
+</tr>
+<tr>
+  <td class="consumer">reporting.material-shortage.po-created</td>
+  <td class="desc"><code>reporting.material_shortage_view.po_ordered_quantity</code>, <code>po_created_at</code> per matching material line; also updates <code>production_planning_board.open_purchase_orders_count</code></td>
+</tr>
+<tr>
+  <td class="merge-agg">PurchaseRequisition</td>
+  <td class="merge-event">PurchaseRequisitionCreated</td>
+  <td>reporting</td>
+  <td class="consumer">reporting.material-shortage.pr-created</td>
+  <td class="desc"><code>reporting.material_shortage_view.requisition_created_at</code> (per requested line, product_sku/name backfill)</td>
+</tr>
+<tr>
+  <td class="merge-agg">SupplierProductPrice</td>
+  <td class="merge-event">SupplierProductPriceChanged</td>
+  <td>manufacturing</td>
+  <td class="consumer">manufacturing.materials-cost-rollup</td>
+  <td class="desc"><code>manufacturing.product_materials_cost.materials_cost</code>, <code>currency_code</code>, <code>reason</code>, <code>captured_at</code> — rerun for every product whose preferred supplier matches</td>
+</tr>
+
+<!-- ============ inventory (16 rows: GoodsReceipt 6 + StockReservation 6 + Shipment 4) ============ -->
+<tr>
+  <td class="merge-src" rowspan="16">inventory</td>
+  <td class="merge-agg" rowspan="6">GoodsReceipt</td>
+  <td class="merge-event" rowspan="6">GoodsReceived</td>
+  <td>finance</td>
+  <td class="consumer">finance.po-line-facts.goods-received</td>
+  <td class="desc">Bumps <code>finance.purchase_order_line_facts.received_quantity</code> per receipt line (additive)</td>
+</tr>
+<tr>
+  <td>manufacturing</td>
+  <td class="consumer">manufacturing.make-to-order.goods-received</td>
+  <td class="desc">Reads shortage-parked sagas; updates <code>manufacturing.make_to_order_saga.current_state</code> (un-parked back to <code>work_order_created</code>) or narrows stashed <code>shortage_data</code> JSON</td>
+</tr>
+<tr>
+  <td>purchasing</td>
+  <td class="consumer">purchasing.p2p.goods-received</td>
+  <td class="desc">Bumps <code>purchasing.purchase_order_line.received_quantity</code>; flips <code>purchase_order_header.status</code> → <code>partially_received</code> / <code>received</code>; advances <code>purchasing.purchase_to_pay_saga.current_state</code></td>
+</tr>
+<tr>
+  <td class="merge-dest" rowspan="3">reporting</td>
+  <td class="consumer">reporting.po-tracking.goods-received</td>
+  <td class="desc"><code>reporting.purchase_order_tracking_view.received_amount</code> (+= delta), <code>goods_receipt_header_id</code>, <code>received_at</code></td>
+</tr>
+<tr>
+  <td class="consumer">reporting.atp.goods-received</td>
+  <td class="desc"><code>reporting.available_to_promise_view.received_quantity</code> (+= qty)</td>
+</tr>
+<tr>
+  <td class="consumer">reporting.material-shortage.goods-received</td>
+  <td class="desc"><code>reporting.material_shortage_view.received_quantity</code> (+= delta), <code>received_at</code>; refreshes <code>production_planning_board.open_purchase_orders_count</code></td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="6">StockReservation</td>
+  <td class="merge-event" rowspan="3">RawMaterialsReserved</td>
+  <td>manufacturing</td>
+  <td class="consumer">manufacturing.make-to-order.raw-materials-reserved</td>
+  <td class="desc">Advances <code>manufacturing.make_to_order_saga.current_state</code> → <code>raw_materials_reserved</code> / <code>raw_material_shortage</code>; sets <code>manufacturing.work_order_header.material_status</code>; on shortage, emits <code>manufacturing.RawMaterialShortageDetected</code> via outbox</td>
+</tr>
+<tr>
+  <td class="merge-dest" rowspan="2">reporting</td>
+  <td class="consumer">reporting.production-planning.raw-materials-reserved</td>
+  <td class="desc"><code>reporting.production_planning_board.reservation_status</code>, <code>last_event_at</code></td>
+</tr>
+<tr>
+  <td class="consumer">reporting.atp.raw-materials-reserved</td>
+  <td class="desc"><code>reporting.available_to_promise_view.production_reserved_quantity</code> (+= qty) — stub row created if product identity unknown</td>
+</tr>
+<tr>
+  <td class="merge-event">SalesOrderCancellationApplied (inventory)</td>
+  <td>sales</td>
+  <td class="consumer">sales.compensation-inventory-ack</td>
+  <td class="desc">Records inventory ack on <code>sales.sales_order_fulfilment_saga</code>; when both acks present, flips to <code>compensated</code> and emits <code>sales.SalesOrderCompensated</code> via outbox</td>
+</tr>
+<tr>
+  <td class="merge-event" rowspan="2">StockReserved</td>
+  <td>sales</td>
+  <td class="consumer">sales.fulfilment-saga</td>
+  <td class="desc">Advances <code>sales.sales_order_fulfilment_saga.current_state</code> (full / partial reservation); flips <code>sales.sales_order_header.status</code> → <code>in_fulfilment</code></td>
+</tr>
+<tr>
+  <td>reporting</td>
+  <td class="consumer">reporting.atp.stock-reserved</td>
+  <td class="desc"><code>reporting.available_to_promise_view.sales_reserved_quantity</code> (+= qty) — stub row created with <code>product_sku='(pending)'</code> if product identity unknown</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="4">Shipment</td>
+  <td class="merge-event" rowspan="4">ShipmentPosted</td>
+  <td>finance</td>
+  <td class="consumer">finance.cogs.shipment-posted</td>
+  <td class="desc">Posts perpetual-inventory COGS pair into <code>finance.journal_entry_header</code> + <code>journal_entry_line</code> (Dr 5000 COGS / Cr 1200 Inventory) — line cost from <code>product_standard_cost</code> projection</td>
+</tr>
+<tr>
+  <td>sales</td>
+  <td class="consumer">sales.fulfilment-saga.shipment-posted</td>
+  <td class="desc">Advances <code>sales.sales_order_fulfilment_saga.current_state</code> → <code>goods_shipped</code>; flips <code>sales.sales_order_header.status</code> → <code>shipped</code> (+ <code>version+1</code>); emits <code>sales.SalesOrderShipped</code> via outbox</td>
+</tr>
+<tr>
+  <td class="merge-dest" rowspan="2">reporting</td>
+  <td class="consumer">reporting.sales-order-360.shipment-posted</td>
+  <td class="desc"><code>reporting.sales_order_360_view.shipped_at</code>, <code>shipment_status</code></td>
+</tr>
+<tr>
+  <td class="consumer">reporting.atp.shipment-posted</td>
+  <td class="desc"><code>reporting.available_to_promise_view.shipped_quantity</code> (+= qty)</td>
+</tr>
+
+<!-- ============ manufacturing (21 rows: SalesOrder 1 + WorkOrder 19 + Product 1) ============ -->
+<tr>
+  <td class="merge-src" rowspan="21">manufacturing</td>
+  <td class="merge-agg">SalesOrder</td>
+  <td class="merge-event">ManufacturingDispatched</td>
+  <td>sales</td>
+  <td class="consumer">sales.fulfilment-saga.manufacturing-dispatched</td>
+  <td class="desc">Advances <code>sales.sales_order_fulfilment_saga.current_state</code>; on zero accepted, flips to <code>stock_reservation_failed</code> + <code>sales.sales_order_header.status</code> → <code>rejected</code></td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="19">WorkOrder</td>
+  <td class="merge-event">OperationCompleted</td>
+  <td>reporting</td>
+  <td class="consumer">reporting.production-planning.operation-completed</td>
+  <td class="desc"><code>reporting.production_planning_board.completed_operations_count</code>, <code>last_event_at</code></td>
+</tr>
+<tr>
+  <td class="merge-event">RawMaterialReservationRequested</td>
+  <td>inventory</td>
+  <td class="consumer">inventory.raw-material-reservation</td>
+  <td class="desc">Inserts <code>inventory.stock_reservation</code> + <code>stock_reservation_line</code> (work-order kind); bumps <code>inventory.stock_balance.reserved_quantity</code> per material; emits <code>inventory.RawMaterialsReserved</code></td>
+</tr>
+<tr>
+  <td class="merge-event" rowspan="3">RawMaterialShortageDetected</td>
+  <td>purchasing</td>
+  <td class="consumer">purchasing.shortage-to-requisition</td>
+  <td class="desc">Inserts <code>purchasing.purchase_requisition_header</code> + <code>purchase_requisition_line</code> per shortage component; emits <code>purchasing.PurchaseRequisitionCreated</code> via outbox</td>
+</tr>
+<tr>
+  <td class="merge-dest" rowspan="2">reporting</td>
+  <td class="consumer">reporting.production-planning.shortage-detected</td>
+  <td class="desc"><code>reporting.production_planning_board.shortage_count</code>, <code>shortage_summary</code>, <code>last_event_at</code></td>
+</tr>
+<tr>
+  <td class="consumer">reporting.material-shortage.shortage-detected</td>
+  <td class="desc">Upserts <code>reporting.material_shortage_view</code> per component (material_sku, material_name, shortage_quantity, detected_at)</td>
+</tr>
+<tr>
+  <td class="merge-event">SalesOrderCancellationApplied (manufacturing)</td>
+  <td>sales</td>
+  <td class="consumer">sales.compensation-manufacturing-ack</td>
+  <td class="desc">Records manufacturing ack on <code>sales.sales_order_fulfilment_saga</code>; when both acks present, flips to <code>compensated</code> and emits <code>sales.SalesOrderCompensated</code> via outbox</td>
+</tr>
+<tr>
+  <td class="merge-event">SubAssembliesConsumed</td>
+  <td>inventory</td>
+  <td class="consumer">inventory.wip-consume</td>
+  <td class="desc">Decrements <code>inventory.wip_balance.on_hand_quantity</code> per consumed sub-assembly product (bounded by non-negative CHECK)</td>
+</tr>
+<tr>
+  <td class="merge-event" rowspan="2">WorkOrderCancelled</td>
+  <td>inventory</td>
+  <td class="consumer">inventory.work-order-cancelled</td>
+  <td class="desc">Releases <code>inventory.stock_reservation</code> for the WO; bumps <code>inventory.stock_balance.reserved_quantity</code> back</td>
+</tr>
+<tr>
+  <td>reporting</td>
+  <td class="consumer">reporting.production-planning.work-order-cancelled</td>
+  <td class="desc"><code>reporting.production_planning_board.work_order_status</code> → <code>cancelled</code>, <code>last_event_at</code></td>
+</tr>
+<tr>
+  <td class="merge-event" rowspan="4">WorkOrderCreated</td>
+  <td>sales</td>
+  <td class="consumer">sales.fulfilment-saga.work-order-created</td>
+  <td class="desc">Records top-level WO id on <code>sales.sales_order_fulfilment_saga</code> (sub-assembly children no-op at sales level)</td>
+</tr>
+<tr>
+  <td class="merge-dest" rowspan="3">reporting</td>
+  <td class="consumer">reporting.production-planning.work-order-created</td>
+  <td class="desc">Creates <code>reporting.production_planning_board</code> row (work_order_number, sales_order_header_id, finished_product_id/sku/name, planned_quantity, work_order_status)</td>
+</tr>
+<tr>
+  <td class="consumer">reporting.atp.work-order-created</td>
+  <td class="desc"><code>reporting.available_to_promise_view.planned_work_order_quantity</code> (+= planned qty), <code>product_sku</code> / <code>product_name</code> backfill</td>
+</tr>
+<tr>
+  <td class="consumer">reporting.dashboard.work-order-created</td>
+  <td class="desc"><code>reporting.financial_dashboard_daily.work_orders_created_count</code> (per dashboard_date, currency_code)</td>
+</tr>
+<tr>
+  <td class="merge-event" rowspan="5">WorkOrderManufacturingCompleted</td>
+  <td>inventory</td>
+  <td class="consumer">inventory.production-confirmation</td>
+  <td class="desc">Top-level WO: bumps <code>inventory.stock_balance.on_hand_quantity</code> for the finished good (warehouse MAIN) + audit row in <code>inventory.stock_movement</code>. Sub-assembly child: bumps <code>inventory.wip_balance.on_hand_quantity</code> only</td>
+</tr>
+<tr>
+  <td>sales</td>
+  <td class="consumer">sales.fulfilment-saga.work-order-completed</td>
+  <td class="desc">Records WO completion on <code>sales.sales_order_fulfilment_saga</code> (top-level WOs advance the saga; sub-assemblies no-op)</td>
+</tr>
+<tr>
+  <td class="merge-dest" rowspan="3">reporting</td>
+  <td class="consumer">reporting.sales-order-360.manufacturing-completed</td>
+  <td class="desc"><code>reporting.sales_order_360_view.manufacturing_completed_at</code></td>
+</tr>
+<tr>
+  <td class="consumer">reporting.production-planning.work-order-completed</td>
+  <td class="desc"><code>reporting.production_planning_board.work_order_status</code> → <code>completed</code>, <code>completed_quantity</code>, <code>last_event_at</code></td>
+</tr>
+<tr>
+  <td class="consumer">reporting.atp.work-order-completed</td>
+  <td class="desc"><code>reporting.available_to_promise_view.completed_work_order_quantity</code> (+= qty); reduces remaining planned</td>
+</tr>
+<tr>
+  <td class="merge-event">WorkOrderPriorityChanged</td>
+  <td>reporting</td>
+  <td class="consumer">reporting.production-planning.work-order-priority-changed</td>
+  <td class="desc"><code>reporting.production_planning_board.priority</code>, <code>last_event_at</code></td>
+</tr>
+<tr>
+  <td class="merge-agg">Product</td>
+  <td class="merge-event">ProductMaterialsCostComputed</td>
+  <td class="no-consumer">—</td>
+  <td class="no-consumer">(no current consumer)</td>
+  <td class="no-consumer">—</td>
+</tr>
+
+<!-- ============ finance (12 rows: CustomerInvoice 3 + Payment 6 + SupplierInvoice 3) ============ -->
+<tr>
+  <td class="merge-src" rowspan="12">finance</td>
+  <td class="merge-agg" rowspan="3">CustomerInvoice</td>
+  <td class="merge-event" rowspan="3">CustomerInvoiceCreated</td>
+  <td>sales</td>
+  <td class="consumer">sales.fulfilment-saga.customer-invoice-created</td>
+  <td class="desc">Advances <code>sales.sales_order_fulfilment_saga.current_state</code> → <code>invoice_created</code></td>
+</tr>
+<tr>
+  <td class="merge-dest" rowspan="2">reporting</td>
+  <td class="consumer">reporting.sales-order-360.invoice-created</td>
+  <td class="desc"><code>reporting.sales_order_360_view.invoiced_amount</code>, <code>invoiced_at</code></td>
+</tr>
+<tr>
+  <td class="consumer">reporting.dashboard.customer-invoice-created</td>
+  <td class="desc"><code>reporting.financial_dashboard_daily.customer_invoices_amount</code> (+= amount, per currency)</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="6">Payment</td>
+  <td class="merge-event" rowspan="3">CustomerPaymentReceived</td>
+  <td>sales</td>
+  <td class="consumer">sales.fulfilment-saga.customer-payment-received</td>
+  <td class="desc">Advances <code>sales.sales_order_fulfilment_saga.current_state</code>; on full settlement, flips <code>sales.sales_order_header.status</code> → <code>completed</code></td>
+</tr>
+<tr>
+  <td class="merge-dest" rowspan="2">reporting</td>
+  <td class="consumer">reporting.sales-order-360.payment-received</td>
+  <td class="desc"><code>reporting.sales_order_360_view.allocated_amount</code> (+= alloc), <code>invoice_status_after</code>, <code>last_payment_at</code></td>
+</tr>
+<tr>
+  <td class="consumer">reporting.dashboard.customer-payment-received</td>
+  <td class="desc"><code>reporting.financial_dashboard_daily.customer_payments_amount</code> (+= amount, per currency)</td>
+</tr>
+<tr>
+  <td class="merge-event" rowspan="3">SupplierPaymentMade</td>
+  <td>purchasing</td>
+  <td class="consumer">purchasing.p2p.supplier-payment-made</td>
+  <td class="desc">Advances <code>purchasing.purchase_to_pay_saga.current_state</code>; on full settlement flips <code>purchase_order_header.status</code> → <code>paid</code> and sets <code>paid_amount = total_amount</code>; partial payment bumps <code>paid_amount</code></td>
+</tr>
+<tr>
+  <td class="merge-dest" rowspan="2">reporting</td>
+  <td class="consumer">reporting.po-tracking.supplier-payment-made</td>
+  <td class="desc"><code>reporting.purchase_order_tracking_view.paid_amount</code>, <code>payment_id</code>, <code>invoice_status_after</code></td>
+</tr>
+<tr>
+  <td class="consumer">reporting.dashboard.supplier-payment-made</td>
+  <td class="desc"><code>reporting.financial_dashboard_daily.supplier_payments_amount</code> (+= amount, per currency)</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="3">SupplierInvoice</td>
+  <td class="merge-event" rowspan="3">SupplierInvoiceApproved</td>
+  <td>purchasing</td>
+  <td class="consumer">purchasing.p2p.supplier-invoice-approved</td>
+  <td class="desc">Advances <code>purchasing.purchase_to_pay_saga.current_state</code> → <code>supplier_invoice_approved</code>; bumps <code>purchasing.purchase_order_header.invoiced_amount</code> and flips <code>status</code> → <code>partially_invoiced</code> / <code>invoiced</code></td>
+</tr>
+<tr>
+  <td class="merge-dest" rowspan="2">reporting</td>
+  <td class="consumer">reporting.po-tracking.invoice-approved</td>
+  <td class="desc"><code>reporting.purchase_order_tracking_view.invoice_amount</code>, <code>supplier_invoice_header_id</code>, <code>invoiced_at</code></td>
+</tr>
+<tr>
+  <td class="consumer">reporting.dashboard.supplier-invoice-approved</td>
+  <td class="desc"><code>reporting.financial_dashboard_daily.supplier_invoices_amount</code> (+= amount, per currency)</td>
+</tr>
+
+</tbody>
+</table>
+</div>
+
+<h2>Destination-first view</h2>
+<p>Grouped by Destination Service → Source Service → Aggregate Root → Domain Event. One row per <em>unique</em> (destination, source, aggregate, event) tuple — so an event with multiple consumers in the same destination service collapses to a single row (the destination receives the event once; per-consumer breakdowns live in the source-first view above). Events with no current consumer aren't listed (no destination to group under). Reuses the same merge-class styling: outermost group is darkest, deepest is lightest.</p>
+
+<div class="table-wrap">
+<table>
+<thead>
+  <tr>
+    <th>Destination Service</th>
+    <th>Source Service</th>
+    <th>Aggregate Root</th>
+    <th>Domain Event</th>
+  </tr>
+</thead>
+<tbody>
+
+<!-- ============ Destination: finance (6 rows) ============ -->
+<tr>
+  <td class="merge-src" rowspan="6">finance</td>
+  <td class="merge-agg" rowspan="2">product</td>
+  <td class="merge-event" rowspan="2">Product</td>
+  <td>StandardCostChanged</td>
+</tr>
+<tr>
+  <td>ValuationClassChanged</td>
+</tr>
+<tr>
+  <td class="merge-agg">sales</td>
+  <td class="merge-event">SalesOrder</td>
+  <td>SalesOrderShipped</td>
+</tr>
+<tr>
+  <td class="merge-agg">purchasing</td>
+  <td class="merge-event">PurchaseOrder</td>
+  <td>PurchaseOrderCreated</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="2">inventory</td>
+  <td class="merge-event">GoodsReceipt</td>
+  <td>GoodsReceived</td>
+</tr>
+<tr>
+  <td class="merge-event">Shipment</td>
+  <td>ShipmentPosted</td>
+</tr>
+
+<!-- ============ Destination: inventory (9 rows) ============ -->
+<tr>
+  <td class="merge-src" rowspan="9">inventory</td>
+  <td class="merge-agg">product</td>
+  <td class="merge-event">Product</td>
+  <td>ReorderPolicyChanged</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="3">sales</td>
+  <td class="merge-event" rowspan="3">SalesOrder</td>
+  <td>SalesOrderCancellationRequested</td>
+</tr>
+<tr>
+  <td>SalesOrderPlaced</td>
+</tr>
+<tr>
+  <td>StockReservationRequested</td>
+</tr>
+<tr>
+  <td class="merge-agg">purchasing</td>
+  <td class="merge-event">PurchaseOrder</td>
+  <td>PurchaseOrderCreated</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="4">manufacturing</td>
+  <td class="merge-event" rowspan="4">WorkOrder</td>
+  <td>RawMaterialReservationRequested</td>
+</tr>
+<tr>
+  <td>SubAssembliesConsumed</td>
+</tr>
+<tr>
+  <td>WorkOrderCancelled</td>
+</tr>
+<tr>
+  <td>WorkOrderManufacturingCompleted</td>
+</tr>
+
+<!-- ============ Destination: manufacturing (9 rows) ============ -->
+<tr>
+  <td class="merge-src" rowspan="9">manufacturing</td>
+  <td class="merge-agg" rowspan="4">product</td>
+  <td class="merge-event" rowspan="4">Product</td>
+  <td>ApprovedVendorListChanged</td>
+</tr>
+<tr>
+  <td>BomActivated</td>
+</tr>
+<tr>
+  <td>MakeVsBuyChanged</td>
+</tr>
+<tr>
+  <td>ProductCreated</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="2">sales</td>
+  <td class="merge-event" rowspan="2">SalesOrder</td>
+  <td>ManufacturingRequested</td>
+</tr>
+<tr>
+  <td>SalesOrderCancellationRequested</td>
+</tr>
+<tr>
+  <td class="merge-agg">purchasing</td>
+  <td class="merge-event">SupplierProductPrice</td>
+  <td>SupplierProductPriceChanged</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="2">inventory</td>
+  <td class="merge-event">GoodsReceipt</td>
+  <td>GoodsReceived</td>
+</tr>
+<tr>
+  <td class="merge-event">StockReservation</td>
+  <td>RawMaterialsReserved</td>
+</tr>
+
+<!-- ============ Destination: purchasing (5 rows) ============ -->
+<tr>
+  <td class="merge-src" rowspan="5">purchasing</td>
+  <td class="merge-agg">product</td>
+  <td class="merge-event">Product</td>
+  <td>ApprovedVendorListChanged</td>
+</tr>
+<tr>
+  <td class="merge-agg">inventory</td>
+  <td class="merge-event">GoodsReceipt</td>
+  <td>GoodsReceived</td>
+</tr>
+<tr>
+  <td class="merge-agg">manufacturing</td>
+  <td class="merge-event">WorkOrder</td>
+  <td>RawMaterialShortageDetected</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="2">finance</td>
+  <td class="merge-event">Payment</td>
+  <td>SupplierPaymentMade</td>
+</tr>
+<tr>
+  <td class="merge-event">SupplierInvoice</td>
+  <td>SupplierInvoiceApproved</td>
+</tr>
+
+<!-- ============ Destination: reporting (20 rows) ============ -->
+<tr>
+  <td class="merge-src" rowspan="20">reporting</td>
+  <td class="merge-agg" rowspan="2">product</td>
+  <td class="merge-event" rowspan="2">Product</td>
+  <td>ProductCreated</td>
+</tr>
+<tr>
+  <td>StandardCostChanged</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="2">sales</td>
+  <td class="merge-event" rowspan="2">SalesOrder</td>
+  <td>SalesOrderCompensated</td>
+</tr>
+<tr>
+  <td>SalesOrderPlaced</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="2">purchasing</td>
+  <td class="merge-event">PurchaseOrder</td>
+  <td>PurchaseOrderCreated</td>
+</tr>
+<tr>
+  <td class="merge-event">PurchaseRequisition</td>
+  <td>PurchaseRequisitionCreated</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="4">inventory</td>
+  <td class="merge-event">GoodsReceipt</td>
+  <td>GoodsReceived</td>
+</tr>
+<tr>
+  <td class="merge-event" rowspan="2">StockReservation</td>
+  <td>RawMaterialsReserved</td>
+</tr>
+<tr>
+  <td>StockReserved</td>
+</tr>
+<tr>
+  <td class="merge-event">Shipment</td>
+  <td>ShipmentPosted</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="6">manufacturing</td>
+  <td class="merge-event" rowspan="6">WorkOrder</td>
+  <td>OperationCompleted</td>
+</tr>
+<tr>
+  <td>RawMaterialShortageDetected</td>
+</tr>
+<tr>
+  <td>WorkOrderCancelled</td>
+</tr>
+<tr>
+  <td>WorkOrderCreated</td>
+</tr>
+<tr>
+  <td>WorkOrderManufacturingCompleted</td>
+</tr>
+<tr>
+  <td>WorkOrderPriorityChanged</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="4">finance</td>
+  <td class="merge-event">CustomerInvoice</td>
+  <td>CustomerInvoiceCreated</td>
+</tr>
+<tr>
+  <td class="merge-event" rowspan="2">Payment</td>
+  <td>CustomerPaymentReceived</td>
+</tr>
+<tr>
+  <td>SupplierPaymentMade</td>
+</tr>
+<tr>
+  <td class="merge-event">SupplierInvoice</td>
+  <td>SupplierInvoiceApproved</td>
+</tr>
+
+<!-- ============ Destination: sales (10 rows) ============ -->
+<tr>
+  <td class="merge-src" rowspan="10">sales</td>
+  <td class="merge-agg">product</td>
+  <td class="merge-event">Product</td>
+  <td>SalesPriceChanged</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="3">inventory</td>
+  <td class="merge-event" rowspan="2">StockReservation</td>
+  <td>SalesOrderCancellationApplied (inventory)</td>
+</tr>
+<tr>
+  <td>StockReserved</td>
+</tr>
+<tr>
+  <td class="merge-event">Shipment</td>
+  <td>ShipmentPosted</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="4">manufacturing</td>
+  <td class="merge-event">SalesOrder</td>
+  <td>ManufacturingDispatched</td>
+</tr>
+<tr>
+  <td class="merge-event" rowspan="3">WorkOrder</td>
+  <td>SalesOrderCancellationApplied (manufacturing)</td>
+</tr>
+<tr>
+  <td>WorkOrderCreated</td>
+</tr>
+<tr>
+  <td>WorkOrderManufacturingCompleted</td>
+</tr>
+<tr>
+  <td class="merge-agg" rowspan="2">finance</td>
+  <td class="merge-event">CustomerInvoice</td>
+  <td>CustomerInvoiceCreated</td>
+</tr>
+<tr>
+  <td class="merge-event">Payment</td>
+  <td>CustomerPaymentReceived</td>
+</tr>
+
+</tbody>
+</table>
+</div>
+
+<h2>Notes</h2>
+<ul>
+  <li><code>SalesOrderCancellationApplied</code> exists as two physically distinct events — one in <code>inventory-events</code> (aggregate <code>StockReservation</code>), one in <code>manufacturing-events</code> (aggregate <code>WorkOrder</code>) — each acknowledged by its own sales-side handler. They share a class name but are different topics/types.</li>
+  <li><strong>Cross-context aggregate-root stamping is intentional</strong>, not a pragmatic compromise. The rule: an event names the aggregate the fact is <em>about</em>, not the module that emits it — logical ownership and physical emission are decoupled. A module-A-emits-event-about-aggregate-B arrangement is legitimate when (a) the named aggregate is genuinely the subject of the fact, (b) the emitter is the natural source of authority for that fact, and (c) the emitter isn't claiming jurisdiction over the named aggregate's invariants. Two events in Northwood take this path today: <code>manufacturing.ManufacturingDispatched</code> stamped <code>SalesOrder</code> (manufacturing reports an outcome the SalesOrder needs to advance its saga) and <code>manufacturing.ProductMaterialsCostComputed</code> stamped <code>Product</code> (manufacturing computes a fact about a Product owned upstream). Both pass all three criteria. The Kafka co-partition benefit (every event for a saga's correlation aggregate lands on the same partition) is a happy consequence of correct modeling, not the reason for the choice. Full rule + counter-examples in <code>docs/architecture.md</code> § <em>Aggregate-root stamping</em> and <code>docs/design-notes.md</code> § <em>Cross-context aggregate-root stamping on events</em>.</li>
+  <li>Customer master events (<code>CustomerRegistered</code>, <code>CustomerAddressChanged</code>, <code>CustomerContactChanged</code>, <code>CustomerNameChanged</code>, <code>CustomerDeactivated</code>), <code>ProductDiscontinued</code>, <code>PurchaseOrderApproved</code>, and <code>ProductMaterialsCostComputed</code> are published by their aggregates but have no inbox handler yet.</li>
+  <li><code>StockReserved</code> in <code>sales</code> uses the bare consumer name <code>sales.fulfilment-saga</code> (not <code>sales.fulfilment-saga.stock-reserved</code>) — this is the saga's primary entry point and predates the suffix convention used by later additions.</li>
+  <li>Reporting projections (<code>*_view</code>, <code>production_planning_board</code>, <code>financial_dashboard_daily</code>, <code>material_shortage_view</code>) are all order-tolerant: every write is <code>INSERT ... ON CONFLICT DO UPDATE</code>. Stub rows (e.g. <code>product_sku='(pending)'</code>) get backfilled by whichever event arrives first carrying the missing identity.</li>
+  <li>"+=" in the Description column denotes an additive bump (so partial-then-full events sum correctly); plain "→" denotes an overwrite.</li>
+</ul>
+
+<h2>Coverage gaps</h2>
+<p>Nine events have no consumer at all, plus a few events whose consumer coverage is incomplete. Listed in priority order — symptom → impact → suggested handler(s). <strong>Critical</strong> means a downstream service makes business-wrong decisions today; <strong>Staleness</strong> means a read model drifts but no transaction goes wrong; <strong>Likely acceptable</strong> is documented for completeness.</p>
+
+<h3>Critical — business-incorrect decisions today<span class="badge badge-critical">Critical</span></h3>
+
+<div class="gap-critical">
+  <h4>1. <code>ProductDiscontinued</code> has zero consumers</h4>
+  <p>Symptom: a product can be marked discontinued in product-service, but no other service learns of it.</p>
+  <p>Impact:</p>
+  <ul>
+    <li><code>sales</code> — <code>SalesOrderService.placeOrder</code> checks <code>customer.status</code> but not product status; new orders accept discontinued products.</li>
+    <li><code>purchasing</code> — <code>PurchaseRequisitionService</code> / PO creation will still procure a discontinued product.</li>
+    <li><code>manufacturing</code> — <code>ManufacturingRequestedHandler</code> rejects on <code>is_manufactured=false</code>, but <code>ProductDiscontinued</code> doesn't flip that flag, so work orders still spawn for discontinued finished goods. Active BOMs also stay active.</li>
+    <li><code>reporting</code> — <code>available_to_promise_view</code> and <code>production_planning_board</code> keep showing discontinued items as orderable / plannable.</li>
+    <li><code>inventory</code> — <code>stock_item</code> keeps firing reorder calculations for a product nobody is buying.</li>
+  </ul>
+  <p>Suggested handlers:</p>
+  <ul>
+    <li><code>sales.product-discontinued</code> → flag the product in <code>sales.product_pricing</code> (or a parallel <code>sales.product_status</code> projection) and reject orders for those products at <code>placeOrder</code>.</li>
+    <li><code>manufacturing.product-discontinued</code> → set <code>manufacturing.product_replenishment.is_purchased=false, is_manufactured=false</code> so the existing rejection path covers the case; clear <code>manufacturing.product_active_bom</code> for the product.</li>
+    <li><code>purchasing.product-discontinued</code> → block new POs/PRs.</li>
+    <li><code>reporting.atp.product-discontinued</code> → stamp <code>discontinued_at</code> on the ATP row so the UI can grey it out.</li>
+    <li><code>inventory.product-discontinued</code> → suppress reorder alerts on <code>stock_item</code>.</li>
+  </ul>
+</div>
+
+<div class="gap-critical">
+  <h4>2. <code>ProductCreated</code> has no inventory consumer</h4>
+  <p>Symptom: <code>inventory.StockItemProjection.applyReorderPolicy</code> documents this gap explicitly — <em>"if we have no row for the product yet, the projection silently no-ops … when inventory grows a ProductCreated consumer the row will appear."</em> The Liquibase seed pre-creates <code>stock_item</code> rows for the 5 demo SKUs, which masks the gap during the demo.</p>
+  <p>Impact: any product registered after boot via <code>POST /api/products</code> cannot have a reorder policy applied — <code>ReorderPolicyChanged</code> projects to a missing row and silently no-ops with a WARN log.</p>
+  <p>Suggested handler: <code>inventory.product-created</code> → insert an empty <code>inventory.stock_item</code> row (default warehouse MAIN, zero on-hand) at product registration so the later <code>ReorderPolicyChanged</code> has something to update.</p>
+</div>
+
+<div class="gap-critical">
+  <h4>3. <code>CustomerDeactivated</code> has no consumers</h4>
+  <p>Symptom: sales already enforces <code>customer.status == ACTIVE</code> locally on order placement (direct DB read of its own customer table), so this isn't a sales-side correctness gap. Downstream services have no signal.</p>
+  <p>Impact:</p>
+  <ul>
+    <li><code>reporting</code> dashboards continue to count deactivated customers in active-customer totals.</li>
+    <li><code>finance</code> has no trigger to flag outstanding AR against deactivated customers for collections.</li>
+  </ul>
+  <p>Suggested handlers: a reporting projection that decrements active-customer counts; an optional finance projection that flags AR rows.</p>
+</div>
+
+<h3>Staleness — read models drift<span class="badge badge-staleness">Staleness</span></h3>
+
+<div class="gap-staleness">
+  <h4>4. <code>PurchaseOrderApproved</code> has no consumer</h4>
+  <p>Symptom: the event is published, but the purchasing P2P saga worker polls saga rows directly (state-driven) rather than subscribing via inbox. No other service receives the event.</p>
+  <p>Impact: <code>reporting.purchase_order_tracking_view.po_status</code> is set once by the <code>po-created</code> handler with whatever status the PO has at creation time. When a draft PO is later approved via <code>POST /api/purchase-orders/{id}/approve</code> and the aggregate transitions to <code>'sent'</code>, the tracking view's <code>po_status</code> stays at <code>'draft'</code> indefinitely. The shortage-driven auto-approve path masks this because approval fires in the same transaction as creation and the create event already carries the post-approval status.</p>
+  <p>Suggested handler: <code>reporting.po-tracking.po-approved</code> → update <code>purchase_order_tracking_view.po_status='sent'</code> and stamp <code>approved_at</code>.</p>
+</div>
+
+<div class="gap-staleness">
+  <h4>5. <code>ProductMaterialsCostComputed</code> has no consumer</h4>
+  <p>Symptom: manufacturing rolls up materials cost into <code>manufacturing.product_materials_cost</code> and emits this event, but nothing downstream reacts. Manufacturing's own UI read is the only sink.</p>
+  <p>Impact: the rollup is a dead-end. When a supplier price drops and triggers a rebased <code>materials_cost</code>, none of:</p>
+  <ul>
+    <li><code>product.product.standard_cost</code> (today maintained by hand via <code>POST /api/products/{id}/standard-cost</code>),</li>
+    <li><code>finance.product_standard_cost</code> (used by COGS posting at shipment time),</li>
+    <li><code>reporting.product_standard_cost</code>,</li>
+  </ul>
+  <p>…ever updates. COGS continues to post at the previous standard cost until someone manually re-enters it. This is the cost-chain integration referenced as §2.8 Slice D in the slice docs ("close the cost loop").</p>
+  <p>Suggested handler: <code>product.materials-cost-rebased</code> (in product-service) → update the product master's <code>standard_cost</code> from the rolled-up value and emit <code>StandardCostChanged</code>, which already has finance + reporting consumers wired.</p>
+</div>
+
+<h3>Likely acceptable — documented for completeness<span class="badge badge-deferred">Deferred</span></h3>
+
+<div class="gap-deferred">
+  <h4>6. Customer master events: <code>CustomerRegistered</code>, <code>CustomerNameChanged</code>, <code>CustomerAddressChanged</code>, <code>CustomerContactChanged</code></h4>
+  <p>Sales owns the customer aggregate and reads it directly for its own checks. Downstream services (finance invoice headers, reporting <code>sales_order_360_view</code>) snapshot customer name + currency from event payloads at order placement time, which is <em>historically correct</em> — overwriting old invoice names after a customer rename would arguably destroy audit value. Only a gap if a UI requirement explicitly says "show current customer name on past orders"; not assumed here.</p>
+</div>
+
+<div class="gap-deferred">
+  <h4>7. <code>ManufacturingDispatched</code> to production-planning</h4>
+  <p>The production-planning board only gets a row when a work order is actually created. Rejected lines (no BOM, not manufactured) generate <code>ManufacturingDispatched</code> outcomes but no work orders, so there's nothing on the board to update. A "manufacturing rejection rate" dashboard widget could subscribe, but no current read model needs the signal.</p>
+</div>
+
+<h3>Inferred-only — verify against intent before fixing<span class="badge badge-deferred">Deferred</span></h3>
+
+<ul>
+  <li><strong><code>WorkOrderCancelled</code> has no finance consumer.</strong> Today no WIP cost is posted to GL, so nothing needs reversing. Becomes a real gap if WIP capitalisation is added (currently flagged low-priority alongside multi-currency GL consolidation).</li>
+  <li><strong><code>OperationCompleted</code> is only consumed by reporting.</strong> ATP could in principle use partial-operation completion to release planned-quantity progressively, but current ATP waits for full <code>WorkOrderManufacturingCompleted</code>. Not a correctness gap — a precision tradeoff.</li>
+  <li><strong><code>SalesPriceChanged</code> is only consumed by sales itself.</strong> Reporting could keep a price-history projection for trend dashboards, but the demo doesn't require it.</li>
+</ul>
+
+<script>
+(function () {
+  'use strict';
+  let collapseIdCounter = 0;
+
+  document.addEventListener('DOMContentLoaded', init);
+
+  function init() {
+    const tables = document.querySelectorAll('.table-wrap > table');
+    tables.forEach((table, i) => {
+      // Source-first: Source + Aggregate clickable. Destination-first: only Destination.
+      const groupClasses = (i === 0) ? ['merge-src', 'merge-agg'] : ['merge-src'];
+      hydrate(table, groupClasses);
+      addExpandAllButton(table);
+    });
+  }
+
+  function classToDataKey(cls) {
+    // 'merge-src' -> 'mergeSrc' so dataset uses camelCase / data-merge-src in HTML
+    return cls.replace(/-([a-z])/g, function (_, c) { return c.toUpperCase(); });
+  }
+
+  function hydrate(table, groupClasses) {
+    const rows = Array.from(table.querySelectorAll('tbody > tr'));
+    const currentGroups = {};
+
+    rows.forEach(function (row) {
+      groupClasses.forEach(function (cls) {
+        const cell = row.querySelector('td.' + cls);
+        if (cell) {
+          const value = cell.textContent.trim();
+          currentGroups[cls] = value;
+          if (!cell.dataset.originalText) {
+            cell.dataset.originalText = value;
+            cell.classList.add('clickable-cell');
+            cell.title = 'Click to collapse / expand this group';
+            cell.innerHTML = '<span class="toggle-marker">▼</span>' + escapeHtml(value);
+            cell.addEventListener('click', function (e) {
+              e.stopPropagation();
+              toggleCell(cell, cls);
+            });
+          }
+        }
+        // Scoped key — include this class plus all earlier classes so the same aggregate
+        // name (e.g. "Product") in two different sources gets distinct keys
+        // ("product/Product" vs "manufacturing/Product"). Without scoping, the filter
+        // would over-match and the rowspan-reduction math would drive ancestor cells
+        // to rowspan=0, which HTML interprets as "span to end of section" — bug source.
+        const scoped = scopedKey(groupClasses, cls, currentGroups);
+        row.dataset[classToDataKey(cls)] = scoped;
+      });
+    });
+  }
+
+  function scopedKey(allClasses, currentClass, currentGroups) {
+    const parts = [];
+    for (let i = 0; i < allClasses.length; i++) {
+      const c = allClasses[i];
+      if (currentGroups[c]) parts.push(currentGroups[c]);
+      if (c === currentClass) break;
+    }
+    return parts.join('/');
+  }
+
+  function addExpandAllButton(table) {
+    const wrap = table.closest('.table-wrap');
+    if (!wrap) return;
+    const btn = document.createElement('button');
+    btn.textContent = 'Expand all';
+    btn.className = 'expand-all-btn';
+    btn.addEventListener('click', function () { expandAll(table); });
+    wrap.parentNode.insertBefore(btn, wrap);
+  }
+
+  function expandAll(table) {
+    // Expand outermost groups first so inner restorations land on the right ancestor rowspans.
+    ['merge-src', 'merge-agg', 'merge-event'].forEach(function (cls) {
+      Array.from(table.querySelectorAll('td.' + cls + '.collapsed')).forEach(expandCell);
+    });
+  }
+
+  function toggleCell(cell, groupClass) {
+    if (cell.classList.contains('collapsed')) {
+      expandCell(cell);
+    } else {
+      collapseCell(cell, groupClass);
+    }
+  }
+
+  function collapseCell(cell, groupClass) {
+    const dataKey = classToDataKey(groupClass);
+    const firstRow = cell.parentElement;
+    const groupKey = firstRow.dataset[dataKey];
+    if (!groupKey) return;
+
+    const table = cell.closest('table');
+    const allRows = Array.from(table.querySelectorAll('tbody > tr'));
+    const groupRows = allRows.filter(function (r) { return r.dataset[dataKey] === groupKey; });
+    if (groupRows.length <= 1) return;
+
+    const otherRows = groupRows.filter(function (r) { return r !== firstRow; });
+
+    const collapseId = 'c' + (++collapseIdCounter);
+    cell.dataset.collapseId = collapseId;
+
+    otherRows.forEach(function (r) { addHiddenTag(r, collapseId); });
+
+    let nextCell = cell.nextElementSibling;
+    while (nextCell) {
+      addHiddenTag(nextCell, collapseId);
+      nextCell = nextCell.nextElementSibling;
+    }
+
+    cell.dataset.savedRowspan = cell.getAttribute('rowspan') || '1';
+    cell.setAttribute('rowspan', '1');
+
+    // Reduce rowspan on every ancestor cell whose span covers this group. Ancestors
+    // are looked up by group key — NOT by walking previousElementSibling — because
+    // an aggregate cell may live in a row that doesn't contain its parent source's
+    // <td> (e.g. sales/SalesOrder's first row is row 18, while the sales source <td>
+    // lives in row 13 spanning down). The previousElementSibling chain misses it.
+    const hierarchy = getGroupHierarchy(table);
+    const myLevel = hierarchy.indexOf(groupClass);
+    for (let i = 0; i < myLevel; i++) {
+      const ancestorClass = hierarchy[i];
+      const ancestorKey = firstRow.dataset[classToDataKey(ancestorClass)];
+      if (!ancestorKey) continue;
+      const ancestorCell = findGroupCell(table, ancestorClass, ancestorKey);
+      if (!ancestorCell || ancestorCell === cell) continue;
+      const cur = parseInt(ancestorCell.getAttribute('rowspan'), 10) || 1;
+      if (cur > 1) {
+        const reductions = JSON.parse(ancestorCell.dataset.rowspanReductions || '{}');
+        reductions[collapseId] = otherRows.length;
+        ancestorCell.dataset.rowspanReductions = JSON.stringify(reductions);
+        ancestorCell.setAttribute('rowspan', String(cur - otherRows.length));
+      }
+    }
+
+    cell.classList.add('collapsed');
+    const marker = cell.querySelector('.toggle-marker');
+    if (marker) marker.textContent = '▶';
+    let count = cell.querySelector('.toggle-count');
+    if (!count) {
+      cell.appendChild(document.createTextNode(' '));
+      count = document.createElement('span');
+      count.className = 'toggle-count';
+      cell.appendChild(count);
+    }
+    count.textContent = '(' + groupRows.length + ')';
+  }
+
+  function expandCell(cell) {
+    const collapseId = cell.dataset.collapseId;
+    if (!collapseId) return;
+
+    const table = cell.closest('table');
+    const allRows = Array.from(table.querySelectorAll('tbody > tr'));
+
+    allRows.forEach(function (r) { removeHiddenTag(r, collapseId); });
+
+    let nextCell = cell.nextElementSibling;
+    while (nextCell) {
+      removeHiddenTag(nextCell, collapseId);
+      nextCell = nextCell.nextElementSibling;
+    }
+
+    cell.setAttribute('rowspan', cell.dataset.savedRowspan || '1');
+    delete cell.dataset.savedRowspan;
+
+    // Scan every cell that recorded a reduction for this collapseId and add it back.
+    // Works regardless of whether the ancestor is a previousElementSibling — see the
+    // sales/SalesOrder cross-row case explained in collapseCell.
+    Array.from(table.querySelectorAll('td[data-rowspan-reductions]')).forEach(function (ancestorCell) {
+      const reductions = JSON.parse(ancestorCell.dataset.rowspanReductions);
+      if (collapseId in reductions) {
+        const cur = parseInt(ancestorCell.getAttribute('rowspan'), 10) || 1;
+        ancestorCell.setAttribute('rowspan', String(cur + reductions[collapseId]));
+        delete reductions[collapseId];
+        if (Object.keys(reductions).length === 0) {
+          delete ancestorCell.dataset.rowspanReductions;
+        } else {
+          ancestorCell.dataset.rowspanReductions = JSON.stringify(reductions);
+        }
+      }
+    });
+
+    cell.classList.remove('collapsed');
+    const marker = cell.querySelector('.toggle-marker');
+    if (marker) marker.textContent = '▼';
+    const count = cell.querySelector('.toggle-count');
+    if (count) {
+      const prev = count.previousSibling;
+      count.remove();
+      if (prev && prev.nodeType === Node.TEXT_NODE) prev.remove();
+    }
+    delete cell.dataset.collapseId;
+  }
+
+  function findGroupCell(table, groupClass, groupKey) {
+    const dataKey = classToDataKey(groupClass);
+    const rows = Array.from(table.querySelectorAll('tbody > tr'));
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].dataset[dataKey] === groupKey) {
+        const c = rows[i].querySelector('td.' + groupClass);
+        if (c) return c;
+      }
+    }
+    return null;
+  }
+
+  function getGroupHierarchy(table) {
+    // Outermost first. Detect which levels have clickable cells in this table.
+    const levels = [];
+    ['merge-src', 'merge-agg', 'merge-event'].forEach(function (cls) {
+      if (table.querySelector('td.' + cls + '.clickable-cell')) levels.push(cls);
+    });
+    return levels;
+  }
+
+  function addHiddenTag(element, tag) {
+    const list = (element.dataset.hiddenBy || '').split('|').filter(Boolean);
+    if (list.indexOf(tag) === -1) list.push(tag);
+    element.dataset.hiddenBy = list.join('|');
+    element.style.display = 'none';
+  }
+
+  function removeHiddenTag(element, tag) {
+    if (!element.dataset.hiddenBy) return;
+    const list = element.dataset.hiddenBy.split('|').filter(function (x) { return x && x !== tag; });
+    element.dataset.hiddenBy = list.join('|');
+    if (list.length === 0) {
+      element.style.display = '';
+    }
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+})();
+</script>
+
+</body>
+</html>

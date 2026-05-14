@@ -1,0 +1,59 @@
+spring:
+  application:
+    name: product-service
+  profiles:
+    # 'dev' is implied when nothing else is active; use SPRING_PROFILES_ACTIVE=kafka
+    # (or any other set) to switch buses without editing this file.
+    default: dev
+  datasource:
+    # In showcase mode (single database), every service points at the same URL
+    # but authenticates as its own role. For database-per-service, change only
+    # this URL and the role's grants follow the service to its own database.
+    url: ${PRODUCT_DB_URL:jdbc:postgresql://localhost:5432/northwood_erp?currentSchema=product,shared}
+    username: ${PRODUCT_DB_USER:postgres}
+    password: ${PRODUCT_DB_PASSWORD:postgres}
+    hikari:
+      pool-name: product-pool
+      maximum-pool-size: 10
+      # Pin the search_path on every connection borrowed from the pool. The
+      # service can resolve unqualified table names to its own schema and
+      # cannot accidentally read from another context.
+      connection-init-sql: SET search_path TO product, shared
+  jdbc:
+    template:
+      query-timeout: 30s
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Slice A: every endpoint requires a valid Keycloak JWT. The shared
+          # SecurityConfig in the shared module activates whenever this
+          # property is set; leaving it unset disables auth entirely (e.g.
+          # for pure unit-test runs that don't boot Spring).
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/northwood}
+
+server:
+  port: ${PRODUCT_PORT:8081}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
+northwood:
+  outbox:
+    poll-interval: 1000  # ms
+  liquibase:
+    enabled: true
+    default-schema: product
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+logging:
+  level:
+    com.northwood: DEBUG
+    org.springframework.jdbc.core: INFO
+    liquibase: INFO

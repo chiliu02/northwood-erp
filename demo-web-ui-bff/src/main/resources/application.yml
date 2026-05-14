@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: demo-web-ui-bff
+  profiles:
+    default: dev
+
+server:
+  port: 8080
+
+# Per-target service URLs. Override per environment via env vars
+# (NORTHWOOD_BFF_TARGETS_PRODUCT etc.) or another property source.
+northwood:
+  bff:
+    targets:
+      product:        http://localhost:8081
+      sales:          http://localhost:8082
+      inventory:      http://localhost:8083
+      manufacturing:  http://localhost:8084
+      purchasing:     http://localhost:8085
+      finance:        http://localhost:8086
+      reporting:      http://localhost:8087
+
+logging:
+  level:
+    com.northwood.bff: INFO

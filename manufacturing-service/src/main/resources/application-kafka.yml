@@ -1,0 +1,34 @@
+# Loaded only when SPRING_PROFILES_ACTIVE=kafka. Manufacturing is both a
+# producer (WorkOrderCreated, eventually OperationCompleted etc) and a
+# consumer (ManufacturingRequested from sales).
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+    consumer:
+      group-id: manufacturing-service
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+
+northwood:
+  outbox:
+    poll-interval: 1000
+  saga:
+    poll-interval: 1000
+  kafka:
+    # Manufacturing subscribes to:
+    # - product.events    for MakeVsBuyChanged (Shape A make-vs-buy projection
+    #   into manufacturing.product_replenishment) and ApprovedVendorListChanged
+    #   (manufacturing.product_approved_vendor projection — read by the §2.8
+    #   Slice C materialsCost rollup engine).
+    # - sales.events      for ManufacturingRequested (saga-driven WO release).
+    # - inventory.events  for RawMaterialsReserved (response to its own
+    #   RawMaterialReservationRequested), which drives the make-to-order saga
+    #   from raw_material_reservation_requested onward.
+    # - purchasing.events for SupplierProductPriceChanged (§2.8 Slice C drives
+    #   the materialsCost rollup for purchased items off these).
+    subscribe-topics: product.events,sales.events,inventory.events,purchasing.events

@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: sales-service
+  profiles:
+    default: dev
+  datasource:
+    url: ${SALES_DB_URL:jdbc:postgresql://localhost:5432/northwood_erp?currentSchema=sales,shared}
+    username: ${SALES_DB_USER:postgres}
+    password: ${SALES_DB_PASSWORD:postgres}
+    hikari:
+      pool-name: sales-pool
+      maximum-pool-size: 10
+      connection-init-sql: SET search_path TO sales, shared
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Slice A: every endpoint requires a valid Keycloak JWT.
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/northwood}
+
+server:
+  port: ${SALES_PORT:8082}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+
+northwood:
+  outbox:
+    poll-interval: 1000
+  liquibase:
+    enabled: true
+    default-schema: sales
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+logging:
+  level:
+    com.northwood: DEBUG
+    liquibase: INFO

@@ -1,0 +1,33 @@
+# Loaded only when SPRING_PROFILES_ACTIVE=kafka. Sales is both a producer
+# (SalesOrderPlaced, StockReservationRequested) and a consumer
+# (StockReserved feedback from inventory; later: ManufacturingCompleted, etc).
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+    consumer:
+      group-id: sales-service
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+
+northwood:
+  outbox:
+    poll-interval: 1000
+  saga:
+    poll-interval: 1000
+  kafka:
+    # Sales subscribes to:
+    # - product.events     for SalesPriceChanged (Shape A pricing projection
+    #   into sales.product_pricing).
+    # - inventory.events   for StockReserved + ShipmentPosted (saga advances) +
+    #   SalesOrderCancellationApplied (compensation ack from inventory).
+    # - manufacturing.events for WorkOrderCreated, WorkOrderManufacturingCompleted,
+    #   ManufacturingDispatched (saga advances past manufacturing_requested), and
+    #   SalesOrderCancellationApplied (compensation ack from manufacturing).
+    # - finance.events     for CustomerInvoiceCreated + CustomerPaymentReceived
+    #   (saga advances past invoice_created → completed).
+    subscribe-topics: product.events,inventory.events,manufacturing.events,finance.events

@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: erp-web-ui-bff
+  profiles:
+    default: dev
+  security:
+    oauth2:
+      client:
+        registration:
+          # Slice A: confidential code flow against the `northwood` Keycloak
+          # realm. The client secret is demo-grade — override
+          # KEYCLOAK_BFF_CLIENT_SECRET in any environment that isn't your
+          # laptop. Spring Security uses the registration name (`keycloak`)
+          # to compose the redirect URI: /login/oauth2/code/keycloak.
+          keycloak:
+            provider: keycloak
+            client-id: northwood-bff
+            client-secret: ${KEYCLOAK_BFF_CLIENT_SECRET:northwood-bff-secret}
+            authorization-grant-type: authorization_code
+            scope: openid,profile,email
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+        provider:
+          keycloak:
+            issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/northwood}
+            user-name-attribute: preferred_username
+
+server:
+  port: 8089
+
+# Per-target service URLs. Override per environment via env vars
+# (NORTHWOOD_BFF_TARGETS_PRODUCT etc.) or another property source.
+northwood:
+  bff:
+    targets:
+      product:        http://localhost:8081
+      sales:          http://localhost:8082
+      inventory:      http://localhost:8083
+      manufacturing:  http://localhost:8084
+      purchasing:     http://localhost:8085
+      finance:        http://localhost:8086
+      reporting:      http://localhost:8087
+
+logging:
+  level:
+    com.northwood.erpbff: INFO

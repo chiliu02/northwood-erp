@@ -1,0 +1,220 @@
+{
+  "realm": "northwood",
+  "enabled": true,
+  "displayName": "Northwood ERP",
+  "displayNameHtml": "<strong>Northwood ERP</strong>",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": true,
+  "loginWithEmailAllowed": false,
+  "duplicateEmailsAllowed": false,
+  "verifyEmail": false,
+  "sslRequired": "none",
+  "accessTokenLifespan": 1800,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "roles": {
+    "realm": [
+      { "name": "catalog_manager",      "description": "Emma — product CRUD, pricing, reorder policy, make-vs-buy, discontinue" },
+      { "name": "sales_clerk",          "description": "Sarah — place orders, view 360, view ATP" },
+      { "name": "sales_manager",        "description": "Sales manager tier — cancel orders, override pricing" },
+      { "name": "warehouse_clerk",      "description": "Mike — stock movements, goods receipts, shipments, reservation visibility" },
+      { "name": "warehouse_manager",    "description": "Warehouse manager tier — force-release reservations, post stock adjustments" },
+      { "name": "production_planner",   "description": "Linda — view board, view shortages, set priority, edit/activate BOM" },
+      { "name": "production_supervisor","description": "Production supervisor tier — cancel WO, skip operation, force-complete" },
+      { "name": "purchasing_clerk",     "description": "Tom — create PR/PO (draft), post goods receipts, view PO tracking" },
+      { "name": "purchasing_manager",   "description": "Purchasing manager tier — approve PO, author supplier prices, override 3-way match" },
+      { "name": "accountant",           "description": "Olivia — record supplier invoices, record payments, view AR/AP" },
+      { "name": "finance_manager",      "description": "Daniel — reverse journals, manual-approve/reject 3-way-match-failed invoices, view dashboard" },
+      { "name": "auditor",              "description": "Read-only across every endpoint" },
+      { "name": "sysadmin",             "description": "Keycloak realm admin only; no business-data permissions" }
+    ]
+  },
+  "users": [
+    {
+      "username": "emma",
+      "enabled": true,
+      "firstName": "Emma",
+      "lastName": "Catalog",
+      "email": "emma@northwood.local",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "emma", "temporary": false }],
+      "realmRoles": ["catalog_manager"]
+    },
+    {
+      "username": "sarah",
+      "enabled": true,
+      "firstName": "Sarah",
+      "lastName": "Sales",
+      "email": "sarah@northwood.local",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "sarah", "temporary": false }],
+      "realmRoles": ["sales_clerk"]
+    },
+    {
+      "username": "sales-mgr",
+      "enabled": true,
+      "firstName": "Sales",
+      "lastName": "Manager",
+      "email": "sales-mgr@northwood.local",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "sales-mgr", "temporary": false }],
+      "realmRoles": ["sales_manager", "sales_clerk"]
+    },
+    {
+      "username": "mike",
+      "enabled": true,
+      "firstName": "Mike",
+      "lastName": "Warehouse",
+      "email": "mike@northwood.local",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "mike", "temporary": false }],
+      "realmRoles": ["warehouse_clerk"]
+    },
+    {
+      "username": "warehouse-mgr",
+      "enabled": true,
+      "firstName": "Warehouse",
+      "lastName": "Manager",
+      "email": "warehouse-mgr@northwood.local",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "warehouse-mgr", "temporary": false }],
+      "realmRoles": ["warehouse_manager", "warehouse_clerk"]
+    },
+    {
+      "username": "linda",
+      "enabled": true,
+      "firstName": "Linda",
+      "lastName": "Production",
+      "email": "linda@northwood.local",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "linda", "temporary": false }],
+      "realmRoles": ["production_planner"]
+    },
+    {
+      "username": "production-sup",
+      "enabled": true,
+      "firstName": "Production",
+      "lastName": "Supervisor",
+      "email": "production-sup@northwood.local",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "production-sup", "temporary": false }],
+      "realmRoles": ["production_supervisor", "production_planner"]
+    },
+    {
+      "username": "tom",
+      "enabled": true,
+      "firstName": "Tom",
+      "lastName": "Purchasing",
+      "email": "tom@northwood.local",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "tom", "temporary": false }],
+      "realmRoles": ["purchasing_clerk"]
+    },
+    {
+      "username": "purchasing-mgr",
+      "enabled": true,
+      "firstName": "Purchasing",
+      "lastName": "Manager",
+      "email": "purchasing-mgr@northwood.local",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "purchasing-mgr", "temporary": false }],
+      "realmRoles": ["purchasing_manager", "purchasing_clerk"]
+    },
+    {
+      "username": "olivia",
+      "enabled": true,
+      "firstName": "Olivia",
+      "lastName": "Accounts",
+      "email": "olivia@northwood.local",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "olivia", "temporary": false }],
+      "realmRoles": ["accountant"]
+    },
+    {
+      "username": "daniel",
+      "enabled": true,
+      "firstName": "Daniel",
+      "lastName": "Finance",
+      "email": "daniel@northwood.local",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "daniel", "temporary": false }],
+      "realmRoles": ["finance_manager", "accountant"]
+    },
+    {
+      "username": "auditor",
+      "enabled": true,
+      "firstName": "Audit",
+      "lastName": "Reader",
+      "email": "auditor@northwood.local",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "auditor", "temporary": false }],
+      "realmRoles": ["auditor"]
+    },
+    {
+      "username": "sysadmin",
+      "enabled": true,
+      "firstName": "System",
+      "lastName": "Admin",
+      "email": "sysadmin@northwood.local",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "sysadmin", "temporary": false }],
+      "realmRoles": ["sysadmin"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "northwood-bff",
+      "name": "Northwood ERP BFF",
+      "description": "Confidential client used by erp-web-ui-bff for the OIDC authorization-code flow. Holds the access token in a server-side session and forwards it as Bearer on every call to a Northwood service.",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "northwood-bff-secret",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8089/login/oauth2/code/keycloak",
+        "http://localhost:8089/*",
+        "http://localhost:5174/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8089",
+        "http://localhost:5173",
+        "http://localhost:5174"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:8089/##http://localhost:5173/##http://localhost:5174/"
+      },
+      "fullScopeAllowed": true
+    },
+    {
+      "clientId": "northwood-spa",
+      "name": "Northwood ERP SPA (reserved)",
+      "description": "PKCE public client reserved for direct SPA<->Keycloak OIDC if the BFF-as-proxy mode is ever swapped out. Not used in Slice A — the BFF holds the token.",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://localhost:8089/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173",
+        "http://localhost:8089"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ],
+  "defaultRoles": ["offline_access", "uma_authorization"]
+}

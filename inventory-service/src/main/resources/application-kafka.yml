@@ -1,0 +1,35 @@
+# Loaded only when SPRING_PROFILES_ACTIVE=kafka. Activates the
+# KafkaInboxDispatcher with a subscription to product.events; the
+# ReorderPolicyChangedHandler is auto-discovered as an InboxEnvelopeHandler.
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      # group-id ties this consumer to its own offsets; renaming would re-read
+      # the topic from the start. Keep stable per service.
+      group-id: inventory-service
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+
+northwood:
+  kafka:
+    # Topics this service subscribes to. KafkaInboxDispatcher fans incoming
+    # records out to all matching InboxEnvelopeHandler beans.
+    #   product.events       → ReorderPolicyChangedHandler
+    #   sales.events         → StockReservationRequestedHandler,
+    #                          SalesOrderCancellationRequestedHandler
+    #                          (releases reservation + emits ack),
+    #                          SalesOrderPlacedHandler (seeds
+    #                          sales_order_line_facts for shipment validation).
+    #   manufacturing.events → RawMaterialReservationRequestedHandler,
+    #                          WorkOrderManufacturingCompletedHandler (bumps
+    #                          FG stock_balance on production confirmation),
+    #                          RawMaterialReservationReleaseRequestedHandler
+    #                          (cancels rm reservations on WO cancel).
+    #   purchasing.events    → PurchaseOrderCreatedHandler (seeds
+    #                          purchase_order_line_facts for receipt validation).
+    subscribe-topics: product.events,sales.events,manufacturing.events,purchasing.events

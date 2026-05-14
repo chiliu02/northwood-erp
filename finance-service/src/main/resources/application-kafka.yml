@@ -1,0 +1,29 @@
+# Loaded only when SPRING_PROFILES_ACTIVE=kafka. Finance is both a producer
+# (SupplierInvoiceApproved phase 4; customer-invoice / payment events later)
+# and a consumer (PurchaseOrderCreated + GoodsReceived for the
+# purchase_order_line_facts projection used by 3-way match).
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+    consumer:
+      group-id: finance-service
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+
+northwood:
+  outbox:
+    poll-interval: 1000
+  kafka:
+    # Finance subscribes to:
+    # - purchasing.events for PurchaseOrderCreated (seeds the PO line facts).
+    # - inventory.events for GoodsReceived (bumps received_quantity on the
+    #   facts row; gates 3-way match on the AP side).
+    # - sales.events for SalesOrderShipped (auto-creates customer invoices).
+    # - product.events for ValuationClassChanged (Shape A consumer projection
+    #   in finance.product_valuation_class).
+    subscribe-topics: purchasing.events,inventory.events,sales.events,product.events

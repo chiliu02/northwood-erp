@@ -1,0 +1,226 @@
+package com.northwood.inventory.infrastructure.persistence;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.zaxxer.hikari.HikariDataSource;
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.lifecycle.Startables;
+import org.testcontainers.utility.DockerImageName;
+
+/**
+ * §2.5 Phase C: real-Postgres test for the stock-balance writer. The schema
+ * has three CHECK constraints on {@code inventory.stock_balance}:
+ *
+ * <ul>
+ *   <li>{@code on_hand_quantity >= 0}</li>
+ *   <li>{@code reserved_quantity >= 0}</li>
+ *   <li>{@code on_hand_quantity >= reserved_quantity}</li>
+ * </ul>
+ *
+ * <p>The in-memory test harness doesn't enforce these. This test asserts the
+ * writer's SQL plays well with them — specifically that decrementing below
+ * zero raises a CHECK violation (which {@code ShipmentService.post}'s
+ * defence-in-depth validation is supposed to prevent), and that
+ * {@code tryReserveOnHand} returns {@code false} rather than throwing when
+ * insufficient stock is available.
+ */
+class JdbcStockBalanceWriterIT {
+
+    private static final UUID SEED_WAREHOUSE_ID =
+        UUID.fromString("00000000-0000-7000-8000-000000000020");
+
+    private static final PostgreSQLContainer<?> POSTGRES =
+        new PostgreSQLContainer<>(DockerImageName.parse("postgres:17"))
+            .withDatabaseName("northwood_erp")
+            .withUsername("postgres")
+            .withPassword("postgres");
+
+    private static HikariDataSource DATA_SOURCE;
+    private static JdbcTemplate JDBC;
+    private static TransactionTemplate TX;
+    private static JdbcStockBalanceWriter WRITER;
+
+    @BeforeAll
+    static void bootContainerAndSchema() {
+        Startables.deepStart(POSTGRES).join();
+        loadBaseline();
+        DATA_SOURCE = new HikariDataSource();
+        DATA_SOURCE.setJdbcUrl(POSTGRES.getJdbcUrl());
+        DATA_SOURCE.setUsername(POSTGRES.getUsername());
+        DATA_SOURCE.setPassword(POSTGRES.getPassword());
+        DATA_SOURCE.setConnectionInitSql("SET search_path = inventory, shared");
+        JDBC = new JdbcTemplate(DATA_SOURCE);
+        PlatformTransactionManager txm = new DataSourceTransactionManager(DATA_SOURCE);
+        TX = new TransactionTemplate(txm);
+        WRITER = new JdbcStockBalanceWriter(JDBC);
+    }
+
+    private static void loadBaseline() {
+        Path file = Path.of("..", "db", "northwood_erp.sql");
+        String sql;
+        try {
+            sql = Files.readString(file, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new IllegalStateException("Cannot read " + file.toAbsolutePath(), e);
+        }
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             Statement s = c.createStatement()) {
+            s.execute(sql);
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to apply baseline schema", e);
+        }
+    }
+
+    private UUID productId;
+
+    @BeforeEach
+    void freshProduct() {
+        // Fresh UUID per test — stock_balance UNIQUE on (warehouse_id, product_id)
+        // means each test gets its own row without cleanup.
+        productId = UUID.randomUUID();
+    }
+
+    private record Balance(BigDecimal onHand, BigDecimal reserved, long version) {}
+
+    private Balance read() {
+        return JDBC.queryForObject("""
+            SELECT on_hand_quantity, reserved_quantity, version
+              FROM inventory.stock_balance
+             WHERE warehouse_id = ? AND product_id = ?
+            """,
+            (rs, n) -> new Balance(
+                rs.getBigDecimal("on_hand_quantity"),
+                rs.getBigDecimal("reserved_quantity"),
+                rs.getLong("version")
+            ),
+            SEED_WAREHOUSE_ID, productId
+        );
+    }
+
+    @Test
+    void bump_creates_row_on_first_call() {
+        TX.executeWithoutResult(s -> WRITER.bump(SEED_WAREHOUSE_ID, productId, new BigDecimal("10")));
+
+        Balance b = read();
+        assertThat(b.onHand()).isEqualByComparingTo("10");
+        assertThat(b.reserved()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void bump_is_additive_on_existing_row() {
+        TX.executeWithoutResult(s -> WRITER.bump(SEED_WAREHOUSE_ID, productId, new BigDecimal("10")));
+        TX.executeWithoutResult(s -> WRITER.bump(SEED_WAREHOUSE_ID, productId, new BigDecimal("5")));
+
+        Balance b = read();
+        assertThat(b.onHand()).isEqualByComparingTo("15");
+    }
+
+    @Test
+    void tryReserveOnHand_succeeds_when_sufficient_available() {
+        TX.executeWithoutResult(s -> WRITER.bump(SEED_WAREHOUSE_ID, productId, new BigDecimal("10")));
+
+        Boolean ok = TX.execute(s ->
+            WRITER.tryReserveOnHand(SEED_WAREHOUSE_ID, productId, new BigDecimal("4")));
+
+        assertThat(ok).isTrue();
+        Balance b = read();
+        assertThat(b.onHand()).isEqualByComparingTo("10");
+        assertThat(b.reserved()).isEqualByComparingTo("4");
+    }
+
+    @Test
+    void tryReserveOnHand_returns_false_when_insufficient_available() {
+        TX.executeWithoutResult(s -> WRITER.bump(SEED_WAREHOUSE_ID, productId, new BigDecimal("3")));
+
+        Boolean ok = TX.execute(s ->
+            WRITER.tryReserveOnHand(SEED_WAREHOUSE_ID, productId, new BigDecimal("5")));
+
+        // Must return false rather than throw — the saga relies on the boolean
+        // outcome to decide partial/failed branches.
+        assertThat(ok).isFalse();
+        Balance b = read();
+        assertThat(b.reserved()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void decrementOnHandAndReleaseReserved_subtracts_both_columns() {
+        TX.executeWithoutResult(s -> WRITER.bump(SEED_WAREHOUSE_ID, productId, new BigDecimal("10")));
+        TX.executeWithoutResult(s -> WRITER.tryReserveOnHand(SEED_WAREHOUSE_ID, productId, new BigDecimal("4")));
+        TX.executeWithoutResult(s -> WRITER.decrementOnHandAndReleaseReserved(
+            SEED_WAREHOUSE_ID, productId, new BigDecimal("4")));
+
+        Balance b = read();
+        assertThat(b.onHand()).isEqualByComparingTo("6");
+        assertThat(b.reserved()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void decrementOnHandAndReleaseReserved_with_more_shipped_than_reserved_clamps_reserved_at_zero() {
+        TX.executeWithoutResult(s -> WRITER.bump(SEED_WAREHOUSE_ID, productId, new BigDecimal("10")));
+        TX.executeWithoutResult(s -> WRITER.tryReserveOnHand(SEED_WAREHOUSE_ID, productId, new BigDecimal("3")));
+        // Shipping 5 with 3 reserved — reserved capped at 0 via LEAST(...) in SQL.
+        TX.executeWithoutResult(s -> WRITER.decrementOnHandAndReleaseReserved(
+            SEED_WAREHOUSE_ID, productId, new BigDecimal("5")));
+
+        Balance b = read();
+        assertThat(b.onHand()).isEqualByComparingTo("5");
+        assertThat(b.reserved()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void decrementOnHandAndReleaseReserved_below_zero_violates_schema_CHECK() {
+        TX.executeWithoutResult(s -> WRITER.bump(SEED_WAREHOUSE_ID, productId, new BigDecimal("2")));
+
+        // Trying to ship more than on_hand violates CHECK (on_hand_quantity >= 0).
+        // This is the failure mode that the §1B.9 shipment-line product
+        // validation defends against — if a buggy client mismatches productId,
+        // the shipment hits this CHECK eventually.
+        assertThatThrownBy(() ->
+            TX.executeWithoutResult(s -> WRITER.decrementOnHandAndReleaseReserved(
+                SEED_WAREHOUSE_ID, productId, new BigDecimal("5")))
+        )
+            .isInstanceOf(DataIntegrityViolationException.class)
+            .hasMessageContaining("violates check constraint");
+    }
+
+    @Test
+    void releaseReserved_subtracts_reserved_without_touching_on_hand() {
+        TX.executeWithoutResult(s -> WRITER.bump(SEED_WAREHOUSE_ID, productId, new BigDecimal("10")));
+        TX.executeWithoutResult(s -> WRITER.tryReserveOnHand(SEED_WAREHOUSE_ID, productId, new BigDecimal("4")));
+        TX.executeWithoutResult(s -> WRITER.releaseReserved(SEED_WAREHOUSE_ID, productId, new BigDecimal("4")));
+
+        Balance b = read();
+        assertThat(b.onHand()).isEqualByComparingTo("10");
+        assertThat(b.reserved()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void version_bumps_on_each_write() {
+        TX.executeWithoutResult(s -> WRITER.bump(SEED_WAREHOUSE_ID, productId, new BigDecimal("10")));
+        long v1 = read().version();
+        TX.executeWithoutResult(s -> WRITER.bump(SEED_WAREHOUSE_ID, productId, new BigDecimal("5")));
+        long v2 = read().version();
+
+        assertThat(v2).isEqualTo(v1 + 1);
+    }
+}

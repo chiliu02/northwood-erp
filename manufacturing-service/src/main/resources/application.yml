@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: manufacturing-service
+  profiles:
+    default: dev
+  datasource:
+    url: ${MANUFACTURING_DB_URL:jdbc:postgresql://localhost:5432/northwood_erp?currentSchema=manufacturing,shared}
+    username: ${MANUFACTURING_DB_USER:postgres}
+    password: ${MANUFACTURING_DB_PASSWORD:postgres}
+    hikari:
+      pool-name: manufacturing-pool
+      maximum-pool-size: 10
+      connection-init-sql: SET search_path TO manufacturing, shared
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Slice A: every endpoint requires a valid Keycloak JWT.
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/northwood}
+
+server:
+  port: ${MANUFACTURING_PORT:8084}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+
+northwood:
+  outbox:
+    poll-interval: 1000
+  liquibase:
+    enabled: true
+    default-schema: manufacturing
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+logging:
+  level:
+    com.northwood: DEBUG
+    liquibase: INFO

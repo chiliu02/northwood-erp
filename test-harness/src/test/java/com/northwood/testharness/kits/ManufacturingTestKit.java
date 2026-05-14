@@ -1,0 +1,125 @@
+package com.northwood.testharness.kits;
+
+import com.northwood.manufacturing.application.BomEditService;
+import com.northwood.manufacturing.application.MaterialsCostRollupService;
+import com.northwood.manufacturing.application.WorkOrderCancellationService;
+import com.northwood.manufacturing.application.WorkOrderOperationService;
+import com.northwood.manufacturing.application.WorkOrderPrioritisationService;
+import com.northwood.manufacturing.application.WorkOrderReleaseService;
+import com.northwood.manufacturing.application.inbox.ApprovedVendorListChangedHandler;
+import com.northwood.manufacturing.application.inbox.BomActivatedHandler;
+import com.northwood.manufacturing.application.inbox.GoodsReceivedHandler;
+import com.northwood.manufacturing.application.inbox.MakeVsBuyChangedHandler;
+import com.northwood.manufacturing.application.inbox.ManufacturingRequestedHandler;
+import com.northwood.manufacturing.application.inbox.ProductCreatedHandler;
+import com.northwood.manufacturing.application.inbox.RawMaterialsReservedHandler;
+import com.northwood.manufacturing.application.inbox.SalesOrderCancellationRequestedHandler;
+import com.northwood.manufacturing.application.inbox.SupplierProductPriceChangedHandler;
+import com.northwood.manufacturing.infrastructure.saga.JdbcMakeToOrderSagaManager;
+import com.northwood.manufacturing.infrastructure.saga.MakeToOrderSagaWorker;
+import com.northwood.shared.application.security.CurrentUserAccessor;
+import com.northwood.testharness.inmemory.InMemoryInboxPort;
+import com.northwood.testharness.inmemory.InMemoryOutboxPort;
+import com.northwood.testharness.inmemory.NoopPlatformTransactionManager;
+import com.northwood.testharness.inmemory.SynchronousBus;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryBomCycleDetector;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryBomEditRepository;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryBomLookup;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryMakeToOrderSagaPort;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryMakeToOrderShortageRecoveryQueryPort;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryProductActiveBomProjection;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryProductApprovedVendorProjection;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryProductMaterialsCostProjection;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryProductReplenishmentProjection;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryRoutingRepository;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryWorkOrderRepository;
+import org.springframework.transaction.PlatformTransactionManager;
+import tools.jackson.databind.ObjectMapper;
+
+/**
+ * Per-service test composition for manufacturing. Wires every application
+ * service the production wiring uses, plus the make-to-order saga manager,
+ * saga worker shell, and 9 inbox handlers, against in-memory adapters.
+ *
+ * <p>Saga-worker driving: {@link #advanceSagaWorker()} runs one drain pass
+ * via the production worker shell. Test code calls it after seeding sagas
+ * (typically by emitting events through the bus that an inbox handler then
+ * routes to {@code manager.insertStarted}).
+ */
+public final class ManufacturingTestKit {
+
+    public final InMemoryOutboxPort outbox = new InMemoryOutboxPort();
+    public final InMemoryInboxPort inbox = new InMemoryInboxPort();
+
+    public final InMemoryWorkOrderRepository workOrders;
+    public final InMemoryRoutingRepository routings = new InMemoryRoutingRepository();
+    public final InMemoryBomLookup boms = new InMemoryBomLookup();
+    public final InMemoryBomEditRepository bomEdits = new InMemoryBomEditRepository();
+    public final InMemoryBomCycleDetector bomCycleDetector = new InMemoryBomCycleDetector(boms);
+    public final InMemoryMakeToOrderSagaPort sagas = new InMemoryMakeToOrderSagaPort();
+    public final InMemoryProductReplenishmentProjection replenishment = new InMemoryProductReplenishmentProjection();
+    public final InMemoryProductActiveBomProjection activeBoms = new InMemoryProductActiveBomProjection();
+    public final InMemoryProductApprovedVendorProjection approvedVendors = new InMemoryProductApprovedVendorProjection();
+    public final InMemoryProductMaterialsCostProjection materialsCosts = new InMemoryProductMaterialsCostProjection();
+    public final InMemoryMakeToOrderShortageRecoveryQueryPort shortageRecovery;
+
+    public final JdbcMakeToOrderSagaManager sagaManager;
+    public final MakeToOrderSagaWorker sagaWorker;
+    public final WorkOrderReleaseService releaseService;
+    public final WorkOrderOperationService operationService;
+    public final WorkOrderCancellationService cancellationService;
+    public final WorkOrderPrioritisationService prioritisationService;
+    public final MaterialsCostRollupService rollupService;
+    public final BomEditService bomEditService;
+
+    private final String workerId;
+
+    public ManufacturingTestKit(SynchronousBus bus, ObjectMapper json) {
+        this.workOrders = new InMemoryWorkOrderRepository(outbox, json);
+        this.shortageRecovery = new InMemoryMakeToOrderShortageRecoveryQueryPort(sagas, workOrders);
+        PlatformTransactionManager txm = new NoopPlatformTransactionManager();
+        this.sagaManager = new JdbcMakeToOrderSagaManager(sagas, json, txm);
+        this.releaseService = new WorkOrderReleaseService(workOrders, routings, boms, sagaManager);
+
+        CurrentUserAccessor currentUser = new CurrentUserAccessor();
+        this.operationService = new WorkOrderOperationService(
+            workOrders, sagaManager, outbox, json, currentUser
+        );
+        this.cancellationService = new WorkOrderCancellationService(
+            workOrders, sagaManager, outbox, json
+        );
+        this.prioritisationService = new WorkOrderPrioritisationService(
+            workOrders, outbox, json, currentUser
+        );
+        this.rollupService = new MaterialsCostRollupService(
+            replenishment, approvedVendors, materialsCosts, boms,
+            outbox, json, currentUser
+        );
+        this.bomEditService = new BomEditService(bomEdits, bomCycleDetector, rollupService);
+
+        this.sagaWorker = new MakeToOrderSagaWorker(
+            sagaManager, releaseService, workOrders, outbox, json
+        );
+        this.workerId = "manufacturing.mto-test-worker";
+
+        bus.register(outbox);
+        bus.register(new ManufacturingRequestedHandler(inbox, sagaManager, boms, replenishment, outbox, json));
+        bus.register(new RawMaterialsReservedHandler(inbox, sagaManager, workOrders, outbox, json));
+        bus.register(new GoodsReceivedHandler(inbox, sagaManager, shortageRecovery, json));
+        bus.register(new BomActivatedHandler(inbox, activeBoms, rollupService, json));
+        bus.register(new MakeVsBuyChangedHandler(inbox, replenishment, json));
+        bus.register(new ProductCreatedHandler(inbox, replenishment, json));
+        bus.register(new SalesOrderCancellationRequestedHandler(inbox, cancellationService, json));
+        bus.register(new SupplierProductPriceChangedHandler(inbox, rollupService, json));
+        bus.register(new ApprovedVendorListChangedHandler(inbox, approvedVendors, json));
+    }
+
+    /**
+     * Drive the make-to-order saga worker through one drain pass. Picks up
+     * sagas in {@code started} or {@code work_order_created} (advancing each
+     * by one transition).
+     */
+    public void advanceSagaWorker() {
+        sagaWorker.drainOnce(workerId);
+    }
+}

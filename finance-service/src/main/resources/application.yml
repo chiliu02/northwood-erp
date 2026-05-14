@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: finance-service
+  profiles:
+    default: dev
+  datasource:
+    url: ${FINANCE_DB_URL:jdbc:postgresql://localhost:5432/northwood_erp?currentSchema=finance,shared}
+    username: ${FINANCE_DB_USER:postgres}
+    password: ${FINANCE_DB_PASSWORD:postgres}
+    hikari:
+      pool-name: finance-pool
+      maximum-pool-size: 10
+      connection-init-sql: SET search_path TO finance, shared
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Slice A: every endpoint requires a valid Keycloak JWT.
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/northwood}
+
+server:
+  port: ${FINANCE_PORT:8086}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+
+northwood:
+  outbox:
+    poll-interval: 1000
+  liquibase:
+    enabled: true
+    default-schema: finance
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+  finance:
+    match:
+      # 3-way match price-variance tolerance (per cent). An invoice whose
+      # per-line unitPrice differs from the PO line's snapshotted unit_price
+      # by more than this absolute % parks at three_way_match_failed for
+      # manual review. Seed data with PO unit_price = 0 skips the price check
+      # entirely (the quantity-only check still runs).
+      priceTolerancePercent: 2.0
+
+logging:
+  level:
+    com.northwood: DEBUG
+    liquibase: INFO
