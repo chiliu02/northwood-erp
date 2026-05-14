@@ -188,7 +188,7 @@ public class JdbcStockReservationRepository implements StockReservationRepositor
                 ) VALUES (?, ?, ?, ?, ?, ?::jsonb, 'pending', ?)
                 """,
                 event.eventId(),
-                "StockReservation",
+                StockReservation.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),

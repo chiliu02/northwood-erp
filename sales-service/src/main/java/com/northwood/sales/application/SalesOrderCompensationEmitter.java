@@ -60,8 +60,8 @@ public class SalesOrderCompensationEmitter {
         if (cancelledAt == null) {
             log.warn(
                 "emitCompensated sales_order={} could not load SalesOrder.cancelledAt; "
-                    + "stamping SalesOrderCompensated.cancelledAt = now() (audit drift by saga round-trip duration)",
-                salesOrderHeaderId
+                    + "stamping {}.cancelledAt = now() (audit drift by saga round-trip duration)",
+                salesOrderHeaderId, SalesOrderCompensated.EVENT_TYPE
             );
         }
         SalesOrderCompensated event = new SalesOrderCompensated(
@@ -73,7 +73,7 @@ public class SalesOrderCompensationEmitter {
         try {
             outbox.appendPending(OutboxRow.pending(
                 event.eventId(),
-                "SalesOrder",
+                SalesOrder.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),
@@ -82,8 +82,8 @@ public class SalesOrderCompensationEmitter {
                 null
             ));
         } catch (JacksonException e) {
-            throw new IllegalStateException("Failed to serialise SalesOrderCompensated", e);
+            throw new IllegalStateException("Failed to serialise " + SalesOrderCompensated.EVENT_TYPE, e);
         }
-        log.info("emitted SalesOrderCompensated for sales_order={}", salesOrderHeaderId);
+        log.info("emitted {} for sales_order={}", SalesOrderCompensated.EVENT_TYPE, salesOrderHeaderId);
     }
 }

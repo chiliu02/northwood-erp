@@ -3,6 +3,7 @@ package com.northwood.manufacturing.application;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import com.northwood.manufacturing.application.WorkOrderOperationService.WorkOrderNotFoundException;
+import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderRepository;
 import com.northwood.manufacturing.domain.events.WorkOrderPriorityChanged;
@@ -76,7 +77,7 @@ public class WorkOrderPrioritisationService {
         try {
             outbox.appendPending(OutboxRow.pending(
                 event.eventId(),
-                "WorkOrder",
+                WorkOrder.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),
@@ -85,7 +86,7 @@ public class WorkOrderPrioritisationService {
                 currentUser.currentUsername().orElse(null)
             ));
         } catch (JacksonException e) {
-            throw new IllegalStateException("Failed to serialise WorkOrderPriorityChanged", e);
+            throw new IllegalStateException("Failed to serialise " + WorkOrderPriorityChanged.EVENT_TYPE, e);
         }
 
         log.info("set priority of work_order={} to {} (reason={})", workOrderId, priority, reason);

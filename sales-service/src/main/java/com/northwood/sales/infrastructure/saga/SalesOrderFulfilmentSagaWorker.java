@@ -121,7 +121,7 @@ public class SalesOrderFulfilmentSagaWorker {
             lines,
             Instant.now()
         );
-        appendOutbox(event, "SalesOrderFulfilmentSaga", event.aggregateId());
+        appendOutbox(event, SalesOrderFulfilmentSaga.AGGREGATE_TYPE, event.aggregateId());
 
         saga.transitionTo(STOCK_RESERVATION_REQUESTED, "wait_for_stock_reserved");
         saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
@@ -144,8 +144,8 @@ public class SalesOrderFulfilmentSagaWorker {
         boolean hasShortage = !shortageByLineNumber.isEmpty();
 
         if (!hasShortage) {
-            log.warn("[{}] saga {} sales_order={} reached STOCK_RESERVED with no shortage stashed; skipping ManufacturingRequested emission. applyStockReserved should have routed full-reservation outcomes to READY_TO_SHIP.",
-                workerId, saga.sagaId(), salesOrderId);
+            log.warn("[{}] saga {} sales_order={} reached STOCK_RESERVED with no shortage stashed; skipping {} emission. applyStockReserved should have routed full-reservation outcomes to READY_TO_SHIP.",
+                workerId, saga.sagaId(), salesOrderId, ManufacturingRequested.EVENT_TYPE);
             return;
         }
 
@@ -180,7 +180,7 @@ public class SalesOrderFulfilmentSagaWorker {
             lines,
             Instant.now()
         );
-        appendOutbox(event, "SalesOrderFulfilmentSaga", event.aggregateId());
+        appendOutbox(event, SalesOrderFulfilmentSaga.AGGREGATE_TYPE, event.aggregateId());
 
         saga.transitionTo(MANUFACTURING_REQUESTED, "wait_for_work_order_created");
         saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));

@@ -73,7 +73,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
             update(order, actor);
         }
         for (DomainEvent event : order.pullPendingEvents()) {
-            writeOutbox(event, "SalesOrder", actor);
+            writeOutbox(event, SalesOrder.AGGREGATE_TYPE, actor);
         }
     }
 

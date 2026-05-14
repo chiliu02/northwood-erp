@@ -24,6 +24,12 @@ import java.util.UUID;
  */
 public final class StockReservation {
 
+    /**
+     * Wire-format aggregate-type stamped onto {@code inventory.outbox_message.aggregate_type}
+     * for events this aggregate emits.
+     */
+    public static final String AGGREGATE_TYPE = "StockReservation";
+
     // ------------------------------------------------------------
     // Status constants — wire-format strings stored in
     // inventory.stock_reservation_header.status AND carried on

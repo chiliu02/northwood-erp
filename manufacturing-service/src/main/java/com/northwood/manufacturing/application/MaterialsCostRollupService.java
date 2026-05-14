@@ -285,7 +285,7 @@ public class MaterialsCostRollupService {
         try {
             outbox.appendPending(OutboxRow.pending(
                 event.eventId(),
-                "Product",
+                ProductMaterialsCostComputed.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),
@@ -294,10 +294,10 @@ public class MaterialsCostRollupService {
                 currentUser.currentUsername().orElse(null)
             ));
         } catch (JacksonException e) {
-            throw new IllegalStateException("Failed to serialise ProductMaterialsCostComputed", e);
+            throw new IllegalStateException("Failed to serialise " + ProductMaterialsCostComputed.EVENT_TYPE, e);
         }
-        log.info("emitted ProductMaterialsCostComputed product={} cost={} currency={} reason={}",
-            productId, cost, currencyCode, reason);
+        log.info("emitted {} product={} cost={} currency={} reason={}",
+            ProductMaterialsCostComputed.EVENT_TYPE, productId, cost, currencyCode, reason);
 
         // Walk parents: any product whose active BoM lists this product as a
         // line needs to recompute. Parents always have active BoMs by

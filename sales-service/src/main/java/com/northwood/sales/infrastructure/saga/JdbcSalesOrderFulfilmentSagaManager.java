@@ -1,7 +1,5 @@
 package com.northwood.sales.infrastructure.saga;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 import com.northwood.finance.domain.events.CustomerInvoiceCreated;
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
 import com.northwood.inventory.domain.events.ShipmentPosted;
@@ -10,20 +8,24 @@ import com.northwood.manufacturing.domain.events.ManufacturingDispatched;
 import com.northwood.manufacturing.domain.events.WorkOrderCreated;
 import com.northwood.manufacturing.domain.events.WorkOrderManufacturingCompleted;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
+import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaPort;
 import com.northwood.sales.domain.saga.FulfilmentSagaData;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.*;
-import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaPort;
 import com.northwood.shared.application.saga.SagaManager;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.annotation.Transactional;
+
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.*;
 
 /**
  * JDBC-backed sales fulfilment saga manager. Saga state truth — every
@@ -266,22 +268,19 @@ public class JdbcSalesOrderFulfilmentSagaManager
     @Override
     @Transactional
     public String applyInventoryCancellationApplied(UUID salesOrderHeaderId) {
-        return recordCompensationAck(salesOrderHeaderId, true, "inventory");
+        return recordCompensationAck(salesOrderHeaderId, true,
+            com.northwood.inventory.domain.events.SalesOrderCancellationApplied.EVENT_TYPE);
     }
 
     @Override
     @Transactional
     public String applyManufacturingCancellationApplied(UUID salesOrderHeaderId) {
-        return recordCompensationAck(salesOrderHeaderId, false, "manufacturing");
+        return recordCompensationAck(salesOrderHeaderId, false,
+            com.northwood.manufacturing.domain.events.SalesOrderCancellationApplied.EVENT_TYPE);
     }
 
-    private String recordCompensationAck(UUID salesOrderHeaderId, boolean inventorySide, String label) {
-        SalesOrderFulfilmentSaga saga = sagaPort.findBySalesOrderId(salesOrderHeaderId).orElse(null);
-        if (saga == null) {
-            log.warn("no saga for sales_order={} — ignoring {} cancellation ack",
-                salesOrderHeaderId, label);
-            return null;
-        }
+    private String recordCompensationAck(UUID salesOrderHeaderId, boolean inventorySide, String eventName) {
+        SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, eventName);
         FulfilmentSagaData data = inventorySide
             ? readData(saga).withInventoryCancellationAcked()
             : readData(saga).withManufacturingCancellationAcked();
@@ -292,7 +291,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
             saga.transitionTo(COMPENSATED, "cancelled");
             sagaPort.save(saga);
             log.info("saga {} sales_order={} → compensated ({} ack triggered completion)",
-                saga.sagaId(), salesOrderHeaderId, label);
+                saga.sagaId(), salesOrderHeaderId, eventName);
         }
         return saga.state();
     }

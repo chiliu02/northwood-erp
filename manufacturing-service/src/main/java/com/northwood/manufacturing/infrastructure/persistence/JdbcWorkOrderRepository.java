@@ -233,7 +233,7 @@ public class JdbcWorkOrderRepository implements WorkOrderRepository {
                 ) VALUES (?, ?, ?, ?, ?, ?::jsonb, 'pending', ?)
                 """,
                 event.eventId(),
-                "WorkOrder",
+                WorkOrder.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),

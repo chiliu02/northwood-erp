@@ -102,7 +102,7 @@ public class WorkOrderCancellationService {
         try {
             outbox.appendPending(OutboxRow.pending(
                 ack.eventId(),
-                "WorkOrder",
+                WorkOrder.AGGREGATE_TYPE,
                 ack.aggregateId(),
                 ack.eventType(),
                 ack.eventVersion(),
@@ -111,7 +111,7 @@ public class WorkOrderCancellationService {
                 null  // actor: saga-driven; propagation from inbound envelope is a B2 follow-up
             ));
         } catch (JacksonException e) {
-            throw new IllegalStateException("Failed to serialise SalesOrderCancellationApplied", e);
+            throw new IllegalStateException("Failed to serialise " + SalesOrderCancellationApplied.EVENT_TYPE, e);
         }
 
         log.info("cancelled {} work order(s) for sales_order={} (reason={})",

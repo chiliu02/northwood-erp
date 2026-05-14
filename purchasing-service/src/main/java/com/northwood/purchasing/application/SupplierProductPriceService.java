@@ -119,7 +119,7 @@ public class SupplierProductPriceService {
         try {
             outbox.appendPending(OutboxRow.pending(
                 event.eventId(),
-                "SupplierProductPrice",
+                SupplierProductPriceChanged.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),

@@ -81,7 +81,7 @@ public class JdbcMakeToOrderSagaManager
         MakeToOrderSaga saga = sagaPort.findByWorkOrderId(workOrderId)
             .orElseThrow(() -> new IllegalStateException(
                 "No make-to-order saga for work_order_id=" + workOrderId
-                    + "; cannot apply RawMaterialsReserved"
+                    + "; cannot apply " + RawMaterialsReserved.EVENT_TYPE
             ));
 
         if (!RAW_MATERIAL_RESERVATION_REQUESTED.equals(saga.state())) {

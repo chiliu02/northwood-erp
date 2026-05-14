@@ -117,7 +117,7 @@ public class ManufacturingRequestedHandler extends AbstractInboxHandler<Manufact
             payload.salesOrderHeaderId(),
             outcomes,
             Instant.now()
-        ), "SalesOrder", envelope.actorUserId());
+        ), ManufacturingDispatched.AGGREGATE_TYPE, envelope.actorUserId());
 
         log.info("[{}] processed {} ({}) for sales_order_header={} → {}/{} accepted",
             CONSUMER_NAME, envelope.eventType(), envelope.eventId(),

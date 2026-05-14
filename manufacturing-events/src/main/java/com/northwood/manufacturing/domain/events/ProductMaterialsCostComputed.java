@@ -37,5 +37,12 @@ public record ProductMaterialsCostComputed(
 
     public static final String EVENT_TYPE = "manufacturing.ProductMaterialsCostComputed";
 
+    /**
+     * Wire-format aggregate-type. Carried here (not on the Product aggregate
+     * class) because manufacturing-service cannot import product-service Java
+     * classes; the emitting service in manufacturing needs a local reference.
+     */
+    public static final String AGGREGATE_TYPE = "Product";
+
     @Override public String eventType() { return EVENT_TYPE; }
 }

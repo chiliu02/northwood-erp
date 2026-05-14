@@ -27,6 +27,12 @@ import java.util.UUID;
  */
 public final class WorkOrder {
 
+    /**
+     * Wire-format aggregate-type stamped onto {@code manufacturing.outbox_message.aggregate_type}
+     * for events this aggregate emits.
+     */
+    public static final String AGGREGATE_TYPE = "WorkOrder";
+
     // ------------------------------------------------------------
     // Status constants — wire-format strings stored in
     // manufacturing.work_order.status. Lifecycle: released → in_progress →

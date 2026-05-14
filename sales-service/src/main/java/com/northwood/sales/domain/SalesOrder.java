@@ -31,6 +31,14 @@ import java.util.UUID;
  */
 public final class SalesOrder {
 
+    /**
+     * Wire-format aggregate-type stamped onto {@code sales.outbox_message.aggregate_type}
+     * for events this aggregate emits. Same-service outbox writers reference this
+     * constant; cross-service emitters that target this aggregate type carry their own
+     * literal on the event class (see {@code ManufacturingDispatched.AGGREGATE_TYPE}).
+     */
+    public static final String AGGREGATE_TYPE = "SalesOrder";
+
     // ------------------------------------------------------------
     // Status constants — wire-format strings stored in
     // sales.sales_order_header.status. The DB CHECK constraint and event

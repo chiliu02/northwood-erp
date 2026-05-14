@@ -32,6 +32,12 @@ import com.northwood.shared.domain.DomainEvent;
  */
 public class Product {
 
+    /**
+     * Wire-format aggregate-type stamped onto {@code product.outbox_message.aggregate_type}
+     * for events this aggregate emits.
+     */
+    public static final String AGGREGATE_TYPE = "Product";
+
     private final ProductId id;
     private final Sku sku;
     private String name;

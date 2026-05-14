@@ -40,6 +40,14 @@ public record ManufacturingDispatched(
 
     public static final String EVENT_TYPE = "manufacturing.ManufacturingDispatched";
 
+    /**
+     * Wire-format aggregate-type. Carried here (not on the SalesOrder aggregate
+     * class) because manufacturing-service cannot import sales-service Java
+     * classes; the emitter in manufacturing's inbox handler needs a local
+     * reference.
+     */
+    public static final String AGGREGATE_TYPE = "SalesOrder";
+
     @Override public String eventType() { return EVENT_TYPE; }
 
     public record LineOutcome(

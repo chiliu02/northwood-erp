@@ -200,7 +200,7 @@ public class JdbcProductRepository implements ProductRepository {
                 ) VALUES (?, ?, ?, ?, ?, ?::jsonb, 'pending', ?)
                 """,
                 event.eventId(),
-                "Product",
+                Product.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),

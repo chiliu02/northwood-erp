@@ -24,6 +24,13 @@ import java.util.UUID;
  */
 public final class SalesOrderFulfilmentSaga extends SagaInstance {
 
+    /**
+     * Wire-format aggregate-type stamped onto {@code sales.outbox_message.aggregate_type}
+     * for events this saga emits (it owns its emissions independently of the
+     * SalesOrder aggregate; the saga's lifecycle is the originator).
+     */
+    public static final String AGGREGATE_TYPE = "SalesOrderFulfilmentSaga";
+
     // ------------------------------------------------------------
     // State constants — single source of truth for the wire-format strings
     // stored in sales.sales_order_fulfilment_saga.saga_state.

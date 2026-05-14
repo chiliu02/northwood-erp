@@ -102,7 +102,7 @@ public class RawMaterialsReservedHandler extends AbstractInboxHandler<RawMateria
             case RawMaterialsReserved.STATUS_PARTIALLY_RESERVED -> WorkOrder.MATERIAL_PARTIALLY_RESERVED;
             case RawMaterialsReserved.STATUS_FAILED -> WorkOrder.MATERIAL_SHORTAGE;
             default -> throw new IllegalStateException(
-                "Unknown reservation status on RawMaterialsReserved: " + reservationStatus
+                "Unknown reservation status on " + RawMaterialsReserved.EVENT_TYPE + ": " + reservationStatus
             );
         };
     }
@@ -153,7 +153,7 @@ public class RawMaterialsReservedHandler extends AbstractInboxHandler<RawMateria
             DEFAULT_WAREHOUSE,
             shortage,
             Instant.now()
-        ), "WorkOrder", actorUserId);
+        ), WorkOrder.AGGREGATE_TYPE, actorUserId);
     }
 
     private void appendOutbox(DomainEvent event, String aggregateType, String actorUserId) {

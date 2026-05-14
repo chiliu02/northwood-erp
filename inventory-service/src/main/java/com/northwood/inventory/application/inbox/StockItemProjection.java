@@ -2,6 +2,7 @@ package com.northwood.inventory.application.inbox;
 
 import com.northwood.inventory.domain.StockItem;
 import com.northwood.inventory.domain.StockItemRepository;
+import com.northwood.product.domain.events.ReorderPolicyChanged;
 import java.math.BigDecimal;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -53,8 +54,8 @@ public class StockItemProjection {
             item.applyReorderPolicy(reorderPoint, reorderQuantity);
             stockItems.save(item);
         }, () -> log.warn(
-            "ReorderPolicyChanged received for unknown product_id={} — projection skipped",
-            productId
+            "{} received for unknown product_id={} — projection skipped",
+            ReorderPolicyChanged.EVENT_TYPE, productId
         ));
     }
 }

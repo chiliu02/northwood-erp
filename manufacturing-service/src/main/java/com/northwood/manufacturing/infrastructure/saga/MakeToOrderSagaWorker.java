@@ -157,7 +157,7 @@ public class MakeToOrderSagaWorker {
             components,
             Instant.now()
         );
-        appendOutbox(event, "WorkOrder");
+        appendOutbox(event, WorkOrder.AGGREGATE_TYPE);
 
         saga.transitionTo(RAW_MATERIAL_RESERVATION_REQUESTED, "wait_for_raw_materials_reserved");
         saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));

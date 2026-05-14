@@ -229,7 +229,7 @@ public class WorkOrderOperationService {
         try {
             outbox.appendPending(OutboxRow.pending(
                 event.eventId(),
-                "WorkOrder",
+                WorkOrder.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),
@@ -238,10 +238,10 @@ public class WorkOrderOperationService {
                 currentUser.currentUsername().orElse(null)
             ));
         } catch (JacksonException e) {
-            throw new IllegalStateException("Failed to serialise SubAssembliesConsumed", e);
+            throw new IllegalStateException("Failed to serialise " + SubAssembliesConsumed.EVENT_TYPE, e);
         }
-        log.info("emitted SubAssembliesConsumed for parent work_order={} ({} child WO(s))",
-            workOrder.id().value(), items.size());
+        log.info("emitted {} for parent work_order={} ({} child WO(s))",
+            SubAssembliesConsumed.EVENT_TYPE, workOrder.id().value(), items.size());
     }
 
     private void advanceSagaToCompleted(WorkOrder workOrder) {
