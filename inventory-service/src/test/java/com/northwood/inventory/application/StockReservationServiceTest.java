@@ -130,7 +130,9 @@ class StockReservationServiceTest {
             assertThat(saved.lines().get(0).status()).isEqualTo("failed");
         }
 
-        @Test void try_reserve_race_loss_falls_back_to_failed() {
+        @Test void try_reserve_race_loss_exhausts_retries_then_falls_back_to_failed() {
+            // §2.14: tryReserveOnHand always loses the race; bounded retry
+            // exhausts after RESERVE_MAX_ATTEMPTS and falls back to FAILED.
             when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
             when(balanceLookup.findAvailableQuantity(WAREHOUSE, PRODUCT_1)).thenReturn(new BigDecimal("10"));
             when(stockBalances.tryReserveOnHand(WAREHOUSE, PRODUCT_1, new BigDecimal("10"))).thenReturn(false);
@@ -143,6 +145,70 @@ class StockReservationServiceTest {
             assertThat(saved.status()).isEqualTo("failed");
             assertThat(saved.lines().get(0).reservedQuantity()).isEqualByComparingTo("0");
             assertThat(saved.lines().get(0).shortageQuantity()).isEqualByComparingTo("10");
+            verify(stockBalances, times(StockReservationService.RESERVE_MAX_ATTEMPTS))
+                .tryReserveOnHand(WAREHOUSE, PRODUCT_1, new BigDecimal("10"));
+        }
+
+        @Test void try_reserve_recovers_on_retry_after_one_race_loss() {
+            // §2.14: first attempt loses the race; second attempt succeeds at
+            // the original quantity (the winner released some stock back, or
+            // a tight transient race that resolved in our favour on retry).
+            when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+            when(balanceLookup.findAvailableQuantity(WAREHOUSE, PRODUCT_1)).thenReturn(new BigDecimal("10"));
+            when(stockBalances.tryReserveOnHand(WAREHOUSE, PRODUCT_1, new BigDecimal("10")))
+                .thenReturn(false, true);
+
+            service.reserveForSalesOrder(salesPayload("MAIN", new BigDecimal("10")));
+
+            ArgumentCaptor<StockReservation> cap = ArgumentCaptor.forClass(StockReservation.class);
+            verify(reservations).save(cap.capture());
+            StockReservation saved = cap.getValue();
+            assertThat(saved.status()).isEqualTo("reserved");
+            assertThat(saved.lines().get(0).reservedQuantity()).isEqualByComparingTo("10");
+            assertThat(saved.lines().get(0).shortageQuantity()).isEqualByComparingTo("0");
+            verify(stockBalances, times(2))
+                .tryReserveOnHand(WAREHOUSE, PRODUCT_1, new BigDecimal("10"));
+        }
+
+        @Test void try_reserve_retry_clamps_to_shrunk_availability_partial_reserved() {
+            // §2.14: first attempt loses the race; on re-read the winner has
+            // consumed 3 units so only 7 are available — retry succeeds at
+            // the clamped 7, lands PARTIALLY_RESERVED with shortage 3.
+            when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+            when(balanceLookup.findAvailableQuantity(WAREHOUSE, PRODUCT_1))
+                .thenReturn(new BigDecimal("10"), new BigDecimal("7"));
+            when(stockBalances.tryReserveOnHand(WAREHOUSE, PRODUCT_1, new BigDecimal("10"))).thenReturn(false);
+            when(stockBalances.tryReserveOnHand(WAREHOUSE, PRODUCT_1, new BigDecimal("7"))).thenReturn(true);
+
+            service.reserveForSalesOrder(salesPayload("MAIN", new BigDecimal("10")));
+
+            ArgumentCaptor<StockReservation> cap = ArgumentCaptor.forClass(StockReservation.class);
+            verify(reservations).save(cap.capture());
+            StockReservation saved = cap.getValue();
+            assertThat(saved.status()).isEqualTo("partially_reserved");
+            assertThat(saved.lines().get(0).reservedQuantity()).isEqualByComparingTo("7");
+            assertThat(saved.lines().get(0).shortageQuantity()).isEqualByComparingTo("3");
+        }
+
+        @Test void try_reserve_retry_aborts_early_when_availability_drops_to_zero() {
+            // §2.14: first attempt loses the race; on re-read the winner has
+            // consumed everything — no point retrying further. Loop exits with
+            // reserved=0, status FAILED. Only ONE tryReserveOnHand call (the
+            // first), because the re-read short-circuits before attempt 2.
+            when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+            when(balanceLookup.findAvailableQuantity(WAREHOUSE, PRODUCT_1))
+                .thenReturn(new BigDecimal("10"), BigDecimal.ZERO);
+            when(stockBalances.tryReserveOnHand(WAREHOUSE, PRODUCT_1, new BigDecimal("10"))).thenReturn(false);
+
+            service.reserveForSalesOrder(salesPayload("MAIN", new BigDecimal("10")));
+
+            ArgumentCaptor<StockReservation> cap = ArgumentCaptor.forClass(StockReservation.class);
+            verify(reservations).save(cap.capture());
+            StockReservation saved = cap.getValue();
+            assertThat(saved.status()).isEqualTo("failed");
+            assertThat(saved.lines().get(0).reservedQuantity()).isEqualByComparingTo("0");
+            verify(stockBalances, times(1))
+                .tryReserveOnHand(WAREHOUSE, PRODUCT_1, new BigDecimal("10"));
         }
 
         @Test void null_warehouse_code_defaults_to_MAIN() {

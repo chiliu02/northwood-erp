@@ -304,17 +304,9 @@ The 2026-05-13 `@PreAuthorize` → `@RequireXxx` sweep created annotations under
 
 Renamed Java class + wire-format `EVENT_TYPE` together (`"product.BomActivated"` → `"product.ActiveBomChanged"`); handler renamed `BomActivatedHandler` → `ActiveBomChangedHandler`; `CONSUMER_NAME` unchanged. No external subscribers, so the wire break is internal-only. See `dev-done.md`.
 
-### 2.14 `StockReservationService.reserveOneLine` — loop with backoff on lost reservation race
+### 2.14 `StockReservationService.reserveOneLine` — loop with backoff on lost reservation race ✅ shipped 2026-05-14
 
-`StockReservationService#reserveOneLine` calls `StockBalanceWriter.tryReserveOnHand`; if the atomic UPDATE returns 0 rows (lost a race with a concurrent reservation that just consumed the same available stock), the line is currently flagged `FAILED` with the inline comment *"a real implementation would loop with backoff"* (`StockReservationService.java:241-247`). The unlucky caller is told the SKU is unavailable even though, on a re-read after the winner commits, the residual might still satisfy the request (full or partial).
-
-Scope:
-- On `tryReserveOnHand → false`, re-read `StockBalanceLookup.findAvailableQuantity`, recompute `reserved = min(requested, available)`, re-attempt with the new clamp.
-- Bounded retry count (e.g. 3) + exponential backoff (e.g. 10ms → 40ms → 160ms) to dampen sustained contention.
-- On exhaustion, classify the residual the same way as today: `FAILED` if nothing reserved, `PARTIALLY_RESERVED` if some succeeded along the way.
-- Symmetry: same loop applies in both `reserve` (sales) and `reserveForWorkOrder` (manufacturing) since both go through `reserveOneLine`.
-
-**Why not now:** demo workload is single-tenant + low concurrency, so the race window is effectively never hit. Pull forward when a load test or a real demo flow generates two simultaneous reservations against the same SKU.
+Bounded retry loop (3 attempts, 10ms / 40ms / 160ms exponential backoff) on `tryReserveOnHand` race-loss; each retry re-reads available stock and clamps the request against the new value. Sales + manufacturing paths both go through the same private method so they get the loop for free. See `dev-done.md`.
 
 ### 2.15 Sales fulfilment saga: route fully-reserved orders past `manufacturing_requested` ✅ shipped 2026-05-14
 

@@ -221,6 +221,16 @@ public class StockReservationService {
         log.info("cancelled prior reservation {} for work_order={} (retry)", id, workOrderId);
     }
 
+    /**
+     * §2.14: retry budget for a single line's reservation attempt against a
+     * concurrent winner. Demo workload is single-tenant so the race window is
+     * effectively never hit — values are sized for "make a reasonable effort
+     * to recover from a brief race" rather than for production contention,
+     * where they'd likely be tuned via {@code @Value} configuration.
+     */
+    static final int RESERVE_MAX_ATTEMPTS = 3;
+    static final long[] RESERVE_BACKOFF_MS = { 10L, 40L, 160L };
+
     private StockReservationLine reserveOneLine(
         UUID warehouseId,
         UUID lineId,
@@ -229,23 +239,50 @@ public class StockReservationService {
         String productName,
         BigDecimal requested
     ) {
-        BigDecimal available = balanceLookup.findAvailableQuantity(warehouseId, productId);
-        BigDecimal reserved = available.compareTo(requested) >= 0 ? requested : available.max(BigDecimal.ZERO);
+        // §2.14: bounded retry with exponential backoff on lost-race against
+        // a concurrent reservation. Each attempt re-reads available stock
+        // and clamps the request to it — the winner of a race shrinks
+        // (or zeroes) what's left on the next read, and we accept whatever
+        // residual the retry can still secure.
+        //
+        // Termination paths:
+        //   - tryReserveOnHand returns true → loop exits with that quantity.
+        //   - available reads as zero (no stock left) → no point retrying; exit.
+        //   - all RESERVE_MAX_ATTEMPTS exhausted → reserved stays at 0, status
+        //     becomes FAILED below (same outcome as the pre-§2.14 single-shot
+        //     code on race-loss).
+        BigDecimal reserved = BigDecimal.ZERO;
+        for (int attempt = 0; attempt < RESERVE_MAX_ATTEMPTS; attempt++) {
+            BigDecimal available = balanceLookup.findAvailableQuantity(warehouseId, productId);
+            BigDecimal toReserve = available.compareTo(requested) >= 0 ? requested : available.max(BigDecimal.ZERO);
+
+            if (toReserve.signum() == 0) {
+                // No stock left at all — not a race, just empty. Don't retry.
+                break;
+            }
+
+            if (stockBalances.tryReserveOnHand(warehouseId, productId, toReserve)) {
+                reserved = toReserve;
+                break;
+            }
+
+            // Lost a race with a concurrent reservation. Back off and retry.
+            log.debug("tryReserveOnHand lost race on product={} attempt={}/{} — backing off {}ms",
+                productId, attempt + 1, RESERVE_MAX_ATTEMPTS, RESERVE_BACKOFF_MS[attempt]);
+            if (attempt < RESERVE_MAX_ATTEMPTS - 1) {
+                try {
+                    Thread.sleep(RESERVE_BACKOFF_MS[attempt]);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+
         BigDecimal shortage = requested.subtract(reserved);
         String status = shortage.signum() == 0 ? StockReservation.RESERVED
             : reserved.signum() == 0 ? StockReservation.FAILED
             : StockReservation.PARTIALLY_RESERVED;
-
-        if (reserved.signum() > 0) {
-            boolean ok = stockBalances.tryReserveOnHand(warehouseId, productId, reserved);
-            if (!ok) {
-                // Lost a race with another reservation. Treat as failed for
-                // the slice; a real implementation would loop with backoff.
-                reserved = BigDecimal.ZERO;
-                shortage = requested;
-                status = StockReservation.FAILED;
-            }
-        }
 
         return new StockReservationLine(
             lineId,

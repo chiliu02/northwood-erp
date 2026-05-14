@@ -6,6 +6,32 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-14 — §2.14 `StockReservationService.reserveOneLine` — bounded retry with backoff on lost race
+
+Replaces the previous single-shot-then-fail behaviour of `StockReservationService#reserveOneLine` with a bounded retry loop. Before this slice, if the atomic `StockBalanceWriter.tryReserveOnHand` UPDATE returned 0 rows (lost a race to a concurrent reservation that consumed the same available stock), the line was classified `FAILED` immediately and a TODO comment noted *"a real implementation would loop with backoff"*. The unlucky caller was told the SKU was unavailable even though, on a re-read after the winner committed, residual stock could still have satisfied the request — fully or partially.
+
+### Changes
+
+- **`reserveOneLine` is now a retry loop** with `RESERVE_MAX_ATTEMPTS = 3` and `RESERVE_BACKOFF_MS = {10, 40, 160}` (package-private static so future load testing can tune in one spot; values sized for "modest effort to recover from a brief race" given the single-tenant demo workload, not for production contention — those would likely move to `@Value` config).
+- Each retry **re-reads** `StockBalanceLookup.findAvailableQuantity` and recomputes `toReserve = min(requested, available)` — the winner of the previous race may have shrunk or zeroed what's left, and we accept whatever residual the retry can still secure.
+- **Early termination** if `available` drops to `0` between retries (no point sleeping for stock that's already gone). Loop also exits early on `Thread.interrupt()` (interrupted thread re-asserted via `Thread.currentThread().interrupt()` before the loop break).
+- **Sales + manufacturing paths both benefit** — `reserveForSalesOrder` and `reserveForWorkOrder` are both thin wrappers over `reserveOneLine`, so the retry loop is shared.
+
+### Tests
+
+- Existing `try_reserve_race_loss_falls_back_to_failed` renamed to `try_reserve_race_loss_exhausts_retries_then_falls_back_to_failed`. Still asserts the same end state (`status='failed'`, `reserved=0`, `shortage=10`), and now also verifies `tryReserveOnHand` was called `RESERVE_MAX_ATTEMPTS` times. ~210ms test latency from the real `Thread.sleep` backoff is acceptable.
+- New `try_reserve_recovers_on_retry_after_one_race_loss` — first attempt returns false, second succeeds at the original quantity; status lands `reserved`.
+- New `try_reserve_retry_clamps_to_shrunk_availability_partial_reserved` — first attempt loses; re-read shows availability dropped 10 → 7; retry succeeds at the clamped 7; status lands `partially_reserved` with `shortage=3`.
+- New `try_reserve_retry_aborts_early_when_availability_drops_to_zero` — first attempt loses; re-read shows availability dropped to 0; loop short-circuits with status `failed` after exactly 1 `tryReserveOnHand` call (verifies the no-point-retrying-if-empty branch).
+
+inventory-service suite 78/78 green; full reactor + harness flows green.
+
+### Trade-off
+
+`Thread.sleep` blocks the request thread for up to 210ms in the worst case (all 3 retries exhaust). For interactive sales-order placement this is fine — even the worst case is well under a typical HTTP timeout. For batch reservation paths (e.g. shortage-driven workflows fanning out) a non-blocking retry would be the next step; not warranted today since the racing case is rare and the timing parameters are an order of magnitude under any UX threshold.
+
+---
+
 ## 2026-05-14 — §2.13 Rename `BomActivated` → `ActiveBomChanged`
 
 The old name implied activation only, but `Product.activateBom(UUID)` accepts a `null` `newBomHeaderId` to drive deactivation (and the projection plus all consumers handle the null path correctly today). A reader seeing the event name in isolation reasonably assumed it fired only for activation — that misalignment is what this slice fixes.
