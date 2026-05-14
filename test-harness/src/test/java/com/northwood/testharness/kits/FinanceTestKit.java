@@ -17,7 +17,7 @@ import com.northwood.testharness.inmemory.finance.InMemoryCustomerInvoiceReposit
 import com.northwood.testharness.inmemory.finance.InMemoryGlAccountLookup;
 import com.northwood.testharness.inmemory.finance.InMemoryJournalEntryRepository;
 import com.northwood.testharness.inmemory.finance.InMemoryPaymentRepository;
-import com.northwood.testharness.inmemory.finance.InMemoryPoLineFactsProjection;
+import com.northwood.testharness.inmemory.finance.InMemoryPurchaseOrderLineFactsProjection;
 import com.northwood.testharness.inmemory.finance.InMemoryProductStandardCostProjection;
 import com.northwood.testharness.inmemory.finance.InMemoryProductValuationClassProjection;
 import com.northwood.testharness.inmemory.finance.InMemorySupplierInvoiceRepository;
@@ -32,7 +32,7 @@ import tools.jackson.databind.ObjectMapper;
  * finance inbox handlers.
  *
  * <p>Finance has no sagas; the only state carried in the kit is the
- * inbox-driven projections (PoLineFacts, ProductValuationClass,
+ * inbox-driven projections (PurchaseOrderLineFacts, ProductValuationClass,
  * ProductStandardCost) plus the four aggregate repositories.
  *
  * <p>The {@code maintain_allocation_totals} DB trigger isn't modelled in
@@ -53,7 +53,7 @@ public final class FinanceTestKit {
     public final InMemoryGlAccountLookup glAccounts = new InMemoryGlAccountLookup();
     public final InMemoryProductValuationClassProjection valuationClasses = new InMemoryProductValuationClassProjection();
     public final InMemoryProductStandardCostProjection standardCosts = new InMemoryProductStandardCostProjection();
-    public final InMemoryPoLineFactsProjection poLineFacts = new InMemoryPoLineFactsProjection();
+    public final InMemoryPurchaseOrderLineFactsProjection purchaseOrderLineFacts = new InMemoryPurchaseOrderLineFactsProjection();
 
     public final JournalEntryService journalService;
     public final CustomerInvoiceService customerInvoiceService;
@@ -75,7 +75,7 @@ public final class FinanceTestKit {
         );
         this.customerInvoiceService = new CustomerInvoiceService(customerInvoices, journalService);
         this.supplierInvoiceService = new SupplierInvoiceService(
-            supplierInvoices, poLineFacts, journalService, new BigDecimal("2.0")
+            supplierInvoices, purchaseOrderLineFacts, journalService, new BigDecimal("2.0")
         );
         this.paymentService = new PaymentService(
             payments, supplierInvoices, customerInvoices, journalService
@@ -84,8 +84,8 @@ public final class FinanceTestKit {
         bus.register(outbox);
         bus.register(new SalesOrderShippedHandler(inbox, customerInvoiceService, json));
         bus.register(new ShipmentPostedCogsHandler(inbox, journalService, standardCosts, json));
-        bus.register(new GoodsReceivedHandler(inbox, poLineFacts, journalService, json));
-        bus.register(new PurchaseOrderCreatedHandler(inbox, poLineFacts, json));
+        bus.register(new GoodsReceivedHandler(inbox, purchaseOrderLineFacts, journalService, json));
+        bus.register(new PurchaseOrderCreatedHandler(inbox, purchaseOrderLineFacts, json));
         bus.register(new StandardCostChangedHandler(inbox, standardCosts, json));
         bus.register(new ValuationClassChangedHandler(inbox, valuationClasses, json));
     }

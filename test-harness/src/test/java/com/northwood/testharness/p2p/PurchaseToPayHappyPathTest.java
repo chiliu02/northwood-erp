@@ -87,11 +87,11 @@ class PurchaseToPayHappyPathTest {
         PurchaseToPaySaga sagaWaiting = purchasing.sagas.findByPurchaseOrderId(po.id().value()).orElseThrow();
         assertThat(sagaWaiting.state()).isEqualTo(PurchaseToPaySaga.WAITING_FOR_GOODS);
 
-        // Drain so finance.PoLineFactsHandler seeds po_line_facts (from PurchaseOrderCreated).
+        // Drain so finance.PurchaseOrderCreatedHandler seeds po_line_facts (from PurchaseOrderCreated).
         bus.drain();
 
         // Step 4: inject inventory.GoodsReceived. The receipt line maps to the
-        // PO line by purchaseOrderLineId so finance's PoLineFactsHandler bumps
+        // PO line by purchaseOrderLineId so finance's GoodsReceivedHandler bumps
         // received_quantity and the 3-way match later passes.
         PurchaseOrderLine poLine = po.lines().get(0);
         UUID receiptHeaderId = UUID.randomUUID();

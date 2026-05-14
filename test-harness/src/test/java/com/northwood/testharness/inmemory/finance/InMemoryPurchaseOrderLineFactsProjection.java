@@ -1,12 +1,12 @@
 package com.northwood.testharness.inmemory.finance;
 
-import com.northwood.finance.application.inbox.PoLineFactsProjection;
+import com.northwood.finance.application.inbox.PurchaseOrderLineFactsProjection;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-public final class InMemoryPoLineFactsProjection implements PoLineFactsProjection {
+public final class InMemoryPurchaseOrderLineFactsProjection implements PurchaseOrderLineFactsProjection {
 
     private static final class Row {
         UUID purchaseOrderHeaderId;
@@ -25,7 +25,7 @@ public final class InMemoryPoLineFactsProjection implements PoLineFactsProjectio
     private final Map<UUID, Row> byPoLineId = new HashMap<>();
 
     @Override
-    public void applyPoCreated(
+    public void applyPurchaseOrderCreated(
         UUID purchaseOrderHeaderId, UUID supplierId, String supplierName,
         String currencyCode, UUID purchaseOrderLineId,
         UUID productId, String productSku, String productName,

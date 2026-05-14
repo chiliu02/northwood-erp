@@ -32,12 +32,12 @@ public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
 
     public static final String CONSUMER_NAME = "finance.po-line-facts.goods-received";
 
-    private final PoLineFactsProjection projection;
+    private final PurchaseOrderLineFactsProjection projection;
     private final JournalEntryService journals;
 
     public GoodsReceivedHandler(
         InboxPort inbox,
-        PoLineFactsProjection projection,
+        PurchaseOrderLineFactsProjection projection,
         JournalEntryService journals,
         ObjectMapper json
     ) {

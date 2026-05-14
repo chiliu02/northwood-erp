@@ -29,7 +29,7 @@ class PurchaseOrderCreatedHandlerTest {
     private static final UUID SUPPLIER = UUID.randomUUID();
 
     @Mock InboxPort inbox;
-    @Mock PoLineFactsProjection projection;
+    @Mock PurchaseOrderLineFactsProjection projection;
 
     private final ObjectMapper json = new ObjectMapper();
     private PurchaseOrderCreatedHandler handler;
@@ -64,7 +64,7 @@ class PurchaseOrderCreatedHandlerTest {
     @Test void seeds_one_projection_row_per_line() {
         handler.handle(event(List.of(line(10, "5.00"), line(20, "12.00"))));
 
-        verify(projection, times(2)).applyPoCreated(
+        verify(projection, times(2)).applyPurchaseOrderCreated(
             eq(PO), eq(SUPPLIER), eq("Acme"), eq("AUD"),
             any(), any(), any(), any(), any(), any()
         );

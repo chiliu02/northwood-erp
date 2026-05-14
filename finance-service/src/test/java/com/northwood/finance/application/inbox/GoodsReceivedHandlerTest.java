@@ -33,7 +33,7 @@ class GoodsReceivedHandlerTest {
     private static final UUID GR = UUID.randomUUID();
 
     @Mock InboxPort inbox;
-    @Mock PoLineFactsProjection projection;
+    @Mock PurchaseOrderLineFactsProjection projection;
     @Mock JournalEntryService journals;
 
     private final ObjectMapper json = new ObjectMapper();

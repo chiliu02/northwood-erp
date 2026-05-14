@@ -2,8 +2,8 @@ package com.northwood.finance.application;
 
 import com.northwood.finance.application.dto.RecordSupplierInvoiceCommand;
 import com.northwood.finance.application.dto.SupplierInvoiceView;
-import com.northwood.finance.application.inbox.PoLineFactsProjection;
-import com.northwood.finance.application.inbox.PoLineFactsProjection.LineFacts;
+import com.northwood.finance.application.inbox.PurchaseOrderLineFactsProjection;
+import com.northwood.finance.application.inbox.PurchaseOrderLineFactsProjection.LineFacts;
 import com.northwood.finance.domain.SupplierInvoice;
 import com.northwood.finance.domain.SupplierInvoiceId;
 import com.northwood.finance.domain.SupplierInvoiceLine;
@@ -58,18 +58,18 @@ public class SupplierInvoiceService {
     private static final Logger log = LoggerFactory.getLogger(SupplierInvoiceService.class);
 
     private final SupplierInvoiceRepository supplierInvoices;
-    private final PoLineFactsProjection poFacts;
+    private final PurchaseOrderLineFactsProjection purchaseOrderLineFacts;
     private final JournalEntryService journals;
     private final BigDecimal priceTolerancePercent;
 
     public SupplierInvoiceService(
         SupplierInvoiceRepository supplierInvoices,
-        PoLineFactsProjection poFacts,
+        PurchaseOrderLineFactsProjection purchaseOrderLineFacts,
         JournalEntryService journals,
         @Value("${northwood.finance.match.priceTolerancePercent:2.0}") BigDecimal priceTolerancePercent
     ) {
         this.supplierInvoices = supplierInvoices;
-        this.poFacts = poFacts;
+        this.purchaseOrderLineFacts = purchaseOrderLineFacts;
         this.journals = journals;
         this.priceTolerancePercent = priceTolerancePercent;
     }
@@ -128,7 +128,7 @@ public class SupplierInvoiceService {
         if ("matched".equals(matchOutcome)) {
             // Bump invoiced_quantity on the projection so a subsequent invoice
             // for the same PO sees the cumulative figure.
-            invoicedByPoLine.forEach(poFacts::bumpInvoiced);
+            invoicedByPoLine.forEach(purchaseOrderLineFacts::bumpInvoiced);
 
             // Phase 5b: post the GL pair (Dr COGS, Cr AP) in the same txn.
             journals.postSupplierInvoiceApproval(
@@ -159,7 +159,7 @@ public class SupplierInvoiceService {
         for (RecordSupplierInvoiceCommand.Line line : invoiceLines) {
             UUID poLineId = line.purchaseOrderLineId();
             if (poLineId == null) continue;  // caught in the cumulative pass below
-            LineFacts facts = poFacts.findByLineId(poLineId);
+            LineFacts facts = purchaseOrderLineFacts.findByLineId(poLineId);
             if (facts == null) continue;     // caught in the cumulative pass below
             if (priceVariesOutsideTolerance(line.unitPrice(), facts.unitPrice())) {
                 log.warn("invoice line price {} varies from PO line price {} by more than {}% for po_line={}",
@@ -177,7 +177,7 @@ public class SupplierInvoiceService {
                 log.warn("invoice line missing purchase_order_line_id; cannot 3-way match");
                 return SupplierInvoice.MATCH_FAILED;
             }
-            LineFacts facts = poFacts.findByLineId(poLineId);
+            LineFacts facts = purchaseOrderLineFacts.findByLineId(poLineId);
             if (facts == null) {
                 log.warn("no po_line_facts for purchase_order_line_id={}; PO event may not have arrived", poLineId);
                 return SupplierInvoice.MATCH_FAILED;
@@ -234,7 +234,7 @@ public class SupplierInvoiceService {
         // were saved when the invoice was first recorded (the PR row).
         for (SupplierInvoiceLine l : invoice.lines()) {
             if (l.purchaseOrderLineId() == null) continue;
-            poFacts.bumpInvoiced(l.purchaseOrderLineId(), l.quantity());
+            purchaseOrderLineFacts.bumpInvoiced(l.purchaseOrderLineId(), l.quantity());
         }
 
         journals.postSupplierInvoiceApproval(

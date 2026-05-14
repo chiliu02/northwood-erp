@@ -1,6 +1,6 @@
 package com.northwood.finance.infrastructure.persistence;
 
-import com.northwood.finance.application.inbox.PoLineFactsProjection;
+import com.northwood.finance.application.inbox.PurchaseOrderLineFactsProjection;
 import java.math.BigDecimal;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -10,19 +10,19 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-public class JdbcPoLineFactsProjection implements PoLineFactsProjection {
+public class JdbcPurchaseOrderLineFactsProjection implements PurchaseOrderLineFactsProjection {
 
-    private static final Logger log = LoggerFactory.getLogger(JdbcPoLineFactsProjection.class);
+    private static final Logger log = LoggerFactory.getLogger(JdbcPurchaseOrderLineFactsProjection.class);
 
     private final JdbcTemplate jdbc;
 
-    public JdbcPoLineFactsProjection(JdbcTemplate jdbc) {
+    public JdbcPurchaseOrderLineFactsProjection(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
     @Override
     @Transactional
-    public void applyPoCreated(
+    public void applyPurchaseOrderCreated(
         UUID purchaseOrderHeaderId,
         UUID supplierId,
         String supplierName,

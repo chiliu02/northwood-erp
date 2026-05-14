@@ -7,7 +7,7 @@ import java.util.UUID;
  * Maintains {@code finance.purchase_order_line_facts}. Two write paths:
  *
  * <ul>
- *   <li>{@link #applyPoCreated} — seeds a row from each PO line on
+ *   <li>{@link #applyPurchaseOrderCreated} — seeds a row from each PO line on
  *       {@code purchasing.PurchaseOrderCreated}. Uses
  *       {@code ON CONFLICT DO UPDATE} so a redelivered event is safe.</li>
  *   <li>{@link #applyGoodsReceived} — bumps {@code received_quantity}
@@ -20,11 +20,11 @@ import java.util.UUID;
  * posts.
  *
  * <p>Application-side port; JDBC implementation lives in
- * {@code infrastructure/persistence/JdbcPoLineFactsProjection}.
+ * {@code infrastructure/persistence/JdbcPurchaseOrderLineFactsProjection}.
  */
-public interface PoLineFactsProjection {
+public interface PurchaseOrderLineFactsProjection {
 
-    void applyPoCreated(
+    void applyPurchaseOrderCreated(
         UUID purchaseOrderHeaderId,
         UUID supplierId,
         String supplierName,

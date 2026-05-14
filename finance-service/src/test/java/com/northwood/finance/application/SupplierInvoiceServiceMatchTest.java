@@ -9,8 +9,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.northwood.finance.application.dto.RecordSupplierInvoiceCommand;
-import com.northwood.finance.application.inbox.PoLineFactsProjection;
-import com.northwood.finance.application.inbox.PoLineFactsProjection.LineFacts;
+import com.northwood.finance.application.inbox.PurchaseOrderLineFactsProjection;
+import com.northwood.finance.application.inbox.PurchaseOrderLineFactsProjection.LineFacts;
 import com.northwood.finance.domain.SupplierInvoice;
 import com.northwood.finance.domain.SupplierInvoiceRepository;
 import java.math.BigDecimal;
@@ -39,16 +39,16 @@ class SupplierInvoiceServiceMatchTest {
     private static final BigDecimal TOLERANCE_2_PERCENT = new BigDecimal("2.0");
 
     private SupplierInvoiceRepository invoices;
-    private PoLineFactsProjection poFacts;
+    private PurchaseOrderLineFactsProjection purchaseOrderLineFacts;
     private JournalEntryService journals;
     private SupplierInvoiceService service;
 
     @BeforeEach
     void setUp() {
         invoices = Mockito.mock(SupplierInvoiceRepository.class);
-        poFacts = Mockito.mock(PoLineFactsProjection.class);
+        purchaseOrderLineFacts = Mockito.mock(PurchaseOrderLineFactsProjection.class);
         journals = Mockito.mock(JournalEntryService.class);
-        service = new SupplierInvoiceService(invoices, poFacts, journals, TOLERANCE_2_PERCENT);
+        service = new SupplierInvoiceService(invoices, purchaseOrderLineFacts, journals, TOLERANCE_2_PERCENT);
     }
 
     private LineFacts factsWith(BigDecimal poUnitPrice, BigDecimal received, BigDecimal alreadyInvoiced) {
@@ -87,7 +87,7 @@ class SupplierInvoiceServiceMatchTest {
     class PriceVariance {
 
         @Test void exact_price_match_within_tolerance_passes() {
-            when(poFacts.findByLineId(PO_LINE))
+            when(purchaseOrderLineFacts.findByLineId(PO_LINE))
                 .thenReturn(factsWith(new BigDecimal("100.00"), new BigDecimal("5"), BigDecimal.ZERO));
 
             service.recordInvoice(command(new BigDecimal("5"), new BigDecimal("100.00")));
@@ -98,7 +98,7 @@ class SupplierInvoiceServiceMatchTest {
 
         @Test void price_just_under_tolerance_passes() {
             // 1.5% variance < 2.0% → ok
-            when(poFacts.findByLineId(PO_LINE))
+            when(purchaseOrderLineFacts.findByLineId(PO_LINE))
                 .thenReturn(factsWith(new BigDecimal("100.00"), new BigDecimal("5"), BigDecimal.ZERO));
 
             service.recordInvoice(command(new BigDecimal("5"), new BigDecimal("101.50")));
@@ -108,7 +108,7 @@ class SupplierInvoiceServiceMatchTest {
 
         @Test void price_at_tolerance_boundary_passes() {
             // 2.0% variance == 2.0% → not "outside" tolerance
-            when(poFacts.findByLineId(PO_LINE))
+            when(purchaseOrderLineFacts.findByLineId(PO_LINE))
                 .thenReturn(factsWith(new BigDecimal("100.00"), new BigDecimal("5"), BigDecimal.ZERO));
 
             service.recordInvoice(command(new BigDecimal("5"), new BigDecimal("102.00")));
@@ -118,19 +118,19 @@ class SupplierInvoiceServiceMatchTest {
 
         @Test void price_just_above_tolerance_fails_match() {
             // 3% variance > 2% → fails match, parks at three_way_match_failed
-            when(poFacts.findByLineId(PO_LINE))
+            when(purchaseOrderLineFacts.findByLineId(PO_LINE))
                 .thenReturn(factsWith(new BigDecimal("100.00"), new BigDecimal("5"), BigDecimal.ZERO));
 
             service.recordInvoice(command(new BigDecimal("5"), new BigDecimal("103.00")));
 
             assertThat(savedInvoice().status()).isEqualTo("three_way_match_failed");
             verify(journals, never()).postSupplierInvoiceApproval(any(), any(), any(), any(), any(), any());
-            verify(poFacts, never()).bumpInvoiced(eq(PO_LINE), any());
+            verify(purchaseOrderLineFacts, never()).bumpInvoiced(eq(PO_LINE), any());
         }
 
         @Test void supplier_charges_lower_outside_tolerance_also_fails() {
             // -10% variance > 2% → fails (we use abs)
-            when(poFacts.findByLineId(PO_LINE))
+            when(purchaseOrderLineFacts.findByLineId(PO_LINE))
                 .thenReturn(factsWith(new BigDecimal("100.00"), new BigDecimal("5"), BigDecimal.ZERO));
 
             service.recordInvoice(command(new BigDecimal("5"), new BigDecimal("90.00")));
@@ -141,7 +141,7 @@ class SupplierInvoiceServiceMatchTest {
         @Test void zero_po_unit_price_skips_price_check_quantity_still_runs() {
             // PO unit_price = 0 (e.g. seed data without a price). Price check
             // is skipped; quantity-only check still runs.
-            when(poFacts.findByLineId(PO_LINE))
+            when(purchaseOrderLineFacts.findByLineId(PO_LINE))
                 .thenReturn(factsWith(BigDecimal.ZERO, new BigDecimal("5"), BigDecimal.ZERO));
 
             service.recordInvoice(command(new BigDecimal("5"), new BigDecimal("100.00")));
@@ -150,7 +150,7 @@ class SupplierInvoiceServiceMatchTest {
         }
 
         @Test void price_outside_tolerance_takes_precedence_over_quantity_pass() {
-            when(poFacts.findByLineId(PO_LINE))
+            when(purchaseOrderLineFacts.findByLineId(PO_LINE))
                 .thenReturn(factsWith(new BigDecimal("100.00"), new BigDecimal("10"), BigDecimal.ZERO));
 
             // qty 5 ≤ received 10 (would pass quantity), but price 110 vs 100 = 10% (fails)

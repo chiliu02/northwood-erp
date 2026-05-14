@@ -17,11 +17,11 @@ public class PurchaseOrderCreatedHandler extends AbstractInboxHandler<PurchaseOr
 
     public static final String CONSUMER_NAME = "finance.po-line-facts.po-created";
 
-    private final PoLineFactsProjection projection;
+    private final PurchaseOrderLineFactsProjection projection;
 
     public PurchaseOrderCreatedHandler(
         InboxPort inbox,
-        PoLineFactsProjection projection,
+        PurchaseOrderLineFactsProjection projection,
         ObjectMapper json
     ) {
         super(inbox, json, PurchaseOrderCreated.class, PurchaseOrderCreated.EVENT_TYPE, CONSUMER_NAME);
@@ -31,7 +31,7 @@ public class PurchaseOrderCreatedHandler extends AbstractInboxHandler<PurchaseOr
     @Override
     protected void apply(PurchaseOrderCreated payload, EventEnvelope envelope) {
         for (PurchaseOrderCreated.OrderLine line : payload.lines()) {
-            projection.applyPoCreated(
+            projection.applyPurchaseOrderCreated(
                 payload.aggregateId(),
                 payload.supplierId(),
                 payload.supplierName(),
