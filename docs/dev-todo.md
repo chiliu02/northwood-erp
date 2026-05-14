@@ -156,7 +156,7 @@ User wants to drive the README's tone and voice themselves (it's a public-facing
 `ProductDiscontinued` is emitted by product-service but has zero consumers, so sales / purchasing / manufacturing / reporting / inventory all silently keep treating discontinued products as live. Five handlers needed (each in its own service's inbox):
 
 - ~~`sales.product-discontinued` — flag the product (add `discontinued_at` to `sales.product_pricing` or a parallel `sales.product_status` projection); reject `placeOrder` lines for discontinued products.~~ **Shipped 2026-05-14.**
-- `manufacturing.product-discontinued` — set `manufacturing.product_replenishment.is_purchased=false, is_manufactured=false` (existing rejection path covers it then); clear `manufacturing.product_active_bom` (drives `BomActivated` with `newBomHeaderId=null` — see §2.13).
+- ~~`manufacturing.product-discontinued` — set `manufacturing.product_replenishment.is_purchased=false, is_manufactured=false` (existing rejection path covers it then); clear `manufacturing.product_active_bom` (drives `BomActivated` with `newBomHeaderId=null` — see §2.13).~~ **Shipped 2026-05-14.**
 - `purchasing.product-discontinued` — block new POs/PRs for the product.
 - `reporting.atp.product-discontinued` — stamp `discontinued_at` on `reporting.available_to_promise_view` so the UI can grey-out / filter.
 - `inventory.product-discontinued` — suppress reorder alerts in `inventory.stock_item`.

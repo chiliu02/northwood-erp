@@ -27,6 +27,11 @@ public final class InMemoryProductReplenishmentProjection implements ProductRepl
     }
 
     @Override
+    public void applyDiscontinued(UUID productId) {
+        byProductId.put(productId, new Replenishment(false, false));
+    }
+
+    @Override
     public Optional<Replenishment> findByProductId(UUID productId) {
         return Optional.ofNullable(byProductId.get(productId));
     }

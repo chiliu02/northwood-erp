@@ -53,6 +53,13 @@ public class JdbcProductReplenishmentProjection implements ProductReplenishmentP
     }
 
     @Override
+    @Transactional
+    public void applyDiscontinued(UUID productId) {
+        applyMakeVsBuy(productId, false, false);
+        log.info("discontinued manufacturing.product_replenishment for product_id={}", productId);
+    }
+
+    @Override
     public Optional<Replenishment> findByProductId(UUID productId) {
         try {
             return Optional.ofNullable(jdbc.queryForObject(

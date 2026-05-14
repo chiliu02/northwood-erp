@@ -35,6 +35,17 @@ public interface ProductReplenishmentProjection {
 
     void applyMakeVsBuy(UUID productId, boolean isPurchased, boolean isManufactured);
 
+    /**
+     * §1F.1: retire the product from manufacturing. Flips both flags to
+     * {@code false} so {@code ManufacturingRequestedHandler}'s
+     * {@code !isManufactured()} guard rejects subsequent lines, and so the
+     * cost-rollup engine treats the product as buy-blocked too. Equivalent
+     * to {@code applyMakeVsBuy(productId, false, false)} — the dedicated
+     * method exists so the call site reads "discontinue" rather than
+     * "make-vs-buy with both off", which is a semantically different signal.
+     */
+    void applyDiscontinued(UUID productId);
+
     Optional<Replenishment> findByProductId(UUID productId);
 
     record Replenishment(boolean isPurchased, boolean isManufactured) {}

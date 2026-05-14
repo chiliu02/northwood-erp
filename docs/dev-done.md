@@ -6,6 +6,29 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-14 — §1F.1 manufacturing: ProductDiscontinued consumer (replenishment + active BOM)
+
+Second of five §1F.1 service-level slices. Manufacturing retires the product across two read-side rows:
+- `manufacturing.product_replenishment` — both `is_purchased` and `is_manufactured` flipped to `false`. The existing `ManufacturingRequestedHandler` rejection branch (`!isManufactured()` returns `"rejected_not_manufactured"`) covers any future sales-line for the SKU without further changes.
+- `manufacturing.product_active_bom.active_bom_header_id = null` — equivalent in effect to a `BomActivated` with a null `newBomHeaderId` (the active-BOM projection's existing `apply()` already accepts null for the BOM-retirement path).
+
+### Changes
+
+- **`ProductReplenishmentProjection.applyDiscontinued(UUID productId)`** added on both the interface and `JdbcProductReplenishmentProjection`. Implementation delegates to `applyMakeVsBuy(productId, false, false)` — the new method exists for semantic clarity at the handler call site (a discontinue is a different signal than a make-vs-buy change, even though the resulting row is the same).
+- **`ProductDiscontinuedHandler`** (new, consumer name `manufacturing.product-discontinued`) — calls `replenishment.applyDiscontinued(productId)` then `activeBom.apply(productId, null)`.
+- **`InMemoryProductReplenishmentProjection`** (test-harness) gains the new method for test composition parity.
+- **Tests**: `ProductDiscontinuedHandlerTest` (happy path verifies both projection writes; already-processed short-circuit verifies neither write fires). 110 manufacturing-service tests, 0 failures.
+
+### No schema change
+
+Both target tables already exist with the right shape; the discontinue is a pure projection write. No Liquibase changeset for this slice.
+
+### Smoke
+
+`mvn -pl manufacturing-service test` → 110/110.
+
+---
+
 ## 2026-05-14 — §1F.1 sales: ProductDiscontinued consumer + placeOrder gating
 
 First of five §1F.1 service-level slices closing the `ProductDiscontinued` consumer gap. Sales now stamps `sales.product_pricing.discontinued_at` on the inbox event, and `SalesOrderService.placeOrder` rejects any line whose product carries a non-null `discontinued_at` — the rejection fires regardless of whether the caller passed a `unitPrice` (a manual override doesn't override the producer's retirement of the SKU).
