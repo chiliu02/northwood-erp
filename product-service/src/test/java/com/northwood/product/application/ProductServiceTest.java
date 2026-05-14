@@ -17,7 +17,7 @@ import com.northwood.product.domain.ProductId;
 import com.northwood.product.domain.ProductRepository;
 import com.northwood.product.domain.ProductType;
 import com.northwood.product.domain.events.ApprovedVendorListChanged;
-import com.northwood.product.domain.events.BomActivated;
+import com.northwood.product.domain.events.ActiveBomChanged;
 import com.northwood.product.domain.events.MakeVsBuyChanged;
 import com.northwood.product.domain.events.ProductCreated;
 import com.northwood.product.domain.events.ProductDiscontinued;
@@ -248,7 +248,7 @@ class ProductServiceTest {
 
             assertThat(p.activeBomId()).isEqualTo(bomId);
             List<DomainEvent> events = savedEvents();
-            assertThat(events).hasSize(1).first().isInstanceOf(BomActivated.class);
+            assertThat(events).hasSize(1).first().isInstanceOf(ActiveBomChanged.class);
         }
 
         @Test void no_op_on_already_active_bom() {

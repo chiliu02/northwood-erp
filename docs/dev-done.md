@@ -6,6 +6,34 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-14 — §2.13 Rename `BomActivated` → `ActiveBomChanged`
+
+The old name implied activation only, but `Product.activateBom(UUID)` accepts a `null` `newBomHeaderId` to drive deactivation (and the projection plus all consumers handle the null path correctly today). A reader seeing the event name in isolation reasonably assumed it fired only for activation — that misalignment is what this slice fixes.
+
+### Renamed
+
+- **Event class:** `product-events/.../BomActivated.java` → `ActiveBomChanged.java`. Updated record name, `EVENT_TYPE` value (`"product.BomActivated"` → `"product.ActiveBomChanged"`), and `eventType()` override.
+- **Inbox handler:** `manufacturing-service/.../BomActivatedHandler.java` → `ActiveBomChangedHandler.java`. Class name + the `super(...)` call's `Class<?>` + `EVENT_TYPE` args updated.
+- **`CONSUMER_NAME` unchanged** — `manufacturing.product-active-bom-projector` was already named after the read-model column it maintains, not the source event, so the inbox dedupe key survives the rename without any data migration.
+
+### Wire-format break
+
+Unlike the recent `SalesOrderCancellationApplied` rename (Java-only, kept the wire format to avoid coordinated replay), this rename is **wire-breaking by design**: there are no external subscribers, the topic / event_type rename is contained within Northwood's own services and JVM-local test-harness, and the goal is wire-format accuracy too. The dev-todo entry explicitly called this out before pulling the slice forward.
+
+### Touched
+
+Java: `Product.java` (import + emit), `ProductTest.java` + `ProductServiceTest.java` (import + class refs), `ProductActiveBomProjection.java` Javadoc, `MaterialsCostRollupService.java` Javadoc, `JdbcBomLookup.java` comments (2 references), `ProductDiscontinuedHandler.java` Javadoc, `ManufacturingTestKit.java` (import + bus.register).
+
+Docs / SQL: `docs/event-flow.html` source-first + destination-first cells, `docs/design-notes.md` Slice D trigger surface, `db/northwood_erp.sql` comment on `manufacturing.product_active_bom`.
+
+Historical entries in `docs/dev-done.md` referencing `BomActivated` are left as-is — append-only changelog, accurate to the time they were written.
+
+### Tests
+
+`mvn install -DskipTests` reactor green. `mvn test` full suite green (all 19 modules + test-harness flows pass).
+
+---
+
 ## 2026-05-14 — §1F.5 product: ProductMaterialsCostComputed consumer (closes the cost loop)
 
 Closes the cost-rollup feedback loop. Until this slice, manufacturing rolled up materials cost into `manufacturing.product_materials_cost` and emitted `ProductMaterialsCostComputed`, but **no service consumed it**: product master's `standard_cost` kept its old value, and so did finance/reporting projections of it. A supplier price drop that triggered a rebased materials cost left COGS posting at the stale standard cost until someone manually re-entered it.

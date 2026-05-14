@@ -156,7 +156,7 @@ public class MaterialsCostRollupService {
 
     /**
      * Slice D entry: recompute via BoM walk. Called from
-     * {@code BomActivatedHandler} after the active-BoM projection is updated,
+     * {@code ActiveBomChangedHandler} after the active-BoM projection is updated,
      * and from the parent-walk when a child's cost changes.
      *
      * <p>If the product has no active BoM (defensive — shouldn't happen for

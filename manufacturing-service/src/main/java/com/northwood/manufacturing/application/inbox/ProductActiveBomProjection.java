@@ -5,7 +5,7 @@ import java.util.UUID;
 
 /**
  * Maintains {@code manufacturing.product_active_bom} from
- * {@code product.BomActivated} events. Co-exists with manufacturing's own
+ * {@code product.ActiveBomChanged} events. Co-exists with manufacturing's own
  * {@code bom_header.is_active} column during the migration period.
  *
  * <p>Read path: {@link #findActiveBomId(UUID)} returns the active BoM id

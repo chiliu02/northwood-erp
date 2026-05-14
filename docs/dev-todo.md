@@ -300,13 +300,9 @@ The 2026-05-13 sweep enforced *static-fields-on-top* (51 files) but explicitly e
 
 The 2026-05-13 `@PreAuthorize` → `@RequireXxx` sweep created annotations under `shared/api/security/` for the 10 realm roles that gate actual endpoints today. The other 3 realm roles defined in `db/keycloak/northwood-realm.json` — `warehouse_manager` (force-release reservations, post stock adjustments), `auditor` (read-only everywhere), `sysadmin` (Keycloak realm admin only) — don't have annotations because no endpoint gates on them today. Scaffold matching `@RequireWarehouseManager` / `@RequireAuditor` / `@RequireSysadmin` when the first endpoint needs them.
 
-### 2.13 Rename `BomActivated` → `ActiveBomChanged`
+### 2.13 Rename `BomActivated` → `ActiveBomChanged` ✅ shipped 2026-05-14
 
-The event name implies activation only, but `Product.activateBom(UUID)` accepts a `null` `newBomHeaderId` to drive deactivation — and the projection (`JdbcProductActiveBomProjection.apply`) handles the null correctly today (upserts the null through; `findActiveBomId` surfaces it as `Optional.empty()`). Readers seeing only the event name reasonably assume it fires for activation alone; the missing symmetry was flagged 2026-05-14 in `event-flow.html` § Coverage gaps discussion.
-
-Rename to `ActiveBomChanged` for accuracy. Touches: `product-events/.../BomActivated.java` record + filename, the `"product.BomActivated"` `EVENT_TYPE` string (Kafka topic + inbox dedupe key — wire-breaking, coordinate any replay/migration), `Product.pendingEvents` emission, `manufacturing/.../BomActivatedHandler.java` filename + class name (`CONSUMER_NAME` already neutral as `manufacturing.product-active-bom-projector`). No external subscribers exist today, so this is internal-only renaming with a Kafka-topic rename caveat.
-
-Not demo-blocking. Pull forward when the next BoM-related slice or an external subscriber surfaces the confusion. Until then, the expanded Javadoc on `BomActivated` (added 2026-05-14) documents the null-deactivation semantics so readers don't trip on the name.
+Renamed Java class + wire-format `EVENT_TYPE` together (`"product.BomActivated"` → `"product.ActiveBomChanged"`); handler renamed `BomActivatedHandler` → `ActiveBomChangedHandler`; `CONSUMER_NAME` unchanged. No external subscribers, so the wire break is internal-only. See `dev-done.md`.
 
 ### 2.14 `StockReservationService.reserveOneLine` — loop with backoff on lost reservation race
 

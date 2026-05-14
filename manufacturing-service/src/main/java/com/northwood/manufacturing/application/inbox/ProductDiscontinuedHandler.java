@@ -16,8 +16,8 @@ import tools.jackson.databind.ObjectMapper;
  *       {@code !isManufactured()} guard rejects any new sales-line for the
  *       SKU, and the cost-rollup engine treats it as no longer sourceable.</li>
  *   <li>{@code manufacturing.product_active_bom.active_bom_header_id = null} —
- *       equivalent in effect to a {@code BomActivated} with a null newBomHeaderId
- *       (see {@code BomActivated} Javadoc), so any consumer reading the active
+ *       equivalent in effect to an {@code ActiveBomChanged} with a null newBomHeaderId
+ *       (see {@code ActiveBomChanged} Javadoc), so any consumer reading the active
  *       BOM gets the empty signal too.</li>
  * </ul>
  */

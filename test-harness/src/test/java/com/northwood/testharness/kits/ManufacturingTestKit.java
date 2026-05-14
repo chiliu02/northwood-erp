@@ -7,7 +7,7 @@ import com.northwood.manufacturing.application.WorkOrderOperationService;
 import com.northwood.manufacturing.application.WorkOrderPrioritisationService;
 import com.northwood.manufacturing.application.WorkOrderReleaseService;
 import com.northwood.manufacturing.application.inbox.ApprovedVendorListChangedHandler;
-import com.northwood.manufacturing.application.inbox.BomActivatedHandler;
+import com.northwood.manufacturing.application.inbox.ActiveBomChangedHandler;
 import com.northwood.manufacturing.application.inbox.GoodsReceivedHandler;
 import com.northwood.manufacturing.application.inbox.MakeVsBuyChangedHandler;
 import com.northwood.manufacturing.application.inbox.ManufacturingRequestedHandler;
@@ -106,7 +106,7 @@ public final class ManufacturingTestKit {
         bus.register(new ManufacturingRequestedHandler(inbox, sagaManager, boms, replenishment, outbox, json));
         bus.register(new RawMaterialsReservedHandler(inbox, sagaManager, workOrders, outbox, json));
         bus.register(new GoodsReceivedHandler(inbox, sagaManager, shortageRecovery, json));
-        bus.register(new BomActivatedHandler(inbox, activeBoms, rollupService, json));
+        bus.register(new ActiveBomChangedHandler(inbox, activeBoms, rollupService, json));
         bus.register(new MakeVsBuyChangedHandler(inbox, replenishment, json));
         bus.register(new ProductCreatedHandler(inbox, replenishment, json));
         bus.register(new SalesOrderCancellationRequestedHandler(inbox, cancellationService, json));

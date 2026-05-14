@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.northwood.product.domain.events.ApprovedVendorListChanged;
-import com.northwood.product.domain.events.BomActivated;
+import com.northwood.product.domain.events.ActiveBomChanged;
 import com.northwood.product.domain.events.MakeVsBuyChanged;
 import com.northwood.product.domain.events.ProductCreated;
 import com.northwood.product.domain.events.ProductDiscontinued;
@@ -422,7 +422,7 @@ class ProductTest {
             p.pullPendingEvents();
             p.activateBom(null);
             assertThat(p.activeBomId()).isNull();
-            BomActivated e = (BomActivated) p.pullPendingEvents().get(0);
+            ActiveBomChanged e = (ActiveBomChanged) p.pullPendingEvents().get(0);
             assertThat(e.oldBomHeaderId()).isEqualTo(bomId);
             assertThat(e.newBomHeaderId()).isNull();
         }
@@ -432,7 +432,7 @@ class ProductTest {
             p.pullPendingEvents();
             UUID bomId = UUID.randomUUID();
             p.activateBom(bomId);
-            BomActivated e = (BomActivated) p.pullPendingEvents().get(0);
+            ActiveBomChanged e = (ActiveBomChanged) p.pullPendingEvents().get(0);
             assertThat(e.oldBomHeaderId()).isNull();
             assertThat(e.newBomHeaderId()).isEqualTo(bomId);
         }

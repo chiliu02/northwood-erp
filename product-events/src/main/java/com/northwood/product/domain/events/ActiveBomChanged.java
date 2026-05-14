@@ -10,11 +10,6 @@ import java.util.UUID;
  * {@code bom_line}; only the "which BoM is the active one for this SKU
  * right now" decision is authoritative on product master.
  *
- * <p><b>Name is a misnomer — see {@code docs/dev-todo.md} §2.13.</b> The
- * event represents <em>any</em> change to the active-BoM pointer, including
- * deactivation. Rename to {@code ActiveBomChanged} is on the backlog;
- * wire-breaking, so deferred until a BoM-related slice picks it up.
- *
  * <p>{@code newBomHeaderId} is nullable to express all three transitions in
  * one event:
  *
@@ -47,8 +42,16 @@ import java.util.UUID;
  * <p>Manufacturing keeps its own {@code bom_header.is_active} column during
  * the migration period — both can co-exist until the manufacturing side
  * switches fully to projecting product's authoritative pointer.
+ *
+ * <p><b>Renamed from {@code BomActivated} 2026-05-14 (§2.13).</b> The old
+ * name implied activation only and read as a misnomer for the
+ * {@code newBomHeaderId=null} retirement path. Wire format updated
+ * alongside the Java class — no external subscribers existed at rename
+ * time, so the wire break was deliberate (not a Java-only rename like the
+ * {@code SalesOrderCancellationApplied} case where two classes with the
+ * same simple name forced FQN imports).
  */
-public record BomActivated(
+public record ActiveBomChanged(
     UUID eventId,
     UUID aggregateId,
     UUID oldBomHeaderId,
@@ -56,7 +59,7 @@ public record BomActivated(
     Instant occurredAt
 ) implements DomainEvent {
 
-    public static final String EVENT_TYPE = "product.BomActivated";
+    public static final String EVENT_TYPE = "product.ActiveBomChanged";
 
     @Override public String eventType() { return EVENT_TYPE; }
 }

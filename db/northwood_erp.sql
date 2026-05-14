@@ -1114,7 +1114,7 @@ CREATE TRIGGER trg_product_replenishment_updated_at
     FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
 
 -- Shape A read-side projection: which BOM is active for each SKU.
--- Maintained from product.BomActivated. Co-exists with manufacturing's own
+-- Maintained from product.ActiveBomChanged. Co-exists with manufacturing's own
 -- bom_header.is_active during the migration period.
 CREATE TABLE manufacturing.product_active_bom (
     product_id UUID PRIMARY KEY,

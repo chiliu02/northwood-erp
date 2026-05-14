@@ -10,7 +10,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 import com.northwood.product.domain.events.ApprovedVendorListChanged;
-import com.northwood.product.domain.events.BomActivated;
+import com.northwood.product.domain.events.ActiveBomChanged;
 import com.northwood.product.domain.events.MakeVsBuyChanged;
 import com.northwood.product.domain.events.ProductCreated;
 import com.northwood.product.domain.events.ProductDiscontinued;
@@ -272,7 +272,7 @@ public class Product {
     /**
      * Set the active BOM for this SKU. {@code newBomHeaderId} can be null to
      * indicate "no active BOM" (e.g. SKU is not currently buildable).
-     * Emits {@link BomActivated} with old + new.
+     * Emits {@link ActiveBomChanged} with old + new.
      */
     public void activateBom(UUID newBomHeaderId) {
         if (status == Status.DISCONTINUED) {
@@ -281,7 +281,7 @@ public class Product {
         if (Objects.equals(newBomHeaderId, this.activeBomId)) return;
         UUID oldBomId = this.activeBomId;
         this.activeBomId = newBomHeaderId;
-        pendingEvents.add(new BomActivated(
+        pendingEvents.add(new ActiveBomChanged(
             UUID.randomUUID(),
             id.value(),
             oldBomId,

@@ -182,10 +182,10 @@
   <td class="desc"><code>purchasing.product_approved_vendor</code> — replace-all rows for the product (supplier_id, is_preferred, …)</td>
 </tr>
 <tr>
-  <td class="merge-event">BomActivated</td>
+  <td class="merge-event">ActiveBomChanged</td>
   <td>manufacturing</td>
   <td class="consumer">manufacturing.product-active-bom-projector</td>
-  <td class="desc"><code>manufacturing.product_active_bom</code> — upserts (product_id, active_bom_id); <code>null</code> newBomHeaderId path retires the active BOM (see <code>BomActivated</code> Javadoc)</td>
+  <td class="desc"><code>manufacturing.product_active_bom</code> — upserts (product_id, active_bom_id); <code>null</code> newBomHeaderId path retires the active BOM (see <code>ActiveBomChanged</code> Javadoc)</td>
 </tr>
 <tr>
   <td class="merge-event">MakeVsBuyChanged</td>
@@ -779,10 +779,10 @@
   <td class="merge-src" rowspan="10">manufacturing</td>
   <td class="merge-agg" rowspan="5">product</td>
   <td class="merge-event" rowspan="5">Product</td>
-  <td>ApprovedVendorListChanged</td>
+  <td>ActiveBomChanged</td>
 </tr>
 <tr>
-  <td>BomActivated</td>
+  <td>ApprovedVendorListChanged</td>
 </tr>
 <tr>
   <td>MakeVsBuyChanged</td>

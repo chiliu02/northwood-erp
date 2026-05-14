@@ -20,7 +20,7 @@ public class JdbcBomLookup implements BomLookup {
     @Override
     public Optional<ActiveBom> findActiveByFinishedProductId(UUID finishedProductId) {
         // Shape A: consult the product_active_bom projection (maintained by
-        // BomActivatedHandler from product master) first. Fall back to
+        // ActiveBomChangedHandler from product master) first. Fall back to
         // bom_header.status='active' when no projection row exists — covers
         // BOMs activated locally before the projection was populated. The
         // backfill changeset 2026-05-05-backfill-product-active-bom.sql
@@ -100,8 +100,8 @@ public class JdbcBomLookup implements BomLookup {
     public List<UUID> findParentProductIdsByComponent(UUID componentProductId) {
         // Use bom_header.status='active' as the runtime authority — it's
         // always set for active BoMs (whether activated in-service via
-        // BomEditService.activate, or projected from product.BomActivated
-        // via BomActivatedHandler). The product_active_bom projection
+        // BomEditService.activate, or projected from product.ActiveBomChanged
+        // via ActiveBomChangedHandler). The product_active_bom projection
         // co-exists but isn't always in sync (BomEditService doesn't write
         // to it); falling back to status='active' is the same approach
         // findActiveByFinishedProductId uses.
