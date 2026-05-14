@@ -606,9 +606,9 @@
 <tr>
   <td class="merge-agg">Product</td>
   <td class="merge-event">ProductMaterialsCostComputed</td>
-  <td class="no-consumer">—</td>
-  <td class="no-consumer">(no current consumer)</td>
-  <td class="no-consumer">—</td>
+  <td>product</td>
+  <td class="consumer">product.materials-cost-rebased</td>
+  <td class="desc">Calls <code>ProductService.changeStandardCost</code> to stamp the rolled-up materials cost onto product master's <code>standard_cost</code>; the aggregate then emits <code>product.StandardCostChanged</code>, which finance + reporting already consume — closes the cost-rollup feedback loop</td>
 </tr>
 
 <!-- ============ finance (12 rows: CustomerInvoice 3 + Payment 6 + SupplierInvoice 3) ============ -->
@@ -816,6 +816,14 @@
   <td>RawMaterialsReserved</td>
 </tr>
 
+<!-- ============ Destination: product (1 row) ============ -->
+<tr>
+  <td class="merge-src">product</td>
+  <td class="merge-agg">manufacturing</td>
+  <td class="merge-event">Product</td>
+  <td>ProductMaterialsCostComputed</td>
+</tr>
+
 <!-- ============ Destination: purchasing (6 rows) ============ -->
 <tr>
   <td class="merge-src" rowspan="6">purchasing</td>
@@ -991,39 +999,24 @@
 <ul>
   <li>Inventory's and manufacturing's compensation acks are two physically distinct events — <code>InventorySalesOrderCancellationApplied</code> in <code>inventory-events</code> (aggregate <code>StockReservation</code>) and <code>ManufacturingSalesOrderCancellationApplied</code> in <code>manufacturing-events</code> (aggregate <code>WorkOrder</code>) — each acknowledged by its own sales-side handler. The Java class names are prefixed to avoid a flat-namespace collision; the wire formats (<code>inventory.SalesOrderCancellationApplied</code> / <code>manufacturing.SalesOrderCancellationApplied</code>) deliberately keep the bare event name since the service prefix already conveys the source — see the Javadoc on either event class for the why.</li>
   <li><strong>Cross-context aggregate-root stamping is intentional</strong>, not a pragmatic compromise. The rule: an event names the aggregate the fact is <em>about</em>, not the module that emits it — logical ownership and physical emission are decoupled. A module-A-emits-event-about-aggregate-B arrangement is legitimate when (a) the named aggregate is genuinely the subject of the fact, (b) the emitter is the natural source of authority for that fact, and (c) the emitter isn't claiming jurisdiction over the named aggregate's invariants. Two events in Northwood take this path today: <code>manufacturing.ManufacturingDispatched</code> stamped <code>SalesOrder</code> (manufacturing reports an outcome the SalesOrder needs to advance its saga) and <code>manufacturing.ProductMaterialsCostComputed</code> stamped <code>Product</code> (manufacturing computes a fact about a Product owned upstream). Both pass all three criteria. The Kafka co-partition benefit (every event for a saga's correlation aggregate lands on the same partition) is a happy consequence of correct modeling, not the reason for the choice. Full rule + counter-examples in <code>docs/architecture.md</code> § <em>Aggregate-root stamping</em> and <code>docs/design-notes.md</code> § <em>Cross-context aggregate-root stamping on events</em>.</li>
-  <li>Customer master events (<code>CustomerRegistered</code>, <code>CustomerAddressChanged</code>, <code>CustomerContactChanged</code>, <code>CustomerNameChanged</code>) and <code>ProductMaterialsCostComputed</code> are published by their aggregates but have no inbox handler yet.</li>
+  <li>Customer master events (<code>CustomerRegistered</code>, <code>CustomerAddressChanged</code>, <code>CustomerContactChanged</code>, <code>CustomerNameChanged</code>) are published by their aggregates but have no inbox handler yet.</li>
   <li><code>StockReserved</code> in <code>sales</code> uses the bare consumer name <code>sales.fulfilment-saga</code> (not <code>sales.fulfilment-saga.stock-reserved</code>) — this is the saga's primary entry point and predates the suffix convention used by later additions.</li>
   <li>Reporting projections (<code>*_view</code>, <code>production_planning_board</code>, <code>financial_dashboard_daily</code>, <code>material_shortage_view</code>) are all order-tolerant: every write is <code>INSERT ... ON CONFLICT DO UPDATE</code>. Stub rows (e.g. <code>product_sku='(pending)'</code>) get backfilled by whichever event arrives first carrying the missing identity.</li>
   <li>"+=" in the Description column denotes an additive bump (so partial-then-full events sum correctly); plain "→" denotes an overwrite.</li>
 </ul>
 
 <h2>Coverage gaps</h2>
-<p>Five events have no consumer at all, plus a few events whose consumer coverage is incomplete. Listed in priority order — symptom → impact → suggested handler(s). <strong>Critical</strong> means a downstream service makes business-wrong decisions today; <strong>Staleness</strong> means a read model drifts but no transaction goes wrong; <strong>Likely acceptable</strong> is documented for completeness.</p>
-
-<h3>Staleness — read models drift<span class="badge badge-staleness">Staleness</span></h3>
-
-<div class="gap-staleness">
-  <h4>1. <code>ProductMaterialsCostComputed</code> has no consumer</h4>
-  <p>Symptom: manufacturing rolls up materials cost into <code>manufacturing.product_materials_cost</code> and emits this event, but nothing downstream reacts. Manufacturing's own UI read is the only sink.</p>
-  <p>Impact: the rollup is a dead-end. When a supplier price drops and triggers a rebased <code>materials_cost</code>, none of:</p>
-  <ul>
-    <li><code>product.product.standard_cost</code> (today maintained by hand via <code>POST /api/products/{id}/standard-cost</code>),</li>
-    <li><code>finance.product_standard_cost</code> (used by COGS posting at shipment time),</li>
-    <li><code>reporting.product_standard_cost</code>,</li>
-  </ul>
-  <p>…ever updates. COGS continues to post at the previous standard cost until someone manually re-enters it. This is the cost-chain integration referenced as §2.8 Slice D in the slice docs ("close the cost loop").</p>
-  <p>Suggested handler: <code>product.materials-cost-rebased</code> (in product-service) → update the product master's <code>standard_cost</code> from the rolled-up value and emit <code>StandardCostChanged</code>, which already has finance + reporting consumers wired.</p>
-</div>
+<p>Four events have no consumer at all, plus a few events whose consumer coverage is incomplete. Listed in priority order — symptom → impact → suggested handler(s). <strong>Critical</strong> means a downstream service makes business-wrong decisions today; <strong>Likely acceptable</strong> is documented for completeness.</p>
 
 <h3>Likely acceptable — documented for completeness<span class="badge badge-deferred">Deferred</span></h3>
 
 <div class="gap-deferred">
-  <h4>2. Customer master events: <code>CustomerRegistered</code>, <code>CustomerNameChanged</code>, <code>CustomerAddressChanged</code>, <code>CustomerContactChanged</code></h4>
+  <h4>1. Customer master events: <code>CustomerRegistered</code>, <code>CustomerNameChanged</code>, <code>CustomerAddressChanged</code>, <code>CustomerContactChanged</code></h4>
   <p>Sales owns the customer aggregate and reads it directly for its own checks. Downstream services (finance invoice headers, reporting <code>sales_order_360_view</code>) snapshot customer name + currency from event payloads at order placement time, which is <em>historically correct</em> — overwriting old invoice names after a customer rename would arguably destroy audit value. Only a gap if a UI requirement explicitly says "show current customer name on past orders"; not assumed here.</p>
 </div>
 
 <div class="gap-deferred">
-  <h4>3. <code>ManufacturingDispatched</code> to production-planning</h4>
+  <h4>2. <code>ManufacturingDispatched</code> to production-planning</h4>
   <p>The production-planning board only gets a row when a work order is actually created. Rejected lines (no BOM, not manufactured) generate <code>ManufacturingDispatched</code> outcomes but no work orders, so there's nothing on the board to update. A "manufacturing rejection rate" dashboard widget could subscribe, but no current read model needs the signal.</p>
 </div>
 

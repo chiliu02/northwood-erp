@@ -6,6 +6,47 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-14 — §1F.5 product: ProductMaterialsCostComputed consumer (closes the cost loop)
+
+Closes the cost-rollup feedback loop. Until this slice, manufacturing rolled up materials cost into `manufacturing.product_materials_cost` and emitted `ProductMaterialsCostComputed`, but **no service consumed it**: product master's `standard_cost` kept its old value, and so did finance/reporting projections of it. A supplier price drop that triggered a rebased materials cost left COGS posting at the stale standard cost until someone manually re-entered it.
+
+The fix is small: a single product-service inbox handler that re-uses the existing `ProductService.changeStandardCost` mutator. That mutator emits `product.StandardCostChanged`, which the finance + reporting consumers were already wired to project — so closing the loop on the product side automatically propagates the cost change everywhere it's needed.
+
+### Changes
+
+- **`product-service/pom.xml`**: new `manufacturing-events` dependency. First time product-service depends on another service's events jar (product was a pure Open Host until now — publisher only, consumer-of-none).
+- **`product.materials-cost-rebased`** inbox handler under `product/application/inbox/` — first inbox handler in product-service. Reads the event, null-guards `materialsCost` / `currencyCode` (the producer emits null when the rollup determines a product has no computable cost — `reason='inputs_missing'` etc.), calls `ProductService.changeStandardCost(productId, materialsCost, currencyCode)`. Idempotent: the mutator's existing `equalsByValue` guard makes the rollup → standard_cost path no-op on unchanged values.
+
+### Cost-cascade behaviour
+
+A `StandardCostChanged` for a child product (raw material whose supplier price moved, or a sub-assembly whose materials cost rebased) triggers manufacturing's BOM walk to recompute every parent that lists the child in its BOM. Each recompute emits a fresh `ProductMaterialsCostComputed` for the parent, which this handler then applies — propagating the cost change up the BOM in one event-driven cascade. Termination: the no-op-on-unchanged-value guard inside `ProductService.changeStandardCost` (idempotent on the same `(cost, currency)` tuple) and manufacturing's own visited-set + walk-depth cap in `MaterialsCostRollupService`.
+
+### Docs
+
+- **`docs/event-flow.html`**: source-first table — `ProductMaterialsCostComputed` row gets its first consumer. Destination-first table — new `product` destination block added (alphabetically between manufacturing and purchasing); this is the first time `product` appears as a destination service. Notes — `ProductMaterialsCostComputed` removed from the "no inbox handler yet" list. Coverage Gaps — with `ProductMaterialsCostComputed` consumed, the Staleness section has no remaining entries; the section heading is removed entirely. Remaining gaps all sit in the Deferred bucket. Lead-in count `Five` → `Four`; staleness category dropped from the lead-in classification sentence.
+- **`docs/dev-todo.md`**: §1F.5 added to the shipped-pointer list. With §1F.5 shipped, the actionable §1F bucket is empty — note added that all five sub-slices are closed.
+
+### Tests
+
+`ProductMaterialsCostComputedHandlerTest` (4 cases: happy + null-materials-cost-skips + null-currency-skips + already-processed). product-service suite 85/85 green.
+
+### Smoke
+
+`mvn -pl product-service -am test` green.
+
+### §1F status
+
+With §1F.5 shipped, **all five actionable items in §1F are closed**:
+- §1F.1 — `ProductDiscontinued` across 5 services (sales / manufacturing / purchasing / reporting / inventory)
+- §1F.2 — `ProductCreated` inventory consumer
+- §1F.3 — `CustomerDeactivated` reporting + finance consumers
+- §1F.4 — `PurchaseOrderApproved` reporting consumer
+- §1F.5 — `ProductMaterialsCostComputed` product consumer (this slice)
+
+Remaining `event-flow.html` "Coverage gaps" entries are all in the Deferred / Inferred-only buckets — design-intent gaps documented for completeness, not bugs.
+
+---
+
 ## 2026-05-14 — §1F.4 reporting: PurchaseOrderApproved consumer (manual-approval staleness)
 
 Closes the staleness gap where a draft PO manually approved via `POST /api/purchase-orders/{id}/approve` left `reporting.purchase_order_tracking_view.po_status` stuck at `'draft'` indefinitely. The shortage-driven auto-approve path masked it: the auto-approve fires in the same transaction as PO creation, so the existing `po-created` handler already stored the post-approval status.

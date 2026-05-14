@@ -155,17 +155,10 @@ User wants to drive the README's tone and voice themselves (it's a public-facing
 
 §1F.2 (`ProductCreated` inventory consumer) shipped 2026-05-14 — see `dev-done.md`.  
 §1F.3 (`CustomerDeactivated` reporting + finance consumers) shipped 2026-05-14 — see `dev-done.md`.  
-§1F.4 (`PurchaseOrderApproved` reporting consumer) shipped 2026-05-14 — see `dev-done.md`.
+§1F.4 (`PurchaseOrderApproved` reporting consumer) shipped 2026-05-14 — see `dev-done.md`.  
+§1F.5 (`ProductMaterialsCostComputed` product consumer — closes the cost loop) shipped 2026-05-14 — see `dev-done.md`.
 
-Remaining items below.
-
-### 1F Staleness — read models drift
-
-**1F.5 `ProductMaterialsCostComputed` — close the cost loop**
-
-Manufacturing rolls up materials cost into `manufacturing.product_materials_cost` and emits this event, but nothing downstream reacts. When a supplier price drops and triggers a rebased materials cost, none of `product.product.standard_cost`, `finance.product_standard_cost`, or `reporting.product_standard_cost` updates — COGS continues to post at the old standard cost until someone manually re-enters it.
-
-Add `product.materials-cost-rebased` handler in product-service → update product master's `standard_cost` from the rolled-up value and emit `StandardCostChanged`, which already has finance + reporting consumers wired. This is the §2.8 cost-chain integration that was discussed but never numbered as a Slice E.
+All §1F actionable items shipped. Remaining backlog is the deferred / inferred-only set documented below.
 
 ### 1F Deferred — captured so they're not re-discovered
 
