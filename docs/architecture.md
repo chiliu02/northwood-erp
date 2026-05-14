@@ -30,6 +30,30 @@ Northwood/
 
 `shared-kernel` is deliberately framework-free. Do not add Spring deps to it. It hosts the cross-service types that service `domain/` packages need to import — VOs (`Money`, `Quantity`, `Sku`), the `DomainEvent` interface, and the `saga/SagaInstance` abstract base. Anything that needs Spring / JDBC / Kafka lives in the `shared` module instead.
 
+## Tracing data flow: event classes are the navigation anchor
+
+Event-driven systems trade direct call graphs for decoupled producers and consumers — which usually means losing *"where does this go next?"* as a question answerable from source code. Northwood buys that property back by making **event classes the load-bearing artifact for cross-service traceability**: every messaging convention in this codebase exists to keep the data flow answerable through IDE navigation alone.
+
+**Three operational tests** that any messaging-adjacent design decision must preserve:
+
+1. **Find Usages on the event class returns every emitter and every consumer.** No FQN inline references, no Class-by-string lookups, no dynamic dispatch on string keys. Every place an event surfaces — emission, inbox registration, handler payload type, test fixture, exception text, log line — goes through the class or its `EVENT_TYPE` / `AGGREGATE_TYPE` constants.
+2. **A consumer's import block is its event-dependency table of contents.** Read the imports of any inbox handler, saga manager, or projection and you have the complete list of events it reacts to. The natural example is `JdbcSalesOrderFulfilmentSagaManager` — its 8 event imports tell the entire story of the saga's inbox surface.
+3. **Renaming an event or its wire-format identifier breaks at compile time at every dependent site.** No string drift, no silent rot, no late-binding surprises from a runtime topic mismatch.
+
+**Derived rules**, each documented in its own section / doc:
+
+| Rule | Documented in |
+|---|---|
+| `<Event>.EVENT_TYPE` constants for every event type string | *Events jars* section below |
+| `<AggregateRoot>.AGGREGATE_TYPE` (or `<Event>.AGGREGATE_TYPE` for cross-service / no-aggregate cases) for every outbox `aggregate_type` string | `docs/sagas.md` § *Saga manager class shape* |
+| Distinct Java class per wire-format suffix, even when the wire format would collide (see `InventorySalesOrderCancellationApplied` / `ManufacturingSalesOrderCancellationApplied`) | Javadoc on each affected event class + the note in `docs/event-flow.html` |
+| Each inbox handler passes `<Event>.class` + `<Event>.EVENT_TYPE` to its `AbstractInboxHandler` constructor — registration is a structural Java reference | *Events jars* section below |
+| Plain Java imports per type (no wildcards, no FQN inline) so the import block stays a faithful TOC | This section + IDE convention |
+
+**Code-review test for any new messaging code.** Apply the *three operational tests* above. If a proposed change makes any of them weaker (an event named by string somewhere new; an event identity routed through configuration; a consumer that hides its event dependencies behind a registry lookup), push back or rework — the cost is a permanent gap in the cross-service navigation graph.
+
+**Why this matters for a showcase codebase.** Northwood is meant to be *read* as much as run. Event-driven decoupling is the architecturally correct choice at the runtime level, but it makes the codebase hostile to comprehension by default. The conventions above buy back navigability without giving up the decoupling: at runtime, producer and consumer are still independent services; at read time, the event class is a shared anchor that both sides reference. Best of both, paid for in a small amount of mechanical discipline (constants instead of literals, distinct class per wire suffix, explicit imports).
+
 ## Events jars: producer publishes the wire schema, consumers compile against it
 
 Each producing service ships a sibling `<service>-events` Maven module containing the wire-format event records that downstream services consume. The producing service depends on its own events module; consumers depend on the events modules of every producer they subscribe to. All six events jars shipped 2026-05-10 (§1A): `product-events` (9 events + `ApprovedVendor` VO), `sales-events` (11), `inventory-events` (5), `manufacturing-events` (11), `purchasing-events` (4), `finance-events` (4). 44 cross-service events total, zero `*Payload` records remaining in the codebase.
