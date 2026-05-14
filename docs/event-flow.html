@@ -1166,27 +1166,14 @@
     cell.dataset.savedRowspan = cell.getAttribute('rowspan') || '1';
     cell.setAttribute('rowspan', '1');
 
-    // Reduce rowspan on every ancestor cell whose span covers this group. Ancestors
-    // are looked up by group key — NOT by walking previousElementSibling — because
-    // an aggregate cell may live in a row that doesn't contain its parent source's
-    // <td> (e.g. sales/SalesOrder's first row is row 18, while the sales source <td>
-    // lives in row 13 spanning down). The previousElementSibling chain misses it.
-    const hierarchy = getGroupHierarchy(table);
-    const myLevel = hierarchy.indexOf(groupClass);
-    for (let i = 0; i < myLevel; i++) {
-      const ancestorClass = hierarchy[i];
-      const ancestorKey = firstRow.dataset[classToDataKey(ancestorClass)];
-      if (!ancestorKey) continue;
-      const ancestorCell = findGroupCell(table, ancestorClass, ancestorKey);
-      if (!ancestorCell || ancestorCell === cell) continue;
-      const cur = parseInt(ancestorCell.getAttribute('rowspan'), 10) || 1;
-      if (cur > 1 && otherRows.length > 0) {
-        const reductions = JSON.parse(ancestorCell.dataset.rowspanReductions || '{}');
-        reductions[collapseId] = otherRows.length;
-        ancestorCell.dataset.rowspanReductions = JSON.stringify(reductions);
-        ancestorCell.setAttribute('rowspan', String(cur - otherRows.length));
-      }
-    }
+    // Ancestor rowspans are deliberately NOT reduced here. HTML rowspan counts
+    // DOM rows including display:none ones; the inner aggregate's hidden rows
+    // still occupy DOM slots, so the source-level cell's original rowspan
+    // continues to span the correct visible-row range. An earlier version of
+    // this code reduced ancestor rowspans by otherRows.length, which under-
+    // reaches the source cell when multiple inner aggregates are collapsed
+    // (e.g. sales' SalesOrder anchor would slide left into the Source Service
+    // column because sales' rowspan no longer covered the SalesOrder row).
 
     cell.classList.add('collapsed');
     const marker = cell.querySelector('.toggle-marker');
@@ -1219,22 +1206,11 @@
     cell.setAttribute('rowspan', cell.dataset.savedRowspan || '1');
     delete cell.dataset.savedRowspan;
 
-    // Scan every cell that recorded a reduction for this collapseId and add it back.
-    // Works regardless of whether the ancestor is a previousElementSibling — see the
-    // sales/SalesOrder cross-row case explained in collapseCell.
-    Array.from(table.querySelectorAll('td[data-rowspan-reductions]')).forEach(function (ancestorCell) {
-      const reductions = JSON.parse(ancestorCell.dataset.rowspanReductions);
-      if (collapseId in reductions) {
-        const cur = parseInt(ancestorCell.getAttribute('rowspan'), 10) || 1;
-        ancestorCell.setAttribute('rowspan', String(cur + reductions[collapseId]));
-        delete reductions[collapseId];
-        if (Object.keys(reductions).length === 0) {
-          delete ancestorCell.dataset.rowspanReductions;
-        } else {
-          ancestorCell.dataset.rowspanReductions = JSON.stringify(reductions);
-        }
-      }
-    });
+    // No ancestor-rowspan restoration is needed because collapseCell no
+    // longer reduces ancestor rowspans (HTML rowspan counts DOM rows
+    // including display:none ones, so the original ancestor rowspan keeps
+    // covering the visible-row range correctly while inner aggregates are
+    // hidden).
 
     cell.classList.remove('collapsed');
     const marker = cell.querySelector('.toggle-marker');
@@ -1246,27 +1222,6 @@
       if (prev && prev.nodeType === Node.TEXT_NODE) prev.remove();
     }
     delete cell.dataset.collapseId;
-  }
-
-  function findGroupCell(table, groupClass, groupKey) {
-    const dataKey = classToDataKey(groupClass);
-    const rows = Array.from(table.querySelectorAll('tbody > tr'));
-    for (let i = 0; i < rows.length; i++) {
-      if (rows[i].dataset[dataKey] === groupKey) {
-        const c = rows[i].querySelector('td.' + groupClass);
-        if (c) return c;
-      }
-    }
-    return null;
-  }
-
-  function getGroupHierarchy(table) {
-    // Outermost first. Detect which levels have clickable cells in this table.
-    const levels = [];
-    ['merge-src', 'merge-agg', 'merge-event'].forEach(function (cls) {
-      if (table.querySelector('td.' + cls + '.clickable-cell')) levels.push(cls);
-    });
-    return levels;
   }
 
   function addHiddenTag(element, tag) {
