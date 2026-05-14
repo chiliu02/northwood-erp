@@ -89,6 +89,12 @@
   details.agg-node > summary    { background: #e2ecf5; padding-left: 1.75rem; }
   .agg-body                     { padding: 0; }
 
+  /* Source-first: Domain Event is its own collapsible <details>. */
+  details.evt-node              { background: var(--bg); }
+  details.evt-node > summary    { background: #ecf2f8; padding-left: 3rem; font-weight: 600; }
+  .evt-body                     { padding: 0.35rem 0.75rem 0.5rem 3rem; background: var(--bg); border: 1px solid var(--border); border-top: none; }
+
+  /* Destination-first leaf: aggregate name + flat list of event names. */
   .event-node                   { background: var(--bg); padding: 0.35rem 0.75rem 0.5rem 3rem; border: 1px solid var(--border); border-top: none; }
   .event-name                   { background: #ecf2f8; font-weight: 600; padding: 0.3rem 0.5rem; margin: 0 0 0.3rem -0.4rem; border-radius: 3px; display: inline-block; }
   .no-consumer                  { color: var(--muted); font-style: italic; margin-left: 0.4rem; }
@@ -148,7 +154,7 @@
 <p>Each event lists its consumers (one per row). The <strong>Aggregate Root</strong> level reflects the <code>aggregate_type</code> string written to the outbox (and carried on the event envelope). Consumer names come from the <code>CONSUMER_NAME</code> constant on each <code>*Handler</code> in <code>application/inbox/</code>. The <strong>Description</strong> column names the table(s) and field(s) each consumer writes. Events with no current consumer are listed for completeness.</p>
 
 <h2>Source-first view</h2>
-<p>Grouped by Source Service → Aggregate Root → Domain Event → consumers. The count next to each level shows the total leaf-row count under that node.</p>
+<p>Grouped by Source Service → Aggregate Root → Domain Event → consumers. The count next to each node shows the size of its immediate children — Source Service = aggregate roots, Aggregate Root = domain events, Domain Event = consumers.</p>
 
 <div class="tree-wrap" id="source-first-tree">
 <!-- Rendered at page load from the NORTHWOOD_EVENTS array (defined in the
@@ -796,22 +802,21 @@ window.NORTHWOOD_EVENTS = [
     const out = [];
     for (const source of bySource.keys()) {
       const sourceEvents = bySource.get(source);
-      const sourceRowCount = sumRowsForEvents(sourceEvents);
+      const byAgg = groupBy(sourceEvents, function (e) { return e.aggregate; });
       out.push('<details class="src-node" open>');
-      out.push('<summary class="src-summary"><span class="node-name">' + esc(source) + '</span> <span class="node-count">(' + sourceRowCount + ')</span></summary>');
+      out.push('<summary class="src-summary"><span class="node-name">' + esc(source) + '</span> <span class="node-count">(' + byAgg.size + ')</span></summary>');
       out.push('<div class="src-body">');
 
-      const byAgg = groupBy(sourceEvents, function (e) { return e.aggregate; });
       for (const aggregate of byAgg.keys()) {
         const aggEvents = byAgg.get(aggregate);
-        const aggRowCount = sumRowsForEvents(aggEvents);
         out.push('<details class="agg-node" open>');
-        out.push('<summary class="agg-summary"><span class="node-name">' + esc(aggregate) + '</span> <span class="node-count">(' + aggRowCount + ')</span></summary>');
+        out.push('<summary class="agg-summary"><span class="node-name">' + esc(aggregate) + '</span> <span class="node-count">(' + aggEvents.length + ')</span></summary>');
         out.push('<div class="agg-body">');
 
         for (const event of aggEvents) {
-          out.push('<div class="event-node">');
-          out.push('<div class="event-name">' + esc(event.event) + '</div>');
+          out.push('<details class="evt-node" open>');
+          out.push('<summary class="evt-summary"><span class="node-name">' + esc(event.event) + '</span> <span class="node-count">(' + event.consumers.length + ')</span></summary>');
+          out.push('<div class="evt-body">');
           if (event.consumers.length === 0) {
             out.push('<div class="no-consumer">(no current consumer)</div>');
           } else {
@@ -826,7 +831,7 @@ window.NORTHWOOD_EVENTS = [
             }
             out.push('</tbody></table>');
           }
-          out.push('</div>');
+          out.push('</div></details>');
         }
 
         out.push('</div></details>');
@@ -912,10 +917,6 @@ window.NORTHWOOD_EVENTS = [
   // ------------------------------------------------------------
   // Helpers
   // ------------------------------------------------------------
-  function sumRowsForEvents(events) {
-    return events.reduce(function (sum, e) { return sum + Math.max(1, e.consumers.length); }, 0);
-  }
-
   function groupBy(arr, fn) {
     const m = new Map();
     for (const x of arr) {
