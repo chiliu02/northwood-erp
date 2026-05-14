@@ -6,6 +6,27 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-14 — §1F.1 inventory: ProductDiscontinued consumer (stamp on stock_item)
+
+Last of five §1F.1 service-level slices. Inventory stamps `inventory.stock_item.discontinued_at`; future reorder-alert logic (none today) treats `IS NOT NULL` as suppressed. Schema-only addition — no reader exists yet, so the slice is the minimum viable plumbing to land the signal.
+
+### Changes
+
+- **Liquibase changeset** `inventory-service/.../changes/2026-05-14-stock-item-add-discontinued-at.sql` adds `discontinued_at TIMESTAMPTZ NULL` to `inventory.stock_item`. Master changelog includes it.
+- **`ProductDiscontinuedProjection`** interface in `application/inbox/` + **`JdbcProductDiscontinuedProjection`** in `infrastructure/persistence/`. Update-only — if no `stock_item` row exists for the product (inventory has no `ProductCreated` consumer today, see §1F.2), logs a WARN and no-ops. Mirrors `StockItemProjection.applyReorderPolicy`'s race-tolerant behaviour.
+- **`ProductDiscontinuedHandler`** (consumer name `inventory.product-discontinued`).
+- **Architectural decision**: separate `ProductDiscontinuedProjection` rather than adding a method to `StockItemProjection`. `StockItemProjection` writes through the `StockItemRepository` aggregate (because reorder policy requires aggregate-level validation), and the discontinue is a one-column UPDATE that doesn't justify adding a `discontinue()` mutation method to the `StockItem` aggregate — keeping the discontinue concern in its own interface + JDBC adapter matches the sales / purchasing / reporting siblings in §1F.1, and the `application/` JdbcTemplate ban routes JDBC into `infrastructure/persistence/` regardless.
+
+### Tests
+
+`ProductDiscontinuedHandlerTest` (happy + already-processed). inventory-service suite 73/73 green.
+
+### Smoke
+
+`mvn -pl inventory-service test` green.
+
+---
+
 ## 2026-05-14 — §1F.1 reporting (atp): ProductDiscontinued consumer
 
 Fourth of five §1F.1 service-level slices. Reporting's ATP view stamps `discontinued_at` so UI consumers can grey-out / filter discontinued rows; existing accumulator columns and `stock_status` CHECK constraint are untouched.

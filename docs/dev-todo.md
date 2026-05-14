@@ -159,7 +159,7 @@ User wants to drive the README's tone and voice themselves (it's a public-facing
 - ~~`manufacturing.product-discontinued` — set `manufacturing.product_replenishment.is_purchased=false, is_manufactured=false` (existing rejection path covers it then); clear `manufacturing.product_active_bom` (drives `BomActivated` with `newBomHeaderId=null` — see §2.13).~~ **Shipped 2026-05-14.**
 - ~~`purchasing.product-discontinued` — block new POs/PRs for the product.~~ **Shipped 2026-05-14.**
 - ~~`reporting.atp.product-discontinued` — stamp `discontinued_at` on `reporting.available_to_promise_view` so the UI can grey-out / filter.~~ **Shipped 2026-05-14.**
-- `inventory.product-discontinued` — suppress reorder alerts in `inventory.stock_item`.
+- ~~`inventory.product-discontinued` — suppress reorder alerts in `inventory.stock_item`.~~ **Shipped 2026-05-14.**
 
 Recommend shipping sales + manufacturing first (highest correctness leverage; the other three are reporting / housekeeping follow-ups).
 
