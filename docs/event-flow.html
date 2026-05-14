@@ -282,9 +282,9 @@
 </tr>
 <tr>
   <td class="merge-event">CustomerDeactivated</td>
-  <td class="no-consumer">—</td>
-  <td class="no-consumer">(no current consumer)</td>
-  <td class="no-consumer">—</td>
+  <td>reporting</td>
+  <td class="consumer">reporting.dashboard.customer-deactivated</td>
+  <td class="desc"><code>reporting.customer_dashboard_status (customer_id, status='inactive', deactivated_at)</code> — per-customer row upserted so dashboard widgets stop counting them in active totals</td>
 </tr>
 <tr>
   <td class="merge-event">CustomerNameChanged</td>
@@ -837,9 +837,9 @@
   <td>SupplierInvoiceApproved</td>
 </tr>
 
-<!-- ============ Destination: reporting (21 rows) ============ -->
+<!-- ============ Destination: reporting (22 rows) ============ -->
 <tr>
-  <td class="merge-src" rowspan="21">reporting</td>
+  <td class="merge-src" rowspan="22">reporting</td>
   <td class="merge-agg" rowspan="3">product</td>
   <td class="merge-event" rowspan="3">Product</td>
   <td>ProductCreated</td>
@@ -851,7 +851,11 @@
   <td>StandardCostChanged</td>
 </tr>
 <tr>
-  <td class="merge-agg" rowspan="2">sales</td>
+  <td class="merge-agg" rowspan="3">sales</td>
+  <td class="merge-event">Customer</td>
+  <td>CustomerDeactivated</td>
+</tr>
+<tr>
   <td class="merge-event" rowspan="2">SalesOrder</td>
   <td>SalesOrderCompensated</td>
 </tr>

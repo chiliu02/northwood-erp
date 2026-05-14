@@ -6,6 +6,38 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-14 — §1F.3 reporting: CustomerDeactivated dashboard projection
+
+First half of §1F.3. Adds a per-customer status projection in reporting so dashboard widgets can compute deactivated-customer counts without reading sales' customer table cross-schema. The finance half (flag outstanding AR for collections) ships as a sibling slice.
+
+### Changes
+
+- **Liquibase changeset** `reporting-service/.../changes/2026-05-14-customer-dashboard-status.sql` creates `reporting.customer_dashboard_status (customer_id PK, status CHECK IN ('active','inactive'), deactivated_at TIMESTAMPTZ NULL, updated_at TIMESTAMPTZ DEFAULT now())`. Master changelog includes it.
+- **`CustomerDashboardProjection`** (interface) + `JdbcCustomerDashboardProjection`. Single method `recordCustomerDeactivated(customerId, deactivatedAt)` upserts to status='inactive'.
+- **`reporting.dashboard.customer-deactivated`** inbox handler under `inbox/dashboard/` with `@Component("dashboard_CustomerDeactivatedHandler")` (matches the existing simple-name-collision convention in that sub-package).
+- **`docs/event-flow.html`**: source-first table — `CustomerDeactivated` row gets its first consumer (was "no current consumer"); destination-first table — adds `sales / Customer / CustomerDeactivated` under the reporting destination.
+
+### Design choice
+
+The dev-todo entry described this as "decrement active-customer count" — i.e. an accumulator. Used a per-customer status row instead because:
+- `CustomerDeactivated` carries only the customer id; accumulator semantics would need a parallel `CustomerRegistered` consumer (§1F.4-ish) to keep counts balanced. The per-customer row is independently useful before that lands.
+- Replay-safe: a redelivered event re-upserts the same row, never double-counts.
+- Future UI features (list inactive customers, filter on status) work without extra joins; "active count" stays a derived `WHERE status='active'` once §1F.4 seeds those rows.
+
+### Tests
+
+`CustomerDeactivatedHandlerTest` (happy + already-processed). reporting-service suite 5/5 green.
+
+### Smoke
+
+`mvn -pl reporting-service test` green.
+
+### Follow-up
+
+Finance half (`finance.ar.customer-deactivated` — flag outstanding AR for collections) ships next; Coverage Gaps entry stays in `event-flow.html` until both halves land.
+
+---
+
 ## 2026-05-14 — §1F.2 inventory: ProductCreated consumer (seed stock_item stub)
 
 Inventory's `StockItemProjection.applyReorderPolicy` previously documented this gap inline: any product registered after boot via `POST /api/products` would emit `ReorderPolicyChanged` against a missing `inventory.stock_item` row, hit the WARN-and-no-op branch, and silently lose its policy. Demo masked it because the Liquibase seed pre-creates rows for the 5 demo SKUs.
