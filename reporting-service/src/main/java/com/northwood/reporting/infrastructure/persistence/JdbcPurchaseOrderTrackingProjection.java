@@ -5,6 +5,7 @@ import com.northwood.finance.domain.events.SupplierPaymentMade;
 import com.northwood.reporting.application.inbox.PurchaseOrderTrackingProjection;
 import java.math.BigDecimal;
 import java.sql.Date;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -124,6 +125,33 @@ public class JdbcPurchaseOrderTrackingProjection implements PurchaseOrderTrackin
             Integer.class, workOrderId
         );
         return count == null ? 0 : count;
+    }
+
+    @Override
+    @Transactional
+    public void recordPoApproved(UUID purchaseOrderHeaderId, Instant approvedAt, String actorUserId) {
+        int rows = jdbc.update("""
+            UPDATE reporting.purchase_order_tracking_view
+            SET po_status = CASE
+                    WHEN po_status = 'draft' THEN 'sent'
+                    ELSE po_status
+                END,
+                approved_at = ?,
+                last_modified_by = COALESCE(?, last_modified_by),
+                updated_at = now()
+            WHERE purchase_order_header_id = ?
+            """,
+            Timestamp.from(approvedAt), actorUserId, purchaseOrderHeaderId
+        );
+        if (rows == 0) {
+            log.warn(
+                "PurchaseOrderApproved received for unknown purchase_order_header_id={} — reporting.purchase_order_tracking_view row missing, projection skipped (inbox redelivery will catch up once po-created lands)",
+                purchaseOrderHeaderId
+            );
+        } else {
+            log.info("flipped reporting.purchase_order_tracking_view po_status -> sent for po={} (approved_at={})",
+                purchaseOrderHeaderId, approvedAt);
+        }
     }
 
     @Override

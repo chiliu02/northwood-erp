@@ -153,18 +153,13 @@ User wants to drive the README's tone and voice themselves (it's a public-facing
 
 ### 1F Critical — business-incorrect decisions today
 
-§1F.2 (`ProductCreated` inventory consumer) shipped 2026-05-14 — see `dev-done.md`.
-§1F.3 (`CustomerDeactivated` reporting + finance consumers) shipped 2026-05-14 — see `dev-done.md`.
+§1F.2 (`ProductCreated` inventory consumer) shipped 2026-05-14 — see `dev-done.md`.  
+§1F.3 (`CustomerDeactivated` reporting + finance consumers) shipped 2026-05-14 — see `dev-done.md`.  
+§1F.4 (`PurchaseOrderApproved` reporting consumer) shipped 2026-05-14 — see `dev-done.md`.
 
 Remaining items below.
 
 ### 1F Staleness — read models drift
-
-**1F.4 `PurchaseOrderApproved` → reporting PO tracking view**
-
-Published but no inbox subscribes — purchasing's own saga worker polls saga rows directly. `reporting.purchase_order_tracking_view.po_status` stays at `'draft'` indefinitely after a manual `POST /api/purchase-orders/{id}/approve` (the shortage-driven auto-approve path masks this because approval fires in the same txn as creation).
-
-Add `reporting.po-tracking.po-approved` → update `purchase_order_tracking_view.po_status='sent'`, stamp `approved_at`.
 
 **1F.5 `ProductMaterialsCostComputed` — close the cost loop**
 

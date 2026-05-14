@@ -42,6 +42,22 @@ public interface PurchaseOrderTrackingProjection {
      */
     int countOpenForWorkOrder(UUID workOrderId);
 
+    /**
+     * §1F.4: flip {@code po_status} to {@code 'sent'} and stamp
+     * {@code approved_at} when {@code purchasing.PurchaseOrderApproved}
+     * lands. Idempotent — redelivery re-stamps the same timestamp. Does
+     * NOT create a row: if no tracking row exists yet (po-created handler
+     * hasn't run for this PO), the update no-ops with a WARN log; inbox
+     * redelivery on po-created completion catches it up. The UPDATE only
+     * flips status when the current status is {@code 'draft'} so a PO
+     * already past {@code 'sent'} (e.g. into receipt / invoiced) is not
+     * regressed.
+     */
+    void recordPoApproved(
+        UUID purchaseOrderHeaderId,
+        Instant approvedAt,
+        String actorUserId);
+
     void recordGoodsReceived(
         UUID purchaseOrderHeaderId,
         UUID goodsReceiptHeaderId,

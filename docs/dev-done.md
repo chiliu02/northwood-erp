@@ -6,6 +6,27 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-14 — §1F.4 reporting: PurchaseOrderApproved consumer (manual-approval staleness)
+
+Closes the staleness gap where a draft PO manually approved via `POST /api/purchase-orders/{id}/approve` left `reporting.purchase_order_tracking_view.po_status` stuck at `'draft'` indefinitely. The shortage-driven auto-approve path masked it: the auto-approve fires in the same transaction as PO creation, so the existing `po-created` handler already stored the post-approval status.
+
+### Changes
+
+- **Liquibase changeset** `reporting-service/.../changes/2026-05-14-po-tracking-add-approved-at.sql` adds `approved_at TIMESTAMPTZ NULL` to `reporting.purchase_order_tracking_view`. Master changelog includes it.
+- **`PurchaseOrderTrackingProjection.recordPoApproved(purchaseOrderHeaderId, approvedAt, actorUserId)`** new interface method + `JdbcPurchaseOrderTrackingProjection` implementation. UPDATE-only against `purchase_order_header_id` — if the tracking row isn't there yet (po-created handler racing), logs a WARN and no-ops; inbox redelivery catches up. The `po_status` flip is guarded by `CASE WHEN po_status = 'draft' THEN 'sent' ELSE po_status END` so a PO that's already moved past `'sent'` (e.g. into receipt) isn't regressed.
+- **`reporting.po-tracking.po-approved`** inbox handler — passes the event's `occurredAt` as `approvedAt` and the envelope's `actorUserId` (the approver propagated via the outbox header) to the projection.
+- **`docs/event-flow.html`**: source-first table — `PurchaseOrderApproved` row gets its first consumer; destination-first table — `PurchaseOrderApproved` added under reporting / purchasing / PurchaseOrder. Notes — `PurchaseOrderApproved` removed from the "no inbox handler yet" list. Coverage Gaps — Staleness entry §1 deleted; remaining entries renumber 2→1, 3→2, 4→3. Lead-in count `Six` → `Five`.
+
+### Tests
+
+`PurchaseOrderApprovedHandlerTest` (happy + already-processed). reporting-service suite 7/7 green.
+
+### Smoke
+
+`mvn -pl reporting-service test` green.
+
+---
+
 ## 2026-05-14 — §1F.3 finance: CustomerDeactivated → flag outstanding AR for collections
 
 Closes §1F.3 (second half — see preceding entry for the reporting half). On `sales.CustomerDeactivated`, finance flips `flagged_for_collections = true` on every outstanding customer invoice for the customer; a future collections UI / workflow picks them up. "Outstanding" = `status IN ('posted', 'partially_paid') AND outstanding_amount > 0` — a draft is not yet a real receivable, a paid/cancelled invoice has nothing to collect.
