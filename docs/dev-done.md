@@ -6,6 +6,28 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-14 — §1F.3 finance: CustomerDeactivated → flag outstanding AR for collections
+
+Closes §1F.3 (second half — see preceding entry for the reporting half). On `sales.CustomerDeactivated`, finance flips `flagged_for_collections = true` on every outstanding customer invoice for the customer; a future collections UI / workflow picks them up. "Outstanding" = `status IN ('posted', 'partially_paid') AND outstanding_amount > 0` — a draft is not yet a real receivable, a paid/cancelled invoice has nothing to collect.
+
+### Changes
+
+- **Liquibase changeset** `finance-service/.../changes/2026-05-14-customer-invoice-flag-for-collections.sql` adds `flagged_for_collections BOOLEAN NOT NULL DEFAULT false` to `finance.customer_invoice_header`. Master changelog includes it.
+- **`CustomerInvoiceCollectionsProjection`** (interface) + `JdbcCustomerInvoiceCollectionsProjection`. Single method `flagOutstandingForCollections(customerId)` returns the row count (informational; zero is not an error — the customer may simply have no live invoices).
+- **`finance.ar.customer-deactivated`** inbox handler — calls the projection, logs the flagged-row count.
+- **`docs/event-flow.html`**: source-first table — `CustomerDeactivated` row now has both consumers (reporting + finance); destination-first table — `sales / Customer / CustomerDeactivated` added under the finance destination. Notes section — `CustomerDeactivated` removed from the "no inbox handler yet" customer-master list. Coverage Gaps — the §1F.3 critical entry deleted; remaining entries renumbered (1 deleted leaves the Critical section empty, so the section heading is removed entirely; Staleness entries renumber 2→1, 3→2, 4→3, 5→4). Lead-in count `Seven` → `Six`.
+- **`docs/dev-todo.md`**: §1F.3 collapsed to a pointer to `dev-done.md`.
+
+### Tests
+
+`CustomerDeactivatedHandlerTest` in finance-service (3 cases: happy + zero-outstanding-is-not-an-error + already-processed). finance-service suite 112/112 green.
+
+### Smoke
+
+`mvn -pl finance-service test` green.
+
+---
+
 ## 2026-05-14 — §1F.3 reporting: CustomerDeactivated dashboard projection
 
 First half of §1F.3. Adds a per-customer status projection in reporting so dashboard widgets can compute deactivated-customer counts without reading sales' customer table cross-schema. The finance half (flag outstanding AR for collections) ships as a sibling slice.

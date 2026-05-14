@@ -153,16 +153,10 @@ User wants to drive the README's tone and voice themselves (it's a public-facing
 
 ### 1F Critical — business-incorrect decisions today
 
-§1F.2 (`ProductCreated` inventory consumer) shipped 2026-05-14 — see `dev-done.md`. Remaining items below.
+§1F.2 (`ProductCreated` inventory consumer) shipped 2026-05-14 — see `dev-done.md`.
+§1F.3 (`CustomerDeactivated` reporting + finance consumers) shipped 2026-05-14 — see `dev-done.md`.
 
-**1F.3 `CustomerDeactivated` has no consumers**
-
-Sales itself reads `customer.status == ACTIVE` locally during order placement (direct DB read of its own customer table), so sales is fine. Downstream lacks signal: reporting dashboards count deactivated customers in active-customer totals; finance has no trigger to flag outstanding AR for collections. Two handlers:
-
-- `reporting.dashboard.customer-deactivated` — decrement active-customer count.
-- `finance.ar.customer-deactivated` — flag outstanding AR rows for collections.
-
-Lower priority than the shipped 1F.1 / 1F.2 — no transaction goes wrong, just dashboard / AR follow-up signals.
+Remaining items below.
 
 ### 1F Staleness — read models drift
 
