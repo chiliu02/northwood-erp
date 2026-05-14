@@ -6,20 +6,26 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
-## 2026-05-14 — event-flow.html: data-driven refactor (adding events stops being error-prone)
+## 2026-05-14 — event-flow.html: data-driven tree (adding events stops being error-prone)
 
-Tail-end of the §2.13 / §2.14 / §2.11 polish run. The hand-authored source-first + destination-first tables in `docs/event-flow.html` had become a steady source of layout-shift bugs: every event addition required bumping `merge-src` / `merge-agg` rowspans by hand, and a single stale rowspan slid every subsequent source's cells one column to the left — a bug that returned twice in this session despite multiple targeted fixes (see commits `30b6e3f` and `c4661b4`).
+Tail-end of the §2.13 / §2.14 / §2.11 polish run. The hand-authored source-first + destination-first tables in `docs/event-flow.html` had become a steady source of layout-shift bugs: every event addition required bumping `merge-src` / `merge-agg` rowspans by hand, and a single stale rowspan slid every subsequent source's cells one column to the left — a bug that returned twice in this session despite multiple targeted fixes (see commits `30b6e3f` and `c4661b4`), then *again* after a data-driven table refactor that should have eliminated stale rowspans by computing them from data.
+
+Root cause turned out to be deeper than stale rowspans: HTML `rowspan` counts DOM rows including `display:none` ones, while the collapse logic was either reducing ancestor rowspans (over-shrinking — the original bug) or leaving them alone (over-reaching when many inner rows hide — what reproduced after the data-driven table refactor). Neither approach works in all collapse states. **The table approach is structurally fighting against `rowspan` + `display:none`**; no further patching will fully fix it.
+
+### Pivot: tree, not table
+
+Replaced both views with native `<details>` / `<summary>` trees. Each source / aggregate is a `<details>` element with a single `<summary>` row; the consumers under an event are a small per-event `<table>` (no cross-event rowspan, so the layout-shift bug class is structurally impossible). Native `<details>` collapsibility removes the entire JS collapse subsystem (~400 lines deleted).
 
 ### Fix
 
-Both tables, the Coverage Gaps lead-in count, and an authoring consistency check now derive from one inline `NORTHWOOD_EVENTS` array. The JS renderer at the bottom of `event-flow.html` builds the tables from that data on `DOMContentLoaded`. Adding an event = appending one object to the array.
+Both views, the Coverage Gaps lead-in count, and an authoring consistency check derive from one inline `NORTHWOOD_EVENTS` array. The JS renderer at the bottom of `event-flow.html` builds the trees from that data on `DOMContentLoaded`. Adding an event = appending one object to the array.
 
 ### Structural changes
 
 - **Inline `NORTHWOOD_EVENTS` array** — 44 events × their consumers, schema documented in a long comment block immediately above the array. Each event entry has `source`, `aggregate`, `event`, and a `consumers: [{dest, name, desc}]` list (`desc` allows HTML so existing `<code>` tags survive).
-- **Two `<tbody>` placeholders** replace the ~700 lines of hand-authored rows; the renderer populates them.
-- **Source-first renderer** (`renderSourceFirst`) — groups events by source → aggregate → event → consumers; computes `merge-src` / `merge-agg` / `merge-event` rowspans from row counts so the author never sees a rowspan number.
-- **Destination-first renderer** (`renderDestinationFirst`) — re-keys to (dest, source, aggregate, event) tuples, collapses multiple consumers in the same destination for the same event to a single row (matches the prior destination-first semantics). Destinations sorted alphabetically; source/aggregate order within a destination follows the natural insertion order from the events array.
+- **Two `<div class="tree-wrap">` placeholders** replace the ~700 lines of hand-authored table rows; the renderer populates them with nested `<details>` elements.
+- **Source-first renderer** (`renderSourceFirstTree`) — groups events by source → aggregate → event → consumers. Each source / aggregate is a `<details>` with a count badge in the summary; each event is a small `<table class="consumers-table">` of leaf rows. No rowspans anywhere.
+- **Destination-first renderer** (`renderDestinationFirstTree`) — re-keys to (dest, source, aggregate, event) tuples and renders as destination → source → aggregate → event-list. Destinations sorted alphabetically; source order within a destination follows the natural insertion order from the events array.
 - **Coverage Gaps lead-in count** — a `<span id="no-consumer-count-word">` placeholder is filled with the right number-word from a `count(consumers === []) → "Zero"…"Ten"` mapping. No more drift when a gap closes.
 - **Validation pass** runs over the data and writes findings to (a) browser console and (b) a red error banner at the top of the source-first table. Catches duplicate events, missing required fields, duplicate consumer names within an event.
 - **Inlined the data** into `event-flow.html` rather than keeping a side `event-flow-data.js`. Chrome / Edge / Safari block `<script src="…">` from `file://` for cross-origin reasons; the page is typically opened off disk, so a side file would have rendered the tables empty for most viewers.

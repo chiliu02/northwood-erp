@@ -48,65 +48,62 @@
   ul { margin: 0.4rem 0 0.8rem 0; padding-left: 1.4rem; }
   li { margin: 0.15rem 0; }
 
-  .table-wrap { overflow-x: auto; margin: 1rem 0 1.5rem; }
-  table {
-    border-collapse: collapse;
-    width: 100%;
-    font-size: 0.88rem;
-    background: var(--bg);
-  }
-  thead th {
-    background: #eaeef2;
-    border: 1px solid var(--border-strong);
-    padding: 0.55rem 0.75rem;
-    text-align: left;
-    position: sticky;
-    top: 0;
-    font-weight: 600;
-  }
-  tbody td {
-    border: 1px solid var(--border);
-    padding: 0.5rem 0.75rem;
-    vertical-align: top;
-  }
-  /* Merged columns get progressively lighter tints so the hierarchy reads at a glance.
-     In the source-first table these are semantic (source / aggregate / event / destination);
-     in the destination-first table they're reused as visual-depth markers (1st / 2nd / 3rd level). */
-  td.merge-src     { background: #d4e4f1; font-weight: 600; }
-  td.merge-agg     { background: #e2ecf5; font-weight: 600; }
-  td.merge-event   { background: #ecf2f8; font-weight: 600; }
-  td.merge-dest    { /* Destination Service cells share the default white background so multi-row groups don't stand out from single-row ones. */ }
-  td.consumer      { font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.84rem; white-space: nowrap; }
-  td.no-consumer   { color: var(--muted); font-style: italic; }
-  td.desc          { font-size: 0.84rem; }
-  td.desc code     { font-size: 0.94em; }
-
-  /* Collapsible group affordance: clickable merge cells in the Source/Aggregate/Destination
-     columns. Click toggles between expanded (▼) and collapsed (▶) state. */
-  td.clickable-cell {
+  /* Tree-based layout (replaces the old HTML tables).
+     Each level uses progressively lighter background tints so the
+     hierarchy reads at a glance — same palette the old merge cells used. */
+  .tree-wrap { margin: 1rem 0 1.5rem; font-size: 0.88rem; }
+  details { margin: 0; }
+  summary {
     cursor: pointer;
+    padding: 0.4rem 0.75rem;
+    list-style: none; /* hide the default disclosure triangle; we draw our own */
+    border: 1px solid var(--border);
+    border-top: none;
     user-select: none;
   }
-  td.clickable-cell:hover {
-    filter: brightness(0.96);
-  }
-  td.clickable-cell .toggle-marker {
+  summary::-webkit-details-marker { display: none; }
+  summary:hover { filter: brightness(0.97); }
+  summary::before {
+    content: '▶';
     display: inline-block;
+    width: 0.9em;
     font-size: 0.7em;
-    color: var(--muted);
-    margin-right: 0.25em;
-    width: 0.8em;
-    text-align: center;
-  }
-  td.clickable-cell .toggle-count {
-    font-weight: normal;
-    font-size: 0.85em;
-    color: var(--muted);
-    margin-left: 0.35em;
-  }
-  td.clickable-cell.collapsed .toggle-marker {
     color: var(--accent);
+    margin-right: 0.3em;
+    transition: transform 0.1s ease;
   }
+  details[open] > summary::before {
+    transform: rotate(90deg);
+    color: var(--muted);
+  }
+  .node-name { font-weight: 600; }
+  .node-count { font-weight: normal; font-size: 0.85em; color: var(--muted); margin-left: 0.35em; }
+
+  /* Per-level backgrounds matching the old merge-src/agg/event tint scale. */
+  details.src-node              { background: #d4e4f1; }
+  details.src-node > summary    { background: #d4e4f1; }
+  details.src-node:first-child > summary { border-top: 1px solid var(--border); }
+  .src-body                     { padding: 0; }
+
+  details.agg-node              { background: #e2ecf5; margin-left: 0; }
+  details.agg-node > summary    { background: #e2ecf5; padding-left: 1.75rem; }
+  .agg-body                     { padding: 0; }
+
+  .event-node                   { background: var(--bg); padding: 0.35rem 0.75rem 0.5rem 3rem; border: 1px solid var(--border); border-top: none; }
+  .event-name                   { background: #ecf2f8; font-weight: 600; padding: 0.3rem 0.5rem; margin: 0 0 0.3rem -0.4rem; border-radius: 3px; display: inline-block; }
+  .no-consumer                  { color: var(--muted); font-style: italic; margin-left: 0.4rem; }
+
+  /* Per-event consumer leaf table — small, no rowspan. */
+  table.consumers-table         { border-collapse: collapse; width: 100%; margin: 0.25rem 0 0 0; background: var(--bg); }
+  table.consumers-table td      { border: 1px solid var(--border); padding: 0.35rem 0.6rem; vertical-align: top; }
+  td.c-dest                     { white-space: nowrap; width: 1%; }
+  td.c-name                     { font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.84rem; white-space: nowrap; width: 1%; }
+  td.c-desc                     { font-size: 0.84rem; }
+  td.c-desc code                { font-size: 0.94em; }
+
+  /* Destination-first tree — leaf is a flat list of event names. */
+  ul.dest-event-list            { margin: 0.2rem 0 0 0.6rem; padding-left: 1.2rem; }
+  ul.dest-event-list li         { margin: 0.1rem 0; }
 
   .expand-all-btn {
     margin: 0 0 0.5rem 0;
@@ -146,57 +143,27 @@
 <body>
 
 <h1>Northwood — Domain Event Flow</h1>
-<p class="meta">Service-name suffix <code>-service</code> stripped for compactness. Two views below: the <strong>source-first</strong> table answers <em>"when this event fires, who hears it and what do they do?"</em> (full consumer + description detail); the <strong>destination-first</strong> table answers <em>"which events does this service receive, and from whom?"</em> (compact 4-column summary). Cells are merged via <code>rowspan</code> wherever the same value repeats in adjacent rows. <strong>Click any value with a ▼ marker</strong> to collapse / expand that group — Source Service or Aggregate Root in the first table, Destination Service in the second. Nested collapses are tracked, so collapsing an aggregate and then its source (or vice versa) restores correctly when you expand.</p>
+<p class="meta">Service-name suffix <code>-service</code> stripped for compactness. Two views below: the <strong>source-first</strong> tree answers <em>"when this event fires, who hears it and what do they do?"</em> (full consumer + description detail); the <strong>destination-first</strong> tree answers <em>"which events does this service receive, and from whom?"</em> (compact summary). <strong>Click any ▶ marker</strong> to expand or collapse a node — sources, aggregates, and (in the destination view) source services within a destination are independently collapsible.</p>
 
-<p>Each row maps a published domain event to a single consumer. Events with multiple consumers occupy multiple rows. The <strong>Aggregate Root</strong> column reflects the <code>aggregate_type</code> string written to the outbox (and carried on the event envelope). Consumer names come from the <code>CONSUMER_NAME</code> constant on each <code>*Handler</code> in <code>application/inbox/</code>. The <strong>Description</strong> column names the table(s) and field(s) each consumer writes. Events with no current consumer are listed for completeness.</p>
+<p>Each event lists its consumers (one per row). The <strong>Aggregate Root</strong> level reflects the <code>aggregate_type</code> string written to the outbox (and carried on the event envelope). Consumer names come from the <code>CONSUMER_NAME</code> constant on each <code>*Handler</code> in <code>application/inbox/</code>. The <strong>Description</strong> column names the table(s) and field(s) each consumer writes. Events with no current consumer are listed for completeness.</p>
 
 <h2>Source-first view</h2>
-<p>Grouped by Source Service → Aggregate Root → Domain Event → Destination Service. One row per consumer (so an event with multiple consumers in the same destination service occupies multiple rows).</p>
+<p>Grouped by Source Service → Aggregate Root → Domain Event → consumers. The count next to each level shows the total leaf-row count under that node.</p>
 
-<div class="table-wrap">
-<table>
-<thead>
-  <tr>
-    <th>Source Service</th>
-    <th>Aggregate Root</th>
-    <th>Domain Event</th>
-    <th>Destination Service</th>
-    <th>Consumer</th>
-    <th>Description</th>
-  </tr>
-</thead>
-<tbody id="source-first-tbody">
+<div class="tree-wrap" id="source-first-tree">
 <!-- Rendered at page load from the NORTHWOOD_EVENTS array (defined in the
      <script> block near the bottom of this file). To add a new event,
-     edit that array — do NOT hand-author rows here. The renderer
-     computes all rowspans + merge-cell classes from the data, and also
-     drives the Destination-first table below and the Coverage Gaps
+     edit that array — do NOT hand-author tree nodes here. The renderer
+     also drives the Destination-first tree below and the Coverage Gaps
      lead-in count. -->
-</tbody>
-</table>
 </div>
 
 <h2>Destination-first view</h2>
-<p>Grouped by Destination Service → Source Service → Aggregate Root → Domain Event. One row per <em>unique</em> (destination, source, aggregate, event) tuple — so an event with multiple consumers in the same destination service collapses to a single row (the destination receives the event once; per-consumer breakdowns live in the source-first view above). Events with no current consumer aren't listed (no destination to group under). Reuses the same merge-class styling: outermost group is darkest, deepest is lightest.</p>
+<p>Grouped by Destination Service → Source Service → Aggregate Root → Domain Event. One leaf per <em>unique</em> (destination, source, aggregate, event) tuple — so an event with multiple consumers in the same destination service collapses to one leaf (the destination receives the event once; per-consumer breakdowns live in the source-first view above). Events with no current consumer aren't listed (no destination to group under).</p>
 
-<div class="table-wrap">
-<table>
-<thead>
-  <tr>
-    <th>Destination Service</th>
-    <th>Source Service</th>
-    <th>Aggregate Root</th>
-    <th>Domain Event</th>
-  </tr>
-</thead>
-<tbody id="destination-first-tbody">
+<div class="tree-wrap" id="destination-first-tree">
 <!-- Rendered at page load from NORTHWOOD_EVENTS — see source-first
-     placeholder above for the rationale. Each unique (destination, source,
-     aggregate, event) tuple becomes one row; multiple consumers in the
-     same destination service for the same event collapse to a single row
-     (per-consumer detail lives in the source-first view). -->
-</tbody>
-</table>
+     placeholder above for the rationale. -->
 </div>
 
 <h2>Notes</h2>
@@ -749,53 +716,44 @@ window.NORTHWOOD_EVENTS = [
 <script>
 (function () {
   'use strict';
-  let collapseIdCounter = 0;
 
   document.addEventListener('DOMContentLoaded', function () {
     renderFromData();
-    init();
   });
 
   // ============================================================
-  // Data-driven rendering (§refactor 2026-05-14)
+  // Tree-based rendering (replaces the old table+rowspan approach,
+  // 2026-05-14). Uses native <details>/<summary> for collapsibility —
+  // no rowspan layout to fight with, so the source-second-column slide
+  // bug we kept hitting is structurally impossible. Authors add events
+  // by appending to NORTHWOOD_EVENTS above; layout follows automatically.
   // ============================================================
-  //
-  // Both tables in this page are computed from window.NORTHWOOD_EVENTS at
-  // page load. The hand-authored tbodies that used to live in the HTML are
-  // gone — adding a new event = adding one object to the events array.
-  // Rowspans, merge-cell classes, the destination-first re-grouping, and
-  // the Coverage Gaps lead-in count all derive from the same source. This
-  // closes the entire class of "stale rowspan slides cells into the wrong
-  // column" bugs that the hand-authored tables produced.
-  //
-  // The renderer also runs a consistency check on the data and writes any
-  // findings to the page (red banner at the top of the source-first
-  // table) AND to the browser console. Catches authoring mistakes like
-  // duplicate events, missing fields, or duplicate consumers.
 
   function renderFromData() {
     const events = window.NORTHWOOD_EVENTS;
     if (!Array.isArray(events)) {
-      showError('window.NORTHWOOD_EVENTS is not an array. Tables will be empty.');
+      showError('window.NORTHWOOD_EVENTS is not an array. Trees will be empty.');
       return;
     }
 
     const problems = validateEvents(events);
     if (problems.length > 0) {
-      showError('Event data has problems — see browser console for details. Tables rendered anyway with whatever the data carries.');
+      showError('Event data has problems — see browser console for details. Trees rendered anyway with whatever the data carries.');
       problems.forEach(function (p) { console.warn('[event-flow] ' + p); });
     }
 
-    document.getElementById('source-first-tbody').innerHTML = renderSourceFirst(events);
-    document.getElementById('destination-first-tbody').innerHTML = renderDestinationFirst(events);
+    document.getElementById('source-first-tree').innerHTML = renderSourceFirstTree(events);
+    document.getElementById('destination-first-tree').innerHTML = renderDestinationFirstTree(events);
 
     const noConsumerCount = events.filter(function (e) { return e.consumers.length === 0; }).length;
     const countEl = document.getElementById('no-consumer-count-word');
     if (countEl) countEl.textContent = numberWord(noConsumerCount);
+
+    wireExpandAllButtons();
   }
 
   function showError(msg) {
-    const wrap = document.querySelector('.table-wrap');
+    const wrap = document.querySelector('.tree-wrap');
     if (!wrap) return;
     const banner = document.createElement('div');
     banner.style.cssText = 'background:#ffebe9;border:1px solid #cf222e;color:#cf222e;padding:0.5rem 0.75rem;border-radius:4px;margin-bottom:0.75rem;font-size:0.88rem;';
@@ -816,7 +774,6 @@ window.NORTHWOOD_EVENTS = [
         problems.push('Duplicate event entry: ' + key + ' (index #' + i + ')');
       }
       eventKeys.add(key);
-
       const consumerKeys = new Set();
       e.consumers.forEach(function (c, j) {
         if (!c.dest || !c.name || c.desc === undefined) {
@@ -831,60 +788,61 @@ window.NORTHWOOD_EVENTS = [
     return problems;
   }
 
-  function renderSourceFirst(events) {
+  // ------------------------------------------------------------
+  // Source-first tree: source → aggregate → event → consumer rows.
+  // ------------------------------------------------------------
+  function renderSourceFirstTree(events) {
     const bySource = groupBy(events, function (e) { return e.source; });
     const out = [];
     for (const source of bySource.keys()) {
       const sourceEvents = bySource.get(source);
-      const byAgg = groupBy(sourceEvents, function (e) { return e.aggregate; });
       const sourceRowCount = sumRowsForEvents(sourceEvents);
-      let firstSourceRow = true;
+      out.push('<details class="src-node" open>');
+      out.push('<summary class="src-summary"><span class="node-name">' + esc(source) + '</span> <span class="node-count">(' + sourceRowCount + ')</span></summary>');
+      out.push('<div class="src-body">');
+
+      const byAgg = groupBy(sourceEvents, function (e) { return e.aggregate; });
       for (const aggregate of byAgg.keys()) {
         const aggEvents = byAgg.get(aggregate);
         const aggRowCount = sumRowsForEvents(aggEvents);
-        let firstAggRow = true;
+        out.push('<details class="agg-node" open>');
+        out.push('<summary class="agg-summary"><span class="node-name">' + esc(aggregate) + '</span> <span class="node-count">(' + aggRowCount + ')</span></summary>');
+        out.push('<div class="agg-body">');
+
         for (const event of aggEvents) {
-          const eventRowCount = Math.max(1, event.consumers.length);
+          out.push('<div class="event-node">');
+          out.push('<div class="event-name">' + esc(event.event) + '</div>');
           if (event.consumers.length === 0) {
-            out.push('<tr>');
-            if (firstSourceRow) out.push('<td class="merge-src" rowspan="' + sourceRowCount + '">' + esc(source) + '</td>');
-            if (firstAggRow) out.push('<td class="merge-agg" rowspan="' + aggRowCount + '">' + esc(aggregate) + '</td>');
-            out.push('<td class="merge-event">' + esc(event.event) + '</td>');
-            out.push('<td class="no-consumer">—</td>');
-            out.push('<td class="no-consumer">(no current consumer)</td>');
-            out.push('<td class="no-consumer">—</td>');
-            out.push('</tr>');
-            firstSourceRow = false;
-            firstAggRow = false;
+            out.push('<div class="no-consumer">(no current consumer)</div>');
           } else {
-            let firstConsumerRow = true;
+            out.push('<table class="consumers-table">');
+            out.push('<tbody>');
             for (const c of event.consumers) {
               out.push('<tr>');
-              if (firstSourceRow) out.push('<td class="merge-src" rowspan="' + sourceRowCount + '">' + esc(source) + '</td>');
-              if (firstAggRow) out.push('<td class="merge-agg" rowspan="' + aggRowCount + '">' + esc(aggregate) + '</td>');
-              if (firstConsumerRow) {
-                const rs = eventRowCount > 1 ? ' rowspan="' + eventRowCount + '"' : '';
-                out.push('<td class="merge-event"' + rs + '>' + esc(event.event) + '</td>');
-              }
-              out.push('<td>' + esc(c.dest) + '</td>');
-              out.push('<td class="consumer">' + esc(c.name) + '</td>');
-              out.push('<td class="desc">' + c.desc + '</td>'); // raw HTML preserved
+              out.push('<td class="c-dest">' + esc(c.dest) + '</td>');
+              out.push('<td class="c-name">' + esc(c.name) + '</td>');
+              out.push('<td class="c-desc">' + c.desc + '</td>'); // raw HTML preserved
               out.push('</tr>');
-              firstSourceRow = false;
-              firstAggRow = false;
-              firstConsumerRow = false;
             }
+            out.push('</tbody></table>');
           }
+          out.push('</div>');
         }
+
+        out.push('</div></details>');
       }
+
+      out.push('</div></details>');
     }
     return out.join('\n');
   }
 
-  function renderDestinationFirst(events) {
-    // One row per unique (dest, source, aggregate, event) tuple. Multiple
-    // consumers in the same destination for the same event collapse to
-    // a single row (per-consumer detail is in the source-first table).
+  // ------------------------------------------------------------
+  // Destination-first tree: dest → source → aggregate → event leaves.
+  // Multiple consumers in the same destination for the same event
+  // collapse to one leaf (per-consumer detail lives in source-first).
+  // ------------------------------------------------------------
+  function renderDestinationFirstTree(events) {
     const tuples = [];
     const seen = new Set();
     for (const e of events) {
@@ -895,44 +853,65 @@ window.NORTHWOOD_EVENTS = [
         tuples.push({ dest: c.dest, source: e.source, aggregate: e.aggregate, event: e.event });
       }
     }
-    // Alphabetical destination ordering keeps the table layout stable as
-    // new consumers land on different services.
     const sortedDests = Array.from(new Set(tuples.map(function (t) { return t.dest; }))).sort();
     const out = [];
     for (const dest of sortedDests) {
       const destTuples = tuples.filter(function (t) { return t.dest === dest; });
+      out.push('<details class="src-node" open>');
+      out.push('<summary class="src-summary"><span class="node-name">' + esc(dest) + '</span> <span class="node-count">(' + destTuples.length + ')</span></summary>');
+      out.push('<div class="src-body">');
+
       const bySource = groupBy(destTuples, function (t) { return t.source; });
-      const destRowCount = destTuples.length;
-      let firstDestRow = true;
       for (const source of bySource.keys()) {
         const sourceTuples = bySource.get(source);
+        out.push('<details class="agg-node" open>');
+        out.push('<summary class="agg-summary"><span class="node-name">' + esc(source) + '</span> <span class="node-count">(' + sourceTuples.length + ')</span></summary>');
+        out.push('<div class="agg-body">');
+
         const byAgg = groupBy(sourceTuples, function (t) { return t.aggregate; });
-        const sourceRowCount = sourceTuples.length;
-        let firstSourceRow = true;
         for (const aggregate of byAgg.keys()) {
           const aggTuples = byAgg.get(aggregate);
-          const aggRowCount = aggTuples.length;
-          let firstAggRow = true;
+          out.push('<div class="event-node">');
+          out.push('<div class="event-name">' + esc(aggregate) + ' <span class="node-count">(' + aggTuples.length + ')</span></div>');
+          out.push('<ul class="dest-event-list">');
           for (const t of aggTuples) {
-            out.push('<tr>');
-            if (firstDestRow) out.push('<td class="merge-src" rowspan="' + destRowCount + '">' + esc(dest) + '</td>');
-            if (firstSourceRow) out.push('<td class="merge-agg" rowspan="' + sourceRowCount + '">' + esc(source) + '</td>');
-            if (firstAggRow) {
-              const rs = aggRowCount > 1 ? ' rowspan="' + aggRowCount + '"' : '';
-              out.push('<td class="merge-event"' + rs + '>' + esc(aggregate) + '</td>');
-            }
-            out.push('<td>' + esc(t.event) + '</td>');
-            out.push('</tr>');
-            firstDestRow = false;
-            firstSourceRow = false;
-            firstAggRow = false;
+            out.push('<li>' + esc(t.event) + '</li>');
           }
+          out.push('</ul>');
+          out.push('</div>');
         }
+
+        out.push('</div></details>');
       }
+
+      out.push('</div></details>');
     }
     return out.join('\n');
   }
 
+  // ------------------------------------------------------------
+  // Expand all / Collapse all button per tree.
+  // ------------------------------------------------------------
+  function wireExpandAllButtons() {
+    document.querySelectorAll('.tree-wrap').forEach(function (wrap) {
+      const btn = document.createElement('button');
+      btn.className = 'expand-all-btn';
+      btn.textContent = 'Collapse all';
+      btn.dataset.mode = 'collapse';
+      btn.addEventListener('click', function () {
+        const detailsList = wrap.querySelectorAll('details');
+        const toClose = btn.dataset.mode === 'collapse';
+        detailsList.forEach(function (d) { d.open = !toClose; });
+        btn.textContent = toClose ? 'Expand all' : 'Collapse all';
+        btn.dataset.mode = toClose ? 'expand' : 'collapse';
+      });
+      wrap.parentNode.insertBefore(btn, wrap);
+    });
+  }
+
+  // ------------------------------------------------------------
+  // Helpers
+  // ------------------------------------------------------------
   function sumRowsForEvents(events) {
     return events.reduce(function (sum, e) { return sum + Math.max(1, e.consumers.length); }, 0);
   }
@@ -954,219 +933,6 @@ window.NORTHWOOD_EVENTS = [
   function numberWord(n) {
     const words = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
     return n <= 10 ? words[n] : String(n);
-  }
-
-  // ============================================================
-  // Collapse / expand (unchanged — operates on rendered DOM classes)
-  // ============================================================
-
-  function init() {
-    const tables = document.querySelectorAll('.table-wrap > table');
-    tables.forEach((table, i) => {
-      // Source-first: Source + Aggregate clickable. Destination-first: only Destination.
-      const groupClasses = (i === 0) ? ['merge-src', 'merge-agg'] : ['merge-src'];
-      hydrate(table, groupClasses);
-      addExpandAllButton(table);
-    });
-  }
-
-  function classToDataKey(cls) {
-    // 'merge-src' -> 'mergeSrc' so dataset uses camelCase / data-merge-src in HTML
-    return cls.replace(/-([a-z])/g, function (_, c) { return c.toUpperCase(); });
-  }
-
-  function hydrate(table, groupClasses) {
-    const rows = Array.from(table.querySelectorAll('tbody > tr'));
-    const currentGroups = {};
-
-    rows.forEach(function (row) {
-      groupClasses.forEach(function (cls) {
-        const cell = row.querySelector('td.' + cls);
-        if (cell) {
-          const value = cell.textContent.trim();
-          currentGroups[cls] = value;
-          if (!cell.dataset.originalText) {
-            cell.dataset.originalText = value;
-            cell.classList.add('clickable-cell');
-            cell.title = 'Click to collapse / expand this group';
-            cell.innerHTML = '<span class="toggle-marker">▼</span>' + escapeHtml(value);
-            cell.addEventListener('click', function (e) {
-              e.stopPropagation();
-              toggleCell(cell, cls);
-            });
-          }
-        }
-        // Scoped key — include this class plus all earlier classes so the same aggregate
-        // name (e.g. "Product") in two different sources gets distinct keys
-        // ("product/Product" vs "manufacturing/Product"). Without scoping, the filter
-        // would over-match and the rowspan-reduction math would drive ancestor cells
-        // to rowspan=0, which HTML interprets as "span to end of section" — bug source.
-        const scoped = scopedKey(groupClasses, cls, currentGroups);
-        row.dataset[classToDataKey(cls)] = scoped;
-      });
-    });
-  }
-
-  function scopedKey(allClasses, currentClass, currentGroups) {
-    const parts = [];
-    for (let i = 0; i < allClasses.length; i++) {
-      const c = allClasses[i];
-      if (currentGroups[c]) parts.push(currentGroups[c]);
-      if (c === currentClass) break;
-    }
-    return parts.join('/');
-  }
-
-  function addExpandAllButton(table) {
-    const wrap = table.closest('.table-wrap');
-    if (!wrap) return;
-    const btn = document.createElement('button');
-    btn.textContent = 'Collapse all';
-    btn.className = 'expand-all-btn';
-    btn.dataset.mode = 'collapse';
-    btn.addEventListener('click', function () {
-      if (btn.dataset.mode === 'collapse') {
-        collapseAll(table);
-        btn.textContent = 'Expand all';
-        btn.dataset.mode = 'expand';
-      } else {
-        expandAll(table);
-        btn.textContent = 'Collapse all';
-        btn.dataset.mode = 'collapse';
-      }
-    });
-    wrap.parentNode.insertBefore(btn, wrap);
-  }
-
-  function expandAll(table) {
-    // Expand outermost groups first so inner restorations land on the right ancestor rowspans.
-    ['merge-src', 'merge-agg', 'merge-event'].forEach(function (cls) {
-      Array.from(table.querySelectorAll('td.' + cls + '.collapsed')).forEach(expandCell);
-    });
-  }
-
-  function collapseAll(table) {
-    // Collapse innermost groups first so each layer's ancestor-rowspan reductions
-    // operate on cells that still hold their original rowspan.
-    ['merge-event', 'merge-agg', 'merge-src'].forEach(function (cls) {
-      Array.from(table.querySelectorAll('td.' + cls + '.clickable-cell:not(.collapsed)')).forEach(function (cell) {
-        collapseCell(cell, cls);
-      });
-    });
-  }
-
-  function toggleCell(cell, groupClass) {
-    if (cell.classList.contains('collapsed')) {
-      expandCell(cell);
-    } else {
-      collapseCell(cell, groupClass);
-    }
-  }
-
-  function collapseCell(cell, groupClass) {
-    const dataKey = classToDataKey(groupClass);
-    const firstRow = cell.parentElement;
-    const groupKey = firstRow.dataset[dataKey];
-    if (!groupKey) return;
-
-    const table = cell.closest('table');
-    const allRows = Array.from(table.querySelectorAll('tbody > tr'));
-    const groupRows = allRows.filter(function (r) { return r.dataset[dataKey] === groupKey; });
-
-    // Single-row groups still collapse — their right-side cells are hidden so the
-    // group reads as just the title with a ▶ marker. No ancestor rowspan changes.
-    const otherRows = groupRows.filter(function (r) { return r !== firstRow; });
-
-    const collapseId = 'c' + (++collapseIdCounter);
-    cell.dataset.collapseId = collapseId;
-
-    otherRows.forEach(function (r) { addHiddenTag(r, collapseId); });
-
-    let nextCell = cell.nextElementSibling;
-    while (nextCell) {
-      addHiddenTag(nextCell, collapseId);
-      nextCell = nextCell.nextElementSibling;
-    }
-
-    cell.dataset.savedRowspan = cell.getAttribute('rowspan') || '1';
-    cell.setAttribute('rowspan', '1');
-
-    // Ancestor rowspans are deliberately NOT reduced here. HTML rowspan counts
-    // DOM rows including display:none ones; the inner aggregate's hidden rows
-    // still occupy DOM slots, so the source-level cell's original rowspan
-    // continues to span the correct visible-row range. An earlier version of
-    // this code reduced ancestor rowspans by otherRows.length, which under-
-    // reaches the source cell when multiple inner aggregates are collapsed
-    // (e.g. sales' SalesOrder anchor would slide left into the Source Service
-    // column because sales' rowspan no longer covered the SalesOrder row).
-
-    cell.classList.add('collapsed');
-    const marker = cell.querySelector('.toggle-marker');
-    if (marker) marker.textContent = '▶';
-    let count = cell.querySelector('.toggle-count');
-    if (!count) {
-      cell.appendChild(document.createTextNode(' '));
-      count = document.createElement('span');
-      count.className = 'toggle-count';
-      cell.appendChild(count);
-    }
-    count.textContent = '(' + groupRows.length + ')';
-  }
-
-  function expandCell(cell) {
-    const collapseId = cell.dataset.collapseId;
-    if (!collapseId) return;
-
-    const table = cell.closest('table');
-    const allRows = Array.from(table.querySelectorAll('tbody > tr'));
-
-    allRows.forEach(function (r) { removeHiddenTag(r, collapseId); });
-
-    let nextCell = cell.nextElementSibling;
-    while (nextCell) {
-      removeHiddenTag(nextCell, collapseId);
-      nextCell = nextCell.nextElementSibling;
-    }
-
-    cell.setAttribute('rowspan', cell.dataset.savedRowspan || '1');
-    delete cell.dataset.savedRowspan;
-
-    // No ancestor-rowspan restoration is needed because collapseCell no
-    // longer reduces ancestor rowspans (HTML rowspan counts DOM rows
-    // including display:none ones, so the original ancestor rowspan keeps
-    // covering the visible-row range correctly while inner aggregates are
-    // hidden).
-
-    cell.classList.remove('collapsed');
-    const marker = cell.querySelector('.toggle-marker');
-    if (marker) marker.textContent = '▼';
-    const count = cell.querySelector('.toggle-count');
-    if (count) {
-      const prev = count.previousSibling;
-      count.remove();
-      if (prev && prev.nodeType === Node.TEXT_NODE) prev.remove();
-    }
-    delete cell.dataset.collapseId;
-  }
-
-  function addHiddenTag(element, tag) {
-    const list = (element.dataset.hiddenBy || '').split('|').filter(Boolean);
-    if (list.indexOf(tag) === -1) list.push(tag);
-    element.dataset.hiddenBy = list.join('|');
-    element.style.display = 'none';
-  }
-
-  function removeHiddenTag(element, tag) {
-    if (!element.dataset.hiddenBy) return;
-    const list = element.dataset.hiddenBy.split('|').filter(function (x) { return x && x !== tag; });
-    element.dataset.hiddenBy = list.join('|');
-    if (list.length === 0) {
-      element.style.display = '';
-    }
-  }
-
-  function escapeHtml(s) {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 })();
 </script>
