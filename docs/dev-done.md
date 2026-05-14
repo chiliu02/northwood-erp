@@ -6,6 +6,40 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-14 — event-flow.html: data-driven refactor (adding events stops being error-prone)
+
+Tail-end of the §2.13 / §2.14 / §2.11 polish run. The hand-authored source-first + destination-first tables in `docs/event-flow.html` had become a steady source of layout-shift bugs: every event addition required bumping `merge-src` / `merge-agg` rowspans by hand, and a single stale rowspan slid every subsequent source's cells one column to the left — a bug that returned twice in this session despite multiple targeted fixes (see commits `30b6e3f` and `c4661b4`).
+
+### Fix
+
+Both tables, the Coverage Gaps lead-in count, and an authoring consistency check now derive from one inline `NORTHWOOD_EVENTS` array. The JS renderer at the bottom of `event-flow.html` builds the tables from that data on `DOMContentLoaded`. Adding an event = appending one object to the array.
+
+### Structural changes
+
+- **Inline `NORTHWOOD_EVENTS` array** — 44 events × their consumers, schema documented in a long comment block immediately above the array. Each event entry has `source`, `aggregate`, `event`, and a `consumers: [{dest, name, desc}]` list (`desc` allows HTML so existing `<code>` tags survive).
+- **Two `<tbody>` placeholders** replace the ~700 lines of hand-authored rows; the renderer populates them.
+- **Source-first renderer** (`renderSourceFirst`) — groups events by source → aggregate → event → consumers; computes `merge-src` / `merge-agg` / `merge-event` rowspans from row counts so the author never sees a rowspan number.
+- **Destination-first renderer** (`renderDestinationFirst`) — re-keys to (dest, source, aggregate, event) tuples, collapses multiple consumers in the same destination for the same event to a single row (matches the prior destination-first semantics). Destinations sorted alphabetically; source/aggregate order within a destination follows the natural insertion order from the events array.
+- **Coverage Gaps lead-in count** — a `<span id="no-consumer-count-word">` placeholder is filled with the right number-word from a `count(consumers === []) → "Zero"…"Ten"` mapping. No more drift when a gap closes.
+- **Validation pass** runs over the data and writes findings to (a) browser console and (b) a red error banner at the top of the source-first table. Catches duplicate events, missing required fields, duplicate consumer names within an event.
+- **Inlined the data** into `event-flow.html` rather than keeping a side `event-flow-data.js`. Chrome / Edge / Safari block `<script src="…">` from `file://` for cross-origin reasons; the page is typically opened off disk, so a side file would have rendered the tables empty for most viewers.
+
+### Two old bugs the refactor permanently rules out
+
+1. **Stale rowspan slides cells left.** The bug that surfaced twice this session (most recently in a screenshot from the user — purchasing / inventory / manufacturing / finance all rendering in the Aggregate Root column) was caused by hand-authored `rowspan="N"` values diverging from the actual row count in their group. With rowspans computed from the data, this is structurally impossible.
+2. **Source-first and destination-first tables drift out of sync.** Both views render from the same array; adding an event automatically updates both.
+
+### Smoke
+
+I can't run a browser headlessly from here. The renderer's HTML output mirrors the original hand-authored structure (same class names, same rowspan placement, same content) so the existing collapse / expand-all JS works unchanged. Verifying live in a browser is a follow-up the next page-viewer pass naturally does.
+
+### Follow-up suggestions (not done in this slice)
+
+- The "no inbox handler yet" `<li>` in the Notes section still hand-curates which deferred events to list. Could be auto-rendered from `consumers: []` entries, but the current prose adds rationale per group that's hard to express in data. Leave manual for now.
+- The Coverage Gaps section itself (numbered list of gap entries) is still hand-authored. Auto-numbering would save the renumber-on-closure step we did multiple times this session. A small follow-up.
+
+---
+
 ## 2026-05-14 — §2.11 Nested-type ordering audit (services / repositories / aggregates)
 
 Follow-up to the 2026-05-13 statics-on-top sweep, which explicitly deferred nested-type ordering. Per `docs/conventions.md` → *Class member ordering*, nested types (`static class`, `static enum`, `interface`, public records nested inside an enclosing class) belong at the **top** of the class body, above all fields. Moved 17 nested types across 14 files up to the top of their enclosing class.
