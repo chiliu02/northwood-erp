@@ -75,7 +75,7 @@
   td.merge-src     { background: #d4e4f1; font-weight: 600; }
   td.merge-agg     { background: #e2ecf5; font-weight: 600; }
   td.merge-event   { background: #ecf2f8; font-weight: 600; }
-  td.merge-dest    { background: var(--bg-merged); }
+  td.merge-dest    { /* Destination Service cells share the default white background so multi-row groups don't stand out from single-row ones. */ }
   td.consumer      { font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.84rem; white-space: nowrap; }
   td.no-consumer   { color: var(--muted); font-style: italic; }
   td.desc          { font-size: 0.84rem; }
@@ -1092,9 +1092,20 @@
     const wrap = table.closest('.table-wrap');
     if (!wrap) return;
     const btn = document.createElement('button');
-    btn.textContent = 'Expand all';
+    btn.textContent = 'Collapse all';
     btn.className = 'expand-all-btn';
-    btn.addEventListener('click', function () { expandAll(table); });
+    btn.dataset.mode = 'collapse';
+    btn.addEventListener('click', function () {
+      if (btn.dataset.mode === 'collapse') {
+        collapseAll(table);
+        btn.textContent = 'Expand all';
+        btn.dataset.mode = 'expand';
+      } else {
+        expandAll(table);
+        btn.textContent = 'Collapse all';
+        btn.dataset.mode = 'collapse';
+      }
+    });
     wrap.parentNode.insertBefore(btn, wrap);
   }
 
@@ -1102,6 +1113,16 @@
     // Expand outermost groups first so inner restorations land on the right ancestor rowspans.
     ['merge-src', 'merge-agg', 'merge-event'].forEach(function (cls) {
       Array.from(table.querySelectorAll('td.' + cls + '.collapsed')).forEach(expandCell);
+    });
+  }
+
+  function collapseAll(table) {
+    // Collapse innermost groups first so each layer's ancestor-rowspan reductions
+    // operate on cells that still hold their original rowspan.
+    ['merge-event', 'merge-agg', 'merge-src'].forEach(function (cls) {
+      Array.from(table.querySelectorAll('td.' + cls + '.clickable-cell:not(.collapsed)')).forEach(function (cell) {
+        collapseCell(cell, cls);
+      });
     });
   }
 
@@ -1122,8 +1143,9 @@
     const table = cell.closest('table');
     const allRows = Array.from(table.querySelectorAll('tbody > tr'));
     const groupRows = allRows.filter(function (r) { return r.dataset[dataKey] === groupKey; });
-    if (groupRows.length <= 1) return;
 
+    // Single-row groups still collapse — their right-side cells are hidden so the
+    // group reads as just the title with a ▶ marker. No ancestor rowspan changes.
     const otherRows = groupRows.filter(function (r) { return r !== firstRow; });
 
     const collapseId = 'c' + (++collapseIdCounter);
@@ -1154,7 +1176,7 @@
       const ancestorCell = findGroupCell(table, ancestorClass, ancestorKey);
       if (!ancestorCell || ancestorCell === cell) continue;
       const cur = parseInt(ancestorCell.getAttribute('rowspan'), 10) || 1;
-      if (cur > 1) {
+      if (cur > 1 && otherRows.length > 0) {
         const reductions = JSON.parse(ancestorCell.dataset.rowspanReductions || '{}');
         reductions[collapseId] = otherRows.length;
         ancestorCell.dataset.rowspanReductions = JSON.stringify(reductions);
