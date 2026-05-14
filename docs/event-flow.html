@@ -94,9 +94,6 @@
   details.evt-node > summary    { background: #ecf2f8; padding-left: 3rem; font-weight: 600; }
   .evt-body                     { padding: 0.35rem 0.75rem 0.5rem 3rem; background: var(--bg); border: 1px solid var(--border); border-top: none; }
 
-  /* Destination-first leaf: aggregate name + flat list of event names. */
-  .event-node                   { background: var(--bg); padding: 0.35rem 0.75rem 0.5rem 3rem; border: 1px solid var(--border); border-top: none; }
-  .event-name                   { background: #ecf2f8; font-weight: 600; padding: 0.3rem 0.5rem; margin: 0 0 0.3rem -0.4rem; border-radius: 3px; display: inline-block; }
   .no-consumer                  { color: var(--muted); font-style: italic; margin-left: 0.4rem; }
 
   /* Per-event consumer leaf table — small, no rowspan. */
@@ -165,7 +162,7 @@
 </div>
 
 <h2>Destination-first view</h2>
-<p>Grouped by Destination Service → Source Service → Aggregate Root → Domain Event. One leaf per <em>unique</em> (destination, source, aggregate, event) tuple — so an event with multiple consumers in the same destination service collapses to one leaf (the destination receives the event once; per-consumer breakdowns live in the source-first view above). Events with no current consumer aren't listed (no destination to group under).</p>
+<p>Grouped by Destination Service → Source Service → Aggregate Root → Domain Event. The count next to each node shows the size of its immediate children — Destination Service = source services, Source Service = aggregate roots, Aggregate Root = domain events. One leaf per <em>unique</em> (destination, source, aggregate, event) tuple — so an event with multiple consumers in the same destination service collapses to one leaf (the destination receives the event once; per-consumer breakdowns live in the source-first view above). Events with no current consumer aren't listed (no destination to group under).</p>
 
 <div class="tree-wrap" id="destination-first-tree">
 <!-- Rendered at page load from NORTHWOOD_EVENTS — see source-first
@@ -862,28 +859,29 @@ window.NORTHWOOD_EVENTS = [
     const out = [];
     for (const dest of sortedDests) {
       const destTuples = tuples.filter(function (t) { return t.dest === dest; });
+      const bySource = groupBy(destTuples, function (t) { return t.source; });
       out.push('<details class="src-node" open>');
-      out.push('<summary class="src-summary"><span class="node-name">' + esc(dest) + '</span> <span class="node-count">(' + destTuples.length + ')</span></summary>');
+      out.push('<summary class="src-summary"><span class="node-name">' + esc(dest) + '</span> <span class="node-count">(' + bySource.size + ')</span></summary>');
       out.push('<div class="src-body">');
 
-      const bySource = groupBy(destTuples, function (t) { return t.source; });
       for (const source of bySource.keys()) {
         const sourceTuples = bySource.get(source);
+        const byAgg = groupBy(sourceTuples, function (t) { return t.aggregate; });
         out.push('<details class="agg-node" open>');
-        out.push('<summary class="agg-summary"><span class="node-name">' + esc(source) + '</span> <span class="node-count">(' + sourceTuples.length + ')</span></summary>');
+        out.push('<summary class="agg-summary"><span class="node-name">' + esc(source) + '</span> <span class="node-count">(' + byAgg.size + ')</span></summary>');
         out.push('<div class="agg-body">');
 
-        const byAgg = groupBy(sourceTuples, function (t) { return t.aggregate; });
         for (const aggregate of byAgg.keys()) {
           const aggTuples = byAgg.get(aggregate);
-          out.push('<div class="event-node">');
-          out.push('<div class="event-name">' + esc(aggregate) + ' <span class="node-count">(' + aggTuples.length + ')</span></div>');
+          out.push('<details class="evt-node" open>');
+          out.push('<summary class="evt-summary"><span class="node-name">' + esc(aggregate) + '</span> <span class="node-count">(' + aggTuples.length + ')</span></summary>');
+          out.push('<div class="evt-body">');
           out.push('<ul class="dest-event-list">');
           for (const t of aggTuples) {
             out.push('<li>' + esc(t.event) + '</li>');
           }
           out.push('</ul>');
-          out.push('</div>');
+          out.push('</div></details>');
         }
 
         out.push('</div></details>');
