@@ -153,11 +153,7 @@ User wants to drive the README's tone and voice themselves (it's a public-facing
 
 ### 1F Critical — business-incorrect decisions today
 
-**1F.2 `ProductCreated` has no inventory consumer**
-
-`inventory.StockItemProjection.applyReorderPolicy`'s Javadoc documents this gap inline: *"if we have no row for the product yet, the projection silently no-ops … when inventory grows a ProductCreated consumer the row will appear."* The Liquibase seed pre-creates rows for the 5 demo SKUs, which masks the gap during the demo.
-
-Add `inventory.product-created` → insert an empty `inventory.stock_item` row (default warehouse MAIN, zero on-hand) so subsequent `ReorderPolicyChanged` has somewhere to project.
+§1F.2 (`ProductCreated` inventory consumer) shipped 2026-05-14 — see `dev-done.md`. Remaining items below.
 
 **1F.3 `CustomerDeactivated` has no consumers**
 
@@ -166,7 +162,7 @@ Sales itself reads `customer.status == ACTIVE` locally during order placement (d
 - `reporting.dashboard.customer-deactivated` — decrement active-customer count.
 - `finance.ar.customer-deactivated` — flag outstanding AR rows for collections.
 
-Lower priority than 1F.1 / 1F.2 — no transaction goes wrong, just dashboard / AR follow-up signals.
+Lower priority than the shipped 1F.1 / 1F.2 — no transaction goes wrong, just dashboard / AR follow-up signals.
 
 ### 1F Staleness — read models drift
 

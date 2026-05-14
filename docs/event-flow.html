@@ -194,7 +194,12 @@
   <td class="desc"><code>manufacturing.product_replenishment.is_purchased</code>, <code>is_manufactured</code></td>
 </tr>
 <tr>
-  <td class="merge-event" rowspan="2">ProductCreated</td>
+  <td class="merge-event" rowspan="3">ProductCreated</td>
+  <td>inventory</td>
+  <td class="consumer">inventory.product-created</td>
+  <td class="desc"><code>inventory.stock_item</code> — seeds a stub row (default UOM <code>'EA'</code>, tracking <code>'tracked'</code>, reorder 0/0) so subsequent <code>ReorderPolicyChanged</code> has a row to update (<code>ON CONFLICT DO NOTHING</code>)</td>
+</tr>
+<tr>
   <td>manufacturing</td>
   <td class="consumer">manufacturing.product-replenishment-seeder</td>
   <td class="desc"><code>manufacturing.product_replenishment</code> — seeds default <code>is_purchased</code> / <code>is_manufactured</code> from <code>product_type</code> (ON CONFLICT DO NOTHING)</td>
@@ -716,11 +721,14 @@
   <td>ShipmentPosted</td>
 </tr>
 
-<!-- ============ Destination: inventory (10 rows) ============ -->
+<!-- ============ Destination: inventory (11 rows) ============ -->
 <tr>
-  <td class="merge-src" rowspan="10">inventory</td>
-  <td class="merge-agg" rowspan="2">product</td>
-  <td class="merge-event" rowspan="2">Product</td>
+  <td class="merge-src" rowspan="11">inventory</td>
+  <td class="merge-agg" rowspan="3">product</td>
+  <td class="merge-event" rowspan="3">Product</td>
+  <td>ProductCreated</td>
+</tr>
+<tr>
   <td>ProductDiscontinued</td>
 </tr>
 <tr>
@@ -974,19 +982,12 @@
 </ul>
 
 <h2>Coverage gaps</h2>
-<p>Eight events have no consumer at all, plus a few events whose consumer coverage is incomplete. Listed in priority order — symptom → impact → suggested handler(s). <strong>Critical</strong> means a downstream service makes business-wrong decisions today; <strong>Staleness</strong> means a read model drifts but no transaction goes wrong; <strong>Likely acceptable</strong> is documented for completeness.</p>
+<p>Seven events have no consumer at all, plus a few events whose consumer coverage is incomplete. Listed in priority order — symptom → impact → suggested handler(s). <strong>Critical</strong> means a downstream service makes business-wrong decisions today; <strong>Staleness</strong> means a read model drifts but no transaction goes wrong; <strong>Likely acceptable</strong> is documented for completeness.</p>
 
 <h3>Critical — business-incorrect decisions today<span class="badge badge-critical">Critical</span></h3>
 
 <div class="gap-critical">
-  <h4>1. <code>ProductCreated</code> has no inventory consumer</h4>
-  <p>Symptom: <code>inventory.StockItemProjection.applyReorderPolicy</code> documents this gap explicitly — <em>"if we have no row for the product yet, the projection silently no-ops … when inventory grows a ProductCreated consumer the row will appear."</em> The Liquibase seed pre-creates <code>stock_item</code> rows for the 5 demo SKUs, which masks the gap during the demo.</p>
-  <p>Impact: any product registered after boot via <code>POST /api/products</code> cannot have a reorder policy applied — <code>ReorderPolicyChanged</code> projects to a missing row and silently no-ops with a WARN log.</p>
-  <p>Suggested handler: <code>inventory.product-created</code> → insert an empty <code>inventory.stock_item</code> row (default warehouse MAIN, zero on-hand) at product registration so the later <code>ReorderPolicyChanged</code> has something to update.</p>
-</div>
-
-<div class="gap-critical">
-  <h4>2. <code>CustomerDeactivated</code> has no consumers</h4>
+  <h4>1. <code>CustomerDeactivated</code> has no consumers</h4>
   <p>Symptom: sales already enforces <code>customer.status == ACTIVE</code> locally on order placement (direct DB read of its own customer table), so this isn't a sales-side correctness gap. Downstream services have no signal.</p>
   <p>Impact:</p>
   <ul>
@@ -999,14 +1000,14 @@
 <h3>Staleness — read models drift<span class="badge badge-staleness">Staleness</span></h3>
 
 <div class="gap-staleness">
-  <h4>3. <code>PurchaseOrderApproved</code> has no consumer</h4>
+  <h4>2. <code>PurchaseOrderApproved</code> has no consumer</h4>
   <p>Symptom: the event is published, but the purchasing P2P saga worker polls saga rows directly (state-driven) rather than subscribing via inbox. No other service receives the event.</p>
   <p>Impact: <code>reporting.purchase_order_tracking_view.po_status</code> is set once by the <code>po-created</code> handler with whatever status the PO has at creation time. When a draft PO is later approved via <code>POST /api/purchase-orders/{id}/approve</code> and the aggregate transitions to <code>'sent'</code>, the tracking view's <code>po_status</code> stays at <code>'draft'</code> indefinitely. The shortage-driven auto-approve path masks this because approval fires in the same transaction as creation and the create event already carries the post-approval status.</p>
   <p>Suggested handler: <code>reporting.po-tracking.po-approved</code> → update <code>purchase_order_tracking_view.po_status='sent'</code> and stamp <code>approved_at</code>.</p>
 </div>
 
 <div class="gap-staleness">
-  <h4>4. <code>ProductMaterialsCostComputed</code> has no consumer</h4>
+  <h4>3. <code>ProductMaterialsCostComputed</code> has no consumer</h4>
   <p>Symptom: manufacturing rolls up materials cost into <code>manufacturing.product_materials_cost</code> and emits this event, but nothing downstream reacts. Manufacturing's own UI read is the only sink.</p>
   <p>Impact: the rollup is a dead-end. When a supplier price drops and triggers a rebased <code>materials_cost</code>, none of:</p>
   <ul>
@@ -1021,12 +1022,12 @@
 <h3>Likely acceptable — documented for completeness<span class="badge badge-deferred">Deferred</span></h3>
 
 <div class="gap-deferred">
-  <h4>5. Customer master events: <code>CustomerRegistered</code>, <code>CustomerNameChanged</code>, <code>CustomerAddressChanged</code>, <code>CustomerContactChanged</code></h4>
+  <h4>4. Customer master events: <code>CustomerRegistered</code>, <code>CustomerNameChanged</code>, <code>CustomerAddressChanged</code>, <code>CustomerContactChanged</code></h4>
   <p>Sales owns the customer aggregate and reads it directly for its own checks. Downstream services (finance invoice headers, reporting <code>sales_order_360_view</code>) snapshot customer name + currency from event payloads at order placement time, which is <em>historically correct</em> — overwriting old invoice names after a customer rename would arguably destroy audit value. Only a gap if a UI requirement explicitly says "show current customer name on past orders"; not assumed here.</p>
 </div>
 
 <div class="gap-deferred">
-  <h4>6. <code>ManufacturingDispatched</code> to production-planning</h4>
+  <h4>5. <code>ManufacturingDispatched</code> to production-planning</h4>
   <p>The production-planning board only gets a row when a work order is actually created. Rejected lines (no BOM, not manufactured) generate <code>ManufacturingDispatched</code> outcomes but no work orders, so there's nothing on the board to update. A "manufacturing rejection rate" dashboard widget could subscribe, but no current read model needs the signal.</p>
 </div>
 

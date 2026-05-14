@@ -36,11 +36,13 @@ public class StockItemProjection {
 
     /**
      * Apply a {@code ReorderPolicyChanged} fact from product master to the
-     * local stock_item projection. If we have no row for the product yet,
-     * the projection silently no-ops — when inventory grows a
-     * {@code ProductCreated} consumer the row will appear, and a redelivery of
-     * the older {@code ReorderPolicyChanged} via the inbox would set it
-     * correctly. (Today the seed already has rows for all 5 SKUs.)
+     * local stock_item projection. §1F.2: inventory's {@code ProductCreated}
+     * consumer ({@link ProductCreatedHandler}) now seeds the stub row at
+     * registration, so on the happy path a {@code ReorderPolicyChanged}
+     * always finds its target. The remaining race window — out-of-order
+     * delivery dropping {@code ReorderPolicyChanged} before
+     * {@code ProductCreated} — still ends with a WARN-and-no-op here; the
+     * inbox redelivery once the seed lands catches the policy up.
      */
     @Transactional
     public void applyReorderPolicy(UUID productId, BigDecimal reorderPoint, BigDecimal reorderQuantity) {

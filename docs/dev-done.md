@@ -6,6 +6,28 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-14 — §1F.2 inventory: ProductCreated consumer (seed stock_item stub)
+
+Inventory's `StockItemProjection.applyReorderPolicy` previously documented this gap inline: any product registered after boot via `POST /api/products` would emit `ReorderPolicyChanged` against a missing `inventory.stock_item` row, hit the WARN-and-no-op branch, and silently lose its policy. Demo masked it because the Liquibase seed pre-creates rows for the 5 demo SKUs.
+
+### Changes
+
+- **`inventory.product-created`** inbox handler (consumer name `inventory.product-created`) calls a new `ProductCreatedProjection.apply(productId, sku, name, productType)`.
+- **`ProductCreatedProjection`** interface in `application/inbox/` + **`JdbcProductCreatedProjection`** in `infrastructure/persistence/`. `INSERT ... ON CONFLICT (product_id) DO NOTHING` — race-tolerant with the Liquibase seed and with redeliveries.
+- Default values for the stub row: `base_uom_code='EA'` (matches every existing seed row), `stock_tracking_mode='tracked'`, `reorder_point=0`, `reorder_quantity=0`. UOM default exists because `ProductCreated` doesn't carry the producer's `baseUomId` today — captured as a note in the projection's Javadoc; a future event evolution (or an inventory command) can update it.
+- **`StockItemProjection.applyReorderPolicy` Javadoc** rewritten to reflect that the gap is closed on the happy path. Remaining race window (out-of-order partition delivery dropping `ReorderPolicyChanged` before `ProductCreated`) still ends with WARN-and-no-op; inbox redelivery once the seed lands catches the policy up.
+- **`docs/event-flow.html`**: source-first table — `ProductCreated` row expanded from 2 to 3 consumers (inventory added at the top, since it's the seed-row producer). Destination-first table — `ProductCreated` added under `inventory → product/Product`. Coverage Gaps section — entry for `ProductCreated has no inventory consumer` deleted, remaining entries renumbered (2→1, 3→2, 4→3, 5→4, 6→5). Lead-in count `Eight events have no consumer at all` → `Seven`.
+
+### Tests
+
+`ProductCreatedHandlerTest` (happy + already-processed). inventory-service suite 75/75 green.
+
+### Smoke
+
+`mvn -pl inventory-service test` green.
+
+---
+
 ## 2026-05-14 — §1F.1 finalize: event-flow.html + dev-todo close-out
 
 Closes §1F.1 after all five per-service consumer slices shipped (sales / manufacturing / purchasing / reporting / inventory — see the five preceding entries). Doc cleanup only; no code or schema changes.
