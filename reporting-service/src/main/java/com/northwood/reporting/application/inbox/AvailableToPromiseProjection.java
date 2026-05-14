@@ -51,4 +51,14 @@ public interface AvailableToPromiseProjection {
      * fills in the real SKU + name without disturbing accumulator columns.
      */
     void recordProductCreated(UUID productId, String sku, String name, Instant occurredAt);
+
+    /**
+     * §1F.1: stamp {@code discontinued_at} so UI consumers can filter or
+     * grey out the row. Upsert against {@code product_id}: if no row
+     * exists yet (a discontinue can race ahead of any signal that would
+     * have created one), inserts a stub row with {@code product_sku='(pending)'}
+     * carrying just the timestamp; a later identity-bearing event backfills
+     * SKU + name without disturbing the stamp.
+     */
+    void recordProductDiscontinued(UUID productId, Instant discontinuedAt);
 }

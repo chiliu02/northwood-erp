@@ -2,6 +2,7 @@ package com.northwood.reporting.infrastructure.persistence;
 
 import com.northwood.reporting.application.inbox.AvailableToPromiseProjection;
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -232,5 +233,27 @@ public class JdbcAvailableToPromiseProjection implements AvailableToPromiseProje
             """).replace("COL", column);
         jdbc.update(sql,
             productId, productSku, productName, delta, delta, delta, delta, delta);
+    }
+
+    @Override
+    @Transactional
+    public void recordProductDiscontinued(UUID productId, Instant discontinuedAt) {
+        // Stub row pattern matches the other event handlers: if a discontinue
+        // arrives before any identity-bearing event, insert a (pending) row so
+        // the timestamp is captured; a later ProductCreated / receipt / etc.
+        // backfills sku + name without clobbering discontinued_at.
+        jdbc.update("""
+            INSERT INTO reporting.available_to_promise_view (
+                product_id, product_sku, product_name,
+                on_hand_quantity, reserved_for_sales, reserved_for_production,
+                available_quantity, incoming_from_production, incoming_from_purchase,
+                stock_status, discontinued_at, updated_at
+            ) VALUES (?, '(pending)', '(pending)', 0, 0, 0, 0, 0, 0, 'unknown', ?, now())
+            ON CONFLICT (product_id) DO UPDATE SET
+                discontinued_at = EXCLUDED.discontinued_at,
+                updated_at = now()
+            """,
+            productId, Timestamp.from(discontinuedAt)
+        );
     }
 }

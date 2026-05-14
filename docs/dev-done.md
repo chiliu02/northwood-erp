@@ -6,6 +6,26 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-14 — §1F.1 reporting (atp): ProductDiscontinued consumer
+
+Fourth of five §1F.1 service-level slices. Reporting's ATP view stamps `discontinued_at` so UI consumers can grey-out / filter discontinued rows; existing accumulator columns and `stock_status` CHECK constraint are untouched.
+
+### Changes
+
+- **Liquibase changeset** `reporting-service/.../changes/2026-05-14-atp-add-discontinued-at.sql` adds `discontinued_at TIMESTAMPTZ NULL` to `reporting.available_to_promise_view`. Master changelog includes it.
+- **`AvailableToPromiseProjection.recordProductDiscontinued(productId, discontinuedAt)`** new interface method + `JdbcAvailableToPromiseProjection` implementation. Upsert against `product_id`; if no row exists yet (discontinue races ahead of any identity-bearing event), inserts a `'(pending)'` stub carrying just the stamp, consistent with the existing `recordSalesReservation` / `recordProductionReservation` stub patterns.
+- **`reporting.atp.product-discontinued`** inbox handler under `inbox/atp/` (`@Component("atp_ProductDiscontinuedHandler")` to avoid the simple-name collision with siblings in other ATP subpackages, mirroring the existing convention there).
+
+### Tests
+
+`ProductDiscontinuedHandlerTest` (happy + already-processed). reporting-service suite 3/3.
+
+### Smoke
+
+`mvn -pl reporting-service test` green.
+
+---
+
 ## 2026-05-14 — §1F.1 purchasing: ProductDiscontinued consumer + PR gating
 
 Third of five §1F.1 service-level slices. Purchasing maintains a new `purchasing.product_discontinued` projection table and rejects new requisitions whose lines reference a discontinued product. The gate fires inside `PurchaseRequisitionService.buildLines` (shared by both `createManual` and `createForWorkOrderShortage`), so even the auto-shortage path that runs from the inbox is protected against the race where manufacturing's shortage detector fires after a discontinue but before its own state catches up.
