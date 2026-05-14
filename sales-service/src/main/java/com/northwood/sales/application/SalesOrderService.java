@@ -44,6 +44,68 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SalesOrderService {
 
+    public static class CustomerNotFoundException extends RuntimeException {
+        public CustomerNotFoundException(String code) {
+            super("Customer not found: " + code);
+        }
+    }
+
+    /**
+     * Thrown when {@link #placeOrder(PlaceOrderCommand)} resolves the customer
+     * but its {@code status != 'active'} (i.e. {@code 'inactive'} or
+     * {@code 'blocked'}). Mapped to HTTP 409 by the controller — the customer
+     * exists, the order request is malformed against current state.
+     */
+    public static class CustomerInactiveException extends RuntimeException {
+        public CustomerInactiveException(String code, Customer.Status status) {
+            super("Customer " + code + " is " + status.dbValue() + "; cannot accept new orders");
+        }
+    }
+
+    public static class OrderNotFoundException extends RuntimeException {
+        public OrderNotFoundException(UUID id) {
+            super("Sales order not found: " + id);
+        }
+    }
+
+    public static class SagaNotFoundException extends RuntimeException {
+        public SagaNotFoundException(UUID salesOrderHeaderId) {
+            super("No fulfilment saga for sales order " + salesOrderHeaderId);
+        }
+    }
+
+    /**
+     * Application-layer wrapper around the domain
+     * {@link SalesOrder.OrderNotCancellableException}. Controllers catch this
+     * (HTTP 409) instead of reaching into {@code domain/} for the exception
+     * type — keeps the api → application → domain layering clean.
+     */
+    public static class OrderNotCancellableException extends RuntimeException {
+        public OrderNotCancellableException(Throwable cause) {
+            super(cause.getMessage(), cause);
+        }
+    }
+
+    public static class UnknownPriceException extends RuntimeException {
+        public UnknownPriceException(String sku) {
+            super("No catalog price for sku=" + sku + "; provide unitPrice on the line or wait for the projection to catch up");
+        }
+    }
+
+    public static class CurrencyMismatchException extends RuntimeException {
+        public CurrencyMismatchException(String sku, String orderCurrency, String catalogCurrency) {
+            super("Order currency " + orderCurrency + " does not match catalog currency "
+                + catalogCurrency + " for sku=" + sku);
+        }
+    }
+
+    public static class ProductDiscontinuedException extends RuntimeException {
+        public ProductDiscontinuedException(String sku, java.time.Instant discontinuedAt) {
+            super("Product sku=" + sku + " was discontinued at " + discontinuedAt
+                + "; cannot accept new order lines for it");
+        }
+    }
+
     private final SalesOrderRepository salesOrders;
     private final SalesOrderFulfilmentSagaManager sagaManager;
     private final CustomerLookup customers;
@@ -199,65 +261,4 @@ public class SalesOrderService {
         }
     }
 
-    public static class CustomerNotFoundException extends RuntimeException {
-        public CustomerNotFoundException(String code) {
-            super("Customer not found: " + code);
-        }
-    }
-
-    /**
-     * Thrown when {@link #placeOrder(PlaceOrderCommand)} resolves the customer
-     * but its {@code status != 'active'} (i.e. {@code 'inactive'} or
-     * {@code 'blocked'}). Mapped to HTTP 409 by the controller — the customer
-     * exists, the order request is malformed against current state.
-     */
-    public static class CustomerInactiveException extends RuntimeException {
-        public CustomerInactiveException(String code, Customer.Status status) {
-            super("Customer " + code + " is " + status.dbValue() + "; cannot accept new orders");
-        }
-    }
-
-    public static class OrderNotFoundException extends RuntimeException {
-        public OrderNotFoundException(UUID id) {
-            super("Sales order not found: " + id);
-        }
-    }
-
-    public static class SagaNotFoundException extends RuntimeException {
-        public SagaNotFoundException(UUID salesOrderHeaderId) {
-            super("No fulfilment saga for sales order " + salesOrderHeaderId);
-        }
-    }
-
-    /**
-     * Application-layer wrapper around the domain
-     * {@link SalesOrder.OrderNotCancellableException}. Controllers catch this
-     * (HTTP 409) instead of reaching into {@code domain/} for the exception
-     * type — keeps the api → application → domain layering clean.
-     */
-    public static class OrderNotCancellableException extends RuntimeException {
-        public OrderNotCancellableException(Throwable cause) {
-            super(cause.getMessage(), cause);
-        }
-    }
-
-    public static class UnknownPriceException extends RuntimeException {
-        public UnknownPriceException(String sku) {
-            super("No catalog price for sku=" + sku + "; provide unitPrice on the line or wait for the projection to catch up");
-        }
-    }
-
-    public static class CurrencyMismatchException extends RuntimeException {
-        public CurrencyMismatchException(String sku, String orderCurrency, String catalogCurrency) {
-            super("Order currency " + orderCurrency + " does not match catalog currency "
-                + catalogCurrency + " for sku=" + sku);
-        }
-    }
-
-    public static class ProductDiscontinuedException extends RuntimeException {
-        public ProductDiscontinuedException(String sku, java.time.Instant discontinuedAt) {
-            super("Product sku=" + sku + " was discontinued at " + discontinuedAt
-                + "; cannot accept new order lines for it");
-        }
-    }
 }

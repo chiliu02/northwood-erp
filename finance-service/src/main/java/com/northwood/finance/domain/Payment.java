@@ -27,6 +27,22 @@ import java.util.UUID;
  */
 public final class Payment {
 
+    /** Per-invoice allocation input for {@link #recordMultiSupplierPayment}. */
+    public record SupplierAllocationLine(
+        UUID supplierInvoiceHeaderId,
+        UUID purchaseOrderHeaderId,
+        BigDecimal amount,
+        String invoiceStatusAfter
+    ) {}
+
+    /** Per-invoice allocation input for {@link #recordMultiCustomerPayment}. */
+    public record CustomerAllocationLine(
+        UUID customerInvoiceHeaderId,
+        UUID salesOrderHeaderId,
+        BigDecimal amount,
+        String invoiceStatusAfter
+    ) {}
+
     /** Status — wire-format string stored in finance.payment.status. */
     public static final String POSTED = "posted";
 
@@ -323,22 +339,6 @@ public final class Payment {
         }
         return p;
     }
-
-    /** Per-invoice allocation input for {@link #recordMultiSupplierPayment}. */
-    public record SupplierAllocationLine(
-        UUID supplierInvoiceHeaderId,
-        UUID purchaseOrderHeaderId,
-        BigDecimal amount,
-        String invoiceStatusAfter
-    ) {}
-
-    /** Per-invoice allocation input for {@link #recordMultiCustomerPayment}. */
-    public record CustomerAllocationLine(
-        UUID customerInvoiceHeaderId,
-        UUID salesOrderHeaderId,
-        BigDecimal amount,
-        String invoiceStatusAfter
-    ) {}
 
     /** Factory: hydrate from the DB; emits no events. */
     public static Payment reconstitute(

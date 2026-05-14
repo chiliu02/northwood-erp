@@ -38,6 +38,18 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class WorkOrderReleaseService {
 
+    public static class BomNotFoundException extends RuntimeException {
+        public BomNotFoundException(UUID finishedProductId) {
+            super("No active BOM for finished_product_id=" + finishedProductId);
+        }
+    }
+
+    public static class RoutingNotFoundException extends RuntimeException {
+        public RoutingNotFoundException(UUID finishedProductId) {
+            super("No active routing for finished_product_id=" + finishedProductId);
+        }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(WorkOrderReleaseService.class);
 
     private final WorkOrderRepository workOrders;
@@ -167,15 +179,4 @@ public class WorkOrderReleaseService {
             .setScale(4, RoundingMode.HALF_UP);
     }
 
-    public static class BomNotFoundException extends RuntimeException {
-        public BomNotFoundException(UUID finishedProductId) {
-            super("No active BOM for finished_product_id=" + finishedProductId);
-        }
-    }
-
-    public static class RoutingNotFoundException extends RuntimeException {
-        public RoutingNotFoundException(UUID finishedProductId) {
-            super("No active routing for finished_product_id=" + finishedProductId);
-        }
-    }
 }

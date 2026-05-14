@@ -44,6 +44,46 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class BomEditService {
 
+    public record CreateBomDraftCommand(
+        UUID finishedProductId,
+        String finishedProductSku,
+        String finishedProductName,
+        String version
+    ) {}
+
+    public record AddLineCommand(
+        UUID componentProductId,
+        String componentSku,
+        String componentName,
+        String componentKind,
+        BigDecimal quantityPerFinishedUnit,
+        BigDecimal scrapFactorPercent
+    ) {}
+
+    public static class BomNotFoundException extends RuntimeException {
+        public BomNotFoundException(UUID bomHeaderId) {
+            super("No BOM with bom_header_id=" + bomHeaderId);
+        }
+    }
+
+    public static class BomLineNotFoundException extends RuntimeException {
+        public BomLineNotFoundException(UUID bomLineId) {
+            super("No BOM line with bom_line_id=" + bomLineId);
+        }
+    }
+
+    public static class BomNotEditableException extends RuntimeException {
+        public BomNotEditableException(String message) {
+            super(message);
+        }
+    }
+
+    public static class BomCycleException extends RuntimeException {
+        public BomCycleException(String message) {
+            super(message);
+        }
+    }
+
     // BOM header status — wire-format strings stored in manufacturing.bom_header.status.
     private static final String BOM_STATUS_DRAFT = "draft";
     private static final String BOM_STATUS_ACTIVE = "active";
@@ -200,43 +240,4 @@ public class BomEditService {
         return header.get();
     }
 
-    public record CreateBomDraftCommand(
-        UUID finishedProductId,
-        String finishedProductSku,
-        String finishedProductName,
-        String version
-    ) {}
-
-    public record AddLineCommand(
-        UUID componentProductId,
-        String componentSku,
-        String componentName,
-        String componentKind,
-        BigDecimal quantityPerFinishedUnit,
-        BigDecimal scrapFactorPercent
-    ) {}
-
-    public static class BomNotFoundException extends RuntimeException {
-        public BomNotFoundException(UUID bomHeaderId) {
-            super("No BOM with bom_header_id=" + bomHeaderId);
-        }
-    }
-
-    public static class BomLineNotFoundException extends RuntimeException {
-        public BomLineNotFoundException(UUID bomLineId) {
-            super("No BOM line with bom_line_id=" + bomLineId);
-        }
-    }
-
-    public static class BomNotEditableException extends RuntimeException {
-        public BomNotEditableException(String message) {
-            super(message);
-        }
-    }
-
-    public static class BomCycleException extends RuntimeException {
-        public BomCycleException(String message) {
-            super(message);
-        }
-    }
 }

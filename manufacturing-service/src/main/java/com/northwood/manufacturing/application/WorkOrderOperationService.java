@@ -55,6 +55,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class WorkOrderOperationService {
 
+    public static class WorkOrderNotFoundException extends RuntimeException {
+        public WorkOrderNotFoundException(String workOrderId) {
+            super("No work order with id=" + workOrderId);
+        }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(WorkOrderOperationService.class);
 
     private final WorkOrderRepository workOrders;
@@ -248,9 +254,4 @@ public class WorkOrderOperationService {
         sagaManager.applyManufacturingCompleted(workOrder.id().value());
     }
 
-    public static class WorkOrderNotFoundException extends RuntimeException {
-        public WorkOrderNotFoundException(String workOrderId) {
-            super("No work order with id=" + workOrderId);
-        }
-    }
 }

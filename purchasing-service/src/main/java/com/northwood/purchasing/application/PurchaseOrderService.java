@@ -47,6 +47,17 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class PurchaseOrderService {
 
+    /**
+     * Application-layer wrapper around the domain
+     * {@link PurchaseOrder.PoNotApprovableException}. Controllers catch this
+     * (HTTP 409) instead of importing the domain exception type directly.
+     */
+    public static class PoNotApprovableException extends RuntimeException {
+        public PoNotApprovableException(Throwable cause) {
+            super(cause.getMessage(), cause);
+        }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(PurchaseOrderService.class);
     private static final String DEFAULT_CURRENCY = "AUD";
 
@@ -158,17 +169,6 @@ public class PurchaseOrderService {
 
         log.info("approved purchase_order {} (id={}) approver={} reason={}",
             po.purchaseOrderNumber(), purchaseOrderHeaderId, approver, reason);
-    }
-
-    /**
-     * Application-layer wrapper around the domain
-     * {@link PurchaseOrder.PoNotApprovableException}. Controllers catch this
-     * (HTTP 409) instead of importing the domain exception type directly.
-     */
-    public static class PoNotApprovableException extends RuntimeException {
-        public PoNotApprovableException(Throwable cause) {
-            super(cause.getMessage(), cause);
-        }
     }
 
     /**

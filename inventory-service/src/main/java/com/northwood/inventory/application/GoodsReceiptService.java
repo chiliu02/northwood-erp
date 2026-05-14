@@ -37,6 +37,22 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class GoodsReceiptService {
 
+    /**
+     * Thrown when a goods-receipt line names a {@code purchase_order_line_id}
+     * that either doesn't appear in {@code purchase_order_line_facts} or maps
+     * to a different {@code product_id} than the line claims. Mapped to HTTP
+     * 400 by the controller. Defence-in-depth: catches a buggy / malicious
+     * client that bypassed the SPA picker.
+     */
+    public static class GoodsReceiptLineProductMismatchException extends RuntimeException {
+        public GoodsReceiptLineProductMismatchException(UUID purchaseOrderLineId, UUID expectedProductId, UUID actualProductId) {
+            super(expectedProductId == null
+                ? "Unknown purchase_order_line_id=%s (no matching projection row; line may not belong to a created purchase order)".formatted(purchaseOrderLineId)
+                : "Product mismatch on purchase_order_line_id=%s: expected product=%s, got=%s".formatted(purchaseOrderLineId, expectedProductId, actualProductId)
+            );
+        }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(GoodsReceiptService.class);
 
     private final GoodsReceiptRepository goodsReceipts;
@@ -133,19 +149,4 @@ public class GoodsReceiptService {
         return GoodsReceiptView.from(receipt);
     }
 
-    /**
-     * Thrown when a goods-receipt line names a {@code purchase_order_line_id}
-     * that either doesn't appear in {@code purchase_order_line_facts} or maps
-     * to a different {@code product_id} than the line claims. Mapped to HTTP
-     * 400 by the controller. Defence-in-depth: catches a buggy / malicious
-     * client that bypassed the SPA picker.
-     */
-    public static class GoodsReceiptLineProductMismatchException extends RuntimeException {
-        public GoodsReceiptLineProductMismatchException(UUID purchaseOrderLineId, UUID expectedProductId, UUID actualProductId) {
-            super(expectedProductId == null
-                ? "Unknown purchase_order_line_id=%s (no matching projection row; line may not belong to a created purchase order)".formatted(purchaseOrderLineId)
-                : "Product mismatch on purchase_order_line_id=%s: expected product=%s, got=%s".formatted(purchaseOrderLineId, expectedProductId, actualProductId)
-            );
-        }
-    }
 }

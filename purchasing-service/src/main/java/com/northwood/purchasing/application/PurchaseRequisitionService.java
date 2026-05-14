@@ -38,6 +38,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class PurchaseRequisitionService {
 
+    public static class ProductDiscontinuedException extends RuntimeException {
+        public ProductDiscontinuedException(String sku) {
+            super("Product sku=" + sku + " has been discontinued by product-service; "
+                + "cannot include it on a new requisition or purchase order");
+        }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(PurchaseRequisitionService.class);
 
     private final PurchaseRequisitionRepository purchaseRequisitions;
@@ -154,10 +161,4 @@ public class PurchaseRequisitionService {
         return built;
     }
 
-    public static class ProductDiscontinuedException extends RuntimeException {
-        public ProductDiscontinuedException(String sku) {
-            super("Product sku=" + sku + " has been discontinued by product-service; "
-                + "cannot include it on a new requisition or purchase order");
-        }
-    }
 }

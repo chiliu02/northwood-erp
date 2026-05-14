@@ -18,6 +18,24 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class CustomerService {
 
+    public static class CustomerNotFoundException extends RuntimeException {
+        public CustomerNotFoundException(UUID id) {
+            super("Customer not found: " + id);
+        }
+    }
+
+    /**
+     * Thrown by {@link CustomerRepository#save(Customer)} when {@code customer_code}
+     * conflicts with an existing row. Lives on the application service rather
+     * than on the JDBC adapter so the controller (and other callers) can
+     * reference it without reaching into infrastructure.
+     */
+    public static class DuplicateCustomerCodeException extends RuntimeException {
+        public DuplicateCustomerCodeException(String code, Throwable cause) {
+            super("customer_code already exists: " + code, cause);
+        }
+    }
+
     private final CustomerRepository customers;
 
     public CustomerService(CustomerRepository customers) {
@@ -87,21 +105,4 @@ public class CustomerService {
             .orElseThrow(() -> new CustomerNotFoundException(customerId));
     }
 
-    public static class CustomerNotFoundException extends RuntimeException {
-        public CustomerNotFoundException(UUID id) {
-            super("Customer not found: " + id);
-        }
-    }
-
-    /**
-     * Thrown by {@link CustomerRepository#save(Customer)} when {@code customer_code}
-     * conflicts with an existing row. Lives on the application service rather
-     * than on the JDBC adapter so the controller (and other callers) can
-     * reference it without reaching into infrastructure.
-     */
-    public static class DuplicateCustomerCodeException extends RuntimeException {
-        public DuplicateCustomerCodeException(String code, Throwable cause) {
-            super("customer_code already exists: " + code, cause);
-        }
-    }
 }

@@ -292,9 +292,9 @@ Renamed the shared module from `shared-infrastructure` to `shared`; split its in
 
 After §2.9 stabilised the handler shell shape, every inbox handler across the codebase (~73 total) followed the same 5-step skeleton: handles-check → dedupe → deserialise → apply → recordProcessed. Reporting already had `AbstractProjectionHandler<P>`; this slice lifted it to `shared-infrastructure/.../messaging/AbstractInboxHandler<P>` and migrated every concrete handler in all 6 services. Follow-up pass pushed `eventType` + `consumerName` into the base via constructor args, so subclasses no longer override `handles()` / `consumerName()`. The CGLIB-non-final-handle invariant lives in one place where new handlers can't forget it. See dev-done.md.
 
-### 2.11 Nested-type ordering audit (follow-up from 2026-05-13 statics-on-top sweep)
+### 2.11 Nested-type ordering audit (follow-up from 2026-05-13 statics-on-top sweep) ✅ shipped 2026-05-14
 
-The 2026-05-13 sweep enforced *static-fields-on-top* (51 files) but explicitly excluded nested types as a separate ordering question. Per the documented convention in `docs/conventions.md` → "Class member ordering", **nested types** (`static class`, `static enum`, `interface`) belong at the **top** of the class body, above all fields. Known violation: `JdbcProductRepository.DuplicateSkuException` (public static nested class at the bottom of the file, after instance fields + all methods). Likely a handful of others — nested exception classes on services / repositories. Sweep on demand; not demo-blocking.
+Swept 17 nested types across 14 service / repository / aggregate classes (exceptions, command records, view records, lifecycle enums) up to the top of their class body. Records as the enclosing type intentionally skipped — their fields live in the header, so the "nested types above all fields" rule doesn't apply cleanly; the event-jar pattern (`EVENT_TYPE` / status constants → `eventType()` → nested record) stays uniform. See `dev-done.md`.
 
 ### 2.12 Role meta-annotations for `warehouse_manager`, `auditor`, `sysadmin`
 

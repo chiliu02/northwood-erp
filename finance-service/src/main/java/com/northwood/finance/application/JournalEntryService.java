@@ -47,6 +47,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class JournalEntryService {
 
+    /** Per-line cost attribution input for the multi-debit journals (§3.2). */
+    public record LineCost(UUID productId, BigDecimal amount) {}
+
     private static final Logger log = LoggerFactory.getLogger(JournalEntryService.class);
 
     private static final String COGS_CODE = "5000";
@@ -291,9 +294,6 @@ public class JournalEntryService {
             "Stock issued via " + shipmentNumber
         );
     }
-
-    /** Per-line cost attribution input for the multi-debit journals (§3.2). */
-    public record LineCost(UUID productId, BigDecimal amount) {}
 
     @Transactional
     public void postSupplierPayment(

@@ -21,6 +21,17 @@ import org.springframework.stereotype.Service;
 @Service
 public class ExchangeRateService {
 
+    /**
+     * Application-layer wrapper around the domain
+     * {@link CurrencyConverter.RateNotFoundException}. Controllers catch this
+     * (HTTP 404) instead of importing the domain exception directly.
+     */
+    public static class RateNotFoundException extends RuntimeException {
+        public RateNotFoundException(Throwable cause) {
+            super(cause.getMessage(), cause);
+        }
+    }
+
     private final CurrencyConverter converter;
 
     public ExchangeRateService(CurrencyConverter converter) {
@@ -33,17 +44,6 @@ public class ExchangeRateService {
             return new RateView(snapshot.rate(), snapshot.effectiveDate());
         } catch (CurrencyConverter.RateNotFoundException e) {
             throw new RateNotFoundException(e);
-        }
-    }
-
-    /**
-     * Application-layer wrapper around the domain
-     * {@link CurrencyConverter.RateNotFoundException}. Controllers catch this
-     * (HTTP 404) instead of importing the domain exception directly.
-     */
-    public static class RateNotFoundException extends RuntimeException {
-        public RateNotFoundException(Throwable cause) {
-            super(cause.getMessage(), cause);
         }
     }
 }

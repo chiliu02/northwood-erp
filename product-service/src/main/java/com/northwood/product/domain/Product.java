@@ -32,6 +32,8 @@ import com.northwood.shared.domain.DomainEvent;
  */
 public class Product {
 
+    public enum Status { ACTIVE, INACTIVE, DISCONTINUED }
+
     /**
      * Wire-format aggregate-type stamped onto {@code product.outbox_message.aggregate_type}
      * for events this aggregate emits.
@@ -58,8 +60,6 @@ public class Product {
     private final long version;
 
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
-
-    public enum Status { ACTIVE, INACTIVE, DISCONTINUED }
 
     /** Factory: register a brand-new product. Emits ProductCreated. */
     public static Product register(

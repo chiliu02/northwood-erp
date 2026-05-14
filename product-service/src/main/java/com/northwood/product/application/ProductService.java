@@ -33,6 +33,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ProductService {
 
+    public static class ProductNotFoundException extends RuntimeException {
+        public ProductNotFoundException(UUID id) {
+            super("Product not found: " + id);
+        }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(ProductService.class);
 
     private final ProductRepository products;
@@ -223,12 +229,6 @@ public class ProductService {
             .orElseThrow(() -> new ProductNotFoundException(productId));
         product.discontinue();
         products.save(product);
-    }
-
-    public static class ProductNotFoundException extends RuntimeException {
-        public ProductNotFoundException(UUID id) {
-            super("Product not found: " + id);
-        }
     }
 
 }

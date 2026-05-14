@@ -25,6 +25,12 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class JdbcProductRepository implements ProductRepository {
 
+    public static class DuplicateSkuException extends RuntimeException {
+        public DuplicateSkuException(String sku, Throwable cause) {
+            super("SKU already exists: " + sku, cause);
+        }
+    }
+
     private static final RowMapper<Product> ROW_MAPPER = (rs, n) -> Product.reconstitute(
         ProductId.of(rs.getObject("product_id", UUID.class)),
         new Sku(rs.getString("sku")),
@@ -212,9 +218,4 @@ public class JdbcProductRepository implements ProductRepository {
         }
     }
 
-    public static class DuplicateSkuException extends RuntimeException {
-        public DuplicateSkuException(String sku, Throwable cause) {
-            super("SKU already exists: " + sku, cause);
-        }
-    }
 }

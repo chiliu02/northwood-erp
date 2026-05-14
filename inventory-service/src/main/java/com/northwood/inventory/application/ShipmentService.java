@@ -40,6 +40,22 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ShipmentService {
 
+    /**
+     * Thrown when a shipment line names a {@code sales_order_line_id} that
+     * either doesn't appear in {@code sales_order_line_facts} or maps to a
+     * different {@code product_id} than the line claims. Mapped to HTTP 400
+     * by the controller. Defence-in-depth: catches a buggy / malicious client
+     * that bypassed the SPA picker.
+     */
+    public static class ShipmentLineProductMismatchException extends RuntimeException {
+        public ShipmentLineProductMismatchException(UUID salesOrderLineId, UUID expectedProductId, UUID actualProductId) {
+            super(expectedProductId == null
+                ? "Unknown sales_order_line_id=%s (no matching projection row; line may not belong to a placed sales order)".formatted(salesOrderLineId)
+                : "Product mismatch on sales_order_line_id=%s: expected product=%s, got=%s".formatted(salesOrderLineId, expectedProductId, actualProductId)
+            );
+        }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(ShipmentService.class);
 
     private final ShipmentRepository shipments;
@@ -136,19 +152,4 @@ public class ShipmentService {
         return ShipmentView.from(shipment);
     }
 
-    /**
-     * Thrown when a shipment line names a {@code sales_order_line_id} that
-     * either doesn't appear in {@code sales_order_line_facts} or maps to a
-     * different {@code product_id} than the line claims. Mapped to HTTP 400
-     * by the controller. Defence-in-depth: catches a buggy / malicious client
-     * that bypassed the SPA picker.
-     */
-    public static class ShipmentLineProductMismatchException extends RuntimeException {
-        public ShipmentLineProductMismatchException(UUID salesOrderLineId, UUID expectedProductId, UUID actualProductId) {
-            super(expectedProductId == null
-                ? "Unknown sales_order_line_id=%s (no matching projection row; line may not belong to a placed sales order)".formatted(salesOrderLineId)
-                : "Product mismatch on sales_order_line_id=%s: expected product=%s, got=%s".formatted(salesOrderLineId, expectedProductId, actualProductId)
-            );
-        }
-    }
 }

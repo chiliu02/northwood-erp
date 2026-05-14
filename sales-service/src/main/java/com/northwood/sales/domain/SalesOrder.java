@@ -31,6 +31,15 @@ import java.util.UUID;
  */
 public final class SalesOrder {
 
+    /** Caller-supplied per-line shipment data for {@link #recordShipped}. */
+    public record ShippedLineInput(
+        UUID salesOrderLineId,
+        UUID productId,
+        String productSku,
+        String productName,
+        BigDecimal shippedQuantity
+    ) {}
+
     /**
      * Wire-format aggregate-type stamped onto {@code sales.outbox_message.aggregate_type}
      * for events this aggregate emits. Same-service outbox writers reference this
@@ -261,15 +270,6 @@ public final class SalesOrder {
             Instant.now()
         ));
     }
-
-    /** Caller-supplied per-line shipment data for {@link #recordShipped}. */
-    public record ShippedLineInput(
-        UUID salesOrderLineId,
-        UUID productId,
-        String productSku,
-        String productName,
-        BigDecimal shippedQuantity
-    ) {}
 
     /**
      * Cancel this order. Allowed only while the header status is in a

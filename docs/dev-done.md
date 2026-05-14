@@ -6,6 +6,44 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-14 — §2.11 Nested-type ordering audit (services / repositories / aggregates)
+
+Follow-up to the 2026-05-13 statics-on-top sweep, which explicitly deferred nested-type ordering. Per `docs/conventions.md` → *Class member ordering*, nested types (`static class`, `static enum`, `interface`, public records nested inside an enclosing class) belong at the **top** of the class body, above all fields. Moved 17 nested types across 14 files up to the top of their enclosing class.
+
+### Files swept (each was a nested-type-at-bottom case)
+
+**Repositories:**
+- `JdbcProductRepository.DuplicateSkuException` (the dev-todo's named example).
+
+**Application services (exception classes mostly, plus a few command records / view records):**
+- `SalesOrderService` — 8 nested exceptions (`CustomerNotFoundException`, `CustomerInactiveException`, `OrderNotFoundException`, `SagaNotFoundException`, `OrderNotCancellableException`, `UnknownPriceException`, `CurrencyMismatchException`, `ProductDiscontinuedException`).
+- `CustomerService` — 2 nested exceptions.
+- `ProductService` — `ProductNotFoundException`.
+- `PurchaseRequisitionService` — `ProductDiscontinuedException`.
+- `PurchaseOrderService` — `PoNotApprovableException` (was *mid-class*, between methods, not at the bottom — same violation type).
+- `ExchangeRateService` — `RateNotFoundException`.
+- `ShipmentService` — `ShipmentLineProductMismatchException`.
+- `GoodsReceiptService` — `GoodsReceiptLineProductMismatchException`.
+- `WorkOrderReleaseService` — `BomNotFoundException`, `RoutingNotFoundException`.
+- `WorkOrderOperationService` — `WorkOrderNotFoundException`.
+- `BomEditService` — 2 command records (`CreateBomDraftCommand`, `AddLineCommand`) + 4 nested exceptions (`BomNotFoundException`, `BomLineNotFoundException`, `BomNotEditableException`, `BomCycleException`).
+- `JournalEntryService` — `LineCost` view record.
+
+**Aggregate roots:**
+- `SalesOrder` — `ShippedLineInput` view record.
+- `Payment` — `SupplierAllocationLine`, `CustomerAllocationLine` view records.
+- `Product` — `Status` enum (was below all instance fields, including a `Status status` field that referenced it — a particularly clear violation of the convention's exemplar shape from `Customer.Status`).
+
+### Scoping note: records as the enclosing type intentionally skipped
+
+The convention's wording — *"nested types above all fields"* — doesn't apply cleanly when the enclosing type is itself a `record`, because a record's fields live in the header (not the body). All event records (`StockReserved`, `PurchaseOrderCreated`, …), command DTO records (`PlaceOrderCommand.OrderLine`, etc.), and view DTO records (`BomTreeView.BomNode`, etc.) currently keep their nested records *after* their `EVENT_TYPE` constants / methods. That layout is uniform across ~30+ event classes and reads cleanly because the visible record body starts with the wire-format identifier, not a structural sub-type. Pull forward only if a downstream reading-experience complaint surfaces; today it's a deliberate non-violation.
+
+### Smoke
+
+`mvn install -DskipTests` reactor green; `mvn test` full suite green.
+
+---
+
 ## 2026-05-14 — §2.14 `StockReservationService.reserveOneLine` — bounded retry with backoff on lost race
 
 Replaces the previous single-shot-then-fail behaviour of `StockReservationService#reserveOneLine` with a bounded retry loop. Before this slice, if the atomic `StockBalanceWriter.tryReserveOnHand` UPDATE returned 0 rows (lost a race to a concurrent reservation that consumed the same available stock), the line was classified `FAILED` immediately and a TODO comment noted *"a real implementation would loop with backoff"*. The unlucky caller was told the SKU was unavailable even though, on a re-read after the winner committed, residual stock could still have satisfied the request — fully or partially.
