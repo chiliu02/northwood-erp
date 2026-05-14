@@ -6,6 +6,30 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-14 — §1F.1 purchasing: ProductDiscontinued consumer + PR gating
+
+Third of five §1F.1 service-level slices. Purchasing maintains a new `purchasing.product_discontinued` projection table and rejects new requisitions whose lines reference a discontinued product. The gate fires inside `PurchaseRequisitionService.buildLines` (shared by both `createManual` and `createForWorkOrderShortage`), so even the auto-shortage path that runs from the inbox is protected against the race where manufacturing's shortage detector fires after a discontinue but before its own state catches up.
+
+### Changes
+
+- **Liquibase changeset** `purchasing-service/.../changes/2026-05-14-add-product-discontinued-projection.sql` creates `purchasing.product_discontinued (product_id UUID PRIMARY KEY, discontinued_at TIMESTAMPTZ NOT NULL)`. New per-service changeset; master changelog now includes it.
+- **`ProductDiscontinuedProjection`** (write port) + `JdbcProductDiscontinuedProjection`. Upsert on `(product_id)`.
+- **`DiscontinuedProductLookup`** (read port, single-method narrow → `*Lookup`) + `JdbcDiscontinuedProductLookup`. `isDiscontinued(productId)` returns a boolean.
+- **`purchasing.product-discontinued`** inbox handler — calls `ProductDiscontinuedProjection.applyDiscontinued(productId, occurredAt)`.
+- **`PurchaseRequisitionService`** gains a `DiscontinuedProductLookup` collaborator; the existing `buildLines` private method now iterates the requested lines once up front and throws `ProductDiscontinuedException` (new static inner class) on any discontinued line, before any aggregate construction. Both the manual REST entry point and the work-order-shortage auto-path go through `buildLines`, so the gate covers both.
+- **`PurchaseRequisitionController`** wires `ProductDiscontinuedException → 409` via a focused `@ExceptionHandler` (HTTP-status convention matches sales: entity-in-state-that-blocks-the-operation, not bad-input).
+- **`InMemoryDiscontinuedProductLookup`** added to test-harness — implements both the read port (`DiscontinuedProductLookup`) and the write port (`ProductDiscontinuedProjection`) so seeding via either entry point lands on the same underlying set. `PurchasingTestKit` now wires it into the service constructor and registers `ProductDiscontinuedHandler` on the bus.
+
+### Tests
+
+`ProductDiscontinuedHandlerTest` (happy + already-processed). Full purchasing-service + test-harness suite green (109 + 7 test-harness flows).
+
+### Smoke
+
+`mvn -pl purchasing-service,test-harness -am test` → all green.
+
+---
+
 ## 2026-05-14 — §1F.1 manufacturing: ProductDiscontinued consumer (replenishment + active BOM)
 
 Second of five §1F.1 service-level slices. Manufacturing retires the product across two read-side rows:

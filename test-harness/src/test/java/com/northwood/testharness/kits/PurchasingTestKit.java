@@ -5,6 +5,7 @@ import com.northwood.purchasing.application.PurchaseRequisitionService;
 import com.northwood.purchasing.application.SupplierProductPriceService;
 import com.northwood.purchasing.application.inbox.ApprovedVendorListChangedHandler;
 import com.northwood.purchasing.application.inbox.GoodsReceivedHandler;
+import com.northwood.purchasing.application.inbox.ProductDiscontinuedHandler;
 import com.northwood.purchasing.application.inbox.RawMaterialShortageDetectedHandler;
 import com.northwood.purchasing.application.inbox.SupplierInvoiceApprovedHandler;
 import com.northwood.purchasing.application.inbox.SupplierPaymentMadeHandler;
@@ -16,6 +17,7 @@ import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.NoopPlatformTransactionManager;
 import com.northwood.testharness.inmemory.SynchronousBus;
 import com.northwood.testharness.inmemory.purchasing.InMemoryApprovedVendorQueryPort;
+import com.northwood.testharness.inmemory.purchasing.InMemoryDiscontinuedProductLookup;
 import com.northwood.testharness.inmemory.purchasing.InMemoryProductApprovedVendorProjection;
 import com.northwood.testharness.inmemory.purchasing.InMemoryPurchaseOrderPaymentProjection;
 import com.northwood.testharness.inmemory.purchasing.InMemoryPurchaseOrderReceiptProjection;
@@ -55,6 +57,7 @@ public final class PurchasingTestKit {
     public final InMemorySupplierProductPriceLookup priceLookup = new InMemorySupplierProductPriceLookup();
     public final InMemorySupplierProductPriceRepository priceRepository = new InMemorySupplierProductPriceRepository();
     public final InMemoryProductApprovedVendorProjection approvedVendorProjection = new InMemoryProductApprovedVendorProjection();
+    public final InMemoryDiscontinuedProductLookup discontinuedProducts = new InMemoryDiscontinuedProductLookup();
     public final InMemoryPurchaseOrderReceiptProjection receiptProjection;
     public final InMemoryPurchaseOrderPaymentProjection paymentProjection = new InMemoryPurchaseOrderPaymentProjection();
 
@@ -81,7 +84,7 @@ public final class PurchasingTestKit {
             orders, requisitions, suppliers, sagaManager, priceLookup, approvedVendorQuery
         );
         this.requisitionService = new PurchaseRequisitionService(
-            requisitions, suppliers, purchaseOrderService, true
+            requisitions, suppliers, purchaseOrderService, discontinuedProducts, true
         );
 
         CurrentUserAccessor currentUser = new CurrentUserAccessor();
@@ -95,6 +98,7 @@ public final class PurchasingTestKit {
         bus.register(new SupplierInvoiceApprovedHandler(inbox, sagaManager, paymentProjection, json));
         bus.register(new SupplierPaymentMadeHandler(inbox, sagaManager, paymentProjection, json));
         bus.register(new ApprovedVendorListChangedHandler(inbox, approvedVendorProjection, json));
+        bus.register(new ProductDiscontinuedHandler(inbox, discontinuedProducts, json));
     }
 
     public void advanceSagaWorker() {

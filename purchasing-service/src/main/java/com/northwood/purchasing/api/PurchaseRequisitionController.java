@@ -1,6 +1,7 @@
 package com.northwood.purchasing.api;
 
 import com.northwood.purchasing.application.PurchaseRequisitionService;
+import com.northwood.purchasing.application.PurchaseRequisitionService.ProductDiscontinuedException;
 import com.northwood.purchasing.application.dto.CreateRequisitionCommand;
 import com.northwood.purchasing.application.dto.PurchaseRequisitionView;
 import com.northwood.shared.api.security.RequirePurchasingClerk;
@@ -9,6 +10,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -47,5 +49,10 @@ public class PurchaseRequisitionController {
         return service.findById(id)
             .map(ResponseEntity::ok)
             .orElse(ResponseEntity.notFound().build());
+    }
+
+    @ExceptionHandler(ProductDiscontinuedException.class)
+    public ResponseEntity<String> handleDiscontinued(ProductDiscontinuedException e) {
+        return ResponseEntity.status(409).body(e.getMessage());
     }
 }

@@ -43,17 +43,20 @@ public class PurchaseRequisitionService {
     private final PurchaseRequisitionRepository purchaseRequisitions;
     private final SupplierRepository suppliers;
     private final PurchaseOrderService purchaseOrders;
+    private final DiscontinuedProductLookup discontinuedProducts;
     private final boolean shortagePoAutoApprove;
 
     public PurchaseRequisitionService(
         PurchaseRequisitionRepository purchaseRequisitions,
         SupplierRepository suppliers,
         PurchaseOrderService purchaseOrders,
+        DiscontinuedProductLookup discontinuedProducts,
         @Value("${northwood.purchasing.shortagePoAutoApprove:true}") boolean shortagePoAutoApprove
     ) {
         this.purchaseRequisitions = purchaseRequisitions;
         this.suppliers = suppliers;
         this.purchaseOrders = purchaseOrders;
+        this.discontinuedProducts = discontinuedProducts;
         this.shortagePoAutoApprove = shortagePoAutoApprove;
     }
 
@@ -121,6 +124,16 @@ public class PurchaseRequisitionService {
         List<RequisitionLineRequest> requested,
         Supplier defaultSupplier
     ) {
+        // §1F.1: reject upfront if any line names a product product-service
+        // has discontinued. Same idempotent-projection lookup is used by both
+        // manual and shortage-driven PR paths so the shortage detector also
+        // gets the rejection (manufacturing emitted the shortage before
+        // observing the discontinue is a real race).
+        for (RequisitionLineRequest line : requested) {
+            if (discontinuedProducts.isDiscontinued(line.productId())) {
+                throw new ProductDiscontinuedException(line.productSku());
+            }
+        }
         List<PurchaseRequisitionLine> built = new ArrayList<>();
         int lineNumber = 10;
         for (RequisitionLineRequest line : requested) {
@@ -139,5 +152,12 @@ public class PurchaseRequisitionService {
             lineNumber += 10;
         }
         return built;
+    }
+
+    public static class ProductDiscontinuedException extends RuntimeException {
+        public ProductDiscontinuedException(String sku) {
+            super("Product sku=" + sku + " has been discontinued by product-service; "
+                + "cannot include it on a new requisition or purchase order");
+        }
     }
 }
