@@ -60,12 +60,12 @@ class SubAssemblyRecursionTest {
         mfg.replenishment.put(woodId, true, false);
         mfg.replenishment.put(steelId, true, false);
 
-        mfg.boms.put(fgId, UUID.randomUUID(),
+        mfg.bomLookup.put(fgId, UUID.randomUUID(),
             InMemoryBomLookup.subAssemblyLine(subAId, "SUB-A", "Sub-Assembly A",
                 new BigDecimal("1"), BigDecimal.ZERO),
             InMemoryBomLookup.rawLine(woodId, "WOOD", "Wood",
                 new BigDecimal("2"), BigDecimal.ZERO));
-        mfg.boms.put(subAId, UUID.randomUUID(),
+        mfg.bomLookup.put(subAId, UUID.randomUUID(),
             InMemoryBomLookup.rawLine(steelId, "STEEL", "Steel",
                 new BigDecimal("3"), BigDecimal.ZERO));
 

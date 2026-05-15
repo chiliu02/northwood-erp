@@ -1,11 +1,12 @@
 package com.northwood.manufacturing.application;
 
+import com.northwood.manufacturing.domain.Bom;
 import com.northwood.manufacturing.domain.BomCycleDetector;
-import com.northwood.manufacturing.domain.BomEditRepository;
-import com.northwood.manufacturing.domain.BomEditRepository.HeaderRow;
+import com.northwood.manufacturing.domain.BomId;
+import com.northwood.manufacturing.domain.BomLine;
+import com.northwood.manufacturing.domain.BomLineId;
+import com.northwood.manufacturing.domain.BomRepository;
 import java.math.BigDecimal;
-import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,33 +14,34 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Editorial commands on {@code manufacturing.bom_header} / {@code bom_line}.
- * The job of this service is to keep the BOM graph acyclic — every mutation
- * that could introduce a cycle runs the {@link BomCycleDetector} inside the
- * same transaction as the change, so a concurrent edit can't slip a cycle in
- * between detection and commit.
+ * Editorial commands on the {@link Bom} aggregate. Thin orchestrator: load
+ * the aggregate, invoke a mutator, save (which drains pendingEvents to the
+ * outbox), run cross-aggregate post-conditions (cycle detection,
+ * materialsCost rollup).
  *
- * <p>Three commands are supported:
+ * <p>Three commands:
  *
  * <ul>
- *   <li>{@code addLine}: insert a {@code bom_line} into a non-active BOM,
- *       check for cycles, rollback on detection.</li>
- *   <li>{@code removeLine}: delete a {@code bom_line} from a non-active BOM.
- *       Removing edges cannot create cycles, so no detector run.</li>
- *   <li>{@code activate}: flip a draft BOM to {@code 'active'} (the partial
- *       unique index on {@code (finished_product_id) WHERE status='active'}
- *       enforces "at most one active per product" at the DB level), and check
- *       that the new edge set doesn't close a cycle through previously-inactive
- *       sub-assemblies.</li>
+ *   <li>{@link #createDraft}: register a new {@link Bom} in {@code DRAFT}.</li>
+ *   <li>{@link #addLine}: append a line to a draft. Pre-checks: component not
+ *       discontinued (product-service contract). Post-check: the new edge set
+ *       wouldn't close a cycle (walked via {@link BomCycleDetector}; on hit,
+ *       the surrounding {@code @Transactional} rolls back the line insert).</li>
+ *   <li>{@link #removeLine}: drop a line from a draft. Edges leaving the
+ *       graph can't create cycles; no detector run.</li>
+ *   <li>{@link #activate}: flip a draft to {@code ACTIVE}. Post-check: walk
+ *       every component's subtree to make sure activation doesn't close a
+ *       cycle through previously-inactive descendants. On success, kick off
+ *       {@link MaterialsCostRollupService#recomputeViaBom} in the same
+ *       transaction.</li>
  * </ul>
  *
- * <p>Edits are rejected on active BOMs because work orders snapshot from
- * active BOMs at release time — letting the source change underneath them
- * leads to ambiguous "which version am I looking at" reads. Make a new draft,
- * activate it; the old one becomes {@code 'inactive'} via a separate
- * deactivate command (not implemented in this slice — single-active means a
- * straight activate of a sibling draft will fail until the existing active is
- * deactivated).
+ * <p>Promoted from a row-shaped service 2026-05-16 (§2.16). Previously the
+ * state-machine invariants (status guards, line-number allocation, "at most
+ * one active per product" via DB partial unique index) were spread across
+ * this service and {@code BomEditRepository}; now they live on the
+ * {@link Bom} aggregate, leaving the service to orchestrate cross-aggregate
+ * concerns.
  */
 @Service
 public class BomEditService {
@@ -72,13 +74,31 @@ public class BomEditService {
         }
     }
 
+    /**
+     * Application-layer wrapper around the domain
+     * {@link Bom.BomNotEditableException}. Controllers catch this (HTTP 409)
+     * instead of importing the domain exception type directly.
+     */
     public static class BomNotEditableException extends RuntimeException {
+        public BomNotEditableException(String message, Throwable cause) {
+            super(message, cause);
+        }
+
         public BomNotEditableException(String message) {
             super(message);
         }
     }
 
+    /**
+     * Application-layer wrapper around the domain {@link Bom.BomCycleException}
+     * plus the post-save cycle-detection findings. Controllers catch this
+     * (HTTP 409) instead of importing the domain exception type directly.
+     */
     public static class BomCycleException extends RuntimeException {
+        public BomCycleException(String message, Throwable cause) {
+            super(message, cause);
+        }
+
         public BomCycleException(String message) {
             super(message);
         }
@@ -98,24 +118,20 @@ public class BomEditService {
         }
     }
 
-    // BOM header status — wire-format strings stored in manufacturing.bom_header.status.
-    private static final String BOM_STATUS_DRAFT = "draft";
-    private static final String BOM_STATUS_ACTIVE = "active";
-
     private static final Logger log = LoggerFactory.getLogger(BomEditService.class);
 
-    private final BomEditRepository bomEdits;
+    private final BomRepository boms;
     private final BomCycleDetector cycleDetector;
     private final MaterialsCostRollupService rollup;
     private final DiscontinuedProductLookup discontinuedProducts;
 
     public BomEditService(
-        BomEditRepository bomEdits,
+        BomRepository boms,
         BomCycleDetector cycleDetector,
         MaterialsCostRollupService rollup,
         DiscontinuedProductLookup discontinuedProducts
     ) {
-        this.bomEdits = bomEdits;
+        this.boms = boms;
         this.cycleDetector = cycleDetector;
         this.rollup = rollup;
         this.discontinuedProducts = discontinuedProducts;
@@ -124,144 +140,129 @@ public class BomEditService {
     /**
      * Create a new BOM draft. Returns the new {@code bom_header_id} so
      * subsequent {@link #addLine} / {@link #activate} calls can target it.
-     * The BOM starts at status {@code 'draft'} with no lines; the unique
-     * constraint on {@code (finished_product_id, version)} prevents two
-     * drafts with the same version label colliding for the same product.
      */
     @Transactional
     public UUID createDraft(CreateBomDraftCommand command) {
         if (command.finishedProductId() == null) {
             throw new IllegalArgumentException("finishedProductId required");
         }
-        if (command.finishedProductSku() == null || command.finishedProductSku().isBlank()) {
-            throw new IllegalArgumentException("finishedProductSku required");
-        }
-        if (command.finishedProductName() == null || command.finishedProductName().isBlank()) {
-            throw new IllegalArgumentException("finishedProductName required");
-        }
-        UUID bomHeaderId = UUID.randomUUID();
         String version = command.version() == null || command.version().isBlank()
             ? "1" : command.version();
-        bomEdits.insertHeader(
-            bomHeaderId, command.finishedProductId(),
-            command.finishedProductSku(), command.finishedProductName(),
-            version
-        );
+        Bom bom;
+        try {
+            bom = Bom.draft(
+                command.finishedProductId(),
+                command.finishedProductSku(),
+                command.finishedProductName(),
+                version
+            );
+        } catch (NullPointerException e) {
+            // Aggregate guards use Objects.requireNonNull which throws NPE with a
+            // message naming the offending arg; rewrap as IllegalArgumentException
+            // for an HTTP 400-shaped error rather than a 500.
+            throw new IllegalArgumentException(e.getMessage(), e);
+        }
+        boms.save(bom);
         log.info("created bom_header {} (draft) for product {} version {}",
-            bomHeaderId, command.finishedProductSku(), version);
-        return bomHeaderId;
+            bom.id().value(), bom.finishedProductSku(), bom.version());
+        return bom.id().value();
     }
 
     @Transactional
     public UUID addLine(UUID bomHeaderId, AddLineCommand command) {
-        HeaderRow header = loadEditableHeader(bomHeaderId);
-
-        if (header.finishedProductId().equals(command.componentProductId)) {
-            throw new BomCycleException(
-                "Component cannot equal the BOM's finished product (" + header.finishedProductId() + ")"
-            );
-        }
-
         // §1.4 B.3: reject discontinued components upfront. Mirrors
         // purchasing's PR-entry gate; prevents authoring a BOM that names
         // a retired SKU before the planner gets to activation.
-        if (discontinuedProducts.isDiscontinued(command.componentProductId)) {
-            throw new BomComponentDiscontinuedException(command.componentProductId, command.componentSku);
+        if (discontinuedProducts.isDiscontinued(command.componentProductId())) {
+            throw new BomComponentDiscontinuedException(command.componentProductId(), command.componentSku());
         }
+        Bom bom = boms.findById(BomId.of(bomHeaderId))
+            .orElseThrow(() -> new BomNotFoundException(bomHeaderId));
 
-        int nextLineNumber = bomEdits.nextLineNumber(bomHeaderId);
-
-        UUID bomLineId = UUID.randomUUID();
-        bomEdits.insertLine(
-            bomLineId, bomHeaderId, nextLineNumber,
-            command.componentProductId, command.componentSku, command.componentName,
-            command.componentKind,
-            command.quantityPerFinishedUnit,
-            command.scrapFactorPercent
-        );
-
-        if (cycleDetector.wouldCreateCycle(command.componentProductId, header.finishedProductId(), bomHeaderId)) {
+        BomLine line;
+        try {
+            line = bom.addLine(new BomLine.Spec(
+                command.componentProductId(),
+                command.componentSku(),
+                command.componentName(),
+                command.componentKind(),
+                command.quantityPerFinishedUnit(),
+                command.scrapFactorPercent()
+            ));
+        } catch (Bom.BomCycleException e) {
+            throw new BomCycleException(e.getMessage(), e);
+        } catch (Bom.BomNotEditableException e) {
+            throw new BomNotEditableException(e.getMessage(), e);
+        }
+        boms.save(bom);
+        // Post-save cycle check: detector walks the DB graph (now including this
+        // line) and rolls back the surrounding @Transactional on a positive
+        // finding. See Bom's class Javadoc for why this lives one layer up
+        // from the aggregate.
+        if (cycleDetector.wouldCreateCycle(command.componentProductId(), bom.finishedProductId(), bomHeaderId)) {
             throw new BomCycleException(
-                "Adding component " + command.componentSku + " to BOM " + bomHeaderId
-                    + " would close a cycle: " + command.componentProductId
-                    + " can already reach finished product " + header.finishedProductId()
+                "Adding component " + command.componentSku() + " to BOM " + bomHeaderId
+                    + " would close a cycle: " + command.componentProductId()
+                    + " can already reach finished product " + bom.finishedProductId()
             );
         }
-
         log.info("added bom_line {} (line_number={}) to bom_header {} for product {}",
-            bomLineId, nextLineNumber, bomHeaderId, header.finishedProductSku());
-        return bomLineId;
+            line.id().value(), line.lineNumber(), bomHeaderId, bom.finishedProductSku());
+        return line.id().value();
     }
 
     @Transactional
     public void removeLine(UUID bomLineId) {
-        UUID bomHeaderId = bomEdits.findHeaderIdByLineId(bomLineId)
+        BomId bomId = boms.findBomIdByLineId(BomLineId.of(bomLineId))
             .orElseThrow(() -> new BomLineNotFoundException(bomLineId));
-
-        loadEditableHeader(bomHeaderId);
-
-        if (!bomEdits.deleteLine(bomLineId)) {
+        Bom bom = boms.findById(bomId)
+            .orElseThrow(() -> new BomNotFoundException(bomId.value()));
+        boolean removed;
+        try {
+            removed = bom.removeLine(BomLineId.of(bomLineId));
+        } catch (Bom.BomNotEditableException e) {
+            throw new BomNotEditableException(e.getMessage(), e);
+        }
+        if (!removed) {
             throw new BomLineNotFoundException(bomLineId);
         }
-        log.info("removed bom_line {} from bom_header {}", bomLineId, bomHeaderId);
+        boms.save(bom);
+        log.info("removed bom_line {} from bom_header {}", bomLineId, bomId.value());
     }
 
     @Transactional
     public void activate(UUID bomHeaderId) {
-        HeaderRow header = bomEdits.findHeader(bomHeaderId)
+        Bom bom = boms.findById(BomId.of(bomHeaderId))
             .orElseThrow(() -> new BomNotFoundException(bomHeaderId));
-
-        if (BOM_STATUS_ACTIVE.equals(header.status())) {
+        Bom.Status before = bom.status();
+        try {
+            bom.activate();
+        } catch (Bom.BomNotEditableException e) {
+            throw new BomNotEditableException(e.getMessage(), e);
+        }
+        if (before == Bom.Status.ACTIVE) {
+            // No-op (aggregate returned without state change); skip save +
+            // post-checks + rollup so we don't recompute on every redundant call.
             return;
         }
-        if (!BOM_STATUS_DRAFT.equals(header.status())) {
-            throw new BomNotEditableException(
-                "Cannot activate BOM " + bomHeaderId + " from status=" + header.status()
-            );
-        }
-
-        if (bomEdits.countLines(bomHeaderId) == 0) {
-            throw new BomNotEditableException(
-                "Cannot activate BOM " + bomHeaderId + " with no lines"
-            );
-        }
-
-        // The partial unique index uq_bom_active_per_product enforces "at most
-        // one active per finished_product_id" — a competing active will surface
-        // as a DataIntegrityViolationException here and the transaction rolls
-        // back cleanly.
-        bomEdits.markActive(bomHeaderId);
-
-        List<UUID> componentProductIds = bomEdits.findComponentProductIds(bomHeaderId);
-        for (UUID componentProductId : componentProductIds) {
-            if (cycleDetector.wouldCreateCycle(componentProductId, header.finishedProductId(), null)) {
+        boms.save(bom);
+        // Post-save cycle check: walk every component's subtree to ensure
+        // activation doesn't close a cycle through previously-inactive
+        // descendants. On positive finding, the @Transactional rolls back
+        // the activation.
+        for (UUID componentProductId : bom.componentProductIds()) {
+            if (cycleDetector.wouldCreateCycle(componentProductId, bom.finishedProductId(), null)) {
                 throw new BomCycleException(
-                    "Activating BOM " + bomHeaderId + " for product " + header.finishedProductSku()
+                    "Activating BOM " + bomHeaderId + " for product " + bom.finishedProductSku()
                         + " would close a cycle through component " + componentProductId
                 );
             }
         }
-
         log.info("activated bom_header {} for product {} ({} components)",
-            bomHeaderId, header.finishedProductSku(), componentProductIds.size());
-
+            bomHeaderId, bom.finishedProductSku(), bom.lineCount());
         // §2.8 Slice D: kick off the materialsCost rollup in the same
         // transaction as the activation. Walks parents recursively so a
         // multi-level activation cascade reaches everything in one go.
-        rollup.recomputeViaBom(header.finishedProductId(), "bom_activated");
+        rollup.recomputeViaBom(bom.finishedProductId(), "bom_activated");
     }
-
-    private HeaderRow loadEditableHeader(UUID bomHeaderId) {
-        Optional<HeaderRow> header = bomEdits.findHeader(bomHeaderId);
-        if (header.isEmpty()) {
-            throw new BomNotFoundException(bomHeaderId);
-        }
-        if (BOM_STATUS_ACTIVE.equals(header.get().status())) {
-            throw new BomNotEditableException(
-                "BOM " + bomHeaderId + " is active; create a new draft to make changes"
-            );
-        }
-        return header.get();
-    }
-
 }

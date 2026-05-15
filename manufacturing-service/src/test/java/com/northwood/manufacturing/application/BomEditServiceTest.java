@@ -3,8 +3,6 @@ package com.northwood.manufacturing.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -19,9 +17,12 @@ import com.northwood.manufacturing.application.BomEditService.BomLineNotFoundExc
 import com.northwood.manufacturing.application.BomEditService.BomNotEditableException;
 import com.northwood.manufacturing.application.BomEditService.BomNotFoundException;
 import com.northwood.manufacturing.application.BomEditService.CreateBomDraftCommand;
+import com.northwood.manufacturing.domain.Bom;
 import com.northwood.manufacturing.domain.BomCycleDetector;
-import com.northwood.manufacturing.domain.BomEditRepository;
-import com.northwood.manufacturing.domain.BomEditRepository.HeaderRow;
+import com.northwood.manufacturing.domain.BomId;
+import com.northwood.manufacturing.domain.BomLine;
+import com.northwood.manufacturing.domain.BomLineId;
+import com.northwood.manufacturing.domain.BomRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -43,7 +44,7 @@ class BomEditServiceTest {
     private static final UUID HEADER = UUID.randomUUID();
     private static final UUID LINE = UUID.randomUUID();
 
-    @Mock BomEditRepository edits;
+    @Mock BomRepository boms;
     @Mock BomCycleDetector cycleDetector;
     @Mock MaterialsCostRollupService rollup;
     @Mock DiscontinuedProductLookup discontinuedProducts;
@@ -52,26 +53,43 @@ class BomEditServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new BomEditService(edits, cycleDetector, rollup, discontinuedProducts);
+        service = new BomEditService(boms, cycleDetector, rollup, discontinuedProducts);
     }
 
-    private HeaderRow draftHeader() {
-        return new HeaderRow(HEADER, FINISHED, "FG-001", "draft");
+    private Bom draftBom() {
+        return Bom.reconstitute(
+            BomId.of(HEADER), FINISHED, "FG-001", "Finished Good 1", "1",
+            Bom.Status.DRAFT, List.of(), 2L
+        );
     }
 
-    private HeaderRow activeHeader() {
-        return new HeaderRow(HEADER, FINISHED, "FG-001", "active");
+    private Bom draftBomWithOneLine() {
+        BomLine line = new BomLine(
+            BomLineId.of(LINE), 1, COMPONENT, "RM-001", "Raw 1", "raw_material",
+            new BigDecimal("2"), BigDecimal.ZERO
+        );
+        return Bom.reconstitute(
+            BomId.of(HEADER), FINISHED, "FG-001", "Finished Good 1", "1",
+            Bom.Status.DRAFT, List.of(line), 2L
+        );
     }
 
-    private HeaderRow inactiveHeader() {
-        return new HeaderRow(HEADER, FINISHED, "FG-001", "inactive");
+    private Bom activeBom() {
+        BomLine line = new BomLine(
+            BomLineId.of(LINE), 1, COMPONENT, "RM-001", "Raw 1", "raw_material",
+            new BigDecimal("2"), BigDecimal.ZERO
+        );
+        return Bom.reconstitute(
+            BomId.of(HEADER), FINISHED, "FG-001", "Finished Good 1", "1",
+            Bom.Status.ACTIVE, List.of(line), 2L
+        );
     }
 
     private CreateBomDraftCommand createDraft(String version) {
-        return new CreateBomDraftCommand(FINISHED, "FG-001", "Finished Good 001", version);
+        return new CreateBomDraftCommand(FINISHED, "FG-001", "Finished Good 1", version);
     }
 
-    private AddLineCommand addLine(UUID componentProductId) {
+    private AddLineCommand addLineCommand(UUID componentProductId) {
         return new AddLineCommand(
             componentProductId, "RM-001", "Raw Material 001", "raw_material",
             new BigDecimal("2.000"), new BigDecimal("0.05")
@@ -81,26 +99,32 @@ class BomEditServiceTest {
     @Nested
     class CreateDraft {
 
-        @Test void inserts_header_with_provided_version() {
+        @Test void saves_a_newly_drafted_aggregate() {
             UUID id = service.createDraft(createDraft("v2"));
 
-            ArgumentCaptor<UUID> idCap = ArgumentCaptor.forClass(UUID.class);
-            verify(edits).insertHeader(
-                idCap.capture(), eq(FINISHED), eq("FG-001"), eq("Finished Good 001"), eq("v2")
-            );
-            assertThat(id).isEqualTo(idCap.getValue());
+            ArgumentCaptor<Bom> cap = ArgumentCaptor.forClass(Bom.class);
+            verify(boms).save(cap.capture());
+            Bom saved = cap.getValue();
+            assertThat(saved.id().value()).isEqualTo(id);
+            assertThat(saved.status()).isEqualTo(Bom.Status.DRAFT);
+            assertThat(saved.version()).isEqualTo("v2");
+            assertThat(saved.finishedProductId()).isEqualTo(FINISHED);
         }
 
         @Test void defaults_version_to_1_when_blank() {
             service.createDraft(createDraft(""));
 
-            verify(edits).insertHeader(any(), any(), anyString(), anyString(), eq("1"));
+            ArgumentCaptor<Bom> cap = ArgumentCaptor.forClass(Bom.class);
+            verify(boms).save(cap.capture());
+            assertThat(cap.getValue().version()).isEqualTo("1");
         }
 
         @Test void defaults_version_to_1_when_null() {
             service.createDraft(createDraft(null));
 
-            verify(edits).insertHeader(any(), any(), anyString(), anyString(), eq("1"));
+            ArgumentCaptor<Bom> cap = ArgumentCaptor.forClass(Bom.class);
+            verify(boms).save(cap.capture());
+            assertThat(cap.getValue().version()).isEqualTo("1");
         }
 
         @Test void rejects_null_finished_product_id() {
@@ -109,90 +133,95 @@ class BomEditServiceTest {
             assertThatThrownBy(() -> service.createDraft(bad))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("finishedProductId");
-            verifyNoInteractions(edits);
+            verifyNoInteractions(boms);
         }
 
-        @Test void rejects_blank_sku() {
-            CreateBomDraftCommand bad = new CreateBomDraftCommand(FINISHED, "  ", "x", "1");
+        @Test void rejects_blank_sku_from_aggregate_guard() {
+            CreateBomDraftCommand bad = new CreateBomDraftCommand(FINISHED, "  ", "Name", "1");
 
             assertThatThrownBy(() -> service.createDraft(bad))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Sku");
-            verifyNoInteractions(edits);
+                .hasMessageContaining("finishedProductSku");
+            verifyNoInteractions(boms);
         }
 
-        @Test void rejects_blank_name() {
+        @Test void rejects_blank_name_from_aggregate_guard() {
             CreateBomDraftCommand bad = new CreateBomDraftCommand(FINISHED, "FG-001", "", "1");
 
             assertThatThrownBy(() -> service.createDraft(bad))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Name");
-            verifyNoInteractions(edits);
+                .hasMessageContaining("finishedProductName");
+            verifyNoInteractions(boms);
         }
     }
 
     @Nested
     class AddLine {
 
-        @Test void inserts_line_with_next_line_number() {
-            when(edits.findHeader(HEADER)).thenReturn(Optional.of(draftHeader()));
-            when(edits.nextLineNumber(HEADER)).thenReturn(3);
+        @Test void mutates_aggregate_saves_and_runs_cycle_check() {
+            Bom bom = draftBom();
+            when(boms.findById(BomId.of(HEADER))).thenReturn(Optional.of(bom));
             when(cycleDetector.wouldCreateCycle(COMPONENT, FINISHED, HEADER)).thenReturn(false);
 
-            UUID newLineId = service.addLine(HEADER, addLine(COMPONENT));
+            UUID newLineId = service.addLine(HEADER, addLineCommand(COMPONENT));
 
-            verify(edits).insertLine(
-                eq(newLineId), eq(HEADER), eq(3),
-                eq(COMPONENT), eq("RM-001"), eq("Raw Material 001"), eq("raw_material"),
-                eq(new BigDecimal("2.000")), eq(new BigDecimal("0.05"))
-            );
+            assertThat(bom.lines()).hasSize(1);
+            assertThat(bom.lines().get(0).id().value()).isEqualTo(newLineId);
+            verify(boms).save(bom);
+            verify(cycleDetector).wouldCreateCycle(COMPONENT, FINISHED, HEADER);
         }
 
         @Test void rejects_when_header_does_not_exist() {
-            when(edits.findHeader(HEADER)).thenReturn(Optional.empty());
+            when(boms.findById(BomId.of(HEADER))).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.addLine(HEADER, addLine(COMPONENT)))
+            assertThatThrownBy(() -> service.addLine(HEADER, addLineCommand(COMPONENT)))
                 .isInstanceOf(BomNotFoundException.class);
-            verify(edits, never()).insertLine(any(), any(), anyInt(), any(), any(), any(), any(), any(), any());
+            verify(boms, never()).save(any());
         }
 
         @Test void rejects_on_active_header() {
-            when(edits.findHeader(HEADER)).thenReturn(Optional.of(activeHeader()));
+            Bom bom = activeBom();
+            when(boms.findById(BomId.of(HEADER))).thenReturn(Optional.of(bom));
 
-            assertThatThrownBy(() -> service.addLine(HEADER, addLine(COMPONENT)))
+            assertThatThrownBy(() -> service.addLine(HEADER, addLineCommand(OTHER_COMPONENT)))
                 .isInstanceOf(BomNotEditableException.class)
-                .hasMessageContaining("active");
-            verify(edits, never()).insertLine(any(), any(), anyInt(), any(), any(), any(), any(), any(), any());
-        }
-
-        @Test void rejects_when_component_equals_finished_product() {
-            when(edits.findHeader(HEADER)).thenReturn(Optional.of(draftHeader()));
-
-            assertThatThrownBy(() -> service.addLine(HEADER, addLine(FINISHED)))
-                .isInstanceOf(BomCycleException.class)
-                .hasMessageContaining("Component cannot equal");
-            verify(edits, never()).insertLine(any(), any(), anyInt(), any(), any(), any(), any(), any(), any());
+                .hasMessageContaining("ACTIVE");
+            verify(boms, never()).save(any());
             verifyNoInteractions(cycleDetector);
         }
 
-        @Test void rejects_on_cycle_detection() {
-            when(edits.findHeader(HEADER)).thenReturn(Optional.of(draftHeader()));
-            when(edits.nextLineNumber(HEADER)).thenReturn(1);
+        @Test void rejects_when_component_equals_finished_product() {
+            Bom bom = draftBom();
+            when(boms.findById(BomId.of(HEADER))).thenReturn(Optional.of(bom));
+
+            assertThatThrownBy(() -> service.addLine(HEADER, addLineCommand(FINISHED)))
+                .isInstanceOf(BomCycleException.class)
+                .hasMessageContaining("Component cannot equal");
+            verify(boms, never()).save(any());
+            verifyNoInteractions(cycleDetector);
+        }
+
+        @Test void rejects_on_post_save_cycle_detection() {
+            Bom bom = draftBom();
+            when(boms.findById(BomId.of(HEADER))).thenReturn(Optional.of(bom));
             when(cycleDetector.wouldCreateCycle(COMPONENT, FINISHED, HEADER)).thenReturn(true);
 
-            assertThatThrownBy(() -> service.addLine(HEADER, addLine(COMPONENT)))
+            assertThatThrownBy(() -> service.addLine(HEADER, addLineCommand(COMPONENT)))
                 .isInstanceOf(BomCycleException.class)
                 .hasMessageContaining("close a cycle");
+            // save() already happened — the surrounding @Transactional rolls back
+            // in production. Here we just verify the throw + the save was attempted.
+            verify(boms).save(bom);
         }
 
         @Test void rejects_when_component_is_discontinued() {
-            when(edits.findHeader(HEADER)).thenReturn(Optional.of(draftHeader()));
             when(discontinuedProducts.isDiscontinued(COMPONENT)).thenReturn(true);
 
-            assertThatThrownBy(() -> service.addLine(HEADER, addLine(COMPONENT)))
+            assertThatThrownBy(() -> service.addLine(HEADER, addLineCommand(COMPONENT)))
                 .isInstanceOf(BomComponentDiscontinuedException.class)
                 .hasMessageContaining("RM-001");
-            verify(edits, never()).insertLine(any(), any(), anyInt(), any(), any(), any(), any(), any(), any());
+            verify(boms, never()).findById(any());
+            verify(boms, never()).save(any());
             verifyNoInteractions(cycleDetector);
         }
     }
@@ -200,117 +229,139 @@ class BomEditServiceTest {
     @Nested
     class RemoveLine {
 
-        @Test void deletes_line_and_resolves_header() {
-            when(edits.findHeaderIdByLineId(LINE)).thenReturn(Optional.of(HEADER));
-            when(edits.findHeader(HEADER)).thenReturn(Optional.of(draftHeader()));
-            when(edits.deleteLine(LINE)).thenReturn(true);
+        @Test void resolves_header_loads_bom_removes_line_and_saves() {
+            Bom bom = draftBomWithOneLine();
+            when(boms.findBomIdByLineId(BomLineId.of(LINE))).thenReturn(Optional.of(BomId.of(HEADER)));
+            when(boms.findById(BomId.of(HEADER))).thenReturn(Optional.of(bom));
 
             service.removeLine(LINE);
 
-            verify(edits).deleteLine(LINE);
+            assertThat(bom.lines()).isEmpty();
+            verify(boms).save(bom);
         }
 
         @Test void rejects_when_line_does_not_exist_at_lookup() {
-            when(edits.findHeaderIdByLineId(LINE)).thenReturn(Optional.empty());
+            when(boms.findBomIdByLineId(BomLineId.of(LINE))).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.removeLine(LINE))
                 .isInstanceOf(BomLineNotFoundException.class);
-            verify(edits, never()).deleteLine(any());
+            verify(boms, never()).save(any());
         }
 
         @Test void rejects_when_header_is_active() {
-            when(edits.findHeaderIdByLineId(LINE)).thenReturn(Optional.of(HEADER));
-            when(edits.findHeader(HEADER)).thenReturn(Optional.of(activeHeader()));
+            Bom bom = activeBom();
+            when(boms.findBomIdByLineId(BomLineId.of(LINE))).thenReturn(Optional.of(BomId.of(HEADER)));
+            when(boms.findById(BomId.of(HEADER))).thenReturn(Optional.of(bom));
 
             assertThatThrownBy(() -> service.removeLine(LINE))
                 .isInstanceOf(BomNotEditableException.class);
-            verify(edits, never()).deleteLine(any());
+            verify(boms, never()).save(any());
         }
 
-        @Test void rejects_when_delete_affects_no_rows() {
-            when(edits.findHeaderIdByLineId(LINE)).thenReturn(Optional.of(HEADER));
-            when(edits.findHeader(HEADER)).thenReturn(Optional.of(draftHeader()));
-            when(edits.deleteLine(LINE)).thenReturn(false);
+        @Test void rejects_when_line_is_not_actually_on_bom() {
+            Bom bom = draftBom();  // empty — line LINE not present
+            when(boms.findBomIdByLineId(BomLineId.of(LINE))).thenReturn(Optional.of(BomId.of(HEADER)));
+            when(boms.findById(BomId.of(HEADER))).thenReturn(Optional.of(bom));
 
             assertThatThrownBy(() -> service.removeLine(LINE))
                 .isInstanceOf(BomLineNotFoundException.class);
+            verify(boms, never()).save(any());
         }
     }
 
     @Nested
     class Activate {
 
-        @Test void marks_active_runs_cycle_check_per_component_and_kicks_rollup() {
-            when(edits.findHeader(HEADER)).thenReturn(Optional.of(draftHeader()));
-            when(edits.countLines(HEADER)).thenReturn(2);
-            when(edits.findComponentProductIds(HEADER)).thenReturn(List.of(COMPONENT, OTHER_COMPONENT));
+        @Test void activates_runs_cycle_check_per_component_and_kicks_rollup() {
+            BomLine first = new BomLine(
+                BomLineId.newId(), 1, COMPONENT, "RM-A", "Raw A", "raw_material",
+                new BigDecimal("2"), BigDecimal.ZERO
+            );
+            BomLine second = new BomLine(
+                BomLineId.newId(), 2, OTHER_COMPONENT, "RM-B", "Raw B", "raw_material",
+                new BigDecimal("1"), BigDecimal.ZERO
+            );
+            Bom bom = Bom.reconstitute(
+                BomId.of(HEADER), FINISHED, "FG-001", "Finished Good 1", "1",
+                Bom.Status.DRAFT, List.of(first, second), 2L
+            );
+            when(boms.findById(BomId.of(HEADER))).thenReturn(Optional.of(bom));
             when(cycleDetector.wouldCreateCycle(any(), eq(FINISHED), eq(null))).thenReturn(false);
 
             service.activate(HEADER);
 
-            verify(edits).markActive(HEADER);
+            assertThat(bom.status()).isEqualTo(Bom.Status.ACTIVE);
+            verify(boms).save(bom);
             verify(cycleDetector).wouldCreateCycle(COMPONENT, FINISHED, null);
             verify(cycleDetector).wouldCreateCycle(OTHER_COMPONENT, FINISHED, null);
             verify(rollup).recomputeViaBom(FINISHED, "bom_activated");
         }
 
         @Test void no_op_when_already_active() {
-            when(edits.findHeader(HEADER)).thenReturn(Optional.of(activeHeader()));
+            Bom bom = activeBom();
+            when(boms.findById(BomId.of(HEADER))).thenReturn(Optional.of(bom));
 
             service.activate(HEADER);
 
-            verify(edits, never()).markActive(any());
+            verify(boms, never()).save(any());
             verifyNoInteractions(rollup);
         }
 
         @Test void rejects_when_header_does_not_exist() {
-            when(edits.findHeader(HEADER)).thenReturn(Optional.empty());
+            when(boms.findById(BomId.of(HEADER))).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.activate(HEADER))
                 .isInstanceOf(BomNotFoundException.class);
-            verify(edits, never()).markActive(any());
+            verify(boms, never()).save(any());
         }
 
-        @Test void rejects_from_non_draft_non_active_status() {
-            when(edits.findHeader(HEADER)).thenReturn(Optional.of(inactiveHeader()));
+        @Test void rejects_from_inactive_status() {
+            Bom bom = Bom.reconstitute(
+                BomId.of(HEADER), FINISHED, "FG-001", "Finished Good 1", "1",
+                Bom.Status.INACTIVE, List.of(), 5L
+            );
+            when(boms.findById(BomId.of(HEADER))).thenReturn(Optional.of(bom));
 
             assertThatThrownBy(() -> service.activate(HEADER))
                 .isInstanceOf(BomNotEditableException.class)
-                .hasMessageContaining("Cannot activate");
-            verify(edits, never()).markActive(any());
+                .hasMessageContaining("INACTIVE");
+            verify(boms, never()).save(any());
         }
 
-        @Test void rejects_empty_draft() {
-            when(edits.findHeader(HEADER)).thenReturn(Optional.of(draftHeader()));
-            when(edits.countLines(HEADER)).thenReturn(0);
+        @Test void rejects_empty_draft_via_aggregate_guard() {
+            Bom bom = draftBom();
+            when(boms.findById(BomId.of(HEADER))).thenReturn(Optional.of(bom));
 
             assertThatThrownBy(() -> service.activate(HEADER))
                 .isInstanceOf(BomNotEditableException.class)
                 .hasMessageContaining("no lines");
-            verify(edits, never()).markActive(any());
+            verify(boms, never()).save(any());
             verifyNoInteractions(rollup);
         }
 
-        @Test void rejects_on_cycle_after_marking_active() {
-            // Cycle check runs after markActive; the @Transactional rollback is
-            // what unwinds the markActive in production. The unit test verifies
-            // the throw and that rollup is NOT triggered.
-            when(edits.findHeader(HEADER)).thenReturn(Optional.of(draftHeader()));
-            when(edits.countLines(HEADER)).thenReturn(1);
-            when(edits.findComponentProductIds(HEADER)).thenReturn(List.of(COMPONENT));
+        @Test void rejects_on_post_save_cycle_detection_and_skips_rollup() {
+            Bom bom = draftBomWithOneLine();
+            when(boms.findById(BomId.of(HEADER))).thenReturn(Optional.of(bom));
             when(cycleDetector.wouldCreateCycle(COMPONENT, FINISHED, null)).thenReturn(true);
 
             assertThatThrownBy(() -> service.activate(HEADER))
                 .isInstanceOf(BomCycleException.class)
                 .hasMessageContaining("close a cycle");
-            verify(edits).markActive(HEADER);  // already called; rollback would unwind in production
+            verify(boms).save(bom);
             verifyNoInteractions(rollup);
         }
 
         @Test void cycle_check_short_circuits_on_first_match() {
-            when(edits.findHeader(HEADER)).thenReturn(Optional.of(draftHeader()));
-            when(edits.countLines(HEADER)).thenReturn(2);
-            when(edits.findComponentProductIds(HEADER)).thenReturn(List.of(COMPONENT, OTHER_COMPONENT));
+            Bom bom = Bom.reconstitute(
+                BomId.of(HEADER), FINISHED, "FG-001", "Finished Good 1", "1",
+                Bom.Status.DRAFT, List.of(
+                    new BomLine(BomLineId.newId(), 1, COMPONENT, "RM-A", "Raw A", "raw_material",
+                        BigDecimal.ONE, BigDecimal.ZERO),
+                    new BomLine(BomLineId.newId(), 2, OTHER_COMPONENT, "RM-B", "Raw B", "raw_material",
+                        BigDecimal.ONE, BigDecimal.ZERO)
+                ), 2L
+            );
+            when(boms.findById(BomId.of(HEADER))).thenReturn(Optional.of(bom));
             when(cycleDetector.wouldCreateCycle(COMPONENT, FINISHED, null)).thenReturn(true);
 
             assertThatThrownBy(() -> service.activate(HEADER))

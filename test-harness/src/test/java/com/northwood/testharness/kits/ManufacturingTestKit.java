@@ -24,7 +24,7 @@ import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.NoopPlatformTransactionManager;
 import com.northwood.testharness.inmemory.SynchronousBus;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryBomCycleDetector;
-import com.northwood.testharness.inmemory.manufacturing.InMemoryBomEditRepository;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryBomRepository;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryBomLookup;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryMakeToOrderSagaPort;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryMakeToOrderShortageRecoveryQueryPort;
@@ -54,9 +54,9 @@ public final class ManufacturingTestKit {
 
     public final InMemoryWorkOrderRepository workOrders;
     public final InMemoryRoutingQueryPort routings = new InMemoryRoutingQueryPort();
-    public final InMemoryBomLookup boms = new InMemoryBomLookup();
-    public final InMemoryBomEditRepository bomEdits = new InMemoryBomEditRepository();
-    public final InMemoryBomCycleDetector bomCycleDetector = new InMemoryBomCycleDetector(boms);
+    public final InMemoryBomLookup bomLookup = new InMemoryBomLookup();
+    public final InMemoryBomRepository boms;
+    public final InMemoryBomCycleDetector bomCycleDetector = new InMemoryBomCycleDetector(bomLookup);
     public final InMemoryMakeToOrderSagaPort sagas = new InMemoryMakeToOrderSagaPort();
     public final InMemoryProductReplenishmentProjection replenishment = new InMemoryProductReplenishmentProjection();
     public final InMemoryProductActiveBomProjection activeBoms = new InMemoryProductActiveBomProjection();
@@ -77,10 +77,11 @@ public final class ManufacturingTestKit {
 
     public ManufacturingTestKit(SynchronousBus bus, ObjectMapper json) {
         this.workOrders = new InMemoryWorkOrderRepository(outbox, json);
+        this.boms = new InMemoryBomRepository(outbox, json);
         this.shortageRecovery = new InMemoryMakeToOrderShortageRecoveryQueryPort(sagas, workOrders);
         PlatformTransactionManager txm = new NoopPlatformTransactionManager();
         this.sagaManager = new JdbcMakeToOrderSagaManager(sagas, json, txm);
-        this.releaseService = new WorkOrderReleaseService(workOrders, routings, boms, sagaManager);
+        this.releaseService = new WorkOrderReleaseService(workOrders, routings, bomLookup, sagaManager);
 
         CurrentUserAccessor currentUser = new CurrentUserAccessor();
         this.operationService = new WorkOrderOperationService(
@@ -93,10 +94,10 @@ public final class ManufacturingTestKit {
             workOrders, outbox, json, currentUser
         );
         this.rollupService = new MaterialsCostRollupService(
-            replenishment, approvedVendors, materialsCosts, boms,
+            replenishment, approvedVendors, materialsCosts, bomLookup,
             outbox, json, currentUser
         );
-        this.bomEditService = new BomEditService(bomEdits, bomCycleDetector, rollupService, replenishment);
+        this.bomEditService = new BomEditService(boms, bomCycleDetector, rollupService, replenishment);
 
         this.sagaWorker = new MakeToOrderSagaWorker(
             sagaManager, releaseService, workOrders, outbox, json
@@ -104,13 +105,13 @@ public final class ManufacturingTestKit {
         this.workerId = "manufacturing.mto-test-worker";
 
         bus.register(outbox);
-        bus.register(new ManufacturingRequestedHandler(inbox, sagaManager, boms, replenishment, outbox, json));
+        bus.register(new ManufacturingRequestedHandler(inbox, sagaManager, bomLookup, replenishment, outbox, json));
         bus.register(new RawMaterialsReservedHandler(inbox, sagaManager, workOrders, outbox, json));
         bus.register(new GoodsReceivedHandler(inbox, sagaManager, shortageRecovery, json));
         bus.register(new ActiveBomChangedHandler(inbox, activeBoms, rollupService, json));
         bus.register(new MakeVsBuyChangedHandler(inbox, replenishment, json));
         bus.register(new ProductCreatedHandler(inbox, replenishment, json));
-        bus.register(new ProductDiscontinuedHandler(inbox, replenishment, activeBoms, boms, json));
+        bus.register(new ProductDiscontinuedHandler(inbox, replenishment, activeBoms, bomLookup, json));
         bus.register(new SalesOrderCancellationRequestedHandler(inbox, cancellationService, json));
         bus.register(new SupplierProductPriceChangedHandler(inbox, rollupService, json));
         bus.register(new ApprovedVendorListChangedHandler(inbox, approvedVendors, json));

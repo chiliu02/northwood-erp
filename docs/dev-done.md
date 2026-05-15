@@ -6,6 +6,58 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-16 — §2.16: Promote `Bom` to a real aggregate (retire `BomEditRepository`)
+
+The last `*Repository`-without-an-aggregate offender from the 2026-05-15 audit is gone. `manufacturing.domain.BomEditRepository` and its JDBC adapter deleted; replaced by a proper `Bom` aggregate root with the standard shape (identity VO + status enum + internal entity + version + pendingEvents + intent-named mutators + outbox-draining save). Five offenders surfaced by the audit; all five resolved now (§2.16 + §2.17 + §2.18).
+
+### New aggregate
+
+- `manufacturing.domain.Bom` — aggregate root with `AGGREGATE_TYPE = ManufacturingAggregateTypes.BOM`, `BomId` identity VO, `Status` enum (`DRAFT` / `ACTIVE` / `INACTIVE`), internal `BomLine` entity (`BomLineId` identity, line number, component snapshot, qty + scrap), optimistic-concurrency `aggregateVersion` (mapped to DB `row_version`), `pendingEvents`.
+- Static factories: `Bom.draft(...)` (validates non-null + non-blank inputs, creates DRAFT with empty lines, no event), `Bom.reconstitute(...)` (loads from DB, no event).
+- Intent-named mutators:
+  - `addLine(BomLine.Spec)` — rejects on non-draft + self-reference, allocates next line-number from current max, appends. Tracks new line in `addedLines` for repository INSERT.
+  - `removeLine(BomLineId)` — rejects on non-draft. If the target line was added this session (in `addedLines`), removes from both lists without flagging for DB delete; otherwise records the id in `removedLineIds` for repository DELETE.
+  - `activate()` — flips `DRAFT → ACTIVE`, emits `BomActivated`. No-op when already ACTIVE. Rejects on INACTIVE and on empty draft.
+- New domain event `manufacturing.BomActivated` in `manufacturing-events` (distinct from the renamed `product.ActiveBomChanged` — different service, different semantics).
+
+### Repository
+
+- `BomRepository` interface in `manufacturing.domain` with `findById` / `findBomIdByLineId` / `save`. `JdbcBomRepository` in `manufacturing.infrastructure.persistence` handles INSERT vs UPDATE on `row_version == 0` sentinel, applies the line diff (INSERTs from `pullAddedLines()`, DELETEs from `pullRemovedLineIds()`), and drains `pullPendingEvents()` to the manufacturing outbox.
+- Optimistic-concurrency check on UPDATE: `UPDATE ... WHERE bom_header_id = ? AND row_version = ?`; zero affected rows throws `OptimisticLockingFailureException`. Activation's "at most one active per finished product" is enforced by the existing partial unique index `uq_bom_active_per_product` — a competing active surfaces as `DataIntegrityViolationException` and the surrounding `@Transactional` rolls back cleanly.
+
+### Application service: thin orchestrator
+
+- `BomEditService` kept (not renamed). Now four steps per command: load the aggregate, mutate it, save, run post-save cross-aggregate checks.
+- Cycle detection is application-orchestrated, not aggregate-internal — see `Bom`'s class Javadoc for the design rationale. The `BomCycleDetector` walks the DB graph; the application service runs it after `save()` so the detector sees the just-persisted state, and the surrounding `@Transactional` rolls back on a positive finding. This deviates from the §2.16 backlog's "pass `BomCycleDetector` into `Bom.activate(...)`" wording: routing the detector through the aggregate would require the aggregate to query other aggregates' data, which is exactly what domain services exist to externalise.
+- Materials-cost rollup unchanged — still called from `BomEditService.activate` on the post-success path.
+- Exception wrapping: domain `Bom.BomCycleException` / `Bom.BomNotEditableException` thrown by the aggregate are caught and rewrapped as the application-layer `BomEditService.BomCycleException` / `BomEditService.BomNotEditableException` for the controller (preserves the existing wire contract; controller code unchanged).
+
+### Test-harness adapter
+
+- New `InMemoryBomRepository` (with `OutboxPort` + `ObjectMapper` injected) replaces `InMemoryBomEditRepository`. Enforces "at most one active per finished product" at save-time so the harness reproduces the production partial-unique-index behaviour.
+- `InMemoryBomLookup` (read-side, unchanged) collided with the new `boms` field name; renamed to `bomLookup` in `ManufacturingTestKit`. Two existing E2E tests (`SubAssemblyRecursionTest`, `MakeToOrderShortagePathTest`) seed BOMs via the lookup — updated to `mfg.bomLookup.put(...)`.
+
+### Test coverage
+
+- New `BomTest`: 22 cases covering null/blank/status guards on every factory + mutator, line-number monotonicity, add-then-remove diff tracking, no-op suppression on `activate(ACTIVE)`, happy-path `BomActivated` emission, reconstitute round-trip.
+- `BomEditServiceTest` rewritten against the new aggregate shape (real `Bom` instances via `reconstitute`, mocked `BomRepository`). Preserved every original case (~22), plus added "rejects when component is discontinued" gate-test variant.
+
+### Convention-compliance state
+
+The `docs/conventions.md` known-exception list is now empty. The 2026-05-15 audit identified five offenders; all five are resolved:
+- §2.16 — `BomEditRepository` deleted; `Bom` aggregate promoted (this slice).
+- §2.17 — `SupplierProductPriceRepository` is now a real DDD Repository for `SupplierProductPrice`; `ApprovedVendorRepository` deleted, `ApprovedVendor` folded into `Product`.
+- §2.18 — `RoutingRepository` / `SupplierRepository` renamed to `RoutingQueryPort` / `SupplierQueryPort` (false positives — read-only).
+
+### Smoke
+
+- `mvn -DskipTests clean compile` ✅ 19/19 modules green.
+- `mvn -DskipTests test-compile` ✅ 19/19 modules green.
+- `mvn test` ✅ full reactor green: every per-service test + 8/8 test-harness E2E (`OrderToCashHappyPathTest`, `OrderToCashFirstLegTest`, `CancelCompensationTest`, `MakeToOrderShortagePathTest`, `SubAssemblyRecursionTest`, `PurchaseToPayHappyPathTest`, `PurchaseToPayRejectionPathTest`, `SetPriorityCascadeTest`).
+- `BomTest` 22 cases pass; `BomEditServiceTest` rewritten and pass.
+
+---
+
 ## 2026-05-16 — §2.20: Centralize aggregate-type constants in `<Service>AggregateTypes` files
 
 Final cleanup of the `AGGREGATE_TYPE`-without-a-source-of-truth situation. Previously each aggregate root inlined its own `public static final String AGGREGATE_TYPE = "Product"` literal, cross-service event classes inlined the literal again (`ManufacturingDispatched.AGGREGATE_TYPE = "SalesOrder"` as a duplicate of `SalesOrder.AGGREGATE_TYPE`), and ~30 cross-service consumer-test sites used bare string literals because consumers can't import the producer's `domain/` package. Three layers of duplication for one wire-format string.

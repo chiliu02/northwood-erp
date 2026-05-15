@@ -48,7 +48,7 @@ class MakeToOrderShortagePathTest {
 
         mfg.replenishment.put(fgProductId, /*purchased=*/false, /*manufactured=*/true);
         mfg.replenishment.put(rawProductId, /*purchased=*/true, /*manufactured=*/false);
-        mfg.boms.put(fgProductId, UUID.randomUUID(),
+        mfg.bomLookup.put(fgProductId, UUID.randomUUID(),
             InMemoryBomLookup.rawLine(rawProductId, "RM-001", "Raw Material 1",
                 new BigDecimal("2"), BigDecimal.ZERO));
         mfg.routings.putSingleOp(fgProductId);

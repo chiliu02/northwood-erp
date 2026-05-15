@@ -23,13 +23,10 @@ Two legitimate options when a candidate doesn't yet warrant aggregate modelling:
 
 Re-using `*Repository` for a non-aggregate port to "save a rename" is exactly the anti-pattern the suffix exists to prevent. The naming check is mechanical: `find **/domain/*Repository.java` should have a 1:1 correspondence with files in the same package declaring `AGGREGATE_TYPE`.
 
-**Known exception today** (one legacy offender remains after the 2026-05-15 / 2026-05-16 audit cleanup; new code must not add more):
+**No known exceptions remain** as of 2026-05-16. The 2026-05-15 audit surfaced five `*Repository`-without-an-aggregate offenders; all five were resolved across §2.16 / §2.17 / §2.18:
 
-- `manufacturing.domain.BomEditRepository` — row-level write port for `bom_header` / `bom_line` whose invariants (acyclic graph, single-active-per-product, no-edit-on-active) sit in `BomEditService` + `BomCycleDetector` + the DB partial unique index `uq_bom_active_per_product`. The `Edit` suffix is honest signage that it isn't the DDD Repository pattern, but the trailing `Repository` still violates this convention. Promotion to a real `Bom` aggregate tracked in `dev-todo.md` §2.16.
-
-Four prior offenders resolved between 2026-05-15 and 2026-05-16:
-
-- §2.17 — `purchasing.SupplierProductPriceRepository` is now a real DDD Repository for the new `SupplierProductPrice` aggregate root (with `AGGREGATE_TYPE`, intent-named `updatePrice` mutator, `pendingEvents` drained at `save()`). `SupplierProductPriceChanged.AGGREGATE_TYPE` constant retired from the event class.
+- §2.16 — `manufacturing.BomEditRepository` deleted; replaced by a real `Bom` aggregate root with `AGGREGATE_TYPE`, intent-named mutators (`addLine`, `removeLine`, `activate`), `pendingEvents` (emits `manufacturing.BomActivated` on activation), and a `BomRepository` that drains events at `save()`. State-machine invariants (status guards, line-number allocation, "at most one active per product" via the DB partial unique index `uq_bom_active_per_product`) now live on the aggregate; `BomEditService` is reduced to a thin orchestrator over the aggregate + cycle-detector + materials-cost rollup. `BomCycleDetector` is application-service-orchestrated (post-save cycle walk over the DB graph) rather than passed into the aggregate as a parameter — documented in `Bom`'s class Javadoc.
+- §2.17 — `purchasing.SupplierProductPriceRepository` is now a real DDD Repository for the new `SupplierProductPrice` aggregate root. `SupplierProductPriceChanged.AGGREGATE_TYPE` constant retired from the event class.
 - §2.17 — `product.ApprovedVendorRepository` deleted; the approved-vendor list folded into the `Product` aggregate as a child collection (mutated via `Product.setApprovedVendors`, dirty-flag-driven persistence by `JdbcProductRepository` to the denormalised `product.approved_vendor` table).
 - §2.18 — `manufacturing.RoutingRepository` and `purchasing.SupplierRepository` had no mutators / events / `pendingEvents` — renamed to `RoutingQueryPort` / `SupplierQueryPort` (with the interfaces moved from `domain/` to `application/`) since they're CQRS read-side ports, not DDD repositories.
 

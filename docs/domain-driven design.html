@@ -338,7 +338,7 @@
     <h3>Manufacturing <span class="tag core">Core</span></h3>
     <p>Make-to-order build orchestration with BOM explosion and sub-assembly recursion. The most domain-logic-heavy context.</p>
     <dl>
-      <dt>Aggregates</dt><dd><code>WorkOrder</code> (header + materials + operations). <code>Routing</code> is a read-side query port (<code>RoutingQueryPort</code>); <code>Bom</code> aggregate promotion tracked in <code>dev-todo.md</code> §2.16.</dd>
+      <dt>Aggregates</dt><dd><code>WorkOrder</code> (header + materials + operations), <code>Bom</code> (header + lines, with <code>addLine</code> / <code>removeLine</code> / <code>activate</code> mutators). <code>Routing</code> is a read-side query port (<code>RoutingQueryPort</code>).</dd>
       <dt>Process manager</dt><dd><code>MakeToOrderSaga</code></dd>
       <dt>Publishes</dt><dd>11 events &mdash; <code>WorkOrderCreated</code>, <code>WorkOrderManufacturingCompleted</code>, <code>ManufacturingDispatched</code>, <code>ProductMaterialsCostComputed</code> &hellip;</dd>
     </dl>
@@ -600,6 +600,9 @@
     <tr><td>Manufacturing</td><td><code>WorkOrder</code></td>
         <td><code>WorkOrderMaterial</code>, <code>WorkOrderOperation</code></td>
         <td>Recursive child WOs for sub-assemblies; parent holds at <code>in_progress</code> while any child unfinished; <code>onChildCompleted(true)</code> cascades.</td></tr>
+    <tr><td>Manufacturing</td><td><code>Bom</code></td>
+        <td><code>BomLine</code></td>
+        <td>State machine <code>DRAFT &rarr; ACTIVE &rarr; INACTIVE</code>; mutators (<code>addLine</code> / <code>removeLine</code>) reject on non-draft; <code>activate</code> emits <code>BomActivated</code>; "at most one active per finished product" via DB partial unique index <code>uq_bom_active_per_product</code>; cycle detection orchestrated by <code>BomEditService</code> post-save (cross-aggregate graph walk).</td></tr>
     <tr><td>Purchasing</td><td><code>PurchaseRequisition</code></td>
         <td><code>PurchaseRequisitionLine</code></td>
         <td>Manual or shortage-driven; conversion to PO flips its status.</td></tr>
@@ -620,19 +623,6 @@
         <td>Double-entry &mdash; debits sum to credits to the cent (per currency). Event-less write-once aggregate: balance enforced by the deferred DB trigger <code>enforce_journal_balance</code>; reversal is a new posted entry rather than a mutation. Exemplar of the event-less variant of the <code>*Repository</code> rule.</td></tr>
   </tbody>
 </table>
-
-<div class="callout warn">
-  <strong>Known exception &mdash; one <code>*Repository</code> interface without a backing aggregate.</strong>
-  <ul style="margin: 0.4rem 0 0 1.2rem; padding-left: 0;">
-    <li><code>manufacturing.BomEditRepository</code> &mdash; row-level write port for
-        <code>bom_header</code> / <code>bom_line</code>; invariants (acyclic graph,
-        single-active-per-product, no-edit-on-active) sit in <code>BomEditService</code> +
-        <code>BomCycleDetector</code> + the DB partial unique index
-        <code>uq_bom_active_per_product</code>. Promotion to a <code>Bom</code> aggregate
-        with <code>activate(BomCycleDetector)</code> tracked in <code>dev-todo.md</code> §2.16.</li>
-  </ul>
-  <p style="margin: 0.5rem 0 0;">New code must not introduce further offenders.</p>
-</div>
 
 <div class="callout">
   <strong>Aggregate guard test rule.</strong>
@@ -948,7 +938,7 @@ public class ProductService {
     <tr><td>Transaction script masquerading as DDD</td>
         <td>Application services orchestrate; aggregates own the logic + emit events. The grep <code>JdbcTemplate</code> in <code>application/</code> &rarr; zero is the canary.</td></tr>
     <tr><td><code>*Repository</code> without a backing aggregate</td>
-        <td>Convention captured in <code>docs/conventions.md</code>: every <code>*Repository</code> interface in <code>domain/</code> must have a sibling aggregate root in the same package declaring <code>AGGREGATE_TYPE</code>. Event-less write-once aggregates (e.g. <code>finance.JournalEntry</code>) are permitted. One legacy offender (<code>BomEditRepository</code>) tracked for promotion in <code>dev-todo.md</code> §2.16. New code must not add more.</td></tr>
+        <td>Convention captured in <code>docs/conventions.md</code>: every <code>*Repository</code> interface in <code>domain/</code> must have a sibling aggregate root in the same package declaring <code>AGGREGATE_TYPE</code>. Event-less write-once aggregates (e.g. <code>finance.JournalEntry</code>) are permitted. The 2026-05-15 audit surfaced five offenders; all resolved 2026-05-16 across §2.16 / §2.17 / §2.18 &mdash; zero offenders remain.</td></tr>
   </tbody>
 </table>
 
