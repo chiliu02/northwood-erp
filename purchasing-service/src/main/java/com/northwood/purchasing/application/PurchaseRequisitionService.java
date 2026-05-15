@@ -9,7 +9,6 @@ import com.northwood.purchasing.domain.PurchaseRequisitionId;
 import com.northwood.purchasing.domain.PurchaseRequisitionLine;
 import com.northwood.purchasing.domain.PurchaseRequisitionRepository;
 import com.northwood.purchasing.domain.Supplier;
-import com.northwood.purchasing.domain.SupplierRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -48,14 +47,14 @@ public class PurchaseRequisitionService {
     private static final Logger log = LoggerFactory.getLogger(PurchaseRequisitionService.class);
 
     private final PurchaseRequisitionRepository purchaseRequisitions;
-    private final SupplierRepository suppliers;
+    private final SupplierQueryPort suppliers;
     private final PurchaseOrderService purchaseOrders;
     private final DiscontinuedProductLookup discontinuedProducts;
     private final boolean shortagePoAutoApprove;
 
     public PurchaseRequisitionService(
         PurchaseRequisitionRepository purchaseRequisitions,
-        SupplierRepository suppliers,
+        SupplierQueryPort suppliers,
         PurchaseOrderService purchaseOrders,
         DiscontinuedProductLookup discontinuedProducts,
         @Value("${northwood.purchasing.shortagePoAutoApprove:true}") boolean shortagePoAutoApprove

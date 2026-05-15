@@ -13,7 +13,6 @@ import com.northwood.purchasing.domain.PurchaseRequisitionLine;
 import com.northwood.purchasing.domain.PurchaseRequisitionRepository;
 import com.northwood.purchasing.domain.Supplier;
 import com.northwood.purchasing.domain.SupplierId;
-import com.northwood.purchasing.domain.SupplierRepository;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -63,7 +62,7 @@ public class PurchaseOrderService {
 
     private final PurchaseOrderRepository purchaseOrders;
     private final PurchaseRequisitionRepository purchaseRequisitions;
-    private final SupplierRepository suppliers;
+    private final SupplierQueryPort suppliers;
     private final PurchaseToPaySagaManager sagaManager;
     private final SupplierProductPriceLookup priceList;
     private final ApprovedVendorQueryPort approvedVendors;
@@ -71,7 +70,7 @@ public class PurchaseOrderService {
     public PurchaseOrderService(
         PurchaseOrderRepository purchaseOrders,
         PurchaseRequisitionRepository purchaseRequisitions,
-        SupplierRepository suppliers,
+        SupplierQueryPort suppliers,
         PurchaseToPaySagaManager sagaManager,
         SupplierProductPriceLookup priceList,
         ApprovedVendorQueryPort approvedVendors

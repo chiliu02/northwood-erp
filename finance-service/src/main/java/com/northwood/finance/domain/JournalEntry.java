@@ -22,6 +22,15 @@ import java.util.UUID;
  */
 public final class JournalEntry {
 
+    /**
+     * Wire-format aggregate-type stamped onto {@code finance.outbox_message.aggregate_type}
+     * for events about this aggregate. JournalEntry is an event-less write-once aggregate
+     * (see the {@code *Repository} rule in {@code docs/conventions.md}); the constant exists
+     * because the aggregate root's identity remains the anchor for audit-log + reporting
+     * references, even when no outbox write currently references it.
+     */
+    public static final String AGGREGATE_TYPE = "JournalEntry";
+
     /** Status — wire-format string stored in finance.journal_entry_header.status. */
     public static final String POSTED = "posted";
 

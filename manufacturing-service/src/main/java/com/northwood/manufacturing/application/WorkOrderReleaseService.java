@@ -5,7 +5,6 @@ import com.northwood.manufacturing.application.BomLookup.Component;
 import com.northwood.manufacturing.application.dto.ReleaseCommand;
 import com.northwood.manufacturing.domain.Routing;
 import com.northwood.manufacturing.domain.RoutingOperation;
-import com.northwood.manufacturing.domain.RoutingRepository;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderMaterial;
 import com.northwood.manufacturing.domain.WorkOrderOperation;
@@ -53,13 +52,13 @@ public class WorkOrderReleaseService {
     private static final Logger log = LoggerFactory.getLogger(WorkOrderReleaseService.class);
 
     private final WorkOrderRepository workOrders;
-    private final RoutingRepository routings;
+    private final RoutingQueryPort routings;
     private final BomLookup boms;
     private final MakeToOrderSagaManager sagaManager;
 
     public WorkOrderReleaseService(
         WorkOrderRepository workOrders,
-        RoutingRepository routings,
+        RoutingQueryPort routings,
         BomLookup boms,
         MakeToOrderSagaManager sagaManager
     ) {

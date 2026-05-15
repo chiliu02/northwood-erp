@@ -387,17 +387,13 @@ Scope: introduce `SupplierProductPrice` aggregate root in `purchasing.domain` wi
 
 **`product.ApprovedVendorRepository`** — `ApprovedVendor` is a value object of `Product`, not its own root. The repository exists because `product.approved_vendor` is denormalised out into its own table. Two options: (a) promote `ApprovedVendorList` to its own aggregate root keyed by `productId` with `replaceFor(...)` as the mutator, or (b) fold the table back under `Product` and have `Product.setApprovedVendors(...)` drive the row-level writes through a private port in `infrastructure/`. (b) is the cleaner DDD answer but requires more rewiring; (a) is the smaller change. Recommend (a). Either way, the `*Repository` suffix has to go.
 
-### 2.18 Tier 2 — rename read-only "aggregates" to `*QueryPort`
+### 2.18 Tier 2 — rename read-only "aggregates" to `*QueryPort` ✅ shipped 2026-05-16
 
-`manufacturing.RoutingRepository` and `purchasing.SupplierRepository` use the `*Repository` suffix but the aggregate roots they wrap (`Routing`, `Supplier`) have no mutators, no `pendingEvents`, no events. They're effectively read models that haven't been promoted to query-port shape yet. Their own Javadocs admit it (*"Manufacturing doesn't write through this class today"*, *"Supplier read model. Phase 1 only needs a lookup endpoint"*).
+`manufacturing.RoutingRepository` → `RoutingQueryPort` (interface moved from `domain/` to `application/`); same for `purchasing.SupplierRepository` → `SupplierQueryPort`. Concrete `Jdbc*` adapters renamed. The `Routing` / `Supplier` read-model classes stay in `domain/` as plain data shapes. Test-harness in-memory counterparts also renamed. See `dev-done.md`.
 
-Scope: rename to `*QueryPort` while no mutators exist. `RoutingRepository` → `RoutingQueryPort`; `SupplierRepository` → `SupplierQueryPort`. Concrete `Jdbc*` impls follow. The `Routing` / `Supplier` classes stay as read-model rows. Promote back to `*Repository` if and when mutators arrive.
+### 2.19 Tier 3 — relax convention's third clause to cover event-less aggregates ✅ shipped 2026-05-16
 
-### 2.19 Tier 3 — relax convention's third clause to cover event-less aggregates
-
-`finance.JournalEntry` is an aggregate root (factories, identity, version, balanced-line invariants) but never emits events through `pendingEvents` — journal entries are append-only and the DB trigger `enforce_journal_balance` carries the invariant. By a strict reading of the new convention (*"emits domain events into `pendingEvents` drained by the repository at `save()`"*) `JournalEntryRepository` fails the rule on the third clause despite being a legitimate aggregate.
-
-Decision: amend the rule in `docs/conventions.md` to read *"emits events into `pendingEvents` drained at `save()` when events are emitted at all"*. The aggregate-root + intent-named-factories + AGGREGATE_TYPE checks still bind; the events check becomes conditional. Add `JournalEntry.AGGREGATE_TYPE = "JournalEntry"` in the same slice for completeness. Cheap change to the convention wording; no code outside `JournalEntry` touched.
+Convention amended in `docs/conventions.md`: the *event-less write-once aggregate* (factory-only, no mutators, no events) is now a permitted variant of the `*Repository` rule, with `finance.JournalEntry` as the named exemplar (balance invariant carried by the DB trigger `enforce_journal_balance`; reversal is a new posted entry rather than a mutation). `JournalEntry.AGGREGATE_TYPE = "JournalEntry"` added for completeness. See `dev-done.md`.
 
 ### 2.20 Cross-service consumer-test literals — host AGGREGATE_TYPE on event classes
 

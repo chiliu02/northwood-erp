@@ -1,8 +1,8 @@
 package com.northwood.testharness.inmemory.purchasing;
 
+import com.northwood.purchasing.application.SupplierQueryPort;
 import com.northwood.purchasing.domain.Supplier;
 import com.northwood.purchasing.domain.SupplierId;
-import com.northwood.purchasing.domain.SupplierRepository;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -11,12 +11,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-public final class InMemorySupplierRepository implements SupplierRepository {
+public final class InMemorySupplierQueryPort implements SupplierQueryPort {
 
     private final Map<UUID, Supplier> byId = new HashMap<>();
     private final Map<String, Supplier> byCode = new HashMap<>();
 
-    public InMemorySupplierRepository putActive(String code, String name) {
+    public InMemorySupplierQueryPort putActive(String code, String name) {
         SupplierId id = SupplierId.of(UUID.randomUUID());
         Supplier s = new Supplier(id, code, name, Supplier.ACTIVE);
         byId.put(id.value(), s);

@@ -1,9 +1,9 @@
 package com.northwood.manufacturing.infrastructure.persistence;
 
+import com.northwood.manufacturing.application.RoutingQueryPort;
 import com.northwood.manufacturing.domain.Routing;
 import com.northwood.manufacturing.domain.RoutingId;
 import com.northwood.manufacturing.domain.RoutingOperation;
-import com.northwood.manufacturing.domain.RoutingRepository;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -12,11 +12,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public class JdbcRoutingRepository implements RoutingRepository {
+public class JdbcRoutingQueryPort implements RoutingQueryPort {
 
     private final JdbcTemplate jdbc;
 
-    public JdbcRoutingRepository(JdbcTemplate jdbc) {
+    public JdbcRoutingQueryPort(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 

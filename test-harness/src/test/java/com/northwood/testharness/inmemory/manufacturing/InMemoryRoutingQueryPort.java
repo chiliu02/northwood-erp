@@ -1,9 +1,9 @@
 package com.northwood.testharness.inmemory.manufacturing;
 
+import com.northwood.manufacturing.application.RoutingQueryPort;
 import com.northwood.manufacturing.domain.Routing;
 import com.northwood.manufacturing.domain.RoutingId;
 import com.northwood.manufacturing.domain.RoutingOperation;
-import com.northwood.manufacturing.domain.RoutingRepository;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
@@ -12,15 +12,15 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * In-memory {@link RoutingRepository}. Seedable per finished product;
+ * In-memory {@link RoutingQueryPort}. Seedable per finished product;
  * {@link #put(UUID, RoutingOperation...)} builds a single-version active
  * routing with the supplied operations.
  */
-public final class InMemoryRoutingRepository implements RoutingRepository {
+public final class InMemoryRoutingQueryPort implements RoutingQueryPort {
 
     private final Map<UUID, Routing> byProductId = new HashMap<>();
 
-    public InMemoryRoutingRepository put(UUID finishedProductId, RoutingOperation... operations) {
+    public InMemoryRoutingQueryPort put(UUID finishedProductId, RoutingOperation... operations) {
         Routing r = new Routing(
             RoutingId.of(UUID.randomUUID()),
             finishedProductId,
@@ -36,7 +36,7 @@ public final class InMemoryRoutingRepository implements RoutingRepository {
      * Convenience: seed a single-op routing using a synthetic work centre.
      * The harness doesn't model work-centre semantics today.
      */
-    public InMemoryRoutingRepository putSingleOp(UUID finishedProductId) {
+    public InMemoryRoutingQueryPort putSingleOp(UUID finishedProductId) {
         return put(finishedProductId, new RoutingOperation(
             UUID.randomUUID(),
             10,

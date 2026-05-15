@@ -6,6 +6,57 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-16 — §2.18 + §2.19: rename read-only repos to `*QueryPort`, relax convention for event-less aggregates
+
+Two follow-on slices off the 2026-05-15 *no-`*Repository`-without-an-aggregate* rule. Both are convention compliance: §2.18 retires two `*Repository` interfaces whose targets weren't real DDD aggregates; §2.19 relaxes the rule's third clause so it cleanly covers the one legitimate event-less aggregate in the codebase.
+
+### §2.19 — convention amended to cover event-less aggregates (event-less write-once aggregates permitted)
+
+`finance.JournalEntry` is a real aggregate root by every other measure — factories, identity VO (`JournalEntryId`), `version` for optimistic concurrency, balanced-line invariants enforced at construction — but never emits events through `pendingEvents`. Journal entries are append-only; the balance invariant is carried by the DB trigger `enforce_journal_balance`; "reversal" is itself a new posted entry rather than a mutation of the original. The previous rule wording (*"emits domain events into `pendingEvents` drained by the repository at `save()`"*) read as a hard requirement and would have flagged `JournalEntryRepository` as a false-positive offender.
+
+Updated:
+- `docs/conventions.md` → the `*Repository` rule now says *"Where the aggregate has post-creation behaviour, that behaviour is expressed as intent-named mutators on the root and the events they emit are drained from `pendingEvents` to the outbox by the repository at `save()` in the same transaction. **Event-less aggregates are permitted** when the aggregate is write-once (factory-only, no mutators, no events) and the invariant is enforced elsewhere — `finance.JournalEntry` is the exemplar."*
+- `CLAUDE.md` → one-liner updated to match: mutating aggregates drain `pendingEvents` at `save()`; event-less write-once aggregates are permitted.
+- `JournalEntry.AGGREGATE_TYPE = "JournalEntry"` added on the aggregate. No outbox writers currently reference it (the aggregate is event-less), but the constant exists because the aggregate root's identity remains the anchor for audit-log + reporting references.
+
+No code outside `JournalEntry` touched. Cheap, clarifying change.
+
+### §2.18 — `RoutingRepository` / `SupplierRepository` → `*QueryPort`
+
+Two `*Repository` interfaces whose target classes (`Routing`, `Supplier`) had no mutators, no `pendingEvents`, no events. Their Javadocs admitted it (*"Manufacturing doesn't write through this class today"*, *"Supplier read model. Phase 1 only needs a lookup endpoint"*). They were `*QueryPort` in everything but name.
+
+Files renamed (and moved per the QueryPort convention — interface in `application/`, impl in `infrastructure/persistence/`):
+
+| Before | After |
+|---|---|
+| `manufacturing.domain.RoutingRepository` | `manufacturing.application.RoutingQueryPort` |
+| `manufacturing.infrastructure.persistence.JdbcRoutingRepository` | `manufacturing.infrastructure.persistence.JdbcRoutingQueryPort` |
+| `purchasing.domain.SupplierRepository` | `purchasing.application.SupplierQueryPort` |
+| `purchasing.infrastructure.persistence.JdbcSupplierRepository` | `purchasing.infrastructure.persistence.JdbcSupplierQueryPort` |
+| `testharness.inmemory.manufacturing.InMemoryRoutingRepository` | `testharness.inmemory.manufacturing.InMemoryRoutingQueryPort` |
+| `testharness.inmemory.purchasing.InMemorySupplierRepository` | `testharness.inmemory.purchasing.InMemorySupplierQueryPort` |
+
+The `Routing` and `Supplier` read-model classes stay in `domain/` as plain data shapes (could move to `application/dto/` as `*View` records — left for a future slice, not load-bearing).
+
+Importer sites updated:
+- `WorkOrderReleaseService` (manufacturing) — drops `domain.RoutingRepository` import; uses `RoutingQueryPort` directly (same package).
+- `SupplierService`, `PurchaseOrderService`, `PurchaseRequisitionService` (purchasing) — drop `domain.SupplierRepository` imports; use `SupplierQueryPort` directly (same package). `SupplierService` Javadoc clarified: it's now described as a service over the supplier *read model*, not the supplier aggregate.
+- `ManufacturingTestKit`, `PurchasingTestKit` (test-harness) — import the renamed in-memory class.
+
+Field names (`routings`, `suppliers`) unchanged — they followed the full-aggregate-plural rule already and that rule is type-agnostic.
+
+### Convention-compliance state after both slices
+
+`docs/conventions.md` known-exception list shrinks from "potentially 5–6 offenders" to **three real offenders**: `BomEditRepository` (§2.16), `SupplierProductPriceRepository` + `ApprovedVendorRepository` (§2.17). All three are row-level write ports without backing aggregate roots — fundamentally different shape from the false-positive offenders cleared by §2.18 / §2.19.
+
+### Smoke
+
+- `mvn -DskipTests clean compile` ✅ 19/19 modules green in 12.3s.
+- `mvn -DskipTests test-compile` ✅ 19/19 modules green in 10.1s — confirms the test-harness rename links cleanly.
+- Grep audit: `**/domain/*Repository.java` returns 17 files; all 17 either back an aggregate root in the same package declaring `AGGREGATE_TYPE`, or are the 3 tracked offenders.
+
+---
+
 ## 2026-05-16 — `AGGREGATE_TYPE` constants on all 9 missing aggregates (Tier 4 sweep)
 
 Codebase-wide audit triggered by 2026-05-15's *no-`*Repository`-without-an-aggregate* rule found that only 4 of 13 aggregate roots declared `AGGREGATE_TYPE`. Outbox writers were stamping the column with inline string literals (`"Customer"`, `"PurchaseOrder"`, etc.) — exactly the string drift the constant rule exists to prevent. This slice closes the gap on the trivially-fixable subset.

@@ -1,8 +1,8 @@
 package com.northwood.purchasing.infrastructure.persistence;
 
+import com.northwood.purchasing.application.SupplierQueryPort;
 import com.northwood.purchasing.domain.Supplier;
 import com.northwood.purchasing.domain.SupplierId;
-import com.northwood.purchasing.domain.SupplierRepository;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -12,7 +12,7 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public class JdbcSupplierRepository implements SupplierRepository {
+public class JdbcSupplierQueryPort implements SupplierQueryPort {
 
     private static final RowMapper<Supplier> ROW_MAPPER = (rs, n) -> new Supplier(
         SupplierId.of(rs.getObject("supplier_id", UUID.class)),
@@ -23,7 +23,7 @@ public class JdbcSupplierRepository implements SupplierRepository {
 
     private final JdbcTemplate jdbc;
 
-    public JdbcSupplierRepository(JdbcTemplate jdbc) {
+    public JdbcSupplierQueryPort(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 

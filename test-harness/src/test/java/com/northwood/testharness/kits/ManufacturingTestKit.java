@@ -32,7 +32,7 @@ import com.northwood.testharness.inmemory.manufacturing.InMemoryProductActiveBom
 import com.northwood.testharness.inmemory.manufacturing.InMemoryProductApprovedVendorProjection;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryProductMaterialsCostProjection;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryProductReplenishmentProjection;
-import com.northwood.testharness.inmemory.manufacturing.InMemoryRoutingRepository;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryRoutingQueryPort;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryWorkOrderRepository;
 import org.springframework.transaction.PlatformTransactionManager;
 import tools.jackson.databind.ObjectMapper;
@@ -53,7 +53,7 @@ public final class ManufacturingTestKit {
     public final InMemoryInboxPort inbox = new InMemoryInboxPort();
 
     public final InMemoryWorkOrderRepository workOrders;
-    public final InMemoryRoutingRepository routings = new InMemoryRoutingRepository();
+    public final InMemoryRoutingQueryPort routings = new InMemoryRoutingQueryPort();
     public final InMemoryBomLookup boms = new InMemoryBomLookup();
     public final InMemoryBomEditRepository bomEdits = new InMemoryBomEditRepository();
     public final InMemoryBomCycleDetector bomCycleDetector = new InMemoryBomCycleDetector(boms);
