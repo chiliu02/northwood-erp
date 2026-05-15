@@ -19,7 +19,6 @@ const PERSONA_NAV: Record<PersonaKey, NavItem[]> = {
   ],
   sarah: [
     { to: "/sales-orders",     label: "Sales orders" },
-    { to: "/sales-orders/new", label: "Place new order" },
   ],
   mike: [
     { to: "/stock-items",     label: "Stock items" },

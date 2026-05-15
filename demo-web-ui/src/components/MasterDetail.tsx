@@ -13,11 +13,12 @@ interface MasterDetailProps<T> {
   renderDetail: (item: T) => React.ReactNode;
   emptyMessage?: string;
   errorContext?: string;        // e.g. "reporting-service on :8087"
+  actions?: React.ReactNode;    // optional header-right slot (e.g. New / Create button)
 }
 
 export function MasterDetail<T>({
   title, persona, items, isLoading, error,
-  rowKey, renderRow, renderDetail, emptyMessage = "No data yet.", errorContext,
+  rowKey, renderRow, renderDetail, emptyMessage = "No data yet.", errorContext, actions,
 }: MasterDetailProps<T>) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const list = items ?? [];
@@ -47,6 +48,7 @@ export function MasterDetail<T>({
         <span className="ml-auto text-xs text-text-faint">
           {isLoading ? "loading…" : `${list.length} row${list.length === 1 ? "" : "s"}`}
         </span>
+        {actions}
       </div>
 
       {error ? (

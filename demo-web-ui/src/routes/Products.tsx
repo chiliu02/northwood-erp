@@ -160,7 +160,7 @@ function RegisterProductButton() {
   return (
     <>
       <Button variant="primary" onClick={() => setOpen(true)}>
-        <Plus className="h-3.5 w-3.5" /> Register SKU
+        <Plus className="h-3.5 w-3.5" /> New Product
       </Button>
       <Modal
         open={open}
@@ -403,7 +403,7 @@ function RegisterPanel({ onDone }: { onDone: () => void }) {
         standardCost,
         currencyCode,
       });
-      setSubmit({ status: "success", message: "SKU registered" });
+      setSubmit({ status: "success", message: "product registered" });
       queryClient.invalidateQueries({ queryKey: ["products"] });
       setTimeout(onDone, 600);
     } catch (e) {
@@ -452,7 +452,7 @@ function RegisterPanel({ onDone }: { onDone: () => void }) {
       <div className="flex items-center justify-end gap-3">
         <FormStatus state={submit} />
         <Button variant="primary" onClick={onSubmit} disabled={submit.status === "submitting"}>
-          Register SKU
+          Register Product
         </Button>
       </div>
       <p className="text-xs text-text-faint">

@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban } from "lucide-react";
+import { Ban, Plus } from "lucide-react";
 import { fetchSalesOrders } from "@/api/fetchers";
 import { cancelSalesOrder } from "@/api/commands";
 import type { SalesOrder360 } from "@/api/types";
@@ -13,6 +14,7 @@ import { formatMoney, truncateUuid } from "@/lib/utils";
 const NON_CANCELLABLE = new Set(["shipped", "completed", "cancelled", "rejected"]);
 
 export function SalesOrders() {
+  const navigate = useNavigate();
   const { data, isLoading, error } = useQuery({
     queryKey: ["sales-orders"],
     queryFn: fetchSalesOrders,
@@ -27,6 +29,11 @@ export function SalesOrders() {
       isLoading={isLoading}
       error={error}
       errorContext="reporting-service on :8087"
+      actions={
+        <Button variant="primary" onClick={() => navigate("/sales-orders/new")}>
+          <Plus className="h-3.5 w-3.5" /> Create Sales Order
+        </Button>
+      }
       rowKey={(o) => o.salesOrderHeaderId}
       renderRow={(o) => (
         <div className="space-y-1">
