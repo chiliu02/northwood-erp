@@ -61,12 +61,26 @@
   }
   .controls .group button:last-child { border-right: none; }
   .controls .group button:hover { background: #d4e4f1; }
-  .controls .group button[aria-pressed="true"] {
-    background: #0969da;
-    color: white;
-  }
   .controls .label { color: var(--muted); font-size: 0.85rem; margin-right: 0.25rem; }
   .controls .view-summary { color: var(--muted); font-size: 0.82rem; margin-left: auto; font-style: italic; }
+
+  /* Filter dropdown styled to match the segmented-button aesthetic. */
+  .controls select.filter-select {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: #eaeef2;
+    color: var(--text);
+    padding: 0.35rem 0.6rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-family: inherit;
+  }
+  .controls select.filter-select:hover { background: #d4e4f1; }
+  .controls select.filter-select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.15);
+  }
 
   .tree-wrap { margin: 1rem 0 1.5rem; font-size: 0.9rem; }
   details { margin: 0; }
@@ -172,11 +186,13 @@
 </ul>
 
 <div class="controls">
-  <span class="label">View:</span>
-  <div class="group" role="group" aria-label="View mode">
-    <button data-view="broad" aria-pressed="true">Broad — all writes</button>
-    <button data-view="narrow" aria-pressed="false">Narrow — read-model only</button>
-  </div>
+  <label class="label" for="filter-select">Filter:</label>
+  <select id="filter-select" class="filter-select" aria-label="Filter by write kind">
+    <option value="all">All writes</option>
+    <option value="read-model">read-model only</option>
+    <option value="saga">saga only</option>
+    <option value="aggregate">aggregate only</option>
+  </select>
   <span class="label" style="margin-left:0.5rem;">Tree:</span>
   <div class="group" role="group" aria-label="Expand control">
     <button data-action="expand-all">Expand all</button>
@@ -594,7 +610,8 @@ window.NORTHWOOD_PROJECTIONS = [
 (function () {
   'use strict';
 
-  let currentView = 'broad'; // 'broad' | 'narrow'
+  // 'all' | 'read-model' | 'saga' | 'aggregate'
+  let currentFilter = 'all';
 
   document.addEventListener('DOMContentLoaded', function () {
     const data = window.NORTHWOOD_PROJECTIONS;
@@ -610,28 +627,29 @@ window.NORTHWOOD_PROJECTIONS = [
     }
 
     renderCurrentView();
-    wireViewToggle();
+    wireFilterDropdown();
     wireExpandAllButtons();
   });
 
   function renderCurrentView() {
     const data = window.NORTHWOOD_PROJECTIONS;
-    const filtered = filterByView(data, currentView);
+    const filtered = filterByKind(data, currentFilter);
     document.getElementById('projection-tree').innerHTML = renderProjections(filtered);
     updateViewSummary(data, filtered);
   }
 
   // Filter the data tree by kind. Empty destinations / aggregates / sources
-  // after filtering are pruned so the tree stays readable.
-  function filterByView(data, view) {
-    if (view === 'broad') return data;
+  // after filtering are pruned so the tree stays readable. 'all' returns the
+  // data untouched.
+  function filterByKind(data, kind) {
+    if (kind === 'all') return data;
 
-    const keepKind = function (t) { return t.kind === 'read-model'; };
+    const keep = function (t) { return t.kind === kind; };
     const out = [];
     data.forEach(function (entry) {
       const destsOut = [];
       entry.destinations.forEach(function (d) {
-        const tablesOut = d.tables.filter(keepKind);
+        const tablesOut = d.tables.filter(keep);
         if (tablesOut.length > 0) {
           destsOut.push({ dest: d.dest, tables: tablesOut });
         }
@@ -648,10 +666,10 @@ window.NORTHWOOD_PROJECTIONS = [
     const shownCount = countTables(shownData);
     const el = document.getElementById('view-summary');
     if (!el) return;
-    if (currentView === 'broad') {
+    if (currentFilter === 'all') {
       el.textContent = 'Showing all ' + allCount + ' table writes';
     } else {
-      el.textContent = 'Showing ' + shownCount + ' / ' + allCount + ' table writes (read-model only)';
+      el.textContent = 'Showing ' + shownCount + ' / ' + allCount + ' table writes (' + currentFilter + ' only)';
     }
   }
 
@@ -775,17 +793,13 @@ window.NORTHWOOD_PROJECTIONS = [
       .replace(/'/g, '&#39;');
   }
 
-  function wireViewToggle() {
-    document.querySelectorAll('button[data-view]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        const view = btn.getAttribute('data-view');
-        if (view === currentView) return;
-        currentView = view;
-        document.querySelectorAll('button[data-view]').forEach(function (b) {
-          b.setAttribute('aria-pressed', b.getAttribute('data-view') === currentView ? 'true' : 'false');
-        });
-        renderCurrentView();
-      });
+  function wireFilterDropdown() {
+    const select = document.getElementById('filter-select');
+    if (!select) return;
+    select.value = currentFilter;
+    select.addEventListener('change', function () {
+      currentFilter = select.value;
+      renderCurrentView();
     });
   }
 
