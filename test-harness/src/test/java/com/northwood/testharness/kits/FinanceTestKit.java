@@ -5,6 +5,8 @@ import com.northwood.finance.application.JournalEntryService;
 import com.northwood.finance.application.PaymentService;
 import com.northwood.finance.application.SupplierInvoiceService;
 import com.northwood.finance.application.inbox.GoodsReceivedHandler;
+import com.northwood.finance.application.inbox.ProductCreatedHandler;
+import com.northwood.finance.application.inbox.ProductDiscontinuedHandler;
 import com.northwood.finance.application.inbox.PurchaseOrderCreatedHandler;
 import com.northwood.finance.application.inbox.SalesOrderShippedHandler;
 import com.northwood.finance.application.inbox.ShipmentPostedCogsHandler;
@@ -17,9 +19,8 @@ import com.northwood.testharness.inmemory.finance.InMemoryCustomerInvoiceReposit
 import com.northwood.testharness.inmemory.finance.InMemoryGlAccountLookup;
 import com.northwood.testharness.inmemory.finance.InMemoryJournalEntryRepository;
 import com.northwood.testharness.inmemory.finance.InMemoryPaymentRepository;
+import com.northwood.testharness.inmemory.finance.InMemoryProductAccounting;
 import com.northwood.testharness.inmemory.finance.InMemoryPurchaseOrderLineFactsProjection;
-import com.northwood.testharness.inmemory.finance.InMemoryProductStandardCostProjection;
-import com.northwood.testharness.inmemory.finance.InMemoryProductValuationClassProjection;
 import com.northwood.testharness.inmemory.finance.InMemorySupplierInvoiceRepository;
 import java.math.BigDecimal;
 import tools.jackson.databind.ObjectMapper;
@@ -28,12 +29,13 @@ import tools.jackson.databind.ObjectMapper;
  * Per-service test composition for finance. Wires
  * {@link CustomerInvoiceService}, {@link PaymentService},
  * {@link SupplierInvoiceService}, {@link JournalEntryService} (real impl
- * over an in-memory journal repository + GL chart) and registers the 6
+ * over an in-memory journal repository + GL chart) and registers the 8
  * finance inbox handlers.
  *
  * <p>Finance has no sagas; the only state carried in the kit is the
- * inbox-driven projections (PurchaseOrderLineFacts, ProductValuationClass,
- * ProductStandardCost) plus the four aggregate repositories.
+ * inbox-driven projections (PurchaseOrderLineFacts, ProductAccounting —
+ * consolidated standard-cost + valuation-class + discontinued-at) plus the
+ * four aggregate repositories.
  *
  * <p>The {@code maintain_allocation_totals} DB trigger isn't modelled in
  * memory; tests that exercise the partial-payment path call
@@ -51,8 +53,7 @@ public final class FinanceTestKit {
     public final InMemoryPaymentRepository payments;
     public final InMemoryJournalEntryRepository journalEntries = new InMemoryJournalEntryRepository();
     public final InMemoryGlAccountLookup glAccounts = new InMemoryGlAccountLookup();
-    public final InMemoryProductValuationClassProjection valuationClasses = new InMemoryProductValuationClassProjection();
-    public final InMemoryProductStandardCostProjection standardCosts = new InMemoryProductStandardCostProjection();
+    public final InMemoryProductAccounting productAccounting = new InMemoryProductAccounting();
     public final InMemoryPurchaseOrderLineFactsProjection purchaseOrderLineFacts = new InMemoryPurchaseOrderLineFactsProjection();
 
     public final JournalEntryService journalService;
@@ -71,7 +72,7 @@ public final class FinanceTestKit {
             journalEntries,
             (limit, sourceDocumentType) -> java.util.List.of(),
             glAccounts,
-            valuationClasses
+            productAccounting
         );
         this.customerInvoiceService = new CustomerInvoiceService(customerInvoices, journalService);
         this.supplierInvoiceService = new SupplierInvoiceService(
@@ -83,10 +84,12 @@ public final class FinanceTestKit {
 
         bus.register(outbox);
         bus.register(new SalesOrderShippedHandler(inbox, customerInvoiceService, json));
-        bus.register(new ShipmentPostedCogsHandler(inbox, journalService, standardCosts, json));
+        bus.register(new ShipmentPostedCogsHandler(inbox, journalService, productAccounting, json));
         bus.register(new GoodsReceivedHandler(inbox, purchaseOrderLineFacts, journalService, json));
         bus.register(new PurchaseOrderCreatedHandler(inbox, purchaseOrderLineFacts, json));
-        bus.register(new StandardCostChangedHandler(inbox, standardCosts, json));
-        bus.register(new ValuationClassChangedHandler(inbox, valuationClasses, json));
+        bus.register(new ProductCreatedHandler(inbox, productAccounting, json));
+        bus.register(new ProductDiscontinuedHandler(inbox, productAccounting, json));
+        bus.register(new StandardCostChangedHandler(inbox, productAccounting, json));
+        bus.register(new ValuationClassChangedHandler(inbox, productAccounting, json));
     }
 }

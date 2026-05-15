@@ -22,8 +22,11 @@ northwood:
     # Finance subscribes to:
     # - purchasing.events for PurchaseOrderCreated (seeds the PO line facts).
     # - inventory.events for GoodsReceived (bumps received_quantity on the
-    #   facts row; gates 3-way match on the AP side).
+    #   facts row; gates 3-way match on the AP side) + ShipmentPosted (COGS).
     # - sales.events for SalesOrderShipped (auto-creates customer invoices).
-    # - product.events for ValuationClassChanged (Shape A consumer projection
-    #   in finance.product_valuation_class).
+    # - product.events: ProductCreated (seed finance.product_accounting stub),
+    #   StandardCostChanged + ValuationClassChanged (fill in attribute
+    #   columns), ProductDiscontinued (stamp discontinued_at). The four
+    #   together make every product-accounting row's lifetime mirror the
+    #   Product aggregate's.
     subscribe-topics: purchasing.events,inventory.events,sales.events,product.events

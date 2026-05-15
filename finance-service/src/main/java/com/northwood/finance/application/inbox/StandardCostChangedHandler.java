@@ -8,22 +8,23 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.8 Slice B: idempotent inbox handler for
- * {@code product.StandardCostChanged}. Maintains finance's
- * {@code product_standard_cost} projection so {@code JournalEntryService}'s
- * COGS posting path can read finance's authoritative cost rather than
- * trusting whatever the warehouse clerk typed onto the shipment line.
+ * Idempotent inbox handler for {@code product.StandardCostChanged}. Updates
+ * the {@code standard_cost} + {@code currency_code} columns on
+ * {@code finance.product_accounting} so the COGS-posting path
+ * ({@link ShipmentPostedCogsHandler} → {@code ProductAccountingLookup})
+ * reads finance's authoritative cost rather than trusting whatever
+ * {@code unitCost} the warehouse clerk typed onto the shipment line.
  */
 @Component
 public class StandardCostChangedHandler extends AbstractInboxHandler<StandardCostChanged> {
 
     public static final String CONSUMER_NAME = "finance.product-standard-cost-projector";
 
-    private final ProductStandardCostProjection projection;
+    private final ProductAccountingProjection projection;
 
     public StandardCostChangedHandler(
         InboxPort inbox,
-        ProductStandardCostProjection projection,
+        ProductAccountingProjection projection,
         ObjectMapper json
     ) {
         super(inbox, json, StandardCostChanged.class, StandardCostChanged.EVENT_TYPE, CONSUMER_NAME);
@@ -32,6 +33,6 @@ public class StandardCostChangedHandler extends AbstractInboxHandler<StandardCos
 
     @Override
     protected void apply(StandardCostChanged payload, EventEnvelope envelope) {
-        projection.apply(payload.aggregateId(), payload.newStandardCost(), payload.currencyCode());
+        projection.applyStandardCost(payload.aggregateId(), payload.newStandardCost(), payload.currencyCode());
     }
 }

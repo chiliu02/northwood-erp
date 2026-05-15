@@ -158,25 +158,7 @@ User wants to drive the README's tone and voice themselves (it's a public-facing
 §1F.4 (`PurchaseOrderApproved` reporting consumer) shipped 2026-05-14 — see `dev-done.md`.
 §1F.5 (`ProductMaterialsCostComputed` product consumer — closes the cost loop) shipped 2026-05-14 — see `dev-done.md`.
 §1F.6a (`ProductCreated` sales consumer + lifecycle-closure refactor on `sales.product_pricing`) shipped 2026-05-15 — see `dev-done.md`.
-
-### 1F.6b — Consolidate finance product projections into `finance.product_accounting`
-
-Twin of §1F.6a, applied to finance. `finance.product_standard_cost` and `finance.product_valuation_class` are two narrow tables today, each created on its own attribute-change event (`StandardCostChanged` / `ValuationClassChanged`). Both columns are 1:1 with Product and share Product's lifecycle, so they belong in one table seeded on `ProductCreated`.
-
-**Target shape:** `finance.product_accounting (product_id PK, standard_cost, currency_code, valuation_class, discontinued_at, updated_at)` — all attribute columns nullable, populated by the respective handlers; `discontinued_at` stamped by a new `finance.product-discontinued` handler.
-
-**Files to touch:**
-
-- `db/northwood_erp.sql` — replace the two narrow `CREATE TABLE`s with the consolidated table; backfill seed; drop the two narrow tables.
-- New Liquibase changeset `finance-service/.../changes/2026-05-1X-product-accounting-consolidate.sql` for existing dev DBs: create the new table, optionally migrate data, drop the two old tables.
-- New `finance/.../application/inbox/ProductCreatedProjection.java` + `ProductCreatedHandler.java` + JDBC impl. Consumer name `finance.product-created`. Seeds `(product_id, NULL, NULL, NULL, NULL)` with `ON CONFLICT DO NOTHING`.
-- New `finance/.../application/inbox/ProductDiscontinuedProjection.java` + `ProductDiscontinuedHandler.java` + JDBC impl. Consumer name `finance.product-discontinued`. Plain UPDATE on `discontinued_at`.
-- Rename / retarget existing `StandardCostChangedHandler` and `ValuationClassChangedHandler` to write into `finance.product_accounting` (plain UPDATE; insert-fallback for race-tolerance, matching the sales pattern). Old `finance.product_standard_cost` / `finance.product_valuation_class` write paths deleted.
-- Any reader of the old tables (cost-accounting reads in `finance/application/` — likely `SupplierInvoiceService` posting logic, GL-account resolution) retargeted to read columns off `finance.product_accounting`.
-- `event-flow.html` — add finance as a `ProductCreated` consumer; update `StandardCostChanged` / `ValuationClassChanged` descriptions to point at the new table; add finance as a `ProductDiscontinued` consumer.
-- `docs/conventions.md` — lock in the rule: projection tables named after a single column (`product_standard_cost`) are a smell; group attributes that share an aggregate's lifecycle into one table named after the schema's view of the aggregate (`product_accounting`).
-
-Reporting's `reporting.product_standard_cost` is deliberately scoped out — reporting projections snapshot history and have different lifecycle rules than per-service operational projections. Manufacturing's `product_replenishment` + `product_active_bom` stay split — they don't share a lifecycle (active BOM changes over a Product's life as engineering revises BOMs).
+§1F.6b (consolidate `finance.product_standard_cost` + `finance.product_valuation_class` → `finance.product_accounting`) shipped 2026-05-15 — see `dev-done.md`.
 
 All §1F actionable items shipped. Remaining backlog is the deferred / inferred-only set documented below.
 

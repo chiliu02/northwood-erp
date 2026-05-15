@@ -6,6 +6,59 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-15 — Consolidate `finance.product_standard_cost` + `finance.product_valuation_class` into `finance.product_accounting`
+
+Twin of the sales slice shipped earlier today. The finance schema held two narrow tables — `product_standard_cost` (cost + currency, projected from `StandardCostChanged`) and `product_valuation_class` (valuation class, projected from `ValuationClassChanged`) — each named after a single column rather than after the schema's view of the aggregate. Both columns are 1:1 with Product and share Product's lifecycle, so the smell-fix is to fold them into one table and seed it on `ProductCreated`, mirroring `sales.product_pricing`, `inventory.stock_item`, and `manufacturing.product_replenishment`.
+
+### Schema changes (`db/northwood_erp.sql` + new Liquibase changeset)
+
+- New table `finance.product_accounting (product_id PK, standard_cost, currency_code, valuation_class, discontinued_at, updated_at)` — all attribute columns nullable, populated by the four respective handlers. Triggered `set_updated_at`.
+- Baseline `northwood_erp.sql` replaces the previous `finance.product_valuation_class` CREATE with the consolidated table. Seed populates one row per Product: standard cost from `product.standard_cost`, valuation_class derived from `product_type` (raw/semi → `raw_materials`, finished → `finished_goods`).
+- Stale comment on `reporting.product_standard_cost` corrected to reference the new column path.
+- New changeset `finance/.../2026-05-15-consolidate-product-accounting.sql` for existing dev DBs: creates the new table, migrates rows from both predecessors (if present) via `DO $$ ... $$` guarded blocks, drops the two old tables. **Side note:** `finance.product_standard_cost` turned out to never have been baselined — its Liquibase changeset existed in the 2026-05-08 entry but the table CREATE never made it into `northwood_erp.sql`. The current refactor incidentally closes that latent gap (real-DB COGS reads would have hit "relation does not exist" today; only the test-harness in-memory fakes hid it).
+
+### New ports + handlers
+
+- `finance.application.inbox.ProductAccountingProjection` — write port with `seed(UUID)`, `applyStandardCost`, `applyValuationClass`, `applyDiscontinued`. Consumed only by the four `*Handler` classes in the same package.
+- `finance.application.ProductAccountingLookup` — read port with `findStandardCost`, `findValuationClass`. Consumed by `JournalEntryService` (GL-account picker) and `ShipmentPostedCogsHandler` (COGS cost source). Honours the `*Projection`-vs-`*Lookup` convention (non-handler readers go through a separate class).
+- `JdbcProductAccountingProjection` + `JdbcProductAccountingLookup` in `infrastructure/persistence/`. Writes do plain `UPDATE` with WARN-and-insert fallback (matching the sales pattern).
+- New `ProductCreatedHandler` (consumer name `finance.product-created`) — seeds the stub row.
+- New `ProductDiscontinuedHandler` (consumer name `finance.product-discontinued`) — stamps `discontinued_at`.
+
+### Existing handlers / services retargeted
+
+- `StandardCostChangedHandler` and `ValuationClassChangedHandler` now inject `ProductAccountingProjection` and call `applyStandardCost` / `applyValuationClass` respectively.
+- `JournalEntryService` injects `ProductAccountingLookup`; the field rename from `valuationClasses` → `productAccounting` follows the instance-field-naming rule (full aggregate name). Both `inventoryAccountForProduct` and `cogsAccountForProduct` updated; their silent-fallback Javadoc points at the new column path.
+- `ShipmentPostedCogsHandler` injects `ProductAccountingLookup`. The cold-start fallback log line updated to reference `product_accounting.standard_cost` instead of the dropped `product_standard_cost`.
+
+### Deletions
+
+- `finance.application.inbox.ProductStandardCostProjection` + `ProductValuationClassProjection` (write-and-read mixed-purpose ports — replaced by the projection/lookup split).
+- `finance.infrastructure.persistence.JdbcProductStandardCostProjection` + `JdbcProductValuationClassProjection`.
+- `test-harness/.../inmemory/finance/InMemoryProductStandardCostProjection` + `InMemoryProductValuationClassProjection` replaced by one `InMemoryProductAccounting` (implements both ports, fine in a test fake where there's no JDBC boundary to split on).
+
+### Tests updated
+
+- `JournalEntryServicePostingsTest` and `JournalEntryServiceReverseBySourceTest` swap their `ProductValuationClassProjection` mock for `ProductAccountingLookup`.
+- `FinanceTestKit` swaps the two fakes for `InMemoryProductAccounting`, registers two new handlers (`ProductCreatedHandler`, `ProductDiscontinuedHandler`) on the synchronous bus.
+
+### Docs
+
+- `event-flow.html` adds `finance.product-created` to `ProductCreated` consumers and `finance.product-discontinued` to `ProductDiscontinued` consumers. Existing `StandardCostChanged` / `ValuationClassChanged` consumer descriptions retargeted to the new column paths.
+- `application-kafka.yml` finance comment updated to enumerate the four product-event consumers.
+- `docs/conventions.md` gains a new *Consumer-side projection tables: one table per (schema, aggregate, shared-lifecycle attribute group)* section under the port-naming chapter. Locks in the smell rule (single-column-named tables are a smell), the standard seed-on-Created / UPDATE-on-attribute-change / stamp-on-Discontinued wiring, and the *Projection-vs-Lookup split for the read side.
+
+### Smoke
+
+`mvn -pl finance-service test` → 112/112 green. `mvn test` full reactor green including the Testcontainers end-to-end (`OrderToCashHappyPathTest`, `PurchaseToPayHappyPathTest`, `MakeToOrderShortagePathTest`, `SubAssemblyRecursionTest`, etc.) — those exercise the real persistence layer against Postgres, so the schema migration + new handlers are covered.
+
+### Out of scope (intentional)
+
+- **Reporting projections deliberately untouched.** Reporting projections snapshot history and have different lifecycle rules than per-service operational projections; `reporting.product_standard_cost` stays as-is.
+- **Manufacturing projections stay split.** `manufacturing.product_replenishment` (replenishment policy) and `manufacturing.product_active_bom` (active BOM FK) don't share a lifecycle — active BOM changes over a Product's life as engineering revises BOMs, while replenishment policy is mostly static. The rule's grouping key is shared lifecycle, not 1:1 cardinality.
+
+---
+
 ## 2026-05-15 — Sales seed-on-Created for `sales.product_pricing` (lifecycle closure parity with inventory + manufacturing)
 
 Conversation-surfaced design refactor (no prior dev-todo entry). The lifecycle-closure audit of `ProductCreated`/`ProductDiscontinued` consumers revealed an asymmetry: inventory and manufacturing both seed a stub row on `ProductCreated` and mark `discontinued_at` on `ProductDiscontinued`, but sales' `product_pricing` row only appeared on first `SalesPriceChanged`. The `ProductDiscontinued` handler in sales worked around the absence with an upsert that fabricated a `sales_price = 0, currency_code = 'AUD'` stub — a smell that conflated "discontinued" with "never sellable."

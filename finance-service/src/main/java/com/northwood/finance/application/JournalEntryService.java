@@ -2,7 +2,6 @@ package com.northwood.finance.application;
 
 import com.northwood.finance.application.GlAccountLookup.GlAccount;
 import com.northwood.finance.application.dto.JournalEntryView;
-import com.northwood.finance.application.inbox.ProductValuationClassProjection;
 import com.northwood.finance.domain.JournalEntry;
 import com.northwood.finance.domain.JournalEntryId;
 import com.northwood.finance.domain.JournalEntryLine;
@@ -70,18 +69,18 @@ public class JournalEntryService {
     private final JournalEntryRepository journalEntries;
     private final JournalEntrySummaryQueryPort journalEntrySummaries;
     private final GlAccountLookup glAccounts;
-    private final ProductValuationClassProjection valuationClasses;
+    private final ProductAccountingLookup productAccounting;
 
     public JournalEntryService(
         JournalEntryRepository journalEntries,
         JournalEntrySummaryQueryPort journalEntrySummaries,
         GlAccountLookup glAccounts,
-        ProductValuationClassProjection valuationClasses
+        ProductAccountingLookup productAccounting
     ) {
         this.journalEntries = journalEntries;
         this.journalEntrySummaries = journalEntrySummaries;
         this.glAccounts = glAccounts;
-        this.valuationClasses = valuationClasses;
+        this.productAccounting = productAccounting;
     }
 
     @Transactional(readOnly = true)
@@ -102,23 +101,26 @@ public class JournalEntryService {
      * fallback → 1200 (generic Inventory).
      *
      * <p><b>Silent-fallback contract on missing valuation-class projection.</b>
-     * {@code finance.product_valuation_class} is an inbox-driven projection of
-     * {@code product.ProductValuationClassChanged}. The projection may not
-     * have caught up at the moment a journal posts (event-stream race during
-     * burst-receive on the same fresh-volume boot). Rather than blocking the
-     * journal entry — which would freeze every receipt, shipment, payment,
-     * and customer-invoice flow — the fallback posts to the generic 1200
-     * Inventory account and emits a DEBUG log naming the product. Per
-     * standard accounting reconciliation, generic-1200 postings get
-     * reclassified to 1210/1220 once the projection catches up; this is the
-     * order-tolerant trade-off captured in the `*Projection` package
-     * convention. Throwing or hard-failing here is rejected because the
-     * journal posting is the side effect of an authoritative business
-     * action that already succeeded — refusing to post the GL pair would
-     * leave the operational tables out of sync with the GL.
+     * {@code finance.product_accounting.valuation_class} is an inbox-driven
+     * column on the consolidated finance-side projection of Product master
+     * facts (seeded on {@code ProductCreated}, populated on
+     * {@code ValuationClassChanged}). The projection may not have caught up
+     * at the moment a journal posts (event-stream race during burst-receive
+     * on a fresh-volume boot, or a product was created but never assigned a
+     * valuation class). Rather than blocking the journal entry — which would
+     * freeze every receipt, shipment, payment, and customer-invoice flow —
+     * the fallback posts to the generic 1200 Inventory account and emits a
+     * DEBUG log naming the product. Per standard accounting reconciliation,
+     * generic-1200 postings get reclassified to 1210/1220 once the
+     * projection catches up; this is the order-tolerant trade-off captured
+     * in the `*Projection` package convention. Throwing or hard-failing here
+     * is rejected because the journal posting is the side effect of an
+     * authoritative business action that already succeeded — refusing to
+     * post the GL pair would leave the operational tables out of sync with
+     * the GL.
      */
     private String inventoryAccountForProduct(UUID productId) {
-        return valuationClasses.findValuationClass(productId)
+        return productAccounting.findValuationClass(productId)
             .map(c -> switch (c) {
                 case "raw_materials" -> RM_INVENTORY_CODE;
                 case "finished_goods", "semi_finished_goods" -> FG_INVENTORY_CODE;
@@ -144,7 +146,7 @@ public class JournalEntryService {
      * trigger; reclassification later).
      */
     private String cogsAccountForProduct(UUID productId) {
-        return valuationClasses.findValuationClass(productId)
+        return productAccounting.findValuationClass(productId)
             .map(c -> switch (c) {
                 case "raw_materials" -> MATERIALS_COGS_CODE;
                 case "finished_goods", "semi_finished_goods" -> COGS_CODE;

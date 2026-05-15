@@ -10,7 +10,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.northwood.finance.application.JournalEntryService.LineCost;
-import com.northwood.finance.application.inbox.ProductValuationClassProjection;
 import com.northwood.finance.domain.JournalEntry;
 import com.northwood.finance.domain.JournalEntryId;
 import com.northwood.finance.domain.JournalEntryLine;
@@ -42,13 +41,13 @@ class JournalEntryServicePostingsTest {
     @Mock JournalEntryRepository journals;
     @Mock JournalEntrySummaryQueryPort summaries;
     @Mock GlAccountLookup glAccounts;
-    @Mock ProductValuationClassProjection valuationClasses;
+    @Mock ProductAccountingLookup productAccounting;
 
     private JournalEntryService service;
 
     @BeforeEach
     void setUp() {
-        service = new JournalEntryService(journals, summaries, glAccounts, valuationClasses);
+        service = new JournalEntryService(journals, summaries, glAccounts, productAccounting);
         // Default GL-account resolution; lenient so tests that never post (zero-total
         // skips, reverse-entry rejections) don't trigger UnnecessaryStubbingException.
         lenient().when(glAccounts.byCode(any())).thenAnswer(inv -> {
@@ -149,7 +148,7 @@ class JournalEntryServicePostingsTest {
     class GoodsReceivedMultiDebit {
 
         @Test void single_class_posts_dr_rm_inventory_cr_grni() {
-            when(valuationClasses.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of("raw_materials"));
+            when(productAccounting.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of("raw_materials"));
 
             service.postGoodsReceived(
                 UUID.randomUUID(), "GR-001",
@@ -164,8 +163,8 @@ class JournalEntryServicePostingsTest {
         }
 
         @Test void multi_class_produces_one_debit_per_inventory_account_one_grni_credit() {
-            when(valuationClasses.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of("raw_materials"));
-            when(valuationClasses.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of("finished_goods"));
+            when(productAccounting.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of("raw_materials"));
+            when(productAccounting.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of("finished_goods"));
 
             service.postGoodsReceived(
                 UUID.randomUUID(), "GR-002",
@@ -184,7 +183,7 @@ class JournalEntryServicePostingsTest {
         }
 
         @Test void missing_valuation_class_falls_back_to_generic_inventory_1200() {
-            when(valuationClasses.findValuationClass(PRODUCT_UNCLASSIFIED)).thenReturn(Optional.empty());
+            when(productAccounting.findValuationClass(PRODUCT_UNCLASSIFIED)).thenReturn(Optional.empty());
 
             service.postGoodsReceived(
                 UUID.randomUUID(), "GR-003",
@@ -212,8 +211,8 @@ class JournalEntryServicePostingsTest {
     class ShipmentCostMultiDebitMultiCredit {
 
         @Test void per_class_split_dr_cogs_cr_inventory_pair_per_class() {
-            when(valuationClasses.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of("raw_materials"));
-            when(valuationClasses.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of("finished_goods"));
+            when(productAccounting.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of("raw_materials"));
+            when(productAccounting.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of("finished_goods"));
 
             service.postShipmentCost(
                 UUID.randomUUID(), "SHP-001",
@@ -233,7 +232,7 @@ class JournalEntryServicePostingsTest {
         }
 
         @Test void unclassified_product_falls_back_to_5000_and_1200() {
-            when(valuationClasses.findValuationClass(PRODUCT_UNCLASSIFIED)).thenReturn(Optional.empty());
+            when(productAccounting.findValuationClass(PRODUCT_UNCLASSIFIED)).thenReturn(Optional.empty());
 
             service.postShipmentCost(
                 UUID.randomUUID(), "SHP-002",

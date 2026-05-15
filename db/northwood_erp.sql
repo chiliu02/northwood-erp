@@ -2019,16 +2019,36 @@ GRANT USAGE ON SCHEMA shared TO finance_service;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA shared TO finance_service;
 
 
--- Read-side projection that finance maintains by consuming
--- Shape A read-side projection of product master's valuation class.
--- Maintained from product.ValuationClassChanged. Today informational only;
--- future perpetual-inventory accounting slice will read this in
--- JournalEntryService to pick GL accounts.
-CREATE TABLE finance.product_valuation_class (
-    product_id UUID PRIMARY KEY,
+-- Consolidated finance-side projection of product master facts. All
+-- attribute columns are 1:1 with Product and share Product's lifecycle:
+-- seeded on product.ProductCreated (stub row with all attributes NULL),
+-- populated by attribute-change events (product.StandardCostChanged,
+-- product.ValuationClassChanged), stamped with discontinued_at on
+-- product.ProductDiscontinued. Replaces the previous narrow tables
+-- finance.product_standard_cost and finance.product_valuation_class —
+-- those tables were named after individual columns rather than after the
+-- schema's view of the aggregate; the consolidated `product_accounting`
+-- name follows the pattern of sales.product_pricing,
+-- inventory.stock_item, manufacturing.product_replenishment.
+--
+-- Read paths:
+--   * JournalEntryService.inventoryAccountForProduct /
+--     cogsAccountForProduct branch on valuation_class.
+--   * ShipmentPostedCogsHandler reads standard_cost when posting COGS,
+--     trusting finance's authoritative number over whatever the warehouse
+--     clerk typed onto the shipment line.
+CREATE TABLE finance.product_accounting (
+    product_id      UUID PRIMARY KEY,
+    standard_cost   NUMERIC(18, 6),
+    currency_code   CHAR(3),
     valuation_class VARCHAR(50),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    discontinued_at TIMESTAMPTZ,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TRIGGER trg_product_accounting_updated_at
+    BEFORE UPDATE ON finance.product_accounting
+    FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
 
 -- purchasing.PurchaseOrderCreated + inventory.GoodsReceived. One row per
 -- purchase-order line. Used by 3-way match: invoice quantity must not exceed
@@ -2810,6 +2830,27 @@ INSERT INTO finance.tax_code (tax_code, description, rate) VALUES
     ('NO_TAX',    'No tax (export, etc)',     0.00)
 ON CONFLICT (tax_code) DO NOTHING;
 
+-- Backfill finance.product_accounting from product.product so the projection
+-- has one row per existing Product at boot — same shape the runtime
+-- ProductCreatedHandler produces on product.ProductCreated. Standard cost +
+-- currency seeded from product.standard_cost so day-1 COGS posting works
+-- ahead of the first StandardCostChanged event. Valuation class derives
+-- from product_type: raw / semi-finished → 'raw_materials', finished →
+-- 'finished_goods'. Subsequent events update individual columns.
+INSERT INTO finance.product_accounting (
+    product_id, standard_cost, currency_code, valuation_class
+) VALUES
+    ('00000000-0000-7000-8000-000000000001', 320.00, 'AUD', 'finished_goods'),    -- FG-TABLE-001
+    ('00000000-0000-7000-8000-000000000002',  80.00, 'AUD', 'raw_materials'),     -- RM-BOARD-001
+    ('00000000-0000-7000-8000-000000000003',  25.00, 'AUD', 'raw_materials'),     -- RM-LEG-001
+    ('00000000-0000-7000-8000-000000000004',   5.00, 'AUD', 'raw_materials'),     -- RM-SCREW-001
+    ('00000000-0000-7000-8000-000000000005',  12.00, 'AUD', 'raw_materials'),     -- RM-VARNISH-001
+    ('00000000-0000-7000-8000-000000000200', 420.00, 'AUD', 'finished_goods'),    -- FG-CABINET-001
+    ('00000000-0000-7000-8000-000000000201',  65.00, 'AUD', 'semi_finished_good'),-- SA-DRAWER-001
+    ('00000000-0000-7000-8000-000000000202',  18.00, 'AUD', 'raw_materials'),     -- RM-DRAWER-FRONT-001
+    ('00000000-0000-7000-8000-000000000203',  14.00, 'AUD', 'raw_materials')      -- RM-DRAWER-RUNNER-001
+ON CONFLICT (product_id) DO NOTHING;
+
 COMMIT;
 
 -- ============================================================================
@@ -3003,9 +3044,9 @@ CREATE TABLE reporting.projection_checkpoint (
 
 -- Reporting-side cache of product standard cost. Joined with
 -- available_to_promise_view at snapshot time to compute inventory_value.
--- Fed by product.StandardCostChanged inbox handler; mirrors
--- finance.product_standard_cost (reporting maintains its own copy because
--- per-service search_path forbids cross-schema reads).
+-- Fed by product.StandardCostChanged inbox handler; mirrors the
+-- standard_cost column on finance.product_accounting (reporting maintains
+-- its own copy because per-service search_path forbids cross-schema reads).
 CREATE TABLE reporting.product_standard_cost (
     product_id UUID PRIMARY KEY,
     standard_cost NUMERIC(18, 6) NOT NULL,

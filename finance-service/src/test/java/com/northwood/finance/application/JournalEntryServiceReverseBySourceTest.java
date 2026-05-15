@@ -8,7 +8,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.northwood.finance.application.inbox.ProductValuationClassProjection;
 import com.northwood.finance.domain.JournalEntry;
 import com.northwood.finance.domain.JournalEntryId;
 import com.northwood.finance.domain.JournalEntryLine;
@@ -30,7 +29,7 @@ class JournalEntryServiceReverseBySourceTest {
     private JournalEntryRepository journals;
     private JournalEntrySummaryQueryPort summaries;
     private GlAccountLookup glAccounts;
-    private ProductValuationClassProjection valuationClasses;
+    private ProductAccountingLookup productAccounting;
     private JournalEntryService service;
 
     @BeforeEach
@@ -38,8 +37,8 @@ class JournalEntryServiceReverseBySourceTest {
         journals = Mockito.mock(JournalEntryRepository.class);
         summaries = Mockito.mock(JournalEntrySummaryQueryPort.class);
         glAccounts = Mockito.mock(GlAccountLookup.class);
-        valuationClasses = Mockito.mock(ProductValuationClassProjection.class);
-        service = new JournalEntryService(journals, summaries, glAccounts, valuationClasses);
+        productAccounting = Mockito.mock(ProductAccountingLookup.class);
+        service = new JournalEntryService(journals, summaries, glAccounts, productAccounting);
     }
 
     private JournalEntry postedEntry(JournalEntryId id, String sourceType, UUID sourceId, BigDecimal amount) {

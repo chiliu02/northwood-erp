@@ -7,16 +7,24 @@ import com.northwood.shared.application.messaging.EventEnvelope;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
+/**
+ * Idempotent inbox handler for {@code product.ValuationClassChanged}. Updates
+ * the {@code valuation_class} column on {@code finance.product_accounting}
+ * so the GL-posting paths in
+ * {@link com.northwood.finance.application.JournalEntryService} (via
+ * {@code ProductAccountingLookup.findValuationClass}) can pick raw-materials
+ * vs. finished-goods inventory + COGS account codes.
+ */
 @Component
 public class ValuationClassChangedHandler extends AbstractInboxHandler<ValuationClassChanged> {
 
     public static final String CONSUMER_NAME = "finance.product-valuation-class-projector";
 
-    private final ProductValuationClassProjection projection;
+    private final ProductAccountingProjection projection;
 
     public ValuationClassChangedHandler(
         InboxPort inbox,
-        ProductValuationClassProjection projection,
+        ProductAccountingProjection projection,
         ObjectMapper json
     ) {
         super(inbox, json, ValuationClassChanged.class, ValuationClassChanged.EVENT_TYPE, CONSUMER_NAME);
@@ -25,6 +33,6 @@ public class ValuationClassChangedHandler extends AbstractInboxHandler<Valuation
 
     @Override
     protected void apply(ValuationClassChanged payload, EventEnvelope envelope) {
-        projection.apply(payload.aggregateId(), payload.newValuationClass());
+        projection.applyValuationClass(payload.aggregateId(), payload.newValuationClass());
     }
 }
