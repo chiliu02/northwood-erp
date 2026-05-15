@@ -21,6 +21,12 @@ import java.util.UUID;
  */
 public final class CustomerInvoice {
 
+    /**
+     * Wire-format aggregate-type stamped onto {@code finance.outbox_message.aggregate_type}
+     * for events this aggregate emits.
+     */
+    public static final String AGGREGATE_TYPE = "CustomerInvoice";
+
     // ------------------------------------------------------------
     // Status constants — wire-format strings stored in
     // finance.customer_invoice_header.status. Lifecycle:

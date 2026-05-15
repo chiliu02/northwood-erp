@@ -6,6 +6,47 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-16 — `AGGREGATE_TYPE` constants on all 9 missing aggregates (Tier 4 sweep)
+
+Codebase-wide audit triggered by 2026-05-15's *no-`*Repository`-without-an-aggregate* rule found that only 4 of 13 aggregate roots declared `AGGREGATE_TYPE`. Outbox writers were stamping the column with inline string literals (`"Customer"`, `"PurchaseOrder"`, etc.) — exactly the string drift the constant rule exists to prevent. This slice closes the gap on the trivially-fixable subset.
+
+### Aggregates with `AGGREGATE_TYPE` constant added (9)
+
+| Service | Aggregate | Wire value |
+|---|---|---|
+| sales | `Customer` | `"Customer"` |
+| inventory | `StockItem` | `"StockItem"` |
+| inventory | `GoodsReceipt` | `"GoodsReceipt"` |
+| inventory | `Shipment` | `"Shipment"` |
+| purchasing | `PurchaseOrder` | `"PurchaseOrder"` |
+| purchasing | `PurchaseRequisition` | `"PurchaseRequisition"` |
+| finance | `SupplierInvoice` | `"SupplierInvoice"` |
+| finance | `CustomerInvoice` | `"CustomerInvoice"` |
+| finance | `Payment` | `"Payment"` |
+
+Each constant placed per the class-member-ordering rule (after nested types, above other static fields). Javadoc consistent with the existing pattern on `Product` / `SalesOrder` / `StockReservation` / `WorkOrder`.
+
+### Producer-side outbox writers updated (8 + 6 test-harness)
+
+Producer-side `JdbcXxxRepository.save(...)` calls switched from literal to constant — `JdbcCustomerRepository`, `JdbcGoodsReceiptRepository`, `JdbcShipmentRepository`, `JdbcPurchaseOrderRepository`, `JdbcPurchaseRequisitionRepository`, `JdbcSupplierInvoiceRepository`, `JdbcCustomerInvoiceRepository`, `JdbcPaymentRepository`. Each file already imported its aggregate class; no new imports needed.
+
+In-memory test-harness counterparts updated the same way: `InMemoryShipmentRepository`, `InMemorySupplierInvoiceRepository`, `InMemoryPaymentRepository`, `InMemoryCustomerInvoiceRepository`, `InMemoryPurchaseOrderRepository`, `InMemoryPurchaseRequisitionRepository`.
+
+`StockItem` has no outbox call sites today (the JDBC adapter's Javadoc notes inventory doesn't yet emit projection events for it); the constant is declared so future inventory-originated events can reference it directly.
+
+### Smoke
+
+- `mvn -DskipTests clean compile` ✅ all 19 modules green in 10.7s.
+- `mvn -DskipTests test-compile` ✅ all 19 modules green in 10.9s — confirms the test-harness in-memory repository changes link cleanly.
+- Grep audit: `"(Customer|StockItem|GoodsReceipt|Shipment|PurchaseOrder|PurchaseRequisition|SupplierInvoice|CustomerInvoice|Payment)"` across `**/main/**/*.java` returns only the new `AGGREGATE_TYPE` constant declarations — no producer-side literals remain.
+
+### Follow-ups carried forward
+
+- **§2.17** — Tier 1 promotions: `SupplierProductPrice` + `ApprovedVendor` (similar shape to §2.16 `Bom`).
+- **§2.18** — Tier 2 renames: `RoutingRepository` / `SupplierRepository` → `*QueryPort` while no mutators exist.
+- **§2.19** — Tier 3 wording fix: relax the rule's third clause to cover legitimate event-less aggregates (`JournalEntry`).
+- **§2.20** — Cross-service consumer-test literals: ~14 sites still use literal strings because they can't import the producer's aggregate; resolved by extending the AGGREGATE_TYPE-on-event-class convention to every cross-service-consumed event.
+
 ## 2026-05-15 — Sharper convention: no `*Repository` without an aggregate
 
 Locked in the rule that every `*Repository` interface in `<service>.domain/` must have a sibling aggregate root in the same package declaring `public static final String AGGREGATE_TYPE`. Surfaced 2026-05-15 while drafting `docs/domain-driven design.html`: `manufacturing.BomEditRepository` is today's only offender — uses the `*Repository` suffix but is a row-level write port for `bom_header` / `bom_line` with invariants (acyclic graph, single-active-per-product, no-edit-on-active) sitting in `BomEditService` + `BomCycleDetector` + the DB partial unique index `uq_bom_active_per_product`, not on an aggregate.

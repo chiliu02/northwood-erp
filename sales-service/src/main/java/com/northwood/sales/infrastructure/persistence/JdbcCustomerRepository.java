@@ -144,7 +144,7 @@ public class JdbcCustomerRepository implements CustomerRepository {
                 ) VALUES (?, ?, ?, ?, ?, ?::jsonb, 'pending', ?)
                 """,
                 event.eventId(),
-                "Customer",
+                Customer.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),

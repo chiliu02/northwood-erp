@@ -193,7 +193,7 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
                 ) VALUES (?, ?, ?, ?, ?, ?::jsonb, 'pending', ?)
                 """,
                 event.eventId(),
-                "CustomerInvoice",
+                CustomerInvoice.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),

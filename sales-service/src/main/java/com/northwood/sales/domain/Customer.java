@@ -60,6 +60,12 @@ public class Customer {
         }
     }
 
+    /**
+     * Wire-format aggregate-type stamped onto {@code sales.outbox_message.aggregate_type}
+     * for events this aggregate emits.
+     */
+    public static final String AGGREGATE_TYPE = "Customer";
+
     private final CustomerId id;
     private final String customerCode;  // never changes — identity field
 

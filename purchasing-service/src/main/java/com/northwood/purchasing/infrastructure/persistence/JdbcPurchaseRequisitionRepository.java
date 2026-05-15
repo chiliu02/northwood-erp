@@ -180,7 +180,7 @@ public class JdbcPurchaseRequisitionRepository implements PurchaseRequisitionRep
                 ) VALUES (?, ?, ?, ?, ?, ?::jsonb, 'pending', ?)
                 """,
                 event.eventId(),
-                "PurchaseRequisition",
+                PurchaseRequisition.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),

@@ -45,7 +45,7 @@ public final class InMemoryCustomerInvoiceRepository implements CustomerInvoiceR
             try {
                 outbox.appendPending(OutboxRow.pending(
                     event.eventId(),
-                    "CustomerInvoice",
+                    CustomerInvoice.AGGREGATE_TYPE,
                     event.aggregateId(),
                     event.eventType(),
                     event.eventVersion(),

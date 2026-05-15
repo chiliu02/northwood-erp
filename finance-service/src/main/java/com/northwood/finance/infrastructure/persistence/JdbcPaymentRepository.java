@@ -159,7 +159,7 @@ public class JdbcPaymentRepository implements PaymentRepository {
                 ) VALUES (?, ?, ?, ?, ?, ?::jsonb, 'pending', ?)
                 """,
                 event.eventId(),
-                "Payment",
+                Payment.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),

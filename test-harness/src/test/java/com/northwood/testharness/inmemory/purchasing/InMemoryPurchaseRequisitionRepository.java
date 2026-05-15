@@ -43,7 +43,7 @@ public final class InMemoryPurchaseRequisitionRepository implements PurchaseRequ
             try {
                 outbox.appendPending(OutboxRow.pending(
                     event.eventId(),
-                    "PurchaseRequisition",
+                    PurchaseRequisition.AGGREGATE_TYPE,
                     event.aggregateId(),
                     event.eventType(),
                     event.eventVersion(),

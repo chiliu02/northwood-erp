@@ -37,6 +37,12 @@ import java.util.UUID;
  */
 public final class PurchaseOrder {
 
+    /**
+     * Wire-format aggregate-type stamped onto {@code purchasing.outbox_message.aggregate_type}
+     * for events this aggregate emits.
+     */
+    public static final String AGGREGATE_TYPE = "PurchaseOrder";
+
     // ------------------------------------------------------------
     // Status constants — wire-format strings stored in
     // purchasing.purchase_order_header.status. Lifecycle:

@@ -43,7 +43,7 @@ public final class InMemoryPaymentRepository implements PaymentRepository {
             try {
                 outbox.appendPending(OutboxRow.pending(
                     event.eventId(),
-                    "Payment",
+                    Payment.AGGREGATE_TYPE,
                     event.aggregateId(),
                     event.eventType(),
                     event.eventVersion(),

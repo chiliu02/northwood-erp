@@ -150,7 +150,7 @@ public class JdbcGoodsReceiptRepository implements GoodsReceiptRepository {
                 ) VALUES (?, ?, ?, ?, ?, ?::jsonb, 'pending', ?)
                 """,
                 event.eventId(),
-                "GoodsReceipt",
+                GoodsReceipt.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),

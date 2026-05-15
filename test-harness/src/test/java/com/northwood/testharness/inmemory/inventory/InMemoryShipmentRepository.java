@@ -47,7 +47,7 @@ public final class InMemoryShipmentRepository implements ShipmentRepository {
             try {
                 outbox.appendPending(OutboxRow.pending(
                     event.eventId(),
-                    "Shipment",
+                    Shipment.AGGREGATE_TYPE,
                     event.aggregateId(),
                     event.eventType(),
                     event.eventVersion(),

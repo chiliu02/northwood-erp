@@ -377,6 +377,34 @@ Scope:
 - DB schema unchanged — partial unique index `uq_bom_active_per_product` keeps doing its job at the DB level.
 - Update `docs/domain-driven design.html` aggregate inventory table once shipped (drop the §6 warn callout, add `Bom` as a row alongside `Routing`).
 
+### 2.17 Promote `SupplierProductPrice` + `ApprovedVendor` to real aggregates
+
+Two more Tier-1 offenders surfaced by the 2026-05-15 sweep (audit findings recorded in `dev-done.md`):
+
+**`purchasing.SupplierProductPriceRepository`** — no `SupplierProductPrice` Java class exists today; the repository is a row-level write port (`find` / `insert` / `updatePrice` / `listForSupplier`) keyed on `(supplier_id, product_id, currency_code)`. Invariants (uniqueness on the triple, monotonic `version`) sit on the DB schema. `SupplierProductPriceChanged.AGGREGATE_TYPE = "SupplierProductPrice"` lives on the event class as the cross-service-emission exception.
+
+Scope: introduce `SupplierProductPrice` aggregate root in `purchasing.domain` with `AGGREGATE_TYPE = "SupplierProductPrice"`, `SupplierProductPriceId`, `pendingEvents`, intent-named mutators (`updatePrice(BigDecimal newUnitPrice)` for the existing path). `SupplierProductPriceService` becomes a thin orchestrator. Decision point: drop the cross-service-emission exception on the event class (constant moves to the aggregate) since once the aggregate exists, producer-side outbox writes can reference `SupplierProductPrice.AGGREGATE_TYPE`. Consumer-side cross-service references still need the event-class constant per §2.20.
+
+**`product.ApprovedVendorRepository`** — `ApprovedVendor` is a value object of `Product`, not its own root. The repository exists because `product.approved_vendor` is denormalised out into its own table. Two options: (a) promote `ApprovedVendorList` to its own aggregate root keyed by `productId` with `replaceFor(...)` as the mutator, or (b) fold the table back under `Product` and have `Product.setApprovedVendors(...)` drive the row-level writes through a private port in `infrastructure/`. (b) is the cleaner DDD answer but requires more rewiring; (a) is the smaller change. Recommend (a). Either way, the `*Repository` suffix has to go.
+
+### 2.18 Tier 2 — rename read-only "aggregates" to `*QueryPort`
+
+`manufacturing.RoutingRepository` and `purchasing.SupplierRepository` use the `*Repository` suffix but the aggregate roots they wrap (`Routing`, `Supplier`) have no mutators, no `pendingEvents`, no events. They're effectively read models that haven't been promoted to query-port shape yet. Their own Javadocs admit it (*"Manufacturing doesn't write through this class today"*, *"Supplier read model. Phase 1 only needs a lookup endpoint"*).
+
+Scope: rename to `*QueryPort` while no mutators exist. `RoutingRepository` → `RoutingQueryPort`; `SupplierRepository` → `SupplierQueryPort`. Concrete `Jdbc*` impls follow. The `Routing` / `Supplier` classes stay as read-model rows. Promote back to `*Repository` if and when mutators arrive.
+
+### 2.19 Tier 3 — relax convention's third clause to cover event-less aggregates
+
+`finance.JournalEntry` is an aggregate root (factories, identity, version, balanced-line invariants) but never emits events through `pendingEvents` — journal entries are append-only and the DB trigger `enforce_journal_balance` carries the invariant. By a strict reading of the new convention (*"emits domain events into `pendingEvents` drained by the repository at `save()`"*) `JournalEntryRepository` fails the rule on the third clause despite being a legitimate aggregate.
+
+Decision: amend the rule in `docs/conventions.md` to read *"emits events into `pendingEvents` drained at `save()` when events are emitted at all"*. The aggregate-root + intent-named-factories + AGGREGATE_TYPE checks still bind; the events check becomes conditional. Add `JournalEntry.AGGREGATE_TYPE = "JournalEntry"` in the same slice for completeness. Cheap change to the convention wording; no code outside `JournalEntry` touched.
+
+### 2.20 Cross-service consumer-test literals — host AGGREGATE_TYPE on event classes
+
+When a consumer service (e.g. finance consuming `purchasing.PurchaseOrderCreated`) tests an inbox handler, it constructs a fake `EventEnvelope` with `aggregate_type = "PurchaseOrder"`. Today this is a literal string; the consumer can't reference `purchasing.PurchaseOrder.AGGREGATE_TYPE` because cross-service domain imports are forbidden. ~14 test sites across finance / inventory / manufacturing / purchasing / reporting / sales consumer-handler tests + test-harness e2e tests.
+
+Scope: extend the AGGREGATE_TYPE-on-event-class convention (already used for `ManufacturingDispatched.AGGREGATE_TYPE = "SalesOrder"`, `SupplierProductPriceChanged.AGGREGATE_TYPE = "SupplierProductPrice"`, `ProductMaterialsCostComputed.AGGREGATE_TYPE = "Product"`) to every event whose `aggregate_type` is referenced by a cross-service consumer. Producer-side outbox writes keep using `<Aggregate>.AGGREGATE_TYPE`; consumer-side reads use `<Event>.AGGREGATE_TYPE`. Document the rule explicitly in `docs/architecture.md` → *Events jars* (currently only covers the "no Java aggregate" case). Mechanical sweep — add the constant to ~10 event classes, replace literals at consumer sites.
+
 ---
 
 ## 3. Low priority — explicitly deferred (skip unless asked)

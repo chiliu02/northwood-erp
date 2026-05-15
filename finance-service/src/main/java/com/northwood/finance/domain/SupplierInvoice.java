@@ -25,6 +25,12 @@ import java.util.UUID;
  */
 public final class SupplierInvoice {
 
+    /**
+     * Wire-format aggregate-type stamped onto {@code finance.outbox_message.aggregate_type}
+     * for events this aggregate emits.
+     */
+    public static final String AGGREGATE_TYPE = "SupplierInvoice";
+
     // ------------------------------------------------------------
     // Status constants — wire-format strings stored in
     // finance.supplier_invoice_header.status. The DB CHECK constraint and

@@ -244,7 +244,7 @@ public class JdbcSupplierInvoiceRepository implements SupplierInvoiceRepository 
                 ) VALUES (?, ?, ?, ?, ?, ?::jsonb, 'pending', ?)
                 """,
                 event.eventId(),
-                "SupplierInvoice",
+                SupplierInvoice.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),

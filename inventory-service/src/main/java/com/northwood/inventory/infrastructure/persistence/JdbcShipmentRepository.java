@@ -148,7 +148,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
                 ) VALUES (?, ?, ?, ?, ?, ?::jsonb, 'pending', ?)
                 """,
                 event.eventId(),
-                "Shipment",
+                Shipment.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),

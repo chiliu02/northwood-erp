@@ -40,7 +40,7 @@ public final class InMemorySupplierInvoiceRepository implements SupplierInvoiceR
             try {
                 outbox.appendPending(OutboxRow.pending(
                     event.eventId(),
-                    "SupplierInvoice",
+                    SupplierInvoice.AGGREGATE_TYPE,
                     event.aggregateId(),
                     event.eventType(),
                     event.eventVersion(),

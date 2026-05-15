@@ -20,6 +20,13 @@ import java.util.UUID;
  */
 public class StockItem {
 
+    /**
+     * Wire-format aggregate-type stamped onto {@code inventory.outbox_message.aggregate_type}
+     * for events this aggregate emits. No outbox calls today (see {@code JdbcStockItemRepository.save});
+     * the constant is declared so future inventory-originated events can reference it directly.
+     */
+    public static final String AGGREGATE_TYPE = "StockItem";
+
     private final StockItemId id;
     private final UUID productId;
     private String productSku;
