@@ -199,13 +199,14 @@ Decision to revisit: pick one canonical producer-side pattern and migrate everyt
 
 Recommend (a) once the demo dataset is stable enough to verify the Jackson serialisation behaviour end-to-end on a real run — the wire-compatibility risk is real but tractable with a `@JsonValue dbValue()` annotation. Pull forward only when there's a concrete trigger (e.g. a status typo bug, or a new aggregate where the team wants type safety on first write); not a critical cleanup today.
 
-### 2.1 Reporting follow-ups (was §3.4)
+### 2.1 Reporting follow-ups ✅ COMPLETE 2026-05-15
 
-- ~~**Financial dashboard "currently open" counts**~~ ✅ shipped 2026-05-12 — new `GET /api/financial-dashboard/snapshot` endpoint with SUM-window over the existing reporting projections. SPA Dashboard rebuilt with three KPI rows separating snapshot from per-day deltas. See dev-done.md.
-- ~~**`accounts_receivable` / `accounts_payable` on the dashboard**~~ ✅ shipped 2026-05-12 — same slice. AR/AP computed via `SUM(GREATEST(invoiced_amount - paid_amount, 0))` over SO360 / PO tracking projections.
-- ~~**`inventory_value` on the dashboard**~~ ✅ shipped 2026-05-12 — reporting now projects `product_standard_cost` from `product.StandardCostChanged` (mirrors finance's projection); snapshot SQL JOINs ATP × cost. See dev-done.md.
-- **`wip_value` on the dashboard** — still parked. Gated on a costing decision (LIFO / FIFO / weighted-avg) for `wip_balance.average_cost`, which is 0 today. Pull forward when business signals which method.
-- **`expected_material_available_date`, `planned_start_date`, `planned_end_date` on `production_planning_board`** — need scheduling data that no current event carries. Future slice when a planning module lands.
+Active items shipped:
+- **Financial dashboard "currently open" counts + AR / AP / inventory_value** — shipped 2026-05-12 (snapshot endpoint + per-day rollup worker 2026-05-15).
+
+Parked indefinitely (documented out-of-scope on the respective Stories, not active backlog):
+- `wip_value` on the dashboard — gated on a costing-method decision (LIFO / FIFO / weighted-avg). Schema column + DTO field + SPA tile are wired through; only the value derivation is parked. See `docs/user-stories.md` Story 2.6 *Out-of-scope*.
+- `expected_material_available_date` / `planned_start_date` / `planned_end_date` on `production_planning_board` — need a planning module that emits scheduling events. Out-of-scope for the Northwood showcase. See `docs/user-stories.md` Story 2.2 *Out-of-scope*.
 
 ### 2.2 Work order `material_status` projection (was §3.5) ✅ shipped 2026-05-12
 

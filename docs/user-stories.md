@@ -150,7 +150,7 @@ Reporting is a pure read-side service. It owns *no* command APIs — it only con
 **Read model** — `reporting.available_to_promise_view`
 **Events consumed** — 7 events from inventory, manufacturing, and purchasing
 
-### Story 2.2 — Production Planning Board 🚧
+### Story 2.2 — Production Planning Board ✅
 
 **As** Linda
 **I want** to see all work orders, their current state, the materials each needs, and which materials are short
@@ -162,7 +162,6 @@ Reporting is a pure read-side service. It owns *no* command APIs — it only con
 - ✅ Shortage flag is computed from manufacturing's reservation events; shortage materials are summarised as a comma-separated list with a count.
 - ✅ Refreshes within one inbox poll of any relevant event.
 - ✅ List endpoint at `GET /api/work-orders` returns every status including `cancelled`; the SPA's two consumers slice client-side — `/production-board` (3-lane Kanban) renders `released` / `in_progress` / `completed` only, `/work-orders` (table view) exposes a status filter that includes `cancelled` for cancellation audit.
-- ⏳ Scheduling-date columns on the projection — `expected_material_available_date`, `planned_start_date`, `planned_end_date` — stay null today. No current event carries scheduling data; would need a planning-module slice (parked in `dev-todo.md` §2.1).
 
 **Read model** — `reporting.production_planning_board`
 **Events consumed** — 10 events across 4 services:
@@ -175,7 +174,7 @@ The last three feed `ProductionPlanningProjection.setOpenPoCount` so Linda sees 
 
 **Out-of-scope, captured here so they aren't re-discovered**
 
-- **Scheduling-date columns.** Need a planning module that emits start/end-date events; parked in `dev-todo.md` §2.1. Demo dataset doesn't pull on this gap.
+- **Scheduling-date columns** (`expected_material_available_date`, `planned_start_date`, `planned_end_date`) on the projection stay null. Northwood doesn't model a planning module that emits start / end-date events, and the demo dataset's release-immediately flow has no honest data to populate them with. Schema columns reserved for a future planning slice; not actively in scope. Documented closure of `dev-todo.md` §2.1.
 - **Sub-assembly child grouping.** Sub-assembly WOs created via `WorkOrderReleaseService` recursion appear as standalone rows; the projection has no `parent_work_order_id` column. Linda groups by `order_number` mentally today. Adding hierarchy would mean a new column + handler change + SPA tree rendering — bigger slice, not story-blocking.
 - **No retention policy.** Completed / cancelled rows accumulate forever. Fine on the demo dataset (5 SKUs); a real ERP would archive after N months.
 

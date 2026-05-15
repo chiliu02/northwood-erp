@@ -6,6 +6,24 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-15 — Close §2.1 Reporting follow-ups + Story 2.2
+
+Conversation-surfaced cleanup: dev-todo §2.1 carried two open bullets — `wip_value` on the dashboard and the three scheduling-date columns on `production_planning_board`. Both are explicitly parked-indefinitely items waiting on capabilities Northwood deliberately doesn't model (costing-method decision; scheduling module). They duplicate text already in user-stories.md's Out-of-scope blocks for Stories 2.6 and 2.2 respectively. Net effect of leaving them in §2.1: backlog readers think there's active work; closing them clarifies that there isn't.
+
+### dev-todo §2.1
+
+Section header flipped to ✅ COMPLETE 2026-05-15. Three shipped bullets collapsed to one line (single 2026-05-12 slice). The two parked items moved to a single block under "Parked indefinitely" with cross-refs to the Out-of-scope blocks on Stories 2.6 / 2.2 where the parking is already documented.
+
+### Story 2.2 → ✅
+
+Removed the stale ⏳ acceptance-criterion bullet for scheduling-date columns (the same information already lived in this Story's *Out-of-scope* block, so the ⏳ was a duplicate that left the Story incorrectly flagged as partial). Story now flips 🚧 → ✅. The *Out-of-scope* bullet's text expanded slightly to make the "no planning module = no honest data = column stays null" reasoning self-contained, so future readers don't need to follow the §2.1 cross-ref to understand the parking.
+
+### Docs only
+
+No code change. `docs/dev-todo.md` and `docs/user-stories.md` updated.
+
+---
+
 ## 2026-05-15 — Close Story 4.2: partial-rejection rejects the whole order + saga terminal cleanup
 
 Closes Story 4.2 (was 🚧 → ✅). The single ⏳ bullet (synchronous POST error) was minor compared to the silent-correctness gap underneath: when `manufacturing.ManufacturingDispatched` arrived with some lines accepted and some `rejected_no_bom` / `rejected_not_manufactured`, the saga stamped `expectedWorkOrderCount = acceptedCount` and **proceeded with only the accepted lines**. The order eventually completed with `total_amount` reflecting the originally-ordered total while only the accepted lines actually shipped — directly contradicting the story's stated goal ("fail clearly with no half-fulfilled state").
