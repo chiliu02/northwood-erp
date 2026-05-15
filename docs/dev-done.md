@@ -6,6 +6,41 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-15 — Story 2.2 staleness pass + ProductionPlanningQueryPort Javadoc fix
+
+Conversation-surfaced gap-audit on Story 2.2 (Production Planning Board, marked 🚧). The ⏳ bullet ("list endpoint to see all open work orders at once") turned out to be stale — `ProductionPlanningController.list()` exposes `GET /api/work-orders` and has done so since the §1B SPA-pages slice. The "5 events from manufacturing + inventory" claim was also an undercount: 10 events across 4 services actually feed the projection (manufacturing 6, inventory 2, purchasing 1, finance 1; the last three feed `setOpenPoCount` so the board shows live PO progress per WO).
+
+### Behaviour change considered, then rejected
+
+The audit initially flagged "list endpoint returns every status including `cancelled`" as a behaviour gap — its `findAll()` Javadoc claimed "All open work orders" but the SQL had no `WHERE` clause. Tracing the consumers found two:
+- `erp-web-ui/.../ProductionBoard.tsx` (3-lane Kanban) filters client-side to `released` / `in_progress` / `completed`, so cancelled rows simply don't render.
+- `erp-web-ui/.../WorkOrders.tsx` (table view) exposes a status dropdown that explicitly includes `cancelled` for cancellation audit; it depends on the endpoint surfacing cancelled rows.
+
+Server-side filtering would silently break the table view. Correct fix is to update the **Javadoc** to match the (correct) behaviour: "All work orders across every status (including cancelled), newest activity first. Two SPA consumers slice client-side." Lesson captured in the comment so future readers don't try the same wrong simplification.
+
+### Prose pass on Story 2.2
+
+- Title intent updated: "see all work orders" (was "see all open work orders" — the codebase explicitly surfaces cancelled too).
+- Trigger line lists both endpoints (per-WO + list) without the stale ⏳ parenthetical.
+- Acceptance criteria expanded with the columns the schema actually populates: priority, `open_purchase_orders_count`, `material_status` (now includes `shortage`). Cancelled status added to the visible-statuses list.
+- New ✅ bullet documenting the list endpoint + the two-consumer slicing pattern.
+- New ⏳ bullet (the only remaining one) calls out scheduling-date columns staying null — points at `dev-todo.md` §2.1 for the parked planning-module slice.
+- *Events consumed* section rewritten to enumerate all 10 events across 4 services.
+- New *Out-of-scope* block lists three documented deferrals: scheduling dates, sub-assembly child grouping, no retention policy. Sub-assembly grouping noted as the bigger-slice follow-up that needs a `parent_work_order_id` column on the projection + SPA tree rendering.
+
+Story stays 🚧 (scheduling-date ⏳ is real) but is now narrowly scoped to that one parked item rather than the misleading "list endpoint missing" gap that was already shipped.
+
+### Files
+
+- `reporting-service/.../application/ProductionPlanningQueryPort.java` — Javadoc on `findAll()` rewritten.
+- `docs/user-stories.md` — Story 2.2 rewritten as described.
+
+### Smoke
+
+No behaviour change, no test impact. `mvn install -DskipTests` reactor green.
+
+---
+
 ## 2026-05-15 — Close Story 1.4 gaps: BOM hygiene on component discontinue + editor gate + prose pass
 
 Closes Demo 1 / Story 1.4 (was 🚧 → ✅) on two real behaviour gaps plus a prose pass on two stale ⏳ bullets. Cataloged in user-stories.md's gap-pass earlier today as B.2 (parent-BOM cascade) + B.3 (`BomEditService.addLine` gate). Before this slice:

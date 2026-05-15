@@ -153,18 +153,31 @@ Reporting is a pure read-side service. It owns *no* command APIs — it only con
 ### Story 2.2 — Production Planning Board 🚧
 
 **As** Linda
-**I want** to see all open work orders, their current state, the materials each needs, and which materials are short
+**I want** to see all work orders, their current state, the materials each needs, and which materials are short
 **So that** I can see at a glance what's blocked on raw materials vs. ready to start
 
-**Trigger** — `GET /api/work-orders/{id}/board` *(per-WO; list endpoint ⏳)* on reporting-service
+**Trigger** — `GET /api/work-orders/{id}/board` (per-WO detail) and `GET /api/work-orders` (full list, every status, newest activity first) on reporting-service.
 **Acceptance criteria**
-- ✅ Each row shows the work order's status (`released`, `in_progress`, `completed`), planned/completed quantity, and material status (`pending`, `partially_reserved`, `reserved`).
+- ✅ Each row shows the work order's status (`released`, `in_progress`, `completed`, `cancelled`), planned/completed quantity, material status (`pending`, `partially_reserved`, `reserved`, `shortage`), priority, shortage count + summary, and `open_purchase_orders_count` (how many shortage-driven POs are still outstanding for this WO).
 - ✅ Shortage flag is computed from manufacturing's reservation events; shortage materials are summarised as a comma-separated list with a count.
 - ✅ Refreshes within one inbox poll of any relevant event.
-- ⏳ List endpoint to see all open work orders at once (today the endpoint is per-WO).
+- ✅ List endpoint at `GET /api/work-orders` returns every status including `cancelled`; the SPA's two consumers slice client-side — `/production-board` (3-lane Kanban) renders `released` / `in_progress` / `completed` only, `/work-orders` (table view) exposes a status filter that includes `cancelled` for cancellation audit.
+- ⏳ Scheduling-date columns on the projection — `expected_material_available_date`, `planned_start_date`, `planned_end_date` — stay null today. No current event carries scheduling data; would need a planning-module slice (parked in `dev-todo.md` §2.1).
 
 **Read model** — `reporting.production_planning_board`
-**Events consumed** — 5 events from manufacturing + inventory
+**Events consumed** — 10 events across 4 services:
+- **manufacturing** — `WorkOrderCreated`, `OperationCompleted`, `WorkOrderManufacturingCompleted`, `WorkOrderCancelled`, `WorkOrderPriorityChanged`, `RawMaterialShortageDetected`
+- **inventory** — `RawMaterialsReserved`, `GoodsReceived`
+- **purchasing** — `PurchaseOrderCreated`
+- **finance** — `SupplierPaymentMade`
+
+The last three feed `ProductionPlanningProjection.setOpenPoCount` so Linda sees the live count of shortage-driven POs still outstanding per work order — a small but real cross-service join that demonstrates the read-model pattern.
+
+**Out-of-scope, captured here so they aren't re-discovered**
+
+- **Scheduling-date columns.** Need a planning module that emits start/end-date events; parked in `dev-todo.md` §2.1. Demo dataset doesn't pull on this gap.
+- **Sub-assembly child grouping.** Sub-assembly WOs created via `WorkOrderReleaseService` recursion appear as standalone rows; the projection has no `parent_work_order_id` column. Linda groups by `order_number` mentally today. Adding hierarchy would mean a new column + handler change + SPA tree rendering — bigger slice, not story-blocking.
+- **No retention policy.** Completed / cancelled rows accumulate forever. Fine on the demo dataset (5 SKUs); a real ERP would archive after N months.
 
 ### Story 2.3 — Material Shortage tracker ✅ *(not in original story set)*
 
