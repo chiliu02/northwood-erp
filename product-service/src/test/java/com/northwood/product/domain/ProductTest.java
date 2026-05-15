@@ -464,31 +464,60 @@ class ProductTest {
 
     @Nested
     class ApprovedVendorList {
-        @Test void emits_event_with_full_list() {
+        @Test void sets_list_marks_dirty_and_emits_event() {
             Product p = newProduct();
             p.pullPendingEvents();
             UUID supA = UUID.randomUUID();
             UUID supB = UUID.randomUUID();
-            p.emitApprovedVendorListChanged(List.of(
+            p.setApprovedVendors(List.of(
                 new ApprovedVendor(supA, "S-A", "Supplier A", true),
                 new ApprovedVendor(supB, "S-B", "Supplier B", false)
             ));
+            assertThat(p.approvedVendors()).hasSize(2);
+            assertThat(p.pullApprovedVendorsDirty()).isTrue();
             ApprovedVendorListChanged e = (ApprovedVendorListChanged) p.pullPendingEvents().get(0);
             assertThat(e.approvedVendors()).hasSize(2);
             assertThat(e.approvedVendors().get(0).preferred()).isTrue();
             assertThat(e.approvedVendors().get(1).preferred()).isFalse();
         }
 
+        @Test void no_op_on_same_set_emits_nothing_and_leaves_dirty_false() {
+            UUID supA = UUID.randomUUID();
+            ApprovedVendor existing = new ApprovedVendor(supA, "S-A", "Supplier A", true);
+            Product p = Product.reconstitute(
+                ProductId.newId(), new Sku("FG-X-001"), "P", null,
+                ProductType.FINISHED_GOOD, UOM_EACH,
+                false, false, false, false,
+                Money.of(new BigDecimal("10"), "AUD"), Money.of(new BigDecimal("5"), "AUD"),
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null,
+                Product.Status.ACTIVE, 1L,
+                List.of(existing)
+            );
+            p.setApprovedVendors(List.of(new ApprovedVendor(supA, "S-A", "Supplier A", true)));
+            assertThat(p.pullPendingEvents()).isEmpty();
+            assertThat(p.pullApprovedVendorsDirty()).isFalse();
+        }
+
+        @Test void pull_dirty_resets_to_false() {
+            Product p = newProduct();
+            p.setApprovedVendors(List.of(
+                new ApprovedVendor(UUID.randomUUID(), "S-A", "Supplier A", true)
+            ));
+            assertThat(p.pullApprovedVendorsDirty()).isTrue();
+            assertThat(p.pullApprovedVendorsDirty()).isFalse();
+        }
+
         @Test void rejects_null_list() {
             Product p = newProduct();
-            assertThatThrownBy(() -> p.emitApprovedVendorListChanged(null))
+            assertThatThrownBy(() -> p.setApprovedVendors(null))
                 .isInstanceOf(NullPointerException.class);
         }
 
         @Test void rejects_when_discontinued() {
             Product p = newProduct();
             p.discontinue();
-            assertThatThrownBy(() -> p.emitApprovedVendorListChanged(List.of()))
+            assertThatThrownBy(() -> p.setApprovedVendors(List.of()))
                 .isInstanceOf(IllegalStateException.class);
         }
     }
@@ -529,7 +558,8 @@ class ProductTest {
                 Money.of(new BigDecimal("5"), "AUD"),
                 BigDecimal.ZERO, BigDecimal.ZERO,
                 "raw_materials", null,
-                Product.Status.ACTIVE, 5L
+                Product.Status.ACTIVE, 5L,
+                List.of()
             );
             assertThat(p.pullPendingEvents()).isEmpty();
             assertThat(p.id().value()).isEqualTo(id);

@@ -59,6 +59,15 @@ public class Product {
     private Status status;
     private final long version;
 
+    /**
+     * Approved-vendor list (denormalised into {@code product.approved_vendor} on
+     * the persistence side, but logically a child collection of this aggregate).
+     * Mutated via {@link #setApprovedVendors}; the repository writes the side
+     * table when {@link #pullApprovedVendorsDirty()} returns {@code true}.
+     */
+    private List<ApprovedVendor> approvedVendors = List.of();
+    private boolean approvedVendorsDirty = false;
+
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
 
     /** Factory: register a brand-new product. Emits ProductCreated. */
@@ -111,14 +120,17 @@ public class Product {
         Money salesPrice, Money standardCost,
         BigDecimal reorderPoint, BigDecimal reorderQuantity,
         String valuationClass, UUID activeBomId,
-        Status status, long version
+        Status status, long version,
+        List<ApprovedVendor> approvedVendors
     ) {
-        return new Product(id, sku, name, description, productType, baseUomId,
+        Product p = new Product(id, sku, name, description, productType, baseUomId,
             stocked, purchased, manufactured, sellable,
             salesPrice, standardCost,
             reorderPoint, reorderQuantity,
             valuationClass, activeBomId,
             status, version);
+        p.approvedVendors = List.copyOf(approvedVendors);
+        return p;
     }
 
     private Product(
@@ -293,22 +305,53 @@ public class Product {
     /**
      * Replace the approved-vendor list. Carries the new list in full;
      * downstream consumers replace their projection in one statement.
-     * The actual list of approved vendors is persisted in
-     * {@code product.approved_vendor} (separate from the aggregate's
-     * core fields) — this method's responsibility is just emitting the
-     * event; the application service handles persistence.
+     *
+     * <p>The list is denormalised into {@code product.approved_vendor} on the
+     * persistence side; the repository writes the side table on
+     * {@link #pullApprovedVendorsDirty()}. No-op suppression compares as a set
+     * (order doesn't matter) so re-saving the same set is a true no-op.
+     *
+     * <p>Promoted from a row-level write port 2026-05-16 (§2.17). Previously
+     * the application service hand-rolled the no-op check + persistence via
+     * {@code ApprovedVendorRepository}; now the aggregate owns both.
      */
-    public void emitApprovedVendorListChanged(List<ApprovedVendor> approvedVendors) {
+    public void setApprovedVendors(List<ApprovedVendor> newApprovedVendors) {
         if (status == Status.DISCONTINUED) {
             throw new IllegalStateException("Cannot change approved vendors on a discontinued product");
         }
-        Objects.requireNonNull(approvedVendors, "approvedVendors");
+        Objects.requireNonNull(newApprovedVendors, "approvedVendors");
+        if (sameVendorSet(this.approvedVendors, newApprovedVendors)) {
+            return;
+        }
+        this.approvedVendors = List.copyOf(newApprovedVendors);
+        this.approvedVendorsDirty = true;
         pendingEvents.add(new ApprovedVendorListChanged(
             UUID.randomUUID(),
             id.value(),
-            List.copyOf(approvedVendors),
+            this.approvedVendors,
             Instant.now()
         ));
+    }
+
+    private static boolean sameVendorSet(List<ApprovedVendor> a, List<ApprovedVendor> b) {
+        if (a.size() != b.size()) return false;
+        return new java.util.HashSet<>(a).equals(new java.util.HashSet<>(b));
+    }
+
+    /**
+     * One-shot dirty-flag pull: returns {@code true} iff
+     * {@link #setApprovedVendors} mutated the list since the last pull, and
+     * resets the flag. Called by the repository inside {@code save()} to
+     * decide whether to rewrite the {@code product.approved_vendor} rows.
+     */
+    public boolean pullApprovedVendorsDirty() {
+        boolean wasDirty = this.approvedVendorsDirty;
+        this.approvedVendorsDirty = false;
+        return wasDirty;
+    }
+
+    public List<ApprovedVendor> approvedVendors() {
+        return approvedVendors;
     }
 
     public void discontinue() {

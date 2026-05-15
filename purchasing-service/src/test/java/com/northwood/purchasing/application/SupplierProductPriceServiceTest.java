@@ -8,12 +8,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.northwood.purchasing.domain.SupplierProductPrice;
+import com.northwood.purchasing.domain.SupplierProductPriceId;
 import com.northwood.purchasing.domain.SupplierProductPriceRepository;
-import com.northwood.purchasing.domain.SupplierProductPriceRepository.ExistingPrice;
-import com.northwood.purchasing.domain.events.SupplierProductPriceChanged;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
-import com.northwood.shared.application.security.CurrentUserAccessor;
 import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.UUID;
@@ -23,7 +20,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 class SupplierProductPriceServiceTest {
@@ -32,74 +28,61 @@ class SupplierProductPriceServiceTest {
     private static final UUID PRODUCT = UUID.randomUUID();
 
     @Mock SupplierProductPriceRepository prices;
-    @Mock OutboxPort outbox;
-    @Mock CurrentUserAccessor currentUser;
 
-    private final ObjectMapper json = new ObjectMapper();
     private SupplierProductPriceService service;
 
     @BeforeEach
     void setUp() {
-        service = new SupplierProductPriceService(prices, outbox, json, currentUser);
+        service = new SupplierProductPriceService(prices);
     }
 
-    private SupplierProductPriceChanged capturedEvent() {
-        ArgumentCaptor<OutboxRow> cap = ArgumentCaptor.forClass(OutboxRow.class);
-        verify(outbox).appendPending(cap.capture());
-        return json.readValue(cap.getValue().getPayload(), SupplierProductPriceChanged.class);
-    }
-
-    @Test void first_time_insert_emits_with_null_old_price() {
-        when(prices.find(SUPPLIER, PRODUCT, "AUD")).thenReturn(Optional.empty());
-        when(currentUser.currentUsername()).thenReturn(Optional.empty());
+    @Test void first_time_insert_saves_a_newly_registered_aggregate() {
+        when(prices.findByKey(SUPPLIER, PRODUCT, "AUD")).thenReturn(Optional.empty());
 
         service.setPrice(SUPPLIER, PRODUCT, "AUD", new BigDecimal("12.50"));
 
-        verify(prices).insert(any(), any(), any(), any(), any());
-        verify(prices, never()).updatePrice(any(), any());
-        SupplierProductPriceChanged event = capturedEvent();
-        assertThat(event.oldUnitPrice()).isNull();
-        assertThat(event.newUnitPrice()).isEqualByComparingTo("12.50");
+        ArgumentCaptor<SupplierProductPrice> cap = ArgumentCaptor.forClass(SupplierProductPrice.class);
+        verify(prices).save(cap.capture());
+        SupplierProductPrice saved = cap.getValue();
+        assertThat(saved.version()).isZero();
+        assertThat(saved.supplierId()).isEqualTo(SUPPLIER);
+        assertThat(saved.productId()).isEqualTo(PRODUCT);
+        assertThat(saved.unitPrice()).isEqualByComparingTo("12.50");
     }
 
-    @Test void updates_existing_with_changed_price_emits_event() {
-        UUID existingId = UUID.randomUUID();
-        when(prices.find(SUPPLIER, PRODUCT, "AUD")).thenReturn(Optional.of(
-            new ExistingPrice(existingId, new BigDecimal("10.00"))
-        ));
-        when(currentUser.currentUsername()).thenReturn(Optional.empty());
+    @Test void updates_existing_with_changed_price_saves_mutated_aggregate() {
+        SupplierProductPrice existing = SupplierProductPrice.reconstitute(
+            SupplierProductPriceId.newId(), SUPPLIER, PRODUCT, "AUD",
+            new BigDecimal("10.00"), 1L
+        );
+        when(prices.findByKey(SUPPLIER, PRODUCT, "AUD")).thenReturn(Optional.of(existing));
 
         service.setPrice(SUPPLIER, PRODUCT, "AUD", new BigDecimal("12.50"));
 
-        verify(prices).updatePrice(existingId, new BigDecimal("12.50"));
-        verify(prices, never()).insert(any(), any(), any(), any(), any());
-        SupplierProductPriceChanged event = capturedEvent();
-        assertThat(event.oldUnitPrice()).isEqualByComparingTo("10.00");
-        assertThat(event.newUnitPrice()).isEqualByComparingTo("12.50");
+        verify(prices).save(existing);
+        assertThat(existing.unitPrice()).isEqualByComparingTo("12.50");
     }
 
-    @Test void unchanged_price_is_no_op_no_event() {
-        UUID existingId = UUID.randomUUID();
-        // 10.00 vs 10.0 — compareTo treats as equal, no-op suppression should fire.
-        when(prices.find(SUPPLIER, PRODUCT, "AUD")).thenReturn(Optional.of(
-            new ExistingPrice(existingId, new BigDecimal("10.00"))
-        ));
+    @Test void unchanged_price_is_no_op_no_save() {
+        SupplierProductPrice existing = SupplierProductPrice.reconstitute(
+            SupplierProductPriceId.newId(), SUPPLIER, PRODUCT, "AUD",
+            new BigDecimal("10.00"), 1L
+        );
+        when(prices.findByKey(SUPPLIER, PRODUCT, "AUD")).thenReturn(Optional.of(existing));
 
+        // 10.00 vs 10.0 — compareTo treats as equal, no-op suppression at the service level.
         UUID returned = service.setPrice(SUPPLIER, PRODUCT, "AUD", new BigDecimal("10.0"));
 
-        assertThat(returned).isEqualTo(existingId);
-        verify(prices, never()).insert(any(), any(), any(), any(), any());
-        verify(prices, never()).updatePrice(any(), any());
-        verifyNoInteractions(outbox);
+        assertThat(returned).isEqualTo(existing.id().value());
+        verify(prices, never()).save(any());
     }
 
     @Test void null_currency_defaults_to_AUD() {
-        when(prices.find(SUPPLIER, PRODUCT, "AUD")).thenReturn(Optional.empty());
-        when(currentUser.currentUsername()).thenReturn(Optional.empty());
+        when(prices.findByKey(SUPPLIER, PRODUCT, "AUD")).thenReturn(Optional.empty());
 
         service.setPrice(SUPPLIER, PRODUCT, null, new BigDecimal("5.00"));
 
-        verify(prices).find(SUPPLIER, PRODUCT, "AUD");
+        verify(prices).findByKey(SUPPLIER, PRODUCT, "AUD");
     }
 
     @Test void rejects_zero_or_negative_price() {
@@ -108,7 +91,7 @@ class SupplierProductPriceServiceTest {
             .hasMessageContaining("> 0");
         assertThatThrownBy(() -> service.setPrice(SUPPLIER, PRODUCT, "AUD", new BigDecimal("-1")))
             .isInstanceOf(IllegalArgumentException.class);
-        verifyNoInteractions(prices, outbox);
+        verifyNoInteractions(prices);
     }
 
     @Test void rejects_null_supplier_or_product() {

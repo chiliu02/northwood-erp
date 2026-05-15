@@ -2,6 +2,7 @@ package com.northwood.product.infrastructure.persistence;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
+import com.northwood.product.domain.ApprovedVendor;
 import com.northwood.product.domain.Product;
 import com.northwood.product.domain.ProductId;
 import com.northwood.product.domain.ProductRepository;
@@ -10,10 +11,10 @@ import com.northwood.shared.domain.DomainEvent;
 import com.northwood.shared.domain.Money;
 import com.northwood.shared.domain.Sku;
 import com.northwood.shared.application.security.CurrentUserAccessor;
-import java.math.BigDecimal;
-import java.sql.Types;
-import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -31,26 +32,13 @@ public class JdbcProductRepository implements ProductRepository {
         }
     }
 
-    private static final RowMapper<Product> ROW_MAPPER = (rs, n) -> Product.reconstitute(
-        ProductId.of(rs.getObject("product_id", UUID.class)),
-        new Sku(rs.getString("sku")),
-        rs.getString("name"),
-        rs.getString("description"),
-        ProductType.fromDb(rs.getString("product_type")),
-        rs.getObject("base_uom_id", UUID.class),
-        rs.getBoolean("is_stocked"),
-        rs.getBoolean("is_purchased"),
-        rs.getBoolean("is_manufactured"),
-        rs.getBoolean("is_sellable"),
-        Money.of(rs.getBigDecimal("sales_price"), "AUD"),
-        Money.of(rs.getBigDecimal("standard_cost"), "AUD"),
-        rs.getBigDecimal("reorder_point"),
-        rs.getBigDecimal("reorder_quantity"),
-        rs.getString("valuation_class"),
-        rs.getObject("active_bom_id", UUID.class),
-        Product.Status.valueOf(rs.getString("status").toUpperCase()),
-        rs.getLong("version")
-    );
+    private static final RowMapper<ApprovedVendor> APPROVED_VENDOR_MAPPER = (rs, n) ->
+        new ApprovedVendor(
+            rs.getObject("supplier_id", UUID.class),
+            rs.getString("supplier_code"),
+            rs.getString("supplier_name"),
+            rs.getBoolean("is_preferred")
+        );
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
@@ -64,6 +52,7 @@ public class JdbcProductRepository implements ProductRepository {
 
     @Override
     public Optional<Product> findById(ProductId id) {
+        Map<UUID, List<ApprovedVendor>> vendorsByProduct = loadApprovedVendors(List.of(id.value()));
         return jdbc.query(
             """
             SELECT product_id, sku, name, description, product_type, base_uom_id,
@@ -74,28 +63,29 @@ public class JdbcProductRepository implements ProductRepository {
                    status, version
             FROM product.product WHERE product_id = ?
             """,
-            ROW_MAPPER, id.value()
+            rowMapper(vendorsByProduct), id.value()
         ).stream().findFirst();
     }
 
     @Override
     public Optional<Product> findBySku(String sku) {
-        return jdbc.query(
-            """
-            SELECT product_id, sku, name, description, product_type, base_uom_id,
-                   is_stocked, is_purchased, is_manufactured, is_sellable,
-                   sales_price, standard_cost,
-                   reorder_point, reorder_quantity,
-                   valuation_class, active_bom_id,
-                   status, version
-            FROM product.product WHERE sku = ?
-            """,
-            ROW_MAPPER, sku
+        Optional<UUID> productId = jdbc.query(
+            "SELECT product_id FROM product.product WHERE sku = ?",
+            (rs, n) -> rs.getObject("product_id", UUID.class),
+            sku
         ).stream().findFirst();
+        if (productId.isEmpty()) return Optional.empty();
+        return findById(ProductId.of(productId.get()));
     }
 
     @Override
     public List<Product> findAll() {
+        List<UUID> ids = jdbc.query(
+            "SELECT product_id FROM product.product ORDER BY sku",
+            (rs, n) -> rs.getObject("product_id", UUID.class)
+        );
+        if (ids.isEmpty()) return List.of();
+        Map<UUID, List<ApprovedVendor>> vendorsByProduct = loadApprovedVendors(ids);
         return jdbc.query(
             """
             SELECT product_id, sku, name, description, product_type, base_uom_id,
@@ -107,29 +97,89 @@ public class JdbcProductRepository implements ProductRepository {
             FROM product.product
             ORDER BY sku
             """,
-            ROW_MAPPER
+            rowMapper(vendorsByProduct)
         );
+    }
+
+    private RowMapper<Product> rowMapper(Map<UUID, List<ApprovedVendor>> vendorsByProduct) {
+        return (rs, n) -> {
+            UUID pid = rs.getObject("product_id", UUID.class);
+            return Product.reconstitute(
+                ProductId.of(pid),
+                new Sku(rs.getString("sku")),
+                rs.getString("name"),
+                rs.getString("description"),
+                ProductType.fromDb(rs.getString("product_type")),
+                rs.getObject("base_uom_id", UUID.class),
+                rs.getBoolean("is_stocked"),
+                rs.getBoolean("is_purchased"),
+                rs.getBoolean("is_manufactured"),
+                rs.getBoolean("is_sellable"),
+                Money.of(rs.getBigDecimal("sales_price"), "AUD"),
+                Money.of(rs.getBigDecimal("standard_cost"), "AUD"),
+                rs.getBigDecimal("reorder_point"),
+                rs.getBigDecimal("reorder_quantity"),
+                rs.getString("valuation_class"),
+                rs.getObject("active_bom_id", UUID.class),
+                Product.Status.valueOf(rs.getString("status").toUpperCase()),
+                rs.getLong("version"),
+                vendorsByProduct.getOrDefault(pid, List.of())
+            );
+        };
+    }
+
+    private Map<UUID, List<ApprovedVendor>> loadApprovedVendors(List<UUID> productIds) {
+        if (productIds.isEmpty()) return Map.of();
+        String placeholders = String.join(",", java.util.Collections.nCopies(productIds.size(), "?"));
+        List<Map.Entry<UUID, ApprovedVendor>> rows = jdbc.query(
+            """
+            SELECT product_id, supplier_id, supplier_code, supplier_name, is_preferred
+              FROM product.approved_vendor
+             WHERE product_id IN (""" + placeholders + """
+             )
+             ORDER BY product_id, is_preferred DESC, supplier_code
+            """,
+            (rs, n) -> Map.entry(
+                rs.getObject("product_id", UUID.class),
+                APPROVED_VENDOR_MAPPER.mapRow(rs, n)
+            ),
+            productIds.toArray()
+        );
+        Map<UUID, List<ApprovedVendor>> out = new HashMap<>();
+        for (Map.Entry<UUID, ApprovedVendor> r : rows) {
+            out.computeIfAbsent(r.getKey(), k -> new ArrayList<>()).add(r.getValue());
+        }
+        return out;
     }
 
     @Override
     public void save(Product product) {
-        // Slice B2: stamp the actor on every write. currentUser is request-scoped
-        // (HTTP threads carry the JWT principal); saga / scheduler / publisher
-        // threads return Optional.empty() and the column stays null.
         String actor = currentUser.currentUsername().orElse(null);
 
-        // Two paths: INSERT (version == 0 and id was just minted) or UPDATE.
-        // The optimistic-concurrency contract: UPDATE checks version and bumps
-        // it, refusing to write if another tx beat us to it.
         if (product.version() == 0) {
             insert(product, actor);
         } else {
             update(product, actor);
         }
-        // In the same transaction, write pending domain events to the outbox.
-        // The transactional boundary is the application service's @Transactional.
+        if (product.pullApprovedVendorsDirty()) {
+            writeApprovedVendors(product);
+        }
         for (DomainEvent event : product.pullPendingEvents()) {
             writeOutbox(event, actor);
+        }
+    }
+
+    private void writeApprovedVendors(Product p) {
+        jdbc.update("DELETE FROM product.approved_vendor WHERE product_id = ?", p.id().value());
+        for (ApprovedVendor v : p.approvedVendors()) {
+            jdbc.update("""
+                INSERT INTO product.approved_vendor
+                    (approved_vendor_id, product_id, supplier_id, supplier_code, supplier_name, is_preferred)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                UUID.randomUUID(), p.id().value(),
+                v.supplierId(), v.supplierCode(), v.supplierName(), v.preferred()
+            );
         }
     }
 
@@ -157,10 +207,6 @@ public class JdbcProductRepository implements ProductRepository {
                 p.reorderPoint(), p.reorderQuantity(),
                 p.valuationClass(), p.activeBomId(),
                 p.status().name().toLowerCase(),
-                // Persist with version=1 so a subsequent reload + mutate +
-                // save routes to UPDATE. The aggregate's in-memory version=0
-                // sentinel means "not yet persisted"; the row in the DB never
-                // sits at version=0.
                 1L,
                 actor, actor
             );

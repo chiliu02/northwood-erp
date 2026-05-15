@@ -3,7 +3,6 @@ package com.northwood.product.application;
 import com.northwood.product.application.dto.ApprovedVendorCommand;
 import com.northwood.product.application.dto.ProductView;
 import com.northwood.product.domain.ApprovedVendor;
-import com.northwood.product.domain.ApprovedVendorRepository;
 import com.northwood.product.domain.Product;
 import com.northwood.product.domain.ProductId;
 import com.northwood.product.domain.ProductRepository;
@@ -11,11 +10,9 @@ import com.northwood.product.domain.ProductType;
 import com.northwood.shared.domain.Money;
 import com.northwood.shared.domain.Sku;
 import java.math.BigDecimal;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,11 +39,9 @@ public class ProductService {
     private static final Logger log = LoggerFactory.getLogger(ProductService.class);
 
     private final ProductRepository products;
-    private final ApprovedVendorRepository approvedVendors;
 
-    public ProductService(ProductRepository products, ApprovedVendorRepository approvedVendors) {
+    public ProductService(ProductRepository products) {
         this.products = products;
-        this.approvedVendors = approvedVendors;
     }
 
     @Transactional
@@ -178,49 +173,26 @@ public class ProductService {
     }
 
     /**
-     * Replace the approved-vendor list for a product. The list is persisted
-     * via {@link ApprovedVendorRepository} (separate table {@code product.approved_vendor})
-     * and the aggregate emits {@link com.northwood.product.domain.events.ApprovedVendorListChanged} carrying the
-     * full new list for downstream consumers.
-     *
-     * <p>The vendor list is not aggregate state (it lives in a sibling table),
-     * so the no-op check happens here in the service rather than on the
-     * aggregate. The aggregate retains its own discontinued check as
-     * defense-in-depth.
+     * Replace the approved-vendor list for a product. The aggregate holds the
+     * list in-memory (loaded by the repository on {@code findById}), enforces
+     * the no-op check + discontinued guard, and emits
+     * {@link com.northwood.product.domain.events.ApprovedVendorListChanged}.
+     * The repository writes the {@code product.approved_vendor} rows when the
+     * aggregate's dirty flag is set.
      */
     @Transactional
     public void setApprovedVendors(
         UUID productId,
         List<ApprovedVendorCommand> vendors
     ) {
+        Objects.requireNonNull(vendors, "vendors");
         Product product = products.findById(ProductId.of(productId))
             .orElseThrow(() -> new ProductNotFoundException(productId));
-        if (product.status() == Product.Status.DISCONTINUED) {
-            throw new IllegalStateException("Cannot change approved vendors on a discontinued product");
-        }
-        Objects.requireNonNull(vendors, "vendors");
         List<ApprovedVendor> mapped = vendors.stream()
             .map(v -> new ApprovedVendor(v.supplierId(), v.supplierCode(), v.supplierName(), v.preferred()))
             .toList();
-        List<ApprovedVendor> existing = approvedVendors.findForProduct(productId);
-        if (sameVendorSet(existing, mapped)) {
-            log.debug("setApprovedVendors product_id={} ignored — vendor set unchanged ({} entries)",
-                productId, mapped.size());
-            return;
-        }
-        approvedVendors.replaceFor(productId, mapped);
-        product.emitApprovedVendorListChanged(mapped);
+        product.setApprovedVendors(mapped);
         products.save(product);
-    }
-
-    private static boolean sameVendorSet(
-        List<ApprovedVendor> a,
-        List<ApprovedVendor> b
-    ) {
-        if (a.size() != b.size()) return false;
-        Set<ApprovedVendor> sa = new HashSet<>(a);
-        Set<ApprovedVendor> sb = new HashSet<>(b);
-        return sa.equals(sb);
     }
 
     @Transactional

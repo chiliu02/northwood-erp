@@ -12,7 +12,6 @@ import com.northwood.purchasing.application.inbox.SupplierInvoiceRejectedHandler
 import com.northwood.purchasing.application.inbox.SupplierPaymentMadeHandler;
 import com.northwood.purchasing.infrastructure.saga.JdbcPurchaseToPaySagaManager;
 import com.northwood.purchasing.infrastructure.saga.PurchaseToPaySagaWorker;
-import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.NoopPlatformTransactionManager;
@@ -56,7 +55,7 @@ public final class PurchasingTestKit {
     public final InMemoryPurchaseToPaySagaPort sagas = new InMemoryPurchaseToPaySagaPort();
     public final InMemoryApprovedVendorQueryPort approvedVendorQuery = new InMemoryApprovedVendorQueryPort();
     public final InMemorySupplierProductPriceLookup priceLookup = new InMemorySupplierProductPriceLookup();
-    public final InMemorySupplierProductPriceRepository priceRepository = new InMemorySupplierProductPriceRepository();
+    public final InMemorySupplierProductPriceRepository priceRepository;
     public final InMemoryProductApprovedVendorProjection approvedVendorProjection = new InMemoryProductApprovedVendorProjection();
     public final InMemoryDiscontinuedProductLookup discontinuedProducts = new InMemoryDiscontinuedProductLookup();
     public final InMemoryPurchaseOrderReceiptProjection receiptProjection;
@@ -73,6 +72,7 @@ public final class PurchasingTestKit {
     public PurchasingTestKit(SynchronousBus bus, ObjectMapper json) {
         this.orders = new InMemoryPurchaseOrderRepository(outbox, json);
         this.requisitions = new InMemoryPurchaseRequisitionRepository(outbox, json);
+        this.priceRepository = new InMemorySupplierProductPriceRepository(outbox, json);
         this.receiptProjection = new InMemoryPurchaseOrderReceiptProjection(orders);
 
         // Seed a default supplier so shortage-driven requisitions have somewhere to land.
@@ -88,8 +88,7 @@ public final class PurchasingTestKit {
             requisitions, suppliers, purchaseOrderService, discontinuedProducts, true
         );
 
-        CurrentUserAccessor currentUser = new CurrentUserAccessor();
-        this.priceService = new SupplierProductPriceService(priceRepository, outbox, json, currentUser);
+        this.priceService = new SupplierProductPriceService(priceRepository);
 
         this.sagaWorker = new PurchaseToPaySagaWorker(sagaManager);
 

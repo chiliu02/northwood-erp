@@ -6,6 +6,63 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-16 — §2.17: Promote `SupplierProductPrice` + fold `ApprovedVendor` into Product
+
+Tier-1 cleanup of the two remaining `*Repository`-without-an-aggregate offenders. Different DDD shapes, different remedies.
+
+### `SupplierProductPrice` — new standalone aggregate
+
+Promoted from a row-level write port (`find` / `insert` / `updatePrice` / `listForSupplier`) to a real aggregate root keyed by `(supplier_id, product_id, currency_code)`:
+
+- New `SupplierProductPrice` aggregate in `purchasing.domain`: identity VO (`SupplierProductPriceId`), `AGGREGATE_TYPE = "SupplierProductPrice"`, `version` for optimistic concurrency, `pendingEvents`. Static factories `register(...)` (emits `SupplierProductPriceChanged` with `oldUnitPrice = null`) and `reconstitute(...)`. Intent-named `updatePrice(BigDecimal newUnitPrice)` mutator with three guards (null, non-positive, no-op via `compareTo`); emits with `oldUnitPrice` carried.
+- `SupplierProductPriceRepository` rewritten to the standard aggregate shape: `findByKey(supplier, product, currency)`, `save(...)` (drains `pendingEvents` to the outbox), `listForSupplier(...)`.
+- `JdbcSupplierProductPriceRepository`: insert/update path on `version == 0`, optimistic-concurrency `UPDATE ... WHERE version = ?` for existing aggregates, outbox drain inline.
+- `SupplierProductPriceService` reduced to a thin orchestrator: load → register-or-update → save. No more direct `OutboxPort` / `ObjectMapper` / `CurrentUserAccessor` dependencies (the repository owns those now).
+- `SupplierProductPriceChanged.AGGREGATE_TYPE` constant deleted from the event class — producer-side outbox writes reference `SupplierProductPrice.AGGREGATE_TYPE` from the aggregate root. No cross-service consumer reads the event-class constant today; if one ever needs to, the constant can be re-added per the §2.20 plan.
+- New `SupplierProductPriceTest` (14 cases: factory guards + update guards + no-op suppression + reconstitute round-trip).
+- `SupplierProductPriceServiceTest` rewritten to the slim aggregate-orchestration shape (6 cases).
+- `InMemorySupplierProductPriceRepository` (test-harness) rewritten to match the new interface; `PurchasingTestKit` wires `OutboxPort` + `ObjectMapper` into the in-memory repo and drops the `CurrentUserAccessor` no-longer-needed by the service.
+
+### `ApprovedVendor` — folded into Product (option (b), not (a))
+
+Originally backlogged with a recommendation for option (a) — a standalone `ApprovedVendorList` aggregate keyed by `productId`. Reading the code flipped the recommendation: `Product.emitApprovedVendorListChanged(...)` already existed and the event's `aggregateId` was `productId`, so the Product aggregate semantically already owned the data. Option (a) would have created two aggregates sharing the same id, which is semantically incoherent. Option (b) just finishes the half-implementation.
+
+- `Product` aggregate now holds the approved-vendor list as a child collection (`List<ApprovedVendor> approvedVendors`, default empty). Old `emitApprovedVendorListChanged(List)` method renamed to `setApprovedVendors(List)` — owns the discontinued check (existing), no-op check (set comparison, moved from service), state mutation, dirty-flag flip, and event emission.
+- New `pullApprovedVendorsDirty()` one-shot flag for the repository to know when to rewrite the `product.approved_vendor` table. Mirrors the `pullPendingEvents()` shape.
+- `Product.reconstitute(...)` signature gained a trailing `List<ApprovedVendor> approvedVendors` parameter.
+- `JdbcProductRepository` now loads approved vendors alongside the product on `findById` / `findBySku` / `findAll` (single extra query per call; `findAll` does one bulk vendor query keyed by the just-loaded product ids), and writes them inside `save()` when `pullApprovedVendorsDirty()` returns true. Unrelated saves (`changeName`, `changeSalesPrice`, …) don't touch the side table.
+- `ApprovedVendorRepository` + `JdbcApprovedVendorRepository` deleted.
+- `ProductService.setApprovedVendors` reduced to a four-liner: load → mutator → save. No more `approvedVendors` injection, no more service-side no-op check, no more separate `replaceFor` call.
+- `ProductServiceTest` updated: drops the `ApprovedVendorRepository` mock; new helper `activeFinishedGoodWithVendors(List)` for the no-op-on-same-set test; updated `Product.reconstitute(...)` signatures.
+- `ProductTest` `ApprovedVendorList` nested test: renamed cases from `emit_*` to `set_*`; added `no_op_on_same_set_emits_nothing_and_leaves_dirty_false` and `pull_dirty_resets_to_false`.
+- `ApprovedVendor.java` Javadoc cross-ref updated (`ApprovedVendorRepository#replaceFor` → `Product.setApprovedVendors`).
+
+### Why option (b) for ApprovedVendor
+
+Three reasons:
+
+1. **Event ownership says Product**. `ApprovedVendorListChanged.aggregateId = productId`. A consumer doing Find Usages on the event class arrives at Product. Splitting the data into a separate aggregate would force either an event migration or two aggregates sharing one id — both worse than the current arrangement.
+2. **The half-implementation was already pointing this way**. `Product.emitApprovedVendorListChanged(...)` existed before this slice; the persistence was just lagging behind.
+3. **The load cost is bounded**. Approved-vendor lists are typically 1–5 entries per SKU. Loading them alongside the product is one extra query, not N+1, even in `findAll`. The read-side `ProductQueryPort` (which most listing screens use) is separate from `ProductRepository.findById` and unaffected by this change.
+
+### Convention-compliance state after §2.17
+
+The known-exception list shrinks from three offenders to **one**: `BomEditRepository` (§2.16). The audit started with 5–6 candidates; §2.17 + §2.18 + §2.19 cleared four of them in different ways:
+
+- §2.17 — promote (`SupplierProductPrice`) or fold (`ApprovedVendor`)
+- §2.18 — rename to `*QueryPort` (`Routing`, `Supplier`) when there are no mutators
+- §2.19 — relax the rule for event-less write-once aggregates (`JournalEntry`)
+
+### Smoke
+
+- `mvn -DskipTests clean compile` ✅ 19/19 modules green
+- `mvn -DskipTests test-compile` ✅ 19/19 modules green
+- `mvn -pl purchasing-service test` ✅ 79 tests pass (14 new `SupplierProductPriceTest` + 6 reshaped `SupplierProductPriceServiceTest` cases)
+- `mvn -pl product-service test` ✅ 87 tests pass (5 reshaped `ApprovedVendorList` cases; ProductServiceTest's 3 SetApprovedVendors cases reshaped to use the aggregate directly)
+- `mvn -pl test-harness test` ✅ 8/8 E2E tests pass
+
+---
+
 ## 2026-05-16 — §2.18 + §2.19: rename read-only repos to `*QueryPort`, relax convention for event-less aggregates
 
 Two follow-on slices off the 2026-05-15 *no-`*Repository`-without-an-aggregate* rule. Both are convention compliance: §2.18 retires two `*Repository` interfaces whose targets weren't real DDD aggregates; §2.19 relaxes the rule's third clause so it cleanly covers the one legitimate event-less aggregate in the codebase.

@@ -3,15 +3,14 @@ package com.northwood.product.domain;
 import java.util.UUID;
 
 /**
- * One supplier approved to supply a product. Lives on the product aggregate
- * as a child collection (separate table {@code product.approved_vendor}); the
- * collection mutates as a whole via
- * {@link ApprovedVendorRepository#replaceFor} and is emitted in full on
- * {@code product.ApprovedVendorListChanged}.
+ * One supplier approved to supply a product. Child collection on the
+ * {@code Product} aggregate (denormalised into {@code product.approved_vendor}
+ * for persistence); mutated as a whole via {@code Product.setApprovedVendors}
+ * and emitted in full on {@code product.ApprovedVendorListChanged}.
  *
  * <p>Domain VO — kept here in {@code domain/} rather than nested on the event
- * class so repository ports + adapters don't need to import {@code events.*}.
- * The event references the VO, not the other way around.
+ * class so the aggregate + repository can reference it without importing
+ * {@code events.*}. The event references the VO, not the other way around.
  */
 public record ApprovedVendor(
     UUID supplierId,

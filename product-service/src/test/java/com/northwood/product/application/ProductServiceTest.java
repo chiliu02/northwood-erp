@@ -2,7 +2,6 @@ package com.northwood.product.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -11,7 +10,6 @@ import static org.mockito.Mockito.when;
 import com.northwood.product.application.dto.ApprovedVendorCommand;
 import com.northwood.product.application.dto.ProductView;
 import com.northwood.product.domain.ApprovedVendor;
-import com.northwood.product.domain.ApprovedVendorRepository;
 import com.northwood.product.domain.Product;
 import com.northwood.product.domain.ProductId;
 import com.northwood.product.domain.ProductRepository;
@@ -54,13 +52,12 @@ class ProductServiceTest {
     private static final UUID UOM_EA = UUID.randomUUID();
 
     @Mock ProductRepository repo;
-    @Mock ApprovedVendorRepository approvedVendors;
 
     private ProductService service;
 
     @BeforeEach
     void setUp() {
-        service = new ProductService(repo, approvedVendors);
+        service = new ProductService(repo);
     }
 
     private Product activeFinishedGood() {
@@ -73,7 +70,23 @@ class ProductServiceTest {
             Money.of(new BigDecimal("60.00"), "AUD"),
             new BigDecimal("5"), new BigDecimal("20"),
             "finished_goods", null,
-            Product.Status.ACTIVE, 1L
+            Product.Status.ACTIVE, 1L,
+            List.of()
+        );
+    }
+
+    private Product activeFinishedGoodWithVendors(List<ApprovedVendor> vendors) {
+        return Product.reconstitute(
+            ProductId.of(PID),
+            new Sku("FG-001"), "Finished Good 1", "desc",
+            ProductType.FINISHED_GOOD, UOM_EA,
+            true, false, true, true,
+            Money.of(new BigDecimal("100.00"), "AUD"),
+            Money.of(new BigDecimal("60.00"), "AUD"),
+            new BigDecimal("5"), new BigDecimal("20"),
+            "finished_goods", null,
+            Product.Status.ACTIVE, 1L,
+            vendors
         );
     }
 
@@ -261,7 +274,8 @@ class ProductServiceTest {
                 Money.of(new BigDecimal("100"), "AUD"), Money.of(new BigDecimal("60"), "AUD"),
                 BigDecimal.ZERO, BigDecimal.ZERO,
                 null, bomId,
-                Product.Status.ACTIVE, 1L
+                Product.Status.ACTIVE, 1L,
+                List.of()
             );
             when(repo.findById(ProductId.of(PID))).thenReturn(Optional.of(p));
 
@@ -279,7 +293,6 @@ class ProductServiceTest {
         @Test void replaces_vendor_list_and_emits_event() {
             Product p = activeFinishedGood();
             when(repo.findById(ProductId.of(PID))).thenReturn(Optional.of(p));
-            when(approvedVendors.findForProduct(PID)).thenReturn(List.of());
 
             List<ApprovedVendorCommand> newList = List.of(
                 new ApprovedVendorCommand(supA, "SUP-A", "Supplier A", true),
@@ -287,11 +300,8 @@ class ProductServiceTest {
             );
             service.setApprovedVendors(PID, newList);
 
-            List<ApprovedVendor> expectedDomain = List.of(
-                new ApprovedVendor(supA, "SUP-A", "Supplier A", true),
-                new ApprovedVendor(supB, "SUP-B", "Supplier B", false)
-            );
-            verify(approvedVendors).replaceFor(eq(PID), eq(expectedDomain));
+            assertThat(p.approvedVendors()).hasSize(2);
+            assertThat(p.pullApprovedVendorsDirty()).isTrue();
             List<DomainEvent> events = savedEvents();
             assertThat(events).hasSize(1).first().isInstanceOf(ApprovedVendorListChanged.class);
             ApprovedVendorListChanged ev = (ApprovedVendorListChanged) events.get(0);
@@ -299,18 +309,17 @@ class ProductServiceTest {
         }
 
         @Test void no_op_on_same_vendor_set() {
-            Product p = activeFinishedGood();
-            when(repo.findById(ProductId.of(PID))).thenReturn(Optional.of(p));
-
             ApprovedVendor existing = new ApprovedVendor(supA, "SUP-A", "Supplier A", true);
-            when(approvedVendors.findForProduct(PID)).thenReturn(List.of(existing));
+            Product p = activeFinishedGoodWithVendors(List.of(existing));
+            when(repo.findById(ProductId.of(PID))).thenReturn(Optional.of(p));
 
             service.setApprovedVendors(PID, List.of(
                 new ApprovedVendorCommand(supA, "SUP-A", "Supplier A", true)
             ));
 
-            verify(approvedVendors, never()).replaceFor(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
-            verify(repo, never()).save(org.mockito.ArgumentMatchers.any());
+            verify(repo).save(p);
+            assertThat(p.pullPendingEvents()).isEmpty();
+            assertThat(p.pullApprovedVendorsDirty()).isFalse();
         }
 
         @Test void rejects_on_discontinued_product() {
@@ -322,7 +331,8 @@ class ProductServiceTest {
                 Money.of(new BigDecimal("100"), "AUD"), Money.of(new BigDecimal("60"), "AUD"),
                 BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null,
-                Product.Status.DISCONTINUED, 2L
+                Product.Status.DISCONTINUED, 2L,
+                List.of()
             );
             when(repo.findById(ProductId.of(PID))).thenReturn(Optional.of(p));
 
@@ -331,7 +341,7 @@ class ProductServiceTest {
             ))).isInstanceOf(IllegalStateException.class)
               .hasMessageContaining("discontinued");
 
-            verify(approvedVendors, never()).replaceFor(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+            verify(repo, never()).save(org.mockito.ArgumentMatchers.any());
         }
     }
 

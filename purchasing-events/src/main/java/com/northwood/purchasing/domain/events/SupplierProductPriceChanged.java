@@ -29,12 +29,5 @@ public record SupplierProductPriceChanged(
 
     public static final String EVENT_TYPE = "purchasing.SupplierProductPriceChanged";
 
-    /**
-     * Wire-format aggregate-type. Carried on the event itself because there
-     * is no dedicated SupplierProductPrice Java aggregate root — the price
-     * list is maintained directly through the application service.
-     */
-    public static final String AGGREGATE_TYPE = "SupplierProductPrice";
-
     @Override public String eventType() { return EVENT_TYPE; }
 }

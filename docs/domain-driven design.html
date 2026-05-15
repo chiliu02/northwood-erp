@@ -357,7 +357,7 @@
     <h3>Purchasing <span class="tag supporting">Supporting</span></h3>
     <p>Requisition &rarr; approved purchase order &rarr; goods receipt loop. Includes shortage-driven auto-PR generation.</p>
     <dl>
-      <dt>Aggregates</dt><dd><code>PurchaseRequisition</code>, <code>PurchaseOrder</code>. <code>Supplier</code> is a read-side query port (<code>SupplierQueryPort</code>); <code>SupplierProductPrice</code> aggregate promotion tracked in <code>dev-todo.md</code> §2.17.</dd>
+      <dt>Aggregates</dt><dd><code>PurchaseRequisition</code>, <code>PurchaseOrder</code>, <code>SupplierProductPrice</code> (per-row supplier price-list aggregate). <code>Supplier</code> is a read-side query port (<code>SupplierQueryPort</code>).</dd>
       <dt>Process manager</dt><dd><code>PurchaseToPaySaga</code></dd>
       <dt>Publishes</dt><dd>4 events &mdash; <code>PurchaseOrderApproved</code>, <code>SupplierProductPriceChanged</code> &hellip;</dd>
     </dl>
@@ -580,8 +580,8 @@
   <thead><tr><th>Context</th><th>Aggregate root</th><th>Internal entities / VOs</th><th>Key invariants</th></tr></thead>
   <tbody>
     <tr><td>Product</td><td><code>Product</code></td>
-        <td><code>ApprovedVendor</code> (VO list)</td>
-        <td>Discontinued products reject every mutator; no-op suppression on equal-value writes.</td></tr>
+        <td><code>ApprovedVendor</code> (VO list — child collection persisted to <code>product.approved_vendor</code> via dirty-flag drain on <code>save()</code>)</td>
+        <td>Discontinued products reject every mutator; no-op suppression on equal-value writes; approved-vendor list compared as a set (order-insensitive).</td></tr>
     <tr><td>Sales</td><td><code>SalesOrder</code></td>
         <td><code>SalesOrderLine</code></td>
         <td>State machine <code>open &rarr; in_fulfilment &rarr; shipped &rarr; invoiced &rarr; paid</code>; cancel rejected past <code>goods_shipped</code>; total = sum of lines.</td></tr>
@@ -606,6 +606,9 @@
     <tr><td>Purchasing</td><td><code>PurchaseOrder</code></td>
         <td><code>PurchaseOrderLine</code></td>
         <td>Approval state machine; auto-approve for shortage-driven gated by config.</td></tr>
+    <tr><td>Purchasing</td><td><code>SupplierProductPrice</code></td>
+        <td>&mdash;</td>
+        <td>Per-row aggregate for the supplier price list, keyed on <code>(supplier_id, product_id, currency_code)</code>. Intent-named <code>updatePrice</code> mutator with no-op suppression via <code>BigDecimal.compareTo</code>.</td></tr>
     <tr><td>Finance</td><td><code>SupplierInvoice</code>, <code>CustomerInvoice</code></td>
         <td>Lines</td>
         <td>Three-way match on supplier side (PO + receipt + invoice).</td></tr>
@@ -619,9 +622,8 @@
 </table>
 
 <div class="callout warn">
-  <strong>Known exceptions &mdash; three <code>*Repository</code> interfaces without backing aggregates.</strong>
-  Three legacy offenders predate the <em>no <code>*Repository</code> without an aggregate</em> convention
-  (captured in <code>docs/conventions.md</code>) and are tracked for promotion:
+  <strong>Known exception &mdash; one <code>*Repository</code> interface without a backing aggregate.</strong>
+  After the 2026-05-15 / 2026-05-16 audit cleanup, one legacy offender remains:
   <ul style="margin: 0.4rem 0 0 1.2rem; padding-left: 0;">
     <li><code>manufacturing.BomEditRepository</code> &mdash; row-level write port for
         <code>bom_header</code> / <code>bom_line</code>; invariants (acyclic graph,
@@ -629,20 +631,23 @@
         <code>BomCycleDetector</code> + the DB partial unique index
         <code>uq_bom_active_per_product</code>. Promotion to a <code>Bom</code> aggregate
         with <code>activate(BomCycleDetector)</code> tracked in <code>dev-todo.md</code> §2.16.</li>
-    <li><code>purchasing.SupplierProductPriceRepository</code> &mdash; no
-        <code>SupplierProductPrice</code> Java class; row-level write port keyed on
-        <code>(supplier_id, product_id, currency_code)</code>.
-        <code>SupplierProductPriceChanged.AGGREGATE_TYPE</code> lives on the event class
-        as the cross-service-emission exception. Promotion tracked in <code>dev-todo.md</code> §2.17.</li>
-    <li><code>product.ApprovedVendorRepository</code> &mdash; <code>ApprovedVendor</code>
-        is a value object of <code>Product</code>, not an aggregate root.
-        Resolution tracked in <code>dev-todo.md</code> §2.17.</li>
   </ul>
-  <p style="margin: 0.5rem 0 0;">New code must not introduce further offenders. Two prior
-  false-positive offenders (<code>RoutingRepository</code>, <code>SupplierRepository</code>) were
-  cleared 2026-05-16 by renaming to <code>RoutingQueryPort</code> / <code>SupplierQueryPort</code>
-  (§2.18 in <code>dev-done.md</code>) &mdash; their target classes have no mutators / events /
-  <code>pendingEvents</code>, so they're query ports, not DDD repositories.</p>
+  <p style="margin: 0.5rem 0 0;">New code must not introduce further offenders. Four prior offenders
+  were resolved 2026-05-16:</p>
+  <ul style="margin: 0.2rem 0 0 1.2rem; padding-left: 0;">
+    <li>§2.17 &mdash; <code>SupplierProductPriceRepository</code> is now the real DDD Repository for
+        the new <code>SupplierProductPrice</code> aggregate root
+        (<code>AGGREGATE_TYPE</code> + intent-named <code>updatePrice</code> mutator +
+        <code>pendingEvents</code>).</li>
+    <li>§2.17 &mdash; <code>ApprovedVendorRepository</code> deleted; approved-vendor list folded into
+        the <code>Product</code> aggregate as a child collection, mutated via
+        <code>Product.setApprovedVendors</code>, persisted by <code>JdbcProductRepository</code>
+        on a dirty-flag check.</li>
+    <li>§2.18 &mdash; <code>RoutingRepository</code> / <code>SupplierRepository</code> renamed to
+        <code>RoutingQueryPort</code> / <code>SupplierQueryPort</code> (moved from <code>domain/</code>
+        to <code>application/</code>) since their target classes have no mutators / events /
+        <code>pendingEvents</code>.</li>
+  </ul>
 </div>
 
 <div class="callout">
@@ -959,7 +964,7 @@ public class ProductService {
     <tr><td>Transaction script masquerading as DDD</td>
         <td>Application services orchestrate; aggregates own the logic + emit events. The grep <code>JdbcTemplate</code> in <code>application/</code> &rarr; zero is the canary.</td></tr>
     <tr><td><code>*Repository</code> without a backing aggregate</td>
-        <td>Convention captured in <code>docs/conventions.md</code>: every <code>*Repository</code> interface in <code>domain/</code> must have a sibling aggregate root in the same package declaring <code>AGGREGATE_TYPE</code>. Event-less write-once aggregates (e.g. <code>finance.JournalEntry</code>) are permitted. Three legacy offenders (<code>BomEditRepository</code>, <code>SupplierProductPriceRepository</code>, <code>ApprovedVendorRepository</code>) tracked for promotion in <code>dev-todo.md</code> §2.16–§2.17; new code must not add more.</td></tr>
+        <td>Convention captured in <code>docs/conventions.md</code>: every <code>*Repository</code> interface in <code>domain/</code> must have a sibling aggregate root in the same package declaring <code>AGGREGATE_TYPE</code>. Event-less write-once aggregates (e.g. <code>finance.JournalEntry</code>) are permitted. One legacy offender (<code>BomEditRepository</code>) tracked for promotion in <code>dev-todo.md</code> §2.16; four prior offenders resolved 2026-05-16 (§2.17 + §2.18). New code must not add more.</td></tr>
   </tbody>
 </table>
 
