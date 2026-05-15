@@ -6,7 +6,20 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
-## 2026-05-15 — Close §1G.1–§1G.4: demo-web-ui story-coverage gaps
+## 2026-05-15 — Sharper convention: no `*Repository` without an aggregate
+
+Locked in the rule that every `*Repository` interface in `<service>.domain/` must have a sibling aggregate root in the same package declaring `public static final String AGGREGATE_TYPE`. Surfaced 2026-05-15 while drafting `docs/domain-driven design.html`: `manufacturing.BomEditRepository` is today's only offender — uses the `*Repository` suffix but is a row-level write port for `bom_header` / `bom_line` with invariants (acyclic graph, single-active-per-product, no-edit-on-active) sitting in `BomEditService` + `BomCycleDetector` + the DB partial unique index `uq_bom_active_per_product`, not on an aggregate.
+
+For a showcase codebase, a `*Repository` that doesn't carry the DDD contract (aggregate root + intent-named mutators + `pendingEvents` drained by `save()`) misleads every reader who's internalised the convention from the rest of the codebase. The right answer is to promote (Option 1 in the rule) or pick a different suffix (Option 2). Re-using `*Repository` is forbidden.
+
+### Shipped
+
+- **`CLAUDE.md` → *Naming summary*.** Added the one-line rule + pointer to `docs/conventions.md` for the full version. Notes `BomEditRepository` as the known exception tracked in §2.16.
+- **`docs/conventions.md` → new `*Repository` rule subsection.** Sits right above the existing `*Projection` rule paragraph. Spells out the contract (`AGGREGATE_TYPE` + intent-named mutators + `pendingEvents` drain), the two legitimate options (promote or pick a different suffix), the mechanical naming check (`find **/domain/*Repository.java` ↔ files declaring `AGGREGATE_TYPE` in the same package), and the BomEditRepository known-exception callout.
+- **`docs/domain-driven design.html`.** Aggregate inventory table (§6) drops the `BomEdit` cell — `Routing` stays as the sole manufacturing aggregate alongside `WorkOrder`. New warn callout under the inventory table calls out the BOM situation. Anti-patterns table (§13) adds the row "`*Repository` without a backing aggregate" with the new convention as the avoidance mechanism.
+- **`docs/dev-todo.md` → §2.16.** Backlog entry for the BOM aggregate promotion itself: new `Bom` root + `BomId` + `Status` enum + `BomLine` + `BomRepository`, `BomCycleDetector` passed into `activate(...)` as a domain-service method parameter, `ActiveBomChanged` emitted from inside `Bom.activate(...)`, `JdbcBomEditRepository` retired, `BomTest` covering guards.
+
+No code touched in this slice — convention + docs only. The actual promotion (a real refactor with new aggregate + tests + JDBC repository) is §2.16 and ships as its own slice.
 
 Closes the four `demo-web-ui` command-driver gaps surfaced by the 2026-05-15 cross-SPA audit (see `dev-todo.md` §1G). Each story already had its REST endpoint shipped; the gaps were SPA-only — no fetcher, no form, no button. Bundled into one slice because all four touch the same two files (`api/commands.ts` + a route component) and share the existing modal / FieldRow / FormStatus toolkit.
 

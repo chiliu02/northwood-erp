@@ -360,6 +360,23 @@ Bounded retry loop (3 attempts, 10ms / 40ms / 160ms exponential backoff) on `try
 
 `applyStockReserved` now branches on `reservationStatus`: `RESERVED` shortcuts to `READY_TO_SHIP` (skipping manufacturing); `PARTIALLY_RESERVED` / `FAILED` keep the existing `STOCK_RESERVED → MANUFACTURING_REQUESTED` flow. Worker's `hasShortage == false` guard kept as a defensive "shouldn't happen" check. See dev-done.md.
 
+### 2.16 Promote `Bom` to a real aggregate (retire `BomEditRepository`)
+
+`manufacturing.domain.BomEditRepository` is today's only `*Repository` without a backing aggregate — violates the rule added 2026-05-15 in `docs/conventions.md` (*No `*Repository` without an aggregate*). Today's invariants (acyclic graph, single-active-per-product, no-edit-on-active) sit in `BomEditService` + `BomCycleDetector` + the DB partial unique index `uq_bom_active_per_product`.
+
+Scope:
+
+- Introduce `Bom` aggregate root in `manufacturing.domain` with `AGGREGATE_TYPE = "Bom"`, identity VO `BomId`, `Status` enum (`DRAFT` / `ACTIVE` / `INACTIVE`), internal `BomLine` entity, `version BIGINT` for optimistic concurrency, `pendingEvents`.
+- Static factories: `Bom.draft(...)`, `Bom.reconstitute(...)`.
+- Intent-named mutators: `addLine(BomLine.Spec)`, `removeLine(BomLineId)`, `activate(BomCycleDetector detector)`. `BomCycleDetector` passed as a method parameter (legitimate domain service: graph traversal spans multiple `Bom` aggregates).
+- `ActiveBomChanged` moves from `BomEditService` into `pendingEvents` emission inside `Bom.activate(...)`; drained by `BomRepository.save()`.
+- New `BomRepository` interface in `domain/`; new `JdbcBomRepository` in `infrastructure/persistence/`. Repository catches `DataIntegrityViolationException` from the partial unique index on `save()` and rethrows as a domain exception (`Bom.ActiveBomConflictException` or similar).
+- `BomEditService` becomes a thin orchestrator over the aggregate (or merge into `BomTreeService` and rename to `BomService`).
+- New `BomTest` covers null/blank guards on every factory + mutator, status-machine rejections (`addLine` / `removeLine` on non-draft, `activate` on non-draft, cycle rejection), no-op suppression on no-change `activate`, happy-path event emission.
+- Delete `BomEditRepository.java` + `JdbcBomEditRepository.java`. API DTOs (`AddBomLineRequest/Response`, `CreateBomDraftRequest/Response`) keep their wire shape.
+- DB schema unchanged — partial unique index `uq_bom_active_per_product` keeps doing its job at the DB level.
+- Update `docs/domain-driven design.html` aggregate inventory table once shipped (drop the §6 warn callout, add `Bom` as a row alongside `Routing`).
+
 ---
 
 ## 3. Low priority — explicitly deferred (skip unless asked)
