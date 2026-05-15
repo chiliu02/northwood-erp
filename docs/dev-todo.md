@@ -178,6 +178,55 @@ Logged 2026-05-14 after the event-flow audit. The Critical items (1F.1, 1F.2) ge
 
 ---
 
+## 1G. SPA story-coverage gaps (audit 2026-05-15)
+
+Cross-SPA audit against `docs/user-stories.md` found that every story (1.1–7.1) is *observable* in both SPAs, but four stories have command-driver gaps in `demo-web-ui` and one has a UX gap in `erp-web-ui`. All backend endpoints exist; these are SPA-only slices.
+
+### 1G.1 demo-web-ui — Story 1.1 register product form
+
+`/products` is list + inline-edits only; no "Create SKU" button or form. `demo-web-ui/src/api/commands.ts` carries price / cost / reorder / discontinue wrappers but no `createProduct`. Emma can mutate existing seed SKUs but can't add a new one through this SPA. Backend: `POST /api/products` (Story 1.1 ✅ in user-stories).
+
+Scope: new fetcher in `commands.ts` (`createProduct(req)` → POST `/api/products`); new form route `/products/new` or inline modal on `/products`; ProductType + UoM picker (UoMs are seeded; ProductType is the existing enum).
+
+### 1G.2 demo-web-ui — Story 1.5 make-vs-buy toggle
+
+Backend endpoint `PUT /api/products/{id}/make-vs-buy` exists; `api/commands.ts` is missing the wrapper, and `Products.tsx` only imports the four other product commands. Not drivable from demo-web-ui today.
+
+Scope: one fetcher + one toggle/button on the product detail modal. Smallest of the four gaps.
+
+### 1G.3 demo-web-ui — Story 4.1 cancel-order button
+
+No `cancelSalesOrder` command, no cancel button in `SalesOrders.tsx` or any masterdetail. The cancellation saga compensation IS observable on `/saga-console` (catalog includes `compensating` / `compensated` states), but the trigger has to come from outside this SPA (curl, `erp-web-ui`, or Swagger). Backend: `POST /api/sales-orders/{id}/cancel` (Story 4.1 ✅ in user-stories).
+
+Scope: cancel button on sales-order detail (with reason dialog) + fetcher + 409-handling for orders past `goods_shipped`. Pattern mirrors `erp-web-ui`'s `SalesOrderDetail` Cancel button.
+
+### 1G.4 demo-web-ui — Story 6.1 PO-approve action
+
+Tom can raise a PR (`/purchase-requisitions`) and Olivia can post goods receipts / supplier invoices / payments. But the **PO-approve step** (`POST /api/purchase-orders/{id}/approve`) has no UI. The demo's scenario 7.1 silently relies on `northwood.purchasing.shortagePoAutoApprove=true` (the default) for shortage-driven POs — works in the scripted run. A manually-raised PR's PO lands at `'draft'` and parks indefinitely from this SPA's view.
+
+Scope: Approve button on `/purchase-orders` detail (with reviewer + reason dialog) + fetcher + state-aware button (only shows for `'draft'` POs). Pattern mirrors `erp-web-ui`'s `PurchaseOrderDetail` Approve dialog.
+
+### 1G.5 erp-web-ui — Story 7.1 scenario runner
+
+Every individual mutation exists across the persona pages, but there's no scripted-scenario runner like `demo-web-ui`'s `ScenarioRunnerModal`. An operator has to navigate 5–6 pages in order (Sarah places order → Linda completes ops → Mike posts shipment → Olivia processes payment, etc.). The "watch all three sagas march in lockstep" framing is weaker than demo-web-ui's because no orchestrator pauses on saga state.
+
+Scope: this is a bigger one-day slice — port the scenario runner shell from `demo-web-ui/src/scenarios/` to `erp-web-ui/src/scenarios/`, redefine step definitions in terms of `erp-web-ui` routes (e.g., navigate to `/sales-orders/new` then `/work-orders/{id}` then `/shipments/new`), and add a scenarios menu entry. Not story-blocking — every step works manually today.
+
+### Suggested order
+
+Cheapest to most-substantial within demo-web-ui: **1G.2 → 1G.3 → 1G.4 → 1G.1**. Each is independent — pick up whichever the next demo narrative needs.
+
+1G.5 (erp-web-ui scenario runner) stays parked unless a public-facing audience wants the orchestrated-walkthrough experience from the operational SPA too.
+
+### Why not now
+
+The 2026-05-15 audit was prompted by a "can we demo every story in both SPAs?" question. The answer is "yes for observation; mostly yes for driving." The five gaps above are real but none is blocking the showcase narrative (`demo-web-ui`'s scenarios 3.1 / 5.2 / 7.1 work end-to-end via the scripted runners; `erp-web-ui` is the operational SPA where all the persona-specific forms already exist). Pull forward when:
+
+- A manual demo (no scripted runner) wants to register a product / toggle make-vs-buy / cancel an order / manually approve a PO from `demo-web-ui` → 1G.1 / 1G.2 / 1G.3 / 1G.4.
+- An operational-SPA-only audience wants the orchestrated walkthrough → 1G.5.
+
+---
+
 ## 2. Polish on shipped slices
 
 _§3 Slices A–E shipped 2026-05-06. The remaining items below are deferred with explicit notes — none are demo-blocking. Pick up when a use case actually needs them._
