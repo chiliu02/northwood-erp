@@ -229,21 +229,15 @@ Today the converter handles same-currency pass-through, inverse-rate fallback, a
 - **Scheduled rate importer** — today rates are inserted manually for a few currency pairs. `@Scheduled` task fetching from an external feed would let the demo simulate a daily rate close.
 - **Triangulation through a base currency** — out of scope today (schema doesn't model a base currency); listed in §5 below.
 
-### 2.5 Application-layer unit-test coverage
+### 2.5 Application-layer + harness test coverage ✅ COMPLETE 2026-05-15
 
-**Phase A** ✅ shipped 2026-05-09 — 108 tests across 8 `*Service` classes; application-layer total ~190.  
-**Phase B** ✅ shipped 2026-05-10 — 39 tests across 10 inbox handlers; application-layer total ~230.  
-**Phase C — `Jdbc*` infrastructure tests (Testcontainers + real Postgres)** ✅ shipped 2026-05-12 — selective coverage where schema CHECK constraints carry real load. 20 IT cases across 3 adapters: `JdbcPurchaseOrderPaymentProjectionIT` (7, catches the `invoiced_amount` bug class), `JdbcStockBalanceWriterIT` (9), `JdbcWorkOrderRepositoryMaterialStatusIT` (4). Reusable scaffold pattern documented in dev-done.md.
+All sub-phases shipped (see dev-done.md for per-slice writeups):
 
-**§2.5 follow-up** ✅ resolved 2026-05-13 — the v3.sql drift with Slice B2 actor-audit columns was the trigger for the full baseline rebase: every changeset folded into the (now-renamed) `db/northwood_erp.sql`, all `db/changelog/changes/` files deleted, manufacturing IT's manual `ALTER TABLE` workaround dropped. See dev-done.md.
-
-See dev-done.md for per-service test counts and the patterns that emerged (real-aggregate fixtures, `OutboxRow` capture + typed JSON deserialise, `lenient().when(...)` for shared stubs, post-§2.9 shell-smoke shape for handlers).
-
-#### 2.5.1 Phase D — in-memory end-to-end saga harness ✅ Slices A–G shipped 2026-05-10 (follow-up ✅ shipped 2026-05-15)
-
-All 7 slices shipped: ManufacturingTestKit + FinanceTestKit + PurchasingTestKit + saga-worker driving for all three saga lifecycles + four E2E tests (O2C happy path, M2O shortage recovery, P2P happy path, sub-assembly recursion). Production refactor: `SalesOrderLineSnapshotPort` extracted; `MakeToOrderSagaWorker` switched from raw `JdbcTemplate` to `OutboxPort`. The harness now exercises every saga state machine end-to-end through real workers + bus dispatch with no Postgres / Kafka / Spring context.
-
-The Slice D follow-up — driving `ShipmentService` + `PaymentService` through the kits without event injection — shipped 2026-05-15. See dev-done.md for the per-slice writeups + the production-side refactors that landed.
+- **Phase A** ✅ 2026-05-09 — 108 tests across 8 `*Service` classes; application-layer total ~190.
+- **Phase B** ✅ 2026-05-10 — 39 tests across 10 inbox handlers; application-layer total ~230.
+- **Phase C** ✅ 2026-05-12 — selective `Jdbc*` Testcontainers ITs (20 cases across 3 adapters: `JdbcPurchaseOrderPaymentProjectionIT`, `JdbcStockBalanceWriterIT`, `JdbcWorkOrderRepositoryMaterialStatusIT`).
+- **§2.5 follow-up** ✅ 2026-05-13 — full baseline rebase: every changeset folded into (the renamed) `db/northwood_erp.sql`, `db/changelog/changes/` cleared, manufacturing IT's manual `ALTER TABLE` workaround dropped.
+- **§2.5.1 Phase D — in-memory end-to-end saga harness** ✅ Slices A–G shipped 2026-05-10; Slice D follow-up (drive `ShipmentService` + `PaymentService` through the kits without event injection) shipped 2026-05-15. Harness now exercises every saga state machine end-to-end through real workers + bus dispatch with no Postgres / Kafka / Spring context. E2E tests: `OrderToCashHappyPathTest`, `OrderToCashFirstLegTest`, `CancelCompensationTest`, `MakeToOrderShortagePathTest`, `SubAssemblyRecursionTest`, `PurchaseToPayHappyPathTest`, `PurchaseToPayRejectionPathTest`, `SetPriorityCascadeTest` — 8/8 green.
 
 ### 2.6 Smoke-test gaps that need a running stack
 
