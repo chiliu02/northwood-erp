@@ -6,6 +6,60 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-15 — Close Story 2.6: daily balance snapshots via rollup worker + snapshot DTO uniformity
+
+Closes Demo 2 / Story 2.6 (was 🚧 → ✅). Conversation-surfaced gap audit identified four real issues hiding under the single `wip_value` ⏳ bullet:
+
+1. **Daily AR / AP / inventory rows always 0.** The schema reserves four balance columns but no handler wrote them; only the as-of-now `/snapshot` endpoint computed AR / AP / inventory via SUM-window. Historical balance queries (`GET /api/financial-dashboard/{date}`) returned all-zero balance columns regardless of the date — Daniel couldn't answer "what was AR on 2026-05-08?"
+2. **`open_*` counters were monotonic "placed-on-this-date" tallies, not balances.** Three handlers (`SalesOrderPlacedHandler`, `PurchaseOrderCreatedHandler`, `WorkOrderCreatedHandler` in `dashboard/`) did `COL = COL + 1` per event and never decremented. The column name `open_sales_orders_count` promised balance semantics; the handler delivered a "created on day X" tally.
+3. **`FinancialDashboardSnapshot` DTO lacked `wipValue`.** Asymmetric with `FinancialDashboardView`; SPA's "As of now" row couldn't render a WIP tile.
+4. **Currency mismatch in `findSnapshot`** between transaction-currency (AR / AP) and product-valuation-currency (`inventory_value`) was undocumented.
+
+### Implementation
+
+**Rollup worker (B.1 core fix):**
+- New `FinancialDashboardProjection.refreshDailyBalances(LocalDate, String currency)` method. Single round-trip UPSERT with four scalar sub-selects feeding the six balance columns (AR + open-SO from SO360; AP + open-PO from PO tracking; inventory_value from ATP × `product_standard_cost`; open-WO count from `production_planning_board`). On conflict, only the balance columns are overwritten — flow columns owned by the event handlers stay intact.
+- New `infrastructure/dashboard/FinancialDashboardBalanceWorker` — `@Scheduled(fixedRateString = "${northwood.reporting.dashboard.balanceRefreshIntervalMs:60000}")`. Refreshes today's row for every configured currency (default: AUD only). Failure-tolerant: catches `RuntimeException` per currency so a transient connectivity glitch doesn't kill the whole tick.
+- `JdbcFinancialDashboardQueryPort.findSnapshot` retained as the as-of-now realtime view — same SQL logic the worker runs, but synchronous per request. Two paths intentional: snapshot endpoint = always-fresh on demand, daily row = balance as of last worker tick. The SPA hits both (snapshot tile + per-day grid) so the user sees real-time on top and historical-by-row underneath.
+
+**Counter cleanup (B.2 fix via removal):**
+- Deleted `reporting/.../inbox/dashboard/SalesOrderPlacedHandler.java`, `PurchaseOrderCreatedHandler.java`, `WorkOrderCreatedHandler.java`. These were the increment-only counter handlers; their semantics was wrong on day 2. The rollup worker now owns all balance columns.
+- Removed `recordSalesOrderPlaced` / `recordPurchaseOrderCreated` / `recordWorkOrderCreated` from `FinancialDashboardProjection` + impl.
+
+**DTO uniformity (B.3 fix):**
+- `FinancialDashboardSnapshot` gains a `wipValue BigDecimal` field. Always returns `BigDecimal.ZERO` from `findSnapshot`; commented as parked pending the costing-method decision. Wire shape now uniform with `FinancialDashboardView`.
+
+**Doc fix (B.4):**
+- `JdbcFinancialDashboardQueryPort.findSnapshot` Javadoc now documents the dual currency semantics (transaction currency for AR / AP / open-SO / open-PO; product valuation currency for `inventory_value`; currency-blind for `openWorkOrdersCount`). AUD-only demo doesn't bite; documented for multi-currency rollouts.
+
+**SPA update:**
+- `erp-web-ui/.../FinancialDashboard.tsx` adds three new columns to the *Recent days* grid: `AR @ EOD`, `AP @ EOD`, `Inventory @ EOD`. Picks them up directly from the per-day rows the worker now populates.
+- Footer rewritten: explains the rollup cadence + the parked `wip_value`. The TS interface adds `wipValue` to `FinancialDashboardSnapshot`.
+
+### Tests
+
+- `mvn test` full reactor green (no test changes — the existing E2E harness drives the flow-column writers, and the rollup worker is exercised on every real run).
+- `npm run typecheck` in `erp-web-ui` clean.
+- No new unit tests for `refreshDailyBalances` — the SQL is essentially the same logic as `findSnapshot` which was already in production, and a Testcontainers IT for this would duplicate the per-handler IT pattern from §2.5 Phase C without adding incremental signal. Worth a follow-up if a regression surfaces.
+
+### Docs
+
+- `docs/user-stories.md` Story 2.6 rewritten: flipped 🚧 → ✅; hybrid flow-vs-balance shape documented inline; the misleading "Per-day open-* counts" bullet replaced with the rollup-worker description; `wipValue` parking now narrowly scoped to derivation only (DTO + tile + column all present). New *Out-of-scope* block lists five documented deferrals: `wip_value` derivation, currency mismatch, multi-currency SPA selector, customer-collections widget, snapshot caching.
+- Three slightly stale items in the demo-script Demo 2 section are unaffected (it doesn't talk about per-day vs as-of-now distinction); no demo-script change needed.
+
+### Smoke
+
+`mvn install -DskipTests` reactor green; `mvn test` 8/8 harness + every service green; SPA typecheck clean. Live verification on the running stack — `GET /api/financial-dashboard/snapshot` returns non-zero AR / AP / inventory after a full O2C / P2P flow; `GET /api/financial-dashboard` shows the same numbers persisted onto today's row within 60 s.
+
+### Out-of-scope at end of slice (captured under Story 2.6)
+
+- `wip_value` derivation (costing decision parked).
+- Multi-currency SPA selector + per-column currency-context API.
+- Customer-collections widget reading `reporting.customer_dashboard_status`.
+- Snapshot caching / materialised-view backing.
+
+---
+
 ## 2026-05-15 — Story 2.2 staleness pass + ProductionPlanningQueryPort Javadoc fix
 
 Conversation-surfaced gap-audit on Story 2.2 (Production Planning Board, marked 🚧). The ⏳ bullet ("list endpoint to see all open work orders at once") turned out to be stale — `ProductionPlanningController.list()` exposes `GET /api/work-orders` and has done so since the §1B SPA-pages slice. The "5 events from manufacturing + inventory" claim was also an undercount: 10 events across 4 services actually feed the projection (manufacturing 6, inventory 2, purchasing 1, finance 1; the last three feed `setOpenPoCount` so the board shows live PO progress per WO).

@@ -34,6 +34,7 @@ interface FinancialDashboardSnapshot {
   accountsReceivable: string;
   accountsPayable: string;
   inventoryValue: string;
+  wipValue: string;
   openSalesOrdersCount: number;
   openPurchaseOrdersCount: number;
   openWorkOrdersCount: number;
@@ -63,36 +64,57 @@ export function FinancialDashboard() {
       key: "rev",
       header: "Sales revenue",
       numeric: true,
-      width: "140px",
+      width: "130px",
       render: (r) => <span className="tabular-nums">{formatMoney(r.salesRevenue, r.currencyCode)}</span>,
     },
     {
       key: "cogs",
       header: "COGS",
       numeric: true,
-      width: "140px",
+      width: "130px",
       render: (r) => <span className="tabular-nums text-text-muted">{formatMoney(r.costOfGoodsSold, r.currencyCode)}</span>,
     },
     {
       key: "gp",
       header: "Gross profit",
       numeric: true,
-      width: "140px",
+      width: "130px",
       render: (r) => <span className="tabular-nums font-medium">{formatMoney(r.grossProfit, r.currencyCode)}</span>,
     },
     {
       key: "cashIn",
       header: "Cash received",
       numeric: true,
-      width: "140px",
+      width: "130px",
       render: (r) => <span className="tabular-nums">{formatMoney(r.cashReceived, r.currencyCode)}</span>,
     },
     {
       key: "cashOut",
       header: "Cash paid",
       numeric: true,
-      width: "140px",
+      width: "130px",
       render: (r) => <span className="tabular-nums">{formatMoney(r.cashPaid, r.currencyCode)}</span>,
+    },
+    {
+      key: "ar",
+      header: "AR @ EOD",
+      numeric: true,
+      width: "130px",
+      render: (r) => <span className="tabular-nums text-text-muted">{formatMoney(r.accountsReceivable, r.currencyCode)}</span>,
+    },
+    {
+      key: "ap",
+      header: "AP @ EOD",
+      numeric: true,
+      width: "130px",
+      render: (r) => <span className="tabular-nums text-text-muted">{formatMoney(r.accountsPayable, r.currencyCode)}</span>,
+    },
+    {
+      key: "inv",
+      header: "Inventory @ EOD",
+      numeric: true,
+      width: "150px",
+      render: (r) => <span className="tabular-nums text-text-muted">{formatMoney(r.inventoryValue, r.currencyCode)}</span>,
     },
   ];
 
@@ -188,7 +210,10 @@ export function FinancialDashboard() {
         </section>
 
         <p className="text-xs text-text-muted">
-          <strong>WIP value</strong> column is parked — gated on a costing decision (LIFO / FIFO / weighted-avg) for{" "}
+          <strong>AR / AP / Inventory @ EOD</strong> are refreshed by a rollup worker every 60 s — historical
+          balance queries (<code className="font-mono">GET /api/financial-dashboard/{"{date}"}</code>) return the
+          worker's last write for that date. The <em>As of now</em> row up top is computed real-time on every read.{" "}
+          <strong>WIP value</strong> stays at 0 — gated on a costing decision (LIFO / FIFO / weighted-avg) for{" "}
           <code className="font-mono">wip_balance.average_cost</code>.
         </p>
       </div>

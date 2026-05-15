@@ -195,15 +195,30 @@ The last three feed `ProductionPlanningProjection.setOpenPoCount` so Linda sees 
 **Trigger** — `GET /api/purchase-orders/{id}/tracking`
 **Behaviour** — Per-PO accumulator of received / invoiced / paid amounts; status walks `pending → partially_received → received → matched → paid`.
 
-### Story 2.6 — Financial Dashboard Daily 🚧
+### Story 2.6 — Financial Dashboard Daily ✅
 
-**Trigger** — `GET /api/financial-dashboard` (list, AUD default), `GET /api/financial-dashboard/{date}`, `GET /api/financial-dashboard/snapshot`
+**Trigger** — `GET /api/financial-dashboard` (list by currency, AUD default), `GET /api/financial-dashboard/{date}` (per-day row), `GET /api/financial-dashboard/snapshot` (as-of-now totals).
 **Acceptance criteria**
-- ✅ One row per (dashboard_date, currency_code).
-- ✅ Per-day flow accumulators: sales_revenue, COGS, gross_profit, cash_received, cash_paid.
-- ✅ Per-day open-* counts: SO / PO / WO.
-- ✅ `inventory_value`, `accounts_receivable`, `accounts_payable` populated via the `/snapshot` endpoint (shipped 2026-05-12). Reporting projects `product_standard_cost` from `product.StandardCostChanged` and JOINs ATP × cost; AR / AP are SUM-windows over the SO360 + PO tracking projections.
-- ⏳ `wip_value` still parked. Gated on a costing decision (LIFO / FIFO / weighted-avg) for `wip_balance.average_cost`, which is 0 today.
+- ✅ One row per `(dashboard_date, currency_code)` with a **hybrid shape**:
+  - **Flow columns** (`sales_revenue`, `cost_of_goods_sold`, `gross_profit`, `cash_received`, `cash_paid`) — per-day deltas, written incrementally by event handlers on `CustomerInvoiceCreated` / `SupplierInvoiceApproved` / `CustomerPaymentReceived` / `SupplierPaymentMade`. Each handler bumps its column on the row matching the event's `occurredAt::date`.
+  - **Balance columns** (`accounts_receivable`, `accounts_payable`, `inventory_value`, `open_sales_orders_count`, `open_purchase_orders_count`, `open_work_orders_count`) — point-in-time balances, overwritten every 60 s by `FinancialDashboardBalanceWorker.refresh` via SUM-window over reporting's local projections (SO360 → AR + open-SO; PO tracking → AP + open-PO; ATP × `product_standard_cost` → inventory_value; production_planning_board → open-WO).
+- ✅ `GET /api/financial-dashboard/{date}` returns historical balances — Daniel can ask "what was AR on 2026-05-08?" and get the value the rollup worker persisted on that date, not just an as-of-now read.
+- ✅ `GET /api/financial-dashboard/snapshot` is the real-time as-of-now view, computed synchronously on every request via the same SUM-window logic. Cheap (4 small queries against indexed projections); paired with the worker so the SPA gets immediate feedback while the daily row catches up within a minute.
+- ✅ `FinancialDashboardSnapshot` carries `wipValue` (always `0` today) so the wire shape stays uniform with `FinancialDashboardView` — flip to a real computation when the WIP-costing decision lands.
+- ⏳ `wip_value` itself stays at `0`. Gated on a costing decision (LIFO / FIFO / weighted-avg) for `manufacturing.wip_balance.average_cost`. Schema column + DTO field + SPA tile are all wired through; only the value derivation is parked.
+
+**Read model** — `reporting.financial_dashboard_daily`
+**Events consumed** — `finance.CustomerInvoiceCreated`, `finance.SupplierInvoiceApproved`, `finance.CustomerPaymentReceived`, `finance.SupplierPaymentMade` (flow-column writers). The balance columns aren't event-driven — they're computed via the rollup worker reading reporting's own SO360 / PO tracking / ATP / production_planning_board projections, which are themselves event-driven from ~20 cross-service events.
+
+> Covered by integration via the end-to-end harness E2E tests (`OrderToCashHappyPathTest`, `PurchaseToPayHappyPathTest`) which drive every flow-column writer; daily-balance rollup runs on the reporting service in production and is verified live in the demo runthrough.
+
+**Out-of-scope, captured here so they aren't re-discovered**
+
+- **`wip_value` derivation.** Gated on the costing-method decision. Schema column + DTO field + SPA tile are in place; the worker writes 0 today.
+- **Currency mismatch on `inventory_value` vs AR / AP.** The `?currency=` parameter filters AR / AP / open-SO / open-PO on the **transaction** currency; `inventory_value` filters on the **product valuation** currency (`product_standard_cost.currency_code`). These can diverge in a multi-currency rollout. AUD-only demo doesn't bite; documented inline at `JdbcFinancialDashboardQueryPort.findSnapshot`.
+- **Multi-currency SPA selector.** `erp-web-ui/.../FinancialDashboard.tsx` hardcodes `CURRENCY = "AUD"`. Backend supports `?currency=USD`; frontend doesn't expose a switcher. Per the project-level *"multi-currency GL consolidation is low priority"* memo.
+- **Customer collections widget.** `CustomerDeactivatedHandler` writes `reporting.customer_dashboard_status` for AR-collections targeting, but no SPA widget surfaces the projection today. Land alongside an AR-aging slice.
+- **Snapshot caching.** Computed on every request via 3 small SUM queries; fine for the demo, would want materialised-view or cache backing at real scale.
 
 ---
 

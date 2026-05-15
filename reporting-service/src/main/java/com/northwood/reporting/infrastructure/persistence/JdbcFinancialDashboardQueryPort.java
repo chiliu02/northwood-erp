@@ -76,6 +76,18 @@ public class JdbcFinancialDashboardQueryPort implements FinancialDashboardQueryP
         // invoiced lines count (placed-but-not-yet-invoiced sits in backlog,
         // not AR). Open SO = any non-cancelled order still owing the
         // customer (outstanding > 0); covers placed-not-yet-fully-paid.
+        //
+        // Currency note: the `currencyCode` parameter filters AR / AP / open-SO
+        // / open-PO on the TRANSACTION currency (the SO/PO was raised in this
+        // currency). It also filters inventory_value on the PRODUCT VALUATION
+        // currency (product_standard_cost.currency_code). These can diverge —
+        // a USD-priced product sold to an AUD customer would surface on the
+        // AUD snapshot's AR but not on its inventory_value. The AUD-only demo
+        // dataset doesn't bite on this; a multi-currency rollout would need
+        // an explicit per-column currency parameter or a base-currency
+        // triangulation policy.
+        // openWorkOrdersCount is currency-blind (WOs are physical, not
+        // financial); the parameter is ignored for that count.
         BigDecimal[] arOpenSo = jdbc.query("""
             SELECT
                 COALESCE(SUM(GREATEST(invoiced_amount - paid_amount, 0)), 0) AS ar,
@@ -128,6 +140,10 @@ public class JdbcFinancialDashboardQueryPort implements FinancialDashboardQueryP
             arOpenSo[0],
             apOpenPo[0],
             inventoryValue == null ? BigDecimal.ZERO : inventoryValue,
+            // wip_value parked at 0 until a costing decision (LIFO / FIFO /
+            // weighted-avg) lands. Field kept in the DTO so the API shape
+            // doesn't change when the computation lands.
+            BigDecimal.ZERO,
             arOpenSo[1].intValue(),
             apOpenPo[1].intValue(),
             openWoCount == null ? 0 : openWoCount,
