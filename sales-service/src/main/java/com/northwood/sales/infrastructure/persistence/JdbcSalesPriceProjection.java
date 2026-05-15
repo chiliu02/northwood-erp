@@ -23,16 +23,30 @@ public class JdbcSalesPriceProjection implements SalesPriceProjection {
     @Override
     @Transactional
     public void applySalesPrice(UUID productId, BigDecimal salesPrice, String currencyCode) {
-        jdbc.update("""
-            INSERT INTO sales.product_pricing (product_id, sales_price, currency_code)
-            VALUES (?, ?, ?)
-            ON CONFLICT (product_id) DO UPDATE
-                SET sales_price = EXCLUDED.sales_price,
-                    currency_code = EXCLUDED.currency_code
+        int rows = jdbc.update("""
+            UPDATE sales.product_pricing
+               SET sales_price = ?,
+                   currency_code = ?
+             WHERE product_id = ?
             """,
-            productId, salesPrice, currencyCode
+            salesPrice, currencyCode, productId
         );
-        log.info("upserted sales.product_pricing for product_id={} → {} {}",
-            productId, salesPrice, currencyCode);
+        if (rows == 0) {
+            log.warn("SalesPriceChanged for product_id={} found no sales.product_pricing row — "
+                + "ProductCreated seed missed or replayed out of order; falling back to insert",
+                productId);
+            jdbc.update("""
+                INSERT INTO sales.product_pricing (product_id, sales_price, currency_code)
+                VALUES (?, ?, ?)
+                ON CONFLICT (product_id) DO UPDATE
+                    SET sales_price = EXCLUDED.sales_price,
+                        currency_code = EXCLUDED.currency_code
+                """,
+                productId, salesPrice, currencyCode
+            );
+        } else {
+            log.info("updated sales.product_pricing for product_id={} → {} {}",
+                productId, salesPrice, currencyCode);
+        }
     }
 }

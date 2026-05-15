@@ -442,10 +442,19 @@ CREATE TRIGGER trg_customer_updated_at
 -- preserved within a partition (events for the same product flow on the same
 -- key, so latest-wins is naturally correct). Kept denormalised against the
 -- product context to avoid a cross-schema query at order-validation time.
+-- sales_price / currency_code are nullable: the row is seeded on
+-- product.ProductCreated (stub) and populated on product.SalesPriceChanged.
+-- A NULL sales_price means "this product hasn't been priced for sales yet"
+-- (e.g. a raw material that purchasing buys but sales never lists); placeOrder
+-- treats that as unsellable, identically to a discontinued product. The seed
+-- makes lifecycle closure structural — one row per Product for its lifetime,
+-- mirroring the inventory.stock_item and manufacturing.product_replenishment
+-- shape.
 CREATE TABLE sales.product_pricing (
     product_id UUID PRIMARY KEY,
-    sales_price NUMERIC(18, 6) NOT NULL,
-    currency_code CHAR(3) NOT NULL DEFAULT 'AUD',
+    sales_price NUMERIC(18, 6),
+    currency_code CHAR(3),
+    discontinued_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -661,19 +670,23 @@ INSERT INTO sales.customer (
 ON CONFLICT (customer_code) DO NOTHING;
 
 -- Backfill sales.product_pricing from product.product so the projection has
--- a row per existing SKU at boot. Runtime keeps it in step via the inbox
--- handler on product.SalesPriceChanged.
+-- one row per existing Product at boot — same shape the runtime
+-- ProductCreatedHandler produces on product.ProductCreated. Raw materials and
+-- semi-finished goods are unsellable from the sales perspective, so their
+-- price + currency are NULL (lifecycle: created → discontinued, never priced).
+-- The two finished goods carry their real prices so the demo scenarios that
+-- place orders don't need a separate SalesPriceChanged seed to be sellable.
 INSERT INTO sales.product_pricing (product_id, sales_price, currency_code)
 VALUES
-    ('00000000-0000-7000-8000-000000000001', 650.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000002',   0.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000003',   0.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000004',   0.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000005',   0.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000200', 890.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000201',   0.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000202',   0.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000203',   0.00, 'AUD')
+    ('00000000-0000-7000-8000-000000000001', 650.00, 'AUD'),  -- FG-TABLE-001
+    ('00000000-0000-7000-8000-000000000002', NULL,   NULL),   -- RM-BOARD-001
+    ('00000000-0000-7000-8000-000000000003', NULL,   NULL),   -- RM-LEG-001
+    ('00000000-0000-7000-8000-000000000004', NULL,   NULL),   -- RM-SCREW-001
+    ('00000000-0000-7000-8000-000000000005', NULL,   NULL),   -- RM-VARNISH-001
+    ('00000000-0000-7000-8000-000000000200', 890.00, 'AUD'),  -- FG-CABINET-001
+    ('00000000-0000-7000-8000-000000000201', NULL,   NULL),   -- SA-DRAWER-001
+    ('00000000-0000-7000-8000-000000000202', NULL,   NULL),   -- RM-DRAWER-FRONT-001
+    ('00000000-0000-7000-8000-000000000203', NULL,   NULL)    -- RM-DRAWER-RUNNER-001
 ON CONFLICT (product_id) DO NOTHING;
 
 COMMIT;

@@ -6,6 +6,54 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-15 — Sales seed-on-Created for `sales.product_pricing` (lifecycle closure parity with inventory + manufacturing)
+
+Conversation-surfaced design refactor (no prior dev-todo entry). The lifecycle-closure audit of `ProductCreated`/`ProductDiscontinued` consumers revealed an asymmetry: inventory and manufacturing both seed a stub row on `ProductCreated` and mark `discontinued_at` on `ProductDiscontinued`, but sales' `product_pricing` row only appeared on first `SalesPriceChanged`. The `ProductDiscontinued` handler in sales worked around the absence with an upsert that fabricated a `sales_price = 0, currency_code = 'AUD'` stub — a smell that conflated "discontinued" with "never sellable."
+
+### Refactor
+
+Unified the three consumer schemas behind one rule: **every consumer schema that holds product facts seeds a stub on `ProductCreated` (`ON CONFLICT DO NOTHING`) and marks `discontinued_at` on `ProductDiscontinued`.** Each attribute-change event becomes a plain `UPDATE` (no upsert), with a WARN-and-fallback insert for the anomaly path (seed missed or out-of-order delivery).
+
+### Schema changes (`db/northwood_erp.sql` + new Liquibase changeset)
+
+- `sales.product_pricing.sales_price` and `currency_code` are now nullable; the `'AUD'` default on `currency_code` is dropped. NULL means "not yet priced." `discontinued_at` already nullable (added 2026-05-14).
+- Baseline seed (`northwood_erp.sql`): raw materials and semi-finished goods get `NULL, NULL` instead of `0.00, 'AUD'`. The two finished goods (`FG-TABLE-001`, `FG-CABINET-001`) keep their real prices.
+- New changeset `sales/.../2026-05-15-product-pricing-nullable-price.sql` for existing dev DBs: three `ALTER COLUMN` calls (drop NOT NULL × 2, drop default × 1).
+
+### New handler
+
+- `sales-service/.../application/inbox/ProductCreatedProjection.java` + `ProductCreatedHandler.java` + `infrastructure/persistence/JdbcProductCreatedProjection.java`. Consumer name `sales.product-created`. Inserts `(product_id, NULL, NULL)` with `ON CONFLICT DO NOTHING`. Mirrors `inventory.product-created` exactly.
+- `sales-service/.../application-kafka.yml` comment updated to note the new event (no `subscribe-topics` change — `product.events` was already subscribed for `SalesPriceChanged`).
+
+### Existing handlers simplified
+
+- `JdbcSalesPriceProjection` and `JdbcProductDiscontinuedProjection` now do a plain `UPDATE` (row guaranteed to exist post-seed). Zero-rows-affected logs WARN and falls through to an `INSERT ... ON CONFLICT DO UPDATE` so the projection is resilient to out-of-order delivery without making upsert the normal path. Application-side projection Javadoc updated to document this.
+
+### Read-side predicate change
+
+- `ProductPricingLookup.CatalogPrice` Javadoc now documents that `salesPrice` / `currencyCode` are nullable until `SalesPriceChanged` fires. JDBC impl unchanged (`rs.getBigDecimal` / `rs.getString` already return null correctly for NULL columns).
+- `SalesOrderService.resolveUnitPrice` updated: `catalog.isPresent()` no longer means "sellable" — sellability is `salesPrice IS NOT NULL`. The "caller supplied unitPrice + stub row with NULL currency" path skips the currency assertion (same race-tolerance the previous empty-catalog path provided).
+
+### Tests added
+
+- `SalesOrderServicePlaceOrderTest.placeOrder_rejects_unpriced_stub_when_no_unitPrice_supplied` — covers the "row exists but `sales_price IS NULL`" case → `UnknownPriceException`.
+- `SalesOrderServicePlaceOrderTest.placeOrder_accepts_unpriced_stub_when_caller_supplies_unitPrice` — covers the override path with no currency assertion.
+
+### Smoke
+
+`mvn -pl sales-service test` → 131/131 green. `mvn test` full reactor green including the Testcontainers end-to-end (`OrderToCashHappyPathTest`, `PurchaseToPayHappyPathTest`, `MakeToOrderShortagePathTest`, etc.).
+
+### Follow-up
+
+- **Finance has the same shape today** — `finance.product_standard_cost` and `finance.product_valuation_class` only appear on first attribute-change event. Sequenced as the next slice (see dev-todo.md) — consolidate both into `finance.product_accounting` with the same seed-on-Created discipline.
+- **Reporting deliberately untouched.** Reporting projections snapshot history and don't need to track a live row per Product; the asymmetry is intentional there.
+
+### Rule locked in
+
+When a projection's lifetime should match an aggregate's, seed on the aggregate's creation event with all attribute columns NULL, and treat the read-side as `<attr> IS NOT NULL AND discontinued_at IS NULL` for the sellability/usability predicate. Documented inline at `sales.product_pricing` table header in `northwood_erp.sql` and on `ProductCreatedProjection` Javadoc.
+
+---
+
 ## 2026-05-14 — event-flow.html: data-driven tree (adding events stops being error-prone)
 
 Tail-end of the §2.13 / §2.14 / §2.11 polish run. The hand-authored source-first + destination-first tables in `docs/event-flow.html` had become a steady source of layout-shift bugs: every event addition required bumping `merge-src` / `merge-agg` rowspans by hand, and a single stale rowspan slid every subsequent source's cells one column to the left — a bug that returned twice in this session despite multiple targeted fixes (see commits `30b6e3f` and `c4661b4`), then *again* after a data-driven table refactor that should have eliminated stale rowspans by computing them from data.

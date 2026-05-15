@@ -245,13 +245,20 @@ public class SalesOrderService {
             }
         });
 
+        // The row is seeded on ProductCreated with NULL price+currency, so
+        // catalog.isPresent() now means "we know about the product" — not
+        // "the product is sellable". Sellability = salesPrice IS NOT NULL.
         if (req.unitPrice() == null) {
-            CatalogPrice cp = catalog.orElseThrow(() -> new UnknownPriceException(req.productSku()));
+            CatalogPrice cp = catalog
+                .filter(c -> c.salesPrice() != null)
+                .orElseThrow(() -> new UnknownPriceException(req.productSku()));
             assertCurrency(req.productSku(), orderCurrency, cp.currencyCode());
             return cp.salesPrice();
         }
 
-        catalog.ifPresent(cp -> assertCurrency(req.productSku(), orderCurrency, cp.currencyCode()));
+        catalog
+            .filter(c -> c.currencyCode() != null)
+            .ifPresent(cp -> assertCurrency(req.productSku(), orderCurrency, cp.currencyCode()));
         return req.unitPrice();
     }
 

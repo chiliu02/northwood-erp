@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import com.northwood.sales.application.CustomerLookup.CustomerSummary;
 import com.northwood.sales.application.ProductPricingLookup.CatalogPrice;
 import com.northwood.sales.application.SalesOrderService.ProductDiscontinuedException;
+import com.northwood.sales.application.SalesOrderService.UnknownPriceException;
 import com.northwood.sales.application.dto.PlaceOrderCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand.OrderLine;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
@@ -88,6 +89,37 @@ class SalesOrderServicePlaceOrderTest {
         ));
 
         service.placeOrder(commandWithUnitPrice(null));
+
+        verify(orders).save(any());
+        verify(sagaManager).insertStarted(any(), any());
+    }
+
+    @Test void placeOrder_rejects_unpriced_stub_when_no_unitPrice_supplied() {
+        // ProductCreated seeded a stub but SalesPriceChanged hasn't fired yet —
+        // or the product is a raw material that's never sold (NULL price for
+        // its lifetime). Without a caller-supplied unitPrice, the line is
+        // unsellable, same outcome as catalog.isEmpty().
+        when(productPricing.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
+            new CatalogPrice(null, null, null)
+        ));
+
+        assertThatThrownBy(() -> service.placeOrder(commandWithUnitPrice(null)))
+            .isInstanceOf(UnknownPriceException.class)
+            .hasMessageContaining("SKU-1");
+
+        verify(orders, never()).save(any());
+        verify(sagaManager, never()).insertStarted(any(), any());
+    }
+
+    @Test void placeOrder_accepts_unpriced_stub_when_caller_supplies_unitPrice() {
+        // Override price path: stub row exists but has no catalog currency to
+        // compare against, so the unitPrice is accepted without a currency
+        // assertion (same race-tolerance the empty-catalog path provides).
+        when(productPricing.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
+            new CatalogPrice(null, null, null)
+        ));
+
+        service.placeOrder(commandWithUnitPrice(new BigDecimal("42.00")));
 
         verify(orders).save(any());
         verify(sagaManager).insertStarted(any(), any());

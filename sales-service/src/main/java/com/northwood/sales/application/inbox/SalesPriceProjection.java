@@ -4,11 +4,10 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * Maintains the {@code sales.product_pricing} read projection. Pure upsert —
- * the inbox handler hands over the latest values; this service writes them
- * idempotently. No version column on the projection: the inbox dedupes by
- * {@code event_id} and partition keys preserve per-product event order on
- * the bus, so latest-wins is naturally correct.
+ * Populates {@code sales.product_pricing.sales_price} / {@code currency_code}
+ * from {@code SalesPriceChanged}. Plain UPDATE — the row is seeded on
+ * {@code ProductCreated} by {@link ProductCreatedProjection}, so a zero-rows
+ * UPDATE is an anomaly (logged WARN, with an insert-fallback for resilience).
  *
  * <p>Application-side port; JDBC implementation lives in
  * {@code infrastructure/persistence/JdbcSalesPriceProjection}.

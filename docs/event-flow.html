@@ -262,6 +262,8 @@ window.NORTHWOOD_EVENTS = [
     aggregate: "Product",
     event: "ProductCreated",
     consumers: [
+      { dest: "sales", name: "sales.product-created",
+        desc: `<code>sales.product_pricing</code> — seeds a stub row with <code>sales_price=NULL</code>, <code>currency_code=NULL</code> so subsequent <code>SalesPriceChanged</code> + <code>ProductDiscontinued</code> have a row to <code>UPDATE</code> (<code>ON CONFLICT DO NOTHING</code>). NULL <code>sales_price</code> = "unsellable until priced" — <code>placeOrder</code> rejects identically to discontinued` },
       { dest: "inventory", name: "inventory.product-created",
         desc: `<code>inventory.stock_item</code> — seeds a stub row (default UOM <code>'EA'</code>, tracking <code>'tracked'</code>, reorder 0/0) so subsequent <code>ReorderPolicyChanged</code> has a row to update (<code>ON CONFLICT DO NOTHING</code>)` },
       { dest: "manufacturing", name: "manufacturing.product-replenishment-seeder",

@@ -1,7 +1,6 @@
 package com.northwood.sales.infrastructure.persistence;
 
 import com.northwood.sales.application.inbox.ProductDiscontinuedProjection;
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -24,15 +23,28 @@ public class JdbcProductDiscontinuedProjection implements ProductDiscontinuedPro
     @Override
     @Transactional
     public void applyDiscontinued(UUID productId, Instant discontinuedAt) {
-        jdbc.update("""
-            INSERT INTO sales.product_pricing (product_id, sales_price, currency_code, discontinued_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT (product_id) DO UPDATE
-                SET discontinued_at = EXCLUDED.discontinued_at
+        int rows = jdbc.update("""
+            UPDATE sales.product_pricing
+               SET discontinued_at = ?
+             WHERE product_id = ?
             """,
-            productId, BigDecimal.ZERO, "AUD", java.sql.Timestamp.from(discontinuedAt)
+            java.sql.Timestamp.from(discontinuedAt), productId
         );
-        log.info("stamped sales.product_pricing.discontinued_at for product_id={} (at={})",
-            productId, discontinuedAt);
+        if (rows == 0) {
+            log.warn("ProductDiscontinued for product_id={} found no sales.product_pricing row — "
+                + "ProductCreated seed missed or replayed out of order; falling back to insert",
+                productId);
+            jdbc.update("""
+                INSERT INTO sales.product_pricing (product_id, discontinued_at)
+                VALUES (?, ?)
+                ON CONFLICT (product_id) DO UPDATE
+                    SET discontinued_at = EXCLUDED.discontinued_at
+                """,
+                productId, java.sql.Timestamp.from(discontinuedAt)
+            );
+        } else {
+            log.info("stamped sales.product_pricing.discontinued_at for product_id={} (at={})",
+                productId, discontinuedAt);
+        }
     }
 }
