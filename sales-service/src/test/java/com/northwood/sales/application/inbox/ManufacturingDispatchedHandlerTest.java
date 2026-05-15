@@ -1,10 +1,12 @@
 package com.northwood.sales.application.inbox;
 
+import com.northwood.sales.application.SalesOrderCompensationEmitter;
 import com.northwood.sales.domain.SalesOrder;
 
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.MANUFACTURING_REQUESTED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_FAILED;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -33,13 +35,14 @@ class ManufacturingDispatchedHandlerTest {
     @Mock InboxPort inbox;
     @Mock SalesOrderFulfilmentSagaManager sagaManager;
     @Mock SalesOrderHeaderStatusProjection statusProjection;
+    @Mock SalesOrderCompensationEmitter compensationEmitter;
 
     private final ObjectMapper json = new ObjectMapper();
     private ManufacturingDispatchedHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new ManufacturingDispatchedHandler(inbox, sagaManager, statusProjection, json);
+        handler = new ManufacturingDispatchedHandler(inbox, sagaManager, statusProjection, compensationEmitter, json);
     }
 
     private EventEnvelope event(String... outcomes) {
@@ -63,23 +66,38 @@ class ManufacturingDispatchedHandlerTest {
         );
     }
 
-    @Test void happy_path_passes_accepted_count_to_manager() {
-        when(sagaManager.applyManufacturingDispatched(eq(SO), eq(2), eq(3))).thenReturn(MANUFACTURING_REQUESTED);
+    @Test void happy_path_all_accepted_no_rejection_side_effects() {
+        when(sagaManager.applyManufacturingDispatched(eq(SO), eq(3), eq(3))).thenReturn(MANUFACTURING_REQUESTED);
 
-        handler.handle(event("accepted", "rejected", "accepted"));
+        handler.handle(event("accepted", "accepted", "accepted"));
 
-        verify(sagaManager).applyManufacturingDispatched(SO, 2, 3);
+        verify(sagaManager).applyManufacturingDispatched(SO, 3, 3);
         verify(statusProjection, never()).markStatus(any(), any());
+        verify(compensationEmitter, never()).emitCancellationRequest(any(), any());
         verify(inbox).recordProcessed(any());
     }
 
-    @Test void all_rejected_triggers_rejected_projection() {
+    @Test void all_rejected_marks_status_and_emits_cancellation() {
         when(sagaManager.applyManufacturingDispatched(eq(SO), eq(0), eq(2)))
             .thenReturn(STOCK_RESERVATION_FAILED);
 
-        handler.handle(event("rejected", "rejected"));
+        handler.handle(event("rejected_no_bom", "rejected_no_bom"));
 
         verify(statusProjection).markStatus(SO, SalesOrder.REJECTED);
+        verify(compensationEmitter).emitCancellationRequest(eq(SO), contains("All 2 line(s) rejected"));
+    }
+
+    @Test void partial_rejection_marks_status_and_emits_cancellation() {
+        // §4.2 closure: 2 of 3 accepted is still a rejection — whole order rejected,
+        // cancellation request emitted so partial reservation + accepted-line WO
+        // sagas get cleaned up.
+        when(sagaManager.applyManufacturingDispatched(eq(SO), eq(2), eq(3)))
+            .thenReturn(STOCK_RESERVATION_FAILED);
+
+        handler.handle(event("accepted", "rejected_no_bom", "accepted"));
+
+        verify(statusProjection).markStatus(SO, SalesOrder.REJECTED);
+        verify(compensationEmitter).emitCancellationRequest(eq(SO), contains("1 of 3 line(s) rejected"));
     }
 
     @Test void already_processed_short_circuits() {
@@ -91,5 +109,6 @@ class ManufacturingDispatchedHandlerTest {
 
         verify(sagaManager, never()).applyManufacturingDispatched(any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt());
         verifyNoInteractions(statusProjection);
+        verifyNoInteractions(compensationEmitter);
     }
 }

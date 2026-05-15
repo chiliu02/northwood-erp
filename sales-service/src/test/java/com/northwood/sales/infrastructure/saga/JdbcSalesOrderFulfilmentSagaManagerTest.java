@@ -246,17 +246,31 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             String state = manager.applyManufacturingDispatched(SO, 0, 2);
 
             assertThat(state).isEqualTo(STOCK_RESERVATION_FAILED);
+            assertThat(saga.currentStep()).isEqualTo("no_manufacturable_lines");
         }
 
-        @Test void any_accepted_stamps_expected_count() {
+        @Test void partial_rejection_flips_to_stock_reservation_failed() {
+            // §4.2 closure: any rejection rejects the whole order (was: silently
+            // stamp expectedWorkOrderCount=acceptedCount and proceed with the
+            // accepted lines, dropping the rejected one).
             SalesOrderFulfilmentSaga saga = sagaInState(MANUFACTURING_REQUESTED);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
             String state = manager.applyManufacturingDispatched(SO, 2, 3);
 
+            assertThat(state).isEqualTo(STOCK_RESERVATION_FAILED);
+            assertThat(saga.currentStep()).isEqualTo("partial_dispatch_rejection");
+        }
+
+        @Test void all_accepted_stamps_expected_count() {
+            SalesOrderFulfilmentSaga saga = sagaInState(MANUFACTURING_REQUESTED);
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyManufacturingDispatched(SO, 3, 3);
+
             assertThat(state).isEqualTo(MANUFACTURING_REQUESTED);
             FulfilmentSagaData data = json.readValue(saga.dataJson(), FulfilmentSagaData.class);
-            assertThat(data.expectedWorkOrderCount()).isEqualTo(2);
+            assertThat(data.expectedWorkOrderCount()).isEqualTo(3);
         }
     }
 

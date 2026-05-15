@@ -6,6 +6,59 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-15 — Close Story 4.2: partial-rejection rejects the whole order + saga terminal cleanup
+
+Closes Story 4.2 (was 🚧 → ✅). The single ⏳ bullet (synchronous POST error) was minor compared to the silent-correctness gap underneath: when `manufacturing.ManufacturingDispatched` arrived with some lines accepted and some `rejected_no_bom` / `rejected_not_manufactured`, the saga stamped `expectedWorkOrderCount = acceptedCount` and **proceeded with only the accepted lines**. The order eventually completed with `total_amount` reflecting the originally-ordered total while only the accepted lines actually shipped — directly contradicting the story's stated goal ("fail clearly with no half-fulfilled state").
+
+### Policy decision
+
+**Any rejected line rejects the whole order.** Partial fulfilment is not a state the system represents. Sarah re-places the order with just the manufacturable SKUs if she still wants those. Aligns with the saga's "fail clearly" goal; matches the existing all-rejected behaviour but extends to all partial-rejection cases.
+
+### Saga state machine
+
+- `JdbcSalesOrderFulfilmentSagaManager.applyManufacturingDispatched` — condition flipped from `!anyAccepted` to `acceptedCount < totalLines`. On any rejection: `manufacturing_requested → stock_reservation_failed` with `current_step` distinguishing `no_manufacturable_lines` (all rejected) or `partial_dispatch_rejection` (mixed). Comment block above the method documents the policy.
+- `SalesOrderFulfilmentSaga.TERMINAL_STATES` now includes `STOCK_RESERVATION_FAILED`. Was in `ALL_STATES` but not terminal — `transitionTo(STOCK_RESERVATION_FAILED, ...)` now properly sets `completed_at`.
+
+### Compensation flow
+
+- New method `SalesOrderCompensationEmitter.emitCancellationRequest(orderId, reason)`. Emits `sales.SalesOrderCancellationRequested` to release any partial stock reservation (inventory's cancel handler) and cancel the make-to-order sagas already started for the accepted lines (manufacturing's cancel handler). Reuses the same event as user-initiated cancel-order; downstream handlers are agnostic to the trigger. Reason field carries the per-line rejection summary, e.g. `"1 of 3 line(s) rejected: FG-X (rejected_no_bom); order cannot be partially fulfilled."`
+- The existing cancel-ack handlers ignore acks when the saga isn't in `compensating`. Sales saga is already at terminal `stock_reservation_failed`, so compensation is **best-effort cleanup** — manufacturing and inventory release/cancel correctly; sales doesn't track the acks. No `SalesOrderCompensated` emission for this path. Matches the "rejection terminates immediately" intent.
+
+### Handler wiring
+
+- `ManufacturingDispatchedHandler` injects `SalesOrderCompensationEmitter`. On `stock_reservation_failed` return from the manager: stamps order header `'rejected'` (existing) + emits cancellation request (new). Builds human-readable rejection reason listing rejected SKUs and outcomes.
+- `SalesTestKit` updated to thread the emitter through.
+
+### Tests
+
+- `JdbcSalesOrderFulfilmentSagaManagerTest.ApplyManufacturingDispatched`:
+  - `all_rejected_flips_to_stock_reservation_failed` — extended to assert `current_step = "no_manufacturable_lines"`.
+  - `partial_rejection_flips_to_stock_reservation_failed` (NEW) — asserts the policy change for 2-of-3-accepted.
+  - `all_accepted_stamps_expected_count` (renamed from `any_accepted_...`) — happy path: 3/3 → saga proceeds with `expected_wo_count = 3`.
+- `ManufacturingDispatchedHandlerTest`:
+  - `happy_path_all_accepted_no_rejection_side_effects` (renamed) — 3/3 accepted → no markStatus, no cancellation emission.
+  - `all_rejected_marks_status_and_emits_cancellation` — extended with cancellation emitter assertion.
+  - `partial_rejection_marks_status_and_emits_cancellation` (NEW) — new policy: 2/3 accepted still triggers full rejection. Reason string contains `"1 of 3 line(s) rejected"`.
+  - `already_processed_short_circuits` — extended with no-cancellation assertion on dedup.
+
+### Docs
+
+- `docs/user-stories.md` Story 4.2 rewritten: title broadened to "Order can't be fully fulfilled (reservation or dispatch failure)"; flipped 🚧 → ✅; three-branch narrative (partial-reservation, all-rejected, partial-rejected). New *Out-of-scope* block lists four documented deferrals (sync POST error, SO360 shortage projection, `'rejected'` line status, reporting `order_status = 'rejected'` flip).
+- No demo-script changes needed — Demo 4.2's narrative is high-level ("fail clearly") which the new policy now actually delivers.
+
+### Smoke
+
+`mvn install -DskipTests` reactor green; `mvn test` 8/8 harness + every service green. The existing harness E2E tests don't exercise the partial-rejection path; the unit-level coverage above is the regression net.
+
+### Out-of-scope at end of slice (captured under Story 4.2)
+
+- Synchronous error to the original `POST /api/sales-orders` (fundamentally async — manufacturing dispatch round-trip is what reveals rejection).
+- `sales_order_360_view.has_shortage` + `shortage_summary` projection (dead JSON today).
+- `'rejected'` terminal on `sales_order_line.line_status` (order header carries the verdict; line-level redundant for this slice).
+- Reporting SO360 `order_status` flip to `'rejected'` (today only flips to `'cancelled'` via `SalesOrderCompensatedHandler`; rejection path doesn't emit a compensated event).
+
+---
+
 ## 2026-05-15 — Close Story 2.6: daily balance snapshots via rollup worker + snapshot DTO uniformity
 
 Closes Demo 2 / Story 2.6 (was 🚧 → ✅). Conversation-surfaced gap audit identified four real issues hiding under the single `wip_value` ⏳ bullet:

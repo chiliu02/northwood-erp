@@ -190,24 +190,36 @@ public class JdbcSalesOrderFulfilmentSagaManager
     @Override
     @Transactional
     public String applyManufacturingDispatched(UUID salesOrderHeaderId, int acceptedCount, int totalLines) {
-        boolean anyAccepted = acceptedCount > 0;
         SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, ManufacturingDispatched.EVENT_TYPE);
 
-        if (!anyAccepted && MANUFACTURING_REQUESTED.equals(saga.state())) {
-            saga.transitionTo(STOCK_RESERVATION_FAILED, "no_manufacturable_lines");
+        // Policy (§4.2 closure, 2026-05-15): ANY rejected line rejects the
+        // whole order. Northwood's saga goal — "fail clearly with no
+        // half-fulfilled state" — used to be silently broken by partial
+        // dispatch: 2 of 3 lines accepted advanced the saga with
+        // expected_wo_count=2, dropping the rejected line. The caller
+        // (ManufacturingDispatchedHandler) is responsible for releasing any
+        // partial stock reservation + cancelling the make-to-order sagas
+        // already started for the accepted lines via
+        // SalesOrderCompensationEmitter.emitCancellationRequest.
+        boolean anyRejected = acceptedCount < totalLines;
+
+        if (anyRejected && MANUFACTURING_REQUESTED.equals(saga.state())) {
+            String step = acceptedCount == 0
+                ? "no_manufacturable_lines"
+                : "partial_dispatch_rejection";
+            saga.transitionTo(STOCK_RESERVATION_FAILED, step);
             sagaPort.save(saga);
-            log.info("saga {} sales_order={} → stock_reservation_failed (all {} line(s) rejected)",
-                saga.sagaId(), salesOrderHeaderId, totalLines);
-        } else if (!anyAccepted) {
-            log.warn("saga {} sales_order={} all-rejected but state={} — informational only",
+            log.info("saga {} sales_order={} → stock_reservation_failed ({} accepted, {} rejected; step={})",
+                saga.sagaId(), salesOrderHeaderId, acceptedCount, totalLines - acceptedCount, step);
+        } else if (anyRejected) {
+            log.warn("saga {} sales_order={} dispatched with rejections but state={} — informational only",
                 saga.sagaId(), salesOrderHeaderId, saga.state());
         } else {
             FulfilmentSagaData updated = readData(saga).withExpectedWorkOrderCount(acceptedCount);
             writeData(saga, updated);
             sagaPort.save(saga);
-            log.info("saga {} sales_order={} dispatched ({} accepted, {} rejected); expected_wo_count={} stamped",
-                saga.sagaId(), salesOrderHeaderId,
-                acceptedCount, totalLines - acceptedCount, acceptedCount);
+            log.info("saga {} sales_order={} dispatched ({} accepted, 0 rejected); expected_wo_count={} stamped",
+                saga.sagaId(), salesOrderHeaderId, acceptedCount, acceptedCount);
         }
         return saga.state();
     }

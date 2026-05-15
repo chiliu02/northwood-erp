@@ -56,7 +56,9 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
     public static final String COMPENSATED = "compensated";
     public static final String FAILED = "failed";
 
-    private static final Set<String> TERMINAL_STATES = Set.of(COMPLETED, COMPENSATED, FAILED);
+    private static final Set<String> TERMINAL_STATES = Set.of(
+        COMPLETED, COMPENSATED, FAILED, STOCK_RESERVATION_FAILED
+    );
 
     /**
      * Every state this saga's code can transition into. Cross-checked at

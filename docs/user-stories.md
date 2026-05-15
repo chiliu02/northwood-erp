@@ -271,17 +271,34 @@ Cancellation rejected with HTTP 409 once the order is past `goods_shipped` (cred
 
 **Pattern** — Saga compensation / **rollback semantics across services**
 
-### Story 4.2 — Reservation comes back partial or failed 🚧
+### Story 4.2 — Order can't be fully fulfilled (reservation or dispatch failure) ✅
 
 **As** Sarah
-**I want** an order that can't be fully reserved to either make-to-order the gap or fail clearly with no half-fulfilled state
+**I want** an order that can't be fully fulfilled to either make-to-order the gap or fail clearly with no half-fulfilled state
 **So that** I'm never stuck guessing
 
-**Status** — Partial-reservation case ✅: `StockReservedHandler` stashes the shortage on saga.data and still advances to `stock_reserved`; the worker emits `ManufacturingRequested` covering the shortage and manufacturing fills it via make-to-order (Story 5.x).
+**Three branches, all terminate cleanly:**
 
-Fail-fast case 🚧: when manufacturing reports zero accepted lines (`ManufacturingDispatched` with all `rejected_*`), `ManufacturingDispatchedHandler` flips the saga to `stock_reservation_failed` and the order header to `rejected`. ⏳ A user-visible domain error returned to the original `POST` (today the order goes through the async path).
+1. **Partial stock reservation → make-to-order fills the gap.** `inventory.StockReserved` arrives with status `partially_reserved` (or `failed`) plus a per-line shortage map. `StockReservedHandler` stashes the shortage on `saga.data` and advances to `stock_reserved`. The worker emits `ManufacturingRequested` covering the entire ordered quantity; manufacturing fills it via make-to-order (Story 5.2). Customer eventually receives full quantity.
 
-**Events consumed** — `inventory.StockReserved` (with status `reserved` / `partially_reserved` / `failed`), `manufacturing.ManufacturingDispatched`
+2. **All manufacturing lines rejected** (`rejected_no_bom` / `rejected_not_manufactured` on every line). `ManufacturingDispatchedHandler` flips the saga to terminal `stock_reservation_failed` + the order header to `'rejected'` + emits `sales.SalesOrderCancellationRequested` so any partial stock reservation is released. Customer sees a rejected order.
+
+3. **Partial manufacturing rejection** (some accepted, some rejected) — **§4.2 closure shipped 2026-05-15.** Same path as branch 2: any rejection rejects the whole order, partial reservation released, accepted-line make-to-order sagas cancelled. Policy: **no half-fulfilled state.** Previously the saga silently stamped `expectedWorkOrderCount = acceptedCount` and proceeded with only the accepted lines, leaving the customer's ordered total disconnected from what eventually shipped.
+
+**Saga state on rejection** — `sales.sales_order_fulfilment_saga.saga_state = 'stock_reservation_failed'` (now a true terminal in `TERMINAL_STATES`, so the worker stops polling the row and `completed_at` is set). The state name is slightly historical — it was first used for the all-rejected case; today it covers any "fulfilment cannot proceed" terminus from a `ManufacturingDispatched` rejection. Keeping the name to avoid wire-format churn; documented in the manager's Javadoc.
+
+**Events consumed** — `inventory.StockReserved` (status `reserved` / `partially_reserved` / `failed` + shortage map), `manufacturing.ManufacturingDispatched` (per-line `accepted` / `rejected_no_bom` / `rejected_not_manufactured`).
+
+**Events emitted on rejection** — `sales.SalesOrderCancellationRequested` (reused from the user-initiated cancel-order flow). Reason field carries the per-line rejection summary, e.g. `"1 of 3 line(s) rejected: FG-X (rejected_no_bom); order cannot be partially fulfilled."` Inventory + manufacturing consume the event as they do for user cancels — release partial reservations, cancel started make-to-order sagas. The cancel-ack handlers ignore acks when the saga isn't in `compensating` (already terminal at `stock_reservation_failed`), so compensation is best-effort cleanup; the sales saga doesn't need the acks to complete.
+
+> Covered by `JdbcSalesOrderFulfilmentSagaManagerTest.ApplyManufacturingDispatched` (all-rejected, partial-rejected, all-accepted) + `ManufacturingDispatchedHandlerTest` (asserts header marked rejected + cancellation event emitted on both all-rejected and partial-rejected). Existing E2E harness exercises the all-accepted happy path.
+
+**Out-of-scope, captured here so they aren't re-discovered**
+
+- **Synchronous error to the original `POST /api/sales-orders`.** Today the order always returns 200 + `'submitted'`; failure propagates async through events. Sarah polls the saga console or the order detail page. The manufacturing dispatch round-trip is what reveals the rejection — making the POST synchronous would couple sales to manufacturing's runtime. Defensible deferral.
+- **`sales_order_360_view.has_shortage` + `shortage_summary` projection.** Schema reserves the columns; no handler writes them today, so the reporting view always reports `has_shortage: false`. The data exists (saga's stashed shortage map) but isn't projected. Worth a small slice wiring an SO360 projection update from `inventory.StockReserved`.
+- **`'rejected'` terminal on `sales_order_line.line_status`.** Schema CHECK already allows more statuses; only `OPEN` / `RESERVED` / `PARTIALLY_RESERVED` are written today. When the whole order is rejected, the header status carries the verdict — line statuses stay at their pre-rejection value. Adequate for the demo.
+- **Reporting SO360 doesn't flip `order_status` to `'rejected'`.** `SalesOrderCompensatedHandler` flips it to `'cancelled'` for user-cancels; no analogous handler for system-rejections. The sales-side aggregate row IS `'rejected'` (via the header status projection); the reporting view lags. Cheap follow-up — extend the existing handler to recognise the cancellation request's reason, or emit a distinct `SalesOrderRejected` event.
 
 ---
 
