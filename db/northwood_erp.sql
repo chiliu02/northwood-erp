@@ -1119,6 +1119,12 @@ CREATE TABLE manufacturing.product_replenishment (
     product_id UUID PRIMARY KEY,
     is_purchased BOOLEAN NOT NULL DEFAULT false,
     is_manufactured BOOLEAN NOT NULL DEFAULT false,
+    -- §1.4 B.3: when set, the product has been discontinued by product-service.
+    -- BomEditService.addLine reads this column to reject new BOM lines that
+    -- name a discontinued component; ProductDiscontinuedHandler writes it.
+    -- Distinct signal from (is_purchased=false AND is_manufactured=false),
+    -- which can also occur on a freshly-seeded never-classified row.
+    discontinued_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

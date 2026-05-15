@@ -87,22 +87,36 @@ The product service is the only place SKUs, pricing, and reorder policy are *own
 
 > Covered by integration test `ReorderPolicyChangedSeamIT`.
 
-### Story 1.4 — Discontinue a product 🚧
+### Story 1.4 — Discontinue a product ✅
 
 **As** Emma
 **I want** to mark a product as discontinued
-**So that** sales can no longer quote it and inventory plans the run-out
+**So that** sales can no longer quote it, manufacturing won't release new work orders for it (or for any FG whose active BOM references it), purchasing won't accept new requisitions for it, and downstream consumers stamp `discontinued_at` for audit / UI greying
 
 **Trigger** — `POST /api/products/{id}/discontinue`
 **Acceptance criteria**
 - ✅ `product.product.status` flips to `discontinued`. Subsequent calls to the same endpoint are idempotent.
 - ✅ A `product.ProductDiscontinued` event is emitted exactly once.
-- ✅ Sales-service rejects new order lines for the SKU with `ProductDiscontinuedException` at `placeOrder` (consumer `sales.product-discontinued` stamps `sales.product_pricing.discontinued_at`). ⏳ Existing draft orders are not retroactively flagged.
-- ✅ Inventory stamps `inventory.stock_item.discontinued_at`; manufacturing retires `product_replenishment` + active BOM; purchasing's PR entry-point rejects requisitions for the SKU; finance + reporting/atp stamp their own `discontinued_at`. ⏳ Reorder rules don't yet "stop generating purchase suggestions" — no automatic reorder-alert job exists today for the flag to suppress.
+- ✅ **Sales** rejects new order lines for the SKU with `ProductDiscontinuedException` at `placeOrder` (consumer `sales.product-discontinued` stamps `sales.product_pricing.discontinued_at`). The check is asynchronous against the projection — between publish and inbox delivery, a placed order may slip through; manufacturing's classification gate (`rejected_not_manufactured`) is the defence-in-depth that catches it and routes the fulfilment saga to `stock_reservation_failed` → order header `rejected`.
+- ✅ **Inventory** stamps `inventory.stock_item.discontinued_at`.
+- ✅ **Manufacturing** retires `product_replenishment` (flips `is_purchased` / `is_manufactured` to false and stamps `discontinued_at`), clears the discontinued product's `product_active_bom`, and (§1.4 B.2, shipped 2026-05-15) **cascade-clears `product_active_bom` for every parent FG whose active BOM references the discontinued component**. New orders for the affected parents land at `rejected_no_bom` on `ManufacturingRequestedHandler` until a planner activates a new BOM revision that no longer references the discontinued SKU. WARN-logged per affected parent so impact is visible.
+- ✅ **Purchasing's PR entry-point** rejects new requisitions for the SKU (`PurchaseRequisitionService.createManual` / `createForWorkOrderShortage` both gate via `DiscontinuedProductLookup`).
+- ✅ **Manufacturing's BOM editor** (§1.4 B.3, shipped 2026-05-15) — `BomEditService.addLine` rejects new lines that name a discontinued component, throwing `BomComponentDiscontinuedException`. Mirrors purchasing's pattern; backed by the same `manufacturing.product_replenishment.discontinued_at` column.
+- ✅ **Finance + reporting/atp** stamp their own `discontinued_at` for audit / UI greying.
+- ✅ **In-flight is allowed to complete** (design decision, not a gap): SOs already at `submitted` / `in_fulfilment` / `ready_to_ship`, WOs already at `released` / `in_progress`, and PRs / POs already created continue to flow through. The discontinue gate runs at the entry points only — placing new orders, releasing new WOs, raising new PRs, adding new BOM lines. Hard-stop alternatives (cancel in-flight orders + scrap in-progress WOs) are out of scope.
 
-**Pattern** — CQRS with **policy effect** on consumers (each context reacts in its own way to the same event)
+**Pattern** — CQRS with **policy effect** on consumers (each context reacts in its own way to the same event) + **cascade-on-clear** for the parent-BOM hygiene
 **Events** — `product.ProductDiscontinued`
 **Services involved** — product (command), sales + inventory + manufacturing + purchasing + finance + reporting/atp (projections / gating)
+
+> Covered by tier 2 unit tests `ProductDiscontinuedHandlerTest` (in each consuming service) plus `BomEditServiceTest.AddLine.rejects_when_component_is_discontinued` for the editor gate.
+
+**Out-of-scope, captured here so they aren't re-discovered**
+
+- **No reactivation path.** `Product.discontinue()` is one-way; `Product.Status.INACTIVE` is declared on the enum but no command writes it. A mistaken discontinue can only be reversed by direct DB edit. Other aggregates (Customer, Supplier) toggle `active` ↔ `inactive`; Product doesn't. Pull forward when a stakeholder asks for it.
+- **No auto-reorder-suggestion job.** `inventory.stock_item.reorder_point` / `reorder_quantity` are projected but nothing reads them to emit PRs today; the discontinue flag is ready-to-honour whenever that job lands.
+- **No activate-time discontinued-component check.** `BomEditService.addLine` gates, but a draft BOM authored before a component was discontinued can still be activated. Cheap follow-up (one extra lookup per component in `BomEditService.activate`); not story-blocking because the runtime cascade (B.2) plus the manufacturing classification gate would still surface the problem on first WO release.
+- **SPA visual treatment** for discontinued rows in lists is a frontend concern not part of this story; `reporting.available_to_promise_view.discontinued_at` is stamped and ready for the UI to consume.
 
 ### Story 1.5 — Make-vs-buy classification ✅ *(not in original story set)*
 

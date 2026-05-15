@@ -84,6 +84,20 @@ public class BomEditService {
         }
     }
 
+    /**
+     * §1.4 B.3: thrown when {@link #addLine} is called with a
+     * {@code componentProductId} that product-service has already discontinued.
+     * Mirrors purchasing's {@code ProductDiscontinuedException} shape — a
+     * planner shouldn't be allowed to author a draft BOM that names a
+     * retired SKU, even before activation.
+     */
+    public static class BomComponentDiscontinuedException extends RuntimeException {
+        public BomComponentDiscontinuedException(UUID componentProductId, String componentSku) {
+            super("Component product " + componentSku + " (" + componentProductId
+                + ") has been discontinued by product-service; cannot add to a BOM");
+        }
+    }
+
     // BOM header status — wire-format strings stored in manufacturing.bom_header.status.
     private static final String BOM_STATUS_DRAFT = "draft";
     private static final String BOM_STATUS_ACTIVE = "active";
@@ -93,15 +107,18 @@ public class BomEditService {
     private final BomEditRepository bomEdits;
     private final BomCycleDetector cycleDetector;
     private final MaterialsCostRollupService rollup;
+    private final DiscontinuedProductLookup discontinuedProducts;
 
     public BomEditService(
         BomEditRepository bomEdits,
         BomCycleDetector cycleDetector,
-        MaterialsCostRollupService rollup
+        MaterialsCostRollupService rollup,
+        DiscontinuedProductLookup discontinuedProducts
     ) {
         this.bomEdits = bomEdits;
         this.cycleDetector = cycleDetector;
         this.rollup = rollup;
+        this.discontinuedProducts = discontinuedProducts;
     }
 
     /**
@@ -143,6 +160,13 @@ public class BomEditService {
             throw new BomCycleException(
                 "Component cannot equal the BOM's finished product (" + header.finishedProductId() + ")"
             );
+        }
+
+        // §1.4 B.3: reject discontinued components upfront. Mirrors
+        // purchasing's PR-entry gate; prevents authoring a BOM that names
+        // a retired SKU before the planner gets to activation.
+        if (discontinuedProducts.isDiscontinued(command.componentProductId)) {
+            throw new BomComponentDiscontinuedException(command.componentProductId, command.componentSku);
         }
 
         int nextLineNumber = bomEdits.nextLineNumber(bomHeaderId);

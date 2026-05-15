@@ -55,7 +55,21 @@ public class JdbcProductReplenishmentProjection implements ProductReplenishmentP
     @Override
     @Transactional
     public void applyDiscontinued(UUID productId) {
-        applyMakeVsBuy(productId, false, false);
+        // Stamp discontinued_at as the authoritative signal — flags-pair
+        // (false, false) is ambiguous with a never-classified row, so the
+        // DiscontinuedProductLookup reads this column instead. Done as a
+        // single upsert so a discontinue arriving before a seed still lands
+        // the row.
+        jdbc.update("""
+            INSERT INTO manufacturing.product_replenishment (product_id, is_purchased, is_manufactured, discontinued_at)
+            VALUES (?, false, false, now())
+            ON CONFLICT (product_id) DO UPDATE
+                SET is_purchased = false,
+                    is_manufactured = false,
+                    discontinued_at = COALESCE(manufacturing.product_replenishment.discontinued_at, now())
+            """,
+            productId
+        );
         log.info("discontinued manufacturing.product_replenishment for product_id={}", productId);
     }
 

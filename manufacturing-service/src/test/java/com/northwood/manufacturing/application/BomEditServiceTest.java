@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.northwood.manufacturing.application.BomEditService.AddLineCommand;
+import com.northwood.manufacturing.application.BomEditService.BomComponentDiscontinuedException;
 import com.northwood.manufacturing.application.BomEditService.BomCycleException;
 import com.northwood.manufacturing.application.BomEditService.BomLineNotFoundException;
 import com.northwood.manufacturing.application.BomEditService.BomNotEditableException;
@@ -45,12 +46,13 @@ class BomEditServiceTest {
     @Mock BomEditRepository edits;
     @Mock BomCycleDetector cycleDetector;
     @Mock MaterialsCostRollupService rollup;
+    @Mock DiscontinuedProductLookup discontinuedProducts;
 
     private BomEditService service;
 
     @BeforeEach
     void setUp() {
-        service = new BomEditService(edits, cycleDetector, rollup);
+        service = new BomEditService(edits, cycleDetector, rollup, discontinuedProducts);
     }
 
     private HeaderRow draftHeader() {
@@ -181,6 +183,17 @@ class BomEditServiceTest {
             assertThatThrownBy(() -> service.addLine(HEADER, addLine(COMPONENT)))
                 .isInstanceOf(BomCycleException.class)
                 .hasMessageContaining("close a cycle");
+        }
+
+        @Test void rejects_when_component_is_discontinued() {
+            when(edits.findHeader(HEADER)).thenReturn(Optional.of(draftHeader()));
+            when(discontinuedProducts.isDiscontinued(COMPONENT)).thenReturn(true);
+
+            assertThatThrownBy(() -> service.addLine(HEADER, addLine(COMPONENT)))
+                .isInstanceOf(BomComponentDiscontinuedException.class)
+                .hasMessageContaining("RM-001");
+            verify(edits, never()).insertLine(any(), any(), anyInt(), any(), any(), any(), any(), any(), any());
+            verifyNoInteractions(cycleDetector);
         }
     }
 

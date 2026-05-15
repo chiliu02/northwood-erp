@@ -12,6 +12,7 @@ import com.northwood.manufacturing.application.inbox.GoodsReceivedHandler;
 import com.northwood.manufacturing.application.inbox.MakeVsBuyChangedHandler;
 import com.northwood.manufacturing.application.inbox.ManufacturingRequestedHandler;
 import com.northwood.manufacturing.application.inbox.ProductCreatedHandler;
+import com.northwood.manufacturing.application.inbox.ProductDiscontinuedHandler;
 import com.northwood.manufacturing.application.inbox.RawMaterialsReservedHandler;
 import com.northwood.manufacturing.application.inbox.SalesOrderCancellationRequestedHandler;
 import com.northwood.manufacturing.application.inbox.SupplierProductPriceChangedHandler;
@@ -95,7 +96,7 @@ public final class ManufacturingTestKit {
             replenishment, approvedVendors, materialsCosts, boms,
             outbox, json, currentUser
         );
-        this.bomEditService = new BomEditService(bomEdits, bomCycleDetector, rollupService);
+        this.bomEditService = new BomEditService(bomEdits, bomCycleDetector, rollupService, replenishment);
 
         this.sagaWorker = new MakeToOrderSagaWorker(
             sagaManager, releaseService, workOrders, outbox, json
@@ -109,6 +110,7 @@ public final class ManufacturingTestKit {
         bus.register(new ActiveBomChangedHandler(inbox, activeBoms, rollupService, json));
         bus.register(new MakeVsBuyChangedHandler(inbox, replenishment, json));
         bus.register(new ProductCreatedHandler(inbox, replenishment, json));
+        bus.register(new ProductDiscontinuedHandler(inbox, replenishment, activeBoms, boms, json));
         bus.register(new SalesOrderCancellationRequestedHandler(inbox, cancellationService, json));
         bus.register(new SupplierProductPriceChangedHandler(inbox, rollupService, json));
         bus.register(new ApprovedVendorListChangedHandler(inbox, approvedVendors, json));

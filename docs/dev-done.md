@@ -6,6 +6,50 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-15 — Close Story 1.4 gaps: BOM hygiene on component discontinue + editor gate + prose pass
+
+Closes Demo 1 / Story 1.4 (was 🚧 → ✅) on two real behaviour gaps plus a prose pass on two stale ⏳ bullets. Cataloged in user-stories.md's gap-pass earlier today as B.2 (parent-BOM cascade) + B.3 (`BomEditService.addLine` gate). Before this slice:
+- Discontinuing a raw material left every parent FG's active BOM intact; make-to-order would try to reserve the discontinued RM, succeed if stock remained, eventually shortage with no replenishment.
+- `BomEditService.addLine` had cycle detection but no discontinued-component check, so a planner could author a draft BOM that named a retired SKU.
+
+### Schema
+
+- `manufacturing.product_replenishment` gains `discontinued_at TIMESTAMPTZ` (nullable). Distinct signal from the `(is_purchased=false, is_manufactured=false)` pair, which can also occur on a freshly-seeded never-classified row. Both the baseline `db/northwood_erp.sql` and a new Liquibase changeset `manufacturing/.../2026-05-15-add-product-replenishment-discontinued-at.sql` apply the column for fresh and existing dev DBs respectively.
+
+### Behaviour changes
+
+- `JdbcProductReplenishmentProjection.applyDiscontinued` now writes a single upsert: flips both flags to `false` and stamps `discontinued_at = now()`. `COALESCE(existing, now())` on the conflict path so a redelivered discontinue doesn't churn the timestamp.
+- New `manufacturing.application.DiscontinuedProductLookup` interface + `JdbcDiscontinuedProductLookup` impl reading `product_replenishment.discontinued_at IS NOT NULL`. Twin of purchasing's existing pattern.
+- `BomEditService.addLine` injects `DiscontinuedProductLookup`; throws new nested `BomComponentDiscontinuedException` when the component is discontinued. Cycle detection still runs after the gate so a same-product self-loop and a discontinued-component case both surface clean exceptions.
+- `manufacturing.application.inbox.ProductDiscontinuedHandler` injects `BomLookup` and (after the existing `replenishment.applyDiscontinued` + `activeBom.apply(productId, null)` calls) walks `boms.findParentProductIdsByComponent(productId)` to cascade-clear `product_active_bom` on every parent FG whose active BOM references the discontinued product. WARN-logged per affected parent. The reverse-walk query was already present (added 2026-05-08 for the §2.8 Slice D cost rollup), so this is purely consumer-side wiring.
+
+### Test wiring
+
+- `manufacturing.application.inbox.ProductDiscontinuedHandlerTest` extended: new `cascades_clear_to_parent_active_boms` case + verifies the no-cascade happy path remains intact. Mock `BomLookup` injected.
+- `manufacturing.application.BomEditServiceTest` adds `rejects_when_component_is_discontinued` case + injects mock `DiscontinuedProductLookup` to the existing constructor calls.
+- `test-harness/.../kits/ManufacturingTestKit` updated for both new constructor signatures. `InMemoryProductReplenishmentProjection` now also implements `DiscontinuedProductLookup` (single fake serves both ports in the harness, while production splits them). Registers `ProductDiscontinuedHandler` on the bus (was unwired before — pre-existing gap closed alongside).
+
+### Docs
+
+- `docs/user-stories.md` Story 1.4 flipped 🚧 → ✅. Two stale ⏳ bullets dropped:
+  - "Existing draft orders are not retroactively flagged" — `SalesOrder` has no `DRAFT` constant; `placeOrder` lands directly at `'submitted'`. The bullet described a state the codebase doesn't produce.
+  - "Reorder rules don't yet stop generating purchase suggestions" — the gap was the absence of a reorder-suggestion *producer*, not the suppression. Restated as out-of-scope.
+  
+  New explicit bullet: **"In-flight is allowed to complete"** documents the deliberate design choice (gate runs at entry points only). New *Out-of-scope* block lists the four real deferrals (no reactivation path, no auto-reorder job, no activate-time discontinued-component check, SPA visual treatment).
+
+### Smoke
+
+`mvn install -DskipTests` reactor green; `mvn test` full reactor green including the Testcontainers end-to-end suites. Test-harness 8/8 (the `ManufacturingTestKit` change exercises the cascade implicitly through the saga lifecycle tests).
+
+### Still ⏳ / out-of-scope at end of slice (captured under Story 1.4's *Out-of-scope*)
+
+- Reactivation path (`Product.discontinue` is one-way; no command writes `Status.INACTIVE`).
+- Auto-reorder-suggestion job (no producer reads `reorder_point` / `reorder_quantity`).
+- Activate-time discontinued-component check in `BomEditService.activate` (one extra lookup per component; cheap follow-up).
+- SPA UI greying / hiding of discontinued rows (frontend concern; the read-side flag is stamped and ready).
+
+---
+
 ## 2026-05-15 — Close Story 6.1 gaps: `finance.SupplierInvoiceRejected` + P2P saga `failed` terminal + dead-state cleanup
 
 Closes the two cheapest gaps under Demo 6 / Story 6.1's 🚧 flag (cataloged in user-stories.md as B.2 + B.3 in the gap pass earlier today). Before this slice, `SupplierInvoice.manualReject` flipped the invoice to `cancelled` but emitted no event, so the P2P saga parked at `goods_received` forever; the saga also carried two dead constants (`MANUAL_REVIEW_REQUIRED` not in `ALL_STATES`; `FAILED` written by nothing) plus a much wider schema CHECK list of states code never wrote (`supplier_invoice_received`, `three_way_match_pending`, `three_way_match_passed`, `three_way_match_failed`, `purchase_order_closed`, `manual_review_required`).
