@@ -6,6 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.northwood.manufacturing.domain.ManufacturingAggregateTypes;
 import com.northwood.manufacturing.domain.events.WorkOrderManufacturingCompleted;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.shared.application.inbox.InboxPort;
@@ -45,7 +46,7 @@ class WorkOrderManufacturingCompletedHandlerTest {
             Instant.now()
         );
         return new EventEnvelope(
-            eventId, "WorkOrder", UUID.randomUUID(),
+            eventId, ManufacturingAggregateTypes.WORK_ORDER, UUID.randomUUID(),
             WorkOrderManufacturingCompleted.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()

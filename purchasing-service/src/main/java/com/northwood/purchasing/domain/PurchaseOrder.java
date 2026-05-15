@@ -41,7 +41,7 @@ public final class PurchaseOrder {
      * Wire-format aggregate-type stamped onto {@code purchasing.outbox_message.aggregate_type}
      * for events this aggregate emits.
      */
-    public static final String AGGREGATE_TYPE = "PurchaseOrder";
+    public static final String AGGREGATE_TYPE = PurchasingAggregateTypes.PURCHASE_ORDER;
 
     // ------------------------------------------------------------
     // Status constants — wire-format strings stored in

@@ -623,7 +623,6 @@
 
 <div class="callout warn">
   <strong>Known exception &mdash; one <code>*Repository</code> interface without a backing aggregate.</strong>
-  After the 2026-05-15 / 2026-05-16 audit cleanup, one legacy offender remains:
   <ul style="margin: 0.4rem 0 0 1.2rem; padding-left: 0;">
     <li><code>manufacturing.BomEditRepository</code> &mdash; row-level write port for
         <code>bom_header</code> / <code>bom_line</code>; invariants (acyclic graph,
@@ -632,22 +631,7 @@
         <code>uq_bom_active_per_product</code>. Promotion to a <code>Bom</code> aggregate
         with <code>activate(BomCycleDetector)</code> tracked in <code>dev-todo.md</code> §2.16.</li>
   </ul>
-  <p style="margin: 0.5rem 0 0;">New code must not introduce further offenders. Four prior offenders
-  were resolved 2026-05-16:</p>
-  <ul style="margin: 0.2rem 0 0 1.2rem; padding-left: 0;">
-    <li>§2.17 &mdash; <code>SupplierProductPriceRepository</code> is now the real DDD Repository for
-        the new <code>SupplierProductPrice</code> aggregate root
-        (<code>AGGREGATE_TYPE</code> + intent-named <code>updatePrice</code> mutator +
-        <code>pendingEvents</code>).</li>
-    <li>§2.17 &mdash; <code>ApprovedVendorRepository</code> deleted; approved-vendor list folded into
-        the <code>Product</code> aggregate as a child collection, mutated via
-        <code>Product.setApprovedVendors</code>, persisted by <code>JdbcProductRepository</code>
-        on a dirty-flag check.</li>
-    <li>§2.18 &mdash; <code>RoutingRepository</code> / <code>SupplierRepository</code> renamed to
-        <code>RoutingQueryPort</code> / <code>SupplierQueryPort</code> (moved from <code>domain/</code>
-        to <code>application/</code>) since their target classes have no mutators / events /
-        <code>pendingEvents</code>.</li>
-  </ul>
+  <p style="margin: 0.5rem 0 0;">New code must not introduce further offenders.</p>
 </div>
 
 <div class="callout">
@@ -964,7 +948,7 @@ public class ProductService {
     <tr><td>Transaction script masquerading as DDD</td>
         <td>Application services orchestrate; aggregates own the logic + emit events. The grep <code>JdbcTemplate</code> in <code>application/</code> &rarr; zero is the canary.</td></tr>
     <tr><td><code>*Repository</code> without a backing aggregate</td>
-        <td>Convention captured in <code>docs/conventions.md</code>: every <code>*Repository</code> interface in <code>domain/</code> must have a sibling aggregate root in the same package declaring <code>AGGREGATE_TYPE</code>. Event-less write-once aggregates (e.g. <code>finance.JournalEntry</code>) are permitted. One legacy offender (<code>BomEditRepository</code>) tracked for promotion in <code>dev-todo.md</code> §2.16; four prior offenders resolved 2026-05-16 (§2.17 + §2.18). New code must not add more.</td></tr>
+        <td>Convention captured in <code>docs/conventions.md</code>: every <code>*Repository</code> interface in <code>domain/</code> must have a sibling aggregate root in the same package declaring <code>AGGREGATE_TYPE</code>. Event-less write-once aggregates (e.g. <code>finance.JournalEntry</code>) are permitted. One legacy offender (<code>BomEditRepository</code>) tracked for promotion in <code>dev-todo.md</code> §2.16. New code must not add more.</td></tr>
   </tbody>
 </table>
 

@@ -34,7 +34,7 @@ public final class SupplierProductPrice {
      * Wire-format aggregate-type stamped onto {@code purchasing.outbox_message.aggregate_type}
      * for events this aggregate emits.
      */
-    public static final String AGGREGATE_TYPE = "SupplierProductPrice";
+    public static final String AGGREGATE_TYPE = PurchasingAggregateTypes.SUPPLIER_PRODUCT_PRICE;
 
     private final SupplierProductPriceId id;
     private final UUID supplierId;

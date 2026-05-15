@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.northwood.inventory.application.WipBalanceWriter;
+import com.northwood.manufacturing.domain.ManufacturingAggregateTypes;
 import com.northwood.manufacturing.domain.events.SubAssembliesConsumed;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
@@ -44,7 +45,7 @@ class SubAssembliesConsumedHandlerTest {
             eventId, PARENT, items, Instant.now()
         );
         return new EventEnvelope(
-            eventId, "WorkOrder", PARENT,
+            eventId, ManufacturingAggregateTypes.WORK_ORDER, PARENT,
             SubAssembliesConsumed.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()

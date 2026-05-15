@@ -1,5 +1,6 @@
 package com.northwood.sales.domain.saga;
 
+import com.northwood.sales.domain.SalesAggregateTypes;
 import com.northwood.shared.domain.saga.SagaInstance;
 import java.time.Instant;
 import java.util.Set;
@@ -29,7 +30,7 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
      * for events this saga emits (it owns its emissions independently of the
      * SalesOrder aggregate; the saga's lifecycle is the originator).
      */
-    public static final String AGGREGATE_TYPE = "SalesOrderFulfilmentSaga";
+    public static final String AGGREGATE_TYPE = SalesAggregateTypes.SALES_ORDER_FULFILMENT_SAGA;
 
     // ------------------------------------------------------------
     // State constants — single source of truth for the wire-format strings

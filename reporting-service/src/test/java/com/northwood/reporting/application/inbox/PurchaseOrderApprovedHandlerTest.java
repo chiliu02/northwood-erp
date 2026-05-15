@@ -6,6 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.northwood.purchasing.domain.PurchasingAggregateTypes;
 import com.northwood.purchasing.domain.events.PurchaseOrderApproved;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
@@ -45,7 +46,7 @@ class PurchaseOrderApprovedHandlerTest {
             ACTOR, "ok", APPROVED_AT
         );
         return new EventEnvelope(
-            eventId, "PurchaseOrder", PO,
+            eventId, PurchasingAggregateTypes.PURCHASE_ORDER, PO,
             PurchaseOrderApproved.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, ACTOR, Instant.now()

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.northwood.inventory.application.StockReservationService;
+import com.northwood.manufacturing.domain.ManufacturingAggregateTypes;
 import com.northwood.manufacturing.domain.events.WorkOrderCancelled;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
@@ -43,7 +44,7 @@ class WorkOrderCancelledHandlerTest {
             "cancelled via sales", Instant.now()
         );
         return new EventEnvelope(
-            eventId, "WorkOrder", WO,
+            eventId, ManufacturingAggregateTypes.WORK_ORDER, WO,
             WorkOrderCancelled.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()
@@ -70,7 +71,7 @@ class WorkOrderCancelledHandlerTest {
 
     @Test void wrong_event_type_is_no_op() {
         EventEnvelope wrong = new EventEnvelope(
-            UUID.randomUUID(), "WorkOrder", UUID.randomUUID(),
+            UUID.randomUUID(), ManufacturingAggregateTypes.WORK_ORDER, UUID.randomUUID(),
             "manufacturing.SomethingElse", 1, "{}",
             null, null, null, null, Instant.now()
         );

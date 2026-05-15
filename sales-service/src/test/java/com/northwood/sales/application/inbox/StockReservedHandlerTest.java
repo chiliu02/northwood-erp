@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.northwood.inventory.domain.InventoryAggregateTypes;
 import com.northwood.inventory.domain.events.StockReserved;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.shared.application.inbox.InboxPort;
@@ -54,7 +55,7 @@ class StockReservedHandlerTest {
             Instant.now()
         );
         return new EventEnvelope(
-            eventId, "StockReservation", UUID.randomUUID(),
+            eventId, InventoryAggregateTypes.STOCK_RESERVATION, UUID.randomUUID(),
             StockReserved.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()
@@ -89,7 +90,7 @@ class StockReservedHandlerTest {
 
     @Test void wrong_event_type_is_no_op() {
         EventEnvelope wrong = new EventEnvelope(
-            UUID.randomUUID(), "StockReservation", UUID.randomUUID(),
+            UUID.randomUUID(), InventoryAggregateTypes.STOCK_RESERVATION, UUID.randomUUID(),
             "inventory.SomethingElse", 1, "{}",
             null, null, null, null, Instant.now()
         );

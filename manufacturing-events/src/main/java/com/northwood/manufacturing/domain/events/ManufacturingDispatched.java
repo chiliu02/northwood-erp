@@ -1,5 +1,6 @@
 package com.northwood.manufacturing.domain.events;
 
+import com.northwood.sales.domain.SalesAggregateTypes;
 import com.northwood.shared.domain.DomainEvent;
 import java.time.Instant;
 import java.util.List;
@@ -41,12 +42,12 @@ public record ManufacturingDispatched(
     public static final String EVENT_TYPE = "manufacturing.ManufacturingDispatched";
 
     /**
-     * Wire-format aggregate-type. Carried here (not on the SalesOrder aggregate
-     * class) because manufacturing-service cannot import sales-service Java
-     * classes; the emitter in manufacturing's inbox handler needs a local
-     * reference.
+     * Wire-format aggregate-type. Sourced from {@link SalesAggregateTypes#SALES_ORDER}
+     * — manufacturing-service cannot import sales-service's {@code SalesOrder}
+     * aggregate class, but it can import the constants in {@code sales-events}
+     * (the contract surface). Per §2.20 (2026-05-16).
      */
-    public static final String AGGREGATE_TYPE = "SalesOrder";
+    public static final String AGGREGATE_TYPE = SalesAggregateTypes.SALES_ORDER;
 
     @Override public String eventType() { return EVENT_TYPE; }
 

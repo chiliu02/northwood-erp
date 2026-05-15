@@ -2,6 +2,7 @@ package com.northwood.testharness.p2p;
 
 import com.northwood.finance.domain.events.SupplierInvoiceApproved;
 import com.northwood.finance.domain.events.SupplierPaymentMade;
+import com.northwood.inventory.domain.InventoryAggregateTypes;
 import com.northwood.inventory.domain.events.GoodsReceived;
 import com.northwood.purchasing.domain.events.PurchaseOrderApproved;
 import com.northwood.purchasing.domain.events.PurchaseOrderCreated;
@@ -111,7 +112,7 @@ class PurchaseToPayHappyPathTest {
         // GoodsReceivedPayload. Inject onto inventory's outbox so the bus
         // delivers it to every registered handler subscribing to inventory.GoodsReceived.
         inventory.outbox.appendPending(OutboxRow.pending(
-            receiptEventId, "GoodsReceipt", receiptHeaderId,
+            receiptEventId, InventoryAggregateTypes.GOODS_RECEIPT, receiptHeaderId,
             GoodsReceived.EVENT_TYPE, 1,
             json.writeValueAsString(purchasingReceipt),
             null, null, null, null

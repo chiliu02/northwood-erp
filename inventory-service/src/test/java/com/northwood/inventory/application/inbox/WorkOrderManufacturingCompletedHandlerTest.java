@@ -11,6 +11,7 @@ import com.northwood.inventory.application.StockBalanceWriter;
 import com.northwood.inventory.application.StockMovementWriter;
 import com.northwood.inventory.application.WarehouseLookup;
 import com.northwood.inventory.application.WipBalanceWriter;
+import com.northwood.manufacturing.domain.ManufacturingAggregateTypes;
 import com.northwood.manufacturing.domain.events.WorkOrderManufacturingCompleted;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
@@ -55,7 +56,7 @@ class WorkOrderManufacturingCompletedHandlerTest {
             PRODUCT, "FG-001", new BigDecimal("5"), Instant.now()
         );
         return new EventEnvelope(
-            eventId, "WorkOrder", WO,
+            eventId, ManufacturingAggregateTypes.WORK_ORDER, WO,
             WorkOrderManufacturingCompleted.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()
@@ -100,7 +101,7 @@ class WorkOrderManufacturingCompletedHandlerTest {
 
     @Test void wrong_event_type_is_no_op() {
         EventEnvelope wrong = new EventEnvelope(
-            UUID.randomUUID(), "WorkOrder", UUID.randomUUID(),
+            UUID.randomUUID(), ManufacturingAggregateTypes.WORK_ORDER, UUID.randomUUID(),
             "manufacturing.SomethingElse", 1, "{}",
             null, null, null, null, Instant.now()
         );

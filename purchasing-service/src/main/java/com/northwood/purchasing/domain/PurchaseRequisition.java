@@ -32,7 +32,7 @@ public final class PurchaseRequisition {
      * Wire-format aggregate-type stamped onto {@code purchasing.outbox_message.aggregate_type}
      * for events this aggregate emits.
      */
-    public static final String AGGREGATE_TYPE = "PurchaseRequisition";
+    public static final String AGGREGATE_TYPE = PurchasingAggregateTypes.PURCHASE_REQUISITION;
 
     // ------------------------------------------------------------
     // Status constants — wire-format strings stored in

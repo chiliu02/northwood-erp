@@ -1,5 +1,6 @@
 package com.northwood.testharness.m2o;
 
+import com.northwood.inventory.domain.InventoryAggregateTypes;
 import com.northwood.inventory.domain.events.GoodsReceived;
 import com.northwood.manufacturing.domain.events.RawMaterialShortageDetected;
 
@@ -133,7 +134,7 @@ class MakeToOrderShortagePathTest {
                 Instant.now()
             );
         inv.outbox.appendPending(OutboxRow.pending(
-            receiptEventId, "GoodsReceipt", receiptHeaderId,
+            receiptEventId, InventoryAggregateTypes.GOODS_RECEIPT, receiptHeaderId,
             GoodsReceived.EVENT_TYPE, 1,
             json.writeValueAsString(receiptPayload),
             null, null, null, null

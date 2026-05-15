@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.northwood.manufacturing.application.BomLookup;
+import com.northwood.product.domain.ProductAggregateTypes;
 import com.northwood.product.domain.events.ProductDiscontinued;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
@@ -45,7 +46,7 @@ class ProductDiscontinuedHandlerTest {
         UUID eventId = UUID.randomUUID();
         ProductDiscontinued payload = new ProductDiscontinued(eventId, PRODUCT, Instant.now());
         return new EventEnvelope(
-            eventId, "Product", PRODUCT,
+            eventId, ProductAggregateTypes.PRODUCT, PRODUCT,
             ProductDiscontinued.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()

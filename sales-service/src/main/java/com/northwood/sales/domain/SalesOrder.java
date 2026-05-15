@@ -46,7 +46,7 @@ public final class SalesOrder {
      * constant; cross-service emitters that target this aggregate type carry their own
      * literal on the event class (see {@code ManufacturingDispatched.AGGREGATE_TYPE}).
      */
-    public static final String AGGREGATE_TYPE = "SalesOrder";
+    public static final String AGGREGATE_TYPE = SalesAggregateTypes.SALES_ORDER;
 
     // ------------------------------------------------------------
     // Status constants — wire-format strings stored in

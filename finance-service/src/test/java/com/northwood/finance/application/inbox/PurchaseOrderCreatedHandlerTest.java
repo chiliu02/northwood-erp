@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.northwood.purchasing.domain.PurchasingAggregateTypes;
 import com.northwood.purchasing.domain.events.PurchaseOrderCreated;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
@@ -54,7 +55,7 @@ class PurchaseOrderCreatedHandlerTest {
             new BigDecimal("0"), "draft", lines, Instant.now()
         );
         return new EventEnvelope(
-            eventId, "PurchaseOrder", PO,
+            eventId, PurchasingAggregateTypes.PURCHASE_ORDER, PO,
             PurchaseOrderCreated.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()
@@ -84,7 +85,7 @@ class PurchaseOrderCreatedHandlerTest {
 
     @Test void wrong_event_type_is_no_op() {
         EventEnvelope wrong = new EventEnvelope(
-            UUID.randomUUID(), "PurchaseOrder", UUID.randomUUID(),
+            UUID.randomUUID(), PurchasingAggregateTypes.PURCHASE_ORDER, UUID.randomUUID(),
             "purchasing.SomethingElse", 1, "{}",
             null, null, null, null, Instant.now()
         );

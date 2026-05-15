@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.northwood.inventory.application.StockReservationService;
+import com.northwood.sales.domain.SalesAggregateTypes;
 import com.northwood.sales.domain.events.SalesOrderCancellationRequested;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
@@ -43,7 +44,7 @@ class SalesOrderCancellationRequestedHandlerTest {
             "customer requested", Instant.now()
         );
         return new EventEnvelope(
-            eventId, "SalesOrder", SO,
+            eventId, SalesAggregateTypes.SALES_ORDER, SO,
             SalesOrderCancellationRequested.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()
@@ -70,7 +71,7 @@ class SalesOrderCancellationRequestedHandlerTest {
 
     @Test void wrong_event_type_is_no_op() {
         EventEnvelope wrong = new EventEnvelope(
-            UUID.randomUUID(), "SalesOrder", UUID.randomUUID(),
+            UUID.randomUUID(), SalesAggregateTypes.SALES_ORDER, UUID.randomUUID(),
             "sales.SomethingElse", 1, "{}",
             null, null, null, null, Instant.now()
         );

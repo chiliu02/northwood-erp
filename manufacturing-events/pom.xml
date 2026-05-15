@@ -25,5 +25,22 @@
             <groupId>com.northwood</groupId>
             <artifactId>shared-kernel</artifactId>
         </dependency>
+        <!--
+            Cross-service stamping deps (§2.20, 2026-05-16).
+            Two events in this jar stamp aggregates owned by other services:
+              - ManufacturingDispatched.AGGREGATE_TYPE = SalesAggregateTypes.SALES_ORDER
+              - ProductMaterialsCostComputed.AGGREGATE_TYPE = ProductAggregateTypes.PRODUCT
+            Events-jar → events-jar deps are clean: both are wire-contract modules,
+            no Spring / JDBC, no service-internal coupling. Keep this list minimal
+            and matched to actual cross-service stamping cases only.
+        -->
+        <dependency>
+            <groupId>com.northwood</groupId>
+            <artifactId>sales-events</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.northwood</groupId>
+            <artifactId>product-events</artifactId>
+        </dependency>
     </dependencies>
 </project>

@@ -38,7 +38,7 @@ public class Product {
      * Wire-format aggregate-type stamped onto {@code product.outbox_message.aggregate_type}
      * for events this aggregate emits.
      */
-    public static final String AGGREGATE_TYPE = "Product";
+    public static final String AGGREGATE_TYPE = ProductAggregateTypes.PRODUCT;
 
     private final ProductId id;
     private final Sku sku;

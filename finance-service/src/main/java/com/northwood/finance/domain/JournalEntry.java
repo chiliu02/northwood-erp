@@ -29,7 +29,7 @@ public final class JournalEntry {
      * because the aggregate root's identity remains the anchor for audit-log + reporting
      * references, even when no outbox write currently references it.
      */
-    public static final String AGGREGATE_TYPE = "JournalEntry";
+    public static final String AGGREGATE_TYPE = FinanceAggregateTypes.JOURNAL_ENTRY;
 
     /** Status — wire-format string stored in finance.journal_entry_header.status. */
     public static final String POSTED = "posted";

@@ -389,11 +389,9 @@ Scope:
 
 Convention amended in `docs/conventions.md`: the *event-less write-once aggregate* (factory-only, no mutators, no events) is now a permitted variant of the `*Repository` rule, with `finance.JournalEntry` as the named exemplar (balance invariant carried by the DB trigger `enforce_journal_balance`; reversal is a new posted entry rather than a mutation). `JournalEntry.AGGREGATE_TYPE = "JournalEntry"` added for completeness. See `dev-done.md`.
 
-### 2.20 Cross-service consumer-test literals — host AGGREGATE_TYPE on event classes
+### 2.20 Centralize aggregate-type constants in `<Service>AggregateTypes` files ✅ shipped 2026-05-16
 
-When a consumer service (e.g. finance consuming `purchasing.PurchaseOrderCreated`) tests an inbox handler, it constructs a fake `EventEnvelope` with `aggregate_type = "PurchaseOrder"`. Today this is a literal string; the consumer can't reference `purchasing.PurchaseOrder.AGGREGATE_TYPE` because cross-service domain imports are forbidden. ~14 test sites across finance / inventory / manufacturing / purchasing / reporting / sales consumer-handler tests + test-harness e2e tests.
-
-Scope: extend the AGGREGATE_TYPE-on-event-class convention (already used for `ManufacturingDispatched.AGGREGATE_TYPE = "SalesOrder"` and `ProductMaterialsCostComputed.AGGREGATE_TYPE = "Product"` — both cross-service stamping cases) to every event whose `aggregate_type` is referenced by a cross-service consumer. Producer-side outbox writes keep using `<Aggregate>.AGGREGATE_TYPE`; consumer-side reads use `<Event>.AGGREGATE_TYPE`. Document the rule explicitly in `docs/architecture.md` → *Events jars* (currently only covers the "no Java aggregate" case). Mechanical sweep — add the constant to ~10 event classes, replace literals at consumer sites.
+Six new files (one per events-producing service): `ProductAggregateTypes`, `SalesAggregateTypes`, `InventoryAggregateTypes`, `ManufacturingAggregateTypes`, `PurchasingAggregateTypes`, `FinanceAggregateTypes` — each hosting all `AGGREGATE_TYPE` constants for that service's aggregates and sagas. Aggregate classes re-export from these files (`Product.AGGREGATE_TYPE = ProductAggregateTypes.PRODUCT`). Cross-service event classes (`ManufacturingDispatched`, `ProductMaterialsCostComputed`) and ~30 cross-service consumer-test sites reference the events-jar constants directly. `manufacturing-events` POM gains `sales-events` + `product-events` deps to support cross-service stamping references. See `dev-done.md`.
 
 ---
 

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.northwood.inventory.domain.InventoryAggregateTypes;
 import com.northwood.inventory.domain.events.GoodsReceived;
 import com.northwood.purchasing.application.inbox.PurchaseOrderReceiptProjection.ReceiptOutcome;
 import com.northwood.purchasing.application.saga.PurchaseToPaySagaManager;
@@ -53,7 +54,7 @@ class GoodsReceivedHandlerTest {
             Instant.now()
         );
         return new EventEnvelope(
-            eventId, "GoodsReceipt", UUID.randomUUID(),
+            eventId, InventoryAggregateTypes.GOODS_RECEIPT, UUID.randomUUID(),
             GoodsReceived.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()
@@ -94,7 +95,7 @@ class GoodsReceivedHandlerTest {
 
     @Test void wrong_event_type_is_no_op() {
         EventEnvelope wrong = new EventEnvelope(
-            UUID.randomUUID(), "GoodsReceipt", UUID.randomUUID(),
+            UUID.randomUUID(), InventoryAggregateTypes.GOODS_RECEIPT, UUID.randomUUID(),
             "inventory.SomethingElse", 1, "{}",
             null, null, null, null, Instant.now()
         );

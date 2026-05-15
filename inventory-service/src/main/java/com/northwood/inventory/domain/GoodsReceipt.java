@@ -26,7 +26,7 @@ public final class GoodsReceipt {
      * Wire-format aggregate-type stamped onto {@code inventory.outbox_message.aggregate_type}
      * for events this aggregate emits.
      */
-    public static final String AGGREGATE_TYPE = "GoodsReceipt";
+    public static final String AGGREGATE_TYPE = InventoryAggregateTypes.GOODS_RECEIPT;
 
     /** Status — wire-format string stored in inventory.goods_receipt_header.status. */
     public static final String POSTED = "posted";

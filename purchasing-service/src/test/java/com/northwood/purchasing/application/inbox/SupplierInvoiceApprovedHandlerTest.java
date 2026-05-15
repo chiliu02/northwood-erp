@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.northwood.finance.domain.FinanceAggregateTypes;
 import com.northwood.finance.domain.events.SupplierInvoiceApproved;
 import com.northwood.purchasing.application.saga.PurchaseToPaySagaManager;
 import com.northwood.shared.application.inbox.InboxPort;
@@ -46,7 +47,7 @@ class SupplierInvoiceApprovedHandlerTest {
             "AUD", new BigDecimal("1000.00"), Instant.now()
         );
         return new EventEnvelope(
-            eventId, "SupplierInvoice", UUID.randomUUID(),
+            eventId, FinanceAggregateTypes.SUPPLIER_INVOICE, UUID.randomUUID(),
             SupplierInvoiceApproved.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()
@@ -75,7 +76,7 @@ class SupplierInvoiceApprovedHandlerTest {
 
     @Test void wrong_event_type_is_no_op() {
         EventEnvelope wrong = new EventEnvelope(
-            UUID.randomUUID(), "SupplierInvoice", UUID.randomUUID(),
+            UUID.randomUUID(), FinanceAggregateTypes.SUPPLIER_INVOICE, UUID.randomUUID(),
             "finance.SomethingElse", 1, "{}",
             null, null, null, null, Instant.now()
         );

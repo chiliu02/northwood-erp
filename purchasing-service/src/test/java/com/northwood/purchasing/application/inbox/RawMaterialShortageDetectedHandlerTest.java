@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.northwood.manufacturing.domain.ManufacturingAggregateTypes;
 import com.northwood.manufacturing.domain.events.RawMaterialShortageDetected;
 import com.northwood.purchasing.application.PurchaseRequisitionService;
 import com.northwood.purchasing.application.dto.WorkOrderShortageCommand;
@@ -48,7 +49,7 @@ class RawMaterialShortageDetectedHandlerTest {
             components, Instant.now()
         );
         return new EventEnvelope(
-            eventId, "WorkOrder", WO,
+            eventId, ManufacturingAggregateTypes.WORK_ORDER, WO,
             RawMaterialShortageDetected.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()
@@ -93,7 +94,7 @@ class RawMaterialShortageDetectedHandlerTest {
 
     @Test void wrong_event_type_is_no_op() {
         EventEnvelope wrong = new EventEnvelope(
-            UUID.randomUUID(), "WorkOrder", UUID.randomUUID(),
+            UUID.randomUUID(), ManufacturingAggregateTypes.WORK_ORDER, UUID.randomUUID(),
             "manufacturing.SomethingElse", 1, "{}",
             null, null, null, null, Instant.now()
         );

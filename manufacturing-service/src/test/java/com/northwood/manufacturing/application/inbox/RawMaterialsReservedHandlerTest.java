@@ -12,8 +12,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.northwood.inventory.domain.InventoryAggregateTypes;
 import com.northwood.inventory.domain.events.RawMaterialsReserved;
 import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
+import com.northwood.manufacturing.domain.ManufacturingAggregateTypes;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderMaterial;
@@ -80,7 +82,7 @@ class RawMaterialsReservedHandlerTest {
             status, components, Instant.now()
         );
         return new EventEnvelope(
-            eventId, "StockReservation", workOrderId,
+            eventId, InventoryAggregateTypes.STOCK_RESERVATION, workOrderId,
             RawMaterialsReserved.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()
@@ -138,7 +140,7 @@ class RawMaterialsReservedHandlerTest {
         verify(outbox).appendPending(captor.capture());
         assertThat(captor.getValue().getEventType())
             .isEqualTo(RawMaterialShortageDetected.EVENT_TYPE);
-        assertThat(captor.getValue().getAggregateType()).isEqualTo("WorkOrder");
+        assertThat(captor.getValue().getAggregateType()).isEqualTo(ManufacturingAggregateTypes.WORK_ORDER);
     }
 
     @Test void failed_reservation_projects_material_status_shortage() {
@@ -172,7 +174,7 @@ class RawMaterialsReservedHandlerTest {
 
     @Test void wrong_event_type_is_no_op() {
         EventEnvelope wrong = new EventEnvelope(
-            UUID.randomUUID(), "StockReservation", UUID.randomUUID(),
+            UUID.randomUUID(), InventoryAggregateTypes.STOCK_RESERVATION, UUID.randomUUID(),
             "inventory.SomethingElse", 1,
             "{}", null, null, null, null, Instant.now()
         );

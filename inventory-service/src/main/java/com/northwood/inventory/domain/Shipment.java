@@ -27,7 +27,7 @@ public final class Shipment {
      * Wire-format aggregate-type stamped onto {@code inventory.outbox_message.aggregate_type}
      * for events this aggregate emits.
      */
-    public static final String AGGREGATE_TYPE = "Shipment";
+    public static final String AGGREGATE_TYPE = InventoryAggregateTypes.SHIPMENT;
 
     /** Status — wire-format string stored in inventory.shipment_header.status. */
     public static final String POSTED = "posted";

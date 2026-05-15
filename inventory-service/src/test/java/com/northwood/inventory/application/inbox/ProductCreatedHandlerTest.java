@@ -6,6 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.northwood.product.domain.ProductAggregateTypes;
 import com.northwood.product.domain.events.ProductCreated;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
@@ -41,7 +42,7 @@ class ProductCreatedHandlerTest {
         UUID eventId = UUID.randomUUID();
         ProductCreated payload = new ProductCreated(eventId, PRODUCT, SKU, NAME, TYPE, Instant.now());
         return new EventEnvelope(
-            eventId, "Product", PRODUCT,
+            eventId, ProductAggregateTypes.PRODUCT, PRODUCT,
             ProductCreated.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()

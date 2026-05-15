@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.northwood.finance.domain.FinanceAggregateTypes;
 import com.northwood.finance.domain.events.SupplierPaymentMade;
 import com.northwood.purchasing.application.saga.PurchaseToPaySagaManager;
 import com.northwood.shared.application.inbox.InboxPort;
@@ -52,7 +53,7 @@ class SupplierPaymentMadeHandlerTest {
             invoiceStatusAfter, Instant.now()
         );
         return new EventEnvelope(
-            eventId, "Payment", UUID.randomUUID(),
+            eventId, FinanceAggregateTypes.PAYMENT, UUID.randomUUID(),
             SupplierPaymentMade.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()
@@ -102,7 +103,7 @@ class SupplierPaymentMadeHandlerTest {
 
     @Test void wrong_event_type_is_no_op() {
         EventEnvelope wrong = new EventEnvelope(
-            UUID.randomUUID(), "Payment", UUID.randomUUID(),
+            UUID.randomUUID(), FinanceAggregateTypes.PAYMENT, UUID.randomUUID(),
             "finance.SomethingElse", 1, "{}",
             null, null, null, null, Instant.now()
         );

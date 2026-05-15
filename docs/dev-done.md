@@ -6,6 +6,94 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-16 — §2.20: Centralize aggregate-type constants in `<Service>AggregateTypes` files
+
+Final cleanup of the `AGGREGATE_TYPE`-without-a-source-of-truth situation. Previously each aggregate root inlined its own `public static final String AGGREGATE_TYPE = "Product"` literal, cross-service event classes inlined the literal again (`ManufacturingDispatched.AGGREGATE_TYPE = "SalesOrder"` as a duplicate of `SalesOrder.AGGREGATE_TYPE`), and ~30 cross-service consumer-test sites used bare string literals because consumers can't import the producer's `domain/` package. Three layers of duplication for one wire-format string.
+
+After this slice: each service's events jar hosts a single `<Service>AggregateTypes` utility class with one constant per aggregate. Aggregate classes re-export from there; cross-service consumers and cross-service event classes import directly.
+
+### Files created (6)
+
+| Events jar | File | Constants |
+|---|---|---|
+| product-events | `ProductAggregateTypes` | `PRODUCT` |
+| sales-events | `SalesAggregateTypes` | `SALES_ORDER`, `CUSTOMER`, `SALES_ORDER_FULFILMENT_SAGA` |
+| inventory-events | `InventoryAggregateTypes` | `STOCK_RESERVATION`, `STOCK_ITEM`, `GOODS_RECEIPT`, `SHIPMENT` |
+| manufacturing-events | `ManufacturingAggregateTypes` | `WORK_ORDER` |
+| purchasing-events | `PurchasingAggregateTypes` | `PURCHASE_ORDER`, `PURCHASE_REQUISITION`, `SUPPLIER_PRODUCT_PRICE` |
+| finance-events | `FinanceAggregateTypes` | `SUPPLIER_INVOICE`, `CUSTOMER_INVOICE`, `PAYMENT`, `JOURNAL_ENTRY` |
+
+Each is a final utility class with private constructor. No `ReportingAggregateTypes` — reporting consumes events but emits none (no events jar).
+
+### Naming convention
+
+- Class name: `<Service>AggregateTypes` (PascalCase, plural).
+- Constant name: `SCREAMING_SNAKE_CASE` of the aggregate / saga name.
+- Constant value: PascalCase of the aggregate / saga name (the wire-format string, unchanged).
+- Saga AGGREGATE_TYPE constants follow `*Saga` value naming: `SALES_ORDER_FULFILMENT_SAGA = "SalesOrderFulfilmentSaga"`.
+
+### Aggregate-class side: re-export, don't duplicate
+
+Each aggregate class keeps its `AGGREGATE_TYPE` field as a re-export from the events jar:
+
+```java
+public class Product {
+    public static final String AGGREGATE_TYPE = ProductAggregateTypes.PRODUCT;
+    // ...
+}
+```
+
+This preserves every existing producer-side call site (`Product.AGGREGATE_TYPE`, `SalesOrder.AGGREGATE_TYPE`, etc.) — zero churn at outbox-write sites. The constant is one indirection away from the wire string.
+
+15 aggregate classes + 1 saga updated: `Product`, `SalesOrder`, `Customer`, `SalesOrderFulfilmentSaga`, `StockReservation`, `StockItem`, `GoodsReceipt`, `Shipment`, `WorkOrder`, `PurchaseOrder`, `PurchaseRequisition`, `SupplierProductPrice`, `SupplierInvoice`, `CustomerInvoice`, `Payment`, `JournalEntry`.
+
+### Cross-service stamping: events jars depend on events jars
+
+Two events stamp aggregates owned by another service:
+- `ManufacturingDispatched.AGGREGATE_TYPE = SalesAggregateTypes.SALES_ORDER` (event in manufacturing-events, aggregate in sales-service)
+- `ProductMaterialsCostComputed.AGGREGATE_TYPE = ProductAggregateTypes.PRODUCT` (event in manufacturing-events, aggregate in product-service)
+
+`manufacturing-events` POM gained two new deps: `sales-events` + `product-events`. Events-jar-to-events-jar deps are clean (both are wire-contract modules, no Spring / JDBC); kept narrow to actual cross-service stamping needs only. The producer-side previously-inlined `"SalesOrder"` / `"Product"` literals are gone — both now resolve through the events-jar constants.
+
+### Cross-service consumer-test literals
+
+~30 sites across `finance-service`, `inventory-service`, `manufacturing-service`, `purchasing-service`, `reporting-service`, `sales-service`, `product-service`, and `test-harness` switched from string literals to imported constants. Example:
+
+```diff
+-eventId, "PurchaseOrder", PO,
++eventId, PurchasingAggregateTypes.PURCHASE_ORDER, PO,
+```
+
+The `RawMaterialsReservedHandlerTest` assertion on captured `getAggregateType()` was also updated:
+
+```diff
+-assertThat(captor.getValue().getAggregateType()).isEqualTo("WorkOrder");
++assertThat(captor.getValue().getAggregateType()).isEqualTo(ManufacturingAggregateTypes.WORK_ORDER);
+```
+
+### Convention update
+
+`docs/sagas.md` § *Saga manager class shape* — the AGGREGATE_TYPE rule paragraph rewritten to describe both layers (the `<Service>AggregateTypes` source-of-truth + the aggregate-class re-export) and to name the cross-service stamping deps direction. `SupplierProductPriceChanged.AGGREGATE_TYPE` reference removed (deleted in §2.17). The "no Java aggregate" exception language replaced with the cross-service-stamping shape, which is the current real case.
+
+### Smoke
+
+- `mvn -DskipTests clean compile` ✅ 19/19 modules green
+- `mvn -DskipTests test-compile` ✅ 19/19 modules green
+- `mvn test` ✅ full reactor green (all per-service tests + 8/8 test-harness E2E)
+- Grep audit: `"public static final String AGGREGATE_TYPE = \""` returns zero hits in `**/*.java` — every aggregate-type field now resolves to an events-jar constant.
+
+### Why this shape
+
+Three options were considered:
+
+- **A (chosen)** — `<Service>AggregateTypes` in each events jar with all aggregate types. High DRY, single source of truth per service, mild events-jar-to-events-jar deps for cross-service stamping.
+- **B** — AGGREGATE_TYPE constant on each event class (the original §2.20 plan). Low DRY, ~10 events touched, no new files, no new deps.
+- **C** — Constants in shared-kernel (single global file). Highest DRY but pollutes shared-kernel with service-specific constants; loses "this constant belongs to service X" semantics.
+
+A wins on long-term DRY and clear ownership. The new events-jar-to-events-jar deps are honest: when manufacturing emits a fact about a SalesOrder, manufacturing-events is genuinely dependent on sales' wire contract.
+
+---
+
 ## 2026-05-16 — §2.17: Promote `SupplierProductPrice` + fold `ApprovedVendor` into Product
 
 Tier-1 cleanup of the two remaining `*Repository`-without-an-aggregate offenders. Different DDD shapes, different remedies.

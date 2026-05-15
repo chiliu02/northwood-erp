@@ -25,7 +25,7 @@ public final class CustomerInvoice {
      * Wire-format aggregate-type stamped onto {@code finance.outbox_message.aggregate_type}
      * for events this aggregate emits.
      */
-    public static final String AGGREGATE_TYPE = "CustomerInvoice";
+    public static final String AGGREGATE_TYPE = FinanceAggregateTypes.CUSTOMER_INVOICE;
 
     // ------------------------------------------------------------
     // Status constants — wire-format strings stored in

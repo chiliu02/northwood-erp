@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.northwood.inventory.domain.InventoryAggregateTypes;
 import com.northwood.inventory.domain.events.GoodsReceived;
 import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
 import com.northwood.manufacturing.application.saga.MakeToOrderShortageRecoveryQueryPort;
@@ -58,7 +59,7 @@ class GoodsReceivedHandlerTest {
             Instant.now()
         );
         return new EventEnvelope(
-            eventId, "GoodsReceipt", UUID.randomUUID(),
+            eventId, InventoryAggregateTypes.GOODS_RECEIPT, UUID.randomUUID(),
             GoodsReceived.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()

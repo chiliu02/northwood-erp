@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.northwood.sales.domain.SalesAggregateTypes;
 import com.northwood.sales.domain.events.SalesOrderPlaced;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
@@ -44,7 +45,7 @@ class SalesOrderPlacedHandlerTest {
             "AUD", new BigDecimal("100.00"), lines, Instant.now()
         );
         return new EventEnvelope(
-            eventId, "SalesOrder", SO,
+            eventId, SalesAggregateTypes.SALES_ORDER, SO,
             SalesOrderPlaced.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()

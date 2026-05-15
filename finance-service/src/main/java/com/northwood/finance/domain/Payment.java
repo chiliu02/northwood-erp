@@ -47,7 +47,7 @@ public final class Payment {
      * Wire-format aggregate-type stamped onto {@code finance.outbox_message.aggregate_type}
      * for events this aggregate emits.
      */
-    public static final String AGGREGATE_TYPE = "Payment";
+    public static final String AGGREGATE_TYPE = FinanceAggregateTypes.PAYMENT;
 
     /** Status — wire-format string stored in finance.payment.status. */
     public static final String POSTED = "posted";

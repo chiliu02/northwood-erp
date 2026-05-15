@@ -29,7 +29,7 @@ public final class SupplierInvoice {
      * Wire-format aggregate-type stamped onto {@code finance.outbox_message.aggregate_type}
      * for events this aggregate emits.
      */
-    public static final String AGGREGATE_TYPE = "SupplierInvoice";
+    public static final String AGGREGATE_TYPE = FinanceAggregateTypes.SUPPLIER_INVOICE;
 
     // ------------------------------------------------------------
     // Status constants — wire-format strings stored in

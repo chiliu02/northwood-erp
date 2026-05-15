@@ -3,6 +3,7 @@ package com.northwood.testharness.p2p;
 import com.northwood.finance.application.dto.RecordSupplierInvoiceCommand;
 import com.northwood.finance.domain.SupplierInvoice;
 import com.northwood.finance.domain.events.SupplierInvoiceRejected;
+import com.northwood.inventory.domain.InventoryAggregateTypes;
 import com.northwood.inventory.domain.events.GoodsReceived;
 import com.northwood.purchasing.application.dto.CreateRequisitionCommand;
 import com.northwood.purchasing.application.dto.RequisitionLineRequest;
@@ -84,7 +85,7 @@ class PurchaseToPayRejectionPathTest {
             Instant.now()
         );
         inventory.outbox.appendPending(OutboxRow.pending(
-            receiptEventId, "GoodsReceipt", receiptHeaderId,
+            receiptEventId, InventoryAggregateTypes.GOODS_RECEIPT, receiptHeaderId,
             GoodsReceived.EVENT_TYPE, 1,
             json.writeValueAsString(receipt),
             null, null, null, null

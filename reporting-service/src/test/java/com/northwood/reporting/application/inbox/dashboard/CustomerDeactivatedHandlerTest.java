@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.northwood.reporting.application.inbox.CustomerDashboardProjection;
+import com.northwood.sales.domain.SalesAggregateTypes;
 import com.northwood.sales.domain.events.CustomerDeactivated;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
@@ -40,7 +41,7 @@ class CustomerDeactivatedHandlerTest {
         UUID eventId = UUID.randomUUID();
         CustomerDeactivated payload = new CustomerDeactivated(eventId, CUSTOMER, "duplicate record", DEACTIVATED_AT);
         return new EventEnvelope(
-            eventId, "Customer", CUSTOMER,
+            eventId, SalesAggregateTypes.CUSTOMER, CUSTOMER,
             CustomerDeactivated.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()

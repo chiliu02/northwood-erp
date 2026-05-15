@@ -1,5 +1,6 @@
 package com.northwood.manufacturing.domain.events;
 
+import com.northwood.product.domain.ProductAggregateTypes;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -38,11 +39,12 @@ public record ProductMaterialsCostComputed(
     public static final String EVENT_TYPE = "manufacturing.ProductMaterialsCostComputed";
 
     /**
-     * Wire-format aggregate-type. Carried here (not on the Product aggregate
-     * class) because manufacturing-service cannot import product-service Java
-     * classes; the emitting service in manufacturing needs a local reference.
+     * Wire-format aggregate-type. Sourced from {@link ProductAggregateTypes#PRODUCT}
+     * — manufacturing-service cannot import product-service's {@code Product}
+     * aggregate class, but it can import the constants in {@code product-events}
+     * (the contract surface). Per §2.20 (2026-05-16).
      */
-    public static final String AGGREGATE_TYPE = "Product";
+    public static final String AGGREGATE_TYPE = ProductAggregateTypes.PRODUCT;
 
     @Override public String eventType() { return EVENT_TYPE; }
 }

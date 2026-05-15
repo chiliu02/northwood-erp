@@ -31,7 +31,7 @@ public final class WorkOrder {
      * Wire-format aggregate-type stamped onto {@code manufacturing.outbox_message.aggregate_type}
      * for events this aggregate emits.
      */
-    public static final String AGGREGATE_TYPE = "WorkOrder";
+    public static final String AGGREGATE_TYPE = ManufacturingAggregateTypes.WORK_ORDER;
 
     // ------------------------------------------------------------
     // Status constants — wire-format strings stored in

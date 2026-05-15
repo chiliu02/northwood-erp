@@ -28,7 +28,7 @@ public final class StockReservation {
      * Wire-format aggregate-type stamped onto {@code inventory.outbox_message.aggregate_type}
      * for events this aggregate emits.
      */
-    public static final String AGGREGATE_TYPE = "StockReservation";
+    public static final String AGGREGATE_TYPE = InventoryAggregateTypes.STOCK_RESERVATION;
 
     // ------------------------------------------------------------
     // Status constants — wire-format strings stored in

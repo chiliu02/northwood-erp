@@ -25,7 +25,7 @@ public class StockItem {
      * for events this aggregate emits. No outbox calls today (see {@code JdbcStockItemRepository.save});
      * the constant is declared so future inventory-originated events can reference it directly.
      */
-    public static final String AGGREGATE_TYPE = "StockItem";
+    public static final String AGGREGATE_TYPE = InventoryAggregateTypes.STOCK_ITEM;
 
     private final StockItemId id;
     private final UUID productId;
