@@ -110,3 +110,28 @@ export interface SetReorderPolicyRequest {
   reorderPoint: string;
   reorderQuantity: string;
 }
+
+export interface ChangeMakeVsBuyRequest {
+  isPurchased: boolean;
+  isManufactured: boolean;
+}
+
+export interface CreateProductRequest {
+  sku: string;
+  name: string;
+  description?: string | null;
+  productType: string;
+  baseUomId: string;
+  salesPrice: string;
+  standardCost: string;
+  currencyCode: string;
+}
+
+export interface CancelSalesOrderRequest {
+  reason: string;
+}
+
+export interface ApprovePurchaseOrderRequest {
+  approver: string;
+  reason: string;
+}

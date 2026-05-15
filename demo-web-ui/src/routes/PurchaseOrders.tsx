@@ -1,8 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check } from "lucide-react";
 import { fetchPurchaseOrders } from "@/api/fetchers";
+import { approvePurchaseOrder } from "@/api/commands";
 import type { PurchaseOrderTracking } from "@/api/types";
 import { MasterDetail } from "@/components/MasterDetail";
 import { StatusBadge, inferStatusKind } from "@/components/ui/StatusBadge";
+import { Modal } from "@/components/ui/Modal";
+import { Button, FieldRow, FormStatus, Input, type SubmitState } from "@/components/ui/Form";
 import { formatMoney, truncateUuid } from "@/lib/utils";
 
 export function PurchaseOrders() {
@@ -39,12 +44,16 @@ export function PurchaseOrders() {
 }
 
 function POTrackingDetail({ po }: { po: PurchaseOrderTracking }) {
+  const isDraft = po.poStatus === "draft";
   return (
     <div className="space-y-5">
       <header className="space-y-1">
         <div className="flex items-center gap-3">
           <h2 className="font-mono text-xl font-semibold">{po.purchaseOrderNumber}</h2>
           <StatusBadge kind={inferStatusKind(po.poStatus)}>{po.poStatus}</StatusBadge>
+          <span className="ml-auto">
+            {isDraft && <ApprovePoButton po={po} />}
+          </span>
         </div>
         <p className="text-sm text-text-muted">
           {po.supplierName ?? "—"} · ordered {po.orderDate ?? "—"}
@@ -111,4 +120,72 @@ function pct(part: string, whole: string): number {
   const w = Number(whole);
   if (!w || isNaN(w)) return 0;
   return Number(part) / w;
+}
+
+function ApprovePoButton({ po }: { po: PurchaseOrderTracking }) {
+  const [open, setOpen] = useState(false);
+  const [approver, setApprover] = useState("tom");
+  const [reason, setReason] = useState("");
+  const [submit, setSubmit] = useState<SubmitState>({ status: "idle" });
+  const queryClient = useQueryClient();
+
+  async function onSubmit() {
+    if (!approver.trim() || !reason.trim()) {
+      setSubmit({ status: "error", message: "Approver and reason are required" });
+      return;
+    }
+    setSubmit({ status: "submitting" });
+    try {
+      await approvePurchaseOrder(po.purchaseOrderHeaderId, {
+        approver: approver.trim(),
+        reason: reason.trim(),
+      });
+      setSubmit({ status: "success", message: "PO approved" });
+      queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
+      setTimeout(() => setOpen(false), 800);
+    } catch (e) {
+      setSubmit({ status: "error", message: String(e) });
+    }
+  }
+
+  return (
+    <>
+      <Button variant="primary" onClick={() => setOpen(true)}>
+        <Check className="h-3.5 w-3.5" /> Approve PO
+      </Button>
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Approve purchase order"
+        subtitle={<><span className="font-mono">{po.purchaseOrderNumber}</span> · {po.supplierName ?? "—"}</>}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text-muted">
+            Flips header <span className="font-mono">draft</span> → <span className="font-mono">sent</span> and emits{" "}
+            <span className="font-mono">purchasing.PurchaseOrderApproved</span>. P2P saga walks{" "}
+            <span className="font-mono">started → purchase_order_approved → waiting_for_goods</span>.
+            Shortage-driven POs auto-approve when{" "}
+            <span className="font-mono">northwood.purchasing.shortagePoAutoApprove=true</span> (default), so this
+            path matters for manual PRs.
+          </p>
+          <FieldRow label="Approver" required>
+            <Input value={approver} onChange={(e) => setApprover(e.target.value)} />
+          </FieldRow>
+          <FieldRow label="Reason" required>
+            <Input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Needed for Aug build"
+            />
+          </FieldRow>
+          <div className="flex items-center justify-end gap-3">
+            <FormStatus state={submit} />
+            <Button variant="primary" onClick={onSubmit} disabled={submit.status === "submitting"}>
+              Approve PO
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </>
+  );
 }

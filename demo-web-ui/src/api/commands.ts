@@ -15,6 +15,10 @@ import type {
   ChangeSalesPriceRequest,
   ChangeStandardCostRequest,
   SetReorderPolicyRequest,
+  ChangeMakeVsBuyRequest,
+  CreateProductRequest,
+  CancelSalesOrderRequest,
+  ApprovePurchaseOrderRequest,
 } from "./types-commands";
 
 async function postJson<T = unknown>(url: string, body: unknown): Promise<T> {
@@ -90,6 +94,25 @@ export const setProductReorderPolicy = (productId: string, req: SetReorderPolicy
 
 export const discontinueProduct = (productId: string) =>
   postJson<{}>(`/api/products/${productId}/discontinue`, {});
+
+// §1G.2: make-vs-buy classification. Emits product.MakeVsBuyChanged; manufacturing's
+// replenishment projection updates, gating the make-to-order entry path.
+export const changeProductMakeVsBuy = (productId: string, req: ChangeMakeVsBuyRequest) =>
+  putJson<{}>(`/api/products/${productId}/make-vs-buy`, req);
+
+// §1G.1: register a new SKU. Returns the created ProductView (productId, sku, ...).
+export const createProduct = (req: CreateProductRequest) =>
+  postJson<{ productId: string; sku: string }>(`/api/products`, req);
+
+// §1G.3: cancel a sales order. Server enforces NON_CANCELLABLE_STATUSES (shipped,
+// completed, cancelled, rejected) with HTTP 409. Returns the (now-cancelled) order.
+export const cancelSalesOrder = (salesOrderId: string, req: CancelSalesOrderRequest) =>
+  postJson<{ id: string; status: string }>(`/api/sales-cmd/sales-orders/${salesOrderId}/cancel`, req);
+
+// §1G.4: approve a draft PO. Flips header 'draft' → 'sent' and emits
+// purchasing.PurchaseOrderApproved; saga walks started → purchase_order_approved.
+export const approvePurchaseOrder = (purchaseOrderId: string, req: ApprovePurchaseOrderRequest) =>
+  postJson<{}>(`/api/purchase-orders-cmd/${purchaseOrderId}/approve`, req);
 
 // Olivia — supplier invoice review
 export interface ManualReviewRequest { reviewer: string; reason: string; }

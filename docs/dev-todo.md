@@ -180,27 +180,32 @@ Logged 2026-05-14 after the event-flow audit. The Critical items (1F.1, 1F.2) ge
 
 ## 1G. SPA story-coverage gaps (audit 2026-05-15)
 
-Cross-SPA audit against `docs/user-stories.md` found that every story (1.1–7.1) is *observable* in both SPAs, but four stories have command-driver gaps in `demo-web-ui` and one has a UX gap in `erp-web-ui`. All backend endpoints exist; these are SPA-only slices.
+Cross-SPA audit against `docs/user-stories.md` found that every story (1.1–7.1) is *observable* in both SPAs. Four stories had command-driver gaps in `demo-web-ui` (now closed) and one has a UX gap in `erp-web-ui` (parked).
 
-### 1G.1 demo-web-ui — Story 1.1 register product form
+- **§1G.1 – §1G.4 ✅ shipped 2026-05-15** — demo-web-ui now has register-product, make-vs-buy, cancel-order, and PO-approve UI. See `dev-done.md` for the bundled writeup.
+- **§1G.5 ⏳ parked** — erp-web-ui scenario runner. Pull forward only if a public-facing audience wants the orchestrated walkthrough from the operational SPA too; the per-persona forms already work manually.
+
+The per-item scope and rationale below is kept for the parked §1G.5; §1G.1–§1G.4 are now historical context only.
+
+### 1G.1 demo-web-ui — Story 1.1 register product form ✅ shipped 2026-05-15
 
 `/products` is list + inline-edits only; no "Create SKU" button or form. `demo-web-ui/src/api/commands.ts` carries price / cost / reorder / discontinue wrappers but no `createProduct`. Emma can mutate existing seed SKUs but can't add a new one through this SPA. Backend: `POST /api/products` (Story 1.1 ✅ in user-stories).
 
 Scope: new fetcher in `commands.ts` (`createProduct(req)` → POST `/api/products`); new form route `/products/new` or inline modal on `/products`; ProductType + UoM picker (UoMs are seeded; ProductType is the existing enum).
 
-### 1G.2 demo-web-ui — Story 1.5 make-vs-buy toggle
+### 1G.2 demo-web-ui — Story 1.5 make-vs-buy toggle ✅ shipped 2026-05-15
 
 Backend endpoint `PUT /api/products/{id}/make-vs-buy` exists; `api/commands.ts` is missing the wrapper, and `Products.tsx` only imports the four other product commands. Not drivable from demo-web-ui today.
 
 Scope: one fetcher + one toggle/button on the product detail modal. Smallest of the four gaps.
 
-### 1G.3 demo-web-ui — Story 4.1 cancel-order button
+### 1G.3 demo-web-ui — Story 4.1 cancel-order button ✅ shipped 2026-05-15
 
 No `cancelSalesOrder` command, no cancel button in `SalesOrders.tsx` or any masterdetail. The cancellation saga compensation IS observable on `/saga-console` (catalog includes `compensating` / `compensated` states), but the trigger has to come from outside this SPA (curl, `erp-web-ui`, or Swagger). Backend: `POST /api/sales-orders/{id}/cancel` (Story 4.1 ✅ in user-stories).
 
 Scope: cancel button on sales-order detail (with reason dialog) + fetcher + 409-handling for orders past `goods_shipped`. Pattern mirrors `erp-web-ui`'s `SalesOrderDetail` Cancel button.
 
-### 1G.4 demo-web-ui — Story 6.1 PO-approve action
+### 1G.4 demo-web-ui — Story 6.1 PO-approve action ✅ shipped 2026-05-15
 
 Tom can raise a PR (`/purchase-requisitions`) and Olivia can post goods receipts / supplier invoices / payments. But the **PO-approve step** (`POST /api/purchase-orders/{id}/approve`) has no UI. The demo's scenario 7.1 silently relies on `northwood.purchasing.shortagePoAutoApprove=true` (the default) for shortage-driven POs — works in the scripted run. A manually-raised PR's PO lands at `'draft'` and parks indefinitely from this SPA's view.
 

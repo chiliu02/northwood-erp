@@ -6,6 +6,42 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-15 — Close §1G.1–§1G.4: demo-web-ui story-coverage gaps
+
+Closes the four `demo-web-ui` command-driver gaps surfaced by the 2026-05-15 cross-SPA audit (see `dev-todo.md` §1G). Each story already had its REST endpoint shipped; the gaps were SPA-only — no fetcher, no form, no button. Bundled into one slice because all four touch the same two files (`api/commands.ts` + a route component) and share the existing modal / FieldRow / FormStatus toolkit.
+
+### Shipped (in order)
+
+- **§1G.2 — Story 1.5 make-vs-buy toggle.** New `changeProductMakeVsBuy(productId, {isPurchased, isManufactured})` wrapper around `PUT /api/products/{id}/make-vs-buy`. New `MakeBuyPanel` as a fourth tab on `ProductEditButton`'s modal in `Products.tsx`, mirroring `erp-web-ui`'s `MakeVsBuyDialog` (three-option select: manufactured / purchased / both). Defaults to `manufactured` because `ProductView` doesn't expose the current flags.
+
+- **§1G.3 — Story 4.1 cancel-order button.** New `cancelSalesOrder(orderId, {reason})` wrapper hitting `POST /api/sales-cmd/sales-orders/{id}/cancel`. `SalesOrders.tsx` detail panel gains a destructive **Cancel order** button shown only when the order's `orderStatus` isn't in `{shipped, completed, cancelled, rejected}` (server enforces the same set with 409). Modal collects the reason; success invalidates the `sales-orders` query so the status badge flips immediately.
+
+- **§1G.4 — Story 6.1 PO-approve action.** New `approvePurchaseOrder(poId, {approver, reason})` wrapper hitting `POST /api/purchase-orders-cmd/{id}/approve` (the BFF's command-side alias for purchasing). `PurchaseOrders.tsx` detail panel gains an **Approve PO** button shown only when `poStatus === 'draft'`. Defaults the approver to `tom` for one-click happy-path demos; modal copy explains shortage-driven POs auto-approve (so the button matters mostly for manually-raised PRs).
+
+- **§1G.1 — Story 1.1 register product form.** New `createProduct(request)` wrapper hitting `POST /api/products`. New `RegisterProductButton` at the top of `Products.tsx` next to the SKU count; opens a `RegisterPanel` modal with SKU / Name / Description / ProductType / BaseUoM / SalesPrice / StandardCost / Currency fields. UoMs are hardcoded from the seed (EA / L / KG) — mirrors `erp-web-ui/ProductNew.tsx`'s `UOMS` constant; no UoM admin page exists in either SPA.
+
+### Side effect: refreshed `DiscontinuePanel` footer
+
+While in `Products.tsx`, fixed the stale post-§1.4 comment on `DiscontinuePanel` that still claimed "Today no consumer reacts." The §1.4 closure shipped 2026-05-14/15 — six services now consume `ProductDiscontinued`. New footer enumerates the actual reactions (sales rejects new lines, manufacturing retires replenishment + cascade-clears parent BOMs, purchasing's PR gate, finance / inventory / reporting stamp `discontinued_at`).
+
+### Files touched
+
+- `demo-web-ui/src/api/types-commands.ts` — adds `ChangeMakeVsBuyRequest`, `CreateProductRequest`, `CancelSalesOrderRequest`, `ApprovePurchaseOrderRequest`.
+- `demo-web-ui/src/api/commands.ts` — adds the four fetchers + their `import type` lines.
+- `demo-web-ui/src/routes/Products.tsx` — adds `RegisterProductButton`, `RegisterPanel`, `MakeBuyPanel`, fourth tab on the edit modal, hardcoded `UOMS` + `PRODUCT_TYPES` (mirror of erp-web-ui). Stale Discontinue footer fixed.
+- `demo-web-ui/src/routes/SalesOrders.tsx` — adds `CancelOrderButton` component + `NON_CANCELLABLE` set; detail header carries the button in the right-side slot when applicable.
+- `demo-web-ui/src/routes/PurchaseOrders.tsx` — adds `ApprovePoButton` component; detail header carries the button when `poStatus === 'draft'`.
+
+### Smoke
+
+`npm run typecheck` clean. `npm run build` produces a ~413 kB JS bundle (was ~411 kB; +1.4 kB for the new components). Manual UI walkthrough deferred — backend paths are unchanged and the patterns mirror existing working forms in `erp-web-ui`.
+
+### Out-of-scope at end of slice
+
+- **§1G.5 erp-web-ui scenario runner** — bigger one-day slice, parked per `dev-todo.md` §1G's "pull forward only if an operational-SPA-only audience wants the orchestrated walkthrough."
+
+---
+
 ## 2026-05-15 — Close §2.1 Reporting follow-ups + Story 2.2
 
 Conversation-surfaced cleanup: dev-todo §2.1 carried two open bullets — `wip_value` on the dashboard and the three scheduling-date columns on `production_planning_board`. Both are explicitly parked-indefinitely items waiting on capabilities Northwood deliberately doesn't model (costing-method decision; scheduling module). They duplicate text already in user-stories.md's Out-of-scope blocks for Stories 2.6 and 2.2 respectively. Net effect of leaving them in §2.1: backlog readers think there's active work; closing them clarifies that there isn't.
