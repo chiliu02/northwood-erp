@@ -7,14 +7,18 @@ import com.northwood.sales.domain.events.StockReservationRequested;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.northwood.sales.application.dto.PlaceOrderCommand;
-import com.northwood.sales.domain.Customer;
-import com.northwood.sales.application.dto.PlaceOrderCommand.OrderLine;
-import com.northwood.sales.domain.Customer;
+import com.northwood.finance.application.dto.RecordCustomerPaymentCommand;
 import com.northwood.finance.domain.events.CustomerInvoiceCreated;
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
+import com.northwood.inventory.application.dto.PostShipmentCommand;
+import com.northwood.inventory.application.dto.ShipmentLineRequest;
 import com.northwood.inventory.domain.events.ShipmentPosted;
+import com.northwood.sales.application.dto.PlaceOrderCommand;
+import com.northwood.sales.application.dto.PlaceOrderCommand.OrderLine;
+import com.northwood.sales.domain.Customer;
 import com.northwood.sales.domain.SalesOrder;
+import com.northwood.sales.domain.SalesOrderId;
+import com.northwood.sales.domain.SalesOrderLine;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.shared.application.outbox.OutboxRow;
 import com.northwood.testharness.inmemory.SynchronousBus;
@@ -22,7 +26,6 @@ import com.northwood.testharness.kits.FinanceTestKit;
 import com.northwood.testharness.kits.InventoryTestKit;
 import com.northwood.testharness.kits.SalesTestKit;
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -37,23 +40,19 @@ import tools.jackson.databind.ObjectMapper;
  * to cover the order, {@code applyStockReserved} shortcuts directly from
  * {@code stock_reservation_requested} to {@code ready_to_ship}, skipping
  * the manufacturing leg entirely (see Side rail 2 in
- * {@code docs/SalesOrderFulfilmentSaga.md}). The shipment-post and
- * customer-payment events are injected directly via the outbox bus rather
- * than driving them through the inventory shipment service / finance
- * payment service, because those service paths require extra in-memory
- * adapters (ShipmentRepository, GoodsReceiptRepository, Payment domain
- * handling) that aren't in scope for Slice D's "prove the saga progresses
- * through every happy-path state" delivery.
+ * {@code docs/SalesOrderFulfilmentSaga.md}).
  *
- * <p>The full make-to-order leg (manufacturing requested → WO created →
- * raw materials reserved → operation completed → manufacturing completed)
- * exercises in Slice E (shortage recovery) where the manufacturing kit's
- * full saga driving is the focus.
+ * <p>Shipment + customer payment are driven through the real
+ * {@code ShipmentService.post} and {@code PaymentService.recordCustomerPayment}
+ * — no event injection. The full make-to-order leg (manufacturing requested →
+ * WO created → raw materials reserved → operation completed → manufacturing
+ * completed) is exercised in Slice E (shortage recovery) where the
+ * manufacturing kit's full saga driving is the focus.
  */
 class OrderToCashHappyPathTest {
 
     @Test
-    void place_order_to_completed_via_saga_state_progression() throws Exception {
+    void place_order_to_completed_via_saga_state_progression() {
         ObjectMapper json = new ObjectMapper();
         SynchronousBus bus = new SynchronousBus();
 
@@ -79,80 +78,63 @@ class OrderToCashHappyPathTest {
         // Step 2: drive sales worker → stock_reservation_requested.
         sales.advanceSagaWorker();
 
-        // Step 3: drain the bus — inventory fully reserves stock; sales' applyStockReserved
-        // shortcuts directly to ready_to_ship (full-reservation branch), skipping
-        // the manufacturing leg.
+        // Step 3: drain the bus — inventory fully reserves stock; sales'
+        // applyStockReserved shortcuts directly to ready_to_ship
+        // (full-reservation branch), skipping the manufacturing leg.
+        // SalesOrderPlaced also seeds inventory's sales_order_line_facts
+        // projection so the upcoming shipment validation has something to
+        // check against.
         bus.drain();
 
         SalesOrderFulfilmentSaga sagaAtReadyToShip = sales.findSagaBySalesOrderId(orderId).orElseThrow();
         assertThat(sagaAtReadyToShip.state()).isEqualTo(SalesOrderFulfilmentSaga.READY_TO_SHIP);
         assertThat(sales.orderStatus(orderId)).contains(SalesOrder.IN_FULFILMENT);
 
-        // Step 4: inject inventory.ShipmentPosted so sales' handler advances
-        // ready_to_ship → goods_shipped and emits SalesOrderShipped.
-        UUID shipmentEventId = UUID.randomUUID();
-        UUID shipmentHeaderId = UUID.randomUUID();
-        UUID warehouseId = InventoryTestKit.DEFAULT_WAREHOUSE_ID;
+        // Step 4: post the shipment through the real ShipmentService.
+        // Inventory persists the Shipment aggregate, decrements on-hand,
+        // releases the matching reserved qty, and drains ShipmentPosted to
+        // its outbox. Sales' handler advances ready_to_ship → goods_shipped
+        // and emits SalesOrderShipped; finance auto-creates the customer
+        // invoice from the richer sales event.
         UUID customerId = sales.customers.findByCode("CUST-001").orElseThrow().customerId();
-        ShipmentPosted shipmentPayload = new ShipmentPosted(
-            shipmentEventId,
-            shipmentHeaderId,
+        SalesOrderLine placedLine = sales.orders.findById(SalesOrderId.of(orderId)).orElseThrow().lines().get(0);
+        inventory.shipmentService.post(new PostShipmentCommand(
             "SHIP-001",
             orderId,
             customerId,
             "Acme Corp",
-            warehouseId,
             "MAIN",
-            List.of(new ShipmentPosted.ShippedLine(
-                UUID.randomUUID(),
-                sagaAtReadyToShip.salesOrderId() == null ? UUID.randomUUID() : sales.orders.findById(com.northwood.sales.domain.SalesOrderId.of(orderId)).orElseThrow().lines().get(0).lineId(),
-                productId, "FG-001", "Finished Good 1",
-                new BigDecimal("3"), new BigDecimal("60.00")
-            )),
-            Instant.now()
-        );
-        // Inject onto inventory's outbox so it drains to sales' ShipmentPostedHandler
-        // and finance's ShipmentPostedCogsHandler (and SalesOrderShippedHandler via
-        // the chained sales.SalesOrderShipped emission from the aggregate).
-        inventory.outbox.appendPending(OutboxRow.pending(
-            shipmentEventId, "Shipment", shipmentHeaderId,
-            ShipmentPosted.EVENT_TYPE, 1,
-            json.writeValueAsString(shipmentPayload),
-            null, null, null, null
+            List.of(new ShipmentLineRequest(
+                placedLine.lineId(),
+                productId,
+                "FG-001", "Finished Good 1",
+                new BigDecimal("3"),
+                new BigDecimal("60.00")
+            ))
         ));
-
-        // Step 5: drain. ShipmentPosted → sales advances to goods_shipped + emits
-        // SalesOrderShipped via the aggregate; finance's SalesOrderShippedHandler
-        // creates the customer invoice + emits CustomerInvoiceCreated; sales'
-        // CustomerInvoiceCreatedHandler advances saga to invoice_created.
         bus.drain();
 
         SalesOrderFulfilmentSaga sagaAtInvoiced = sales.findSagaBySalesOrderId(orderId).orElseThrow();
         assertThat(sagaAtInvoiced.state()).isEqualTo(SalesOrderFulfilmentSaga.INVOICE_CREATED);
 
         assertThat(finance.customerInvoices.findAll()).hasSize(1);
-
-        // Step 6: simulate customer payment by injecting finance.CustomerPaymentReceived.
-        UUID paymentEventId = UUID.randomUUID();
         UUID invoiceHeaderId = finance.customerInvoices.findAll().get(0).id().value();
-        CustomerPaymentReceived paymentPayload = new CustomerPaymentReceived(
-            paymentEventId, UUID.randomUUID(), "PAY-001",
-            invoiceHeaderId, orderId, customerId, "Acme Corp",
-            "bank_transfer", "AUD",
-            new BigDecimal("330.00"), new BigDecimal("330.00"),
-            "paid",
-            Instant.now()
-        );
-        finance.outbox.appendPending(OutboxRow.pending(
-            paymentEventId, "Payment", paymentEventId,
-            CustomerPaymentReceived.EVENT_TYPE, 1,
-            json.writeValueAsString(paymentPayload),
-            null, null, null, null
-        ));
 
+        // Step 5: settle the customer invoice through the real PaymentService.
+        // recordCustomerPayment computes invoiceStatusAfter from the snapshot's
+        // paidAmount + payment amount, so no pre-stamp via recordAllocation
+        // is needed. Invoice total is 3 × 100 = 300.00 AUD.
+        finance.paymentService.recordCustomerPayment(new RecordCustomerPaymentCommand(
+            "PAY-001",
+            invoiceHeaderId,
+            new BigDecimal("300.00"),
+            "bank_transfer",
+            LocalDate.of(2026, 5, 20)
+        ));
         bus.drain();
 
-        // Step 7: assertions. Saga is at completed; status projection is at completed.
+        // Step 6: assertions. Saga is at completed; status projection
+        // is at completed.
         SalesOrderFulfilmentSaga sagaAtCompleted = sales.findSagaBySalesOrderId(orderId).orElseThrow();
         assertThat(sagaAtCompleted.state()).isEqualTo(SalesOrderFulfilmentSaga.COMPLETED);
         assertThat(sales.orderStatus(orderId)).contains(SalesOrder.COMPLETED);
