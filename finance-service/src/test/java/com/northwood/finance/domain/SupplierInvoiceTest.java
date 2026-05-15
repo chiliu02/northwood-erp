@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.northwood.finance.domain.events.SupplierInvoiceApproved;
+import com.northwood.finance.domain.events.SupplierInvoiceRejected;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
 import java.util.List;
@@ -160,10 +161,14 @@ class SupplierInvoiceTest {
             assertThat(si.status()).isEqualTo("cancelled");
         }
 
-        @Test void emits_no_event() {
+        @Test void emits_rejected_event() {
             SupplierInvoice si = record("failed");
-            si.manualReject("reason");
-            assertThat(si.pullPendingEvents()).isEmpty();
+            si.manualReject("supplier sent the wrong invoice");
+            List<DomainEvent> events = si.pullPendingEvents();
+            assertThat(events).hasSize(1).first().isInstanceOf(SupplierInvoiceRejected.class);
+            SupplierInvoiceRejected e = (SupplierInvoiceRejected) events.get(0);
+            assertThat(e.purchaseOrderHeaderId()).isEqualTo(PO_HEADER);
+            assertThat(e.reason()).isEqualTo("supplier sent the wrong invoice");
         }
     }
 }

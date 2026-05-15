@@ -153,12 +153,12 @@ User wants to drive the README's tone and voice themselves (it's a public-facing
 
 ### 1F Critical — business-incorrect decisions today
 
-§1F.2 (`ProductCreated` inventory consumer) shipped 2026-05-14 — see `dev-done.md`.
-§1F.3 (`CustomerDeactivated` reporting + finance consumers) shipped 2026-05-14 — see `dev-done.md`.
-§1F.4 (`PurchaseOrderApproved` reporting consumer) shipped 2026-05-14 — see `dev-done.md`.
-§1F.5 (`ProductMaterialsCostComputed` product consumer — closes the cost loop) shipped 2026-05-14 — see `dev-done.md`.
-§1F.6a (`ProductCreated` sales consumer + lifecycle-closure refactor on `sales.product_pricing`) shipped 2026-05-15 — see `dev-done.md`.
-§1F.6b (consolidate `finance.product_standard_cost` + `finance.product_valuation_class` → `finance.product_accounting`) shipped 2026-05-15 — see `dev-done.md`.
+§1F.2 (`ProductCreated` inventory consumer) shipped 2026-05-14 — see `dev-done.md`.  
+§1F.3 (`CustomerDeactivated` reporting + finance consumers) shipped 2026-05-14 — see `dev-done.md`.  
+§1F.4 (`PurchaseOrderApproved` reporting consumer) shipped 2026-05-14 — see `dev-done.md`.  
+§1F.5 (`ProductMaterialsCostComputed` product consumer — closes the cost loop) shipped 2026-05-14 — see `dev-done.md`.  
+§1F.6a (`ProductCreated` sales consumer + lifecycle-closure refactor on `sales.product_pricing`) shipped 2026-05-15 — see `dev-done.md`.  
+§1F.6b (consolidate `finance.product_standard_cost` + `finance.product_valuation_class` → `finance.product_accounting`) shipped 2026-05-15 — see `dev-done.md`.  
 
 All §1F actionable items shipped. Remaining backlog is the deferred / inferred-only set documented below.
 
@@ -239,14 +239,11 @@ Today the converter handles same-currency pass-through, inverse-rate fallback, a
 
 See dev-done.md for per-service test counts and the patterns that emerged (real-aggregate fixtures, `OutboxRow` capture + typed JSON deserialise, `lenient().when(...)` for shared stubs, post-§2.9 shell-smoke shape for handlers).
 
-#### 2.5.1 Phase D — in-memory end-to-end saga harness ✅ Slices A–G shipped 2026-05-10
+#### 2.5.1 Phase D — in-memory end-to-end saga harness ✅ Slices A–G shipped 2026-05-10 (follow-up ✅ shipped 2026-05-15)
 
 All 7 slices shipped: ManufacturingTestKit + FinanceTestKit + PurchasingTestKit + saga-worker driving for all three saga lifecycles + four E2E tests (O2C happy path, M2O shortage recovery, P2P happy path, sub-assembly recursion). Production refactor: `SalesOrderLineSnapshotPort` extracted; `MakeToOrderSagaWorker` switched from raw `JdbcTemplate` to `OutboxPort`. The harness now exercises every saga state machine end-to-end through real workers + bus dispatch with no Postgres / Kafka / Spring context.
 
-See dev-done.md for the per-slice writeups + the production-side refactors that landed.
-
-**Follow-up (not blocking):**
-- Slice D's O2C happy path uses event injection for the manufacturing leg + ShipmentPosted + CustomerPaymentReceived rather than driving them through a wired `ShipmentService` / `PaymentService` happy-path. Slices E & F cover those paths in more depth on the make-to-order + P2P sides; the gap on direct-ship O2C is "wire `ShipmentService` + `PaymentService` happy-path through the kits without injection." Pull forward if a future demo scenario asserts on the full direct-ship happy path. The current test still validates the saga state progression through every state in the happy-path lifecycle.
+The Slice D follow-up — driving `ShipmentService` + `PaymentService` through the kits without event injection — shipped 2026-05-15. See dev-done.md for the per-slice writeups + the production-side refactors that landed.
 
 ### 2.6 Smoke-test gaps that need a running stack
 

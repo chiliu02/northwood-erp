@@ -6,6 +6,89 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-15 — Close Story 6.1 gaps: `finance.SupplierInvoiceRejected` + P2P saga `failed` terminal + dead-state cleanup
+
+Closes the two cheapest gaps under Demo 6 / Story 6.1's 🚧 flag (cataloged in user-stories.md as B.2 + B.3 in the gap pass earlier today). Before this slice, `SupplierInvoice.manualReject` flipped the invoice to `cancelled` but emitted no event, so the P2P saga parked at `goods_received` forever; the saga also carried two dead constants (`MANUAL_REVIEW_REQUIRED` not in `ALL_STATES`; `FAILED` written by nothing) plus a much wider schema CHECK list of states code never wrote (`supplier_invoice_received`, `three_way_match_pending`, `three_way_match_passed`, `three_way_match_failed`, `purchase_order_closed`, `manual_review_required`).
+
+### Domain event + aggregate change
+
+- New `finance-events/.../events/SupplierInvoiceRejected.java` with fields `eventId, aggregateId, internalInvoiceNumber, supplierInvoiceNumber, purchaseOrderHeaderId, supplierId, supplierName, reason, occurredAt`. Twin event of `SupplierInvoiceApproved`; both are emitted from the `SupplierInvoice` aggregate and persisted via the same outbox path (`JdbcSupplierInvoiceRepository.writeOutbox`, aggregate-type `"SupplierInvoice"` — no infra change needed).
+- `SupplierInvoice.manualReject(reason)` now adds the event to `pendingEvents`. The preceding `status = CANCELLED` and the precondition guard are unchanged.
+- `SupplierInvoiceApproved` Javadoc refreshed to mention the twin event and drop the stale "manual review tooling lands in a later slice" line.
+
+### Saga manager + handler
+
+- `PurchaseToPaySagaManager.applySupplierInvoiceRejected(UUID)` — `goods_received → failed` with `currentStep = "supplier_invoice_rejected"`. Ignored from any other state.
+- `JdbcPurchaseToPaySagaManager` implements the new method, mirroring the existing `applySupplierInvoiceApproved` shape.
+- New `purchasing-service/.../application/inbox/SupplierInvoiceRejectedHandler.java` consumer `purchasing.p2p.supplier-invoice-rejected` — minimal: delegates to the manager, logs the reason. No projection writeback (PO header stays in whatever state it's in; PO-cancellation is a separate deferred concern, captured on Story 6.1).
+- `PurchasingTestKit` registers the new handler on the bus alongside the existing `SupplierInvoiceApprovedHandler` / `SupplierPaymentMadeHandler`.
+
+### Dead-state cleanup
+
+- `PurchaseToPaySaga.MANUAL_REVIEW_REQUIRED` constant + its entry in `TERMINAL_STATES` removed. `ALL_STATES` already contained `FAILED`; now it's actually written by code, closing the dead-state smell.
+- Class Javadoc rewritten to enumerate the live happy + side-rail paths (was Phase 2/3/4 lineage that no longer matches the current reality).
+- Schema CHECK on `purchasing.purchase_to_pay_saga.saga_state` trimmed from 14 literals to 8 — only the states `PurchaseToPaySaga.ALL_STATES` writes (`started`, `purchase_order_approved`, `waiting_for_goods`, `goods_received`, `supplier_invoice_approved`, `supplier_payment_made`, `completed`, `failed`). Updated in both `db/northwood_erp.sql` (baseline) and a new Liquibase changeset `purchasing/.../2026-05-15-trim-purchase-to-pay-saga-states.sql` for existing dev DBs (drop + re-add the CHECK).
+- `demo-web-ui/src/sagas/catalog.ts` purchase-to-pay entry trimmed: `forwardStages` drops `supplier_invoice_received` / `three_way_match_passed` / `purchase_order_closed`; `sideRailStates` reduces to just `failed`; `terminalStates` drops `manual_review_required`. The Saga Console UI now reflects the real state space.
+
+### Tests added
+
+- `SupplierInvoiceTest.ManualReject.emits_rejected_event` — replaces the previous `emits_no_event` test (which was asserting the wrong behaviour). Confirms the event carries `purchaseOrderHeaderId` and `reason`.
+- `JdbcPurchaseToPaySagaManagerTest.ApplySupplierInvoiceRejected` — three cases: `goods_received → failed` (saved + currentStep set), unrelated state returns unchanged (no save), no-saga throws `IllegalStateException`.
+- New `test-harness/.../p2p/PurchaseToPayRejectionPathTest.java` — end-to-end: PR → PO approve → goods receipt → variance-failing invoice (unit price 50 vs PO 25, 100% variance, far outside 2% default tolerance) lands invoice at `three_way_match_failed` and saga stays at `goods_received`; reviewer rejects → `SupplierInvoiceRejected` flows → saga lands at `failed` with `currentStep = "supplier_invoice_rejected"`. Mirrors the existing `PurchaseToPayHappyPathTest` shape; harness now has both terminal paths through P2P covered.
+
+### Docs
+
+- `docs/PurchaseToPaySaga.md` — added a *Side rail — manual rejection of a parked supplier invoice* section with the inline state diagram. Replaced *States declared but never written* with *State coverage* (now: every state in `ALL_STATES` is written by code).
+- `docs/user-stories.md` — Demo 6 and Story 6.1 both flipped 🚧 → ✅. Flow step 4 updated to call out the manual-reject closure. *Known gaps* section dropped (the two ⏳ items closed by this slice are gone); the remaining *Out-of-scope* block lists the deferrals (PO-cancellation, over-receipt rejection, supplier price-list authoring narrative, multi-currency P2P).
+- `docs/event-flow.html` — adds the `SupplierInvoiceRejected` entry under `finance.SupplierInvoice` with the purchasing consumer.
+- `purchasing-service/application-kafka.yml` comment now enumerates all three finance.events consumers (approved / rejected / payment).
+
+### Smoke
+
+- `mvn install -DskipTests` reactor green.
+- `mvn -pl finance-service,purchasing-service,test-harness test` — finance 112/112, purchasing all green, test-harness 8/8 (was 7; +1 for `PurchaseToPayRejectionPathTest`). Full reactor `mvn test` also green.
+
+### Still 🚧/⏳ at end of slice (now captured under Story 6.1's *Out-of-scope* block)
+
+- PO-cancellation flow (no `compensating` / `compensated` states on the saga).
+- Over-receipt rejection (no `received ≤ ordered` validation in `GoodsReceiptService`).
+- Supplier price-list authoring not narrated as a Story step.
+- Multi-currency P2P deferred per the project-level memo.
+
+---
+
+## 2026-05-15 — §2.5.1 Slice D follow-up: drive `ShipmentService` + `PaymentService` through the test kits (no event injection)
+
+Closes the only open item carried in §2.5. The §2.5.1 Slice D `OrderToCashHappyPathTest` originally drove `placeOrder` through the real `SalesOrderService` but injected `inventory.ShipmentPosted` and `finance.CustomerPaymentReceived` directly onto outboxes to skip wiring `ShipmentRepository` and `SalesOrderLineFactsProjection` in `InventoryTestKit`. The follow-up wires both.
+
+### New in-memory adapters
+
+- `test-harness/.../inmemory/inventory/InMemoryShipmentRepository.java` — implements `ShipmentRepository`; mirrors `InMemoryCustomerInvoiceRepository`'s pattern (event drainage to outbox on save with `"Shipment"` aggregate-type).
+- `test-harness/.../inmemory/inventory/InMemorySalesOrderLineFactsProjection.java` — implements `SalesOrderLineFactsProjection`; `Map<UUID, UUID>` keyed on `sales_order_line_id`. Idempotent on redelivery.
+
+### `InventoryTestKit` changes
+
+- Constructs and exposes `ShipmentService` (`shipmentService` field) wired with `InMemoryShipmentRepository`, the existing `InMemoryStockBalances` / `InMemoryStockMovementWriter` / `InMemoryWarehouseLookup`, and the new `InMemorySalesOrderLineFactsProjection`.
+- Registers `SalesOrderPlacedHandler` on the bus so `sales.SalesOrderPlaced` seeds `sales_order_line_facts` before `ShipmentService.post` validates against it.
+- Class Javadoc updated to drop the stale "Goods-receipt / shipment paths aren't registered yet" caveat — only goods-receipt remains unwired.
+
+### Test rewrite
+
+`OrderToCashHappyPathTest` Step 4 now calls `inventory.shipmentService.post(new PostShipmentCommand(...))` with the real `salesOrderLineId` pulled from the placed `SalesOrder` aggregate. Step 5 calls `finance.paymentService.recordCustomerPayment(new RecordCustomerPaymentCommand(...))` against the auto-created customer invoice id. The previous explicit `OutboxRow.pending(...)` injections are gone.
+
+One incidental fix: the previous test paid `330.00 AUD` against an order whose total is `3 × 100 = 300.00 AUD` (event injection bypassed the amount > outstanding check). Now `recordCustomerPayment` enforces the bound, so the test pays the correct `300.00`.
+
+### Smoke
+
+`mvn -pl test-harness test` — 7/7 green (`OrderToCashHappyPathTest`, `OrderToCashFirstLegTest`, `CancelCompensationTest`, `MakeToOrderShortagePathTest`, `SubAssemblyRecursionTest`, `PurchaseToPayHappyPathTest`, `SetPriorityCascadeTest`).
+
+### What didn't change
+
+- The manufacturing-leg branch of O2C is intentionally still covered by `MakeToOrderShortagePathTest` + `SubAssemblyRecursionTest`. `OrderToCashHappyPathTest` exercises the *full-reservation shortcut* path (`applyStockReserved` → `ready_to_ship`, manufacturing skipped) — that's its design from the original Slice D delivery and remains the right scope for this test.
+- Goods-receipt adapter not built; not needed by any O2C path. Still listed in `InventoryTestKit`'s class Javadoc as the one remaining unwired path, for whichever future slice surfaces a goods-receipt assertion in the harness.
+
+---
+
 ## 2026-05-15 — Consolidate `finance.product_standard_cost` + `finance.product_valuation_class` into `finance.product_accounting`
 
 Twin of the sales slice shipped earlier today. The finance schema held two narrow tables — `product_standard_cost` (cost + currency, projected from `StandardCostChanged`) and `product_valuation_class` (valuation class, projected from `ValuationClassChanged`) — each named after a single column rather than after the schema's view of the aggregate. Both columns are 1:1 with Product and share Product's lifecycle, so the smell-fix is to fold them into one table and seed it on `ProductCreated`, mirroring `sales.product_pricing`, `inventory.stock_item`, and `manufacturing.product_replenishment`.

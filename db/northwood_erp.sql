@@ -1850,9 +1850,7 @@ CREATE TABLE purchasing.purchase_to_pay_saga (
     saga_state VARCHAR(50) NOT NULL CHECK (
         saga_state IN (
             'started', 'purchase_order_approved', 'waiting_for_goods', 'goods_received',
-            'supplier_invoice_received', 'three_way_match_pending', 'three_way_match_passed',
-            'three_way_match_failed', 'supplier_invoice_approved', 'supplier_payment_made',
-            'purchase_order_closed', 'completed', 'manual_review_required', 'failed'
+            'supplier_invoice_approved', 'supplier_payment_made', 'completed', 'failed'
         )
     ),
     current_step VARCHAR(100),

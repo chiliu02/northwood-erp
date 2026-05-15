@@ -84,8 +84,24 @@ Manager accepts both `supplier_invoice_approved` and `supplier_payment_made` as 
 
 `GoodsReceivedHandler.handle` always records the receipt into `PurchaseOrderReceiptProjection` (which reclassifies the PO header to `partially_received` / `received`); then asks `PurchaseToPaySagaManager.applyGoodsReceived(poId, fullyReceived)` to advance the saga. The manager only transitions when `fullyReceived` is true and the saga is in `waiting_for_goods`. There's no separate `partially_received` saga state — partial-vs-full distinction lives on the receipt projection's row, not the saga state machine.
 
-## States declared but never written
+## Side rail — manual rejection of a parked supplier invoice
 
-`failed` appears in `ALL_STATES` but no code path emits it today (reserved for an unrecoverable-error path). `manual_review_required` is in `TERMINAL_STATES` but not in `ALL_STATES` — meaning the schema CHECK lists it as a recognised stop-polling sink, but no Java transition currently writes it. The `three_way_match_*` family was removed from `ALL_STATES` per the "only model states the code actually writes" rule (variance handling deferred).
+```
+                           [goods_received]
+                                     ↓
+              SupplierInvoiceRejectedHandler.handle
+              → PurchaseToPaySagaManager.applySupplierInvoiceRejected,
+              supplier_invoice_rejected
+                                     ↓
+                               [failed]   ← terminal
+```
+
+`SupplierInvoiceService.manualReject` flips the invoice to `cancelled` and emits `finance.SupplierInvoiceRejected`; purchasing's handler lands the saga in terminal `failed`. The auto-match-failed → parked state on the invoice itself lives at `SupplierInvoice.status='three_way_match_failed'`, not on the saga — the saga stays at `goods_received` until the reviewer decides between `manual-approve` (re-emits `SupplierInvoiceApproved`, continues the happy path) and `manual-reject` (this rail).
+
+There is no projection writeback on rejection — the PO header stays in whatever state it's in (typically `'sent'` or `'partially_received'`). PO-cancellation is a separate concern (deferred; see *No compensation flow* below).
+
+## State coverage
+
+Every state in `PurchaseToPaySaga.ALL_STATES` (`started`, `purchase_order_approved`, `waiting_for_goods`, `goods_received`, `supplier_invoice_approved`, `supplier_payment_made`, `completed`, `failed`) is written by code. Per the "only model states the code actually writes" rule, no dead constants — the schema CHECK on `purchasing.purchase_to_pay_saga.saga_state` mirrors this list exactly.
 
 There is **no compensation flow** on this saga. The cancel-order saga compensates sales + manufacturing only; purchasing isn't part of that flow. If a future cancel-PO command lands, `compensating` / `compensated` would need to be added to both `ALL_STATES` and the schema CHECK in the same slice.

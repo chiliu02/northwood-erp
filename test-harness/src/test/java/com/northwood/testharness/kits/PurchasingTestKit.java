@@ -8,6 +8,7 @@ import com.northwood.purchasing.application.inbox.GoodsReceivedHandler;
 import com.northwood.purchasing.application.inbox.ProductDiscontinuedHandler;
 import com.northwood.purchasing.application.inbox.RawMaterialShortageDetectedHandler;
 import com.northwood.purchasing.application.inbox.SupplierInvoiceApprovedHandler;
+import com.northwood.purchasing.application.inbox.SupplierInvoiceRejectedHandler;
 import com.northwood.purchasing.application.inbox.SupplierPaymentMadeHandler;
 import com.northwood.purchasing.infrastructure.saga.JdbcPurchaseToPaySagaManager;
 import com.northwood.purchasing.infrastructure.saga.PurchaseToPaySagaWorker;
@@ -96,6 +97,7 @@ public final class PurchasingTestKit {
         bus.register(new RawMaterialShortageDetectedHandler(inbox, requisitionService, json));
         bus.register(new GoodsReceivedHandler(inbox, sagaManager, receiptProjection, json));
         bus.register(new SupplierInvoiceApprovedHandler(inbox, sagaManager, paymentProjection, json));
+        bus.register(new SupplierInvoiceRejectedHandler(inbox, sagaManager, json));
         bus.register(new SupplierPaymentMadeHandler(inbox, sagaManager, paymentProjection, json));
         bus.register(new ApprovedVendorListChangedHandler(inbox, approvedVendorProjection, json));
         bus.register(new ProductDiscontinuedHandler(inbox, discontinuedProducts, json));

@@ -74,6 +74,15 @@ public interface PurchaseToPaySagaManager {
     String applySupplierInvoiceApproved(UUID purchaseOrderHeaderId);
 
     /**
+     * Apply {@code finance.SupplierInvoiceRejected} (manual reject of a
+     * parked-at-three_way_match_failed invoice). Transitions
+     * {@code goods_received → failed} so the saga lands in a terminal
+     * state. Ignored from any other state (the saga is either already
+     * past invoice approval or hasn't reached goods receipt yet).
+     */
+    String applySupplierInvoiceRejected(UUID purchaseOrderHeaderId);
+
+    /**
      * Apply {@code finance.SupplierPaymentMade}. On full settlement,
      * transitions to {@code completed}. On partial, transitions to
      * {@code supplier_payment_made} (or stays there for subsequent partials).

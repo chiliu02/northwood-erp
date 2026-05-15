@@ -1,6 +1,7 @@
 package com.northwood.purchasing.infrastructure.saga;
 
 import com.northwood.finance.domain.events.SupplierInvoiceApproved;
+import com.northwood.finance.domain.events.SupplierInvoiceRejected;
 import com.northwood.finance.domain.events.SupplierPaymentMade;
 import com.northwood.inventory.domain.events.GoodsReceived;
 import com.northwood.purchasing.application.saga.PurchaseToPaySagaManager;
@@ -99,6 +100,23 @@ public class JdbcPurchaseToPaySagaManager
                 saga.sagaId(), purchaseOrderHeaderId);
         } else {
             log.debug("saga {} purchase_order={} not in goods_received (state={}); ignoring",
+                saga.sagaId(), purchaseOrderHeaderId, saga.state());
+        }
+        return saga.state();
+    }
+
+    @Override
+    @Transactional
+    public String applySupplierInvoiceRejected(UUID purchaseOrderHeaderId) {
+        PurchaseToPaySaga saga = requireSaga(purchaseOrderHeaderId, SupplierInvoiceRejected.EVENT_TYPE);
+
+        if (GOODS_RECEIVED.equals(saga.state())) {
+            saga.transitionTo(FAILED, "supplier_invoice_rejected");
+            sagaPort.save(saga);
+            log.info("saga {} purchase_order={} → failed (supplier invoice rejected)",
+                saga.sagaId(), purchaseOrderHeaderId);
+        } else {
+            log.debug("saga {} purchase_order={} not in goods_received (state={}); ignoring rejection",
                 saga.sagaId(), purchaseOrderHeaderId, saga.state());
         }
         return saga.state();

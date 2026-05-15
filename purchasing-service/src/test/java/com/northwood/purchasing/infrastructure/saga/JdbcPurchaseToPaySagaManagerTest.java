@@ -148,6 +148,38 @@ class JdbcPurchaseToPaySagaManagerTest {
     }
 
     @Nested
+    class ApplySupplierInvoiceRejected {
+        @Test void goods_received_advances_to_failed() {
+            PurchaseToPaySaga saga = sagaInState(GOODS_RECEIVED);
+            when(sagas.findByPurchaseOrderId(PO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applySupplierInvoiceRejected(PO);
+
+            assertThat(state).isEqualTo(FAILED);
+            assertThat(saga.currentStep()).isEqualTo("supplier_invoice_rejected");
+            verify(sagas).save(saga);
+        }
+
+        @Test void unrelated_state_returns_unchanged() {
+            PurchaseToPaySaga saga = sagaInState(SUPPLIER_INVOICE_APPROVED);
+            when(sagas.findByPurchaseOrderId(PO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applySupplierInvoiceRejected(PO);
+
+            assertThat(state).isEqualTo(SUPPLIER_INVOICE_APPROVED);
+            verify(sagas, never()).save(any());
+        }
+
+        @Test void no_saga_throws() {
+            when(sagas.findByPurchaseOrderId(PO)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> manager.applySupplierInvoiceRejected(PO))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("No P2P saga");
+        }
+    }
+
+    @Nested
     class ApplySupplierPaymentMade {
         @Test void full_settlement_completes() {
             PurchaseToPaySaga saga = sagaInState(SUPPLIER_INVOICE_APPROVED);

@@ -1,6 +1,7 @@
 package com.northwood.finance.domain;
 
 import com.northwood.finance.domain.events.SupplierInvoiceApproved;
+import com.northwood.finance.domain.events.SupplierInvoiceRejected;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -215,9 +216,10 @@ public final class SupplierInvoice {
      * Manually reject an invoice parked at
      * {@code 'three_way_match_failed'}. Reviewer rejects the invoice
      * outright (e.g. supplier sent the wrong invoice; goods don't match).
-     * Status flips to {@code 'cancelled'} (terminal). No event emitted —
-     * downstream sagas already park on missing approval, so nothing
-     * needs to react. The corresponding PO can be cancelled separately.
+     * Status flips to {@code 'cancelled'} (terminal). Emits
+     * {@link SupplierInvoiceRejected} so purchasing's P2P saga consumer
+     * lands the saga in {@code failed}; without this event the saga
+     * would otherwise park at {@code goods_received} forever.
      */
     public void manualReject(String reason) {
         if (!THREE_WAY_MATCH_FAILED.equals(status)) {
@@ -227,6 +229,17 @@ public final class SupplierInvoice {
             );
         }
         this.status = CANCELLED;
+        pendingEvents.add(new SupplierInvoiceRejected(
+            UUID.randomUUID(),
+            id.value(),
+            internalInvoiceNumber,
+            supplierInvoiceNumber,
+            purchaseOrderHeaderId,
+            supplierId,
+            supplierName,
+            reason,
+            Instant.now()
+        ));
     }
 
     public List<DomainEvent> pullPendingEvents() {

@@ -34,7 +34,7 @@ For the runbook of what works today, see `demo-script.md`. For architecture inva
 
 The product service is the only place SKUs, pricing, and reorder policy are *owned*. Other services keep their own *read copies* populated from events. Reorder policy follows the Material Master / Shape A pattern: R&D / planning configures it on `product.product` as the data of record (Story 1.3); `inventory.stock_item.reorder_point` / `reorder_quantity` are kept in sync as a projection driven by `ReorderPolicyChanged`.
 
-### Story 1.1 — Register a new product 🚧
+### Story 1.1 — Register a new product ✅
 
 **As** Emma the Catalog Manager
 **I want** to register a new SKU with name, type, base UoM, sales price, and standard cost
@@ -44,15 +44,15 @@ The product service is the only place SKUs, pricing, and reorder policy are *own
 **Acceptance criteria**
 - ✅ The new row exists in `product.product` with `version = 1` and `status = 'active'` (the persistence contract: `version = 0` is the in-memory sentinel for "not yet saved"; the DB row is never at `version = 0`).
 - ✅ A `product.ProductCreated` event lands in `product.outbox_message`.
-- 🚧 Within one outbox poll cycle, the event has been forwarded to the bus and consumed by every downstream service. **Today: only inventory's `StockProjectionService` consumes `ProductCreated`. Sales / finance / purchasing / manufacturing / reporting do not yet maintain a product read model.**
+- ✅ Within one outbox poll cycle, the event is forwarded to the bus and consumed by every downstream service that maintains a product read model: inventory (`stock_item` stub), sales (`product_pricing` stub), manufacturing (`product_replenishment` stub), finance (`product_accounting` stub), reporting (atp). Purchasing has no product read model of its own (documented as inferred-only in `event-flow.html`'s coverage gaps).
 - ✅ `inventory.stock_item` gains a new row carrying SKU + name + type — populated **only from the event**, with no synchronous call to product-service.
 - ✅ The new product's `reorder_point` / `reorder_quantity` default to 0/0 and are set explicitly via `setReorderPolicy` (Story 1.3); the `inventory.stock_item` row inherits 0/0 until that command runs.
 
 **Pattern** — CQRS write side / event-driven read-side projection (Open Host upstream)
-**Services involved** — product (command), inventory (projection today; others ⏳)
+**Services involved** — product (command), inventory + sales + manufacturing + finance + reporting/atp (projections)
 **Events** — `product.ProductCreated`
 
-### Story 1.2 — Change the price of a SKU 🚧
+### Story 1.2 — Change the price of a SKU ✅
 
 **As** Emma
 **I want** to change a product's sales price and standard cost
@@ -63,7 +63,7 @@ The product service is the only place SKUs, pricing, and reorder policy are *own
 - ✅ `product.product.sales_price`, `standard_cost`, and `version` all update independently per call; `updated_at` advances.
 - ✅ A `product.SalesPriceChanged` event fires from the sales-price endpoint; a `product.StandardCostChanged` event fires from the standard-cost endpoint. Each carries its own `oldValue`, `newValue`, `currencyCode`.
 - ✅ Sales-service consumes `SalesPriceChanged` via `SalesPriceChangedHandler`; new sales orders quote the new price; existing orders remain unchanged (price is denormalised on the line at order time).
-- ⏳ Finance-service projects the standard cost used for COGS calculations from `StandardCostChanged`. **Today: finance does not project pricing — COGS uses values stamped on the shipment line.**
+- ✅ Finance-service consumes `StandardCostChanged` via `StandardCostChangedHandler` → writes `finance.product_accounting.standard_cost`. `ShipmentPostedCogsHandler` reads that column to drive the COGS posting; the shipment-line-stamped `unitCost` is only a documented cold-start fallback (see `design-notes.md` → COGS standard cost).
 
 **Pattern** — CQRS with **point-in-time denormalisation** on the consumer side
 **Events** — `product.SalesPriceChanged`, `product.StandardCostChanged`
@@ -97,11 +97,12 @@ The product service is the only place SKUs, pricing, and reorder policy are *own
 **Acceptance criteria**
 - ✅ `product.product.status` flips to `discontinued`. Subsequent calls to the same endpoint are idempotent.
 - ✅ A `product.ProductDiscontinued` event is emitted exactly once.
-- ⏳ Sales-service rejects new order lines for that SKU with a clear domain error; existing draft orders are flagged.
-- ⏳ Inventory-service marks the stock item as no-replenishment; reorder rules stop generating purchase suggestions.
+- ✅ Sales-service rejects new order lines for the SKU with `ProductDiscontinuedException` at `placeOrder` (consumer `sales.product-discontinued` stamps `sales.product_pricing.discontinued_at`). ⏳ Existing draft orders are not retroactively flagged.
+- ✅ Inventory stamps `inventory.stock_item.discontinued_at`; manufacturing retires `product_replenishment` + active BOM; purchasing's PR entry-point rejects requisitions for the SKU; finance + reporting/atp stamp their own `discontinued_at`. ⏳ Reorder rules don't yet "stop generating purchase suggestions" — no automatic reorder-alert job exists today for the flag to suppress.
 
 **Pattern** — CQRS with **policy effect** on consumers (each context reacts in its own way to the same event)
 **Events** — `product.ProductDiscontinued`
+**Services involved** — product (command), sales + inventory + manufacturing + purchasing + finance + reporting/atp (projections / gating)
 
 ### Story 1.5 — Make-vs-buy classification ✅ *(not in original story set)*
 
@@ -169,12 +170,13 @@ Reporting is a pure read-side service. It owns *no* command APIs — it only con
 
 ### Story 2.6 — Financial Dashboard Daily 🚧
 
-**Trigger** — `GET /api/financial-dashboard` (list, AUD default), `GET /api/financial-dashboard/{date}`
+**Trigger** — `GET /api/financial-dashboard` (list, AUD default), `GET /api/financial-dashboard/{date}`, `GET /api/financial-dashboard/snapshot`
 **Acceptance criteria**
 - ✅ One row per (dashboard_date, currency_code).
 - ✅ Per-day flow accumulators: sales_revenue, COGS, gross_profit, cash_received, cash_paid.
 - ✅ Per-day open-* counts: SO / PO / WO.
-- ⏳ `inventory_value`, `wip_value`, `accounts_receivable`, `accounts_payable` columns stay at 0 today. Implementing these needs daily balance snapshots or perpetual-inventory accounting (latter is parked — see `dev-todo.md`).
+- ✅ `inventory_value`, `accounts_receivable`, `accounts_payable` populated via the `/snapshot` endpoint (shipped 2026-05-12). Reporting projects `product_standard_cost` from `product.StandardCostChanged` and JOINs ATP × cost; AR / AP are SUM-windows over the SO360 + PO tracking projections.
+- ⏳ `wip_value` still parked. Gated on a costing decision (LIFO / FIFO / weighted-avg) for `wip_balance.average_cost`, which is 0 today.
 
 ---
 
@@ -273,31 +275,35 @@ Fail-fast case 🚧: when manufacturing reports zero accepted lines (`Manufactur
 
 ---
 
-## Demo 6 — Saga: purchase-to-pay 🚧
+## Demo 6 — Saga: purchase-to-pay ✅
 
 `purchasing.purchase_to_pay_saga` — one row per PO, inserted at `started` in the same txn the PO is created.
 
-### Story 6.1 — PR → PO → goods receipt → invoice match → payment 🚧
+### Story 6.1 — PR → PO → goods receipt → invoice match → payment ✅
 
 **Trigger** — `POST /api/purchase-requisitions` (Tom — manual or auto from work-order shortage)
 
 **Flow**
-1. ✅ PR auto-converts to a PO inside the same txn (no draft state today). PO header status: `sent`. Saga: `started` → `waiting_for_goods` (worker tick).
-2. ✅ Tom posts goods receipt. Saga: `waiting_for_goods` → `goods_received` (driven by `inventory.GoodsReceived`).
-3. ✅ Olivia records the supplier invoice via `POST /api/supplier-invoices`. Finance runs **quantity-only** 3-way match. On match, emits `finance.SupplierInvoiceApproved`. Saga: `goods_received` → `supplier_invoice_approved`.
-4. ✅ Olivia pays via `POST /api/payments` (single invoice) or `POST /api/payments/multi` (one cheque, multiple invoices). On full settlement: → `completed`, PO header flips to `paid`. On partial: → `supplier_payment_made`, parks.
+1. ✅ PR creates a PO at `'draft'` inside the same txn; saga inserted at `started`. Tom approves via `POST /api/purchase-orders/{id}/approve` body `{approver, reason}` to flip the header → `'sent'` and emit `purchasing.PurchaseOrderApproved`. Saga walks `started → purchase_order_approved → waiting_for_goods` (last hop on the worker tick). Shortage-driven auto-PRs auto-approve inline when `northwood.purchasing.shortagePoAutoApprove=true` (default), so the make-to-order saga still flows without a human.
+2. ✅ Tom posts goods receipt. Saga: `waiting_for_goods` → `goods_received` (driven by `inventory.GoodsReceived`, only on full receipt — partial receipts park the PO header at `partially_received` and leave the saga in `waiting_for_goods`).
+3. ✅ Olivia records the supplier invoice via `POST /api/supplier-invoices`. Finance runs **quantity + price-variance** 3-way match: per-line invoice unit price is compared against the PO line's snapshotted unit_price; relative variance > `northwood.finance.match.priceTolerancePercent` (default 2.0%) parks the invoice at `three_way_match_failed` (a `SupplierInvoice.status`, **not** a saga state — the saga itself stays at `goods_received`). On match, emits `finance.SupplierInvoiceApproved` and the saga advances `goods_received → supplier_invoice_approved`.
+4. ✅ **Variance resolution fork** (manual-reject closure shipped 2026-05-15). Manual review queue at `GET /api/supplier-invoices/pending-review`. `POST /{id}/manual-approve` body `{reviewer, reason}` re-emits `SupplierInvoiceApproved` and the saga continues as in step 3. `POST /{id}/reject` flips the invoice to `cancelled` and emits `finance.SupplierInvoiceRejected`; purchasing's handler lands the saga in terminal `failed`.
+5. ✅ Olivia pays via `POST /api/payments` (single invoice) or `POST /api/payments/multi` (one cheque, multiple invoices — single supplier, single currency). On full settlement: → `completed`, PO header flips to `paid`. On partial: → `supplier_payment_made`, parks until the next allocation closes it.
 
 **Acceptance criteria**
 - ✅ Each step is independently idempotent — replaying any inbox message has no side effects.
-- ✅ A receipt with quantity less than the PO line moves the PO header to `partially_received` and stays there until subsequent receipts close the PO. Saga advances to `goods_received` only on full receipt.
-- ✅ Three-way match: **quantity** + **price-variance** (since 2026-05-06, dev-done §1.1). Per-line invoice unit price is compared against the PO line's snapshotted unit_price; relative variance > `northwood.finance.match.priceTolerancePercent` (default 2.0%) parks the invoice at `three_way_match_failed`. Manual review tooling at `GET /api/supplier-invoices/pending-review` surfaces the queue; `POST /{id}/manual-approve` and `POST /{id}/reject` resolve.
-- ✅ PO draft / approval workflow (since 2026-05-06, dev-done §1.2). Manual PRs (`POST /api/purchase-requisitions`) land their PO at `'draft'`; a human approves via `POST /api/purchase-orders/{id}/approve` body `{approver, reason}` to flip → `'sent'` and emit `purchasing.PurchaseOrderApproved`. Saga walks `started → purchase_order_approved → waiting_for_goods`. Shortage-driven auto-PRs auto-approve when `northwood.purchasing.shortagePoAutoApprove=true` (default), so the make-to-order saga still flows without a human.
 - ✅ **Defence-in-depth on goods receipt** (shipped 2026-05-12): inventory projects `inventory.purchase_order_line_facts` from `purchasing.PurchaseOrderCreated` so that `POST /api/goods-receipts` rejects with 400 any line whose `(purchaseOrderLineId, productId)` pair doesn't match the originating PO line. Lines posted with `purchaseOrderLineId = null` (unlinked manual receipts) skip the check.
-- ✅ Multi-invoice payment via `payment_allocation` rows (single supplier, single currency).
 
-**Saga state** — `purchasing.purchase_to_pay_saga`
+**Saga state** — `purchasing.purchase_to_pay_saga` (`ALL_STATES` = `started`, `purchase_order_approved`, `waiting_for_goods`, `goods_received`, `supplier_invoice_approved`, `supplier_payment_made`, `completed`, `failed`)
 
-> Covered by tier 2 unit test `SupplierPaymentMadeHandlerTest`.
+> Covered by tier 2 unit test `SupplierPaymentMadeHandlerTest`, the saga-state unit test `JdbcPurchaseToPaySagaManagerTest`, and the end-to-end harness tests `PurchaseToPayHappyPathTest` (auto-match happy path) + `PurchaseToPayRejectionPathTest` (variance → manual-reject → terminal `failed`).
+
+**Out-of-scope, captured here so they aren't re-discovered**
+
+- **No PO-cancellation flow.** The saga has no `compensating` / `compensated` states. The cancel-order saga shipped 2026-05-06 covers sales + manufacturing only; if a supplier won't deliver, or Tom needs to abort a PO, there is no command path today. Future slice; not story-blocking.
+- **No over-receipt rejection.** `GoodsReceiptService` doesn't validate `receivedQuantity` against the PO line's remaining `(orderedQuantity − alreadyReceived)`. Receiving 50 against a PO line of 40 still advances the saga to `goods_received`. Defensive validation, not story-blocking.
+- **Supplier price-list authoring** (`purchasing.supplier_product_price` + `SupplierProductPriceService.setPrice` + `SupplierProductPriceChanged`) exists and feeds the price-variance reference — documented in `build-status.md` but not narrated as a Story step here.
+- **Multi-currency P2P** (multi-pay across currencies) is rejected at the application layer; consistent with the project-level "multi-currency GL consolidation is low priority" memo.
 
 ---
 

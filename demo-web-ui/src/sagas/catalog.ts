@@ -3,8 +3,8 @@
 // manager". Used by SagaConsole to render the step indicator.
 //
 // The visible-stages list is curated to the *forward path*, not every state.
-// Side rails (compensating / failed / manual_review_required) render as
-// pulled-out badges instead of inline steps.
+// Side rails (compensating / compensated / failed) render as pulled-out
+// badges instead of inline steps.
 
 import type { PersonaKey } from "@/personas";
 
@@ -89,20 +89,12 @@ export const SAGA_CATALOGS: SagaCatalog[] = [
       "purchase_order_approved",
       "waiting_for_goods",
       "goods_received",
-      "supplier_invoice_received",
-      "three_way_match_passed",
       "supplier_invoice_approved",
       "supplier_payment_made",
-      "purchase_order_closed",
       "completed",
     ],
-    sideRailStates: [
-      "three_way_match_pending",
-      "three_way_match_failed",
-      "manual_review_required",
-      "failed",
-    ],
-    terminalStates: ["completed", "manual_review_required", "failed"],
+    sideRailStates: ["failed"],
+    terminalStates: ["completed", "failed"],
   },
 ];
 

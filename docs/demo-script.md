@@ -4,7 +4,7 @@ Step-by-step for getting the full stack — Postgres, the seven Spring Boot serv
 
 The end-state: open `http://localhost:5173`, click **🎬 Scenarios → 7.1**, and watch all three sagas drive to completion across the saga console while saying "this is what we built" out loud.
 
-Every event name, saga state, endpoint, and request body below is verified against the codebase as of 2026-05-05. Companion docs: `CLAUDE.md` (architecture invariants), `demo-web-ui-design.md` (technical-demo SPA design), `erp-web-ui-design.md` (operational ERP SPA design), `user-stories.md` (forward-looking backlog), `dev-todo.md` (implementation backlog).
+Every event name, saga state, endpoint, and request body below is verified against the codebase as of 2026-05-15. Companion docs: `CLAUDE.md` (architecture invariants), `demo-web-ui-design.md` (technical-demo SPA design), `erp-web-ui-design.md` (operational ERP SPA design), `user-stories.md` (forward-looking backlog), `dev-todo.md` (implementation backlog).
 
 ---
 
@@ -201,7 +201,7 @@ curl -X POST http://localhost:8081/api/products \
        "salesPrice":120,"standardCost":45,"currencyCode":"AUD"}'
 ```
 
-**Outbox:** `product.ProductCreated`. **Today's projection:** only `inventory.stock_item` (via `StockProjectionService`) gains a row. The other services do not yet maintain a product read model — adding sales/finance/purchasing/manufacturing/reporting projections is in `user-stories.md` as ⏳.
+**Outbox:** `product.ProductCreated`. **Today's projections (§1F.2 / §1F.6a / §1F.6b, 2026-05-14 → 2026-05-15):** five services each seed a stub row from the event — `inventory.stock_item`, `sales.product_pricing` (NULL price + currency until `SalesPriceChanged`), `manufacturing.product_replenishment` (type-derived make-vs-buy default), `finance.product_accounting` (NULL `standard_cost` + `valuation_class` until the respective change event), `reporting.available_to_promise_view`. Purchasing has no product read model of its own.
 
 ### 1.2 — Change pricing
 
@@ -215,7 +215,7 @@ curl -X PUT http://localhost:8081/api/products/{id}/standard-cost \
   -d '{"standardCost":50,"currencyCode":"AUD"}'
 ```
 
-**Outbox:** `product.SalesPriceChanged` from the first call; `product.StandardCostChanged` from the second. **Projection:** sales-service consumes `SalesPriceChanged` via `SalesPriceChangedHandler`. Finance does not yet project standard cost (⏳ in backlog).
+**Outbox:** `product.SalesPriceChanged` from the first call; `product.StandardCostChanged` from the second. **Projections:** sales-service consumes `SalesPriceChanged` via `SalesPriceChangedHandler` (new orders quote the new price; existing lines are price-denormalised at order time). Finance consumes `StandardCostChanged` via `StandardCostChangedHandler` → writes `finance.product_accounting.standard_cost`; `ShipmentPostedCogsHandler` reads that column to drive COGS (shipment-line-stamped `unitCost` is only a documented cold-start fallback).
 
 ### 1.3 — Set reorder policy
 
@@ -233,7 +233,7 @@ curl -X PUT http://localhost:8081/api/products/{id}/reorder-policy \
 curl -X POST http://localhost:8081/api/products/{id}/discontinue
 ```
 
-**Outbox:** `product.ProductDiscontinued`. **Today's behaviour:** the event publishes but no consumer reacts to it yet (sales doesn't reject new lines for discontinued SKUs; inventory doesn't stop replenishment). The reaction handlers are ⏳.
+**Outbox:** `product.ProductDiscontinued`. **Today's behaviour (§1F.1, 2026-05-14):** six services consume the event. Sales `placeOrder` rejects new lines for the SKU with `ProductDiscontinuedException`. Manufacturing retires `product_replenishment` and the active BOM. Purchasing's PR entry-point rejects requisitions for the SKU. Inventory + finance + reporting/atp stamp their own `discontinued_at`. Existing draft sales orders are **not** retroactively flagged; "reorder rules stop generating purchase suggestions" remains future-tense (no auto-reorder job exists today for the flag to suppress).
 
 ### 1.5 — Make-vs-buy classification
 
@@ -260,7 +260,7 @@ Reporting is inbox-only — no command APIs, no outbox. Six projections are wire
 | `available_to_promise_view` | `GET /api/atp` (list) `/{productId}` | `/atp` | inventory + manufacturing + purchasing events |
 | `financial_dashboard_daily` | `GET /api/financial-dashboard` (list, AUD default) `/{date}` | `/` (Dashboard) | finance + sales + purchasing + manufacturing events |
 
-The financial dashboard's `inventory_value` / `wip_value` / `accounts_receivable` / `accounts_payable` columns are 0 today — implementing them needs daily balance snapshots or perpetual-inventory accounting (parked, see `dev-todo.md`).
+The financial dashboard's `inventory_value`, `accounts_receivable`, and `accounts_payable` are populated via `GET /api/financial-dashboard/snapshot` (shipped 2026-05-12; reporting projects `product_standard_cost` from `StandardCostChanged` and JOINs ATP × cost; AR/AP are SUM-windows over the SO360 + PO tracking projections). Only `wip_value` is still 0 — gated on a costing decision (LIFO / FIFO / weighted-avg) for `wip_balance.average_cost`.
 
 ---
 
@@ -656,8 +656,8 @@ These are tracked in `user-stories.md` with ⏳ flags and (where relevant) `dev-
 - Multi-currency GL consolidation (low priority)
 - Customer credit notes / refunds (low priority)
 - GST tax-account split (low priority)
-- Daily inventory/AR/AP balance snapshots for the financial dashboard
-- Product projections in services other than inventory (and pricing in finance)
+- `wip_value` on the financial dashboard (gated on a costing decision for `wip_balance.average_cost`)
+- Reorder-alert job that would honour the `discontinued_at` flag (today the flag is stamped but no auto-suggester reads it)
 - Real `/events` aggregator (today's bottom event drawer is a Phase 1 stub)
 
 ---

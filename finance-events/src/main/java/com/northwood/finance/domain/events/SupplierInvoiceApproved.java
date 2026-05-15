@@ -6,13 +6,15 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * A supplier invoice has passed 3-way match and been auto-approved. Carries
- * the keys downstream consumers need: purchasing's P2P saga advances to
- * {@code supplier_invoice_approved} when this event arrives.
+ * A supplier invoice has been approved — either automatically via 3-way
+ * match (full quantity + price match) or manually by a reviewer who
+ * overrode a parked {@code three_way_match_failed} invoice. Purchasing's
+ * P2P saga consumer advances to {@code supplier_invoice_approved}.
  *
- * <p>Phase 4 only emits this event on full match success. Match-failed
- * invoices stay at {@code three_way_match_failed} for manual review and emit
- * no event yet — manual review tooling lands in a later slice.
+ * <p>Twin event: {@link SupplierInvoiceRejected} is emitted when a parked
+ * invoice is manually rejected. Match-failed invoices that are still
+ * awaiting human triage stay at {@code three_way_match_failed} and emit
+ * neither event until the reviewer decides.
  */
 public record SupplierInvoiceApproved(
     UUID eventId,

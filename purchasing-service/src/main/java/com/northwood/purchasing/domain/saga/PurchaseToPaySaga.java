@@ -8,13 +8,12 @@ import java.util.UUID;
 /**
  * Saga state row for the purchase-to-pay flow per purchase order.
  *
- * <p>Phase 2 implements {@code started → waiting_for_goods}: the worker
- * advances the saga out of {@code started} immediately because there's no
- * approval step today (PO is auto-sent). The {@code purchase_order_approved}
- * state in the schema's CHECK is kept reserved for a future approval workflow.
- *
- * <p>Phase 3 adds {@code waiting_for_goods → goods_received} on goods receipt.
- * Phases 4+ add invoice match → payment → completed once finance is online.
+ * <p>Walks {@code started → purchase_order_approved → waiting_for_goods →
+ * goods_received → supplier_invoice_approved → completed} on the happy
+ * path. Branches: partial supplier payments park at {@code supplier_payment_made}
+ * (resume on the next allocation); manual rejection of a parked-at-3WM-failed
+ * invoice lands the saga in terminal {@code failed} via
+ * {@code applySupplierInvoiceRejected}.
  */
 public final class PurchaseToPaySaga extends SagaInstance {
 
@@ -29,11 +28,10 @@ public final class PurchaseToPaySaga extends SagaInstance {
     public static final String SUPPLIER_INVOICE_APPROVED = "supplier_invoice_approved";
     public static final String SUPPLIER_PAYMENT_MADE = "supplier_payment_made";
     public static final String COMPLETED = "completed";
-    public static final String MANUAL_REVIEW_REQUIRED = "manual_review_required";
     public static final String FAILED = "failed";
 
     private static final Set<String> TERMINAL_STATES = Set.of(
-        COMPLETED, MANUAL_REVIEW_REQUIRED, FAILED
+        COMPLETED, FAILED
     );
 
     /**

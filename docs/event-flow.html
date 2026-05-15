@@ -720,6 +720,15 @@ window.NORTHWOOD_EVENTS = [
         desc: `<code>reporting.financial_dashboard_daily.supplier_invoices_amount</code> (+= amount, per currency)` },
     ]
   },
+  {
+    source: "finance",
+    aggregate: "SupplierInvoice",
+    event: "SupplierInvoiceRejected",
+    consumers: [
+      { dest: "purchasing", name: "purchasing.p2p.supplier-invoice-rejected",
+        desc: `Advances <code>purchasing.purchase_to_pay_saga.saga_state</code> <code>goods_received</code> → <code>failed</code> (terminal). No PO header writeback — PO-cancellation is a separate deferred concern.` },
+    ]
+  },
 ];
 </script>
 <script>
