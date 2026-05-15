@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Northwood — Aggregate Projections</title>
+<style>
+  :root {
+    --border: #d0d7de;
+    --border-strong: #8c959f;
+    --bg: #ffffff;
+    --bg-alt: #f6f8fa;
+    --code-bg: #eff1f3;
+    --text: #1f2328;
+    --muted: #57606a;
+    --accent: #0969da;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    margin: 0;
+    padding: 2rem 3rem 4rem;
+    line-height: 1.55;
+    max-width: 1500px;
+  }
+  h1 { font-size: 1.85rem; margin: 0 0 0.5rem; }
+  p { margin: 0.5rem 0 0.8rem; }
+  code {
+    background: var(--code-bg);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+    font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.88em;
+  }
+
+  .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 1rem; }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin: 0 0 0.75rem 0;
+  }
+  .controls .group {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .controls .group button {
+    border: none;
+    border-right: 1px solid var(--border);
+    background: #eaeef2;
+    color: var(--text);
+    padding: 0.35rem 0.8rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-family: inherit;
+  }
+  .controls .group button:last-child { border-right: none; }
+  .controls .group button:hover { background: #d4e4f1; }
+  .controls .group button[aria-pressed="true"] {
+    background: #0969da;
+    color: white;
+  }
+  .controls .label { color: var(--muted); font-size: 0.85rem; margin-right: 0.25rem; }
+  .controls .view-summary { color: var(--muted); font-size: 0.82rem; margin-left: auto; font-style: italic; }
+
+  .tree-wrap { margin: 1rem 0 1.5rem; font-size: 0.9rem; }
+  details { margin: 0; }
+  summary {
+    cursor: pointer;
+    padding: 0.4rem 0.75rem;
+    list-style: none;
+    border: 1px solid var(--border);
+    border-top: none;
+    user-select: none;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary:hover { filter: brightness(0.97); }
+  summary::before {
+    content: '▶';
+    display: inline-block;
+    width: 0.9em;
+    font-size: 0.7em;
+    color: var(--accent);
+    margin-right: 0.3em;
+    transition: transform 0.1s ease;
+  }
+  details[open] > summary::before {
+    transform: rotate(90deg);
+    color: var(--muted);
+  }
+  .node-name { font-weight: 600; }
+  .node-count {
+    font-weight: normal;
+    font-size: 0.85em;
+    color: var(--muted);
+    margin-left: 0.35em;
+  }
+
+  /* Per-level backgrounds — same palette as event-flow.html so the two
+     views read as siblings. */
+  details.src-node              { background: #d4e4f1; }
+  details.src-node > summary    { background: #d4e4f1; }
+  details.src-node:first-child > summary { border-top: 1px solid var(--border); }
+
+  details.agg-node              { background: #e2ecf5; }
+  details.agg-node > summary    { background: #e2ecf5; padding-left: 1.75rem; }
+
+  details.dest-node             { background: var(--bg); }
+  details.dest-node > summary   { background: #ecf2f8; padding-left: 3rem; font-weight: 600; }
+
+  /* Leaf rows: projection-table name + which events feed it. */
+  .table-leaf {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) 5fr;
+    gap: 0.75rem;
+    padding: 0.45rem 0.75rem 0.45rem 4.5rem;
+    border: 1px solid var(--border);
+    border-top: none;
+    background: var(--bg);
+    font-size: 0.85rem;
+  }
+  .table-leaf:hover { background: #fafbfc; }
+  .table-name { font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace; font-weight: 600; }
+  .table-name .kind {
+    display: inline-block;
+    font-family: inherit;
+    font-weight: normal;
+    font-size: 0.75em;
+    color: var(--muted);
+    background: var(--code-bg);
+    border-radius: 10px;
+    padding: 0.05rem 0.5rem;
+    margin-left: 0.4rem;
+    vertical-align: middle;
+  }
+  .table-name .kind.read-model { background: #ddf4ff; color: #0550ae; }
+  .table-name .kind.saga       { background: #fff8c5; color: #9a6700; }
+  .table-name .kind.aggregate  { background: #ffebe9; color: #cf222e; }
+
+  .table-events { color: var(--muted); }
+  .table-events .ev { font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.92em; }
+  .table-events .label { margin-right: 0.35em; font-style: italic; }
+
+  .err-banner {
+    background: #ffebe9;
+    border: 1px solid #cf222e;
+    color: #cf222e;
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    margin-bottom: 0.75rem;
+    font-size: 0.88rem;
+  }
+</style>
+</head>
+<body>
+
+<h1>Northwood — Aggregate Projections</h1>
+<p class="meta">Companion to <code>event-flow.html</code>, re-pivoted by <em>aggregate</em> rather than <em>event</em>. For each Aggregate Root, this view answers: <em>"which downstream services hold a cached / projected / saga-managed view of me, and in which tables?"</em></p>
+
+<p>Tree structure: <strong>Source Service → Aggregate Root → Destination Service → Projection Table</strong>. Each non-leaf node is collapsible — click the ▶ marker. Counts in parentheses are the size of the immediate children.</p>
+
+<p>Each leaf row tags its write target with a <em>kind</em> chip:</p>
+<ul>
+  <li><span class="table-name"><span class="kind read-model">read-model</span></span> — classic denormalised projection. Lives in a consumer schema, fed by inbox handlers, no consumer-side command writes (e.g. <code>sales.product_pricing</code>, <code>reporting.sales_order_360_view</code>, <code>finance.product_accounting</code>).</li>
+  <li><span class="table-name"><span class="kind saga">saga</span></span> — saga state row mutated by inbox handlers reacting to ack-style events from cooperating services (e.g. <code>sales.sales_order_fulfilment_saga</code>, <code>manufacturing.make_to_order_saga</code>).</li>
+  <li><span class="table-name"><span class="kind aggregate">aggregate</span></span> — destination service's own aggregate, mutated through commands triggered by inbox handlers (e.g. <code>inventory.stock_reservation</code> on <code>StockReservationRequested</code>, <code>finance.journal_entry_header</code> on <code>ShipmentPosted</code>).</li>
+</ul>
+
+<div class="controls">
+  <span class="label">View:</span>
+  <div class="group" role="group" aria-label="View mode">
+    <button data-view="broad" aria-pressed="true">Broad — all writes</button>
+    <button data-view="narrow" aria-pressed="false">Narrow — read-model only</button>
+  </div>
+  <span class="label" style="margin-left:0.5rem;">Tree:</span>
+  <div class="group" role="group" aria-label="Expand control">
+    <button data-action="expand-all">Expand all</button>
+    <button data-action="collapse-all">Collapse all</button>
+  </div>
+  <span class="view-summary" id="view-summary"></span>
+</div>
+
+<div class="tree-wrap" id="projection-tree">
+<!-- Rendered at page load from NORTHWOOD_PROJECTIONS (defined in the <script>
+     block near the bottom of this file). -->
+</div>
+
+<!-- ====================================================================
+     Inline projection data.
+
+     Shape:
+       {
+         source: "<service>",
+         aggregate: "<AggregateRoot>",
+         destinations: [
+           {
+             dest: "<service>",
+             tables: [
+               { name: "<table>",                        // schema = dest, omitted from name
+                 kind: "read-model" | "saga" | "aggregate",
+                 events: ["EventA", "EventB"]            // which source-aggregate events feed it
+               }
+             ]
+           }
+         ]
+       }
+
+     Hand-curated from event-flow.html's NORTHWOOD_EVENTS. Update both when
+     adding a new event. (Browsers block <script src="..."> from file:// for
+     cross-origin reasons, so a side-loaded shared data file would render
+     this page empty for most viewers — hence the inline duplication.)
+
+     `kind` heuristic:
+       - read-model — denormalised cache, no consumer-side command writes.
+         Includes the per-service Product master projections (stock_item,
+         product_replenishment, product_accounting, …), the *_facts tables
+         (3-way-match data, line-validation caches), and all the reporting
+         *_view / *_board / *_dashboard tables.
+       - saga       — *_saga tables (operational state machine).
+       - aggregate  — destination service's own aggregate tables
+         (stock_reservation, work_order_header, customer_invoice_header,
+         journal_entry_header, …). The cross-service event triggers a
+         command on the consumer-side aggregate; the table is the aggregate
+         root, not a projection of upstream facts.
+     ==================================================================== -->
+<script>
+window.NORTHWOOD_PROJECTIONS = [
+  // ============================================================
+  // product
+  // ============================================================
+  {
+    source: "product",
+    aggregate: "Product",
+    destinations: [
+      { dest: "sales", tables: [
+        { name: "product_pricing", kind: "read-model",
+          events: ["ProductCreated", "SalesPriceChanged", "ProductDiscontinued"] },
+      ]},
+      { dest: "inventory", tables: [
+        { name: "stock_item", kind: "read-model",
+          events: ["ProductCreated", "ReorderPolicyChanged", "ProductDiscontinued"] },
+      ]},
+      { dest: "manufacturing", tables: [
+        { name: "product_replenishment", kind: "read-model",
+          events: ["ProductCreated", "MakeVsBuyChanged", "ProductDiscontinued"] },
+        { name: "product_active_bom", kind: "read-model",
+          events: ["ActiveBomChanged", "ProductDiscontinued"] },
+        { name: "product_approved_vendor", kind: "read-model",
+          events: ["ApprovedVendorListChanged"] },
+      ]},
+      { dest: "purchasing", tables: [
+        { name: "product_approved_vendor", kind: "read-model",
+          events: ["ApprovedVendorListChanged"] },
+        { name: "product_discontinued", kind: "read-model",
+          events: ["ProductDiscontinued"] },
+      ]},
+      { dest: "finance", tables: [
+        { name: "product_accounting", kind: "read-model",
+          events: ["ProductCreated", "StandardCostChanged", "ValuationClassChanged", "ProductDiscontinued"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "available_to_promise_view", kind: "read-model",
+          events: ["ProductCreated", "ProductDiscontinued"] },
+        { name: "product_standard_cost", kind: "read-model",
+          events: ["StandardCostChanged"] },
+      ]},
+    ]
+  },
+
+  // ============================================================
+  // sales
+  // ============================================================
+  {
+    source: "sales",
+    aggregate: "Customer",
+    destinations: [
+      { dest: "reporting", tables: [
+        { name: "customer_dashboard_status", kind: "read-model",
+          events: ["CustomerDeactivated"] },
+      ]},
+      { dest: "finance", tables: [
+        { name: "customer_invoice_header", kind: "aggregate",
+          events: ["CustomerDeactivated"] },
+      ]},
+    ]
+  },
+  {
+    source: "sales",
+    aggregate: "SalesOrder",
+    destinations: [
+      { dest: "inventory", tables: [
+        { name: "sales_order_line_facts", kind: "read-model",
+          events: ["SalesOrderPlaced"] },
+        { name: "stock_reservation", kind: "aggregate",
+          events: ["StockReservationRequested", "SalesOrderCancellationRequested"] },
+        { name: "stock_reservation_line", kind: "aggregate",
+          events: ["StockReservationRequested"] },
+        { name: "stock_balance", kind: "aggregate",
+          events: ["StockReservationRequested", "SalesOrderCancellationRequested"] },
+      ]},
+      { dest: "manufacturing", tables: [
+        { name: "make_to_order_saga", kind: "saga",
+          events: ["ManufacturingRequested", "SalesOrderCancellationRequested"] },
+        { name: "work_order_header", kind: "aggregate",
+          events: ["SalesOrderCancellationRequested"] },
+      ]},
+      { dest: "finance", tables: [
+        { name: "customer_invoice_header", kind: "aggregate",
+          events: ["SalesOrderShipped"] },
+        { name: "customer_invoice_line", kind: "aggregate",
+          events: ["SalesOrderShipped"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "sales_order_360_view", kind: "read-model",
+          events: ["SalesOrderPlaced", "SalesOrderCompensated"] },
+        { name: "financial_dashboard_daily", kind: "read-model",
+          events: ["SalesOrderPlaced"] },
+      ]},
+    ]
+  },
+
+  // ============================================================
+  // purchasing
+  // ============================================================
+  {
+    source: "purchasing",
+    aggregate: "PurchaseOrder",
+    destinations: [
+      { dest: "finance", tables: [
+        { name: "purchase_order_line_facts", kind: "read-model",
+          events: ["PurchaseOrderCreated"] },
+      ]},
+      { dest: "inventory", tables: [
+        { name: "purchase_order_line_facts", kind: "read-model",
+          events: ["PurchaseOrderCreated"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "purchase_order_tracking_view", kind: "read-model",
+          events: ["PurchaseOrderCreated", "PurchaseOrderApproved"] },
+        { name: "available_to_promise_view", kind: "read-model",
+          events: ["PurchaseOrderCreated"] },
+        { name: "financial_dashboard_daily", kind: "read-model",
+          events: ["PurchaseOrderCreated"] },
+        { name: "material_shortage_view", kind: "read-model",
+          events: ["PurchaseOrderCreated"] },
+        { name: "production_planning_board", kind: "read-model",
+          events: ["PurchaseOrderCreated"] },
+      ]},
+    ]
+  },
+  {
+    source: "purchasing",
+    aggregate: "PurchaseRequisition",
+    destinations: [
+      { dest: "reporting", tables: [
+        { name: "material_shortage_view", kind: "read-model",
+          events: ["PurchaseRequisitionCreated"] },
+      ]},
+    ]
+  },
+  {
+    source: "purchasing",
+    aggregate: "SupplierProductPrice",
+    destinations: [
+      { dest: "manufacturing", tables: [
+        { name: "product_materials_cost", kind: "read-model",
+          events: ["SupplierProductPriceChanged"] },
+      ]},
+    ]
+  },
+
+  // ============================================================
+  // inventory
+  // ============================================================
+  {
+    source: "inventory",
+    aggregate: "GoodsReceipt",
+    destinations: [
+      { dest: "finance", tables: [
+        { name: "purchase_order_line_facts", kind: "read-model",
+          events: ["GoodsReceived"] },
+      ]},
+      { dest: "manufacturing", tables: [
+        { name: "make_to_order_saga", kind: "saga",
+          events: ["GoodsReceived"] },
+      ]},
+      { dest: "purchasing", tables: [
+        { name: "purchase_order_line", kind: "aggregate",
+          events: ["GoodsReceived"] },
+        { name: "purchase_order_header", kind: "aggregate",
+          events: ["GoodsReceived"] },
+        { name: "purchase_to_pay_saga", kind: "saga",
+          events: ["GoodsReceived"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "purchase_order_tracking_view", kind: "read-model",
+          events: ["GoodsReceived"] },
+        { name: "available_to_promise_view", kind: "read-model",
+          events: ["GoodsReceived"] },
+        { name: "material_shortage_view", kind: "read-model",
+          events: ["GoodsReceived"] },
+        { name: "production_planning_board", kind: "read-model",
+          events: ["GoodsReceived"] },
+      ]},
+    ]
+  },
+  {
+    source: "inventory",
+    aggregate: "StockReservation",
+    destinations: [
+      { dest: "sales", tables: [
+        { name: "sales_order_fulfilment_saga", kind: "saga",
+          events: ["StockReserved", "InventorySalesOrderCancellationApplied"] },
+        { name: "sales_order_header", kind: "aggregate",
+          events: ["StockReserved"] },
+      ]},
+      { dest: "manufacturing", tables: [
+        { name: "make_to_order_saga", kind: "saga",
+          events: ["RawMaterialsReserved"] },
+        { name: "work_order_header", kind: "aggregate",
+          events: ["RawMaterialsReserved"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "production_planning_board", kind: "read-model",
+          events: ["RawMaterialsReserved"] },
+        { name: "available_to_promise_view", kind: "read-model",
+          events: ["RawMaterialsReserved", "StockReserved"] },
+      ]},
+    ]
+  },
+  {
+    source: "inventory",
+    aggregate: "Shipment",
+    destinations: [
+      { dest: "finance", tables: [
+        { name: "journal_entry_header", kind: "aggregate",
+          events: ["ShipmentPosted"] },
+        { name: "journal_entry_line", kind: "aggregate",
+          events: ["ShipmentPosted"] },
+      ]},
+      { dest: "sales", tables: [
+        { name: "sales_order_fulfilment_saga", kind: "saga",
+          events: ["ShipmentPosted"] },
+        { name: "sales_order_header", kind: "aggregate",
+          events: ["ShipmentPosted"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "sales_order_360_view", kind: "read-model",
+          events: ["ShipmentPosted"] },
+        { name: "available_to_promise_view", kind: "read-model",
+          events: ["ShipmentPosted"] },
+      ]},
+    ]
+  },
+
+  // ============================================================
+  // manufacturing
+  // ============================================================
+  {
+    source: "manufacturing",
+    aggregate: "SalesOrder",
+    destinations: [
+      { dest: "sales", tables: [
+        { name: "sales_order_fulfilment_saga", kind: "saga",
+          events: ["ManufacturingDispatched"] },
+        { name: "sales_order_header", kind: "aggregate",
+          events: ["ManufacturingDispatched"] },
+      ]},
+    ]
+  },
+  {
+    source: "manufacturing",
+    aggregate: "WorkOrder",
+    destinations: [
+      { dest: "inventory", tables: [
+        { name: "stock_reservation", kind: "aggregate",
+          events: ["RawMaterialReservationRequested", "WorkOrderCancelled"] },
+        { name: "stock_reservation_line", kind: "aggregate",
+          events: ["RawMaterialReservationRequested"] },
+        { name: "stock_balance", kind: "aggregate",
+          events: ["RawMaterialReservationRequested", "WorkOrderCancelled", "WorkOrderManufacturingCompleted"] },
+        { name: "stock_movement", kind: "aggregate",
+          events: ["WorkOrderManufacturingCompleted"] },
+        { name: "wip_balance", kind: "aggregate",
+          events: ["SubAssembliesConsumed", "WorkOrderManufacturingCompleted"] },
+      ]},
+      { dest: "purchasing", tables: [
+        { name: "purchase_requisition_header", kind: "aggregate",
+          events: ["RawMaterialShortageDetected"] },
+        { name: "purchase_requisition_line", kind: "aggregate",
+          events: ["RawMaterialShortageDetected"] },
+      ]},
+      { dest: "sales", tables: [
+        { name: "sales_order_fulfilment_saga", kind: "saga",
+          events: ["WorkOrderCreated", "WorkOrderManufacturingCompleted", "ManufacturingSalesOrderCancellationApplied"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "production_planning_board", kind: "read-model",
+          events: ["WorkOrderCreated", "OperationCompleted", "RawMaterialShortageDetected", "WorkOrderManufacturingCompleted", "WorkOrderCancelled", "WorkOrderPriorityChanged"] },
+        { name: "available_to_promise_view", kind: "read-model",
+          events: ["WorkOrderCreated", "WorkOrderManufacturingCompleted"] },
+        { name: "financial_dashboard_daily", kind: "read-model",
+          events: ["WorkOrderCreated"] },
+        { name: "material_shortage_view", kind: "read-model",
+          events: ["RawMaterialShortageDetected"] },
+        { name: "sales_order_360_view", kind: "read-model",
+          events: ["WorkOrderManufacturingCompleted"] },
+      ]},
+    ]
+  },
+  {
+    source: "manufacturing",
+    aggregate: "Product",
+    destinations: [
+      { dest: "product", tables: [
+        { name: "product", kind: "aggregate",
+          events: ["ProductMaterialsCostComputed"] },
+      ]},
+    ]
+  },
+
+  // ============================================================
+  // finance
+  // ============================================================
+  {
+    source: "finance",
+    aggregate: "CustomerInvoice",
+    destinations: [
+      { dest: "sales", tables: [
+        { name: "sales_order_fulfilment_saga", kind: "saga",
+          events: ["CustomerInvoiceCreated"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "sales_order_360_view", kind: "read-model",
+          events: ["CustomerInvoiceCreated"] },
+        { name: "financial_dashboard_daily", kind: "read-model",
+          events: ["CustomerInvoiceCreated"] },
+      ]},
+    ]
+  },
+  {
+    source: "finance",
+    aggregate: "Payment",
+    destinations: [
+      { dest: "sales", tables: [
+        { name: "sales_order_fulfilment_saga", kind: "saga",
+          events: ["CustomerPaymentReceived"] },
+        { name: "sales_order_header", kind: "aggregate",
+          events: ["CustomerPaymentReceived"] },
+      ]},
+      { dest: "purchasing", tables: [
+        { name: "purchase_to_pay_saga", kind: "saga",
+          events: ["SupplierPaymentMade"] },
+        { name: "purchase_order_header", kind: "aggregate",
+          events: ["SupplierPaymentMade"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "sales_order_360_view", kind: "read-model",
+          events: ["CustomerPaymentReceived"] },
+        { name: "purchase_order_tracking_view", kind: "read-model",
+          events: ["SupplierPaymentMade"] },
+        { name: "financial_dashboard_daily", kind: "read-model",
+          events: ["CustomerPaymentReceived", "SupplierPaymentMade"] },
+      ]},
+    ]
+  },
+  {
+    source: "finance",
+    aggregate: "SupplierInvoice",
+    destinations: [
+      { dest: "purchasing", tables: [
+        { name: "purchase_to_pay_saga", kind: "saga",
+          events: ["SupplierInvoiceApproved"] },
+        { name: "purchase_order_header", kind: "aggregate",
+          events: ["SupplierInvoiceApproved"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "purchase_order_tracking_view", kind: "read-model",
+          events: ["SupplierInvoiceApproved"] },
+        { name: "financial_dashboard_daily", kind: "read-model",
+          events: ["SupplierInvoiceApproved"] },
+      ]},
+    ]
+  },
+];
+</script>
+
+<script>
+(function () {
+  'use strict';
+
+  let currentView = 'broad'; // 'broad' | 'narrow'
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const data = window.NORTHWOOD_PROJECTIONS;
+    if (!Array.isArray(data)) {
+      showError('window.NORTHWOOD_PROJECTIONS is not an array. Tree will be empty.');
+      return;
+    }
+
+    const problems = validate(data);
+    if (problems.length > 0) {
+      showError('Projection data has problems — see browser console for details. Tree rendered anyway.');
+      problems.forEach(function (p) { console.warn('[projections] ' + p); });
+    }
+
+    renderCurrentView();
+    wireViewToggle();
+    wireExpandAllButtons();
+  });
+
+  function renderCurrentView() {
+    const data = window.NORTHWOOD_PROJECTIONS;
+    const filtered = filterByView(data, currentView);
+    document.getElementById('projection-tree').innerHTML = renderProjections(filtered);
+    updateViewSummary(data, filtered);
+  }
+
+  // Filter the data tree by kind. Empty destinations / aggregates / sources
+  // after filtering are pruned so the tree stays readable.
+  function filterByView(data, view) {
+    if (view === 'broad') return data;
+
+    const keepKind = function (t) { return t.kind === 'read-model'; };
+    const out = [];
+    data.forEach(function (entry) {
+      const destsOut = [];
+      entry.destinations.forEach(function (d) {
+        const tablesOut = d.tables.filter(keepKind);
+        if (tablesOut.length > 0) {
+          destsOut.push({ dest: d.dest, tables: tablesOut });
+        }
+      });
+      if (destsOut.length > 0) {
+        out.push({ source: entry.source, aggregate: entry.aggregate, destinations: destsOut });
+      }
+    });
+    return out;
+  }
+
+  function updateViewSummary(allData, shownData) {
+    const allCount = countTables(allData);
+    const shownCount = countTables(shownData);
+    const el = document.getElementById('view-summary');
+    if (!el) return;
+    if (currentView === 'broad') {
+      el.textContent = 'Showing all ' + allCount + ' table writes';
+    } else {
+      el.textContent = 'Showing ' + shownCount + ' / ' + allCount + ' table writes (read-model only)';
+    }
+  }
+
+  function countTables(data) {
+    let n = 0;
+    data.forEach(function (entry) {
+      entry.destinations.forEach(function (d) { n += d.tables.length; });
+    });
+    return n;
+  }
+
+  function showError(msg) {
+    const wrap = document.querySelector('.tree-wrap');
+    if (!wrap) return;
+    const banner = document.createElement('div');
+    banner.className = 'err-banner';
+    banner.textContent = msg;
+    wrap.parentNode.insertBefore(banner, wrap);
+  }
+
+  function validate(data) {
+    const problems = [];
+    const seenAggKeys = new Set();
+    const validKinds = new Set(['read-model', 'saga', 'aggregate']);
+    data.forEach(function (entry, i) {
+      if (!entry.source || !entry.aggregate || !Array.isArray(entry.destinations)) {
+        problems.push('Entry #' + i + ' missing required field: ' + JSON.stringify(entry));
+        return;
+      }
+      const aggKey = entry.source + '|' + entry.aggregate;
+      if (seenAggKeys.has(aggKey)) {
+        problems.push('Duplicate (source, aggregate) pair: ' + aggKey + ' at index #' + i);
+      }
+      seenAggKeys.add(aggKey);
+      const seenDests = new Set();
+      entry.destinations.forEach(function (d, j) {
+        if (!d.dest || !Array.isArray(d.tables)) {
+          problems.push('Destination #' + j + ' of ' + aggKey + ' missing required field');
+          return;
+        }
+        if (seenDests.has(d.dest)) {
+          problems.push('Duplicate destination "' + d.dest + '" on ' + aggKey);
+        }
+        seenDests.add(d.dest);
+        const seenTables = new Set();
+        d.tables.forEach(function (t, k) {
+          if (!t.name || !Array.isArray(t.events)) {
+            problems.push('Table #' + k + ' of ' + aggKey + '/' + d.dest + ' missing name or events');
+            return;
+          }
+          if (!validKinds.has(t.kind)) {
+            problems.push('Table "' + t.name + '" on ' + aggKey + '/' + d.dest + ' has invalid kind "' + t.kind + '"');
+          }
+          if (seenTables.has(t.name)) {
+            problems.push('Duplicate table "' + t.name + '" on ' + aggKey + '/' + d.dest);
+          }
+          seenTables.add(t.name);
+        });
+      });
+    });
+    return problems;
+  }
+
+  function renderProjections(data) {
+    if (data.length === 0) {
+      return '<p style="color:var(--muted);padding:0.75rem;border:1px solid var(--border);">No projections match the current filter.</p>';
+    }
+    const bySource = groupBy(data, function (e) { return e.source; });
+    const out = [];
+    for (const source of bySource.keys()) {
+      const aggregates = bySource.get(source);
+      out.push('<details class="src-node" open>');
+      out.push('<summary><span class="node-name">' + esc(source) + '</span><span class="node-count">(' + aggregates.length + ')</span></summary>');
+
+      for (const entry of aggregates) {
+        out.push('<details class="agg-node" open>');
+        out.push('<summary><span class="node-name">' + esc(entry.aggregate) + '</span><span class="node-count">(' + entry.destinations.length + ')</span></summary>');
+
+        for (const d of entry.destinations) {
+          out.push('<details class="dest-node" open>');
+          out.push('<summary><span class="node-name">' + esc(d.dest) + '</span><span class="node-count">(' + d.tables.length + ')</span></summary>');
+
+          for (const t of d.tables) {
+            const evList = t.events.map(function (ev) {
+              return '<span class="ev">' + esc(ev) + '</span>';
+            }).join(', ');
+            const kindChip = '<span class="kind ' + esc(t.kind) + '">' + esc(t.kind) + '</span>';
+            out.push('<div class="table-leaf">');
+            out.push('<span class="table-name">' + esc(d.dest) + '.' + esc(t.name) + kindChip + '</span>');
+            out.push('<span class="table-events"><span class="label">written by:</span>' + evList + '</span>');
+            out.push('</div>');
+          }
+
+          out.push('</details>');
+        }
+
+        out.push('</details>');
+      }
+
+      out.push('</details>');
+    }
+    return out.join('');
+  }
+
+  function groupBy(arr, keyFn) {
+    const map = new Map();
+    arr.forEach(function (item) {
+      const k = keyFn(item);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(item);
+    });
+    return map;
+  }
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function wireViewToggle() {
+    document.querySelectorAll('button[data-view]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const view = btn.getAttribute('data-view');
+        if (view === currentView) return;
+        currentView = view;
+        document.querySelectorAll('button[data-view]').forEach(function (b) {
+          b.setAttribute('aria-pressed', b.getAttribute('data-view') === currentView ? 'true' : 'false');
+        });
+        renderCurrentView();
+      });
+    });
+  }
+
+  function wireExpandAllButtons() {
+    document.querySelectorAll('button[data-action]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const action = btn.getAttribute('data-action');
+        const open = action === 'expand-all';
+        document.querySelectorAll('#projection-tree details').forEach(function (d) {
+          d.open = open;
+        });
+      });
+    });
+  }
+})();
+</script>
+
+</body>
+</html>
