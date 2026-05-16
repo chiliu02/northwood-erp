@@ -380,6 +380,10 @@ Convention amended in `docs/conventions.md`: the *event-less write-once aggregat
 
 Six new files (one per events-producing service): `ProductAggregateTypes`, `SalesAggregateTypes`, `InventoryAggregateTypes`, `ManufacturingAggregateTypes`, `PurchasingAggregateTypes`, `FinanceAggregateTypes` — each hosting all `AGGREGATE_TYPE` constants for that service's aggregates and sagas. Aggregate classes re-export from these files (`Product.AGGREGATE_TYPE = ProductAggregateTypes.PRODUCT`). Cross-service event classes (`ManufacturingDispatched`, `ProductMaterialsCostComputed`) and ~30 cross-service consumer-test sites reference the events-jar constants directly. `manufacturing-events` POM gains `sales-events` + `product-events` deps to support cross-service stamping references. See `dev-done.md`.
 
+### 2.21 `AGGREGATE_TYPE` on `MakeToOrderSaga` + `PurchaseToPaySaga` for symmetry ✅ shipped 2026-05-16
+
+`ManufacturingAggregateTypes.MAKE_TO_ORDER_SAGA = "MakeToOrderSaga"` and `PurchasingAggregateTypes.PURCHASE_TO_PAY_SAGA = "PurchaseToPaySaga"` added; the two saga classes re-export as `AGGREGATE_TYPE` to match `SalesOrderFulfilmentSaga`. Constants are unused today (neither saga stamps outbox rows under its own identity — `MakeToOrderSagaWorker` stamps under `WorkOrder.AGGREGATE_TYPE`; `PurchaseToPaySagaWorker` emits nothing). Declared as stable call sites for any future self-originated commands; rationale captured in each saga's javadoc. See `dev-done.md`.
+
 ---
 
 ## 3. Low priority — explicitly deferred (skip unless asked)

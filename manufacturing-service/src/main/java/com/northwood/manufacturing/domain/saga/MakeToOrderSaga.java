@@ -1,5 +1,6 @@
 package com.northwood.manufacturing.domain.saga;
 
+import com.northwood.manufacturing.domain.ManufacturingAggregateTypes;
 import com.northwood.shared.domain.saga.SagaInstance;
 import java.time.Instant;
 import java.util.Set;
@@ -15,6 +16,17 @@ import java.util.UUID;
  * BOM cycle prevention land.
  */
 public final class MakeToOrderSaga extends SagaInstance {
+
+    /**
+     * Wire-format aggregate-type reserved for events this saga emits under its
+     * own identity. Currently unused — the worker's sole outbox emission
+     * ({@code RawMaterialReservationRequested}) is stamped under
+     * {@link com.northwood.manufacturing.domain.WorkOrder#AGGREGATE_TYPE}
+     * because it naturally belongs to the just-created WorkOrder's stream.
+     * Declared for symmetry with {@code SalesOrderFulfilmentSaga} and as the
+     * stable call site for any future saga-originated commands.
+     */
+    public static final String AGGREGATE_TYPE = ManufacturingAggregateTypes.MAKE_TO_ORDER_SAGA;
 
     // ------------------------------------------------------------
     // State constants — Java-side ergonomic for the wire-format strings

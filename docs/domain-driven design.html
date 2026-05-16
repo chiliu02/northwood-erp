@@ -582,12 +582,12 @@
     <tr><td>Product</td><td><code>Product</code></td>
         <td><code>ApprovedVendor</code> (VO list — child collection persisted to <code>product.approved_vendor</code> via dirty-flag drain on <code>save()</code>)</td>
         <td>Discontinued products reject every mutator; no-op suppression on equal-value writes; approved-vendor list compared as a set (order-insensitive).</td></tr>
-    <tr><td>Sales</td><td><code>SalesOrder</code></td>
-        <td><code>SalesOrderLine</code></td>
-        <td>State machine <code>open &rarr; in_fulfilment &rarr; shipped &rarr; invoiced &rarr; paid</code>; cancel rejected past <code>goods_shipped</code>; total = sum of lines.</td></tr>
     <tr><td>Sales</td><td><code>Customer</code></td>
         <td>&mdash;</td>
         <td>3-state machine (<code>active</code> / <code>on_hold</code> / <code>closed</code>); unique customer code.</td></tr>
+    <tr><td>Sales</td><td><code>SalesOrder</code></td>
+        <td><code>SalesOrderLine</code></td>
+        <td>State machine <code>open &rarr; in_fulfilment &rarr; shipped &rarr; invoiced &rarr; paid</code>; cancel rejected past <code>goods_shipped</code>; total = sum of lines.</td></tr>
     <tr><td>Inventory</td><td><code>StockItem</code></td>
         <td>Reorder policy</td>
         <td>Hybrid: cached from product master + locally-owned reorder policy.</td></tr>
@@ -597,30 +597,30 @@
     <tr><td>Inventory</td><td><code>GoodsReceipt</code>, <code>Shipment</code></td>
         <td>Header + lines</td>
         <td>Posted once; line totals match header.</td></tr>
-    <tr><td>Manufacturing</td><td><code>WorkOrder</code></td>
-        <td><code>WorkOrderMaterial</code>, <code>WorkOrderOperation</code></td>
-        <td>Recursive child WOs for sub-assemblies; parent holds at <code>in_progress</code> while any child unfinished; <code>onChildCompleted(true)</code> cascades.</td></tr>
     <tr><td>Manufacturing</td><td><code>Bom</code></td>
         <td><code>BomLine</code></td>
         <td>State machine <code>DRAFT &rarr; ACTIVE &rarr; INACTIVE</code>; mutators (<code>addLine</code> / <code>removeLine</code>) reject on non-draft; <code>activate</code> emits <code>BomActivated</code>; "at most one active per finished product" via DB partial unique index <code>uq_bom_active_per_product</code>; cycle detection orchestrated by <code>BomEditService</code> post-save (cross-aggregate graph walk).</td></tr>
+    <tr><td>Manufacturing</td><td><code>WorkOrder</code></td>
+        <td><code>WorkOrderMaterial</code>, <code>WorkOrderOperation</code></td>
+        <td>Recursive child WOs for sub-assemblies; parent holds at <code>in_progress</code> while any child unfinished; <code>onChildCompleted(true)</code> cascades.</td></tr>
+    <tr><td>Purchasing</td><td><code>SupplierProductPrice</code></td>
+        <td>&mdash;</td>
+        <td>Per-row aggregate for the supplier price list, keyed on <code>(supplier_id, product_id, currency_code)</code>. Intent-named <code>updatePrice</code> mutator with no-op suppression via <code>BigDecimal.compareTo</code>.</td></tr>
     <tr><td>Purchasing</td><td><code>PurchaseRequisition</code></td>
         <td><code>PurchaseRequisitionLine</code></td>
         <td>Manual or shortage-driven; conversion to PO flips its status.</td></tr>
     <tr><td>Purchasing</td><td><code>PurchaseOrder</code></td>
         <td><code>PurchaseOrderLine</code></td>
         <td>Approval state machine; auto-approve for shortage-driven gated by config.</td></tr>
-    <tr><td>Purchasing</td><td><code>SupplierProductPrice</code></td>
-        <td>&mdash;</td>
-        <td>Per-row aggregate for the supplier price list, keyed on <code>(supplier_id, product_id, currency_code)</code>. Intent-named <code>updatePrice</code> mutator with no-op suppression via <code>BigDecimal.compareTo</code>.</td></tr>
-    <tr><td>Finance</td><td><code>SupplierInvoice</code>, <code>CustomerInvoice</code></td>
+    <tr><td>Finance</td><td><code>JournalEntry</code></td>
+        <td><code>JournalEntryLine</code></td>
+        <td>Double-entry &mdash; debits sum to credits to the cent (per currency). Event-less write-once aggregate: balance enforced by the deferred DB trigger <code>enforce_journal_balance</code>; reversal is a new posted entry rather than a mutation. Exemplar of the event-less variant of the <code>*Repository</code> rule.</td></tr>
+    <tr><td>Finance</td><td><code>CustomerInvoice</code>, <code>SupplierInvoice</code></td>
         <td>Lines</td>
         <td>Three-way match on supplier side (PO + receipt + invoice).</td></tr>
     <tr><td>Finance</td><td><code>Payment</code></td>
         <td><code>PaymentAllocation</code></td>
         <td>Multi-allocation single / multi variants across supplier &amp; customer flavours; per-allocation null guards.</td></tr>
-    <tr><td>Finance</td><td><code>JournalEntry</code></td>
-        <td><code>JournalEntryLine</code></td>
-        <td>Double-entry &mdash; debits sum to credits to the cent (per currency). Event-less write-once aggregate: balance enforced by the deferred DB trigger <code>enforce_journal_balance</code>; reversal is a new posted entry rather than a mutation. Exemplar of the event-less variant of the <code>*Repository</code> rule.</td></tr>
   </tbody>
 </table>
 
@@ -697,8 +697,8 @@
   <tbody>
     <tr><td>Every event type string is hosted as a constant on its event class</td>
         <td><code>public static final String EVENT_TYPE = "finance.CustomerInvoiceCreated";</code></td></tr>
-    <tr><td>Every aggregate-type string is hosted on the aggregate root</td>
-        <td><code>SalesOrder.AGGREGATE_TYPE</code>, <code>Product.AGGREGATE_TYPE</code>, &hellip;</td></tr>
+    <tr><td>Every aggregate-type string is hosted on the aggregate root (or saga state-machine class)</td>
+        <td><code>SalesOrder.AGGREGATE_TYPE</code>, <code>Product.AGGREGATE_TYPE</code>, <code>SalesOrderFulfilmentSaga.AGGREGATE_TYPE</code>, &hellip;</td></tr>
     <tr><td>Cross-service status strings carried on events live on the event class</td>
         <td><code>StockReserved.STATUS_RESERVED</code>, <code>CustomerPaymentReceived.INVOICE_STATUS_PAID</code>, &hellip;</td></tr>
     <tr><td>Distinct Java class per wire-format suffix &mdash; never collapse</td>

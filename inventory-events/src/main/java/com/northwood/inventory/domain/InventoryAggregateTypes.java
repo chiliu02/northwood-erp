@@ -14,8 +14,8 @@ package com.northwood.inventory.domain;
  */
 public final class InventoryAggregateTypes {
 
-    public static final String STOCK_RESERVATION = "StockReservation";
     public static final String STOCK_ITEM = "StockItem";
+    public static final String STOCK_RESERVATION = "StockReservation";
     public static final String GOODS_RECEIPT = "GoodsReceipt";
     public static final String SHIPMENT = "Shipment";
 

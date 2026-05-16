@@ -1,5 +1,6 @@
 package com.northwood.purchasing.domain.saga;
 
+import com.northwood.purchasing.domain.PurchasingAggregateTypes;
 import com.northwood.shared.domain.saga.SagaInstance;
 import java.time.Instant;
 import java.util.Set;
@@ -16,6 +17,18 @@ import java.util.UUID;
  * {@code applySupplierInvoiceRejected}.
  */
 public final class PurchaseToPaySaga extends SagaInstance {
+
+    /**
+     * Wire-format aggregate-type reserved for events this saga emits under its
+     * own identity. Currently unused — the worker only performs internal state
+     * transitions (no outbox emissions today), and all other transitions are
+     * inbox-handler-driven against the {@code PurchaseOrder} /
+     * {@code SupplierInvoice} / {@code Payment} aggregates, which stamp their
+     * own aggregate-types. Declared for symmetry with
+     * {@code SalesOrderFulfilmentSaga} and as the stable call site for any
+     * future saga-originated commands.
+     */
+    public static final String AGGREGATE_TYPE = PurchasingAggregateTypes.PURCHASE_TO_PAY_SAGA;
 
     // ------------------------------------------------------------
     // State constants — Java-side ergonomic for the wire-format strings

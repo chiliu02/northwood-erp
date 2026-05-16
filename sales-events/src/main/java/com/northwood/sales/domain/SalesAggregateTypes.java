@@ -15,8 +15,8 @@ package com.northwood.sales.domain;
  */
 public final class SalesAggregateTypes {
 
-    public static final String SALES_ORDER = "SalesOrder";
     public static final String CUSTOMER = "Customer";
+    public static final String SALES_ORDER = "SalesOrder";
     public static final String SALES_ORDER_FULFILMENT_SAGA = "SalesOrderFulfilmentSaga";
 
     private SalesAggregateTypes() {}

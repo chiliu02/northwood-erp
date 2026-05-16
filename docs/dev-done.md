@@ -6,6 +6,36 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-16 — §2.21: `AGGREGATE_TYPE` on `MakeToOrderSaga` + `PurchaseToPaySaga` for symmetry
+
+§2.20 left a small asymmetry: only `SalesOrderFulfilmentSaga` carried an `AGGREGATE_TYPE` constant (and the matching `SALES_ORDER_FULFILMENT_SAGA` entry in `SalesAggregateTypes`), because it's the only saga that today stamps outbox rows under its own identity. The other two sagas don't — `MakeToOrderSagaWorker` stamps its sole emission (`RawMaterialReservationRequested`) under `WorkOrder.AGGREGATE_TYPE`, and `PurchaseToPaySagaWorker` emits nothing (its single worker-driven transition is a park-and-wait state change; all other transitions are inbox-handler-driven against `PurchaseOrder` / `SupplierInvoice` / `Payment`). Per the §2.20 rule ("sagas that own their own emissions independently of any domain aggregate carry the constant"), neither was eligible.
+
+This slice declares the constants anyway for symmetry — every saga aggregate now has the same shape, and the constants exist as stable call sites if either saga ever grows a self-originated command.
+
+### Changes
+
+- `manufacturing-events.ManufacturingAggregateTypes` — added `MAKE_TO_ORDER_SAGA = "MakeToOrderSaga"`.
+- `purchasing-events.PurchasingAggregateTypes` — added `PURCHASE_TO_PAY_SAGA = "PurchaseToPaySaga"`.
+- `manufacturing-service.domain.saga.MakeToOrderSaga` — `public static final String AGGREGATE_TYPE = ManufacturingAggregateTypes.MAKE_TO_ORDER_SAGA` + javadoc noting why nothing currently stamps under it (the WorkOrder stream owns the worker's sole emission).
+- `purchasing-service.domain.saga.PurchaseToPaySaga` — `public static final String AGGREGATE_TYPE = PurchasingAggregateTypes.PURCHASE_TO_PAY_SAGA` + javadoc noting that the worker emits nothing and inbox-handler-driven transitions stamp under their target aggregates.
+
+No outbox writer was changed. `MakeToOrderSagaWorker.appendOutbox(event, WorkOrder.AGGREGATE_TYPE)` deliberately keeps stamping under WorkOrder's stream because that's where `RawMaterialReservationRequested` naturally belongs.
+
+### Convention updates
+
+- `docs/sagas.md` § *Saga manager class shape* — the saga `AGGREGATE_TYPE` paragraph rewritten. Was: *"Sagas that own their own emissions independently of any domain aggregate carry the constant on the saga state-machine class"* (which described the rule for when the constant was *required*). Now: all three sagas declare the field for symmetry; the paragraph explicitly enumerates which saga stamps under its own aggregate-type (`SalesOrderFulfilmentSaga`) and which use the constant only as a reserved future call site (`MakeToOrderSaga`, `PurchaseToPaySaga`), with the reason (where their emissions naturally belong or that there aren't any).
+- `docs/domain-driven design.html` § *Messaging convention rules table* — the "Every aggregate-type string is hosted on the aggregate root" row now reads *"(or saga state-machine class)"* and lists `SalesOrderFulfilmentSaga.AGGREGATE_TYPE` alongside `SalesOrder.AGGREGATE_TYPE` / `Product.AGGREGATE_TYPE` in the example column.
+
+`docs/architecture.md:48` left untouched: the row already reads "`<AggregateRoot>.AGGREGATE_TYPE`" and the docs treat saga state-machine classes as aggregates, so the line is technically inclusive; the detail lives in `docs/sagas.md`. Saga state-transition diagrams (`docs/SalesOrderFulfilmentSaga.md`, `docs/MakeToOrderSaga.md`, `docs/PurchaseToPaySaga.md`) unaffected — no `transitionTo`, `ALL_STATES`, factory, or current-step label changed.
+
+### Smoke
+
+- `mvn -DskipTests -pl manufacturing-events,purchasing-events,manufacturing-service,purchasing-service -am compile` ✅ clean.
+- `mvn -DskipTests compile` (full reactor) ✅ clean.
+- Grep for the literal `"MakeToOrderSaga"` / `"PurchaseToPaySaga"` returns only the two new constants — no test fixture or schema depends on the wire string.
+
+---
+
 ## 2026-05-16 — §2.16: Promote `Bom` to a real aggregate (retire `BomEditRepository`)
 
 The last `*Repository`-without-an-aggregate offender from the 2026-05-15 audit is gone. `manufacturing.domain.BomEditRepository` and its JDBC adapter deleted; replaced by a proper `Bom` aggregate root with the standard shape (identity VO + status enum + internal entity + version + pendingEvents + intent-named mutators + outbox-draining save). Five offenders surfaced by the audit; all five resolved now (§2.16 + §2.17 + §2.18).

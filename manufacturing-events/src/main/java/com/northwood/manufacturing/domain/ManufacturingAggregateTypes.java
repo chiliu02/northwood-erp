@@ -15,8 +15,9 @@ package com.northwood.manufacturing.domain;
  */
 public final class ManufacturingAggregateTypes {
 
-    public static final String WORK_ORDER = "WorkOrder";
     public static final String BOM = "Bom";
+    public static final String WORK_ORDER = "WorkOrder";
+    public static final String MAKE_TO_ORDER_SAGA = "MakeToOrderSaga";
 
     private ManufacturingAggregateTypes() {}
 }

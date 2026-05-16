@@ -14,10 +14,10 @@ package com.northwood.finance.domain;
  */
 public final class FinanceAggregateTypes {
 
-    public static final String SUPPLIER_INVOICE = "SupplierInvoice";
-    public static final String CUSTOMER_INVOICE = "CustomerInvoice";
-    public static final String PAYMENT = "Payment";
     public static final String JOURNAL_ENTRY = "JournalEntry";
+    public static final String CUSTOMER_INVOICE = "CustomerInvoice";
+    public static final String SUPPLIER_INVOICE = "SupplierInvoice";
+    public static final String PAYMENT = "Payment";
 
     private FinanceAggregateTypes() {}
 }
