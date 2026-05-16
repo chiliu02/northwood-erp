@@ -6,6 +6,16 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-17 — Convention formalised: *deltas get aggregates, totals and snapshot projections get projection ports*
+
+Captured the load-bearing aggregate-qualification principle as a top-level section in `docs/conventions.md` (right after the existing port/suffix table): the four-category framework (Delta / Total / Snapshot projection / Reference data), promotion criteria, and the conceptual lineage (Pacioli 1494 → event sourcing → DDD+outbox). `CLAUDE.md` gains a one-line summary + pointer in the Naming-summary section so the rule is discoverable from the project entry point. The stale "Today's only legitimate hybrid is `inventory.stock_item`" claim mid-paragraph in `conventions.md` was rewritten to reflect §2.22 (flagged for demotion).
+
+Trigger: the 2026-05-17 audit conversation surfaced one further `*Repository`-without-an-aggregate offender (`StockItem`) and, in the course of explaining why it's a violation, articulated the deltas-vs-totals principle as a project-wide rule. Documented while the framing was fresh. Auto-memory `project_deltas_vs_totals.md` updated to point at the canonical project doc.
+
+No code change. New backlog item §2.22 added to `dev-todo.md` (demote `StockItem` aggregate → projection ports).
+
+**Follow-up same day — ERP-as-accounting framing captured.** `docs/architecture.md` gains a new top-level section *Why this codebase looks the way it does — ERP as applied accounting epistemology* (placed before *Module layout*) — the Pacioli framing of the whole codebase, the six-row concept mapping (journal entry ↔ event, ledger ↔ projection, chart of accounts ↔ reference data, posting ↔ outbox-in-transaction, audit trail ↔ meta-journal, trial balance ↔ reconciliation invariant), where the accounting analogy stops (workflow / role-based UX / forward-looking computation), and how the existing architectural rules read more easily as accounting discipline generalised. `README.md` gains a one-sentence pointer in the opening section (kept light-touch per §1E.1's "user drives README voice"). Triggered by the deltas-vs-totals conversation crystallising into the broader observation that *ERP is an accounting-shaped system applied to all business facts, not just monetary ones*.
+
 ## 2026-05-16 — §2.21: `AGGREGATE_TYPE` on `MakeToOrderSaga` + `PurchaseToPaySaga` for symmetry
 
 §2.20 left a small asymmetry: only `SalesOrderFulfilmentSaga` carried an `AGGREGATE_TYPE` constant (and the matching `SALES_ORDER_FULFILMENT_SAGA` entry in `SalesAggregateTypes`), because it's the only saga that today stamps outbox rows under its own identity. The other two sagas don't — `MakeToOrderSagaWorker` stamps its sole emission (`RawMaterialReservationRequested`) under `WorkOrder.AGGREGATE_TYPE`, and `PurchaseToPaySagaWorker` emits nothing (its single worker-driven transition is a park-and-wait state change; all other transitions are inbox-handler-driven against `PurchaseOrder` / `SupplierInvoice` / `Payment`). Per the §2.20 rule ("sagas that own their own emissions independently of any domain aggregate carry the constant"), neither was eligible.

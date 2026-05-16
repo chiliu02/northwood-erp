@@ -384,6 +384,22 @@ Six new files (one per events-producing service): `ProductAggregateTypes`, `Sale
 
 `ManufacturingAggregateTypes.MAKE_TO_ORDER_SAGA = "MakeToOrderSaga"` and `PurchasingAggregateTypes.PURCHASE_TO_PAY_SAGA = "PurchaseToPaySaga"` added; the two saga classes re-export as `AGGREGATE_TYPE` to match `SalesOrderFulfilmentSaga`. Constants are unused today (neither saga stamps outbox rows under its own identity — `MakeToOrderSagaWorker` stamps under `WorkOrder.AGGREGATE_TYPE`; `PurchaseToPaySagaWorker` emits nothing). Declared as stable call sites for any future self-originated commands; rationale captured in each saga's javadoc. See `dev-done.md`.
 
+### 2.22 Demote `StockItem` from aggregate to projection
+
+`inventory.StockItem` has the aggregate skeleton (`AGGREGATE_TYPE`, `pendingEvents`, `StockItemRepository`) but emits zero events — every mutation is `applyReorderPolicy` driven by an inbound product-master fact. Its own Javadoc admits the placeholder shape ("No outbox calls today; the constant is declared so future inventory-originated events can reference it directly"). Violates the *deltas get aggregates, projections get projection ports* rule.
+
+Scope:
+- Move `domain/StockItem.java` out of `domain/` (likely to `application/inbox/` next to the projection that owns it, or fold into a plain row record). Strip `pendingEvents`, `pullPendingEvents()`, `AGGREGATE_TYPE`, `DomainEvent` import.
+- Delete `domain/StockItemRepository.java`. Replace with:
+  - `application/StockItemQueryPort` (`findById` / `findByProductId` / `findAll` — feeds `StockItemService` + the demo UI list).
+  - Writer side absorbed into `application/inbox/StockItemProjection` — projection owns the `Jdbc*Projection` writer directly, no aggregate detour.
+- Split `infrastructure/persistence/JdbcStockItemRepository.java` → `JdbcStockItemQueryPort` (reader) + `JdbcStockItemProjection` (writer). Standard `*Projection` ⇆ `Jdbc*Projection` shape.
+- Remove `STOCK_ITEM` from `InventoryAggregateTypes`.
+- `StockItemService` switches from `StockItemRepository` to `StockItemQueryPort`; public API unchanged so controllers and tests are untouched downstream.
+- Decide whether to keep the `version` column on `inventory.stock_item` (no other writer today; can stay defensive or be dropped — side decision, not a blocker).
+
+Promotion trigger (reverse direction, when relevant): the first inventory-originated stock-fact slice — manual stock-adjustment, stock-take correction, or any other intent-named mutator that emits a new event — should promote `StockItem` back to a real aggregate. Same shape as the §2.16 / §2.17 promotions.
+
 ---
 
 ## 3. Low priority — explicitly deferred (skip unless asked)

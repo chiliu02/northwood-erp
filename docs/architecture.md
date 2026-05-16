@@ -2,6 +2,42 @@
 
 Detail companion to `CLAUDE.md`. Read when authoring a new service, a new events module, a new aggregate, or anything cross-cutting.
 
+## Why this codebase looks the way it does — ERP as applied accounting epistemology
+
+Underneath every convention in this repository is one architectural idea applied repeatedly: **Pacioli's 1494 double-entry bookkeeping discipline, generalised to non-monetary facts.** Northwood is an ERP because it applies that discipline uniformly across functional domains, not because it has a `finance` module.
+
+The discipline in one sentence: *the journal is the system of record; the ledger is a report off it. Facts are immutable; totals are derived; if the total can be edited independently of the facts, fraud or error becomes undetectable.* That is the cardinal accounting invariant, and it is the cardinal invariant of this codebase too — see `docs/conventions.md` → *Aggregate vs projection — deltas get aggregates, totals and snapshot projections get projection ports*.
+
+| Pacioli concept | How it appears in Northwood, across every module |
+|---|---|
+| **Journal entry** (immutable fact) | Every domain event — `GoodsReceiptPosted`, `ShipmentPosted`, `WorkOrderManufacturingCompleted`, `PaymentReceived`, `StockReservationRequested`, `BomActivated`, … — is a "journal entry" for its functional domain. Identity, timestamp, append-only. |
+| **Ledger** (running total) | `inventory.stock_balance`, `inventory.wip_balance`, gl-account balance (a `SUM` over `finance.journal_entry_line`), `customer_invoice_header.paid_amount` (trigger-maintained off `payment_allocation`), `reporting.production_planning_board` — all derived sums. None is an aggregate; each has a `*Writer` / `*Projection` writer port and a `*Lookup` / `*QueryPort` reader port. |
+| **Chart of accounts** (reference data) | `finance.gl_account`, `inventory.warehouse`, `manufacturing.work_center`, `finance.tax_code`, `shared.uom` — seeded once by SQL, FK-referenced, never mutated through the domain. Java doesn't carry an aggregate class for these. |
+| **Posting** (the ink-and-stamp atomicity) | The **outbox-in-transaction**: `aggregate.save()` writes the new state and every pending event inside one `@Transactional` boundary. Either the event is published AND the state changed, or neither did. The bookkeeper's golden rule, expressed in JDBC. |
+| **Audit trail** | `shared.audit_entry` is itself a meta-journal of API calls — same shape one layer up. Who did what to which aggregate when, with full reconstruction. |
+| **Trial balance / reconciliation** | The deltas/totals invariant in operation: any projection must be reproducible by replaying its source events. If it isn't, you don't trust the books. The inbox + projection-handler design is exactly this reconciliation guarantee. |
+
+Read this way, only the `finance` schema is "the accounting service" because it speaks in money. **Every other service is keeping the books on something else** — inventory on physical units, manufacturing on WIP and labour, sales on customer commitments, purchasing on supplier obligations. At the boundary they post to finance's books (`ShipmentPostedCogsHandler`, `SupplierInvoiceApprovedHandler`, etc.), which is the one set of books that has to balance in currency. SAP people say *"everything is a posting"* — they aren't being cute, they mean it literally.
+
+**Where the analogy stops.** ERP also has coordination concerns that aren't accounting:
+
+- **Workflow** — sagas (`sales_order_fulfilment`, `make_to_order`, `purchase_to_pay`) orchestrate multi-step business transactions across humans and services. A saga is a multi-leg journal entry that may take days to balance, with compensation as the reverse-posting mechanism.
+- **Role-based UX** — `@PreAuthorize` + per-persona screens (`erp-web-ui`) are human-factors design, not bookkeeping.
+- **Forward-looking computation** — ATP checks against `stock_balance`, the planned production-planning-board view, materials-cost rollups. Real ERPs have MRP runs and capacity scheduling here; Northwood deliberately stops short.
+
+So *"ERP = bookkeeping"* under-claims. The honest framing: **ERP is an accounting-shaped system applied to all business facts, not just monetary ones, with workflow and coordination layered on top to drive the humans who post the entries.** The substrate is Pacioli; the modules are domain-specific journals; the saga layer is the multi-step "transaction" mechanism; finance is just the journal denominated in dollars.
+
+**Practical consequence for reading the codebase.** Most of the architectural rules in `CLAUDE.md` and `docs/conventions.md` are easier to remember once you read them as accounting discipline generalised:
+
+- *"Every `*Repository` interface in `domain/` must have a sibling aggregate root that declares `AGGREGATE_TYPE`"* → every aggregate is a class of journal entry; the type code is its account-classification.
+- *"Deltas get aggregates, totals get projections"* → the journal-vs-ledger discipline, applied to the schema.
+- *"Cross-context relationships are plain UUIDs maintained by event projection"* → schemas reconcile to each other by replaying journal entries, not by sharing a database.
+- *"Aggregate-root stamping: an event names the aggregate the fact is about"* → the journal-entry header names which account the entry posts to, independent of which clerk wrote it.
+- *"Outbox-in-transaction"* → the bookkeeper's golden rule: the act of posting and the act of changing state are one operation, or neither happens.
+- *"No `*Repository` without an aggregate"* → a journal type with no defined accounting treatment is a category error; either define it or use a different filing system.
+
+Internalise this one framing and every other rule in the documentation follows from it rather than being a separate thing to remember. **The deepest "framework" in Northwood isn't Spring; it's Pacioli.**
+
 ## Module layout
 
 ```
