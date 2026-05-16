@@ -348,7 +348,8 @@
     <h3>Inventory <span class="tag supporting">Supporting</span></h3>
     <p>Stock balances, reservations, goods receipts, shipments. Existing patterns, no business-rule differentiation.</p>
     <dl>
-      <dt>Aggregates</dt><dd><code>StockItem</code>, <code>StockReservation</code>, <code>GoodsReceipt</code>, <code>Shipment</code></dd>
+      <dt>Aggregates</dt><dd><code>StockReservation</code>, <code>GoodsReceipt</code>, <code>Shipment</code></dd>
+      <dt>Projections</dt><dd><code>stock_item</code>, <code>stock_balance</code>, <code>wip_balance</code> (read-model snapshots of upstream facts &mdash; not aggregates per the deltas-vs-totals rule)</dd>
       <dt>Publishes</dt><dd>5 events &mdash; <code>StockReserved</code>, <code>GoodsReceived</code>, <code>ShipmentPosted</code>, <code>InventorySalesOrderCancellationApplied</code> &hellip;</dd>
     </dl>
   </div>
@@ -588,9 +589,6 @@
     <tr><td>Sales</td><td><code>SalesOrder</code></td>
         <td><code>SalesOrderLine</code></td>
         <td>State machine <code>open &rarr; in_fulfilment &rarr; shipped &rarr; invoiced &rarr; paid</code>; cancel rejected past <code>goods_shipped</code>; total = sum of lines.</td></tr>
-    <tr><td>Inventory</td><td><code>StockItem</code></td>
-        <td>Reorder policy</td>
-        <td>Hybrid: cached from product master + locally-owned reorder policy.</td></tr>
     <tr><td>Inventory</td><td><code>StockReservation</code></td>
         <td><code>StockReservationLine</code></td>
         <td>Status set <code>RESERVED / PARTIALLY_RESERVED / FAILED</code> &mdash; status constants live on the <em>event</em> for cross-service ref.</td></tr>
@@ -652,7 +650,7 @@
 
 <h4>Per-aggregate identity VOs</h4>
 <ul>
-  <li><code>ProductId</code>, <code>SalesOrderId</code>, <code>CustomerId</code>, <code>StockItemId</code>, <code>StockReservationId</code>, <code>GoodsReceiptId</code>, <code>ShipmentId</code>, <code>WorkOrderId</code>, <code>RoutingId</code>, <code>SupplierId</code>, <code>PurchaseRequisitionId</code>, <code>PurchaseOrderId</code>, <code>SupplierInvoiceId</code>, <code>CustomerInvoiceId</code>, <code>PaymentId</code>, <code>JournalEntryId</code>.</li>
+  <li><code>ProductId</code>, <code>SalesOrderId</code>, <code>CustomerId</code>, <code>StockReservationId</code>, <code>GoodsReceiptId</code>, <code>ShipmentId</code>, <code>WorkOrderId</code>, <code>RoutingId</code>, <code>SupplierId</code>, <code>PurchaseRequisitionId</code>, <code>PurchaseOrderId</code>, <code>SupplierInvoiceId</code>, <code>CustomerInvoiceId</code>, <code>PaymentId</code>, <code>JournalEntryId</code>.</li>
   <li>Each wraps a <code>UUID</code> behind an <code>of(UUID)</code> static factory. At the API boundary, services accept raw <code>UUID</code> and wrap on the first line of the method &mdash; identity VOs flow through <code>application/</code> + <code>domain/</code> only.</li>
 </ul>
 
@@ -759,17 +757,28 @@ public record OutboxRow(
 </table>
 
 <div class="callout">
-  <strong>Projection vs aggregate &mdash; when to promote.</strong>
-  Most projection tables (<code>sales.product_pricing</code>,
-  <code>manufacturing.product_active_bom</code>, <code>purchasing.product_approved_vendor</code>,
-  <code>finance.product_accounting</code>, &hellip;) are <em>caches of facts owned by another
-  service</em>. Mutation authority lives upstream. Promoting one to a real
-  aggregate would mislead readers &mdash; "is this where I change pricing?" No,
-  that's <code>Product.changePricing()</code> in product-service.
-  Today's only legitimate hybrid is <code>inventory.stock_item</code>: projected
-  from product master <em>and</em> a real aggregate with locally-owned reorder
-  policy (<code>StockItem.applyReorderPolicy(...)</code>). Promote a projection
-  only when consumer-side invariants emerge that need a place to live.
+  <strong>Deltas get aggregates, totals and snapshot projections get projection ports.</strong>
+  The deeper rule behind the <code>*Repository</code>-with-an-aggregate convention.
+  Concepts that <em>emit deltas</em> (facts with identity and lifecycle &mdash;
+  <code>JournalEntry</code>, <code>Payment</code>, <code>GoodsReceipt</code>,
+  <code>StockReservation</code>, <code>Bom</code>, <code>Product</code>, etc.) get
+  aggregates. Concepts that hold the <em>running sum</em> of those deltas
+  (<code>stock_balance</code>, gl account balance via
+  <code>SUM(journal_entry_line)</code>, <code>invoice.paid_amount</code> via
+  trigger-maintained off <code>payment_allocation</code>) or that hold a
+  <em>local cache of facts owned upstream</em> (<code>sales.product_pricing</code>,
+  <code>manufacturing.product_active_bom</code>,
+  <code>finance.product_accounting</code>, <code>inventory.stock_item</code>, &hellip;)
+  get projection-shaped ports instead &mdash; <code>*Writer</code> /
+  <code>*Projection</code> for the write side, <code>*Lookup</code> /
+  <code>*QueryPort</code> for the read side. Promoting a total or snapshot to a
+  <code>*Repository</code>+aggregate makes it possible for the derived data to
+  diverge from the facts that produced it &mdash; the cardinal sin double-entry
+  accounting was invented to prevent (Pacioli, 1494). Full framework &amp;
+  promotion criteria: <code>docs/conventions.md</code> &rarr;
+  <em>Aggregate vs projection</em>. Project-wide framing of the same rule:
+  <code>docs/architecture.md</code> &rarr; <em>Why this codebase looks the way
+  it does &mdash; ERP as applied accounting epistemology</em>.
 </div>
 
 <h3>Instance-field naming</h3>
@@ -938,7 +947,9 @@ public class ProductService {
     <tr><td>Transaction script masquerading as DDD</td>
         <td>Application services orchestrate; aggregates own the logic + emit events. The grep <code>JdbcTemplate</code> in <code>application/</code> &rarr; zero is the canary.</td></tr>
     <tr><td><code>*Repository</code> without a backing aggregate</td>
-        <td>Convention captured in <code>docs/conventions.md</code>: every <code>*Repository</code> interface in <code>domain/</code> must have a sibling aggregate root in the same package declaring <code>AGGREGATE_TYPE</code>. Event-less write-once aggregates (e.g. <code>finance.JournalEntry</code>) are permitted. The 2026-05-15 audit surfaced five offenders; all resolved 2026-05-16 across §2.16 / §2.17 / §2.18 &mdash; zero offenders remain.</td></tr>
+        <td>Convention captured in <code>docs/conventions.md</code>: every <code>*Repository</code> interface in <code>domain/</code> must have a sibling aggregate root in the same package declaring <code>AGGREGATE_TYPE</code>. Event-less write-once aggregates (e.g. <code>finance.JournalEntry</code>) are permitted. The 2026-05-15 audit surfaced five offenders, resolved 2026-05-16 across §2.16 / §2.17 / §2.18. The 2026-05-17 audit surfaced one further offender (<code>inventory.StockItem</code> &mdash; aggregate-shaped but emitted zero events; structurally a snapshot projection of upstream product-master state), resolved same day as §2.22 &mdash; demoted to <code>StockItemProjection</code> (writer) + <code>StockItemQueryPort</code> (reader). Zero offenders remain.</td></tr>
+    <tr><td>Total promoted to aggregate (ledger as system of record)</td>
+        <td>Running balances stay as projection-shaped ports, never <code>*Repository</code>. <code>inventory.stock_balance</code>, gl account balance, <code>customer_invoice_header.paid_amount</code> are <em>derived</em> from upstream deltas (<code>GoodsReceipt</code>, <code>Shipment</code>, <code>StockReservation</code>, <code>WorkOrderManufacturingCompleted</code>; <code>JournalEntry</code>; <code>PaymentAllocation</code>) &mdash; trying to make them aggregates lets the total diverge from its facts. The journal-vs-ledger discipline from Pacioli (1494), applied across every functional domain.</td></tr>
   </tbody>
 </table>
 

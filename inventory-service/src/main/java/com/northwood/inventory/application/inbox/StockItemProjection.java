@@ -1,63 +1,38 @@
 package com.northwood.inventory.application.inbox;
 
-import com.northwood.inventory.domain.StockItem;
-import com.northwood.inventory.domain.StockItemRepository;
 import com.northwood.product.domain.events.ReorderPolicyChanged;
 import java.math.BigDecimal;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Inbox-driven projection that maintains inventory's local read-side replica
- * of product master facts ({@code inventory.stock_item}). Today only handles
- * reorder-policy facts; future product-master facets (creation, discontinue)
- * land here as additional methods.
+ * Apply a {@code product.ReorderPolicyChanged} fact onto the local
+ * {@code inventory.stock_item} read-model row. Inventory does not own a
+ * reorder-policy aggregate of its own — the policy is authoritatively held
+ * by product master (Shape A); this projection only mirrors the values into
+ * inventory's schema so subsequent inventory-side queries don't need a
+ * cross-schema join (blocked by per-service {@code search_path} anyway).
  *
- * <p>Concrete class rather than interface + JDBC adapter: the impl delegates
- * through {@link StockItemRepository} (the aggregate repo) for type-safe
- * mutation, so there's no JdbcTemplate to push down to
- * {@code infrastructure/persistence/} — the standard application/inbox/
- * {@code *Projection} ⇆ infrastructure/persistence/ {@code Jdbc*Projection}
- * split adds no value here.
+ * <p>§2.22 demotion: previously inventory carried a full {@code StockItem}
+ * aggregate + {@code StockItemRepository} that this projection delegated
+ * through. The aggregate never emitted events and held no inventory-side
+ * invariants beyond non-negative guards on the projected columns — so it
+ * was structurally a {@code *Projection} wearing aggregate clothes. The
+ * interface now matches the sibling pattern ({@link ProductCreatedProjection},
+ * {@link ProductDiscontinuedProjection}) — a thin port whose JDBC impl
+ * lives in {@code infrastructure/persistence/JdbcStockItemProjection}.
+ * Promote back to an aggregate when an inventory-originated stock-fact slice
+ * (manual stock-adjustment, stock-take, etc.) creates a legitimate first
+ * emitter that needs intent-named mutators + outbox events.
  */
-@Service
-public class StockItemProjection {
-
-    private static final Logger log = LoggerFactory.getLogger(StockItemProjection.class);
-
-    private final StockItemRepository stockItems;
-
-    public StockItemProjection(StockItemRepository stockItems) {
-        this.stockItems = stockItems;
-    }
+public interface StockItemProjection {
 
     /**
-     * Apply a {@code ReorderPolicyChanged} fact from product master to the
-     * local stock_item projection. §1F.2: inventory's {@code ProductCreated}
-     * consumer ({@link ProductCreatedHandler}) now seeds the stub row at
-     * registration, so on the happy path a {@code ReorderPolicyChanged}
-     * always finds its target. The remaining race window — out-of-order
-     * delivery dropping {@code ReorderPolicyChanged} before
-     * {@code ProductCreated} — still ends with a WARN-and-no-op here; the
-     * inbox redelivery once the seed lands catches the policy up.
+     * Apply a reorder-policy change. If no {@code stock_item} row exists yet
+     * for the product (out-of-order delivery: {@code ReorderPolicyChanged}
+     * arrived before {@code ProductCreated}'s stub seed landed), the
+     * projection WARNs and no-ops — the inbox redelivery once the seed
+     * lands will catch the policy up. Idempotent: re-applying the same
+     * values is a debug-logged no-op.
      */
-    @Transactional
-    public void applyReorderPolicy(UUID productId, BigDecimal reorderPoint, BigDecimal reorderQuantity) {
-        stockItems.findByProductId(productId).ifPresentOrElse(item -> {
-            if (reorderPoint.compareTo(item.reorderPoint()) == 0
-                && reorderQuantity.compareTo(item.reorderQuantity()) == 0) {
-                log.debug("applyReorderPolicy product_id={} ignored — values unchanged (point={}, qty={})",
-                    productId, reorderPoint, reorderQuantity);
-                return;
-            }
-            item.applyReorderPolicy(reorderPoint, reorderQuantity);
-            stockItems.save(item);
-        }, () -> log.warn(
-            "{} received for unknown product_id={} — projection skipped",
-            ReorderPolicyChanged.EVENT_TYPE, productId
-        ));
-    }
+    void applyReorderPolicy(UUID productId, BigDecimal reorderPoint, BigDecimal reorderQuantity);
 }

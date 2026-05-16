@@ -6,6 +6,26 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-17 — §2.22: Demote `StockItem` from aggregate to projection ports
+
+The last `*Repository`-without-an-emitter offender from the 2026-05-17 audit. `inventory.StockItem` had the full aggregate skeleton (`AGGREGATE_TYPE`, `pendingEvents`, `pullPendingEvents()`, `StockItemRepository` with optimistic-concurrency on `version`) but emitted zero events — every mutation was `applyReorderPolicy` driven by an inbound product-master fact, so it was structurally a snapshot projection of upstream state, not a delta-emitting aggregate.
+
+Demoted to the projection-shaped port pattern (`*Projection` + `*QueryPort`) matching the §2.18 Routing / Supplier template:
+
+- **New writer port pair** — `application/inbox/StockItemProjection` (interface; was a concrete `@Service` class that delegated through `StockItemRepository`) + `infrastructure/persistence/JdbcStockItemProjection` (impl; direct UPDATE on `inventory.stock_item.reorder_point/reorder_quantity` with no-op-when-unchanged via `IS DISTINCT FROM`, WARN-and-no-op when the row is missing — same race tolerance as `JdbcProductDiscontinuedProjection`). Mirrors the sibling `ProductCreatedProjection` / `ProductDiscontinuedProjection` shape.
+- **New reader port pair** — `application/StockItemQueryPort` (interface) + `infrastructure/persistence/JdbcStockItemQueryPort` (impl). Returns `StockItemView` directly — no intermediate domain row class, since the table is read-only from inventory's perspective and the wire shape is the natural payload.
+- **`StockItemService` switched** from `StockItemRepository` to `StockItemQueryPort`. Public API unchanged; `findById` / `findByProductId` / `findAll` now pass through directly (no `.map(StockItemView::from)` since the port produces views).
+- **`StockItemView`** drops the `from(StockItem)` static factory and the dependency on `StockItem`; becomes a plain wire record. All fields preserved (including `version`) for wire compatibility — the demo UI's `StockItemView` shape is unchanged.
+- **Deleted four files**: `domain/StockItem.java`, `domain/StockItemId.java`, `domain/StockItemRepository.java`, `infrastructure/persistence/JdbcStockItemRepository.java`.
+- **`STOCK_ITEM` constant removed** from `InventoryAggregateTypes`. The constant had no cross-service consumers (verified by grep across the whole repo); only `StockItem.java`'s `AGGREGATE_TYPE` re-export referenced it.
+- **`version` column on `inventory.stock_item` kept defensively** — no inventory-side writer bumps it today (matching the prior `JdbcProductDiscontinuedProjection` behaviour for the same table). Surfaces through the wire as a frozen value; not a semantic regression since nothing on the SPA reads it as a meaningful concurrency token. Drop the column if/when a future cleanup wants to.
+
+**Smoke:** `mvn -pl inventory-service test` → 78/78 green (existing handler tests mocked the projections directly, not the repository, so no test churn). `mvn -pl test-harness test` → 8/8 saga end-to-end paths green.
+
+**Promotion path (reverse, when relevant):** the first inventory-originated stock-fact slice — manual stock-adjustment, stock-take correction, force-release, or any other intent-named command that emits a new inventory event — promotes `StockItem` back to a real aggregate, same shape as the §2.16 (Bom) / §2.17 (SupplierProductPrice) promotions.
+
+The 2026-05-17 audit's *Repository*-without-an-aggregate roster is now empty. The deltas-vs-totals rule in `docs/conventions.md` is enforced across the whole codebase.
+
 ## 2026-05-17 — Convention formalised: *deltas get aggregates, totals and snapshot projections get projection ports*
 
 Captured the load-bearing aggregate-qualification principle as a top-level section in `docs/conventions.md` (right after the existing port/suffix table): the four-category framework (Delta / Total / Snapshot projection / Reference data), promotion criteria, and the conceptual lineage (Pacioli 1494 → event sourcing → DDD+outbox). `CLAUDE.md` gains a one-line summary + pointer in the Naming-summary section so the rule is discoverable from the project entry point. The stale "Today's only legitimate hybrid is `inventory.stock_item`" claim mid-paragraph in `conventions.md` was rewritten to reflect §2.22 (flagged for demotion).
