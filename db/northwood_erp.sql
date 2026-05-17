@@ -3055,7 +3055,7 @@ CREATE TABLE reporting.product_standard_cost (
     product_id UUID PRIMARY KEY,
     standard_cost NUMERIC(18, 6) NOT NULL,
     currency_code CHAR(3) NOT NULL DEFAULT 'AUD',
-    captured_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TRIGGER trg_reporting_product_standard_cost_updated_at

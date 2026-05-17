@@ -4,6 +4,8 @@ Detail companion to `CLAUDE.md`. Read when adding tables, seed data, Liquibase c
 
 ## Schema conventions
 
+Quick-reference summary; the canonical exhaustive statement lives in `docs/conventions.md` → *PostgreSQL schema, table, and column naming*.
+
 - **Singular table names.** `sales_order_line`, `product`, `customer`, `payment`, `outbox_message`. A row IS one of the named thing.
 - **Master-detail parents take `_header` only when the child is `_line`.** `sales_order_header` + `sales_order_line`, `purchase_order_header` + `purchase_order_line`, `goods_receipt_header` + `goods_receipt_line`, `shipment_header` + `shipment_line`, `customer_invoice_header` + `customer_invoice_line`, `supplier_invoice_header` + `supplier_invoice_line`, `journal_entry_header` + `journal_entry_line`, `bom_header` + `bom_line`. When the child has a domain-specific name (no `_line` sibling) the parent stays bare singular: `work_order` + `work_order_material` / `work_order_operation`.
 - **`finance.gl_account`** is the chart of accounts (one row per account: code, name, type ∈ {asset, liability, equity, revenue, expense}). `gl_` disambiguates from "customer account" / "bank account" usage.

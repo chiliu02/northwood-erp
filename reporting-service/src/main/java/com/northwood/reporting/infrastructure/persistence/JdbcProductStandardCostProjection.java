@@ -24,12 +24,11 @@ public class JdbcProductStandardCostProjection implements ProductStandardCostPro
     @Transactional
     public void apply(UUID productId, BigDecimal standardCost, String currencyCode) {
         jdbc.update("""
-            INSERT INTO reporting.product_standard_cost (product_id, standard_cost, currency_code, captured_at)
-            VALUES (?, ?, ?, now())
+            INSERT INTO reporting.product_standard_cost (product_id, standard_cost, currency_code)
+            VALUES (?, ?, ?)
             ON CONFLICT (product_id) DO UPDATE SET
                 standard_cost = EXCLUDED.standard_cost,
-                currency_code = EXCLUDED.currency_code,
-                captured_at = now()
+                currency_code = EXCLUDED.currency_code
             """,
             productId, standardCost, currencyCode == null ? "AUD" : currencyCode
         );

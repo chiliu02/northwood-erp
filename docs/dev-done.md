@@ -6,6 +6,22 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-18 — PostgreSQL schema-naming convention canonised + `reporting.product_standard_cost.captured_at` → `updated_at`
+
+Writing up the schema-naming rules surfaced a latent bug: `reporting.product_standard_cost` had `captured_at`, but `trg_reporting_product_standard_cost_updated_at` is attached to that table and calls `shared.set_updated_at()`, which writes `NEW.updated_at`. The trigger has been silently broken since the table was added — every `INSERT … ON CONFLICT DO UPDATE` from `JdbcProductStandardCostProjection` would have errored with *"column updated_at does not exist"* on first re-projection. Rename fixes both the convention drift AND the bug.
+
+- `db/northwood_erp.sql`: column renamed.
+- New Liquibase changeset `2026-05-18-rename-product-standard-cost-captured-at.sql` (idempotent, mirroring slice 1's `information_schema.columns` guard + `splitStatements:false`).
+- `JdbcProductStandardCostProjection.java` UPSERT no longer sets the timestamp explicitly — `DEFAULT now()` handles INSERT, the now-functional trigger handles UPDATE.
+
+**Convention consolidated** into `docs/conventions.md` as a new bottom section *PostgreSQL schema, table, and column naming* (12 subsections: schemas; tables singular + `_header` rule + shape families; columns PK / FK / boolean / timestamp / audit / status / money / row_version; indexes; triggers; constraints; anti-patterns; 4 historical drifts; canaries). Single canonical exhaustive statement; `CLAUDE.md` *Pointers* line for conventions.md updated to mention schema naming; `docs/persistence.md` *Schema conventions* lead-in points to the canonical so the quick-reference summary doesn't drift.
+
+Tolerated historical drifts documented (not migrated, net new follows the rule): `routing_header` ↔ `routing_operation`; `production_planning_board` / `financial_dashboard_daily` without `_view`; `finance.gl_account` / `finance.tax_code` without `updated_at`; `reporting.projection_checkpoint` without `created_at`.
+
+**Liquibase gotcha caught during smoke.** First fresh-volume boot of reporting failed with `org.postgresql.util.PSQLException: Unterminated dollar quote started at position 3 in SQL DO $$` — Liquibase's formatted-SQL parser splits on `;` by default, chopping the PL/pgSQL `DO $$ … END $$;` block at the inner `END IF;`. Fix: declare `splitStatements:false` on the changeset header. Retroactively applied to BOTH this slice's reporting changeset AND slice 1's manufacturing changeset (same `DO`-block shape) before either was committed. Captured as a new section in user-level `~/.claude/notes/postgresql-liquibase.md` since it bites any Liquibase formatted-SQL changeset using idempotency guards — silent in unit tests, only surfaces on fresh-volume integration boot.
+
+**Smoke:** `docker compose down -v ; docker compose up -d` → fresh volume → `mvn -pl reporting-service spring-boot:run` → all 4 reporting changesets ran clean (including the new rename); service started in 7.3 s.
+
 ## 2026-05-18 — `manufacturing.product_approved_vendor.preferred` → `is_preferred`
 
 The two Shape-A approved-vendor projection tables (`purchasing.*` and `manufacturing.*`) cache the same upstream `product.ApprovedVendorListChanged` event but had divergent column names: `is_preferred` (purchasing, matching `product.approved_vendor.is_preferred` and the project-wide `is_` boolean-prefix convention) vs `preferred` (manufacturing, drift from §2.8 Slice C). Aligned manufacturing.

@@ -407,3 +407,219 @@ Two related rules for any method with branching logic:
 This is the anti-side of the silent-fallback rule above. Silent fallbacks are tolerated *only* when documented in the `design-notes.md` index; contract violations on inputs from internal collaborators (other services, the saga manager's own callers, anything inside the bounded-context boundary) are **not** fallback candidates — fail loudly. Both rules push the same goal: the reader doesn't have to guess what the method does for the cases the code doesn't visibly cover.
 
 Exemplar: `JdbcSalesOrderFulfilmentSagaManager.applyStockReserved`. The `RESERVED` branch (transition to `READY_TO_SHIP`, skip manufacturing) and the `else` branch (partial / failed → stash shortage, transition to `STOCK_RESERVED`) both fall through to one `return saga.state();` at the bottom. Inside the `else`, an `IllegalStateException` enforces "partial / failed must carry a non-empty shortage map", with `reservationStatus` + `salesOrderHeaderId` + the contract sentence baked into the message. No silent stashing of empty data; no need to grep `readShortage` or the worker's WARN guard to learn what should have happened.
+
+## PostgreSQL schema, table, and column naming
+
+Canonical statement of the DB-side conventions. `CLAUDE.md` → *Schema naming summary* and `docs/persistence.md` → *Schema conventions* hold the quick-reference summaries; this section is the exhaustive form.
+
+### Schemas
+
+One schema per bounded context plus `shared` for cross-service primitives.
+
+| Schema | Bounded context / role |
+|---|---|
+| `shared`        | Cross-service primitives — `uuid_generate_v7()`, the `set_updated_at()` trigger function, common types. Vendored library, not a runtime dep. |
+| `product`       | Product master (catalogue producer). |
+| `sales`         | Sales orders, customers, sales-side product-pricing projection, sales-order-fulfilment saga. |
+| `inventory`     | Stock items, balances, reservations, goods receipts, shipments. |
+| `manufacturing` | BOMs, work orders, routings, make-to-order saga. |
+| `purchasing`    | Suppliers, supplier prices, purchase requisitions, purchase orders, purchase-to-pay saga. |
+| `finance`       | Customer/supplier invoices, payments, journal entries, GL accounts, tax codes, exchange rates. |
+| `reporting`     | Read-only consolidated views. Inbox-only — reporting never publishes. |
+
+Each service's connection pool sets `search_path = <schema>, shared`. No code references another schema by name; cross-context relationships travel through the outbox.
+
+### Tables — singular names
+
+Every table name is the singular form of what one row IS — a row IS one of the named thing.
+
+- ✅ `customer`, `sales_order_line`, `outbox_message`, `journal_entry_header`
+- ❌ `customers`, `orders`, `messages`, `entries`
+
+### Tables — `_header` only when child is `_line`
+
+A parent takes the `_header` suffix **only if** its detail child is named `_line`. When the child has a domain-specific name (`_material`, `_operation`, etc.), the parent stays bare singular.
+
+| Parent | Child | Pattern |
+|---|---|---|
+| `sales_order_header`        | `sales_order_line`             | `_line` → `_header` |
+| `purchase_order_header`     | `purchase_order_line`          | same |
+| `customer_invoice_header`   | `customer_invoice_line`        | same |
+| `supplier_invoice_header`   | `supplier_invoice_line`        | same |
+| `goods_receipt_header`      | `goods_receipt_line`           | same |
+| `shipment_header`           | `shipment_line`                | same |
+| `journal_entry_header`      | `journal_entry_line`           | same |
+| `bom_header`                | `bom_line`                     | same |
+| `purchase_requisition_header` | `purchase_requisition_line`  | same |
+| `stock_reservation_header`  | `stock_reservation_line`       | same |
+| `work_order`                | `work_order_material`, `work_order_operation` | bare singular — children have domain-specific names |
+| `routing_header`            | `routing_operation`            | ⚠ historical drift — kept `_header` despite child not being `_line`. Tolerated; net new follows the rule. |
+
+### Tables — shape families
+
+| Family | Pattern | Examples |
+|---|---|---|
+| Operational aggregate root        | `<aggregate>` or `<aggregate>_header`         | `customer`, `bom_header`, `sales_order_header` |
+| Master-detail child               | `<aggregate>_<role>` (`_line` or domain-specific) | `sales_order_line`, `work_order_material` |
+| Saga state                        | `<flow>_saga` (singular)                       | `sales_order_fulfilment_saga`, `make_to_order_saga`, `purchase_to_pay_saga` |
+| Status history (partitioned)      | `<aggregate>_status_history`                   | `sales_order_status_history`, `invoice_status_history` |
+| Outbox / inbox plumbing           | `outbox_message`, `inbox_message` (partitioned, with a `_default` partition) | one pair per schema |
+| Projection cache of upstream fact | `<source_aggregate>_<facet>` or `<source_aggregate>` | `product_pricing`, `product_active_bom`, `product_accounting`, `product_approved_vendor` |
+| Running-total / derived view      | `<unit>_balance`, `<source>_facts`             | `stock_balance`, `wip_balance`, `purchase_order_line_facts` |
+| Reporting consolidated view       | `<concept>_view`                               | `sales_order_360_view`, `available_to_promise_view`, `material_shortage_view`, `purchase_order_tracking_view` |
+| Reference data                    | bare singular                                  | `gl_account`, `tax_code`, `unit_of_measure`, `warehouse`, `work_center`, `exchange_rate` |
+
+`production_planning_board` and `financial_dashboard_daily` predate the `_view` convention for reporting tables — tolerated; net new reporting tables use `_view`.
+
+### Columns — primary keys
+
+- **`_header` tables** → PK column is `<table>_header_id` (`sales_order_header_id`, `customer_invoice_header_id`, …).
+- **Bare singular tables** → PK column is `<table>_id` (`customer_id`, `product_id`, `work_order_id`).
+- Default `UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7()` for aggregate tables (v7 = time-ordered, plays well with B-tree).
+- Composite PKs are the right shape on most projection / line tables (`(parent_id, child_key)`) — e.g. `manufacturing.product_approved_vendor (product_id, supplier_id)`.
+- Reference tables with a stable natural code may use the code as PK — `finance.tax_code (tax_code VARCHAR PRIMARY KEY, …)`.
+
+### Columns — foreign keys
+
+- Every FK column ends in `_id`.
+- A line table's FK back to its header is `<header_table>_id` — e.g. `sales_order_line.sales_order_header_id`, `bom_line.bom_header_id`.
+- Cross-context UUIDs are plain `UUID` columns with **no `REFERENCES`** clause — physical FKs across schemas are banned by architectural invariant. The only `REFERENCES <other_schema>.*` allowed is `REFERENCES shared.*`.
+
+### Columns — booleans take `is_*` prefix
+
+Every BOOLEAN column is prefixed `is_` (or `has_` when polarity reads better that way).
+
+- ✅ `is_active`, `is_preferred`, `is_purchased`, `is_manufactured`, `is_stocked`, `is_sellable`, `has_shortage`
+- ❌ `active BOOLEAN`, `preferred BOOLEAN`, `posted BOOLEAN`
+
+Timestamp columns named after an event (`posted_at`, `cancelled_at`, `discontinued_at`) are NOT booleans — they encode "did it happen" AND "when" in one column. Prefer the timestamp shape over a boolean+timestamp pair when event-time matters.
+
+### Columns — timestamps take `_at` suffix
+
+Every TIMESTAMPTZ representing a moment in time ends in `_at`. The suffix distinguishes timestamps from date-only columns (`invoice_date`, `due_date`, `effective_date`) and from intervals.
+
+| Shape | Where |
+|---|---|
+| `created_at TIMESTAMPTZ NOT NULL DEFAULT now()` | Operational tables — row insertion time. |
+| `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()` | Operational AND projection tables — last-mutation time. Maintained by `BEFORE UPDATE` trigger `shared.set_updated_at()`. |
+| `<event>_at` | Domain-event timestamps: `posted_at`, `cancelled_at`, `discontinued_at`, `completed_at`, `submitted_at`, `approved_at`, `started_at`, `captured_at`, `last_processed_at`, … |
+
+### Columns — common audit columns
+
+Operational tables (anything mutated through an aggregate) carry both `created_at` and `updated_at`, with the `set_updated_at()` trigger attached:
+
+```sql
+created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+
+CREATE TRIGGER trg_<table>_updated_at
+    BEFORE UPDATE ON <schema>.<table>
+    FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
+```
+
+Projection tables (caches of upstream facts) typically carry only `updated_at` — the source-of-truth `created_at` lives upstream; the local row's first-write time isn't usefully different from its last-write time for a snapshot.
+
+Outbox / inbox messages have their own conventions; status-history tables use only `changed_at`.
+
+**The trigger-column invariant.** Any table attaching `shared.set_updated_at()` MUST have a column named exactly `updated_at`. The trigger writes `NEW.updated_at := now()` — attaching it to a table whose timestamp column is named anything else (`captured_at`, `recorded_at`, etc.) errors at runtime on the first UPDATE. Either match the column name or don't attach the trigger.
+
+### Columns — status enums
+
+Status columns are `VARCHAR(N) NOT NULL` with a `CHECK status IN (...)` constraint listing every value. Values are lowercase snake-case.
+
+```sql
+status VARCHAR(30) NOT NULL DEFAULT 'draft' CHECK (
+    status IN ('draft', 'posted', 'partially_paid', 'paid', 'cancelled')
+)
+```
+
+### Columns — money
+
+Money lives as `(amount NUMERIC(N, D), currency_code CHAR(3))` pairs.
+
+- Amount: `NUMERIC(18, 6)` for transactional amounts, `NUMERIC(18, 4)` for prices, `NUMERIC(9, 6)` for tax rates. Match the precision of the table you're extending.
+- Currency: `CHAR(3) NOT NULL DEFAULT 'AUD'`.
+- Transactional headers stamp `(currency_code, exchange_rate, exchange_rate_captured_at)` at posting time. See `docs/persistence.md` → *Money & exchange rates*.
+
+### Columns — row version (optimistic concurrency)
+
+Aggregate-bearing tables carry `row_version BIGINT NOT NULL DEFAULT 1`. The `*Repository` compares the in-memory version against the row's value at `save()`.
+
+### Indexes
+
+Pattern: `idx_<table>_<column-or-purpose>`.
+
+- ✅ `idx_sales_order_header_customer_id`, `idx_product_approved_vendor_mfg_preferred`, `idx_product_product_type`
+- ❌ `<table>_<column>_idx` (Postgres-default reversed pattern), unprefixed names
+
+Partial indexes carry a suffix matching the WHERE clause where it sharpens the name:
+
+```sql
+CREATE INDEX idx_product_approved_vendor_mfg_preferred
+    ON manufacturing.product_approved_vendor(product_id)
+    WHERE is_preferred = true;
+```
+
+Postgres rewrites a partial-index `WHERE` clause automatically when its referenced column is renamed — so renaming a column doesn't require dropping/recreating the index.
+
+### Triggers
+
+Pattern: `trg_<table>_<event>`.
+
+The standard updated-at trigger:
+
+```sql
+CREATE TRIGGER trg_<table>_updated_at
+    BEFORE UPDATE ON <schema>.<table>
+    FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
+```
+
+See the trigger-column invariant in *Columns — common audit columns* above for the column-naming rule the trigger relies on.
+
+### Constraints
+
+- `UNIQUE (col1, col2)` inline is the default form.
+- Named uniques use `uq_<table>_<purpose>`:
+  ```sql
+  CONSTRAINT uq_bom_active_per_product UNIQUE (product_id) WHERE status = 'active'
+  ```
+- `CHECK` constraints inline; named only when the constraint matters elsewhere.
+
+### Anti-patterns / forbidden
+
+- ❌ Plural table names.
+- ❌ `_header` suffix without a `_line` child (other than the tolerated historical drift listed below).
+- ❌ Boolean column missing `is_` / `has_` prefix.
+- ❌ Timestamp column missing `_at` suffix.
+- ❌ Cross-schema `REFERENCES` other than `REFERENCES shared.*`.
+- ❌ Cross-service column-name drift: when two schemas cache the same upstream fact, the column names MUST match. The exemplar alignment today: `product.approved_vendor.is_preferred` ↔ `purchasing.product_approved_vendor.is_preferred` ↔ `manufacturing.product_approved_vendor.is_preferred`.
+- ❌ Attaching `shared.set_updated_at()` to a table without an `updated_at` column.
+
+### Known historical drift
+
+Tolerated existing inconsistencies. Net new schema follows the rules; these don't get migrated unless a slice happens to touch them.
+
+| Place | Drift | Resolution |
+|---|---|---|
+| `routing_header` ↔ `routing_operation` | Parent kept `_header` despite child not being `_line` | Tolerated. Net new follows the rule. |
+| `production_planning_board`, `financial_dashboard_daily` | No `_view` suffix on reporting tables | Tolerated. Net new reporting tables use `_view`. |
+| `finance.gl_account`, `finance.tax_code` | Reference data without `updated_at` despite mutable `is_active` | Tolerated (reference). Add the column + trigger if an audit trail on `is_active` becomes meaningful. |
+| `reporting.projection_checkpoint` | Only `updated_at`, no `created_at` | Tolerated. `created_at` would not be meaningfully different from `last_processed_at`. |
+
+### Machine-checkable canaries
+
+Run from repo root:
+
+```powershell
+# 1. Plural table names — should have zero output.
+Grep '^CREATE TABLE [a-z_]+\.[a-z_]+s \(' db\northwood_erp.sql
+
+# 2. Boolean column missing is_ / has_ prefix — manually inspect output.
+Grep '^\s+[a-z_]+ BOOLEAN' db\northwood_erp.sql   # then filter out is_ / has_
+
+# 3. updated_at trigger attached to a table without updated_at column — pair every
+#    `CREATE TRIGGER trg_X_updated_at` with `CREATE TABLE X` containing `updated_at`.
+Grep 'CREATE TRIGGER trg_\w+_updated_at' db\northwood_erp.sql
+```
+
+Each canary is meant as a code-review sanity check, not a CI gate — the corpus is small enough that visual inspection is reliable.

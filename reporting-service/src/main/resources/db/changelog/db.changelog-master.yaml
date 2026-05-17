@@ -17,3 +17,5 @@ databaseChangeLog:
       file: db/changelog/changes/2026-05-14-customer-dashboard-status.sql
   - include:
       file: db/changelog/changes/2026-05-14-po-tracking-add-approved-at.sql
+  - include:
+      file: db/changelog/changes/2026-05-18-rename-product-standard-cost-captured-at.sql
