@@ -30,7 +30,7 @@ public class JdbcProductApprovedVendorProjection implements ProductApprovedVendo
         for (var v : vendors) {
             jdbc.update("""
                 INSERT INTO manufacturing.product_approved_vendor
-                    (product_id, supplier_id, supplier_code, supplier_name, preferred)
+                    (product_id, supplier_id, supplier_code, supplier_name, is_preferred)
                 VALUES (?, ?, ?, ?, ?)
                 """,
                 productId, v.supplierId(), v.supplierCode(), v.supplierName(), v.preferred()
@@ -49,7 +49,7 @@ public class JdbcProductApprovedVendorProjection implements ProductApprovedVendo
             """
             SELECT supplier_id
             FROM manufacturing.product_approved_vendor
-            WHERE product_id = ? AND preferred = true
+            WHERE product_id = ? AND is_preferred = true
             """,
             (rs, i) -> (UUID) rs.getObject("supplier_id"),
             productId

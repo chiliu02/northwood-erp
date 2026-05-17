@@ -6,6 +6,16 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-18 — `manufacturing.product_approved_vendor.preferred` → `is_preferred`
+
+The two Shape-A approved-vendor projection tables (`purchasing.*` and `manufacturing.*`) cache the same upstream `product.ApprovedVendorListChanged` event but had divergent column names: `is_preferred` (purchasing, matching `product.approved_vendor.is_preferred` and the project-wide `is_` boolean-prefix convention) vs `preferred` (manufacturing, drift from §2.8 Slice C). Aligned manufacturing.
+
+- `db/northwood_erp.sql`: column + partial-index `WHERE` clause renamed (Postgres auto-rewrites the predicate when the column is renamed, so no separate index DDL needed).
+- New idempotent Liquibase changeset `2026-05-18-rename-product-approved-vendor-preferred.sql` — column-existence guard via `information_schema.columns`, declared `splitStatements:false` so Liquibase's formatted-SQL splitter doesn't chop the `DO $$ … END $$;` block at the inner `END IF;` (see follow-up slice for how this gotcha was caught).
+- `JdbcProductApprovedVendorProjection.java` (manufacturing): INSERT column list + `findPreferredSupplierId` `WHERE` clause use `is_preferred`.
+
+Trigger: question "why is `manufacturing.product_approved_vendor` different from `purchasing.product_approved_vendor`?" surfaced the historic drift. Investigating the broader codebase for similar drift led to the schema-naming consolidation slice that follows.
+
 ## 2026-05-17 — §2.22: Demote `StockItem` from aggregate to projection ports
 
 The last `*Repository`-without-an-emitter offender from the 2026-05-17 audit. `inventory.StockItem` had the full aggregate skeleton (`AGGREGATE_TYPE`, `pendingEvents`, `pullPendingEvents()`, `StockItemRepository` with optimistic-concurrency on `version`) but emitted zero events — every mutation was `applyReorderPolicy` driven by an inbound product-master fact, so it was structurally a snapshot projection of upstream state, not a delta-emitting aggregate.

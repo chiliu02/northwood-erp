@@ -1167,14 +1167,14 @@ CREATE TABLE manufacturing.product_approved_vendor (
     supplier_id UUID NOT NULL,
     supplier_code VARCHAR(50),
     supplier_name VARCHAR(200),
-    preferred BOOLEAN NOT NULL DEFAULT false,
+    is_preferred BOOLEAN NOT NULL DEFAULT false,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (product_id, supplier_id)
 );
 
 CREATE INDEX idx_product_approved_vendor_mfg_preferred
     ON manufacturing.product_approved_vendor(product_id)
-    WHERE preferred = true;
+    WHERE is_preferred = true;
 
 CREATE TRIGGER trg_product_approved_vendor_mfg_updated_at
     BEFORE UPDATE ON manufacturing.product_approved_vendor
