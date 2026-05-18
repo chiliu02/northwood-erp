@@ -396,7 +396,7 @@ Codify the new schema-naming rule (cardinality-based; `_card` suffix; one table 
 |---|---|---|---|
 | 2.23.1 | sales        | `sales.product_pricing`                                                    | `sales.product_card` ✅ shipped 2026-05-18 |
 | 2.23.2 | purchasing   | `purchasing.product_discontinued`                                          | `purchasing.product_card` ✅ shipped 2026-05-18 |
-| 2.23.3 | finance      | `finance.product_accounting`                                               | `finance.product_card` |
+| 2.23.3 | finance      | `finance.product_accounting`                                               | `finance.product_card` ✅ shipped 2026-05-18 |
 | 2.23.4 | reporting    | `reporting.product_standard_cost`                                          | `reporting.product_card` |
 | 2.23.5 | manufacturing | `product_replenishment` + `product_active_bom` + `product_materials_cost` | `manufacturing.product_card` (consolidated) |
 

@@ -29,7 +29,7 @@ class JournalEntryServiceReverseBySourceTest {
     private JournalEntryRepository journals;
     private JournalEntrySummaryQueryPort summaries;
     private GlAccountLookup glAccounts;
-    private ProductAccountingLookup productAccounting;
+    private ProductCardLookup productCards;
     private JournalEntryService service;
 
     @BeforeEach
@@ -37,8 +37,8 @@ class JournalEntryServiceReverseBySourceTest {
         journals = Mockito.mock(JournalEntryRepository.class);
         summaries = Mockito.mock(JournalEntrySummaryQueryPort.class);
         glAccounts = Mockito.mock(GlAccountLookup.class);
-        productAccounting = Mockito.mock(ProductAccountingLookup.class);
-        service = new JournalEntryService(journals, summaries, glAccounts, productAccounting);
+        productCards = Mockito.mock(ProductCardLookup.class);
+        service = new JournalEntryService(journals, summaries, glAccounts, productCards);
     }
 
     private JournalEntry postedEntry(JournalEntryId id, String sourceType, UUID sourceId, BigDecimal amount) {

@@ -1,7 +1,7 @@
 package com.northwood.testharness.inmemory.finance;
 
-import com.northwood.finance.application.ProductAccountingLookup;
-import com.northwood.finance.application.inbox.ProductAccountingProjection;
+import com.northwood.finance.application.ProductCardLookup;
+import com.northwood.finance.application.inbox.ProductCardProjection;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.HashMap;
@@ -10,15 +10,15 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * In-memory stand-in for the consolidated {@code finance.product_accounting}
+ * In-memory stand-in for the consolidated {@code finance.product_card}
  * projection. One fake implements both the write port
- * ({@link ProductAccountingProjection}, used by the four inbox handlers) and
- * the read port ({@link ProductAccountingLookup}, used by
+ * ({@link ProductCardProjection}, used by the four inbox handlers) and
+ * the read port ({@link ProductCardLookup}, used by
  * {@code JournalEntryService} and {@code ShipmentPostedCogsHandler}) — the
  * production code splits writes vs. reads at the JDBC boundary, but the test
  * fake has no such boundary so collapsing into one object is simpler.
  */
-public final class InMemoryProductAccounting implements ProductAccountingProjection, ProductAccountingLookup {
+public final class InMemoryProductCard implements ProductCardProjection, ProductCardLookup {
 
     private static final Row EMPTY = new Row(null, null, null, null);
 
@@ -62,13 +62,13 @@ public final class InMemoryProductAccounting implements ProductAccountingProject
     }
 
     /** Test-only convenience: seed standard cost + currency for a product. */
-    public InMemoryProductAccounting putStandardCost(UUID productId, BigDecimal cost, String currency) {
+    public InMemoryProductCard putStandardCost(UUID productId, BigDecimal cost, String currency) {
         applyStandardCost(productId, cost, currency);
         return this;
     }
 
     /** Test-only convenience: seed valuation class for a product. */
-    public InMemoryProductAccounting putValuationClass(UUID productId, String valuationClass) {
+    public InMemoryProductCard putValuationClass(UUID productId, String valuationClass) {
         applyValuationClass(productId, valuationClass);
         return this;
     }

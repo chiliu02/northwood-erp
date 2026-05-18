@@ -44,7 +44,7 @@ The product service is the only place SKUs, pricing, and reorder policy are *own
 **Acceptance criteria**
 - ✅ The new row exists in `product.product` with `version = 1` and `status = 'active'` (the persistence contract: `version = 0` is the in-memory sentinel for "not yet saved"; the DB row is never at `version = 0`).
 - ✅ A `product.ProductCreated` event lands in `product.outbox_message`.
-- ✅ Within one outbox poll cycle, the event is forwarded to the bus and consumed by every downstream service that maintains a product read model: inventory (`stock_item` stub), sales (`product_card` stub), manufacturing (`product_replenishment` stub), finance (`product_accounting` stub), reporting (atp). Purchasing has no product read model of its own (documented as inferred-only in `event-flow.html`'s coverage gaps).
+- ✅ Within one outbox poll cycle, the event is forwarded to the bus and consumed by every downstream service that maintains a product read model: inventory (`stock_item` stub), sales (`product_card` stub), manufacturing (`product_replenishment` stub), finance (`product_card` stub), reporting (atp). Purchasing has no product read model of its own (documented as inferred-only in `event-flow.html`'s coverage gaps).
 - ✅ `inventory.stock_item` gains a new row carrying SKU + name + type — populated **only from the event**, with no synchronous call to product-service.
 - ✅ The new product's `reorder_point` / `reorder_quantity` default to 0/0 and are set explicitly via `setReorderPolicy` (Story 1.3); the `inventory.stock_item` row inherits 0/0 until that command runs.
 
@@ -63,7 +63,7 @@ The product service is the only place SKUs, pricing, and reorder policy are *own
 - ✅ `product.product.sales_price`, `standard_cost`, and `version` all update independently per call; `updated_at` advances.
 - ✅ A `product.SalesPriceChanged` event fires from the sales-price endpoint; a `product.StandardCostChanged` event fires from the standard-cost endpoint. Each carries its own `oldValue`, `newValue`, `currencyCode`.
 - ✅ Sales-service consumes `SalesPriceChanged` via `SalesPriceChangedHandler`; new sales orders quote the new price; existing orders remain unchanged (price is denormalised on the line at order time).
-- ✅ Finance-service consumes `StandardCostChanged` via `StandardCostChangedHandler` → writes `finance.product_accounting.standard_cost`. `ShipmentPostedCogsHandler` reads that column to drive the COGS posting; the shipment-line-stamped `unitCost` is only a documented cold-start fallback (see `design-notes.md` → COGS standard cost).
+- ✅ Finance-service consumes `StandardCostChanged` via `StandardCostChangedHandler` → writes `finance.product_card.standard_cost`. `ShipmentPostedCogsHandler` reads that column to drive the COGS posting; the shipment-line-stamped `unitCost` is only a documented cold-start fallback (see `design-notes.md` → COGS standard cost).
 
 **Pattern** — CQRS with **point-in-time denormalisation** on the consumer side
 **Events** — `product.SalesPriceChanged`, `product.StandardCostChanged`

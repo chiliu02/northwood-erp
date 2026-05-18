@@ -9,7 +9,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Idempotent inbox handler for {@code product.ProductCreated}. Seeds a stub
- * {@code finance.product_accounting} row so subsequent
+ * {@code finance.product_card} row so subsequent
  * {@link StandardCostChangedHandler}, {@link ValuationClassChangedHandler},
  * and {@link ProductDiscontinuedHandler} always find a row to update. Pairs
  * with {@code sales.product-created}, {@code inventory.product-created}, and
@@ -22,11 +22,11 @@ public class ProductCreatedHandler extends AbstractInboxHandler<ProductCreated> 
 
     public static final String CONSUMER_NAME = "finance.product-created";
 
-    private final ProductAccountingProjection projection;
+    private final ProductCardProjection projection;
 
     public ProductCreatedHandler(
         InboxPort inbox,
-        ProductAccountingProjection projection,
+        ProductCardProjection projection,
         ObjectMapper json
     ) {
         super(inbox, json, ProductCreated.class, ProductCreated.EVENT_TYPE, CONSUMER_NAME);

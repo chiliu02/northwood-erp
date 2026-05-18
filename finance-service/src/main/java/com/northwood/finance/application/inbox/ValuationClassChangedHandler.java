@@ -9,10 +9,10 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Idempotent inbox handler for {@code product.ValuationClassChanged}. Updates
- * the {@code valuation_class} column on {@code finance.product_accounting}
+ * the {@code valuation_class} column on {@code finance.product_card}
  * so the GL-posting paths in
  * {@link com.northwood.finance.application.JournalEntryService} (via
- * {@code ProductAccountingLookup.findValuationClass}) can pick raw-materials
+ * {@code ProductCardLookup.findValuationClass}) can pick raw-materials
  * vs. finished-goods inventory + COGS account codes.
  */
 @Component
@@ -20,11 +20,11 @@ public class ValuationClassChangedHandler extends AbstractInboxHandler<Valuation
 
     public static final String CONSUMER_NAME = "finance.product-valuation-class-projector";
 
-    private final ProductAccountingProjection projection;
+    private final ProductCardProjection projection;
 
     public ValuationClassChangedHandler(
         InboxPort inbox,
-        ProductAccountingProjection projection,
+        ProductCardProjection projection,
         ObjectMapper json
     ) {
         super(inbox, json, ValuationClassChanged.class, ValuationClassChanged.EVENT_TYPE, CONSUMER_NAME);

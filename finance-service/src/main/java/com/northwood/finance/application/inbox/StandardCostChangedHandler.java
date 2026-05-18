@@ -10,8 +10,8 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Idempotent inbox handler for {@code product.StandardCostChanged}. Updates
  * the {@code standard_cost} + {@code currency_code} columns on
- * {@code finance.product_accounting} so the COGS-posting path
- * ({@link ShipmentPostedCogsHandler} → {@code ProductAccountingLookup})
+ * {@code finance.product_card} so the COGS-posting path
+ * ({@link ShipmentPostedCogsHandler} → {@code ProductCardLookup})
  * reads finance's authoritative cost rather than trusting whatever
  * {@code unitCost} the warehouse clerk typed onto the shipment line.
  */
@@ -20,11 +20,11 @@ public class StandardCostChangedHandler extends AbstractInboxHandler<StandardCos
 
     public static final String CONSUMER_NAME = "finance.product-standard-cost-projector";
 
-    private final ProductAccountingProjection projection;
+    private final ProductCardProjection projection;
 
     public StandardCostChangedHandler(
         InboxPort inbox,
-        ProductAccountingProjection projection,
+        ProductCardProjection projection,
         ObjectMapper json
     ) {
         super(inbox, json, StandardCostChanged.class, StandardCostChanged.EVENT_TYPE, CONSUMER_NAME);

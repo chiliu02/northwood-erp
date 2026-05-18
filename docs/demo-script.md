@@ -201,7 +201,7 @@ curl -X POST http://localhost:8081/api/products \
        "salesPrice":120,"standardCost":45,"currencyCode":"AUD"}'
 ```
 
-**Outbox:** `product.ProductCreated`. **Today's projections (§1F.2 / §1F.6a / §1F.6b, 2026-05-14 → 2026-05-15):** five services each seed a stub row from the event — `inventory.stock_item`, `sales.product_card` (NULL price + currency until `SalesPriceChanged`), `manufacturing.product_replenishment` (type-derived make-vs-buy default), `finance.product_accounting` (NULL `standard_cost` + `valuation_class` until the respective change event), `reporting.available_to_promise_view`. Purchasing has no product read model of its own.
+**Outbox:** `product.ProductCreated`. **Today's projections (§1F.2 / §1F.6a / §1F.6b, 2026-05-14 → 2026-05-15):** five services each seed a stub row from the event — `inventory.stock_item`, `sales.product_card` (NULL price + currency until `SalesPriceChanged`), `manufacturing.product_replenishment` (type-derived make-vs-buy default), `finance.product_card` (NULL `standard_cost` + `valuation_class` until the respective change event), `reporting.available_to_promise_view`. Purchasing has no product read model of its own.
 
 ### 1.2 — Change pricing
 
@@ -215,7 +215,7 @@ curl -X PUT http://localhost:8081/api/products/{id}/standard-cost \
   -d '{"standardCost":50,"currencyCode":"AUD"}'
 ```
 
-**Outbox:** `product.SalesPriceChanged` from the first call; `product.StandardCostChanged` from the second. **Projections:** sales-service consumes `SalesPriceChanged` via `SalesPriceChangedHandler` (new orders quote the new price; existing lines are price-denormalised at order time). Finance consumes `StandardCostChanged` via `StandardCostChangedHandler` → writes `finance.product_accounting.standard_cost`; `ShipmentPostedCogsHandler` reads that column to drive COGS (shipment-line-stamped `unitCost` is only a documented cold-start fallback).
+**Outbox:** `product.SalesPriceChanged` from the first call; `product.StandardCostChanged` from the second. **Projections:** sales-service consumes `SalesPriceChanged` via `SalesPriceChangedHandler` (new orders quote the new price; existing lines are price-denormalised at order time). Finance consumes `StandardCostChanged` via `StandardCostChangedHandler` → writes `finance.product_card.standard_cost`; `ShipmentPostedCogsHandler` reads that column to drive COGS (shipment-line-stamped `unitCost` is only a documented cold-start fallback).
 
 ### 1.3 — Set reorder policy
 

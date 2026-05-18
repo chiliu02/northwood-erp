@@ -5,9 +5,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Read port for the consolidated {@code finance.product_accounting}
- * projection. {@link com.northwood.finance.application.JournalEntryService}
- * reads valuation class at GL-posting time (to pick raw-materials / finished-
+ * Read port for the consolidated {@code finance.product_card}
+ * projection (finance's consumer-side denormalized record per Product —
+ * see {@code docs/conventions.md} → *Consumer-side denormalized tables*).
+ * {@link com.northwood.finance.application.JournalEntryService} reads
+ * valuation class at GL-posting time (to pick raw-materials / finished-
  * goods inventory + COGS account codes), and
  * {@link com.northwood.finance.application.inbox.ShipmentPostedCogsHandler}
  * reads standard cost at shipment time (so the GL captures finance's
@@ -20,9 +22,9 @@ import java.util.UUID;
  * each call site's silent-fallback Javadoc for details.
  *
  * <p>JDBC implementation lives in
- * {@code infrastructure/persistence/JdbcProductAccountingLookup}.
+ * {@code infrastructure/persistence/JdbcProductCardLookup}.
  */
-public interface ProductAccountingLookup {
+public interface ProductCardLookup {
 
     Optional<BigDecimal> findStandardCost(UUID productId);
 

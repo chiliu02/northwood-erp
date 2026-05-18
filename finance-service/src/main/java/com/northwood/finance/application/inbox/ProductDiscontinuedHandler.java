@@ -9,7 +9,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Idempotent inbox handler for {@code product.ProductDiscontinued}. Stamps
- * {@code finance.product_accounting.discontinued_at} so future audits can
+ * {@code finance.product_card.discontinued_at} so future audits can
  * tell that a product was retired (and so a future close-the-loop check on
  * GL postings can flag activity for discontinued SKUs).
  */
@@ -18,11 +18,11 @@ public class ProductDiscontinuedHandler extends AbstractInboxHandler<ProductDisc
 
     public static final String CONSUMER_NAME = "finance.product-discontinued";
 
-    private final ProductAccountingProjection projection;
+    private final ProductCardProjection projection;
 
     public ProductDiscontinuedHandler(
         InboxPort inbox,
-        ProductAccountingProjection projection,
+        ProductCardProjection projection,
         ObjectMapper json
     ) {
         super(inbox, json, ProductDiscontinued.class, ProductDiscontinued.EVENT_TYPE, CONSUMER_NAME);

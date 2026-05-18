@@ -2040,17 +2040,14 @@ GRANT USAGE ON SCHEMA shared TO finance_service;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA shared TO finance_service;
 
 
--- Consolidated finance-side projection of product master facts. All
+-- Consolidated finance-side denormalized card per Product (see
+-- docs/conventions.md → Consumer-side denormalized tables). All
 -- attribute columns are 1:1 with Product and share Product's lifecycle:
 -- seeded on product.ProductCreated (stub row with all attributes NULL),
 -- populated by attribute-change events (product.StandardCostChanged,
 -- product.ValuationClassChanged), stamped with discontinued_at on
 -- product.ProductDiscontinued. Replaces the previous narrow tables
--- finance.product_standard_cost and finance.product_valuation_class —
--- those tables were named after individual columns rather than after the
--- schema's view of the aggregate; the consolidated `product_accounting`
--- name follows the pattern of sales.product_card,
--- inventory.stock_item, manufacturing.product_replenishment.
+-- finance.product_standard_cost and finance.product_valuation_class.
 --
 -- Read paths:
 --   * JournalEntryService.inventoryAccountForProduct /
@@ -2058,7 +2055,7 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA shared TO finance_service;
 --   * ShipmentPostedCogsHandler reads standard_cost when posting COGS,
 --     trusting finance's authoritative number over whatever the warehouse
 --     clerk typed onto the shipment line.
-CREATE TABLE finance.product_accounting (
+CREATE TABLE finance.product_card (
     product_id      UUID PRIMARY KEY,
     standard_cost   NUMERIC(18, 6),
     currency_code   CHAR(3),
@@ -2067,8 +2064,8 @@ CREATE TABLE finance.product_accounting (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TRIGGER trg_product_accounting_updated_at
-    BEFORE UPDATE ON finance.product_accounting
+CREATE TRIGGER trg_product_card_updated_at
+    BEFORE UPDATE ON finance.product_card
     FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
 
 -- purchasing.PurchaseOrderCreated + inventory.GoodsReceived. One row per
@@ -2851,14 +2848,14 @@ INSERT INTO finance.tax_code (tax_code, description, rate) VALUES
     ('NO_TAX',    'No tax (export, etc)',     0.00)
 ON CONFLICT (tax_code) DO NOTHING;
 
--- Backfill finance.product_accounting from product.product so the projection
+-- Backfill finance.product_card from product.product so the projection
 -- has one row per existing Product at boot — same shape the runtime
 -- ProductCreatedHandler produces on product.ProductCreated. Standard cost +
 -- currency seeded from product.standard_cost so day-1 COGS posting works
 -- ahead of the first StandardCostChanged event. Valuation class derives
 -- from product_type: raw / semi-finished → 'raw_materials', finished →
 -- 'finished_goods'. Subsequent events update individual columns.
-INSERT INTO finance.product_accounting (
+INSERT INTO finance.product_card (
     product_id, standard_cost, currency_code, valuation_class
 ) VALUES
     ('00000000-0000-7000-8000-000000000001', 320.00, 'AUD', 'finished_goods'),    -- FG-TABLE-001
@@ -3066,7 +3063,7 @@ CREATE TABLE reporting.projection_checkpoint (
 -- Reporting-side cache of product standard cost. Joined with
 -- available_to_promise_view at snapshot time to compute inventory_value.
 -- Fed by product.StandardCostChanged inbox handler; mirrors the
--- standard_cost column on finance.product_accounting (reporting maintains
+-- standard_cost column on finance.product_card (reporting maintains
 -- its own copy because per-service search_path forbids cross-schema reads).
 CREATE TABLE reporting.product_standard_cost (
     product_id UUID PRIMARY KEY,

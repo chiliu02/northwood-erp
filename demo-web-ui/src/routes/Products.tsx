@@ -459,7 +459,7 @@ function RegisterPanel({ onDone }: { onDone: () => void }) {
         Emits <span className="font-mono">product.ProductCreated</span>; five services seed read-model stubs
         (inventory <span className="font-mono">stock_item</span>, sales <span className="font-mono">product_card</span>,
         manufacturing <span className="font-mono">product_replenishment</span> with type-derived make-vs-buy default,
-        finance <span className="font-mono">product_accounting</span>, reporting ATP).
+        finance <span className="font-mono">product_card</span>, reporting ATP).
       </p>
     </div>
   );

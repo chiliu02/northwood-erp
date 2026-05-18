@@ -1,7 +1,7 @@
 package com.northwood.finance.application.inbox;
 
 import com.northwood.finance.application.JournalEntryService;
-import com.northwood.finance.application.ProductAccountingLookup;
+import com.northwood.finance.application.ProductCardLookup;
 import com.northwood.inventory.domain.events.ShipmentPosted;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
@@ -25,7 +25,7 @@ import tools.jackson.databind.ObjectMapper;
  * on a shipment; one drives AR/Revenue, this one drives COGS/Inventory.
  *
  * <p><b>§2.8 Slice B — cost source.</b> The line cost used for COGS comes
- * from finance's {@code product_accounting.standard_cost} column (fed by
+ * from finance's {@code product_card.standard_cost} column (fed by
  * {@code product.StandardCostChanged} via {@link StandardCostChangedHandler}).
  * That's finance's authoritative number — independent of whatever
  * {@code unitCost} the warehouse clerk typed onto the shipment line.
@@ -46,17 +46,17 @@ public class ShipmentPostedCogsHandler extends AbstractInboxHandler<ShipmentPost
     public static final String CONSUMER_NAME = "finance.cogs.shipment-posted";
 
     private final JournalEntryService journals;
-    private final ProductAccountingLookup productAccounting;
+    private final ProductCardLookup productCards;
 
     public ShipmentPostedCogsHandler(
         InboxPort inbox,
         JournalEntryService journals,
-        ProductAccountingLookup productAccounting,
+        ProductCardLookup productCards,
         ObjectMapper json
     ) {
         super(inbox, json, ShipmentPosted.class, ShipmentPosted.EVENT_TYPE, CONSUMER_NAME);
         this.journals = journals;
-        this.productAccounting = productAccounting;
+        this.productCards = productCards;
     }
 
     @Override
@@ -67,7 +67,7 @@ public class ShipmentPostedCogsHandler extends AbstractInboxHandler<ShipmentPost
             for (var l : payload.lines()) {
                 BigDecimal qty = l.shippedQuantity() == null ? BigDecimal.ZERO : l.shippedQuantity();
                 BigDecimal eventStampedCost = l.unitCost() == null ? BigDecimal.ZERO : l.unitCost();
-                java.util.Optional<BigDecimal> projected = productAccounting.findStandardCost(l.productId());
+                java.util.Optional<BigDecimal> projected = productCards.findStandardCost(l.productId());
                 BigDecimal unitCost = projected.orElse(eventStampedCost);
                 if (projected.isEmpty()) {
                     fallbackToShipmentCostLines++;
@@ -77,7 +77,7 @@ public class ShipmentPostedCogsHandler extends AbstractInboxHandler<ShipmentPost
         }
         if (fallbackToShipmentCostLines > 0) {
             log.debug(
-                "[{}] shipment {} encountered {} line(s) with no product_accounting.standard_cost — "
+                "[{}] shipment {} encountered {} line(s) with no product_card.standard_cost — "
                     + "fell back to shipment-line-stamped unitCost (projection cold-start). See "
                     + "design-notes.md → COGS standard cost.",
                 CONSUMER_NAME, payload.shipmentNumber(), fallbackToShipmentCostLines

@@ -69,18 +69,18 @@ public class JournalEntryService {
     private final JournalEntryRepository journalEntries;
     private final JournalEntrySummaryQueryPort journalEntrySummaries;
     private final GlAccountLookup glAccounts;
-    private final ProductAccountingLookup productAccounting;
+    private final ProductCardLookup productCards;
 
     public JournalEntryService(
         JournalEntryRepository journalEntries,
         JournalEntrySummaryQueryPort journalEntrySummaries,
         GlAccountLookup glAccounts,
-        ProductAccountingLookup productAccounting
+        ProductCardLookup productCards
     ) {
         this.journalEntries = journalEntries;
         this.journalEntrySummaries = journalEntrySummaries;
         this.glAccounts = glAccounts;
-        this.productAccounting = productAccounting;
+        this.productCards = productCards;
     }
 
     @Transactional(readOnly = true)
@@ -101,7 +101,7 @@ public class JournalEntryService {
      * fallback → 1200 (generic Inventory).
      *
      * <p><b>Silent-fallback contract on missing valuation-class projection.</b>
-     * {@code finance.product_accounting.valuation_class} is an inbox-driven
+     * {@code finance.product_card.valuation_class} is an inbox-driven
      * column on the consolidated finance-side projection of Product master
      * facts (seeded on {@code ProductCreated}, populated on
      * {@code ValuationClassChanged}). The projection may not have caught up
@@ -120,7 +120,7 @@ public class JournalEntryService {
      * the GL.
      */
     private String inventoryAccountForProduct(UUID productId) {
-        return productAccounting.findValuationClass(productId)
+        return productCards.findValuationClass(productId)
             .map(c -> switch (c) {
                 case "raw_materials" -> RM_INVENTORY_CODE;
                 case "finished_goods", "semi_finished_goods" -> FG_INVENTORY_CODE;
@@ -146,7 +146,7 @@ public class JournalEntryService {
      * trigger; reclassification later).
      */
     private String cogsAccountForProduct(UUID productId) {
-        return productAccounting.findValuationClass(productId)
+        return productCards.findValuationClass(productId)
             .map(c -> switch (c) {
                 case "raw_materials" -> MATERIALS_COGS_CODE;
                 case "finished_goods", "semi_finished_goods" -> COGS_CODE;

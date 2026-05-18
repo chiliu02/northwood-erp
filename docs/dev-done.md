@@ -6,6 +6,23 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-18 — §2.23.3: `finance.product_accounting` → `finance.product_card`
+
+Third of five `_card` migrations. Largest rename so far — finance has the canonical consolidated-projection pattern (one write port + one read port + 4 inbox handlers + 2 service injection sites + 2 tests + in-memory test fake).
+
+- **Baseline** `db/northwood_erp.sql`: `finance.product_accounting` → `finance.product_card`; trigger renamed; seed-INSERT comment + INSERT statement updated; cross-reference comment on `reporting.product_standard_cost` updated.
+- **Historical Liquibase changeset** `2026-05-15-consolidate-product-accounting.sql` retargeted: all four sub-changesets now reference `finance.product_card` (CREATE TABLE IF NOT EXISTS becomes a no-op on fresh baseline; data-migration changesets with preconditions still mark-ran when the predecessor tables don't exist). Trigger name updated to `trg_product_card_updated_at`.
+- **New rename changeset** `2026-05-18-rename-product-accounting-to-product-card.sql` (`splitStatements:false`) with `ALTER TABLE IF EXISTS` + DO-block trigger rename for legacy dev DBs.
+- **Java consolidated projection ports renamed**: `ProductAccountingProjection` → `ProductCardProjection` (interface), `JdbcProductAccountingProjection` → `JdbcProductCardProjection` (impl), `ProductAccountingLookup` → `ProductCardLookup` (interface), `JdbcProductAccountingLookup` → `JdbcProductCardLookup` (impl). Method signatures (`seed`, `applyStandardCost`, `applyValuationClass`, `applyDiscontinued`, `findStandardCost`, `findValuationClass`) unchanged. Old files deleted.
+- **Call-site updates**: `JournalEntryService` field `productAccounting` → `productCards` (plural per convention) and type swap. Same on `ShipmentPostedCogsHandler`. Four inbox handlers (`ProductCreatedHandler`, `StandardCostChangedHandler`, `ValuationClassChangedHandler`, `ProductDiscontinuedHandler`) switched from `ProductAccountingProjection` to `ProductCardProjection`.
+- **SQL strings** in the new `JdbcProductCardProjection` (4 write methods × INSERT/UPDATE) + `JdbcProductCardLookup` (2 SELECT queries) all reference `finance.product_card`.
+- **Test-harness**: `InMemoryProductAccounting` → `InMemoryProductCard` (one fake implements both ports); `FinanceTestKit.productAccounting` → `productCards`.
+- **Service tests**: `JournalEntryServicePostingsTest`, `JournalEntryServiceReverseBySourceTest` mock-type swaps + field renames.
+- **Javadocs + log strings**: `JournalEntryService` silent-fallback contract; `ShipmentPostedCogsHandler` cost-source description + cold-start log line; all 4 inbox handlers' header comments; `application-kafka.yml` Kafka-topic comment.
+- **Doc cascade**: `docs/conventions.md` (3 spots, the example-list rows), `docs/build-status.md` (3 references), `docs/projections.html` (3 references), `docs/event-flow.html` (multiple), `docs/domain-driven design.html`, `docs/demo-script.md`, `docs/user-stories.md`, `demo-web-ui/src/routes/Products.tsx`. Historical `dev-done.md` left untouched.
+
+**Smoke**: `mvn install -DskipTests` clean; `mvn -pl finance-service test` → 112/112 green; `mvn -pl test-harness test` → 8/8 green.
+
 ## 2026-05-18 — §2.23.2: `purchasing.product_discontinued` → `purchasing.product_card`
 
 Second of five `_card` migrations. Mechanical rename, single-column table, no shape change beyond relaxing `discontinued_at` to nullable so future purchasing-side product facets can land as additional columns without splitting the table.

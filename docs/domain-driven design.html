@@ -768,7 +768,7 @@ public record OutboxRow(
   trigger-maintained off <code>payment_allocation</code>) or that hold a
   <em>local cache of facts owned upstream</em> (<code>sales.product_card</code>,
   <code>manufacturing.product_active_bom</code>,
-  <code>finance.product_accounting</code>, <code>inventory.stock_item</code>, &hellip;)
+  <code>finance.product_card</code>, <code>inventory.stock_item</code>, &hellip;)
   get projection-shaped ports instead &mdash; <code>*Writer</code> /
   <code>*Projection</code> for the write side, <code>*Lookup</code> /
   <code>*QueryPort</code> for the read side. Promoting a total or snapshot to a
@@ -943,7 +943,7 @@ public class ProductService {
     <tr><td>No bounded-context boundaries</td>
         <td>One PostgreSQL schema + role per context; <code>search_path</code> blocks cross-schema joins at runtime; events jars are the only inter-service contract.</td></tr>
     <tr><td>Conformist when ACL needed</td>
-        <td>Each consumer service projects upstream events onto a local read model (<code>sales.product_card</code>, <code>finance.product_accounting</code>) &mdash; the projection acts as a thin Anticorruption Layer between contexts.</td></tr>
+        <td>Each consumer service projects upstream events onto a local read model (<code>sales.product_card</code>, <code>finance.product_card</code>) &mdash; the projection acts as a thin Anticorruption Layer between contexts.</td></tr>
     <tr><td>Transaction script masquerading as DDD</td>
         <td>Application services orchestrate; aggregates own the logic + emit events. The grep <code>JdbcTemplate</code> in <code>application/</code> &rarr; zero is the canary.</td></tr>
     <tr><td><code>*Repository</code> without a backing aggregate</td>
