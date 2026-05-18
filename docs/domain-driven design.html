@@ -597,7 +597,7 @@
         <td>Posted once; line totals match header.</td></tr>
     <tr><td>Manufacturing</td><td><code>Bom</code></td>
         <td><code>BomLine</code></td>
-        <td>State machine <code>DRAFT &rarr; ACTIVE &rarr; INACTIVE</code>; mutators (<code>addLine</code> / <code>removeLine</code>) reject on non-draft; <code>activate</code> emits <code>BomActivated</code>; "at most one active per finished product" via DB partial unique index <code>uq_bom_active_per_product</code>; cycle detection orchestrated by <code>BomEditService</code> post-save (cross-aggregate graph walk).</td></tr>
+        <td>State machine <code>DRAFT &rarr; ACTIVE &rarr; INACTIVE</code>; mutators (<code>addLine</code> / <code>removeLine</code>) reject on non-draft; <code>activate</code> emits <code>BomActivated</code>; "at most one active per finished product" via DB partial unique index <code>uq_bom_active_per_product</code>; cycle detection orchestrated by <code>BomService</code> post-save (cross-aggregate graph walk).</td></tr>
     <tr><td>Manufacturing</td><td><code>WorkOrder</code></td>
         <td><code>WorkOrderMaterial</code>, <code>WorkOrderOperation</code></td>
         <td>Recursive child WOs for sub-assemblies; parent holds at <code>in_progress</code> while any child unfinished; <code>onChildCompleted(true)</code> cascades.</td></tr>

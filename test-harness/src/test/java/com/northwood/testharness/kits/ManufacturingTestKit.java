@@ -1,6 +1,6 @@
 package com.northwood.testharness.kits;
 
-import com.northwood.manufacturing.application.BomEditService;
+import com.northwood.manufacturing.application.BomService;
 import com.northwood.manufacturing.application.MaterialsCostRollupService;
 import com.northwood.manufacturing.application.WorkOrderCancellationService;
 import com.northwood.manufacturing.application.WorkOrderOperationService;
@@ -71,7 +71,7 @@ public final class ManufacturingTestKit {
     public final WorkOrderCancellationService cancellationService;
     public final WorkOrderPrioritisationService prioritisationService;
     public final MaterialsCostRollupService rollupService;
-    public final BomEditService bomEditService;
+    public final BomService bomService;
 
     private final String workerId;
 
@@ -97,7 +97,7 @@ public final class ManufacturingTestKit {
             replenishment, approvedVendors, materialsCosts, bomLookup,
             outbox, json, currentUser
         );
-        this.bomEditService = new BomEditService(boms, bomCycleDetector, rollupService, replenishment);
+        this.bomService = new BomService(boms, bomCycleDetector, rollupService, replenishment);
 
         this.sagaWorker = new MakeToOrderSagaWorker(
             sagaManager, releaseService, workOrders, outbox, json

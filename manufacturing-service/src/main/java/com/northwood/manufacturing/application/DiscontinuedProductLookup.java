@@ -4,7 +4,7 @@ import java.util.UUID;
 
 /**
  * Read port for "is this product discontinued?" — narrow, single-method
- * lookup used by {@link BomEditService#addLine} to reject new BOM lines
+ * lookup used by {@link BomService#addLine} to reject new BOM lines
  * that name a discontinued component (the manufacturing twin of
  * purchasing's {@code DiscontinuedProductLookup}).
  *

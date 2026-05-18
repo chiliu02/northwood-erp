@@ -10,13 +10,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.northwood.manufacturing.application.BomEditService.AddLineCommand;
-import com.northwood.manufacturing.application.BomEditService.BomComponentDiscontinuedException;
-import com.northwood.manufacturing.application.BomEditService.BomCycleException;
-import com.northwood.manufacturing.application.BomEditService.BomLineNotFoundException;
-import com.northwood.manufacturing.application.BomEditService.BomNotEditableException;
-import com.northwood.manufacturing.application.BomEditService.BomNotFoundException;
-import com.northwood.manufacturing.application.BomEditService.CreateBomDraftCommand;
+import com.northwood.manufacturing.application.BomService.AddLineCommand;
+import com.northwood.manufacturing.application.BomService.BomComponentDiscontinuedException;
+import com.northwood.manufacturing.application.BomService.BomCycleException;
+import com.northwood.manufacturing.application.BomService.BomLineNotFoundException;
+import com.northwood.manufacturing.application.BomService.BomNotEditableException;
+import com.northwood.manufacturing.application.BomService.BomNotFoundException;
+import com.northwood.manufacturing.application.BomService.CreateBomDraftCommand;
 import com.northwood.manufacturing.domain.Bom;
 import com.northwood.manufacturing.domain.BomCycleDetector;
 import com.northwood.manufacturing.domain.BomId;
@@ -36,7 +36,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
-class BomEditServiceTest {
+class BomServiceTest {
 
     private static final UUID FINISHED = UUID.randomUUID();
     private static final UUID COMPONENT = UUID.randomUUID();
@@ -49,11 +49,11 @@ class BomEditServiceTest {
     @Mock MaterialsCostRollupService rollup;
     @Mock DiscontinuedProductLookup discontinuedProducts;
 
-    private BomEditService service;
+    private BomService service;
 
     @BeforeEach
     void setUp() {
-        service = new BomEditService(boms, cycleDetector, rollup, discontinuedProducts);
+        service = new BomService(boms, cycleDetector, rollup, discontinuedProducts);
     }
 
     private Bom draftBom() {

@@ -99,9 +99,9 @@ public class JdbcBomLookup implements BomLookup {
     public List<UUID> findParentProductIdsByComponent(UUID componentProductId) {
         // Use bom_header.status='active' as the runtime authority — it's
         // always set for active BoMs (whether activated in-service via
-        // BomEditService.activate, or projected from product.ActiveBomChanged
+        // BomService.activate, or projected from product.ActiveBomChanged
         // via ActiveBomChangedHandler). The product_card.active_bom_header_id
-        // column co-exists but isn't always in sync (BomEditService doesn't
+        // column co-exists but isn't always in sync (BomService doesn't
         // write to it); falling back to status='active' is the same approach
         // findActiveByFinishedProductId uses.
         return jdbc.query(

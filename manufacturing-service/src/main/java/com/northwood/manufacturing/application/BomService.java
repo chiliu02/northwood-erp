@@ -44,7 +44,7 @@ import org.springframework.transaction.annotation.Transactional;
  * concerns.
  */
 @Service
-public class BomEditService {
+public class BomService {
 
     public record CreateBomDraftCommand(
         UUID finishedProductId,
@@ -118,14 +118,14 @@ public class BomEditService {
         }
     }
 
-    private static final Logger log = LoggerFactory.getLogger(BomEditService.class);
+    private static final Logger log = LoggerFactory.getLogger(BomService.class);
 
     private final BomRepository boms;
     private final BomCycleDetector cycleDetector;
     private final MaterialsCostRollupService rollup;
     private final DiscontinuedProductLookup discontinuedProducts;
 
-    public BomEditService(
+    public BomService(
         BomRepository boms,
         BomCycleDetector cycleDetector,
         MaterialsCostRollupService rollup,

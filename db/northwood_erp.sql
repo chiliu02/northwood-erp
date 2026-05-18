@@ -1118,7 +1118,7 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA shared TO manufacturing_service;
 --     false → ManufacturingRequestedHandler rejects.
 --
 --   * Discontinued-at timestamp (mirrored from product.ProductDiscontinued
---     via ProductDiscontinuedHandler). BomEditService.addLine reads this
+--     via ProductDiscontinuedHandler). BomService.addLine reads this
 --     to reject new BOM lines that name a discontinued component; distinct
 --     signal from both-flags-false, which can also occur on a freshly-
 --     seeded never-classified row.

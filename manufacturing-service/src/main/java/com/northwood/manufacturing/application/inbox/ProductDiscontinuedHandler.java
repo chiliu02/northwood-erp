@@ -19,7 +19,7 @@ import tools.jackson.databind.ObjectMapper;
  *       to {@code false} and stamps {@code discontinued_at}, so
  *       {@code ManufacturingRequestedHandler}'s {@code !isManufactured()}
  *       guard rejects any new sales-line for the SKU, the cost-rollup engine
- *       treats it as no longer sourceable, and {@link BomEditService#addLine}
+ *       treats it as no longer sourceable, and {@link BomService#addLine}
  *       rejects new BOM lines referencing it.</li>
  *   <li>{@code active_bom_header_id = null} — equivalent in effect to an
  *       {@code ActiveBomChanged} with a null newBomHeaderId, so any consumer

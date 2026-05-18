@@ -189,7 +189,7 @@ bug.
 
 1. `purchasing.SupplierProductPriceChanged` (Slice C trigger, BoM-aware in Slice D — see routing rule).
 2. `product.ActiveBomChanged` via the inbox handler (cross-service path; manufacturing receives this when product-service's `Product.activateBom(...)` fires).
-3. `BomEditService.activate(...)` (in-service path; the actual code path most demos exercise — direct REST call to manufacturing).
+3. `BomService.activate(...)` (in-service path; the actual code path most demos exercise — direct REST call to manufacturing).
 
 Both BoM-activation paths call `MaterialsCostRollupService.recomputeViaBom(productId, "bom_activated")` in the same transaction as the activation. BoM line edits (add/remove/change-quantity on draft) are *not* triggers — drafts don't affect active rollup; activation is the single point at which a draft's structure becomes visible.
 

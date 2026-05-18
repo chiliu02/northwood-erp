@@ -16,7 +16,7 @@ import java.util.UUID;
  *
  * <p>Promoted from a row-level write port 2026-05-16 (§2.16). Previously
  * {@code BomEditRepository} carried row-shaped methods ({@code insertHeader},
- * {@code insertLine}, {@code markActive}) and {@code BomEditService} held the
+ * {@code insertLine}, {@code markActive}) and the application service held the
  * state-machine invariants. Now the aggregate owns the state machine; the
  * repository persists the aggregate and the application service orchestrates
  * cross-aggregate concerns (cycle detection via {@link BomCycleDetector},

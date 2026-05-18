@@ -6,6 +6,22 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-18 — §2.24.1: `BomEditService` → `BomService`
+
+Drop the redundant `Edit` suffix to match the codebase's bare-`<Aggregate>Service` convention (`CustomerService`, `SalesOrderService`, `PurchaseOrderService`). Pure rename, no behavioural change.
+
+- **`BomEditService.java` → `BomService.java`** + **`BomEditServiceTest.java` → `BomServiceTest.java`** via `git mv` (preserves history); class names updated inside.
+- **`BomController`**: import + field type updated. Field `editService` → `service` to match the `WorkOrderController` pattern (single-word `service` for the controller's primary service when one is the obvious main one); `treeService` left for now (will rebrand to `viewService` under §2.24.2). All 4 call sites in the controller updated.
+- **`ManufacturingTestKit`** (test-harness): import + field type + field name `bomEditService` → `bomService` + constructor call.
+- **Javadoc refs refreshed** across `ProductDiscontinuedHandler`, `DiscontinuedProductLookup`, `JdbcBomLookup` (2 places), `Bom`'s class doc (rewritten to drop the specific class-name reference since the historical narrative was already changing).
+- **Liquibase changeset comment** `2026-05-15-add-product-replenishment-discontinued-at.sql` updated (hash drift accepted per fresh-volume-reset posture).
+- **Baseline `db/northwood_erp.sql`** comment updated.
+- **Doc cascade**: `CLAUDE.md` (no change — doesn't name the class), `docs/conventions.md` (§2.16 summary), `docs/build-status.md`, `docs/design-notes.md`, `docs/domain-driven design.html`, `docs/user-stories.md` (3 spots), `docs/dev-todo.md` (§2.16 history + §3.4 deferred entry). Historical `dev-done.md` entries left as-is — they correctly reference `BomEditService` as the name at the time.
+
+**Smoke**: `mvn install -DskipTests` clean; `mvn -pl manufacturing-service test` → 138/138 green; `mvn -pl test-harness test` → 8/8 green.
+
+**Follow-ups**: §2.24.2 (`BomTreeService` → `BomViewService` + flat-view method) and §2.24.3 (recursive-CTE replacement of N+1 walk) still queued.
+
 ## 2026-05-18 — §2.23.5: manufacturing consolidation — `product_replenishment` + `product_active_bom` + `product_materials_cost` → `manufacturing.product_card`
 
 Fifth and final `_card` migration, and the heaviest by code-touch: three 1:1 product-projection tables collapsed into one. The cardinality rule had been pointing at this since slice 1.
@@ -20,7 +36,7 @@ Fifth and final `_card` migration, and the heaviest by code-touch: three 1:1 pro
 - **`application-kafka.yml`** comment refreshed.
 - **Doc cascade**: `CLAUDE.md` deltas-vs-totals example list, `docs/conventions.md` (3 spots — the historical example mentions are now framed as "no current offenders"), `docs/design-notes.md`, `docs/user-stories.md`, `docs/demo-script.md`, `docs/event-flow.html` (multiple including the materials-cost-rollup desc's column-name refresh to `materials_cost_reason` / `materials_cost_captured_at`), `docs/domain-driven design.html`, `demo-web-ui Products.tsx` (3 spots), `erp-web-ui ProductDetail.tsx`. Historical `dev-done.md` left untouched.
 
-**Smoke**: `mvn install -DskipTests` clean; `mvn -pl manufacturing-service test` → 138/138 green; `mvn -pl test-harness test` → 8/8 green. Fresh-volume Liquibase boot deferred to the final smoke task (§2.23.5 sub-changesets all idempotent against the post-baseline state).
+**Smoke**: `mvn install -DskipTests` clean; `mvn -pl manufacturing-service test` → 138/138 green; `mvn -pl test-harness test` → 8/8 green. **Fresh-volume Liquibase smoke (all 5 §2.23.x services)** ran on a `docker compose down -v && up -d` cycle 2026-05-18: each affected service (sales, purchasing, finance, reporting, manufacturing) booted clean against a baseline-provisioned DB — all rename + consolidation changesets applied idempotently, the 3 data-migration sub-changesets correctly mark-ran via preconditions, the `DROP TABLE IF EXISTS` for the 3 predecessor tables logged "does not exist, skipping" as designed.
 
 **Follow-up not in scope**: the three projection ports (`ProductReplenishmentProjection`, `ProductActiveBomProjection`, `ProductMaterialsCostProjection`) could be consolidated into one `ProductCardProjection` (like finance's pattern from §2.23.3) for full convention compliance. Kept as separate ports here — that consolidation is a Java-side refactor independent of the table consolidation and worth its own focused slice.
 

@@ -362,7 +362,7 @@ Bounded retry loop (3 attempts, 10ms / 40ms / 160ms exponential backoff) on `try
 
 ### 2.16 Promote `Bom` to a real aggregate (retire `BomEditRepository`) ✅ shipped 2026-05-16
 
-New `Bom` aggregate root in `manufacturing.domain` with `AGGREGATE_TYPE`, `BomId` identity VO, `Status` enum (`DRAFT` / `ACTIVE` / `INACTIVE`), internal `BomLine` entity, optimistic-concurrency via `row_version`, `pendingEvents`, and intent-named mutators (`addLine`, `removeLine`, `activate`). `activate` emits a new `manufacturing.BomActivated` event. `BomRepository` + `JdbcBomRepository` replace the row-shaped `BomEditRepository` + `JdbcBomEditRepository` (deleted). `BomEditService` reduced to a thin orchestrator over the aggregate + post-save cycle detection + materials-cost rollup. `BomCycleDetector` is application-orchestrated (post-save graph walk) rather than passed into the aggregate — documented in `Bom`'s class Javadoc. All five `*Repository`-without-an-aggregate offenders surfaced by the 2026-05-15 audit are now resolved. See `dev-done.md`.
+New `Bom` aggregate root in `manufacturing.domain` with `AGGREGATE_TYPE`, `BomId` identity VO, `Status` enum (`DRAFT` / `ACTIVE` / `INACTIVE`), internal `BomLine` entity, optimistic-concurrency via `row_version`, `pendingEvents`, and intent-named mutators (`addLine`, `removeLine`, `activate`). `activate` emits a new `manufacturing.BomActivated` event. `BomRepository` + `JdbcBomRepository` replace the row-shaped `BomEditRepository` + `JdbcBomEditRepository` (deleted). `BomService` (then `BomEditService`) reduced to a thin orchestrator over the aggregate + post-save cycle detection + materials-cost rollup. `BomCycleDetector` is application-orchestrated (post-save graph walk) rather than passed into the aggregate — documented in `Bom`'s class Javadoc. All five `*Repository`-without-an-aggregate offenders surfaced by the 2026-05-15 audit are now resolved. See `dev-done.md`.
 
 ### 2.17 Promote `SupplierProductPrice` + `ApprovedVendor` to real aggregates ✅ shipped 2026-05-16
 
@@ -402,6 +402,18 @@ Codify the new schema-naming rule (cardinality-based; `_card` suffix; one table 
 
 1:N children (`purchasing.product_approved_vendor`, `manufacturing.product_approved_vendor`) keep their structure — name already disambiguates from source `product.approved_vendor`. Existing `*_line_facts` tables (per-child-row caches) keep `_facts` — different shape from `_card`. Final smoke-boot after 2.23.5: fresh-volume reset + boot each affected service.
 
+### 2.24 BOM service rename + flat view + recursive-CTE replacement of N+1 walk
+
+Three related cleanups, packageable as one slice or three sub-slices (in this order):
+
+**2.24.1 Rename `BomEditService` → `BomService` ✅ shipped 2026-05-18.** The `Edit` suffix adds no information — every command service edits its aggregate. Convention elsewhere is bare `<Aggregate>Service` (`CustomerService`, `SalesOrderService`). See `dev-done.md`.
+
+**2.24.2 Rename `BomTreeService` → `BomViewService`, add `findFlatComponentsByProductId`.** "Tree" is too specific given a flat-view method is planned; `BomViewService` hosts both. Both methods orchestrate over `BomLookup` (no JDBC leak into `application/`); they differ only in the Java accumulator — tree builds the hierarchical `BomNode` structure, flat appends to a list with depth-multiplied quantities (cumulative `quantityPerFinishedUnit × scrap_factor_multiplier` from root). New `FlatComponent` record in `application/dto/`. Tests + controller endpoint to expose the flat view.
+
+**2.24.3 Replace N+1 SQL walk with single recursive-CTE query in `BomLookup`.** The current `findActiveByFinishedProductId` issues one SQL per BOM in the hierarchy — accepted at demo depth (FG → SA → RM, ~3 levels) but suboptimal. Add a new method like `findActiveTreeRows(rootProductId)` that returns the entire flattened component graph in one Postgres recursive CTE join (`bom_header` + `bom_line` + `product_card.active_bom_header_id` for the sub-assembly recursion). Both `BomViewService` methods then call the new method and shape the result client-side (tree: rebuild hierarchy from `parent_bom_header_id` column; flat: pass through with quantity multiplication). Net: O(1) SQL per request regardless of tree depth.
+
+**Sequencing**: 2.24.1 and 2.24.2 are pure renames + addition, safe in either order. 2.24.3 is the perf optimisation — can ship independently of 2.24.2, but landing 2.24.2 first means both view methods are in place before the optimisation.
+
 ---
 
 ## 3. Low priority — explicitly deferred (skip unless asked)
@@ -422,7 +434,7 @@ User direction 2026-05-04. Current journals fold tax-inclusive totals into COGS/
 
 ### 3.4 BOM authoring UI
 
-User direction 2026-05-06 — explicitly low-priority during the §1 Security + UI slice. **Read-only tree view shipped in both SPAs** — `erp-web-ui/src/routes/manufacturing/Boms.tsx` (Linda) and `demo-web-ui/src/routes/Boms.tsx` (Emma) since 2026-05-13. What's still deferred is the authoring half: create draft, add/remove lines, drag-reorder, run cycle detection on save, flip draft → active. Backend authoring path is fully wired (`BomEditService` + 4 REST endpoints on `BomController`); the demo can use REST + curl until the editor UI lands. Pull forward if a planning-tool angle becomes part of the showcase narrative.
+User direction 2026-05-06 — explicitly low-priority during the §1 Security + UI slice. **Read-only tree view shipped in both SPAs** — `erp-web-ui/src/routes/manufacturing/Boms.tsx` (Linda) and `demo-web-ui/src/routes/Boms.tsx` (Emma) since 2026-05-13. What's still deferred is the authoring half: create draft, add/remove lines, drag-reorder, run cycle detection on save, flip draft → active. Backend authoring path is fully wired (`BomService` + 4 REST endpoints on `BomController`); the demo can use REST + curl until the editor UI lands. Pull forward if a planning-tool angle becomes part of the showcase narrative.
 
 ---
 

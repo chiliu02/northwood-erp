@@ -4,13 +4,13 @@ import com.northwood.manufacturing.api.dto.AddBomLineRequest;
 import com.northwood.manufacturing.api.dto.AddBomLineResponse;
 import com.northwood.manufacturing.api.dto.CreateBomDraftRequest;
 import com.northwood.manufacturing.api.dto.CreateBomDraftResponse;
-import com.northwood.manufacturing.application.BomEditService;
-import com.northwood.manufacturing.application.BomEditService.AddLineCommand;
-import com.northwood.manufacturing.application.BomEditService.BomCycleException;
-import com.northwood.manufacturing.application.BomEditService.BomLineNotFoundException;
-import com.northwood.manufacturing.application.BomEditService.BomNotEditableException;
-import com.northwood.manufacturing.application.BomEditService.BomNotFoundException;
-import com.northwood.manufacturing.application.BomEditService.CreateBomDraftCommand;
+import com.northwood.manufacturing.application.BomService;
+import com.northwood.manufacturing.application.BomService.AddLineCommand;
+import com.northwood.manufacturing.application.BomService.BomCycleException;
+import com.northwood.manufacturing.application.BomService.BomLineNotFoundException;
+import com.northwood.manufacturing.application.BomService.BomNotEditableException;
+import com.northwood.manufacturing.application.BomService.BomNotFoundException;
+import com.northwood.manufacturing.application.BomService.CreateBomDraftCommand;
 import com.northwood.manufacturing.application.BomTreeService;
 import com.northwood.manufacturing.application.dto.BomTreeView;
 import com.northwood.shared.api.security.RequireProductionPlanner;
@@ -30,11 +30,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/boms")
 public class BomController {
 
-    private final BomEditService editService;
+    private final BomService service;
     private final BomTreeService treeService;
 
-    public BomController(BomEditService editService, BomTreeService treeService) {
-        this.editService = editService;
+    public BomController(BomService service, BomTreeService treeService) {
+        this.service = service;
         this.treeService = treeService;
     }
 
@@ -62,7 +62,7 @@ public class BomController {
     public ResponseEntity<CreateBomDraftResponse> createDraft(
         @Valid @RequestBody CreateBomDraftRequest request
     ) {
-        UUID bomHeaderId = editService.createDraft(new CreateBomDraftCommand(
+        UUID bomHeaderId = service.createDraft(new CreateBomDraftCommand(
             request.finishedProductId(),
             request.finishedProductSku(),
             request.finishedProductName(),
@@ -77,7 +77,7 @@ public class BomController {
         @PathVariable UUID bomHeaderId,
         @Valid @RequestBody AddBomLineRequest request
     ) {
-        UUID bomLineId = editService.addLine(bomHeaderId, new AddLineCommand(
+        UUID bomLineId = service.addLine(bomHeaderId, new AddLineCommand(
             request.componentProductId(),
             request.componentSku(),
             request.componentName(),
@@ -91,14 +91,14 @@ public class BomController {
     @DeleteMapping("/lines/{bomLineId}")
     @RequireProductionPlanner
     public ResponseEntity<Void> removeLine(@PathVariable UUID bomLineId) {
-        editService.removeLine(bomLineId);
+        service.removeLine(bomLineId);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{bomHeaderId}/activate")
     @RequireProductionPlanner
     public ResponseEntity<Void> activate(@PathVariable UUID bomHeaderId) {
-        editService.activate(bomHeaderId);
+        service.activate(bomHeaderId);
         return ResponseEntity.noContent().build();
     }
 
