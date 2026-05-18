@@ -1,6 +1,6 @@
 package com.northwood.reporting.infrastructure.persistence;
 
-import com.northwood.reporting.application.inbox.ProductStandardCostProjection;
+import com.northwood.reporting.application.inbox.ProductCardProjection;
 import java.math.BigDecimal;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -10,13 +10,13 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-public class JdbcProductStandardCostProjection implements ProductStandardCostProjection {
+public class JdbcProductCardProjection implements ProductCardProjection {
 
-    private static final Logger log = LoggerFactory.getLogger(JdbcProductStandardCostProjection.class);
+    private static final Logger log = LoggerFactory.getLogger(JdbcProductCardProjection.class);
 
     private final JdbcTemplate jdbc;
 
-    public JdbcProductStandardCostProjection(JdbcTemplate jdbc) {
+    public JdbcProductCardProjection(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
@@ -24,7 +24,7 @@ public class JdbcProductStandardCostProjection implements ProductStandardCostPro
     @Transactional
     public void apply(UUID productId, BigDecimal standardCost, String currencyCode) {
         jdbc.update("""
-            INSERT INTO reporting.product_standard_cost (product_id, standard_cost, currency_code)
+            INSERT INTO reporting.product_card (product_id, standard_cost, currency_code)
             VALUES (?, ?, ?)
             ON CONFLICT (product_id) DO UPDATE SET
                 standard_cost = EXCLUDED.standard_cost,
@@ -32,6 +32,6 @@ public class JdbcProductStandardCostProjection implements ProductStandardCostPro
             """,
             productId, standardCost, currencyCode == null ? "AUD" : currencyCode
         );
-        log.debug("reporting product_standard_cost updated: product={} cost={} {}", productId, standardCost, currencyCode);
+        log.debug("reporting product_card updated: product={} cost={} {}", productId, standardCost, currencyCode);
     }
 }

@@ -23,7 +23,7 @@ northwood:
     #   (sales 360 invoice + payment status), SupplierInvoiceApproved +
     #   SupplierPaymentMade (po_tracking invoice + payment).
     # - purchasing.events    for PurchaseOrderCreated (creates po_tracking row).
-    # - product.events       for StandardCostChanged (reporting.product_standard_cost
+    # - product.events       for StandardCostChanged (reporting.product_card
     #                        cache, joined with ATP at snapshot time for
     #                        inventory_value).
     subscribe-topics: sales.events,inventory.events,manufacturing.events,finance.events,purchasing.events,product.events

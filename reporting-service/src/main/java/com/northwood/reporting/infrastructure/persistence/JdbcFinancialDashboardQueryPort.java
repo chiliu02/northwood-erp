@@ -80,7 +80,7 @@ public class JdbcFinancialDashboardQueryPort implements FinancialDashboardQueryP
         // Currency note: the `currencyCode` parameter filters AR / AP / open-SO
         // / open-PO on the TRANSACTION currency (the SO/PO was raised in this
         // currency). It also filters inventory_value on the PRODUCT VALUATION
-        // currency (product_standard_cost.currency_code). These can diverge —
+        // currency (product_card.currency_code). These can diverge —
         // a USD-priced product sold to an AUD customer would surface on the
         // AUD snapshot's AR but not on its inventory_value. The AUD-only demo
         // dataset doesn't bite on this; a multi-currency rollout would need
@@ -128,7 +128,7 @@ public class JdbcFinancialDashboardQueryPort implements FinancialDashboardQueryP
         BigDecimal inventoryValue = jdbc.queryForObject("""
             SELECT COALESCE(SUM(atp.on_hand_quantity * psc.standard_cost), 0) AS inventory_value
               FROM reporting.available_to_promise_view atp
-              JOIN reporting.product_standard_cost psc
+              JOIN reporting.product_card psc
                 ON atp.product_id = psc.product_id
              WHERE psc.currency_code = ?
             """,

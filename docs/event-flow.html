@@ -319,7 +319,7 @@ window.NORTHWOOD_EVENTS = [
       { dest: "finance", name: "finance.product-standard-cost-projector",
         desc: `<code>finance.product_card.standard_cost</code>, <code>currency_code</code> — plain <code>UPDATE</code> on the consolidated projection (row guaranteed to exist by <code>finance.product-created</code> seed)` },
       { dest: "reporting", name: "reporting.product-standard-cost-projector",
-        desc: `<code>reporting.product_standard_cost.standard_cost</code>, <code>currency_code</code>` },
+        desc: `<code>reporting.product_card.standard_cost</code>, <code>currency_code</code>` },
     ]
   },
   {
@@ -536,7 +536,7 @@ window.NORTHWOOD_EVENTS = [
     event: "ShipmentPosted",
     consumers: [
       { dest: "finance", name: "finance.cogs.shipment-posted",
-        desc: `Posts perpetual-inventory COGS pair into <code>finance.journal_entry_header</code> + <code>journal_entry_line</code> (Dr 5000 COGS / Cr 1200 Inventory) — line cost from <code>product_standard_cost</code> projection` },
+        desc: `Posts perpetual-inventory COGS pair into <code>finance.journal_entry_header</code> + <code>journal_entry_line</code> (Dr 5000 COGS / Cr 1200 Inventory) — line cost from <code>finance.product_card</code> projection` },
       { dest: "sales", name: "sales.fulfilment-saga.shipment-posted",
         desc: `Advances <code>sales.sales_order_fulfilment_saga.current_state</code> → <code>goods_shipped</code>; flips <code>sales.sales_order_header.status</code> → <code>shipped</code> (+ <code>version+1</code>); emits <code>sales.SalesOrderShipped</code> via outbox` },
       { dest: "reporting", name: "reporting.sales-order-360.shipment-posted",

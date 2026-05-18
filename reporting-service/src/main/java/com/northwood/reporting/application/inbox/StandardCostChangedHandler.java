@@ -10,20 +10,20 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * §2.1 Slice 2: idempotent inbox handler for
  * {@code product.StandardCostChanged}. Maintains reporting's
- * {@code product_standard_cost} cache so the financial-dashboard snapshot
+ * {@code product_card} cache so the financial-dashboard snapshot
  * can compute {@code inventory_value} without a cross-schema read into
- * {@code finance.product_standard_cost}.
+ * {@code finance.product_card}.
  */
 @Component
 public class StandardCostChangedHandler extends AbstractInboxHandler<StandardCostChanged> {
 
-    public static final String CONSUMER_NAME = "reporting.product-standard-cost-projector";
+    public static final String CONSUMER_NAME = "reporting.product-card-projector";
 
-    private final ProductStandardCostProjection projection;
+    private final ProductCardProjection projection;
 
     public StandardCostChangedHandler(
         InboxPort inbox,
-        ProductStandardCostProjection projection,
+        ProductCardProjection projection,
         ObjectMapper json
     ) {
         super(inbox, json, StandardCostChanged.class, StandardCostChanged.EVENT_TYPE, CONSUMER_NAME);

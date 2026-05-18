@@ -76,7 +76,7 @@ public class JdbcFinancialDashboardProjection implements FinancialDashboardProje
                 0, 0, 0,
                 (SELECT COALESCE(SUM(atp.on_hand_quantity * psc.standard_cost), 0)
                    FROM reporting.available_to_promise_view atp
-                   JOIN reporting.product_standard_cost psc ON atp.product_id = psc.product_id
+                   JOIN reporting.product_card psc ON atp.product_id = psc.product_id
                   WHERE psc.currency_code = ?),
                 0,
                 (SELECT COALESCE(SUM(GREATEST(invoiced_amount - paid_amount, 0)), 0)

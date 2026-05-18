@@ -260,7 +260,7 @@ Reporting is inbox-only — no command APIs, no outbox. Six projections are wire
 | `available_to_promise_view` | `GET /api/atp` (list) `/{productId}` | `/atp` | inventory + manufacturing + purchasing events |
 | `financial_dashboard_daily` | `GET /api/financial-dashboard` (list, AUD default) `/{date}` | `/` (Dashboard) | finance + sales + purchasing + manufacturing events |
 
-The financial dashboard's `inventory_value`, `accounts_receivable`, and `accounts_payable` are populated via `GET /api/financial-dashboard/snapshot` (shipped 2026-05-12; reporting projects `product_standard_cost` from `StandardCostChanged` and JOINs ATP × cost; AR/AP are SUM-windows over the SO360 + PO tracking projections). Only `wip_value` is still 0 — gated on a costing decision (LIFO / FIFO / weighted-avg) for `wip_balance.average_cost`.
+The financial dashboard's `inventory_value`, `accounts_receivable`, and `accounts_payable` are populated via `GET /api/financial-dashboard/snapshot` (shipped 2026-05-12; reporting projects `product_card` from `StandardCostChanged` and JOINs ATP × cost; AR/AP are SUM-windows over the SO360 + PO tracking projections). Only `wip_value` is still 0 — gated on a costing decision (LIFO / FIFO / weighted-avg) for `wip_balance.average_cost`.
 
 ---
 

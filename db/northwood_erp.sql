@@ -3060,20 +3060,22 @@ CREATE TABLE reporting.projection_checkpoint (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Reporting-side cache of product standard cost. Joined with
--- available_to_promise_view at snapshot time to compute inventory_value.
--- Fed by product.StandardCostChanged inbox handler; mirrors the
--- standard_cost column on finance.product_card (reporting maintains
--- its own copy because per-service search_path forbids cross-schema reads).
-CREATE TABLE reporting.product_standard_cost (
+-- Reporting-side denormalized card per Product (see docs/conventions.md →
+-- Consumer-side denormalized tables). Single attribute today (standard_cost +
+-- currency_code) joined with available_to_promise_view at snapshot time to
+-- compute inventory_value. Fed by product.StandardCostChanged inbox handler;
+-- mirrors the standard_cost column on finance.product_card (reporting
+-- maintains its own copy because per-service search_path forbids
+-- cross-schema reads).
+CREATE TABLE reporting.product_card (
     product_id UUID PRIMARY KEY,
     standard_cost NUMERIC(18, 6) NOT NULL,
     currency_code CHAR(3) NOT NULL DEFAULT 'AUD',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TRIGGER trg_reporting_product_standard_cost_updated_at
-    BEFORE UPDATE ON reporting.product_standard_cost
+CREATE TRIGGER trg_reporting_product_card_updated_at
+    BEFORE UPDATE ON reporting.product_card
     FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
 
 
@@ -3108,12 +3110,12 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA reporting TO reporting_service;
 -- REPORTING: minimal seed
 -- Read models are otherwise populated by projection consumers draining
 -- events from the bus into reporting.inbox_message and applying them to
--- the read tables. The product_standard_cost cache is seeded here so that
+-- the read tables. The product_card cache is seeded here so that
 -- day-1 inventory_value computation works ahead of the first
 -- StandardCostChanged event; subsequent events update individual rows.
 -- ----------------------------------------------------------------------------
 
-INSERT INTO reporting.product_standard_cost (product_id, standard_cost, currency_code)
+INSERT INTO reporting.product_card (product_id, standard_cost, currency_code)
 VALUES
     ('00000000-0000-7000-8000-000000000001', 320.00, 'AUD'),
     ('00000000-0000-7000-8000-000000000002',  80.00, 'AUD'),

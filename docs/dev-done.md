@@ -6,6 +6,20 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-18 — §2.23.4: `reporting.product_standard_cost` → `reporting.product_card`
+
+Fourth of five `_card` migrations. Single-attribute table for now; rename future-proofs reporting's product card so additional reporting-side product facets land as columns on this one table rather than separate single-column projections.
+
+- **Baseline** `db/northwood_erp.sql`: table + trigger renamed; comment updated; seed-INSERT retargeted to the new name.
+- **New rename changeset** `2026-05-18-rename-product-standard-cost-to-product-card.sql` (`splitStatements:false`) with `ALTER TABLE IF EXISTS` + DO-block trigger rename. Sequenced AFTER the earlier `rename-product-standard-cost-captured-at` changeset so the column-rename can complete against the legacy table name before the table renames; both no-op idempotently on fresh boot.
+- **Java**: `ProductStandardCostProjection` → `ProductCardProjection` (interface, `application/inbox/`); `JdbcProductStandardCostProjection` → `JdbcProductCardProjection` (impl). Method signature unchanged.
+- **SQL strings**: INSERT in the new `JdbcProductCardProjection`; the two financial-dashboard JOINs (`JdbcFinancialDashboardQueryPort.findSnapshot` for ad-hoc reads, `JdbcFinancialDashboardProjection.refreshDailyBalances` for the worker-driven materialised refresh); plus the inline comment on the query port.
+- **`StandardCostChangedHandler.CONSUMER_NAME`** updated from `reporting.product-standard-cost-projector` → `reporting.product-card-projector` for consistency. Javadoc reference refreshed.
+- **`application-kafka.yml`** comment refreshed.
+- **Doc cascade**: `docs/event-flow.html` (2 spots — `StandardCostChanged` projection target + the COGS-cost-source description in `ShipmentPostedHandler`); `docs/projections.html` (catalog row); `docs/user-stories.md` (2 financial-dashboard mentions); `docs/build-status.md` (reporting bullet); `docs/demo-script.md`; `docs/design-notes.md` (two silent-fallback rows for COGS standard-cost + valuation-class — column references reshaped to `finance.product_card.*` since the predecessor tables are gone). Historical `dev-done.md` entries left untouched.
+
+**Smoke**: `mvn install -DskipTests` clean; `mvn -pl reporting-service test` → 7/7 green.
+
 ## 2026-05-18 — §2.23.3: `finance.product_accounting` → `finance.product_card`
 
 Third of five `_card` migrations. Largest rename so far — finance has the canonical consolidated-projection pattern (one write port + one read port + 4 inbox handlers + 2 service injection sites + 2 tests + in-memory test fake).
