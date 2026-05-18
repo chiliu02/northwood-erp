@@ -324,7 +324,7 @@ function MakeBuyPanel({ product, onDone }: { product: ProductRow; onDone: () => 
       </div>
       <p className="text-xs text-text-faint">
         Emits <span className="font-mono">product.MakeVsBuyChanged</span>; manufacturing's
-        <span className="font-mono"> product_replenishment</span> projection updates, gating new orders at
+        <span className="font-mono"> product_card</span> projection updates, gating new orders at
         <span className="font-mono"> ManufacturingRequestedHandler</span> (purchased-only SKUs land as
         <span className="font-mono"> rejected_not_manufactured</span>).
       </p>
@@ -356,7 +356,7 @@ function DiscontinuePanel({ product, onDone }: { product: ProductRow; onDone: ()
       </p>
       <p className="text-xs text-text-faint">
         Emits <span className="font-mono">product.ProductDiscontinued</span>. Six services react: sales rejects new
-        order lines for the SKU; manufacturing retires <span className="font-mono">product_replenishment</span> + active BOM
+        order lines for the SKU; manufacturing retires <span className="font-mono">product_card</span> + active BOM
         (and cascade-clears parent FGs whose active BOM referenced it); purchasing's PR entry rejects requisitions;
         inventory / finance / reporting stamp <span className="font-mono">discontinued_at</span> for audit.
       </p>
@@ -458,7 +458,7 @@ function RegisterPanel({ onDone }: { onDone: () => void }) {
       <p className="text-xs text-text-faint">
         Emits <span className="font-mono">product.ProductCreated</span>; five services seed read-model stubs
         (inventory <span className="font-mono">stock_item</span>, sales <span className="font-mono">product_card</span>,
-        manufacturing <span className="font-mono">product_replenishment</span> with type-derived make-vs-buy default,
+        manufacturing <span className="font-mono">product_card</span> with type-derived make-vs-buy default,
         finance <span className="font-mono">product_card</span>, reporting ATP).
       </p>
     </div>

@@ -245,7 +245,7 @@ window.NORTHWOOD_EVENTS = [
     event: "ActiveBomChanged",
     consumers: [
       { dest: "manufacturing", name: "manufacturing.product-active-bom-projector",
-        desc: `<code>manufacturing.product_active_bom</code> — upserts (product_id, active_bom_id); <code>null</code> newBomHeaderId path retires the active BOM (see <code>ActiveBomChanged</code> Javadoc)` },
+        desc: `<code>manufacturing.product_card</code> — upserts (product_id, active_bom_id); <code>null</code> newBomHeaderId path retires the active BOM (see <code>ActiveBomChanged</code> Javadoc)` },
     ]
   },
   {
@@ -254,7 +254,7 @@ window.NORTHWOOD_EVENTS = [
     event: "MakeVsBuyChanged",
     consumers: [
       { dest: "manufacturing", name: "manufacturing.product-replenishment-projector",
-        desc: `<code>manufacturing.product_replenishment.is_purchased</code>, <code>is_manufactured</code>` },
+        desc: `<code>manufacturing.product_card.is_purchased</code>, <code>is_manufactured</code>` },
     ]
   },
   {
@@ -267,7 +267,7 @@ window.NORTHWOOD_EVENTS = [
       { dest: "inventory", name: "inventory.product-created",
         desc: `<code>inventory.stock_item</code> — seeds a stub row (default UOM <code>'EA'</code>, tracking <code>'tracked'</code>, reorder 0/0) so subsequent <code>ReorderPolicyChanged</code> has a row to update (<code>ON CONFLICT DO NOTHING</code>)` },
       { dest: "manufacturing", name: "manufacturing.product-replenishment-seeder",
-        desc: `<code>manufacturing.product_replenishment</code> — seeds default <code>is_purchased</code> / <code>is_manufactured</code> from <code>product_type</code> (ON CONFLICT DO NOTHING)` },
+        desc: `<code>manufacturing.product_card</code> — seeds default <code>is_purchased</code> / <code>is_manufactured</code> from <code>product_type</code> (ON CONFLICT DO NOTHING)` },
       { dest: "finance", name: "finance.product-created",
         desc: `<code>finance.product_card</code> — seeds a stub row with <code>standard_cost=NULL</code>, <code>currency_code=NULL</code>, <code>valuation_class=NULL</code> so subsequent <code>StandardCostChanged</code> + <code>ValuationClassChanged</code> + <code>ProductDiscontinued</code> have a row to <code>UPDATE</code> (<code>ON CONFLICT DO NOTHING</code>). Consolidates the previous <code>product_standard_cost</code> + <code>product_valuation_class</code> tables — see <code>docs/conventions.md</code> → consumer-side projection tables` },
       { dest: "reporting", name: "reporting.atp.product-created",
@@ -282,7 +282,7 @@ window.NORTHWOOD_EVENTS = [
       { dest: "sales", name: "sales.product-discontinued",
         desc: `<code>sales.product_card.discontinued_at</code> — read by <code>SalesOrderService.placeOrder</code> to reject lines for retired SKUs (HTTP 409)` },
       { dest: "manufacturing", name: "manufacturing.product-discontinued",
-        desc: `<code>manufacturing.product_replenishment.is_purchased=false, is_manufactured=false</code> (existing <code>!isManufactured()</code> guard then rejects new sales-lines); <code>manufacturing.product_active_bom.active_bom_header_id=null</code>` },
+        desc: `<code>manufacturing.product_card.is_purchased=false, is_manufactured=false</code> (existing <code>!isManufactured()</code> guard then rejects new sales-lines); <code>manufacturing.product_card.active_bom_header_id=null</code>` },
       { dest: "purchasing", name: "purchasing.product-discontinued",
         desc: `<code>purchasing.product_card (product_id, discontinued_at)</code> — read by <code>PurchaseRequisitionService.buildLines</code> to reject new PRs / shortage-driven POs (HTTP 409)` },
       { dest: "finance", name: "finance.product-discontinued",
@@ -473,7 +473,7 @@ window.NORTHWOOD_EVENTS = [
     event: "SupplierProductPriceChanged",
     consumers: [
       { dest: "manufacturing", name: "manufacturing.materials-cost-rollup",
-        desc: `<code>manufacturing.product_materials_cost.materials_cost</code>, <code>currency_code</code>, <code>reason</code>, <code>captured_at</code> — rerun for every product whose preferred supplier matches` },
+        desc: `<code>manufacturing.product_card.materials_cost</code>, <code>currency_code</code>, <code>materials_cost_reason</code>, <code>materials_cost_captured_at</code> — rerun for every product whose preferred supplier matches` },
     ]
   },
 

@@ -448,7 +448,7 @@ CREATE TRIGGER trg_customer_updated_at
 -- (e.g. a raw material that purchasing buys but sales never lists); placeOrder
 -- treats that as unsellable, identically to a discontinued product. The seed
 -- makes lifecycle closure structural — one row per Product for its lifetime,
--- mirroring the inventory.stock_item and manufacturing.product_replenishment
+-- mirroring the inventory.stock_item and manufacturing.product_card
 -- shape.
 CREATE TABLE sales.product_card (
     product_id UUID PRIMARY KEY,
@@ -1107,55 +1107,53 @@ GRANT USAGE ON SCHEMA shared TO manufacturing_service;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA shared TO manufacturing_service;
 
 
--- Read-side projection of product-master make-vs-buy classification. Updated
--- by the MakeVsBuyChangedHandler inbox handler from product.MakeVsBuyChanged.
--- ManufacturingRequestedHandler reads this to decide whether a sales-order
--- line can be released as a work order at all (prior to checking BOM presence).
--- A row missing for a product_id is treated conservatively as
--- (is_purchased=false, is_manufactured=false) → rejection — newly registered
--- products must explicitly call setMakeVsBuy before manufacturing will accept
--- them. See dev-todo for the "newly registered product" gap.
-CREATE TABLE manufacturing.product_replenishment (
-    product_id UUID PRIMARY KEY,
-    is_purchased BOOLEAN NOT NULL DEFAULT false,
-    is_manufactured BOOLEAN NOT NULL DEFAULT false,
-    -- §1.4 B.3: when set, the product has been discontinued by product-service.
-    -- BomEditService.addLine reads this column to reject new BOM lines that
-    -- name a discontinued component; ProductDiscontinuedHandler writes it.
-    -- Distinct signal from (is_purchased=false AND is_manufactured=false),
-    -- which can also occur on a freshly-seeded never-classified row.
-    discontinued_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+-- Manufacturing's consolidated denormalized card per Product (see
+-- docs/conventions.md → Consumer-side denormalized tables). One row per
+-- product holds:
+--
+--   * Replenishment classification (is_purchased / is_manufactured —
+--     mirrored from product.MakeVsBuyChanged via MakeVsBuyChangedHandler;
+--     seeded with type-derived defaults on product.ProductCreated). A row
+--     missing for a product_id is treated conservatively as both flags
+--     false → ManufacturingRequestedHandler rejects.
+--
+--   * Discontinued-at timestamp (mirrored from product.ProductDiscontinued
+--     via ProductDiscontinuedHandler). BomEditService.addLine reads this
+--     to reject new BOM lines that name a discontinued component; distinct
+--     signal from both-flags-false, which can also occur on a freshly-
+--     seeded never-classified row.
+--
+--   * Active-BOM pointer (active_bom_header_id — mirrored from
+--     product.ActiveBomChanged via ActiveBomChangedHandler).
+--
+--   * Materials-cost rollup output (materials_cost + currency_code +
+--     materials_cost_reason + materials_cost_captured_at) — locally
+--     computed by MaterialsCostRollupService rather than mirrored. NULL
+--     materials_cost = "inputs_missing"; reason values: 'supplier_price_change',
+--     'bom_activated', 'inputs_missing', etc. materials_cost_captured_at
+--     carries the event-time of the upstream trigger (StandardCostChanged
+--     / SupplierProductPriceChanged / BomActivated), distinct from the
+--     row-level updated_at.
+--
+-- Replaces the previous narrow tables product_replenishment +
+-- product_active_bom + product_materials_cost — they were named after
+-- individual facets rather than after manufacturing's view of the
+-- aggregate, against the cardinality-based naming rule.
+CREATE TABLE manufacturing.product_card (
+    product_id                    UUID PRIMARY KEY,
+    is_purchased                  BOOLEAN NOT NULL DEFAULT false,
+    is_manufactured               BOOLEAN NOT NULL DEFAULT false,
+    discontinued_at               TIMESTAMPTZ,
+    active_bom_header_id          UUID,
+    materials_cost                NUMERIC(18, 6),
+    currency_code                 CHAR(3),
+    materials_cost_reason         VARCHAR(40) NOT NULL DEFAULT 'inputs_missing',
+    materials_cost_captured_at    TIMESTAMPTZ,
+    updated_at                    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TRIGGER trg_product_replenishment_updated_at
-    BEFORE UPDATE ON manufacturing.product_replenishment
-    FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
-
--- Shape A read-side projection: which BOM is active for each SKU.
--- Maintained from product.ActiveBomChanged. Co-exists with manufacturing's own
--- bom_header.is_active during the migration period.
-CREATE TABLE manufacturing.product_active_bom (
-    product_id UUID PRIMARY KEY,
-    active_bom_header_id UUID,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- §2.8 Slice C: materialsCost rollup output. Lives here (not on product.product)
--- because it's a *computed* value owned by the engine that computes it. Nullable
--- materials_cost (null = inputs_missing). reason values: 'supplier_price_change',
--- 'inputs_missing' for Slice C; Slice D adds 'bom_activated', etc.
-CREATE TABLE manufacturing.product_materials_cost (
-    product_id UUID PRIMARY KEY,
-    materials_cost NUMERIC(18, 6),
-    currency_code CHAR(3),
-    reason VARCHAR(40) NOT NULL DEFAULT 'inputs_missing',
-    captured_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TRIGGER trg_product_materials_cost_updated_at
-    BEFORE UPDATE ON manufacturing.product_materials_cost
+CREATE TRIGGER trg_product_card_updated_at
+    BEFORE UPDATE ON manufacturing.product_card
     FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
 
 -- §2.8 Slice C: manufacturing-side projection of product.ApprovedVendorListChanged.
@@ -1518,10 +1516,11 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA manufacturing TO manufacturing_se
 -- Wooden Table BOM. Fixture UUIDs from §0; no cross-schema joins.
 -- ----------------------------------------------------------------------------
 
--- Make-vs-buy projection: mirror product.product is_purchased / is_manufactured
+-- Manufacturing card: mirror product.product is_purchased / is_manufactured
 -- so manufacturing has a row per existing SKU at boot. Runtime keeps it in
--- step via the inbox handler on product.MakeVsBuyChanged.
-INSERT INTO manufacturing.product_replenishment (product_id, is_purchased, is_manufactured)
+-- step via the inbox handlers on product.MakeVsBuyChanged + ActiveBomChanged
+-- + ProductDiscontinued + the local materials-cost rollup engine.
+INSERT INTO manufacturing.product_card (product_id, is_purchased, is_manufactured)
 VALUES
     ('00000000-0000-7000-8000-000000000001', false, true),
     ('00000000-0000-7000-8000-000000000002', true,  false),

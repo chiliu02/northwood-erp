@@ -767,7 +767,7 @@ public record OutboxRow(
   <code>SUM(journal_entry_line)</code>, <code>invoice.paid_amount</code> via
   trigger-maintained off <code>payment_allocation</code>) or that hold a
   <em>local cache of facts owned upstream</em> (<code>sales.product_card</code>,
-  <code>manufacturing.product_active_bom</code>,
+  <code>manufacturing.product_card</code>,
   <code>finance.product_card</code>, <code>inventory.stock_item</code>, &hellip;)
   get projection-shaped ports instead &mdash; <code>*Writer</code> /
   <code>*Projection</code> for the write side, <code>*Lookup</code> /

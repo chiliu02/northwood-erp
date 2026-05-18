@@ -333,7 +333,7 @@ function MakeVsBuyDialog({ open, product, onClose, onSuccess }: DialogProps) {
     <ConfirmDialog
       open={open}
       title="Change make-vs-buy classification"
-      message={<>Updates how <strong>{product.sku}</strong> is sourced. Manufacturing's <code>product_replenishment</code> projection updates via <code>product.MakeVsBuyChanged</code>.</>}
+      message={<>Updates how <strong>{product.sku}</strong> is sourced. Manufacturing's <code>product_card</code> projection updates via <code>product.MakeVsBuyChanged</code>.</>}
       confirmLabel="Save"
       busy={mutation.isPending}
       onCancel={onClose}

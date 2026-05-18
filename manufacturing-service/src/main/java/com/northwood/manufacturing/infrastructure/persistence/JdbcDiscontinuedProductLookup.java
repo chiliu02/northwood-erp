@@ -19,7 +19,7 @@ public class JdbcDiscontinuedProductLookup implements DiscontinuedProductLookup 
         Boolean flag = jdbc.queryForObject(
             """
             SELECT EXISTS (
-                SELECT 1 FROM manufacturing.product_replenishment
+                SELECT 1 FROM manufacturing.product_card
                 WHERE product_id = ? AND discontinued_at IS NOT NULL
             )
             """,

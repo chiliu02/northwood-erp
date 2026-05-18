@@ -12,23 +12,23 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Idempotent inbox handler for {@code product.ProductDiscontinued}. Retires
- * the product from manufacturing by writing three read-side rows:
+ * the product from manufacturing by writing to two facets of
+ * {@code manufacturing.product_card}:
  * <ul>
- *   <li>{@code manufacturing.product_replenishment} — flips
- *       {@code is_purchased} / {@code is_manufactured} to {@code false} and
- *       stamps {@code discontinued_at}, so {@code ManufacturingRequestedHandler}'s
- *       {@code !isManufactured()} guard rejects any new sales-line for the SKU,
- *       the cost-rollup engine treats it as no longer sourceable, and
- *       {@link BomEditService#addLine} rejects new BOM lines referencing it.</li>
- *   <li>{@code manufacturing.product_active_bom.active_bom_header_id = null} —
- *       equivalent in effect to an {@code ActiveBomChanged} with a null
- *       newBomHeaderId, so any consumer reading the active BOM gets the
- *       empty signal too.</li>
+ *   <li>Replenishment facets — flips {@code is_purchased} / {@code is_manufactured}
+ *       to {@code false} and stamps {@code discontinued_at}, so
+ *       {@code ManufacturingRequestedHandler}'s {@code !isManufactured()}
+ *       guard rejects any new sales-line for the SKU, the cost-rollup engine
+ *       treats it as no longer sourceable, and {@link BomEditService#addLine}
+ *       rejects new BOM lines referencing it.</li>
+ *   <li>{@code active_bom_header_id = null} — equivalent in effect to an
+ *       {@code ActiveBomChanged} with a null newBomHeaderId, so any consumer
+ *       reading the active BOM gets the empty signal too.</li>
  *   <li><b>§1.4 B.2 parent-BOM cascade:</b> queries
  *       {@link BomLookup#findParentProductIdsByComponent(UUID)} for finished
  *       products whose active BOM lists the discontinued product as a
  *       component, and clears each parent's
- *       {@code product_active_bom.active_bom_header_id} too. New orders
+ *       {@code product_card.active_bom_header_id} too. New orders
  *       for the parent FG then land at {@code rejected_no_bom} in
  *       {@code ManufacturingRequestedHandler}, surfacing the gap synchronously
  *       on the dispatch step instead of leaking through to a make-to-order

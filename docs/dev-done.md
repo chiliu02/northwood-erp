@@ -6,6 +6,24 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-18 — §2.23.5: manufacturing consolidation — `product_replenishment` + `product_active_bom` + `product_materials_cost` → `manufacturing.product_card`
+
+Fifth and final `_card` migration, and the heaviest by code-touch: three 1:1 product-projection tables collapsed into one. The cardinality rule had been pointing at this since slice 1.
+
+- **Baseline** `db/northwood_erp.sql`: dropped three table definitions + their triggers; replaced with one `manufacturing.product_card (product_id PK, is_purchased, is_manufactured, discontinued_at, active_bom_header_id, materials_cost, currency_code, materials_cost_reason, materials_cost_captured_at, updated_at)`. The `captured_at` and `reason` columns from the former `product_materials_cost` get prefixed (`materials_cost_captured_at`, `materials_cost_reason`) to disambiguate from any future column on a different facet. Seed INSERT retargeted; cross-reference comment in the sales section updated.
+- **Historical Liquibase changeset** `2026-05-15-add-product-replenishment-discontinued-at.sql` guarded with `ALTER TABLE IF EXISTS manufacturing.product_replenishment ADD COLUMN IF NOT EXISTS discontinued_at` — runs against legacy DBs where `product_replenishment` still exists, no-ops on fresh boot where the table never existed.
+- **New consolidation changeset** `2026-05-18-consolidate-product-card.sql` (5 sub-changesets): create `product_card` (idempotent; `CREATE TABLE IF NOT EXISTS` + trigger guarded with `duplicate_object` exception swallow); migrate data from each predecessor with `--preconditions onFail:MARK_RAN` so they skip on fresh-volume boots where the predecessors never existed; drop the three old tables. `splitStatements:false` on the create changeset for the DO-block trigger guard.
+- **Java**: Kept all three projection interfaces (`ProductReplenishmentProjection`, `ProductActiveBomProjection`, `ProductMaterialsCostProjection`) and their Jdbc impls — pragmatic scope choice to keep this slice mechanical. The three projections now all target the consolidated `manufacturing.product_card` table on their respective column subsets. ON CONFLICT clauses preserve unrelated columns (replenishment write doesn't touch `active_bom_header_id`, etc.) so the per-event ownership of columns stays correct.
+- **`JdbcProductMaterialsCostProjection.findByProductId`** filters on `materials_cost_captured_at IS NOT NULL` — future-proofs against rows seeded by other facets before the materials-cost rollup has ever fired (semantic: "this product has a computed materials cost"). Read shape unchanged at the Java level (`MaterialsCost` record carries the same 5 fields).
+- **`JdbcDiscontinuedProductLookup` + `JdbcBomLookup`** SQL retargeted.
+- **Javadocs** updated across 9 production files in manufacturing-service (the three projection interfaces, three handlers, `MaterialsCostRollupService`, `BomLookup`, `DiscontinuedProductLookup`). Plus event-class Javadocs in `ProductMaterialsCostComputed` and `ActiveBomChanged` (product-events jar).
+- **`application-kafka.yml`** comment refreshed.
+- **Doc cascade**: `CLAUDE.md` deltas-vs-totals example list, `docs/conventions.md` (3 spots — the historical example mentions are now framed as "no current offenders"), `docs/design-notes.md`, `docs/user-stories.md`, `docs/demo-script.md`, `docs/event-flow.html` (multiple including the materials-cost-rollup desc's column-name refresh to `materials_cost_reason` / `materials_cost_captured_at`), `docs/domain-driven design.html`, `demo-web-ui Products.tsx` (3 spots), `erp-web-ui ProductDetail.tsx`. Historical `dev-done.md` left untouched.
+
+**Smoke**: `mvn install -DskipTests` clean; `mvn -pl manufacturing-service test` → 138/138 green; `mvn -pl test-harness test` → 8/8 green. Fresh-volume Liquibase boot deferred to the final smoke task (§2.23.5 sub-changesets all idempotent against the post-baseline state).
+
+**Follow-up not in scope**: the three projection ports (`ProductReplenishmentProjection`, `ProductActiveBomProjection`, `ProductMaterialsCostProjection`) could be consolidated into one `ProductCardProjection` (like finance's pattern from §2.23.3) for full convention compliance. Kept as separate ports here — that consolidation is a Java-side refactor independent of the table consolidation and worth its own focused slice.
+
 ## 2026-05-18 — §2.23.4: `reporting.product_standard_cost` → `reporting.product_card`
 
 Fourth of five `_card` migrations. Single-attribute table for now; rename future-proofs reporting's product card so additional reporting-side product facets land as columns on this one table rather than separate single-column projections.

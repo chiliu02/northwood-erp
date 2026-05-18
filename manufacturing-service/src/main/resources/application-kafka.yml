@@ -22,7 +22,7 @@ northwood:
   kafka:
     # Manufacturing subscribes to:
     # - product.events    for MakeVsBuyChanged (Shape A make-vs-buy projection
-    #   into manufacturing.product_replenishment) and ApprovedVendorListChanged
+    #   into manufacturing.product_card) and ApprovedVendorListChanged
     #   (manufacturing.product_approved_vendor projection — read by the §2.8
     #   Slice C materialsCost rollup engine).
     # - sales.events      for ManufacturingRequested (saga-driven WO release).

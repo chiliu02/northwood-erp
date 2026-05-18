@@ -24,7 +24,7 @@ public class JdbcProductActiveBomProjection implements ProductActiveBomProjectio
     @Transactional
     public void apply(UUID productId, UUID newActiveBomId) {
         jdbc.update("""
-            INSERT INTO manufacturing.product_active_bom (product_id, active_bom_header_id, updated_at)
+            INSERT INTO manufacturing.product_card (product_id, active_bom_header_id, updated_at)
             VALUES (?, ?, now())
             ON CONFLICT (product_id) DO UPDATE SET
                 active_bom_header_id = EXCLUDED.active_bom_header_id,
@@ -38,7 +38,7 @@ public class JdbcProductActiveBomProjection implements ProductActiveBomProjectio
     @Override
     public Optional<UUID> findActiveBomId(UUID productId) {
         var ids = jdbc.query(
-            "SELECT active_bom_header_id FROM manufacturing.product_active_bom WHERE product_id = ?",
+            "SELECT active_bom_header_id FROM manufacturing.product_card WHERE product_id = ?",
             (rs, i) -> (UUID) rs.getObject("active_bom_header_id"),
             productId
         );

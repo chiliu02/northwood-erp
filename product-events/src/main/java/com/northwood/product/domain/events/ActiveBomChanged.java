@@ -21,7 +21,7 @@ import java.util.UUID;
  *   <li><b>Switch / supersede</b> — {@code oldBomHeaderId=<a>},
  *       {@code newBomHeaderId=<b>}. Replace the existing active BoM with a
  *       new revision. The previous BoM is implicitly deactivated via the
- *       {@code manufacturing.product_active_bom} upsert (the row is keyed
+ *       {@code manufacturing.product_card.active_bom_header_id} update (the row is keyed
  *       on {@code product_id}, so overwriting {@code active_bom_header_id}
  *       releases the old pointer atomically).</li>
  *   <li><b>Deactivate / retire</b> — {@code oldBomHeaderId=<a>},

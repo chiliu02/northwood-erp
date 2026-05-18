@@ -6,9 +6,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Owns {@code manufacturing.product_materials_cost} — the data of record
- * for materialsCost. The rollup engine ({@code MaterialsCostRollupService})
- * is the only writer; the controller/UI is the only reader.
+ * Owns the materials-cost columns on {@code manufacturing.product_card}
+ * ({@code materials_cost}, {@code currency_code}, {@code materials_cost_reason},
+ * {@code materials_cost_captured_at}) — the data of record for materialsCost.
+ * The rollup engine ({@code MaterialsCostRollupService}) is the only writer;
+ * the controller/UI is the only reader.
  *
  * <p>Despite the {@code Projection} suffix, this is not driven by an
  * inbound product/sales/etc. event — it's driven by manufacturing's own

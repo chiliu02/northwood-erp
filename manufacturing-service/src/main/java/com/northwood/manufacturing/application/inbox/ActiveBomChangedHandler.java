@@ -10,7 +10,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Idempotent inbox handler for {@code product.ActiveBomChanged}. Maintains
- * the {@code manufacturing.product_active_bom} projection and, in the same
+ * the {@code manufacturing.product_card.active_bom_header_id} column and, in the same
  * transaction, kicks off the §2.8 Slice D BoM rollup so the activated
  * product's materialsCost is computed immediately. Co-exists with
  * manufacturing's existing {@code bom_header.is_active} column during the

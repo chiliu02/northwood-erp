@@ -20,8 +20,9 @@ public interface BomLookup {
      * as a line. Used by {@code MaterialsCostRollupService} to walk up from a
      * component whose materials cost just changed and recompute every parent.
      *
-     * <p>"Active" means the row appears in {@code manufacturing.product_active_bom}
-     * (the canonical pointer). The legacy {@code bom_header.status='active'}
+     * <p>"Active" means the row has a non-null
+     * {@code manufacturing.product_card.active_bom_header_id} (the canonical
+     * pointer). The legacy {@code bom_header.status='active'}
      * fallback isn't consulted here — by the time Slice D's rollup is exercised
      * the projection is the authority. Returns an empty list when the component
      * is in no active BoM (typical for raw materials that don't appear as a

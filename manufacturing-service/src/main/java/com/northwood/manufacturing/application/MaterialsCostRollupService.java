@@ -21,7 +21,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * Owns the manufacturing-side {@code product_materials_cost} table and emits
+ * Owns the materials-cost facets on {@code manufacturing.product_card}
+ * ({@code materials_cost}, {@code currency_code}, {@code materials_cost_reason},
+ * {@code materials_cost_captured_at}) and emits
  * {@link ProductMaterialsCostComputed} as the public contract.
  *
  * <h3>Why this lives in manufacturing-service, not product-service</h3>
@@ -36,7 +38,7 @@ import org.springframework.stereotype.Service;
  * <h3>Routing rules (Slice C + Slice D combined)</h3>
  * <ol>
  *   <li><b>Active BoM wins.</b> If a product has an active BoM (per the
- *       {@code product_active_bom} projection / {@code bom_header.status='active'}
+ *       {@code product_card.active_bom_header_id} / {@code bom_header.status='active'}
  *       fallback), its materialsCost is the BoM rollup — sum across lines of
  *       {@code quantityPerFinishedUnit * (1 + scrap_factor%/100) * componentMaterialsCost}.
  *       Reason set per the trigger: {@code "bom_activated"} on initial

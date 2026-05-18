@@ -34,15 +34,14 @@ public class JdbcProductMaterialsCostProjection implements ProductMaterialsCostP
     ) {
         Timestamp ts = Timestamp.from(capturedAt);
         jdbc.update("""
-            INSERT INTO manufacturing.product_materials_cost
-                (product_id, materials_cost, currency_code, reason, captured_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, now())
+            INSERT INTO manufacturing.product_card
+                (product_id, materials_cost, currency_code, materials_cost_reason, materials_cost_captured_at)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT (product_id) DO UPDATE SET
                 materials_cost = EXCLUDED.materials_cost,
                 currency_code = EXCLUDED.currency_code,
-                reason = EXCLUDED.reason,
-                captured_at = EXCLUDED.captured_at,
-                updated_at = now()
+                materials_cost_reason = EXCLUDED.materials_cost_reason,
+                materials_cost_captured_at = EXCLUDED.materials_cost_captured_at
             """,
             productId, materialsCost, currencyCode, reason, ts
         );
@@ -54,16 +53,16 @@ public class JdbcProductMaterialsCostProjection implements ProductMaterialsCostP
     public Optional<MaterialsCost> findByProductId(UUID productId) {
         var rows = jdbc.query(
             """
-            SELECT product_id, materials_cost, currency_code, reason, captured_at
-            FROM manufacturing.product_materials_cost
-            WHERE product_id = ?
+            SELECT product_id, materials_cost, currency_code, materials_cost_reason, materials_cost_captured_at
+            FROM manufacturing.product_card
+            WHERE product_id = ? AND materials_cost_captured_at IS NOT NULL
             """,
             (rs, i) -> new MaterialsCost(
                 (UUID) rs.getObject("product_id"),
                 rs.getBigDecimal("materials_cost"),
                 rs.getString("currency_code"),
-                rs.getString("reason"),
-                rs.getTimestamp("captured_at").toInstant()
+                rs.getString("materials_cost_reason"),
+                rs.getTimestamp("materials_cost_captured_at").toInstant()
             ),
             productId
         );

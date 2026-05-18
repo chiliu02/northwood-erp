@@ -19,19 +19,18 @@ public class JdbcBomLookup implements BomLookup {
 
     @Override
     public Optional<ActiveBom> findActiveByFinishedProductId(UUID finishedProductId) {
-        // Shape A: consult the product_active_bom projection (maintained by
-        // ActiveBomChangedHandler from product master) first. Fall back to
-        // bom_header.status='active' when no projection row exists — covers
-        // BOMs activated locally before the projection was populated. The
-        // backfill changeset 2026-05-05-backfill-product-active-bom.sql
-        // seeds the projection from existing local state on first boot, so
-        // the fallback path becomes dead in practice; it stays as a
+        // Shape A: consult the active_bom_header_id column on
+        // manufacturing.product_card (maintained by ActiveBomChangedHandler
+        // from product master) first. Fall back to bom_header.status='active'
+        // when no projection row exists — covers BOMs activated locally
+        // before the projection was populated. The fallback path becomes
+        // dead in practice once the baseline seed lands; it stays as a
         // defensive safety net during the migration window.
         UUID bomHeaderId = null;
         try {
             bomHeaderId = jdbc.queryForObject(
                 """
-                SELECT active_bom_header_id FROM manufacturing.product_active_bom
+                SELECT active_bom_header_id FROM manufacturing.product_card
                 WHERE product_id = ? AND active_bom_header_id IS NOT NULL
                 """,
                 UUID.class, finishedProductId
@@ -101,9 +100,9 @@ public class JdbcBomLookup implements BomLookup {
         // Use bom_header.status='active' as the runtime authority — it's
         // always set for active BoMs (whether activated in-service via
         // BomEditService.activate, or projected from product.ActiveBomChanged
-        // via ActiveBomChangedHandler). The product_active_bom projection
-        // co-exists but isn't always in sync (BomEditService doesn't write
-        // to it); falling back to status='active' is the same approach
+        // via ActiveBomChangedHandler). The product_card.active_bom_header_id
+        // column co-exists but isn't always in sync (BomEditService doesn't
+        // write to it); falling back to status='active' is the same approach
         // findActiveByFinishedProductId uses.
         return jdbc.query(
             """

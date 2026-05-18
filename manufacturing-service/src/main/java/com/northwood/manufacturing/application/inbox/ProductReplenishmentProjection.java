@@ -5,7 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Maintains and reads the {@code manufacturing.product_replenishment}
+ * Maintains and reads the {@code manufacturing.product_card}
  * projection. Pure upsert on write; the inbox dedupes redeliveries and
  * partition keys preserve per-product event order on the bus, so latest-
  * wins is naturally correct (no version column on the projection).

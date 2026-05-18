@@ -26,13 +26,13 @@ public class JdbcProductReplenishmentProjection implements ProductReplenishmentP
     public void seedDefaultsFromProductType(UUID productId, String productType) {
         Replenishment defaults = ProductReplenishmentProjection.defaultsFor(productType);
         jdbc.update("""
-            INSERT INTO manufacturing.product_replenishment (product_id, is_purchased, is_manufactured)
+            INSERT INTO manufacturing.product_card (product_id, is_purchased, is_manufactured)
             VALUES (?, ?, ?)
             ON CONFLICT (product_id) DO NOTHING
             """,
             productId, defaults.isPurchased(), defaults.isManufactured()
         );
-        log.info("seeded manufacturing.product_replenishment for product_id={} ({}): purchased={}, manufactured={}",
+        log.info("seeded manufacturing.product_card for product_id={} ({}): purchased={}, manufactured={}",
             productId, productType, defaults.isPurchased(), defaults.isManufactured());
     }
 
@@ -40,7 +40,7 @@ public class JdbcProductReplenishmentProjection implements ProductReplenishmentP
     @Transactional
     public void applyMakeVsBuy(UUID productId, boolean isPurchased, boolean isManufactured) {
         jdbc.update("""
-            INSERT INTO manufacturing.product_replenishment (product_id, is_purchased, is_manufactured)
+            INSERT INTO manufacturing.product_card (product_id, is_purchased, is_manufactured)
             VALUES (?, ?, ?)
             ON CONFLICT (product_id) DO UPDATE
                 SET is_purchased = EXCLUDED.is_purchased,
@@ -48,7 +48,7 @@ public class JdbcProductReplenishmentProjection implements ProductReplenishmentP
             """,
             productId, isPurchased, isManufactured
         );
-        log.info("upserted manufacturing.product_replenishment for product_id={} → purchased={}, manufactured={}",
+        log.info("upserted manufacturing.product_card for product_id={} → purchased={}, manufactured={}",
             productId, isPurchased, isManufactured);
     }
 
@@ -61,23 +61,23 @@ public class JdbcProductReplenishmentProjection implements ProductReplenishmentP
         // single upsert so a discontinue arriving before a seed still lands
         // the row.
         jdbc.update("""
-            INSERT INTO manufacturing.product_replenishment (product_id, is_purchased, is_manufactured, discontinued_at)
+            INSERT INTO manufacturing.product_card (product_id, is_purchased, is_manufactured, discontinued_at)
             VALUES (?, false, false, now())
             ON CONFLICT (product_id) DO UPDATE
                 SET is_purchased = false,
                     is_manufactured = false,
-                    discontinued_at = COALESCE(manufacturing.product_replenishment.discontinued_at, now())
+                    discontinued_at = COALESCE(manufacturing.product_card.discontinued_at, now())
             """,
             productId
         );
-        log.info("discontinued manufacturing.product_replenishment for product_id={}", productId);
+        log.info("discontinued manufacturing.product_card for product_id={}", productId);
     }
 
     @Override
     public Optional<Replenishment> findByProductId(UUID productId) {
         try {
             return Optional.ofNullable(jdbc.queryForObject(
-                "SELECT is_purchased, is_manufactured FROM manufacturing.product_replenishment WHERE product_id = ?",
+                "SELECT is_purchased, is_manufactured FROM manufacturing.product_card WHERE product_id = ?",
                 (rs, n) -> new Replenishment(rs.getBoolean("is_purchased"), rs.getBoolean("is_manufactured")),
                 productId
             ));

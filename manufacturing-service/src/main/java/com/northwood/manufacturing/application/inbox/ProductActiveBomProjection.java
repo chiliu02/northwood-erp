@@ -4,7 +4,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Maintains {@code manufacturing.product_active_bom} from
+ * Maintains {@code manufacturing.product_card} from
  * {@code product.ActiveBomChanged} events. Co-exists with manufacturing's own
  * {@code bom_header.is_active} column during the migration period.
  *

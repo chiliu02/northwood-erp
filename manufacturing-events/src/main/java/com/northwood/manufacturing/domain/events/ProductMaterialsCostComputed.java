@@ -10,7 +10,7 @@ import java.util.UUID;
  * §2.8 Slice C: emitted by the manufacturing-side materialsCost rollup
  * engine whenever a product's computed cost transitions to a new value
  * (or to/from null). The cost itself lives on
- * {@code manufacturing.product_materials_cost} (manufacturing's own data
+ * {@code manufacturing.product_card} (manufacturing's own data
  * of record) — the event is the public contract so other services /
  * read-models can react.
  *

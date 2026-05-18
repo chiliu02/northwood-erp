@@ -9,7 +9,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Idempotent inbox handler for {@code product.MakeVsBuyChanged}. Updates the
- * {@code manufacturing.product_replenishment} projection. Mirrors sales' own
+ * {@code manufacturing.product_card} projection. Mirrors sales' own
  * Shape A handler ({@code SalesPriceChangedHandler}) — both treat product
  * as the master and project per-facet outcomes locally.
  */
