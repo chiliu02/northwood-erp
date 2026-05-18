@@ -21,7 +21,7 @@ import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.NoopPlatformTransactionManager;
 import com.northwood.testharness.inmemory.SynchronousBus;
 import com.northwood.testharness.inmemory.sales.InMemoryCustomerLookup;
-import com.northwood.testharness.inmemory.sales.InMemoryProductPricingLookup;
+import com.northwood.testharness.inmemory.sales.InMemoryProductCardLookup;
 import com.northwood.testharness.inmemory.sales.InMemorySalesOrderFulfilmentSagaPort;
 import com.northwood.testharness.inmemory.sales.InMemorySalesOrderHeaderStatusProjection;
 import com.northwood.testharness.inmemory.sales.InMemorySalesOrderLineSnapshotPort;
@@ -49,7 +49,7 @@ public final class SalesTestKit {
     public final InMemorySalesOrderRepository orders;
     public final InMemorySalesOrderFulfilmentSagaPort sagas = new InMemorySalesOrderFulfilmentSagaPort();
     public final InMemoryCustomerLookup customers = new InMemoryCustomerLookup();
-    public final InMemoryProductPricingLookup pricing = new InMemoryProductPricingLookup();
+    public final InMemoryProductCardLookup productCards = new InMemoryProductCardLookup();
     public final InMemorySalesOrderHeaderStatusProjection statusProjection = new InMemorySalesOrderHeaderStatusProjection();
     public final InMemorySalesOrderLineSnapshotPort lineSnapshots;
 
@@ -67,7 +67,7 @@ public final class SalesTestKit {
         this.sagaManager = new JdbcSalesOrderFulfilmentSagaManager(sagas, json, txm);
         this.sagaWorker = new SalesOrderFulfilmentSagaWorker(sagaManager, lineSnapshots, outbox, json);
         this.compensationEmitter = new SalesOrderCompensationEmitter(orders, outbox, json);
-        this.service = new SalesOrderService(orders, sagaManager, customers, pricing);
+        this.service = new SalesOrderService(orders, sagaManager, customers, productCards);
 
         bus.register(outbox);
         bus.register(new StockReservedHandler(inbox, sagaManager, statusProjection, json));

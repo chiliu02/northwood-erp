@@ -23,17 +23,17 @@ public class JdbcProductCreatedProjection implements ProductCreatedProjection {
     @Transactional
     public void apply(UUID productId) {
         int rows = jdbc.update("""
-            INSERT INTO sales.product_pricing (product_id, sales_price, currency_code)
+            INSERT INTO sales.product_card (product_id, sales_price, currency_code)
             VALUES (?, NULL, NULL)
             ON CONFLICT (product_id) DO NOTHING
             """,
             productId
         );
         if (rows == 0) {
-            log.debug("sales.product_pricing row already exists for product_id={} — ProductCreated stub skipped",
+            log.debug("sales.product_card row already exists for product_id={} — ProductCreated stub skipped",
                 productId);
         } else {
-            log.info("created sales.product_pricing stub for product_id={} (NULL price, NULL currency)",
+            log.info("created sales.product_card stub for product_id={} (NULL price, NULL currency)",
                 productId);
         }
     }

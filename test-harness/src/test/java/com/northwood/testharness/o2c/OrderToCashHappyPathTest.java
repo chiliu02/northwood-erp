@@ -63,7 +63,7 @@ class OrderToCashHappyPathTest {
         // Seed: customer + product + stock for direct-ship.
         sales.customers.put("CUST-001", "Acme Corp", Customer.Status.ACTIVE);
         UUID productId = UUID.randomUUID();
-        sales.pricing.put(productId, new BigDecimal("100.00"), "AUD");
+        sales.productCards.put(productId, new BigDecimal("100.00"), "AUD");
         inventory.seedStock(productId, new BigDecimal("50"));
 
         // Step 1: place the order. Saga starts.

@@ -1,7 +1,7 @@
 package com.northwood.sales.application;
 
 import com.northwood.sales.application.CustomerLookup.CustomerSummary;
-import com.northwood.sales.application.ProductPricingLookup.CatalogPrice;
+import com.northwood.sales.application.ProductCardLookup.CatalogPrice;
 import com.northwood.sales.application.dto.CancelOrderCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand.OrderLine;
@@ -30,7 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>Per-line pricing semantics:
  * <ul>
- *   <li>{@code unitPrice == null} → auto-fill from {@code sales.product_pricing}.
+ *   <li>{@code unitPrice == null} → auto-fill from {@code sales.product_card}.
  *       If the SKU has no projection row, throw {@link UnknownPriceException}
  *       (400). The caller may always supply an explicit override to bypass.</li>
  *   <li>{@code unitPrice != null} → accept as-is (negotiated/override price);
@@ -109,18 +109,18 @@ public class SalesOrderService {
     private final SalesOrderRepository salesOrders;
     private final SalesOrderFulfilmentSagaManager sagaManager;
     private final CustomerLookup customers;
-    private final ProductPricingLookup productPricing;
+    private final ProductCardLookup productCards;
 
     public SalesOrderService(
         SalesOrderRepository salesOrders,
         SalesOrderFulfilmentSagaManager sagaManager,
         CustomerLookup customers,
-        ProductPricingLookup productPricing
+        ProductCardLookup productCards
     ) {
         this.salesOrders = salesOrders;
         this.sagaManager = sagaManager;
         this.customers = customers;
-        this.productPricing = productPricing;
+        this.productCards = productCards;
     }
 
     /**
@@ -234,7 +234,7 @@ public class SalesOrderService {
     }
 
     private BigDecimal resolveUnitPrice(OrderLine req, String orderCurrency) {
-        Optional<CatalogPrice> catalog = productPricing.findByProductId(req.productId());
+        Optional<CatalogPrice> catalog = productCards.findByProductId(req.productId());
 
         // Discontinued check fires regardless of whether caller passed a
         // unitPrice — a manual override doesn't override product-service's

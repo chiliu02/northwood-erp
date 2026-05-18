@@ -9,7 +9,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Idempotent inbox handler for {@code product.SalesPriceChanged}. Updates
- * the {@code sales.product_pricing} projection so order-validation reads stay
+ * the {@code sales.product_card} projection so order-validation reads stay
  * inside the sales schema — the per-service search_path blocks cross-schema
  * queries anyway, and a denormalised projection is the established Shape A
  * pattern for non-product services consuming product-master facets.
@@ -21,7 +21,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class SalesPriceChangedHandler extends AbstractInboxHandler<SalesPriceChanged> {
 
-    public static final String CONSUMER_NAME = "sales.product-pricing-projector";
+    public static final String CONSUMER_NAME = "sales.product-card-projector";
 
     private final SalesPriceProjection projection;
 

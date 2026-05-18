@@ -24,18 +24,18 @@ public class JdbcProductDiscontinuedProjection implements ProductDiscontinuedPro
     @Transactional
     public void applyDiscontinued(UUID productId, Instant discontinuedAt) {
         int rows = jdbc.update("""
-            UPDATE sales.product_pricing
+            UPDATE sales.product_card
                SET discontinued_at = ?
              WHERE product_id = ?
             """,
             java.sql.Timestamp.from(discontinuedAt), productId
         );
         if (rows == 0) {
-            log.warn("ProductDiscontinued for product_id={} found no sales.product_pricing row — "
+            log.warn("ProductDiscontinued for product_id={} found no sales.product_card row — "
                 + "ProductCreated seed missed or replayed out of order; falling back to insert",
                 productId);
             jdbc.update("""
-                INSERT INTO sales.product_pricing (product_id, discontinued_at)
+                INSERT INTO sales.product_card (product_id, discontinued_at)
                 VALUES (?, ?)
                 ON CONFLICT (product_id) DO UPDATE
                     SET discontinued_at = EXCLUDED.discontinued_at
@@ -43,7 +43,7 @@ public class JdbcProductDiscontinuedProjection implements ProductDiscontinuedPro
                 productId, java.sql.Timestamp.from(discontinuedAt)
             );
         } else {
-            log.info("stamped sales.product_pricing.discontinued_at for product_id={} (at={})",
+            log.info("stamped sales.product_card.discontinued_at for product_id={} (at={})",
                 productId, discontinuedAt);
         }
     }

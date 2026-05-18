@@ -21,7 +21,7 @@ northwood:
     poll-interval: 1000
   kafka:
     # Sales subscribes to:
-    # - product.events     for ProductCreated (seed sales.product_pricing
+    # - product.events     for ProductCreated (seed sales.product_card
     #   stub) + SalesPriceChanged (fill in price+currency) + ProductDiscontinued
     #   (stamp discontinued_at). The three together make every row's lifetime
     #   mirror the Product aggregate's.

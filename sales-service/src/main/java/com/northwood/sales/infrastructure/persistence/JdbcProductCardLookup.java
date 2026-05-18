@@ -1,6 +1,6 @@
 package com.northwood.sales.infrastructure.persistence;
 
-import com.northwood.sales.application.ProductPricingLookup;
+import com.northwood.sales.application.ProductCardLookup;
 import java.sql.Timestamp;
 import java.util.Optional;
 import java.util.UUID;
@@ -9,11 +9,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public class JdbcProductPricingLookup implements ProductPricingLookup {
+public class JdbcProductCardLookup implements ProductCardLookup {
 
     private final JdbcTemplate jdbc;
 
-    public JdbcProductPricingLookup(JdbcTemplate jdbc) {
+    public JdbcProductCardLookup(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
@@ -23,7 +23,7 @@ public class JdbcProductPricingLookup implements ProductPricingLookup {
             return Optional.ofNullable(jdbc.queryForObject(
                 """
                 SELECT sales_price, currency_code, discontinued_at
-                FROM sales.product_pricing
+                FROM sales.product_card
                 WHERE product_id = ?
                 """,
                 (rs, n) -> {

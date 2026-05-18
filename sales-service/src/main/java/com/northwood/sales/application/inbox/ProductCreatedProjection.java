@@ -3,7 +3,7 @@ package com.northwood.sales.application.inbox;
 import java.util.UUID;
 
 /**
- * Inserts a stub {@code sales.product_pricing} row so subsequent product-master
+ * Inserts a stub {@code sales.product_card} row so subsequent product-master
  * events ({@link SalesPriceProjection#applySalesPrice} and
  * {@link ProductDiscontinuedProjection#applyDiscontinued}) have a row to
  * project onto. Mirrors the inventory and manufacturing seed-on-created

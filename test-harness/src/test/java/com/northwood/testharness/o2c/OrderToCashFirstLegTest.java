@@ -48,7 +48,7 @@ class OrderToCashFirstLegTest {
         // Seed: one active customer, one product with catalog pricing, enough stock.
         sales.customers.put("CUST-001", "Acme Corp", Customer.Status.ACTIVE);
         UUID productId = UUID.randomUUID();
-        sales.pricing.put(productId, new BigDecimal("100.00"), "AUD");
+        sales.productCards.put(productId, new BigDecimal("100.00"), "AUD");
         inventory.seedStock(productId, new BigDecimal("50"));
 
         // Step 1: place the order. Aggregate emits SalesOrderPlaced; saga

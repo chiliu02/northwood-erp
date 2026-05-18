@@ -6,6 +6,22 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-18 — §2.23.1: `sales.product_pricing` → `sales.product_card`
+
+First of five `_card`-suffix migrations per `docs/conventions.md` → *Consumer-side denormalized tables*. Mechanical rename — no shape change, no consolidation, just the table + class name move so sales aligns with the new convention.
+
+- **Baseline** `db/northwood_erp.sql`: `sales.product_pricing` → `sales.product_card`; trigger `trg_product_pricing_updated_at` → `trg_product_card_updated_at`; seed-INSERT comment + reference comment in finance section updated.
+- **New Liquibase changeset** `2026-05-18-rename-product-pricing-to-product-card.sql` (sales-service) with `splitStatements:false` for the inner DO block. Idempotent via `ALTER TABLE IF EXISTS` on the table rename and a `BEGIN ... EXCEPTION WHEN undefined_object OR undefined_table` wrap on the trigger rename — no-ops cleanly against a fresh baseline-provisioned DB (which already has the new names).
+- **Historical Liquibase changesets retargeted** to the new table name: `2026-05-14-add-product-pricing-discontinued-at.sql` and `2026-05-15-product-pricing-nullable-price.sql` (filename kept; content updated to reference `sales.product_card`). They become no-ops on fresh boot since the column shape they assert is already in the baseline. Hash drift is accepted per the project's fresh-volume-reset posture.
+- **Java renames**: `ProductPricingLookup` → `ProductCardLookup` (interface, `application/`); `JdbcProductPricingLookup` → `JdbcProductCardLookup` (impl, `infrastructure/persistence/`). Method signatures and `CatalogPrice` record unchanged. Old files deleted.
+- **SQL strings updated** in `JdbcSalesPriceProjection`, `JdbcProductDiscontinuedProjection`, `JdbcProductCreatedProjection` (all write paths still per-event, target the renamed table). Javadoc references on the three per-event `*Projection` interfaces + `*Handler` classes refreshed.
+- **`SalesPriceChangedHandler.CONSUMER_NAME`** updated from `sales.product-pricing-projector` to `sales.product-card-projector` for consistency. The other two handlers (`ProductDiscontinuedHandler`, `ProductCreatedHandler`) had neutral consumer names; unchanged.
+- **Injection sites**: `SalesOrderService` field `productPricing` → `productCards` (plural, per the instance-field-naming convention's "full aggregate name in plural" rule); type swap.
+- **Test-harness**: `InMemoryProductPricingLookup` → `InMemoryProductCardLookup`; `SalesTestKit.pricing` → `SalesTestKit.productCards`; three test seed sites in `o2c/*Test.java` updated.
+- **Doc updates**: `CLAUDE.md` schema-naming summary + instance-field example; `docs/conventions.md` 3 historical references + the instance-field-naming example; `docs/user-stories.md`; `docs/demo-script.md`; `docs/projections.html`; `docs/event-flow.html`; `docs/domain-driven design.html`; `docs/design-notes.md`; `demo-web-ui/src/routes/Products.tsx`. Historical `dev-done.md` entries left untouched (append-only).
+
+**Smoke**: `mvn install -DskipTests` clean; `mvn -pl sales-service test` → 133/133 green; `mvn -pl test-harness test` → 8/8 green. Fresh-volume Liquibase smoke deferred to final-slice §2.23.5 boot.
+
 ## 2026-05-18 — Convention text: cardinality-based projection-table rule + `_card` suffix (§2.23 prep)
 
 Sharpened the consumer-side denormalized-table rule in `docs/conventions.md` after a design conversation:

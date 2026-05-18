@@ -263,7 +263,7 @@ window.NORTHWOOD_EVENTS = [
     event: "ProductCreated",
     consumers: [
       { dest: "sales", name: "sales.product-created",
-        desc: `<code>sales.product_pricing</code> — seeds a stub row with <code>sales_price=NULL</code>, <code>currency_code=NULL</code> so subsequent <code>SalesPriceChanged</code> + <code>ProductDiscontinued</code> have a row to <code>UPDATE</code> (<code>ON CONFLICT DO NOTHING</code>). NULL <code>sales_price</code> = "unsellable until priced" — <code>placeOrder</code> rejects identically to discontinued` },
+        desc: `<code>sales.product_card</code> — seeds a stub row with <code>sales_price=NULL</code>, <code>currency_code=NULL</code> so subsequent <code>SalesPriceChanged</code> + <code>ProductDiscontinued</code> have a row to <code>UPDATE</code> (<code>ON CONFLICT DO NOTHING</code>). NULL <code>sales_price</code> = "unsellable until priced" — <code>placeOrder</code> rejects identically to discontinued` },
       { dest: "inventory", name: "inventory.product-created",
         desc: `<code>inventory.stock_item</code> — seeds a stub row (default UOM <code>'EA'</code>, tracking <code>'tracked'</code>, reorder 0/0) so subsequent <code>ReorderPolicyChanged</code> has a row to update (<code>ON CONFLICT DO NOTHING</code>)` },
       { dest: "manufacturing", name: "manufacturing.product-replenishment-seeder",
@@ -280,7 +280,7 @@ window.NORTHWOOD_EVENTS = [
     event: "ProductDiscontinued",
     consumers: [
       { dest: "sales", name: "sales.product-discontinued",
-        desc: `<code>sales.product_pricing.discontinued_at</code> — read by <code>SalesOrderService.placeOrder</code> to reject lines for retired SKUs (HTTP 409)` },
+        desc: `<code>sales.product_card.discontinued_at</code> — read by <code>SalesOrderService.placeOrder</code> to reject lines for retired SKUs (HTTP 409)` },
       { dest: "manufacturing", name: "manufacturing.product-discontinued",
         desc: `<code>manufacturing.product_replenishment.is_purchased=false, is_manufactured=false</code> (existing <code>!isManufactured()</code> guard then rejects new sales-lines); <code>manufacturing.product_active_bom.active_bom_header_id=null</code>` },
       { dest: "purchasing", name: "purchasing.product-discontinued",
@@ -308,7 +308,7 @@ window.NORTHWOOD_EVENTS = [
     event: "SalesPriceChanged",
     consumers: [
       { dest: "sales", name: "sales.product-pricing-projector",
-        desc: `<code>sales.product_pricing.sales_price</code>, <code>currency_code</code>` },
+        desc: `<code>sales.product_card.sales_price</code>, <code>currency_code</code>` },
     ]
   },
   {

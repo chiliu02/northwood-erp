@@ -180,7 +180,7 @@
 
 <p>Each leaf row tags its write target with a <em>kind</em> chip:</p>
 <ul>
-  <li><span class="table-name"><span class="kind read-model">read-model</span></span> — classic denormalised projection. Lives in a consumer schema, fed by inbox handlers, no consumer-side command writes (e.g. <code>sales.product_pricing</code>, <code>reporting.sales_order_360_view</code>, <code>finance.product_accounting</code>).</li>
+  <li><span class="table-name"><span class="kind read-model">read-model</span></span> — classic denormalised projection. Lives in a consumer schema, fed by inbox handlers, no consumer-side command writes (e.g. <code>sales.product_card</code>, <code>reporting.sales_order_360_view</code>, <code>finance.product_accounting</code>).</li>
   <li><span class="table-name"><span class="kind saga">saga</span></span> — saga state row mutated by inbox handlers reacting to ack-style events from cooperating services (e.g. <code>sales.sales_order_fulfilment_saga</code>, <code>manufacturing.make_to_order_saga</code>).</li>
   <li><span class="table-name"><span class="kind aggregate">aggregate</span></span> — destination service's own aggregate, mutated through commands triggered by inbox handlers (e.g. <code>inventory.stock_reservation</code> on <code>StockReservationRequested</code>, <code>finance.journal_entry_header</code> on <code>ShipmentPosted</code>).</li>
 </ul>
@@ -254,7 +254,7 @@ window.NORTHWOOD_PROJECTIONS = [
     aggregate: "Product",
     destinations: [
       { dest: "sales", tables: [
-        { name: "product_pricing", kind: "read-model",
+        { name: "product_card", kind: "read-model",
           events: ["ProductCreated", "SalesPriceChanged", "ProductDiscontinued"] },
       ]},
       { dest: "inventory", tables: [

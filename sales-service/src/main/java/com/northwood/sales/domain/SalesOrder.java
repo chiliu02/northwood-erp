@@ -229,7 +229,7 @@ public final class SalesOrder {
      * these prices verbatim, so a miss propagates as a zero-amount invoice
      * line; that service logs at DEBUG when it sees the sentinel. To tighten
      * later: throw here (loud failure), or fall back to a
-     * {@code ProductPricingLookup} on the sales side (preserves saga, emits
+     * {@code ProductCardLookup} on the sales side (preserves saga, emits
      * a real number).
      */
     public void recordShipped(

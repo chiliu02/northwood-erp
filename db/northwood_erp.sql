@@ -450,7 +450,7 @@ CREATE TRIGGER trg_customer_updated_at
 -- makes lifecycle closure structural — one row per Product for its lifetime,
 -- mirroring the inventory.stock_item and manufacturing.product_replenishment
 -- shape.
-CREATE TABLE sales.product_pricing (
+CREATE TABLE sales.product_card (
     product_id UUID PRIMARY KEY,
     sales_price NUMERIC(18, 6),
     currency_code CHAR(3),
@@ -458,8 +458,8 @@ CREATE TABLE sales.product_pricing (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TRIGGER trg_product_pricing_updated_at
-    BEFORE UPDATE ON sales.product_pricing
+CREATE TRIGGER trg_product_card_updated_at
+    BEFORE UPDATE ON sales.product_card
     FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
 
 CREATE TABLE sales.sales_order_header (
@@ -669,14 +669,14 @@ INSERT INTO sales.customer (
 )
 ON CONFLICT (customer_code) DO NOTHING;
 
--- Backfill sales.product_pricing from product.product so the projection has
+-- Backfill sales.product_card from product.product so the projection has
 -- one row per existing Product at boot — same shape the runtime
 -- ProductCreatedHandler produces on product.ProductCreated. Raw materials and
 -- semi-finished goods are unsellable from the sales perspective, so their
 -- price + currency are NULL (lifecycle: created → discontinued, never priced).
 -- The two finished goods carry their real prices so the demo scenarios that
 -- place orders don't need a separate SalesPriceChanged seed to be sellable.
-INSERT INTO sales.product_pricing (product_id, sales_price, currency_code)
+INSERT INTO sales.product_card (product_id, sales_price, currency_code)
 VALUES
     ('00000000-0000-7000-8000-000000000001', 650.00, 'AUD'),  -- FG-TABLE-001
     ('00000000-0000-7000-8000-000000000002', NULL,   NULL),   -- RM-BOARD-001
@@ -2032,7 +2032,7 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA shared TO finance_service;
 -- finance.product_standard_cost and finance.product_valuation_class —
 -- those tables were named after individual columns rather than after the
 -- schema's view of the aggregate; the consolidated `product_accounting`
--- name follows the pattern of sales.product_pricing,
+-- name follows the pattern of sales.product_card,
 -- inventory.stock_item, manufacturing.product_replenishment.
 --
 -- Read paths:

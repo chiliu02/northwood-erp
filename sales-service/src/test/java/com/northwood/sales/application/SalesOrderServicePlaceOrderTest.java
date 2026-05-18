@@ -7,7 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.northwood.sales.application.CustomerLookup.CustomerSummary;
-import com.northwood.sales.application.ProductPricingLookup.CatalogPrice;
+import com.northwood.sales.application.ProductCardLookup.CatalogPrice;
 import com.northwood.sales.application.SalesOrderService.ProductDiscontinuedException;
 import com.northwood.sales.application.SalesOrderService.UnknownPriceException;
 import com.northwood.sales.application.dto.PlaceOrderCommand;
@@ -36,13 +36,13 @@ class SalesOrderServicePlaceOrderTest {
     @Mock SalesOrderRepository orders;
     @Mock SalesOrderFulfilmentSagaManager sagaManager;
     @Mock CustomerLookup customers;
-    @Mock ProductPricingLookup productPricing;
+    @Mock ProductCardLookup productCards;
 
     private SalesOrderService service;
 
     @BeforeEach
     void setUp() {
-        service = new SalesOrderService(orders, sagaManager, customers, productPricing);
+        service = new SalesOrderService(orders, sagaManager, customers, productCards);
         when(customers.findByCode("CUST-1")).thenReturn(Optional.of(
             new CustomerSummary(CUSTOMER_ID, "CUST-1", "Customer One", Customer.Status.ACTIVE)
         ));
@@ -59,7 +59,7 @@ class SalesOrderServicePlaceOrderTest {
     }
 
     @Test void placeOrder_rejects_discontinued_product_even_when_caller_supplies_unitPrice() {
-        when(productPricing.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
+        when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
             new CatalogPrice(new BigDecimal("10.00"), "AUD", Instant.parse("2026-05-14T03:15:00Z"))
         ));
 
@@ -73,7 +73,7 @@ class SalesOrderServicePlaceOrderTest {
     }
 
     @Test void placeOrder_rejects_discontinued_product_when_using_catalog_unitPrice() {
-        when(productPricing.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
+        when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
             new CatalogPrice(new BigDecimal("10.00"), "AUD", Instant.parse("2026-05-14T03:15:00Z"))
         ));
 
@@ -84,7 +84,7 @@ class SalesOrderServicePlaceOrderTest {
     }
 
     @Test void placeOrder_accepts_live_product() {
-        when(productPricing.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
+        when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
             new CatalogPrice(new BigDecimal("10.00"), "AUD", null)
         ));
 
@@ -99,7 +99,7 @@ class SalesOrderServicePlaceOrderTest {
         // or the product is a raw material that's never sold (NULL price for
         // its lifetime). Without a caller-supplied unitPrice, the line is
         // unsellable, same outcome as catalog.isEmpty().
-        when(productPricing.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
+        when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
             new CatalogPrice(null, null, null)
         ));
 
@@ -115,7 +115,7 @@ class SalesOrderServicePlaceOrderTest {
         // Override price path: stub row exists but has no catalog currency to
         // compare against, so the unitPrice is accepted without a currency
         // assertion (same race-tolerance the empty-catalog path provides).
-        when(productPricing.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
+        when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
             new CatalogPrice(null, null, null)
         ));
 

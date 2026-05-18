@@ -9,7 +9,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Idempotent inbox handler for {@code product.ProductDiscontinued}. Stamps
- * {@code sales.product_pricing.discontinued_at} so {@code placeOrder} can
+ * {@code sales.product_card.discontinued_at} so {@code placeOrder} can
  * reject lines for discontinued products without crossing schemas.
  */
 @Component

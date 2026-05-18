@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * Populates {@code sales.product_pricing.sales_price} / {@code currency_code}
+ * Populates {@code sales.product_card.sales_price} / {@code currency_code}
  * from {@code SalesPriceChanged}. Plain UPDATE — the row is seeded on
  * {@code ProductCreated} by {@link ProductCreatedProjection}, so a zero-rows
  * UPDATE is an anomaly (logged WARN, with an insert-fallback for resilience).

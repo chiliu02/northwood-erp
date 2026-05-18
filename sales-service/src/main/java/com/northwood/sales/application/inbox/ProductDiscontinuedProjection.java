@@ -4,12 +4,12 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Stamps {@code sales.product_pricing.discontinued_at} for a product that
+ * Stamps {@code sales.product_card.discontinued_at} for a product that
  * product-service has retired. Plain UPDATE — the row is seeded on
  * {@code ProductCreated} by {@link ProductCreatedProjection}, so a zero-rows
  * UPDATE is an anomaly (logged WARN, with an insert-fallback for resilience).
  *
- * <p>Read side: {@link com.northwood.sales.application.ProductPricingLookup}
+ * <p>Read side: {@link com.northwood.sales.application.ProductCardLookup}
  * surfaces the field so {@code SalesOrderService.placeOrder} can reject lines
  * for discontinued products.
  *

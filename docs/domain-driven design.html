@@ -766,7 +766,7 @@ public record OutboxRow(
   (<code>stock_balance</code>, gl account balance via
   <code>SUM(journal_entry_line)</code>, <code>invoice.paid_amount</code> via
   trigger-maintained off <code>payment_allocation</code>) or that hold a
-  <em>local cache of facts owned upstream</em> (<code>sales.product_pricing</code>,
+  <em>local cache of facts owned upstream</em> (<code>sales.product_card</code>,
   <code>manufacturing.product_active_bom</code>,
   <code>finance.product_accounting</code>, <code>inventory.stock_item</code>, &hellip;)
   get projection-shaped ports instead &mdash; <code>*Writer</code> /
@@ -788,7 +788,7 @@ public record OutboxRow(
   <code>salesOrders</code> for <code>SalesOrderRepository</code>,
   <code>purchaseOrders</code> for <code>PurchaseOrderRepository</code>,
   <code>journalEntries</code> for <code>JournalEntryRepository</code>,
-  <code>productPricing</code> for <code>ProductPricingLookup</code>. Never
+  <code>productCards</code> for <code>ProductCardLookup</code>. Never
   <code>repository</code>, <code>repo</code>, <code>lookup</code>, or abbreviated
   context-implied forms (<code>orders</code>, <code>invoices</code>,
   <code>pricing</code>) &mdash; call sites read like business logic, not
@@ -943,7 +943,7 @@ public class ProductService {
     <tr><td>No bounded-context boundaries</td>
         <td>One PostgreSQL schema + role per context; <code>search_path</code> blocks cross-schema joins at runtime; events jars are the only inter-service contract.</td></tr>
     <tr><td>Conformist when ACL needed</td>
-        <td>Each consumer service projects upstream events onto a local read model (<code>sales.product_pricing</code>, <code>finance.product_accounting</code>) &mdash; the projection acts as a thin Anticorruption Layer between contexts.</td></tr>
+        <td>Each consumer service projects upstream events onto a local read model (<code>sales.product_card</code>, <code>finance.product_accounting</code>) &mdash; the projection acts as a thin Anticorruption Layer between contexts.</td></tr>
     <tr><td>Transaction script masquerading as DDD</td>
         <td>Application services orchestrate; aggregates own the logic + emit events. The grep <code>JdbcTemplate</code> in <code>application/</code> &rarr; zero is the canary.</td></tr>
     <tr><td><code>*Repository</code> without a backing aggregate</td>
