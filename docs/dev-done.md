@@ -6,6 +6,22 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-18 — §2.24.2: `BomTreeService` → `BomViewService` + add `findFlatComponentsByProductId`
+
+Generalised the read-side BOM service from one shape (tree) to a hub for multiple shapes, anticipating the flat-list view. Both methods now orchestrate the SAME recursive walk over `BomLookup` and differ only in the Java accumulator — tree mode assembles hierarchical `BomNode` children, flat mode appends to a list with cumulative-quantity multiplication.
+
+- **`BomTreeService.java` → `BomViewService.java`** via `git mv`; class renamed inside. Constructor + `BomLookup` injection unchanged.
+- **New method `findFlatComponentsByProductId(rootProductId)`** returns `List<BomFlatComponentView>`. Each entry carries the running `cumulativeQuantityPerFinishedUnit = ancestorCumulative × (quantityPerFinishedUnit × (1 + scrapFactorPercent/100))`, plus depth (1 for direct children) so UIs can indent without rebuilding the tree. Same component appearing on multiple paths surfaces as multiple entries — callers can group/sum by `componentProductId` if a deduped roll-up is needed (out-of-scope for the showcase).
+- **New `application/dto/BomFlatComponentView.java`** record — wire format for the new endpoint.
+- **`BomController`**: `treeService` field renamed to `viewService`; added `GET /api/boms/by-product/{finishedProductId}/flat` returning `List<BomFlatComponentView>`. Tree endpoint unchanged. No tree-endpoint behaviour drift.
+- **Cycle protection unchanged** — the existing visited-set guard in the tree walk applies to the flat walk too.
+- **N+1 perf note** — the new `findFlatComponentsByProductId` inherits the same per-BOM-issues-one-SQL pattern as the tree walk. Accepted at demo depth (~3 levels); scheduled for replacement under §2.24.3 (single recursive-CTE in `BomLookup`).
+- **Doc cascade**: `docs/dev-todo.md` (§2.24.2 marked shipped). No other docs reference `BomTreeService` outside historical `dev-done.md` entries (left untouched).
+
+**Smoke**: `mvn install -DskipTests` clean; `mvn -pl manufacturing-service test` → 138/138 green; `mvn -pl test-harness test` → 8/8 green.
+
+**Follow-up**: §2.24.3 (recursive-CTE replacement of the N+1 walk) still queued.
+
 ## 2026-05-18 — §2.24.1: `BomEditService` → `BomService`
 
 Drop the redundant `Edit` suffix to match the codebase's bare-`<Aggregate>Service` convention (`CustomerService`, `SalesOrderService`, `PurchaseOrderService`). Pure rename, no behavioural change.

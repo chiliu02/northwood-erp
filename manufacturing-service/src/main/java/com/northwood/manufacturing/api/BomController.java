@@ -11,10 +11,12 @@ import com.northwood.manufacturing.application.BomService.BomLineNotFoundExcepti
 import com.northwood.manufacturing.application.BomService.BomNotEditableException;
 import com.northwood.manufacturing.application.BomService.BomNotFoundException;
 import com.northwood.manufacturing.application.BomService.CreateBomDraftCommand;
-import com.northwood.manufacturing.application.BomTreeService;
+import com.northwood.manufacturing.application.BomViewService;
+import com.northwood.manufacturing.application.dto.BomFlatComponentView;
 import com.northwood.manufacturing.application.dto.BomTreeView;
 import com.northwood.shared.api.security.RequireProductionPlanner;
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -31,11 +33,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class BomController {
 
     private final BomService service;
-    private final BomTreeService treeService;
+    private final BomViewService viewService;
 
-    public BomController(BomService service, BomTreeService treeService) {
+    public BomController(BomService service, BomViewService viewService) {
         this.service = service;
-        this.treeService = treeService;
+        this.viewService = viewService;
     }
 
     /**
@@ -46,9 +48,21 @@ public class BomController {
      */
     @GetMapping("/by-product/{finishedProductId}")
     public ResponseEntity<BomTreeView> getTreeByProduct(@PathVariable UUID finishedProductId) {
-        return treeService.findActiveTreeByProductId(finishedProductId)
+        return viewService.findActiveTreeByProductId(finishedProductId)
             .map(ResponseEntity::ok)
             .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Flat list of every component in the BOM hierarchy, each carrying its
+     * cumulative per-finished-unit quantity (multiplied through every
+     * ancestor's quantity × scrap-factor). Returns an empty list (HTTP 200)
+     * when the product has no active BOM. Same authorization posture as the
+     * tree endpoint above.
+     */
+    @GetMapping("/by-product/{finishedProductId}/flat")
+    public ResponseEntity<List<BomFlatComponentView>> getFlatByProduct(@PathVariable UUID finishedProductId) {
+        return ResponseEntity.ok(viewService.findFlatComponentsByProductId(finishedProductId));
     }
 
     /**
