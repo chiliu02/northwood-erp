@@ -145,7 +145,6 @@ export interface BomFlatComponent {
   componentName: string;
   componentKind: string;
   cumulativeQuantityPerFinishedUnit: string;
-  depth: number;
 }
 
 export interface StockItemRow {

@@ -6,6 +6,29 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-18 — Flat BOM view aggregates duplicate components — one row per SKU, qty summed
+
+Reverses an earlier design choice. The §2.24.2 flat view previously surfaced the same component as multiple rows when it appeared on multiple paths (e.g. RM-SCREW-001 = 4 rows in the FG-CHEST-001 demo: depth 1 root + depth 2 via drawer + depth 2 via frame + depth 3 via panel). The user's call: dedupe to one row per unique `componentProductId`, summing the cumulative-per-finished-unit quantity across all paths.
+
+Aggregation done server-side so the wire format carries the simpler shape:
+
+- **`BomFlatComponentView` record** drops the `depth` field. Aggregation collapses the per-path positioning that `depth` recorded; the remaining shape is `(componentProductId, sku, name, kind, cumulativeQuantityPerFinishedUnit)`.
+- **`BomViewService.findFlatComponentsByProductId`** now groups the recursive-CTE rows by `componentProductId` via a `LinkedHashMap` (preserves first-occurrence DFS order across the dedupe pass) and sums `cumulativeQuantityPerFinishedUnit` across collapsed rows.
+- **`BomLookup.findActiveBomTreeRows`** unchanged — still returns one row per BOM-line, with `depth` and `holderBomHeaderId` in the record. Tree-view rehydration still needs that path data; only the flat-view downstream collapses it.
+- **Frontend types updated**: `BomFlatComponent` in `demo-web-ui/api/types.ts` and the inline interface in `erp-web-ui/.../Boms.tsx` both lose the `depth` field.
+- **Flat-block header copy** changed from "N entries · quantities multiplied through depth" to "N unique components · qty summed across paths, per finished unit" — accurate for the new shape.
+
+Worked example against the FG-CHEST-001 seed: 13 raw rows from the recursive CTE collapse to **8 unique flat-view entries**:
+- SA-DRAWER-001 = 2, SA-FRAME-001 = 1, SA-PANEL-001 = 2 (sub-assemblies, each used once)
+- RM-DRAWER-FRONT-001 = 2, RM-DRAWER-RUNNER-001 = 4 (single-path raws)
+- RM-SCREW-001 = **13** ← summed from the 4 rows (3 + 2 + 4 + 4)
+- RM-VARNISH-001 = **4** ← summed from 2 rows (2 + 2)
+- RM-BOARD-001 = **3** ← summed from 2 rows (1 + 2)
+
+**Smoke**: `mvn install -DskipTests` clean; `mvn -pl manufacturing-service test` → 138/138; `mvn -pl test-harness test` → 8/8; both SPAs build clean.
+
+The earlier §2.24.2 design note ("multiple rows per path, callers can group/sum if needed") is now superseded — that note remains in §2.24.2's dev-done entry as a record of the original choice, but the codebase no longer behaves that way. If a future caller needs the path-level rows, the underlying `BomLookup.findActiveBomTreeRows` still exposes them; the API surface that flattened to multiple rows simply doesn't exist any more.
+
 ## 2026-05-18 — Seed data: FG-CHEST-001 multi-level BOM with a component used at 4 depths
 
 Adds a richer demo product to `db/northwood_erp.sql` so the §2.24.2 flat view + §2.24.3 recursive-CTE walk have visible multi-level data to show without staging anything by hand.

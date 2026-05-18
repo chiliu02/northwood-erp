@@ -294,8 +294,8 @@ function BomFlatBlock({ components }: { components: BomFlatComponent[] }) {
           </div>
         </div>
         <span className="text-xs text-text-muted">
-          {components.length} entr{components.length === 1 ? "y" : "ies"}
-          <span className="ml-2 text-text-faint">· quantities multiplied through depth</span>
+          {components.length} unique component{components.length === 1 ? "" : "s"}
+          <span className="ml-2 text-text-faint">· qty summed across paths, per finished unit</span>
         </span>
       </header>
       <div className="px-4 py-3 text-sm">

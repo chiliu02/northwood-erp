@@ -38,7 +38,6 @@ interface BomFlatComponent {
   componentName: string;
   componentKind: string;
   cumulativeQuantityPerFinishedUnit: string;
-  depth: number;
 }
 
 type ViewMode = "tree" | "flat";
@@ -296,8 +295,8 @@ function BomFlatBlock({ components }: { components: BomFlatComponent[] }) {
           <div className="text-sm font-semibold text-text-primary">Flat component list</div>
         </div>
         <span className="text-xs text-text-muted">
-          {components.length} entries
-          <span className="ml-2 text-text-muted">· quantities multiplied through depth</span>
+          {components.length} unique component{components.length === 1 ? "" : "s"}
+          <span className="ml-2 text-text-muted">· qty summed across paths, per finished unit</span>
         </span>
       </header>
       <div className="px-4 py-3 text-sm">

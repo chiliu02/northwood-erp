@@ -4,6 +4,7 @@ import com.northwood.manufacturing.application.BomLookup.ComponentTreeRow;
 import com.northwood.manufacturing.application.dto.BomFlatComponentView;
 import com.northwood.manufacturing.application.dto.BomTreeView;
 import com.northwood.manufacturing.application.dto.BomTreeView.BomNode;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -82,27 +83,35 @@ public class BomViewService {
 
     /**
      * Walk the active BOM hierarchy from {@code rootProductId} and return
-     * every component as a flat list, each entry carrying its cumulative
-     * per-finished-unit quantity (already multiplied through every
-     * ancestor's quantity × scrap-factor by the SQL).
+     * each unique component as a single flat-list entry. When the same
+     * component appears at multiple positions in the tree, its rows are
+     * collapsed and {@code cumulativeQuantityPerFinishedUnit} is summed
+     * across all paths (each path's quantity × scrap-factor chain is
+     * already multiplied through by the underlying SQL).
      *
      * <p>Returns an empty list when no active BOM exists for the root.
-     * Same component appearing at multiple positions in the tree surfaces
-     * as multiple list entries — one per path — rather than being
-     * aggregated; callers can group/sum by {@code componentProductId} if a
-     * deduped total is needed.
+     * Order: first occurrence (DFS) wins — same order as the tree-view
+     * walk, with duplicates removed.
      */
     public List<BomFlatComponentView> findFlatComponentsByProductId(UUID rootProductId) {
-        return boms.findActiveBomTreeRows(rootProductId).stream()
-            .map(r -> new BomFlatComponentView(
+        // LinkedHashMap so first-occurrence DFS order is preserved across
+        // the dedup pass. Same component at multiple positions collapses
+        // into one entry with quantities summed.
+        Map<UUID, BomFlatComponentView> byProductId = new LinkedHashMap<>();
+        for (ComponentTreeRow r : boms.findActiveBomTreeRows(rootProductId)) {
+            BomFlatComponentView existing = byProductId.get(r.componentProductId());
+            BigDecimal total = existing == null
+                ? r.cumulativeQuantityPerFinishedUnit()
+                : existing.cumulativeQuantityPerFinishedUnit().add(r.cumulativeQuantityPerFinishedUnit());
+            byProductId.put(r.componentProductId(), new BomFlatComponentView(
                 r.componentProductId(),
                 r.componentSku(),
                 r.componentName(),
                 r.componentKind(),
-                r.cumulativeQuantityPerFinishedUnit(),
-                r.depth()
-            ))
-            .toList();
+                total
+            ));
+        }
+        return new ArrayList<>(byProductId.values());
     }
 
     private List<BomNode> buildNodes(
