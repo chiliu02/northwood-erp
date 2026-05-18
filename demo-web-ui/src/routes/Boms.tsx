@@ -304,7 +304,6 @@ function BomFlatBlock({ components }: { components: BomFlatComponent[] }) {
             <li
               key={`${c.componentProductId}-${i}`}
               className="flex items-center gap-2 rounded px-2 py-1 hover:bg-bg-hover"
-              style={{ paddingLeft: `${(c.depth - 1) * 16 + 8}px` }}
             >
               <ComponentKindIcon kind={c.componentKind} />
               <div className="flex flex-1 items-center justify-between gap-3">
