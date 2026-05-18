@@ -316,8 +316,6 @@ function BomFlatBlock({ components }: { components: BomFlatComponent[] }) {
                   </div>
                   <div className="text-[11px] text-text-muted">
                     kind: <span className="font-medium">{c.componentKind}</span>
-                    {" · "}
-                    depth <span className="font-medium">{c.depth}</span>
                   </div>
                 </div>
                 <div className="flex shrink-0 items-baseline gap-3 text-xs tabular-nums">
