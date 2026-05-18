@@ -6,6 +6,19 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-18 — Convention text: cardinality-based projection-table rule + `_card` suffix (§2.23 prep)
+
+Sharpened the consumer-side denormalized-table rule in `docs/conventions.md` after a design conversation:
+
+- Replaced the "shared-lifecycle attribute group" framing (too aggressive a splitter — every 1:1 facet has *some* lifecycle skew) with **cardinality-based**: one table per (schema, source aggregate) for 1:1 facets; split only when cardinality genuinely differs (1:N children stay separate, keep `<source_aggregate>_<child>` shape).
+- Introduced the **`_card` suffix** for consumer-side denormalized tables — `sales.product_card`, `manufacturing.product_card`, etc. The per-entity-record metaphor (inventory card, customer card — the institutional record on an external entity maintained by someone who tracks it without owning it) is category-agnostic, so mixed mirror + locally-computed columns coexist freely under one suffix.
+- Documented the alternative suffixes considered + rejection reasons (`_projection` / `_view` claim "pure read-only" which fails for mixed mirror+computed tables; `_facts` is in-codebase but too generic; `_worksheet` is voice-fit but implies active computation and is verbose; `_card` won on per-entity-record semantic + brevity).
+- Updated the bottom *Tables — shape families* table: split the single "Projection cache of upstream fact" row into four distinct shapes (1:1 `_card`, 1:N child no-suffix, per-child-row `_facts`, running-total `_balance`) so the cardinality distinction is visible at a glance.
+
+Migration plan: `dev-todo.md` §2.23 enumerates five rename sub-slices (sales / purchasing / finance / reporting / manufacturing). First four are mechanical renames; the fifth consolidates manufacturing's three projection tables (`product_replenishment` + `product_active_bom` + `product_materials_cost`) into one `manufacturing.product_card`. Each sub-slice gets its own dev-done entry as it lands.
+
+No code change in this slice — the §2.23 sub-slices carry the actual schema + code work. Doc-only commit so the convention is canonised before the migration commits start referring to it.
+
 ## 2026-05-18 — PostgreSQL schema-naming convention canonised + `reporting.product_standard_cost.captured_at` → `updated_at`
 
 Writing up the schema-naming rules surfaced a latent bug: `reporting.product_standard_cost` had `captured_at`, but `trg_reporting_product_standard_cost_updated_at` is attached to that table and calls `shared.set_updated_at()`, which writes `NEW.updated_at`. The trigger has been silently broken since the table was added — every `INSERT … ON CONFLICT DO UPDATE` from `JdbcProductStandardCostProjection` would have errored with *"column updated_at does not exist"* on first re-projection. Rename fixes both the convention drift AND the bug.

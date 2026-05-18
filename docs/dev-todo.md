@@ -388,6 +388,20 @@ Six new files (one per events-producing service): `ProductAggregateTypes`, `Sale
 
 `inventory.StockItem` was aggregate-shaped but emitted zero events. Demoted to projection-shaped ports per the deltas-vs-totals rule — see `dev-done.md`.
 
+### 2.23 Apply `_card` suffix convention to all consumer-side Product projection tables
+
+Codify the new schema-naming rule (cardinality-based; `_card` suffix; one table per (schema, aggregate) for 1:1 facets) — see `docs/conventions.md` → *Consumer-side denormalized tables*. Five rename sub-slices plus one consolidation. Each sub-slice: Liquibase rename changeset + baseline edit + projection/lookup class renames + handler injection-site updates + tests + dev-done entry. Land them in this order — mechanical renames first to prove the pattern, consolidation last.
+
+| Sub | Schema | Today | After |
+|---|---|---|---|
+| 2.23.1 | sales        | `sales.product_pricing`                                                    | `sales.product_card` |
+| 2.23.2 | purchasing   | `purchasing.product_discontinued`                                          | `purchasing.product_card` |
+| 2.23.3 | finance      | `finance.product_accounting`                                               | `finance.product_card` |
+| 2.23.4 | reporting    | `reporting.product_standard_cost`                                          | `reporting.product_card` |
+| 2.23.5 | manufacturing | `product_replenishment` + `product_active_bom` + `product_materials_cost` | `manufacturing.product_card` (consolidated) |
+
+1:N children (`purchasing.product_approved_vendor`, `manufacturing.product_approved_vendor`) keep their structure — name already disambiguates from source `product.approved_vendor`. Existing `*_line_facts` tables (per-child-row caches) keep `_facts` — different shape from `_card`. Final smoke-boot after 2.23.5: fresh-volume reset + boot each affected service.
+
 ---
 
 ## 3. Low priority — explicitly deferred (skip unless asked)
