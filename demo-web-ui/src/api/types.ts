@@ -139,6 +139,15 @@ export interface BomTree {
   components: BomNode[];
 }
 
+export interface BomFlatComponent {
+  componentProductId: string;
+  componentSku: string;
+  componentName: string;
+  componentKind: string;
+  cumulativeQuantityPerFinishedUnit: string;
+  depth: number;
+}
+
 export interface StockItemRow {
   stockItemId: string;
   productId: string;

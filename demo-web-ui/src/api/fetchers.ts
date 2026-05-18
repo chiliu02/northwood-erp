@@ -1,5 +1,6 @@
 import type {
   AvailableToPromiseRow,
+  BomFlatComponent,
   BomTree,
   CustomerInvoiceView,
   GoodsReceiptView,
@@ -65,6 +66,8 @@ export const fetchStockItems = (): Promise<StockItemRow[]> => getJson("/api/stoc
 export const fetchSuppliers  = (): Promise<SupplierView[]> => getJson("/api/suppliers");
 export const fetchBomTree    = (productId: string): Promise<BomTree> =>
   getJson(`/api/boms/by-product/${productId}`);
+export const fetchBomFlat    = (productId: string): Promise<BomFlatComponent[]> =>
+  getJson(`/api/boms/by-product/${productId}/flat`);
 
 // Inventory — goods receipts
 export const fetchGoodsReceipts = (): Promise<GoodsReceiptView[]> => getJson("/api/goods-receipts");

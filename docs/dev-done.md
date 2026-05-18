@@ -6,6 +6,20 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-18 — BOM Tree/Flat view toggle in both SPAs
+
+Wired the §2.24.2 flat-view endpoint into both BOMs pages with a segmented-control toggle (Tree | Flat).
+
+- **demo-web-ui** (`src/routes/Boms.tsx`): added `BomFlatComponent` type in `api/types.ts`; `fetchBomFlat` in `api/fetchers.ts`; `viewMode` state + `ViewModeToggle` (radiogroup with `ListTree` / `List` icons); second `useQuery` keyed on `["bom-flat", productId]` enabled only when `viewMode === "flat"` so toggling between views uses React-Query's cache after the first fetch; new `BomFlatBlock` component that indents by `depth` and shows the cumulative qty per finished unit. "No active BOM" path triggers on either a 404 (tree mode) or a 200+empty-array (flat mode — the endpoint returns `[]` not 404 when no BOM is on file).
+- **erp-web-ui** (`src/routes/manufacturing/Boms.tsx`): same shape, inline types per that page's existing convention. `flat` endpoint via the existing prefix route `/api/boms` (BFF doesn't need updating — both `erp-web-ui-bff` and `demo-web-ui-bff` prefix-match `/api/boms` to manufacturing).
+- **No backend changes** — the endpoint was already in place since §2.24.2.
+
+**Verification**:
+- TypeScript compiles + Vite builds clean for both SPAs (`npm run build` → exit 0).
+- Backend flat-view endpoint already verified end-to-end via psql + service boot during §2.24.3.
+- BFF prefix-routing verified by code inspection (both `RouteTable.java`s match on `path.startsWith("/api/boms")`).
+- **Not verified in a browser** — UI visuals (segmented-control hover/active states, depth indentation, dark-mode rendering) haven't been eyeball-tested. Worth a quick visual pass before showing the demo.
+
 ## 2026-05-18 — §2.24.3: replace N+1 walk with single recursive-CTE query in `BomLookup`
 
 Both BOM view methods now make exactly **one** DB read regardless of tree depth — was N+1 (one SQL per BOM in the hierarchy). The recursive walk that previously ran in Java is pushed into a Postgres recursive CTE.
