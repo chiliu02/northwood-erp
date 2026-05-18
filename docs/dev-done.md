@@ -6,6 +6,21 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-18 — §2.24.3: replace N+1 walk with single recursive-CTE query in `BomLookup`
+
+Both BOM view methods now make exactly **one** DB read regardless of tree depth — was N+1 (one SQL per BOM in the hierarchy). The recursive walk that previously ran in Java is pushed into a Postgres recursive CTE.
+
+- **New `BomLookup.ComponentTreeRow` record** — one row per BOM-line in the recursive hierarchy: depth, holding bom_header_id, component identity, per-line qty+scrap, the component's own active-BOM id (if a sub-assembly), and cumulative qty (running product of `qty × (1 + scrap/100)` multiplied through the ancestor chain).
+- **New `BomLookup.findActiveBomTreeRows(rootProductId)` method** with a **default interface implementation** that uses the existing `findActiveByFinishedProductId` walk + Java multiplication. In-memory test stubs inherit this default automatically — `InMemoryBomLookup` needed zero changes; the 138 manufacturing tests still pass without touching test fixtures.
+- **`JdbcBomLookup` override** with a single recursive CTE: anchor joins `bom_header` + `bom_line` for the root product, recursion descends via each component's own `bom_header.status='active'` row. Cumulative qty multiplied in SQL via `w.cumulative_qty * bl.quantity_per_finished_unit * (1 + bl.scrap_factor_percent / 100)`. 20-level depth cap as defensive guard against the (cycle-detector-precluded) possibility of an infinite loop. SQL verified directly via `psql` against the fresh-volume seed: 4 rows for FG-TABLE-001 (raw materials only); 6 rows for FG-CABINET-001 with depth-2 descent into SA-DRAWER-001's three raw-material children.
+- **"Active" resolution uses `bom_header.status='active'` throughout** (anchor + recursion), not `product_card.active_bom_header_id`. Matches the legacy fallback already in `findActiveByFinishedProductId` — `product_card.active_bom_header_id` isn't populated by every code path today (the seed baseline only sets it indirectly), while `bom_header.status` is reliably populated for every activated BOM. Documented inline.
+- **`BomViewService` rewritten** — both `findActiveTreeByProductId` and `findFlatComponentsByProductId` make exactly one `boms.findActiveBomTreeRows` call. Tree mode rehydrates the hierarchy by grouping rows by `holderBomHeaderId` (LinkedHashMap preserves the SQL's ORDER BY for sibling ordering) and walking from root downward. Flat mode passes rows through with field-name remap. The visited-set defensive cycle guard from the Java walk is replaced by the CTE's depth cap.
+- **Other consumers of `BomLookup` unaffected** — `MaterialsCostRollupService` etc. still use `findActiveByFinishedProductId` and `findParentProductIdsByComponent`; those methods kept as-is.
+
+**Smoke**: `mvn install -DskipTests` clean; `mvn -pl manufacturing-service test` → 138/138 green; `mvn -pl test-harness test` → 8/8 green. Standalone recursive-CTE SQL verified via `docker exec northwood-postgres psql` against fresh-volume seed (FG-TABLE-001 → 4 rows at depth 1; FG-CABINET-001 → 6 rows spanning depths 1–2 with cumulative-qty propagation correct).
+
+**Closes `dev-todo.md` §2.24** — all three sub-slices shipped this session (2.24.1 `BomEditService` → `BomService`, 2.24.2 `BomTreeService` → `BomViewService` + flat-view method, 2.24.3 recursive-CTE).
+
 ## 2026-05-18 — §2.24.2: `BomTreeService` → `BomViewService` + add `findFlatComponentsByProductId`
 
 Generalised the read-side BOM service from one shape (tree) to a hub for multiple shapes, anticipating the flat-list view. Both methods now orchestrate the SAME recursive walk over `BomLookup` and differ only in the Java accumulator — tree mode assembles hierarchical `BomNode` children, flat mode appends to a list with cumulative-quantity multiplication.

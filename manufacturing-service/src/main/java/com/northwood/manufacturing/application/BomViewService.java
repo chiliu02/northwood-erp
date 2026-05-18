@@ -1,21 +1,20 @@
 package com.northwood.manufacturing.application;
 
+import com.northwood.manufacturing.application.BomLookup.ComponentTreeRow;
 import com.northwood.manufacturing.application.dto.BomFlatComponentView;
 import com.northwood.manufacturing.application.dto.BomTreeView;
 import com.northwood.manufacturing.application.dto.BomTreeView.BomNode;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 /**
- * Read-side service for BOM views. Two presentations of the same recursive
- * walk over {@link BomLookup}:
+ * Read-side service for BOM views. Two presentations of the same one-query
+ * recursive walk via {@link BomLookup#findActiveBomTreeRows}:
  *
  * <ul>
  *   <li>{@link #findActiveTreeByProductId} — hierarchical view: sub-assembly
@@ -23,28 +22,22 @@ import org.springframework.stereotype.Service;
  *       inline as nested {@link BomNode} children; raw materials terminate.
  *       Wire format for {@code GET /api/boms/by-product/{id}}.</li>
  *   <li>{@link #findFlatComponentsByProductId} — flattened view: every
- *       component in the hierarchy as a single list entry, each carrying its
- *       cumulative per-finished-unit quantity (parent quantity × this
- *       quantity × scrap-factor multiplier, recursive). Wire format for
+ *       component in the hierarchy as a single list entry, each carrying
+ *       its cumulative per-finished-unit quantity (already multiplied
+ *       through the ancestor chain by the SQL). Wire format for
  *       {@code GET /api/boms/by-product/{id}/flat}.</li>
  * </ul>
  *
- * <p>Both methods orchestrate over {@link BomLookup} only — no JDBC leak
- * into {@code application/}. They share the recursive-walk machinery and
- * differ only in the accumulator: tree mode assembles {@link BomNode}
- * children, flat mode appends to a list with multiplied quantities.
+ * <p>Both methods make exactly one read via {@link BomLookup} (a recursive
+ * CTE in production; the default interface walk for in-memory test stubs).
+ * Tree mode rehydrates the hierarchy from the flat row set by grouping rows
+ * by holding {@code bom_header_id} and walking from root downward. Flat mode
+ * passes the rows through with a field-name remap.
  *
  * <p>Cycle protection: {@code BomCycleDetector} guarantees no cycles can be
- * saved, so the recursion is bounded by the depth of the legitimately-saved
- * graph. The visited set is a defensive belt-and-suspenders in case the
- * detector ever misses a path.
- *
- * <p><b>N+1 perf note</b>: each {@link BomLookup#findActiveByFinishedProductId}
- * call issues its own SQL — one per BOM in the hierarchy. Accepted today at
- * demo depth (~3 levels: FG → SA → RM). Scheduled for replacement with a
- * single recursive-CTE query under {@code dev-todo.md} §2.24.3; once that
- * lands, both methods will share the same one-query implementation and reshape
- * the result client-side into tree or flat form.
+ * saved; the recursive CTE additionally caps depth at 20 as a defensive
+ * belt-and-suspenders, and tree-mode rehydration is structurally bounded by
+ * each row carrying only one parent ({@code holderBomHeaderId}).
  */
 @Service
 public class BomViewService {
@@ -56,110 +49,82 @@ public class BomViewService {
     }
 
     public Optional<BomTreeView> findActiveTreeByProductId(UUID rootProductId) {
-        Optional<BomLookup.ActiveBom> rootBom = boms.findActiveByFinishedProductId(rootProductId);
-        if (rootBom.isEmpty()) {
+        List<ComponentTreeRow> rows = boms.findActiveBomTreeRows(rootProductId);
+        if (rows.isEmpty()) {
             return Optional.empty();
         }
         BomLookup.BomHeaderIdentity identity = boms.findActiveBomIdentity(rootProductId)
             .orElse(new BomLookup.BomHeaderIdentity("(unknown)", "(unknown)"));
 
-        Set<UUID> visited = new HashSet<>();
-        visited.add(rootProductId);
-        List<BomNode> children = expandTreeComponents(rootBom.get().components(), visited);
+        // The root BOM's bom_header_id is the holderBomHeaderId of any
+        // depth-1 row (they all share it — they're all lines on the root BOM).
+        UUID rootBomHeaderId = rows.get(0).holderBomHeaderId();
+
+        // Group rows by holderBomHeaderId so nested-children lookup is O(1)
+        // during the recursive node-build. LinkedHashMap preserves insertion
+        // order, which respects the SQL ORDER BY (depth, bom_header_id,
+        // line_number) — so sibling line ordering is preserved through the
+        // tree assembly.
+        Map<UUID, List<ComponentTreeRow>> byHolder = new LinkedHashMap<>();
+        for (ComponentTreeRow r : rows) {
+            byHolder.computeIfAbsent(r.holderBomHeaderId(), k -> new ArrayList<>()).add(r);
+        }
+
+        List<BomNode> rootChildren = buildNodes(byHolder.getOrDefault(rootBomHeaderId, List.of()), byHolder);
         return Optional.of(new BomTreeView(
-            rootBom.get().bomHeaderId(),
+            rootBomHeaderId,
             rootProductId,
             identity.productSku(),
             identity.productName(),
-            children
+            rootChildren
         ));
     }
 
     /**
      * Walk the active BOM hierarchy from {@code rootProductId} and return
      * every component as a flat list, each entry carrying its cumulative
-     * per-finished-unit quantity (multiplied through every ancestor's
-     * quantity × scrap-factor along the path from root).
+     * per-finished-unit quantity (already multiplied through every
+     * ancestor's quantity × scrap-factor by the SQL).
      *
      * <p>Returns an empty list when no active BOM exists for the root.
-     * Same component appearing at multiple positions in the tree (e.g. a
-     * raw material used in two different sub-assemblies) surfaces as
-     * multiple list entries — one per path — rather than being aggregated;
-     * callers can group/sum by {@code componentProductId} if a deduped
-     * total is needed.
+     * Same component appearing at multiple positions in the tree surfaces
+     * as multiple list entries — one per path — rather than being
+     * aggregated; callers can group/sum by {@code componentProductId} if a
+     * deduped total is needed.
      */
     public List<BomFlatComponentView> findFlatComponentsByProductId(UUID rootProductId) {
-        Optional<BomLookup.ActiveBom> rootBom = boms.findActiveByFinishedProductId(rootProductId);
-        if (rootBom.isEmpty()) {
-            return List.of();
-        }
-        Set<UUID> visited = new HashSet<>();
-        visited.add(rootProductId);
-        List<BomFlatComponentView> flat = new ArrayList<>();
-        flattenComponents(rootBom.get().components(), BigDecimal.ONE, 1, visited, flat);
-        return flat;
+        return boms.findActiveBomTreeRows(rootProductId).stream()
+            .map(r -> new BomFlatComponentView(
+                r.componentProductId(),
+                r.componentSku(),
+                r.componentName(),
+                r.componentKind(),
+                r.cumulativeQuantityPerFinishedUnit(),
+                r.depth()
+            ))
+            .toList();
     }
 
-    private List<BomNode> expandTreeComponents(List<BomLookup.Component> components, Set<UUID> visited) {
-        List<BomNode> out = new ArrayList<>(components.size());
-        for (BomLookup.Component c : components) {
-            UUID childId = c.componentProductId();
-            boolean canRecurse = visited.add(childId);
-            Optional<BomLookup.ActiveBom> childBom = canRecurse
-                ? boms.findActiveByFinishedProductId(childId)
-                : Optional.empty();
-            UUID subBomId = childBom.map(BomLookup.ActiveBom::bomHeaderId).orElse(null);
-            List<BomNode> grandchildren = childBom
-                .map(b -> expandTreeComponents(b.components(), visited))
-                .orElseGet(List::of);
+    private List<BomNode> buildNodes(
+        List<ComponentTreeRow> rows,
+        Map<UUID, List<ComponentTreeRow>> byHolder
+    ) {
+        List<BomNode> out = new ArrayList<>(rows.size());
+        for (ComponentTreeRow r : rows) {
+            List<BomNode> grandchildren = r.childActiveBomHeaderId() == null
+                ? List.of()
+                : buildNodes(byHolder.getOrDefault(r.childActiveBomHeaderId(), List.of()), byHolder);
             out.add(new BomNode(
-                childId,
-                c.componentSku(),
-                c.componentName(),
-                c.componentKind(),
-                c.quantityPerFinishedUnit(),
-                c.scrapFactorPercent(),
-                subBomId,
+                r.componentProductId(),
+                r.componentSku(),
+                r.componentName(),
+                r.componentKind(),
+                r.quantityPerFinishedUnit(),
+                r.scrapFactorPercent(),
+                r.childActiveBomHeaderId(),
                 grandchildren
             ));
-            visited.remove(childId);
         }
         return out;
-    }
-
-    private void flattenComponents(
-        List<BomLookup.Component> components,
-        BigDecimal parentCumulativeQty,
-        int depth,
-        Set<UUID> visited,
-        List<BomFlatComponentView> out
-    ) {
-        for (BomLookup.Component c : components) {
-            UUID childId = c.componentProductId();
-            // Per-finished-unit quantity at THIS level, including this line's
-            // scrap factor: quantityPerFinishedUnit × (1 + scrap_factor_percent / 100).
-            BigDecimal scrapMultiplier = BigDecimal.ONE.add(
-                c.scrapFactorPercent().divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP)
-            );
-            BigDecimal effectiveQtyAtLevel = c.quantityPerFinishedUnit().multiply(scrapMultiplier);
-            BigDecimal cumulativeQty = parentCumulativeQty.multiply(effectiveQtyAtLevel);
-
-            out.add(new BomFlatComponentView(
-                childId,
-                c.componentSku(),
-                c.componentName(),
-                c.componentKind(),
-                cumulativeQty,
-                depth
-            ));
-
-            boolean canRecurse = visited.add(childId);
-            if (!canRecurse) {
-                continue;
-            }
-            Optional<BomLookup.ActiveBom> childBom = boms.findActiveByFinishedProductId(childId);
-            childBom.ifPresent(b -> flattenComponents(b.components(), cumulativeQty, depth + 1, visited, out));
-            visited.remove(childId);
-        }
     }
 }

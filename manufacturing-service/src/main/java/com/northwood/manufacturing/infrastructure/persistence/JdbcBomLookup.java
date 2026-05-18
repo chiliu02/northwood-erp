@@ -95,6 +95,100 @@ public class JdbcBomLookup implements BomLookup {
         }
     }
 
+    /**
+     * §2.24.3: returns the entire active-BOM hierarchy in a single recursive
+     * CTE — anchor row(s) are direct children of the root product's active
+     * BOM, recursion descends via each component's own active BOM. Computes
+     * cumulative quantity (running product of {@code quantity_per_finished_unit
+     * × (1 + scrap_factor_percent/100)}) in SQL.
+     *
+     * <p>"Active" resolution uses {@code bom_header.status='active'} for both
+     * the root anchor and each level of recursion — same fallback semantics as
+     * {@link #findActiveByFinishedProductId}. The
+     * {@code product_card.active_bom_header_id} column is the canonical
+     * pointer, but it isn't populated by every code path today (e.g. the seed
+     * baseline only sets it indirectly), and {@code bom_header.status} is
+     * reliably populated for every activated BOM.
+     *
+     * <p>A 20-level depth cap guards against the (impossible-in-practice)
+     * case of {@code BomCycleDetector} missing a path — Postgres would
+     * otherwise loop forever on a true cycle.
+     */
+    @Override
+    public List<ComponentTreeRow> findActiveBomTreeRows(UUID rootProductId) {
+        return jdbc.query(
+            """
+            WITH RECURSIVE bom_walk AS (
+                SELECT
+                    1 AS depth,
+                    bh.bom_header_id AS holder_bom_header_id,
+                    bl.line_number,
+                    bl.component_product_id,
+                    bl.component_sku,
+                    bl.component_name,
+                    bl.component_kind,
+                    bl.quantity_per_finished_unit,
+                    bl.scrap_factor_percent,
+                    child_bh.bom_header_id AS child_active_bom_header_id,
+                    bl.quantity_per_finished_unit
+                        * (1 + bl.scrap_factor_percent / 100) AS cumulative_qty
+                FROM manufacturing.bom_header bh
+                JOIN manufacturing.bom_line bl ON bl.bom_header_id = bh.bom_header_id
+                LEFT JOIN manufacturing.bom_header child_bh
+                  ON child_bh.finished_product_id = bl.component_product_id
+                 AND child_bh.status = 'active'
+                WHERE bh.finished_product_id = ?
+                  AND bh.status = 'active'
+
+                UNION ALL
+
+                SELECT
+                    w.depth + 1,
+                    bh.bom_header_id,
+                    bl.line_number,
+                    bl.component_product_id,
+                    bl.component_sku,
+                    bl.component_name,
+                    bl.component_kind,
+                    bl.quantity_per_finished_unit,
+                    bl.scrap_factor_percent,
+                    child_bh.bom_header_id,
+                    w.cumulative_qty
+                        * bl.quantity_per_finished_unit
+                        * (1 + bl.scrap_factor_percent / 100)
+                FROM bom_walk w
+                JOIN manufacturing.bom_header bh
+                  ON bh.bom_header_id = w.child_active_bom_header_id
+                JOIN manufacturing.bom_line bl
+                  ON bl.bom_header_id = bh.bom_header_id
+                LEFT JOIN manufacturing.bom_header child_bh
+                  ON child_bh.finished_product_id = bl.component_product_id
+                 AND child_bh.status = 'active'
+                WHERE w.child_active_bom_header_id IS NOT NULL
+                  AND w.depth < 20
+            )
+            SELECT depth, holder_bom_header_id, component_product_id, component_sku,
+                   component_name, component_kind, quantity_per_finished_unit,
+                   scrap_factor_percent, child_active_bom_header_id, cumulative_qty
+              FROM bom_walk
+             ORDER BY depth, holder_bom_header_id, line_number
+            """,
+            (rs, n) -> new ComponentTreeRow(
+                rs.getInt("depth"),
+                rs.getObject("holder_bom_header_id", UUID.class),
+                rs.getObject("component_product_id", UUID.class),
+                rs.getString("component_sku"),
+                rs.getString("component_name"),
+                rs.getString("component_kind"),
+                rs.getBigDecimal("quantity_per_finished_unit"),
+                rs.getBigDecimal("scrap_factor_percent"),
+                rs.getObject("child_active_bom_header_id", UUID.class),
+                rs.getBigDecimal("cumulative_qty")
+            ),
+            rootProductId
+        );
+    }
+
     @Override
     public List<UUID> findParentProductIdsByComponent(UUID componentProductId) {
         // Use bom_header.status='active' as the runtime authority — it's
