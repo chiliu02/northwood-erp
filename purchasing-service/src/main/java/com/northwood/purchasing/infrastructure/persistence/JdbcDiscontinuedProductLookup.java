@@ -17,7 +17,7 @@ public class JdbcDiscontinuedProductLookup implements DiscontinuedProductLookup 
     @Override
     public boolean isDiscontinued(UUID productId) {
         Integer hits = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM purchasing.product_discontinued WHERE product_id = ?",
+            "SELECT COUNT(*) FROM purchasing.product_card WHERE product_id = ? AND discontinued_at IS NOT NULL",
             Integer.class, productId
         );
         return hits != null && hits > 0;

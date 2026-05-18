@@ -284,7 +284,7 @@ window.NORTHWOOD_EVENTS = [
       { dest: "manufacturing", name: "manufacturing.product-discontinued",
         desc: `<code>manufacturing.product_replenishment.is_purchased=false, is_manufactured=false</code> (existing <code>!isManufactured()</code> guard then rejects new sales-lines); <code>manufacturing.product_active_bom.active_bom_header_id=null</code>` },
       { dest: "purchasing", name: "purchasing.product-discontinued",
-        desc: `<code>purchasing.product_discontinued (product_id, discontinued_at)</code> — read by <code>PurchaseRequisitionService.buildLines</code> to reject new PRs / shortage-driven POs (HTTP 409)` },
+        desc: `<code>purchasing.product_card (product_id, discontinued_at)</code> — read by <code>PurchaseRequisitionService.buildLines</code> to reject new PRs / shortage-driven POs (HTTP 409)` },
       { dest: "finance", name: "finance.product-discontinued",
         desc: `<code>finance.product_accounting.discontinued_at</code> — stamps the consolidated finance projection so future audits can flag GL activity for retired SKUs` },
       { dest: "reporting", name: "reporting.atp.product-discontinued",

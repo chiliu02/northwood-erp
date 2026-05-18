@@ -47,7 +47,7 @@ class ProductDiscontinuedHandlerTest {
         );
     }
 
-    @Test void happy_path_stamps_purchasing_product_discontinued() {
+    @Test void happy_path_stamps_purchasing_product_card() {
         handler.handle(event());
 
         verify(projection).applyDiscontinued(eq(PRODUCT), eq(DISCONTINUED_AT));

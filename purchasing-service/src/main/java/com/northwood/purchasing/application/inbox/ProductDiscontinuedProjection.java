@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Inserts into {@code purchasing.product_discontinued} so the read-side
+ * Inserts into {@code purchasing.product_card} so the read-side
  * {@link com.northwood.purchasing.application.DiscontinuedProductLookup}
  * can gate new requisition / PO creation. Upsert semantics; a redelivered
  * event simply re-stamps the timestamp.

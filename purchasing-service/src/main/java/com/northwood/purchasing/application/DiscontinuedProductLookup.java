@@ -3,7 +3,7 @@ package com.northwood.purchasing.application;
 import java.util.UUID;
 
 /**
- * Narrow operational read over {@code purchasing.product_discontinued}.
+ * Narrow operational read over {@code purchasing.product_card}.
  * Used by {@code PurchaseRequisitionService} (and, defensively, by
  * {@code PurchaseOrderService.convertFromRequisition}) to reject new
  * commitments to products that product-service has retired.

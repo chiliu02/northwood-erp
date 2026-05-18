@@ -25,14 +25,14 @@ public class JdbcProductDiscontinuedProjection implements ProductDiscontinuedPro
     @Transactional
     public void applyDiscontinued(UUID productId, Instant discontinuedAt) {
         jdbc.update("""
-            INSERT INTO purchasing.product_discontinued (product_id, discontinued_at)
+            INSERT INTO purchasing.product_card (product_id, discontinued_at)
             VALUES (?, ?)
             ON CONFLICT (product_id) DO UPDATE
                 SET discontinued_at = EXCLUDED.discontinued_at
             """,
             productId, Timestamp.from(discontinuedAt)
         );
-        log.info("stamped purchasing.product_discontinued for product_id={} (at={})",
+        log.info("stamped purchasing.product_card for product_id={} (at={})",
             productId, discontinuedAt);
     }
 }

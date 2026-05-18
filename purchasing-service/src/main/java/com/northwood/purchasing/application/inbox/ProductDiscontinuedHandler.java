@@ -9,7 +9,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Idempotent inbox handler for {@code product.ProductDiscontinued}. Stamps
- * {@code purchasing.product_discontinued} so the requisition / PO entry
+ * {@code purchasing.product_card} so the requisition / PO entry
  * points reject new commitments to the retired SKU.
  */
 @Component

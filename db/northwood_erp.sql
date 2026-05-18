@@ -1727,6 +1727,23 @@ CREATE TABLE purchasing.product_approved_vendor (
 CREATE INDEX idx_product_approved_vendor_product
     ON purchasing.product_approved_vendor(product_id);
 
+-- Consumer-side denormalized card per Product (purchasing's view). Single
+-- attribute today: discontinued_at (read by PurchaseRequisitionService /
+-- PurchaseOrderService to reject new commitments to retired SKUs). Seeded
+-- and populated on product.ProductDiscontinued. Future-proofed under the
+-- _card naming convention so additional purchasing-side product facets land
+-- here as additional columns rather than separate tables. See
+-- docs/conventions.md → Consumer-side denormalized tables.
+CREATE TABLE purchasing.product_card (
+    product_id      UUID PRIMARY KEY,
+    -- Nullable: future purchasing-side seed-on-Created handlers may insert
+    -- the row before any ProductDiscontinued has fired. Today every row is
+    -- inserted with discontinued_at populated, but DiscontinuedProductLookup
+    -- filters on `discontinued_at IS NOT NULL` so the column can relax to
+    -- nullable without changing read semantics.
+    discontinued_at TIMESTAMPTZ
+);
+
 CREATE TABLE purchasing.purchase_requisition_header (
     purchase_requisition_header_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     requisition_number VARCHAR(50) NOT NULL UNIQUE,

@@ -6,6 +6,19 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-18 — §2.23.2: `purchasing.product_discontinued` → `purchasing.product_card`
+
+Second of five `_card` migrations. Mechanical rename, single-column table, no shape change beyond relaxing `discontinued_at` to nullable so future purchasing-side product facets can land as additional columns without splitting the table.
+
+- **Baseline** `db/northwood_erp.sql`: added a fresh `CREATE TABLE purchasing.product_card (product_id UUID PRIMARY KEY, discontinued_at TIMESTAMPTZ)` near the existing `product_approved_vendor` table. Discontinued_at is now nullable (was NOT NULL on the old `product_discontinued`) — read query updated to filter on `discontinued_at IS NOT NULL` so semantics are unchanged today + future seed-on-Created handlers can insert without filling it.
+- **Historical Liquibase changeset** `2026-05-14-add-product-discontinued-projection.sql` retargeted to create `purchasing.product_card` directly (with nullable `discontinued_at`); becomes a no-op on fresh baseline boot via `CREATE TABLE IF NOT EXISTS`. Hash drift accepted per posture.
+- **New rename changeset** `2026-05-18-rename-product-discontinued-to-product-card.sql` does `ALTER TABLE IF EXISTS purchasing.product_discontinued RENAME TO product_card` for legacy dev DBs; no-op against fresh baseline.
+- **Java**: `JdbcProductDiscontinuedProjection` SQL updated to INSERT into `purchasing.product_card`. `JdbcDiscontinuedProductLookup` SQL changed from `SELECT COUNT(*) FROM purchasing.product_discontinued WHERE product_id = ?` to `... WHERE product_id = ? AND discontinued_at IS NOT NULL` — future-proof against rows that exist for other reasons. Class names kept (`DiscontinuedProductLookup` is genuinely narrow, single-method; the `_card` table is fine to live behind it without renaming the lookup).
+- **Javadocs** updated on `DiscontinuedProductLookup` interface, `ProductDiscontinuedProjection` interface, `ProductDiscontinuedHandler`. Test method `happy_path_stamps_purchasing_product_discontinued` → `happy_path_stamps_purchasing_product_card`.
+- **Doc cascade**: `docs/projections.html` projection-shape table; `docs/event-flow.html` description text. Historical `dev-done.md` entries untouched.
+
+**Smoke**: `mvn -pl purchasing-service test` → 79/79 green.
+
 ## 2026-05-18 — §2.23.1: `sales.product_pricing` → `sales.product_card`
 
 First of five `_card`-suffix migrations per `docs/conventions.md` → *Consumer-side denormalized tables*. Mechanical rename — no shape change, no consolidation, just the table + class name move so sales aligns with the new convention.
