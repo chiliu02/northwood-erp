@@ -6,6 +6,35 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-18 — Seed data: FG-CHEST-001 multi-level BOM with a component used at 4 depths
+
+Adds a richer demo product to `db/northwood_erp.sql` so the §2.24.2 flat view + §2.24.3 recursive-CTE walk have visible multi-level data to show without staging anything by hand.
+
+**Three new products** under the `300-302` UUID range (clear of the existing `001-005` table set and `200-203` cabinet set):
+
+- `FG-CHEST-001` — "Chest of Drawers", finished good (sales 1490, std cost 720).
+- `SA-FRAME-001` — semi-finished, the panelled outer frame (std cost 380).
+- `SA-PANEL-001` — semi-finished, a side panel built from board + varnish + screws (std cost 105).
+
+**Three new BOMs** under `310-312`:
+
+- Chest BOM (`...310`): 2× drawer, 1× frame, 3× screw, 2× varnish.
+- Frame BOM (`...311`): 2× panel, 1× board, 4× screw.
+- Panel BOM (`...312`): 1× board, 1× varnish, 2× screw.
+
+**Result**: a 3-level hierarchy (chest → frame → panel) with **RM-SCREW-001 appearing at 4 different rows in the flat view** — depth 1 (root, ×3), depth 2 via the drawer sub-assembly (×1 per drawer × 2 drawers = cum 2), depth 2 via the frame (×4), and depth 3 via the panel (×2 per panel × 2 panels × 1 frame = cum 4). RM-BOARD-001 appears at depths 2 + 3, RM-VARNISH-001 at depths 1 + 3.
+
+**Consumer-side seeds extended** to match (one row per new product in each schema's `product_card` seed):
+
+- `sales.product_card` (sales price + currency, NULL for the two SA's).
+- `manufacturing.product_card` (`is_manufactured=true` for all three).
+- `finance.product_card` (standard cost + valuation class — `finished_goods` for FG-CHEST-001, `semi_finished_good` for the two SAs).
+- `reporting.product_card` (standard cost mirror).
+
+**Smoke**: `docker compose down -v && up -d`, then ran the §2.24.3 recursive-CTE query directly via `psql` on the fresh-provisioned DB. Returned 13 rows spanning depths 1–3; cumulative-qty propagation math verified (drawer's screw row shows cum 2 = 2 drawers × 1 screw; frame's panel-line shows cum 2 = 1 frame × 2 panels; panel's screw row shows cum 4 = 2 panels × 2 screws). All as designed.
+
+The BOMs page in both SPAs now has a non-trivial demo case: pick FG-CHEST-001 from the product dropdown and toggle Tree ↔ Flat — the flat view shows the same RM-SCREW-001 SKU four times with different cumulative quantities, which is exactly the "depth-as-row-property would mislead" scenario that drove the earlier UI cleanup.
+
 ## 2026-05-18 — BOM Tree/Flat view toggle in both SPAs
 
 Wired the §2.24.2 flat-view endpoint into both BOMs pages with a segmented-control toggle (Tree | Flat).

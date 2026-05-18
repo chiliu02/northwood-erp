@@ -383,7 +383,21 @@ INSERT INTO product.product (
      true, true,  false, false, 0.00,    18.00),
     ('00000000-0000-7000-8000-000000000203', 'RM-DRAWER-RUNNER-001', 'Drawer Runner',
      'Slide runner pair for drawer',       'raw_material',       '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false, 0.00,    14.00)
+     true, true,  false, false, 0.00,    14.00),
+    -- Multi-level BOM demo set: chest of drawers, with a frame sub-assembly
+    -- that itself contains a panel sub-assembly. Exercises the §2.24.3
+    -- recursive-CTE walk through 3 levels, and demonstrates the "same
+    -- component used at multiple depths" case — RM-SCREW-001 appears at
+    -- depth 1 (chest), depth 2 (frame + drawer), and depth 3 (panel).
+    ('00000000-0000-7000-8000-000000000300', 'FG-CHEST-001', 'Chest of Drawers',
+     'Wooden chest of drawers with two drawers and a panelled frame', 'finished_good', '00000000-0000-7000-8000-000000000010',
+     true, false, true,  true,  1490.00, 720.00),
+    ('00000000-0000-7000-8000-000000000301', 'SA-FRAME-001', 'Chest Frame Sub-assembly',
+     'Panelled frame that holds the chest drawers',                   'semi_finished_good', '00000000-0000-7000-8000-000000000010',
+     true, false, true,  false, 0.00,     380.00),
+    ('00000000-0000-7000-8000-000000000302', 'SA-PANEL-001', 'Side Panel Sub-assembly',
+     'Side panel built from board + varnish + screws',                'semi_finished_good', '00000000-0000-7000-8000-000000000010',
+     true, false, true,  false, 0.00,     105.00)
 ON CONFLICT (sku) DO NOTHING;
 
 COMMIT;
@@ -686,7 +700,10 @@ VALUES
     ('00000000-0000-7000-8000-000000000200', 890.00, 'AUD'),  -- FG-CABINET-001
     ('00000000-0000-7000-8000-000000000201', NULL,   NULL),   -- SA-DRAWER-001
     ('00000000-0000-7000-8000-000000000202', NULL,   NULL),   -- RM-DRAWER-FRONT-001
-    ('00000000-0000-7000-8000-000000000203', NULL,   NULL)    -- RM-DRAWER-RUNNER-001
+    ('00000000-0000-7000-8000-000000000203', NULL,   NULL),   -- RM-DRAWER-RUNNER-001
+    ('00000000-0000-7000-8000-000000000300', 1490.00,'AUD'),  -- FG-CHEST-001
+    ('00000000-0000-7000-8000-000000000301', NULL,   NULL),   -- SA-FRAME-001
+    ('00000000-0000-7000-8000-000000000302', NULL,   NULL)    -- SA-PANEL-001
 ON CONFLICT (product_id) DO NOTHING;
 
 COMMIT;
@@ -1530,7 +1547,10 @@ VALUES
     ('00000000-0000-7000-8000-000000000200', false, true),
     ('00000000-0000-7000-8000-000000000201', false, true),
     ('00000000-0000-7000-8000-000000000202', true,  false),
-    ('00000000-0000-7000-8000-000000000203', true,  false)
+    ('00000000-0000-7000-8000-000000000203', true,  false),
+    ('00000000-0000-7000-8000-000000000300', false, true),
+    ('00000000-0000-7000-8000-000000000301', false, true),
+    ('00000000-0000-7000-8000-000000000302', false, true)
 ON CONFLICT (product_id) DO NOTHING;
 
 INSERT INTO manufacturing.bom_header (
@@ -1578,6 +1598,44 @@ INSERT INTO manufacturing.bom_line (
     ('00000000-0000-7000-8000-000000000211', 1, '00000000-0000-7000-8000-000000000202', 'RM-DRAWER-FRONT-001',  'Drawer Front Panel', 'raw', 1.000000, 0),
     ('00000000-0000-7000-8000-000000000211', 2, '00000000-0000-7000-8000-000000000203', 'RM-DRAWER-RUNNER-001', 'Drawer Runner',      'raw', 2.000000, 0),
     ('00000000-0000-7000-8000-000000000211', 3, '00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',         'Screw Pack',         'raw', 1.000000, 0)
+ON CONFLICT (bom_header_id, line_number) DO NOTHING;
+
+-- Multi-level demo: a chest of drawers whose BOM nests two sub-assemblies
+-- deep (chest → frame → panel) and uses RM-SCREW-001 at four positions
+-- across three depths. Exercises the §2.24.3 recursive-CTE walk in
+-- BomLookup.findActiveBomTreeRows and the flat-view's "same component
+-- at multiple paths" case in the SPAs.
+INSERT INTO manufacturing.bom_header (
+    bom_header_id, finished_product_id, finished_product_sku, finished_product_name, version, status
+) VALUES
+    ('00000000-0000-7000-8000-000000000310',
+     '00000000-0000-7000-8000-000000000300',
+     'FG-CHEST-001', 'Chest of Drawers', '1', 'active'),
+    ('00000000-0000-7000-8000-000000000311',
+     '00000000-0000-7000-8000-000000000301',
+     'SA-FRAME-001', 'Chest Frame Sub-assembly', '1', 'active'),
+    ('00000000-0000-7000-8000-000000000312',
+     '00000000-0000-7000-8000-000000000302',
+     'SA-PANEL-001', 'Side Panel Sub-assembly', '1', 'active')
+ON CONFLICT (finished_product_id, version) DO NOTHING;
+
+INSERT INTO manufacturing.bom_line (
+    bom_header_id, line_number, component_product_id, component_sku, component_name,
+    component_kind, quantity_per_finished_unit, scrap_factor_percent
+) VALUES
+    -- Chest → 2× drawer (sub-assembly), 1× frame (sub-assembly), 3× screw, 2× varnish
+    ('00000000-0000-7000-8000-000000000310', 1, '00000000-0000-7000-8000-000000000201', 'SA-DRAWER-001',  'Cabinet Drawer Sub-assembly', 'sub_assembly', 2.000000, 0),
+    ('00000000-0000-7000-8000-000000000310', 2, '00000000-0000-7000-8000-000000000301', 'SA-FRAME-001',   'Chest Frame Sub-assembly',    'sub_assembly', 1.000000, 0),
+    ('00000000-0000-7000-8000-000000000310', 3, '00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',   'Screw Pack',                  'raw',          3.000000, 0),
+    ('00000000-0000-7000-8000-000000000310', 4, '00000000-0000-7000-8000-000000000005', 'RM-VARNISH-001', 'Varnish Pack',                'raw',          2.000000, 0),
+    -- Frame → 2× panel (sub-sub-assembly), 1× board (top), 4× screw
+    ('00000000-0000-7000-8000-000000000311', 1, '00000000-0000-7000-8000-000000000302', 'SA-PANEL-001', 'Side Panel Sub-assembly', 'sub_assembly', 2.000000, 0),
+    ('00000000-0000-7000-8000-000000000311', 2, '00000000-0000-7000-8000-000000000002', 'RM-BOARD-001', 'Wooden Board',            'raw',          1.000000, 0),
+    ('00000000-0000-7000-8000-000000000311', 3, '00000000-0000-7000-8000-000000000004', 'RM-SCREW-001', 'Screw Pack',              'raw',          4.000000, 0),
+    -- Panel → 1× board, 1× varnish, 2× screw
+    ('00000000-0000-7000-8000-000000000312', 1, '00000000-0000-7000-8000-000000000002', 'RM-BOARD-001',   'Wooden Board', 'raw', 1.000000, 0),
+    ('00000000-0000-7000-8000-000000000312', 2, '00000000-0000-7000-8000-000000000005', 'RM-VARNISH-001', 'Varnish Pack', 'raw', 1.000000, 0),
+    ('00000000-0000-7000-8000-000000000312', 3, '00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',   'Screw Pack',   'raw', 2.000000, 0)
 ON CONFLICT (bom_header_id, line_number) DO NOTHING;
 
 INSERT INTO manufacturing.work_center (work_center_id, work_center_code, name)
@@ -2865,7 +2923,10 @@ INSERT INTO finance.product_card (
     ('00000000-0000-7000-8000-000000000200', 420.00, 'AUD', 'finished_goods'),    -- FG-CABINET-001
     ('00000000-0000-7000-8000-000000000201',  65.00, 'AUD', 'semi_finished_good'),-- SA-DRAWER-001
     ('00000000-0000-7000-8000-000000000202',  18.00, 'AUD', 'raw_materials'),     -- RM-DRAWER-FRONT-001
-    ('00000000-0000-7000-8000-000000000203',  14.00, 'AUD', 'raw_materials')      -- RM-DRAWER-RUNNER-001
+    ('00000000-0000-7000-8000-000000000203',  14.00, 'AUD', 'raw_materials'),     -- RM-DRAWER-RUNNER-001
+    ('00000000-0000-7000-8000-000000000300', 720.00, 'AUD', 'finished_goods'),    -- FG-CHEST-001
+    ('00000000-0000-7000-8000-000000000301', 380.00, 'AUD', 'semi_finished_good'),-- SA-FRAME-001
+    ('00000000-0000-7000-8000-000000000302', 105.00, 'AUD', 'semi_finished_good') -- SA-PANEL-001
 ON CONFLICT (product_id) DO NOTHING;
 
 COMMIT;
@@ -3124,7 +3185,10 @@ VALUES
     ('00000000-0000-7000-8000-000000000200', 420.00, 'AUD'),
     ('00000000-0000-7000-8000-000000000201',  65.00, 'AUD'),
     ('00000000-0000-7000-8000-000000000202',  18.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000203',  14.00, 'AUD')
+    ('00000000-0000-7000-8000-000000000203',  14.00, 'AUD'),
+    ('00000000-0000-7000-8000-000000000300', 720.00, 'AUD'),
+    ('00000000-0000-7000-8000-000000000301', 380.00, 'AUD'),
+    ('00000000-0000-7000-8000-000000000302', 105.00, 'AUD')
 ON CONFLICT (product_id) DO NOTHING;
 
 COMMIT;
