@@ -22,7 +22,7 @@ import tools.jackson.databind.ObjectMapper;
 public final class InMemoryStockReservationRepository implements StockReservationRepository {
 
     private final Map<UUID, StockReservation> byHeaderId = new HashMap<>();
-    private final Map<UUID, String> statusByHeaderId = new HashMap<>();
+    private final Map<UUID, StockReservation.Status> statusByHeaderId = new HashMap<>();
     private final Map<UUID, UUID> warehouseByHeaderId = new HashMap<>();
     private final Map<UUID, List<ReservedLineSnapshot>> linesByHeaderId = new HashMap<>();
 
@@ -111,7 +111,7 @@ public final class InMemoryStockReservationRepository implements StockReservatio
 
     @Override
     public void markReleased(UUID stockReservationHeaderId) {
-        statusByHeaderId.put(stockReservationHeaderId, "released");
+        statusByHeaderId.put(stockReservationHeaderId, StockReservation.Status.RELEASED);
     }
 
     @Override
@@ -122,7 +122,7 @@ public final class InMemoryStockReservationRepository implements StockReservatio
         linesByHeaderId.remove(stockReservationHeaderId);
     }
 
-    private static boolean isActive(String status) {
-        return "reserved".equals(status) || "partially_reserved".equals(status);
+    private static boolean isActive(StockReservation.Status status) {
+        return status == StockReservation.Status.RESERVED || status == StockReservation.Status.PARTIALLY_RESERVED;
     }
 }

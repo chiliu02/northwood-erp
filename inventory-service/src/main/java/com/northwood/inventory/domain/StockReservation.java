@@ -30,23 +30,51 @@ public final class StockReservation {
      */
     public static final String AGGREGATE_TYPE = InventoryAggregateTypes.STOCK_RESERVATION;
 
-    // ------------------------------------------------------------
-    // Status constants — wire-format strings stored in
-    // inventory.stock_reservation_header.status AND carried on
-    // {@code inventory.StockReserved} / {@code inventory.RawMaterialsReserved}
-    // event payloads. Cross-service consumers (sales/manufacturing saga
-    // managers) match these values; they hold their own local copy of the
-    // string since cross-module Java imports across services are not allowed.
-    // ------------------------------------------------------------
-    public static final String RESERVED = "reserved";
-    public static final String PARTIALLY_RESERVED = "partially_reserved";
-    public static final String FAILED = "failed";
+    /**
+     * Stock-reservation status. Mirrors the schema CHECK on
+     * {@code inventory.stock_reservation_header.status} (and on
+     * {@code inventory.stock_reservation_line.status} — same set, both header
+     * and line are read/written from this single enum).
+     *
+     * <p>Cross-service consumers (sales / manufacturing saga managers) compare
+     * the wire-format string from event payloads against their local
+     * {@code StockReserved.STATUS_*} / {@code RawMaterialsReserved.STATUS_*}
+     * constants — those are the contract surface, not this enum.
+     */
+    public enum Status {
+        /** Schema-prep — not currently produced by Java. */
+        PENDING("pending"),
+        RESERVED("reserved"),
+        PARTIALLY_RESERVED("partially_reserved"),
+        FAILED("failed"),
+        /** Schema-prep — not currently produced by Java. */
+        RELEASED("released"),
+        /** Schema-prep — not currently produced by Java. */
+        CONSUMED("consumed");
+
+        private final String dbValue;
+
+        Status(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static Status fromDb(String value) {
+            for (Status s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown stock_reservation status: " + value);
+        }
+    }
 
     private final StockReservationId id;
     private final UUID salesOrderId;
     private final UUID workOrderId;
     private final UUID warehouseId;
-    private final String status;
+    private final Status status;
     private final List<StockReservationLine> lines;
     private final long version;
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
@@ -65,9 +93,9 @@ public final class StockReservation {
         StockReservationId id = StockReservationId.newId();
         boolean anyShort = lines.stream().anyMatch(l -> l.shortageQuantity().signum() > 0);
         boolean nothingReserved = lines.stream().allMatch(l -> l.reservedQuantity().signum() == 0);
-        String headerStatus = nothingReserved ? FAILED
-            : anyShort ? PARTIALLY_RESERVED
-            : RESERVED;
+        Status headerStatus = nothingReserved ? Status.FAILED
+            : anyShort ? Status.PARTIALLY_RESERVED
+            : Status.RESERVED;
         StockReservation res = new StockReservation(
             id, salesOrderId, null, warehouseId, headerStatus, new ArrayList<>(lines), 0L
         );
@@ -77,7 +105,7 @@ public final class StockReservation {
         for (StockReservationLine l : lines) {
             wireLines.add(new ReservedLine(
                 lineNumber, l.productId(), l.requestedQuantity(),
-                l.reservedQuantity(), l.shortageQuantity(), l.status()
+                l.reservedQuantity(), l.shortageQuantity(), l.status().dbValue()
             ));
             lineNumber += 10;
         }
@@ -86,7 +114,7 @@ public final class StockReservation {
             id.value(),
             salesOrderId,
             id.value(),
-            headerStatus,
+            headerStatus.dbValue(),
             wireLines,
             Instant.now()
         ));
@@ -107,9 +135,9 @@ public final class StockReservation {
         StockReservationId id = StockReservationId.newId();
         boolean anyShort = lines.stream().anyMatch(l -> l.shortageQuantity().signum() > 0);
         boolean nothingReserved = lines.stream().allMatch(l -> l.reservedQuantity().signum() == 0);
-        String headerStatus = nothingReserved ? FAILED
-            : anyShort ? PARTIALLY_RESERVED
-            : RESERVED;
+        Status headerStatus = nothingReserved ? Status.FAILED
+            : anyShort ? Status.PARTIALLY_RESERVED
+            : Status.RESERVED;
         StockReservation res = new StockReservation(
             id, null, workOrderId, warehouseId, headerStatus, new ArrayList<>(lines), 0L
         );
@@ -124,7 +152,7 @@ public final class StockReservation {
                 l.requestedQuantity(),
                 l.reservedQuantity(),
                 l.shortageQuantity(),
-                l.status()
+                l.status().dbValue()
             ));
         }
         res.pendingEvents.add(new RawMaterialsReserved(
@@ -132,7 +160,7 @@ public final class StockReservation {
             id.value(),
             workOrderId,
             id.value(),
-            headerStatus,
+            headerStatus.dbValue(),
             wire,
             Instant.now()
         ));
@@ -141,7 +169,7 @@ public final class StockReservation {
 
     private StockReservation(
         StockReservationId id, UUID salesOrderId, UUID workOrderId, UUID warehouseId,
-        String status, List<StockReservationLine> lines, long version
+        Status status, List<StockReservationLine> lines, long version
     ) {
         this.id = id;
         this.salesOrderId = salesOrderId;
@@ -162,7 +190,7 @@ public final class StockReservation {
     public UUID salesOrderId()                 { return salesOrderId; }
     public UUID workOrderId()                  { return workOrderId; }
     public UUID warehouseId()                  { return warehouseId; }
-    public String status()                     { return status; }
+    public Status status()                     { return status; }
     public List<StockReservationLine> lines()  { return List.copyOf(lines); }
     public long version()                      { return version; }
 }

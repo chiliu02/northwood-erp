@@ -6,6 +6,26 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-19 — §2.0.b sales/inventory bucket + GR/Shipment schema CHECK migration
+
+Third §2.0 slice — the *sales+inventory* bucket. Migrates the three inventory aggregates plus a schema CHECK migration on goods_receipt_header + shipment_header.
+
+What shipped:
+
+- **`StockReservation.Status`** — new nested enum, 6 values mirroring schema CHECK on both `stock_reservation_header.status` and `stock_reservation_line.status` (same set). `RESERVED`, `PARTIALLY_RESERVED`, `FAILED` actively produced; `PENDING`, `RELEASED`, `CONSUMED` carry schema-prep Javadoc. `StockReservationLine.status` typed end-to-end. Repository writes call `.dbValue()`; events still carry the wire-format String (the cross-service contract is `StockReserved.STATUS_*` / `RawMaterialsReserved.STATUS_*` on the event classes, unchanged). `StockReservationService.tryReserveOnHand` returns typed enum.
+- **`GoodsReceipt.Status`** — new nested enum: `DRAFT`, `POSTED` (the only one Java currently writes), `REVERSED`. Aggregate, repository, view, tests all type-safe.
+- **`Shipment.Status`** — same shape (DRAFT / POSTED / REVERSED).
+- **Schema CHECK migration**: new Liquibase changeset at `inventory-service/src/main/resources/db/changelog/changes/2026-05-19-receipt-shipment-status-check-rename-cancelled-to-reversed.sql` replaces `cancelled` → `reversed` in both `goods_receipt_header.status` and `shipment_header.status` CHECK constraints. No data migration — production code only ever writes `posted`; the dropped `cancelled` value was schema-prep without a producer. Baseline `db/northwood_erp.sql` updated to match for fresh-volume installs.
+- **Test-harness in-memory repository**: `InMemoryStockReservationRepository`'s `statusByHeaderId` map switched to typed `StockReservation.Status`; `markReleased` writes the `RELEASED` enum.
+
+Surfaced + fixed another latent test-hygiene issue: `StockReservationTest`'s line helper was passing `"shortage"` as line-status when reserved=0 — but the schema CHECK doesn't include `shortage` for `stock_reservation_line.status` (it's only on `work_order_material.status`). Replaced with the correct `FAILED` enum value.
+
+**Smoke**: `mvn -pl test-harness -am test` → full 16-module reactor green; inventory-service tests pass with the schema-prep `PENDING`/`RELEASED`/`CONSUMED` values reachable via `fromDb()` but never written.
+
+Next: §2.0.c (purchasing — `PurchaseRequisition` + `PurchaseOrder`).
+
+---
+
 ## 2026-05-19 — §2.0.a foundation bucket: Product / Bom / WorkOrder / Customer enums
 
 Second §2.0 slice — the *foundation* bucket. Migrates the four aggregates that bridge across services (Product master, Customer master, the Bom + WorkOrder twin in manufacturing) onto the nested-enum-with-`dbValue()` convention documented in `docs/conventions.md` after the pilot.

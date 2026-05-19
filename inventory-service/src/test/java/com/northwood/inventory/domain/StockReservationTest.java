@@ -19,9 +19,9 @@ class StockReservationTest {
     private static final UUID WH = UUID.randomUUID();
 
     private static StockReservationLine line(BigDecimal requested, BigDecimal reserved, BigDecimal shortage) {
-        String status = shortage.signum() > 0
-            ? (reserved.signum() > 0 ? "partially_reserved" : "shortage")
-            : "reserved";
+        StockReservation.Status status = shortage.signum() > 0
+            ? (reserved.signum() > 0 ? StockReservation.Status.PARTIALLY_RESERVED : StockReservation.Status.FAILED)
+            : StockReservation.Status.RESERVED;
         return new StockReservationLine(
             UUID.randomUUID(), UUID.randomUUID(),
             "FG-X", "Test Product",
@@ -52,21 +52,21 @@ class StockReservationTest {
             StockReservation res = StockReservation.forSalesOrder(SO, WH, List.of(
                 line(BigDecimal.TEN, BigDecimal.TEN, BigDecimal.ZERO)
             ));
-            assertThat(res.status()).isEqualTo("reserved");
+            assertThat(res.status()).isEqualTo(StockReservation.Status.RESERVED);
         }
 
         @Test void any_shortage_yields_partially_reserved() {
             StockReservation res = StockReservation.forSalesOrder(SO, WH, List.of(
                 line(BigDecimal.TEN, new BigDecimal("3"), new BigDecimal("7"))
             ));
-            assertThat(res.status()).isEqualTo("partially_reserved");
+            assertThat(res.status()).isEqualTo(StockReservation.Status.PARTIALLY_RESERVED);
         }
 
         @Test void zero_reserved_across_all_lines_yields_failed() {
             StockReservation res = StockReservation.forSalesOrder(SO, WH, List.of(
                 line(BigDecimal.TEN, BigDecimal.ZERO, BigDecimal.TEN)
             ));
-            assertThat(res.status()).isEqualTo("failed");
+            assertThat(res.status()).isEqualTo(StockReservation.Status.FAILED);
         }
 
         @Test void emits_StockReserved_with_per_line_breakdown() {
@@ -112,7 +112,7 @@ class StockReservationTest {
                 line(new BigDecimal("4"), new BigDecimal("4"), BigDecimal.ZERO),
                 line(new BigDecimal("2"), new BigDecimal("1"), new BigDecimal("1"))
             ));
-            assertThat(res.status()).isEqualTo("partially_reserved");
+            assertThat(res.status()).isEqualTo(StockReservation.Status.PARTIALLY_RESERVED);
         }
 
         @Test void all_components_short_yields_failed() {
@@ -120,7 +120,7 @@ class StockReservationTest {
                 line(new BigDecimal("4"), BigDecimal.ZERO, new BigDecimal("4")),
                 line(new BigDecimal("2"), BigDecimal.ZERO, new BigDecimal("2"))
             ));
-            assertThat(res.status()).isEqualTo("failed");
+            assertThat(res.status()).isEqualTo(StockReservation.Status.FAILED);
         }
     }
 
@@ -129,14 +129,14 @@ class StockReservationTest {
         @Test void rejects_zero_requested_quantity() {
             assertThatThrownBy(() -> new StockReservationLine(
                 UUID.randomUUID(), UUID.randomUUID(), "FG-X", "X",
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, "reserved"
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, StockReservation.Status.RESERVED
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void allows_zero_reserved_with_full_shortage() {
             new StockReservationLine(
                 UUID.randomUUID(), UUID.randomUUID(), "FG-X", "X",
-                BigDecimal.TEN, BigDecimal.ZERO, BigDecimal.TEN, "shortage"
+                BigDecimal.TEN, BigDecimal.ZERO, BigDecimal.TEN, StockReservation.Status.FAILED
             );
         }
     }

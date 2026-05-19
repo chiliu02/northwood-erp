@@ -29,7 +29,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
         rs.getString("customer_name"),
         rs.getObject("warehouse_id", UUID.class),
         null,
-        rs.getString("status"),
+        Shipment.Status.fromDb(rs.getString("status")),
         List.of(),
         rs.getLong("version")
     );
@@ -107,7 +107,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
     }
 
     private void insert(Shipment s, String actor) {
-        Timestamp postedAt = Shipment.POSTED.equals(s.status()) ? Timestamp.from(Instant.now()) : null;
+        Timestamp postedAt = s.status() == Shipment.Status.POSTED ? Timestamp.from(Instant.now()) : null;
         jdbc.update("""
             INSERT INTO inventory.shipment_header (
                 shipment_header_id, shipment_number, sales_order_header_id,
@@ -118,7 +118,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
             """,
             s.id().value(), s.shipmentNumber(), s.salesOrderHeaderId(),
             s.customerId(), s.customerName(),
-            s.warehouseId(), s.status(),
+            s.warehouseId(), s.status().dbValue(),
             1L, postedAt,
             actor, actor
         );

@@ -17,7 +17,7 @@ public final class StockReservationLine {
     private final BigDecimal requestedQuantity;
     private final BigDecimal reservedQuantity;
     private final BigDecimal shortageQuantity;
-    private final String status;
+    private final StockReservation.Status status;
 
     public StockReservationLine(
         UUID lineId,
@@ -27,7 +27,7 @@ public final class StockReservationLine {
         BigDecimal requestedQuantity,
         BigDecimal reservedQuantity,
         BigDecimal shortageQuantity,
-        String status
+        StockReservation.Status status
     ) {
         if (requestedQuantity.signum() <= 0) {
             throw new IllegalArgumentException("requestedQuantity must be > 0");
@@ -49,5 +49,5 @@ public final class StockReservationLine {
     public BigDecimal requestedQuantity() { return requestedQuantity; }
     public BigDecimal reservedQuantity()  { return reservedQuantity; }
     public BigDecimal shortageQuantity()  { return shortageQuantity; }
-    public String status()                { return status; }
+    public StockReservation.Status status()      { return status; }
 }

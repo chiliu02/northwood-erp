@@ -45,7 +45,7 @@ public class JdbcStockReservationRepository implements StockReservationRepositor
             reservation.salesOrderId(),
             reservation.workOrderId(),
             reservation.warehouseId(),
-            reservation.status(),
+            reservation.status().dbValue(),
             1L,
             actor, actor
         );
@@ -59,7 +59,7 @@ public class JdbcStockReservationRepository implements StockReservationRepositor
                 """,
                 line.lineId(), reservation.id().value(), line.productId(),
                 line.productSku(), line.productName(), line.requestedQuantity(),
-                line.reservedQuantity(), line.status(), line.shortageQuantity()
+                line.reservedQuantity(), line.status().dbValue(), line.shortageQuantity()
             );
         }
         for (DomainEvent event : reservation.pullPendingEvents()) {

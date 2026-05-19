@@ -29,7 +29,7 @@ public class JdbcGoodsReceiptRepository implements GoodsReceiptRepository {
         rs.getString("supplier_name"),
         rs.getObject("warehouse_id", UUID.class),
         null,
-        rs.getString("status"),
+        GoodsReceipt.Status.fromDb(rs.getString("status")),
         List.of(),
         rs.getLong("version")
     );
@@ -119,9 +119,9 @@ public class JdbcGoodsReceiptRepository implements GoodsReceiptRepository {
             """,
             gr.id().value(), gr.goodsReceiptNumber(),
             gr.purchaseOrderHeaderId(), gr.supplierId(), gr.supplierName(),
-            gr.warehouseId(), gr.status(),
+            gr.warehouseId(), gr.status().dbValue(),
             1L,
-            GoodsReceipt.POSTED.equals(gr.status()) ? Timestamp.from(Instant.now()) : null,
+            gr.status() == GoodsReceipt.Status.POSTED ? Timestamp.from(Instant.now()) : null,
             actor, actor
         );
         for (GoodsReceiptLine l : gr.lines()) {

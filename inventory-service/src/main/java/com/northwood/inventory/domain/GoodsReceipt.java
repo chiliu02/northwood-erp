@@ -28,9 +28,41 @@ public final class GoodsReceipt {
      */
     public static final String AGGREGATE_TYPE = InventoryAggregateTypes.GOODS_RECEIPT;
 
-    /** Status — wire-format string stored in inventory.goods_receipt_header.status. */
-    public static final String POSTED = "posted";
+    /**
+     * Goods-receipt lifecycle status. Mirrors the schema CHECK on
+     * {@code inventory.goods_receipt_header.status}. Today's Java only ever
+     * writes {@code POSTED}; {@code DRAFT} is the schema default for
+     * hand-inserted rows, and {@code REVERSED} is forward-prep for a future
+     * data-entry-correction flow (counter-stock-movement). See the §2.0
+     * design discussion captured 2026-05-19 — `cancelled` was renamed to
+     * `reversed` in the schema CHECK migration to match the accounting
+     * semantics (you can't cancel a physical receipt; you can only reverse
+     * it with a counter-entry).
+     */
+    public enum Status {
+        /** Schema-prep — not currently produced by Java. */
+        DRAFT("draft"),
+        POSTED("posted"),
+        /** Schema-prep — not currently produced by Java. */
+        REVERSED("reversed");
 
+        private final String dbValue;
+
+        Status(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static Status fromDb(String value) {
+            for (Status s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown goods_receipt status: " + value);
+        }
+    }
 
     private final GoodsReceiptId id;
     private final String goodsReceiptNumber;
@@ -39,7 +71,7 @@ public final class GoodsReceipt {
     private final String supplierName;
     private final UUID warehouseId;
     private final String warehouseCode;
-    private final String status;
+    private final Status status;
     private final List<GoodsReceiptLine> lines;
     private final long version;
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
@@ -64,7 +96,7 @@ public final class GoodsReceipt {
             id, goodsReceiptNumber, purchaseOrderHeaderId,
             supplierId, supplierName,
             warehouseId, warehouseCode,
-            "posted", new ArrayList<>(lines), 0L
+            Status.POSTED, new ArrayList<>(lines), 0L
         );
 
         List<ReceivedLine> wireLines = new ArrayList<>();
@@ -93,7 +125,7 @@ public final class GoodsReceipt {
         GoodsReceiptId id, String goodsReceiptNumber,
         UUID purchaseOrderHeaderId, UUID supplierId, String supplierName,
         UUID warehouseId, String warehouseCode,
-        String status, List<GoodsReceiptLine> lines, long version
+        Status status, List<GoodsReceiptLine> lines, long version
     ) {
         return new GoodsReceipt(
             id, goodsReceiptNumber, purchaseOrderHeaderId,
@@ -107,7 +139,7 @@ public final class GoodsReceipt {
         GoodsReceiptId id, String goodsReceiptNumber,
         UUID purchaseOrderHeaderId, UUID supplierId, String supplierName,
         UUID warehouseId, String warehouseCode,
-        String status, List<GoodsReceiptLine> lines, long version
+        Status status, List<GoodsReceiptLine> lines, long version
     ) {
         this.id = id;
         this.goodsReceiptNumber = goodsReceiptNumber;
@@ -134,7 +166,7 @@ public final class GoodsReceipt {
     public String supplierName()            { return supplierName; }
     public UUID warehouseId()               { return warehouseId; }
     public String warehouseCode()           { return warehouseCode; }
-    public String status()                  { return status; }
+    public Status status()                  { return status; }
     public List<GoodsReceiptLine> lines()   { return List.copyOf(lines); }
     public long version()                   { return version; }
 }

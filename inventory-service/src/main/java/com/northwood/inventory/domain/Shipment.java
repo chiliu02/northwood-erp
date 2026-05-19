@@ -29,9 +29,41 @@ public final class Shipment {
      */
     public static final String AGGREGATE_TYPE = InventoryAggregateTypes.SHIPMENT;
 
-    /** Status — wire-format string stored in inventory.shipment_header.status. */
-    public static final String POSTED = "posted";
+    /**
+     * Shipment lifecycle status. Mirrors the schema CHECK on
+     * {@code inventory.shipment_header.status}. Today's Java only ever writes
+     * {@code POSTED}; {@code DRAFT} is the schema default for hand-inserted
+     * rows, and {@code REVERSED} is forward-prep for a future
+     * data-entry-correction flow (counter-stock-movement). See the §2.0
+     * design discussion captured 2026-05-19 — `cancelled` was renamed to
+     * `reversed` in the schema CHECK migration to match the accounting
+     * semantics (you can't cancel a physical shipment once posted; you can
+     * only reverse it with a counter-entry).
+     */
+    public enum Status {
+        /** Schema-prep — not currently produced by Java. */
+        DRAFT("draft"),
+        POSTED("posted"),
+        /** Schema-prep — not currently produced by Java. */
+        REVERSED("reversed");
 
+        private final String dbValue;
+
+        Status(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static Status fromDb(String value) {
+            for (Status s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown shipment status: " + value);
+        }
+    }
 
     private final ShipmentId id;
     private final String shipmentNumber;
@@ -40,7 +72,7 @@ public final class Shipment {
     private final String customerName;
     private final UUID warehouseId;
     private final String warehouseCode;
-    private final String status;
+    private final Status status;
     private final List<ShipmentLine> lines;
     private final long version;
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
@@ -65,7 +97,7 @@ public final class Shipment {
             id, shipmentNumber, salesOrderHeaderId,
             customerId, customerName,
             warehouseId, warehouseCode,
-            "posted", new ArrayList<>(lines), 0L
+            Status.POSTED, new ArrayList<>(lines), 0L
         );
 
         List<ShippedLine> wireLines = new ArrayList<>();
@@ -96,7 +128,7 @@ public final class Shipment {
         ShipmentId id, String shipmentNumber, UUID salesOrderHeaderId,
         UUID customerId, String customerName,
         UUID warehouseId, String warehouseCode,
-        String status, List<ShipmentLine> lines, long version
+        Status status, List<ShipmentLine> lines, long version
     ) {
         return new Shipment(
             id, shipmentNumber, salesOrderHeaderId,
@@ -110,7 +142,7 @@ public final class Shipment {
         ShipmentId id, String shipmentNumber, UUID salesOrderHeaderId,
         UUID customerId, String customerName,
         UUID warehouseId, String warehouseCode,
-        String status, List<ShipmentLine> lines, long version
+        Status status, List<ShipmentLine> lines, long version
     ) {
         this.id = id;
         this.shipmentNumber = shipmentNumber;
@@ -137,7 +169,7 @@ public final class Shipment {
     public String customerName()                  { return customerName; }
     public UUID warehouseId()                     { return warehouseId; }
     public String warehouseCode()                 { return warehouseCode; }
-    public String status()                        { return status; }
+    public Status status()                        { return status; }
     public List<ShipmentLine> lines()             { return List.copyOf(lines); }
     public long version()                         { return version; }
 }

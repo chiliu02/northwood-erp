@@ -91,11 +91,11 @@ class StockReservationServiceTest {
             ArgumentCaptor<StockReservation> cap = ArgumentCaptor.forClass(StockReservation.class);
             verify(reservations).save(cap.capture());
             StockReservation saved = cap.getValue();
-            assertThat(saved.status()).isEqualTo("reserved");
+            assertThat(saved.status()).isEqualTo(StockReservation.Status.RESERVED);
             assertThat(saved.lines()).hasSize(1);
             assertThat(saved.lines().get(0).reservedQuantity()).isEqualByComparingTo("10");
             assertThat(saved.lines().get(0).shortageQuantity()).isEqualByComparingTo("0");
-            assertThat(saved.lines().get(0).status()).isEqualTo("reserved");
+            assertThat(saved.lines().get(0).status()).isEqualTo(StockReservation.Status.RESERVED);
         }
 
         @Test void partial_reservation_when_available_less_than_requested() {
@@ -108,10 +108,10 @@ class StockReservationServiceTest {
             ArgumentCaptor<StockReservation> cap = ArgumentCaptor.forClass(StockReservation.class);
             verify(reservations).save(cap.capture());
             StockReservation saved = cap.getValue();
-            assertThat(saved.status()).isEqualTo("partially_reserved");
+            assertThat(saved.status()).isEqualTo(StockReservation.Status.PARTIALLY_RESERVED);
             assertThat(saved.lines().get(0).reservedQuantity()).isEqualByComparingTo("4");
             assertThat(saved.lines().get(0).shortageQuantity()).isEqualByComparingTo("6");
-            assertThat(saved.lines().get(0).status()).isEqualTo("partially_reserved");
+            assertThat(saved.lines().get(0).status()).isEqualTo(StockReservation.Status.PARTIALLY_RESERVED);
         }
 
         @Test void failed_when_no_stock_skips_try_reserve_call() {
@@ -124,10 +124,10 @@ class StockReservationServiceTest {
             ArgumentCaptor<StockReservation> cap = ArgumentCaptor.forClass(StockReservation.class);
             verify(reservations).save(cap.capture());
             StockReservation saved = cap.getValue();
-            assertThat(saved.status()).isEqualTo("failed");
+            assertThat(saved.status()).isEqualTo(StockReservation.Status.FAILED);
             assertThat(saved.lines().get(0).reservedQuantity()).isEqualByComparingTo("0");
             assertThat(saved.lines().get(0).shortageQuantity()).isEqualByComparingTo("10");
-            assertThat(saved.lines().get(0).status()).isEqualTo("failed");
+            assertThat(saved.lines().get(0).status()).isEqualTo(StockReservation.Status.FAILED);
         }
 
         @Test void try_reserve_race_loss_exhausts_retries_then_falls_back_to_failed() {
@@ -142,7 +142,7 @@ class StockReservationServiceTest {
             ArgumentCaptor<StockReservation> cap = ArgumentCaptor.forClass(StockReservation.class);
             verify(reservations).save(cap.capture());
             StockReservation saved = cap.getValue();
-            assertThat(saved.status()).isEqualTo("failed");
+            assertThat(saved.status()).isEqualTo(StockReservation.Status.FAILED);
             assertThat(saved.lines().get(0).reservedQuantity()).isEqualByComparingTo("0");
             assertThat(saved.lines().get(0).shortageQuantity()).isEqualByComparingTo("10");
             verify(stockBalances, times(StockReservationService.RESERVE_MAX_ATTEMPTS))
@@ -163,7 +163,7 @@ class StockReservationServiceTest {
             ArgumentCaptor<StockReservation> cap = ArgumentCaptor.forClass(StockReservation.class);
             verify(reservations).save(cap.capture());
             StockReservation saved = cap.getValue();
-            assertThat(saved.status()).isEqualTo("reserved");
+            assertThat(saved.status()).isEqualTo(StockReservation.Status.RESERVED);
             assertThat(saved.lines().get(0).reservedQuantity()).isEqualByComparingTo("10");
             assertThat(saved.lines().get(0).shortageQuantity()).isEqualByComparingTo("0");
             verify(stockBalances, times(2))
@@ -185,7 +185,7 @@ class StockReservationServiceTest {
             ArgumentCaptor<StockReservation> cap = ArgumentCaptor.forClass(StockReservation.class);
             verify(reservations).save(cap.capture());
             StockReservation saved = cap.getValue();
-            assertThat(saved.status()).isEqualTo("partially_reserved");
+            assertThat(saved.status()).isEqualTo(StockReservation.Status.PARTIALLY_RESERVED);
             assertThat(saved.lines().get(0).reservedQuantity()).isEqualByComparingTo("7");
             assertThat(saved.lines().get(0).shortageQuantity()).isEqualByComparingTo("3");
         }
@@ -205,7 +205,7 @@ class StockReservationServiceTest {
             ArgumentCaptor<StockReservation> cap = ArgumentCaptor.forClass(StockReservation.class);
             verify(reservations).save(cap.capture());
             StockReservation saved = cap.getValue();
-            assertThat(saved.status()).isEqualTo("failed");
+            assertThat(saved.status()).isEqualTo(StockReservation.Status.FAILED);
             assertThat(saved.lines().get(0).reservedQuantity()).isEqualByComparingTo("0");
             verify(stockBalances, times(1))
                 .tryReserveOnHand(WAREHOUSE, PRODUCT_1, new BigDecimal("10"));

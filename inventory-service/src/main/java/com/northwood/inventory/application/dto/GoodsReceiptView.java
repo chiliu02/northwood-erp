@@ -25,7 +25,7 @@ public record GoodsReceiptView(
             gr.id().value(), gr.goodsReceiptNumber(),
             gr.purchaseOrderHeaderId(), gr.supplierId(), gr.supplierName(),
             gr.warehouseId(), gr.warehouseCode(),
-            gr.status(), lineViews, gr.version()
+            gr.status().dbValue(), lineViews, gr.version()
         );
     }
 }

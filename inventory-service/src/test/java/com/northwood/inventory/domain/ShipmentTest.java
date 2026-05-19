@@ -54,7 +54,7 @@ class ShipmentTest {
                 "SH-001", SO, CUSTOMER, "Cust", WH, "MAIN",
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             );
-            assertThat(s.status()).isEqualTo("posted");
+            assertThat(s.status()).isEqualTo(Shipment.Status.POSTED);
         }
 
         @Test void emits_ShipmentPosted_with_lines_and_unit_cost() {

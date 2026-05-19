@@ -13,3 +13,5 @@
 databaseChangeLog:
   - include:
       file: db/changelog/changes/2026-05-14-stock-item-add-discontinued-at.sql
+  - include:
+      file: db/changelog/changes/2026-05-19-receipt-shipment-status-check-rename-cancelled-to-reversed.sql

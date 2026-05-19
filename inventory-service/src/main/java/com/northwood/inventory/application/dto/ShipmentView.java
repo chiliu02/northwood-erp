@@ -25,7 +25,7 @@ public record ShipmentView(
             s.id().value(), s.shipmentNumber(), s.salesOrderHeaderId(),
             s.customerId(), s.customerName(),
             s.warehouseId(), s.warehouseCode(),
-            s.status(), lineViews, s.version()
+            s.status().dbValue(), lineViews, s.version()
         );
     }
 }

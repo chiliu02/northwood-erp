@@ -138,11 +138,10 @@ Migrate every enumerated column on every aggregate to a nested Java enum with `d
 
 #### Buckets remaining
 
-- **2.0.b Sales + inventory (+ schema migrations)** — `StockReservation.Status` (shared header+line), `GoodsReceipt.Status` (+ schema CHECK migration: `cancelled` → `reversed`), `Shipment.Status` (+ same schema migration). SalesOrder shipped in pilot.
 - **2.0.c Purchasing** — `PurchaseRequisition.{SourceType, Status, LineStatus}`, `PurchaseOrder.{Status, LineStatus}`.
 - **2.0.d Finance** — `CustomerInvoice.Status`, `SupplierInvoice.{Status, MatchStatus}`, `Payment.{Method, Status, AllocationStatus}`, `JournalEntry.{SourceModule, Status}`.
 
-Pilot + 2.0.a shipped. SalesOrder, Product, Customer, Bom (with ComponentKind), WorkOrder (with MaterialStatus / MaterialLineStatus / OperationStatus) all migrated.
+Pilot + 2.0.a + 2.0.b shipped. SalesOrder, Product, Customer, Bom (with ComponentKind), WorkOrder (with MaterialStatus / MaterialLineStatus / OperationStatus), StockReservation (shared header+line), GoodsReceipt + Shipment (with `cancelled` → `reversed` schema CHECK migration) all migrated.
 
 Cross-service status values (referenced by consumer services from events) live on `<service>-events` event classes as `public static final String STATUS_*` constants regardless of the producer-side representation — that's the locked rule and doesn't change.
 

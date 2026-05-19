@@ -280,9 +280,9 @@ public class StockReservationService {
         }
 
         BigDecimal shortage = requested.subtract(reserved);
-        String status = shortage.signum() == 0 ? StockReservation.RESERVED
-            : reserved.signum() == 0 ? StockReservation.FAILED
-            : StockReservation.PARTIALLY_RESERVED;
+        StockReservation.Status status = shortage.signum() == 0 ? StockReservation.Status.RESERVED
+            : reserved.signum() == 0 ? StockReservation.Status.FAILED
+            : StockReservation.Status.PARTIALLY_RESERVED;
 
         return new StockReservationLine(
             lineId,

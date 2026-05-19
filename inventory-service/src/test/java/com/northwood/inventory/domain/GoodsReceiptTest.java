@@ -54,7 +54,7 @@ class GoodsReceiptTest {
                 "GR-001", PO, SUPPLIER, "Acme", WH, "MAIN",
                 List.of(line(BigDecimal.TEN, BigDecimal.ONE))
             );
-            assertThat(gr.status()).isEqualTo("posted");
+            assertThat(gr.status()).isEqualTo(GoodsReceipt.Status.POSTED);
         }
 
         @Test void emits_GoodsReceived_carrying_PO_and_lines() {
