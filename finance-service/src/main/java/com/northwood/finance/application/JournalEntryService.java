@@ -558,7 +558,7 @@ public class JournalEntryService {
     }
 
     private static String journalSuffix() {
-        return UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        return UUID.randomUUID().toString().substring(0, JournalEntry.NUMBER_SUFFIX_LENGTH).toUpperCase();
     }
 
 }

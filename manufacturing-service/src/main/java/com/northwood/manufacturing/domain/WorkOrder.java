@@ -42,6 +42,14 @@ public final class WorkOrder {
     public static final String NUMBER_PREFIX = "WO-";
 
     /**
+     * Character count of the random suffix appended to {@link #NUMBER_PREFIX}
+     * when constructing a new work-order number (a
+     * {@code UUID.randomUUID().toString().substring(0, …).toUpperCase()}
+     * slice). Pairs with the prefix — together they define the full format.
+     */
+    public static final int NUMBER_SUFFIX_LENGTH = 8;
+
+    /**
      * Work-order lifecycle status. Mirrors the schema CHECK on
      * {@code manufacturing.work_order.status}. Lifecycle:
      * {@code RELEASED} / {@code PLANNED} → {@code IN_PROGRESS} →

@@ -13,6 +13,7 @@ import com.northwood.sales.domain.SalesOrder.ShippedLineInput;
 import com.northwood.sales.domain.SalesOrderId;
 import com.northwood.sales.domain.SalesOrderLine;
 import com.northwood.sales.domain.SalesOrderRepository;
+import com.northwood.shared.domain.LineNumbering;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -175,7 +176,7 @@ public class SalesOrderService {
         }
 
         List<SalesOrderLine> lines = new ArrayList<>();
-        int lineNumber = 10;
+        int lineNumber = LineNumbering.START;
         for (OrderLine req : command.lines()) {
             BigDecimal resolvedUnitPrice = resolveUnitPrice(req, command.currencyCode());
             lines.add(new SalesOrderLine(
@@ -191,7 +192,7 @@ public class SalesOrderService {
                 BigDecimal.ZERO,
                 SalesOrder.LineStatus.OPEN
             ));
-            lineNumber += 10;
+            lineNumber += LineNumbering.STEP;
         }
 
         SalesOrder order = SalesOrder.place(

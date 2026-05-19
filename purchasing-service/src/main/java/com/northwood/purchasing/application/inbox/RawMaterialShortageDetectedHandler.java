@@ -57,7 +57,7 @@ public class RawMaterialShortageDetectedHandler extends AbstractInboxHandler<Raw
             ));
         }
 
-        String requisitionNumber = PurchaseRequisition.NUMBER_PREFIX + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String requisitionNumber = PurchaseRequisition.NUMBER_PREFIX + UUID.randomUUID().toString().substring(0, PurchaseRequisition.NUMBER_SUFFIX_LENGTH).toUpperCase();
         requisitions.createForWorkOrderShortage(new WorkOrderShortageCommand(
             requisitionNumber,
             payload.workOrderId(),

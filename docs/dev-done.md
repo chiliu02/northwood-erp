@@ -6,6 +6,23 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-19 — §2.0.j NUMBER_SUFFIX_LENGTH on aggregates + shared LineNumbering
+
+Sweep for numeric-literal extraction candidates after §2.0.i. Two clear wins surfaced; the rest were either already extracted as private constants, already `@Value`-driven, or borderline. Shipped both.
+
+What shipped:
+
+- **`NUMBER_SUFFIX_LENGTH = 8` on 5 aggregate roots**, alongside `NUMBER_PREFIX` from §2.0.h: `JournalEntry`, `WorkOrder`, `PurchaseOrder`, `PurchaseRequisition`, `CustomerInvoice`. Per-aggregate placement chosen over a single shared constant because the suffix length is a number-format choice that pairs with the prefix — they belong together. 12 production sites updated (1 in `JournalEntry.reverseOf`, 6 via `JournalEntryService.journalSuffix()` helper, 2 in `MakeToOrderSagaWorker` + `WorkOrderReleaseService`, 1 each in `PurchaseOrderService`, `RawMaterialShortageDetectedHandler`, `CustomerInvoiceService`). The `JournalEntryServiceReverseBySourceTest:47` test fixture left alone — uses `substring(0, 4)` deliberately for shorter fake data.
+- **`shared.domain.LineNumbering`** in `shared-kernel` with `START = 10` + `STEP = 10`. Project-wide convention applied by every master-detail aggregate that builds line collections at creation time. 4 production sites updated: `StockReservation:104`, `SupplierInvoiceService:95`, `PurchaseRequisitionService:144`, `SalesOrderService:178`. Each previously had `int lineNumber = 10; … lineNumber += 10;` — now reads as the named convention. Hosted in `shared-kernel` rather than per-aggregate because it's truly project-wide (4 unrelated aggregates from different bounded contexts) and no aggregate-specific override exists today.
+
+### Punch list outcome
+
+The sweep also surfaced saga lease TTL (30s) + retry backoff (15s) hardcoded across 3 saga managers — flagged as a separate slice (**§2.13 in dev-todo.md**) rather than constants, because the right fix is `@Value` config (matches the existing `northwood.saga.poll-interval` / `northwood.finance.match.priceTolerancePercent` patterns). Materials cost scale `6`, scrap-factor divide-by-`100`, and BoM walk depth `32` evaluated and rejected — single-site, well-named context, or already extracted.
+
+**Smoke**: `mvn -pl test-harness -am test` → BUILD SUCCESS across the 16-module reactor.
+
+---
+
 ## 2026-05-19 — §2.0.i WarehouseCodes constants holder
 
 Hygiene pass after §2.0.h, same flavour: a shared business-key value (`"MAIN"`) was inlined as bare String literals across multiple services. Four services had already started extracting a private `DEFAULT_WAREHOUSE = "MAIN"` constant — clear evidence the cleanup was already in progress — but other production sites still used the bare literal, and tests scattered it everywhere. Closing it out.

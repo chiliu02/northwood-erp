@@ -35,6 +35,14 @@ public final class CustomerInvoice {
     public static final String NUMBER_PREFIX = "INV-";
 
     /**
+     * Character count of the random suffix appended to {@link #NUMBER_PREFIX}
+     * when constructing a new customer-invoice number (a
+     * {@code UUID.randomUUID().toString().substring(0, …).toUpperCase()}
+     * slice). Pairs with the prefix — together they define the full format.
+     */
+    public static final int NUMBER_SUFFIX_LENGTH = 8;
+
+    /**
      * Customer-invoice lifecycle status. Mirrors the schema CHECK on
      * {@code finance.customer_invoice_header.status}. Lifecycle:
      * {@code POSTED → PARTIALLY_PAID → PAID} (the {@code maintain_allocation_totals}

@@ -105,7 +105,7 @@ public class MakeToOrderSagaWorker {
         }
 
         WorkOrder workOrder = release.release(new ReleaseCommand(
-            WorkOrder.NUMBER_PREFIX + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
+            WorkOrder.NUMBER_PREFIX + UUID.randomUUID().toString().substring(0, WorkOrder.NUMBER_SUFFIX_LENGTH).toUpperCase(),
             saga.salesOrderHeaderId(),
             saga.salesOrderLineId(),
             null,

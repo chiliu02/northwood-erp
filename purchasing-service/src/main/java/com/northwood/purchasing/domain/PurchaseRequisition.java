@@ -42,6 +42,14 @@ public final class PurchaseRequisition {
     public static final String NUMBER_PREFIX = "PR-";
 
     /**
+     * Character count of the random suffix appended to {@link #NUMBER_PREFIX}
+     * when constructing a new requisition number (a
+     * {@code UUID.randomUUID().toString().substring(0, …).toUpperCase()}
+     * slice). Pairs with the prefix — together they define the full format.
+     */
+    public static final int NUMBER_SUFFIX_LENGTH = 8;
+
+    /**
      * Purchase-requisition source classifier. Mirrors the schema CHECK on
      * {@code purchasing.purchase_requisition_header.source_type}. Drives which
      * source ids the row carries: {@code MANUAL} → neither, {@code LOW_STOCK}

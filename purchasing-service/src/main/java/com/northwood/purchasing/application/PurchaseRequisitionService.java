@@ -9,6 +9,7 @@ import com.northwood.purchasing.domain.PurchaseRequisitionId;
 import com.northwood.purchasing.domain.PurchaseRequisitionLine;
 import com.northwood.purchasing.domain.PurchaseRequisitionRepository;
 import com.northwood.purchasing.domain.Supplier;
+import com.northwood.shared.domain.LineNumbering;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -141,7 +142,7 @@ public class PurchaseRequisitionService {
             }
         }
         List<PurchaseRequisitionLine> built = new ArrayList<>();
-        int lineNumber = 10;
+        int lineNumber = LineNumbering.START;
         for (RequisitionLineRequest line : requested) {
             built.add(new PurchaseRequisitionLine(
                 UUID.randomUUID(),
@@ -155,7 +156,7 @@ public class PurchaseRequisitionService {
                 defaultSupplier.name(),
                 PurchaseRequisition.LineStatus.OPEN
             ));
-            lineNumber += 10;
+            lineNumber += LineNumbering.STEP;
         }
         return built;
     }

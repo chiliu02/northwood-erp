@@ -158,6 +158,10 @@ Slices A–D shipped 2026-05-07 / 08 (split events, finance standard-cost projec
 
 **Slice E (deferred — pull forward only if the cross-currency throw fires in the demo dataset)** — wire `CurrencyConverter` into the BoM rollup so multi-currency component prices roll up to a target currency.
 
+### 2.13 Saga lease TTL + retry backoff → `@Value`-driven config
+
+Three saga managers (`JdbcSalesOrderFulfilmentSagaManager:63`, `JdbcMakeToOrderSagaManager:43`, `JdbcPurchaseToPaySagaManager:37`) hardcode `Duration.ofSeconds(30)` lease TTL + `Duration.ofSeconds(15)` retry backoff. Triple-duplication of operational policy values; identified during §2.0.j as a candidate for constant extraction but better addressed as `@Value` config (matches the existing pattern for `northwood.saga.poll-interval` and `northwood.finance.match.priceTolerancePercent`). Two new property keys (e.g. `northwood.saga.lease-ttl-seconds`, `northwood.saga.retry-backoff-seconds`) with the current values as defaults; document in each saga manager Javadoc.
+
 ### 2.12 Role meta-annotations for `warehouse_manager`, `auditor`, `sysadmin`
 
 The 2026-05-13 `@PreAuthorize` → `@RequireXxx` sweep created annotations under `shared/api/security/` for the 10 realm roles that gate actual endpoints today. The other 3 realm roles defined in `db/keycloak/northwood-realm.json` — `warehouse_manager` (force-release reservations, post stock adjustments), `auditor` (read-only everywhere), `sysadmin` (Keycloak realm admin only) — don't have annotations because no endpoint gates on them today. Scaffold matching `@RequireWarehouseManager` / `@RequireAuditor` / `@RequireSysadmin` when the first endpoint needs them.

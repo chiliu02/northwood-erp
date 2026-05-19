@@ -48,6 +48,15 @@ public final class JournalEntry {
     public static final String REVERSAL_NUMBER_PREFIX = "JE-REV-";
 
     /**
+     * Character count of the random suffix appended to {@link #NUMBER_PREFIX} /
+     * {@link #REVERSAL_NUMBER_PREFIX} when constructing a new journal number
+     * (a {@code UUID.randomUUID().toString().substring(0, …).toUpperCase()}
+     * slice). Pairs with the prefix constants — together they define the full
+     * number format.
+     */
+    public static final int NUMBER_SUFFIX_LENGTH = 8;
+
+    /**
      * Source-module classifier. Mirrors the schema CHECK on
      * {@code finance.journal_entry_header.source_module}. Identifies which
      * service originated the document being journalled.
@@ -244,7 +253,7 @@ public final class JournalEntry {
         String description = "Reversal of " + original.journalNumber
             + (reason == null || reason.isBlank() ? "" : " — " + reason);
         return post(
-            REVERSAL_NUMBER_PREFIX + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
+            REVERSAL_NUMBER_PREFIX + UUID.randomUUID().toString().substring(0, NUMBER_SUFFIX_LENGTH).toUpperCase(),
             postingDate,
             SourceModule.FINANCE,
             SourceDocumentType.JOURNAL_REVERSAL,

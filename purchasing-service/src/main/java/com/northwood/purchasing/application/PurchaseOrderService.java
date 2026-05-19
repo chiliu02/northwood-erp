@@ -112,7 +112,7 @@ public class PurchaseOrderService {
         List<PurchaseOrderLine> lines = buildLines(supplier.id(), pr.lines());
 
         PurchaseOrder po = PurchaseOrder.fromRequisition(
-            PurchaseOrder.NUMBER_PREFIX + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
+            PurchaseOrder.NUMBER_PREFIX + UUID.randomUUID().toString().substring(0, PurchaseOrder.NUMBER_SUFFIX_LENGTH).toUpperCase(),
             supplier,
             pr.id().value(),
             pr.sourceWorkOrderId(),

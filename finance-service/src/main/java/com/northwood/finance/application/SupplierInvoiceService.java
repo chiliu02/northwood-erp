@@ -8,6 +8,7 @@ import com.northwood.finance.domain.SupplierInvoice;
 import com.northwood.finance.domain.SupplierInvoiceId;
 import com.northwood.finance.domain.SupplierInvoiceLine;
 import com.northwood.finance.domain.SupplierInvoiceRepository;
+import com.northwood.shared.domain.LineNumbering;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -92,7 +93,7 @@ public class SupplierInvoiceService {
         );
 
         List<SupplierInvoiceLine> lines = new ArrayList<>();
-        int lineNumber = 10;
+        int lineNumber = LineNumbering.START;
         for (RecordSupplierInvoiceCommand.Line line : command.lines()) {
             BigDecimal qty = line.quantity();
             BigDecimal unit = line.unitPrice() == null ? BigDecimal.ZERO : line.unitPrice();
@@ -108,7 +109,7 @@ public class SupplierInvoiceService {
                 taxRate, lineTax,
                 lineSubtotal
             ));
-            lineNumber += 10;
+            lineNumber += LineNumbering.STEP;
         }
 
         SupplierInvoice invoice = SupplierInvoice.record(

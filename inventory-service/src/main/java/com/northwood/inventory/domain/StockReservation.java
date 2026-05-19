@@ -5,6 +5,7 @@ import com.northwood.inventory.domain.events.RawMaterialsReserved.ReservedCompon
 import com.northwood.inventory.domain.events.StockReserved;
 import com.northwood.inventory.domain.events.StockReserved.ReservedLine;
 import com.northwood.shared.domain.DomainEvent;
+import com.northwood.shared.domain.LineNumbering;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -101,13 +102,13 @@ public final class StockReservation {
         );
 
         List<ReservedLine> wireLines = new ArrayList<>();
-        int lineNumber = 10;
+        int lineNumber = LineNumbering.START;
         for (StockReservationLine l : lines) {
             wireLines.add(new ReservedLine(
                 lineNumber, l.productId(), l.requestedQuantity(),
                 l.reservedQuantity(), l.shortageQuantity(), l.status().dbValue()
             ));
-            lineNumber += 10;
+            lineNumber += LineNumbering.STEP;
         }
         res.pendingEvents.add(new StockReserved(
             UUID.randomUUID(),
