@@ -26,8 +26,8 @@ public record PaymentView(
         return new PaymentView(
             p.id().value(),
             p.paymentNumber(),
-            p.paymentDirection(),
-            p.paymentType(),
+            p.paymentDirection().dbValue(),
+            p.paymentType().dbValue(),
             p.supplierId(),
             p.partyName(),
             p.paymentDate(),

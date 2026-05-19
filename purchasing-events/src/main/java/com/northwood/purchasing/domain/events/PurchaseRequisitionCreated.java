@@ -25,6 +25,18 @@ public record PurchaseRequisitionCreated(
 
     public static final String EVENT_TYPE = "purchasing.PurchaseRequisitionCreated";
 
+    /**
+     * Wire-format constants for the {@code sourceType} payload field. Cross-service
+     * consumers (e.g. {@code reporting.shortage}) should reference these constants
+     * rather than literals so a producer-side rename surfaces at compile time. The
+     * producer-side enum is {@code PurchaseRequisition.SourceType}; same wire format,
+     * different access path per the cross-service contract rule
+     * (see {@code docs/conventions.md} → <i>Cross-service wire-format constants</i>).
+     */
+    public static final String SOURCE_TYPE_MANUAL = "manual";
+    public static final String SOURCE_TYPE_LOW_STOCK = "low_stock";
+    public static final String SOURCE_TYPE_WORK_ORDER_SHORTAGE = "work_order_shortage";
+
     @Override public String eventType() { return EVENT_TYPE; }
 
     public record RequestedLine(

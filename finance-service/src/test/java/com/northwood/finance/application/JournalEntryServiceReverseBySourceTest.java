@@ -47,7 +47,7 @@ class JournalEntryServiceReverseBySourceTest {
             "JE-" + id.value().toString().substring(0, 4),
             LocalDate.of(2026, 6, 1),
             JournalEntry.SourceModule.FINANCE,
-            sourceType,
+            JournalEntry.SourceDocumentType.fromDb(sourceType),
             sourceId,
             "test",
             JournalEntry.Status.POSTED,

@@ -111,6 +111,60 @@ public final class Payment {
     }
 
     /**
+     * Payment direction. No schema CHECK today, but the {@code payment_direction}
+     * column is one-of-known-set — every {@code Payment.record*()} factory writes
+     * one of these two values.
+     */
+    public enum Direction {
+        INCOMING("incoming"),
+        OUTGOING("outgoing");
+
+        private final String dbValue;
+
+        Direction(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static Direction fromDb(String value) {
+            for (Direction d : values()) {
+                if (d.dbValue.equals(value)) return d;
+            }
+            throw new IllegalArgumentException("Unknown payment_direction: " + value);
+        }
+    }
+
+    /**
+     * Payment type. No schema CHECK today, but the {@code payment_type} column
+     * is one-of-known-set — outgoing payments are {@code SUPPLIER_PAYMENT},
+     * incoming are {@code CUSTOMER_PAYMENT}. Pairs with {@link Direction}.
+     */
+    public enum Type {
+        SUPPLIER_PAYMENT("supplier_payment"),
+        CUSTOMER_PAYMENT("customer_payment");
+
+        private final String dbValue;
+
+        Type(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static Type fromDb(String value) {
+            for (Type t : values()) {
+                if (t.dbValue.equals(value)) return t;
+            }
+            throw new IllegalArgumentException("Unknown payment_type: " + value);
+        }
+    }
+
+    /**
      * Allocation status (on {@link PaymentAllocation} child). Mirrors the
      * schema CHECK on {@code finance.payment_allocation.status}. Today's Java
      * only writes {@code POSTED}; {@code REVERSED} is schema-prep.
@@ -140,8 +194,8 @@ public final class Payment {
 
     private final PaymentId id;
     private final String paymentNumber;
-    private final String paymentDirection;
-    private final String paymentType;
+    private final Direction paymentDirection;
+    private final Type paymentType;
     private final UUID customerId;
     private final UUID supplierId;
     private final String partyName;
@@ -189,7 +243,7 @@ public final class Payment {
         );
         Payment p = new Payment(
             id, paymentNumber,
-            "outgoing", "supplier_payment",
+            Direction.OUTGOING, Type.SUPPLIER_PAYMENT,
             null, supplierId, supplierName,
             paymentDate == null ? LocalDate.now() : paymentDate,
             paymentMethod,
@@ -254,7 +308,7 @@ public final class Payment {
         );
         Payment p = new Payment(
             id, paymentNumber,
-            "incoming", "customer_payment",
+            Direction.INCOMING, Type.CUSTOMER_PAYMENT,
             customerId, null, customerName,
             paymentDate == null ? LocalDate.now() : paymentDate,
             paymentMethod,
@@ -327,7 +381,7 @@ public final class Payment {
         }
         Payment p = new Payment(
             id, paymentNumber,
-            "outgoing", "supplier_payment",
+            Direction.OUTGOING, Type.SUPPLIER_PAYMENT,
             null, supplierId, supplierName,
             paymentDate == null ? LocalDate.now() : paymentDate,
             paymentMethod,
@@ -399,7 +453,7 @@ public final class Payment {
         }
         Payment p = new Payment(
             id, paymentNumber,
-            "incoming", "customer_payment",
+            Direction.INCOMING, Type.CUSTOMER_PAYMENT,
             customerId, null, customerName,
             paymentDate == null ? LocalDate.now() : paymentDate,
             paymentMethod,
@@ -433,7 +487,7 @@ public final class Payment {
 
     /** Factory: hydrate from the DB; emits no events. */
     public static Payment reconstitute(
-        PaymentId id, String paymentNumber, String paymentDirection, String paymentType,
+        PaymentId id, String paymentNumber, Direction paymentDirection, Type paymentType,
         UUID customerId, UUID supplierId, String partyName,
         LocalDate paymentDate, Method paymentMethod, String currencyCode,
         BigDecimal amount, Status status,
@@ -449,7 +503,7 @@ public final class Payment {
     }
 
     private Payment(
-        PaymentId id, String paymentNumber, String paymentDirection, String paymentType,
+        PaymentId id, String paymentNumber, Direction paymentDirection, Type paymentType,
         UUID customerId, UUID supplierId, String partyName,
         LocalDate paymentDate, Method paymentMethod, String currencyCode,
         BigDecimal amount, Status status,
@@ -479,8 +533,8 @@ public final class Payment {
 
     public PaymentId id()                          { return id; }
     public String paymentNumber()                  { return paymentNumber; }
-    public String paymentDirection()               { return paymentDirection; }
-    public String paymentType()                    { return paymentType; }
+    public Direction paymentDirection()            { return paymentDirection; }
+    public Type paymentType()                      { return paymentType; }
     public UUID customerId()                       { return customerId; }
     public UUID supplierId()                       { return supplierId; }
     public String partyName()                      { return partyName; }

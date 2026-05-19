@@ -88,7 +88,7 @@ class JournalEntryServicePostingsTest {
             );
 
             JournalEntry entry = capturedSave();
-            assertThat(entry.sourceDocumentType()).isEqualTo("supplier_invoice");
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.SUPPLIER_INVOICE);
             assertThat(entry.sourceDocumentId()).isEqualTo(invoiceId);
             assertThat(entry.lines()).hasSize(2);
             assertThat(debitFor(entry, "1300")).isEqualByComparingTo("1100.00");
@@ -103,7 +103,7 @@ class JournalEntryServicePostingsTest {
             );
 
             JournalEntry entry = capturedSave();
-            assertThat(entry.sourceDocumentType()).isEqualTo("supplier_payment");
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.SUPPLIER_PAYMENT);
             assertThat(debitFor(entry, "2100")).isEqualByComparingTo("1100.00");
             assertThat(creditFor(entry, "1000")).isEqualByComparingTo("1100.00");
         }
@@ -116,7 +116,7 @@ class JournalEntryServicePostingsTest {
             );
 
             JournalEntry entry = capturedSave();
-            assertThat(entry.sourceDocumentType()).isEqualTo("customer_invoice");
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.CUSTOMER_INVOICE);
             assertThat(debitFor(entry, "1100")).isEqualByComparingTo("550.00");
             assertThat(creditFor(entry, "4000")).isEqualByComparingTo("550.00");
         }
@@ -129,7 +129,7 @@ class JournalEntryServicePostingsTest {
             );
 
             JournalEntry entry = capturedSave();
-            assertThat(entry.sourceDocumentType()).isEqualTo("customer_payment");
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.CUSTOMER_PAYMENT);
             assertThat(debitFor(entry, "1000")).isEqualByComparingTo("550.00");
             assertThat(creditFor(entry, "1100")).isEqualByComparingTo("550.00");
         }
@@ -262,7 +262,7 @@ class JournalEntryServicePostingsTest {
         private JournalEntry posted(JournalEntryId id, JournalEntry.Status status, BigDecimal amount) {
             return JournalEntry.reconstitute(
                 id, "JE-X", POSTING_DATE,
-                JournalEntry.SourceModule.FINANCE, "supplier_invoice", UUID.randomUUID(),
+                JournalEntry.SourceModule.FINANCE, JournalEntry.SourceDocumentType.SUPPLIER_INVOICE, UUID.randomUUID(),
                 "test", status, "AUD", BigDecimal.ONE, Instant.now(),
                 List.of(
                     JournalEntryLine.debit(10, UUID.randomUUID(), "5000", "COGS", amount, "d", POSTING_DATE),
@@ -282,7 +282,7 @@ class JournalEntryServicePostingsTest {
             ArgumentCaptor<JournalEntry> cap = ArgumentCaptor.forClass(JournalEntry.class);
             verify(journals).save(cap.capture());
             JournalEntry reversal = cap.getValue();
-            assertThat(reversal.sourceDocumentType()).isEqualTo("journal_reversal");
+            assertThat(reversal.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.JOURNAL_REVERSAL);
             assertThat(reversal.sourceDocumentId()).isEqualTo(id.value());
             // Lines are swapped: original Dr 5000 / Cr 2100 → Cr 5000 / Dr 2100
             assertThat(creditFor(reversal, "5000")).isEqualByComparingTo("100.00");

@@ -166,6 +166,71 @@ The View carries `String status`; the conversion happens once in `from(...)`. In
 
 **Status-projection ports** (the non-aggregate write path for header-status echoes — e.g. `SalesOrderHeaderStatusProjection.markStatus`) take the enum at the interface boundary and unwrap to `.dbValue()` inside the JDBC implementation. Same shape: typed in `application/`, string at the JDBC seam.
 
+## Cross-service wire-format constants
+
+The "nested enum on the aggregate root" rule above is the **producer-side** convention. Cross-service consumers can't import another service's domain (the schema-per-service rule blocks it), so they need a different path to the same wire-format values. Two patterns:
+
+### When the field is on an event payload
+
+Event classes in `<service>-events` carry `public static final String <FIELD>_<VALUE>` constants for every value of every one-of-known-set wire-format field they expose. The producer-side enum is the source of truth for the value set; the event-class constants are the public surface that consumers compile against.
+
+```java
+// inventory-events/.../events/StockReserved.java
+public record StockReserved(..., String status, ...) implements DomainEvent {
+
+    public static final String EVENT_TYPE = "inventory.StockReserved";
+
+    /** Wire-format constants for the {@code status} payload field. */
+    public static final String STATUS_RESERVED = "reserved";
+    public static final String STATUS_PARTIALLY_RESERVED = "partially_reserved";
+    public static final String STATUS_FAILED = "failed";
+}
+
+// sales-service/.../inbox/StockReservedHandler.java  — different service
+case StockReserved.STATUS_RESERVED -> ...;   // ✅ compiles against the event-jar constant
+case "reserved" -> ...;                       // ❌ string literal; producer rename misses this consumer
+```
+
+Same pattern for source/type/method/kind fields:
+- `PurchaseRequisitionCreated.SOURCE_TYPE_MANUAL` / `SOURCE_TYPE_LOW_STOCK` / `SOURCE_TYPE_WORK_ORDER_SHORTAGE`.
+- `CustomerPaymentReceived.INVOICE_STATUS_PAID` / `INVOICE_STATUS_PARTIALLY_PAID`.
+
+### When the column is on an aggregate but the consumer is a projection in another service
+
+For columns the consumer service is reading or writing into its **own projection table** (mirrored from upstream events), define a dedicated constants holder class in the producing service's `<service>-events` jar. Same wire format as the producer's nested enum; same compile-time check on the consumer side; no schema-per-service rule violation.
+
+```java
+// manufacturing-events/.../events/WorkOrderStatuses.java
+public final class WorkOrderStatuses {
+    public static final String RELEASED = "released";
+    public static final String IN_PROGRESS = "in_progress";
+    public static final String COMPLETED = "completed";
+    public static final String CLOSED = "closed";
+    public static final String CANCELLED = "cancelled";
+    // ...
+    private WorkOrderStatuses() {}
+}
+
+// reporting-service/.../JdbcProductionPlanningProjection.java
+jdbc.update("""
+    INSERT INTO reporting.production_planning_board (work_order_status, ...)
+    VALUES (?, ...)
+    """,
+    WorkOrderStatuses.RELEASED, ...);   // ✅ compiles; parameter-bound so SQL stays valid
+```
+
+Producer side keeps using its enum (`WorkOrder.Status.RELEASED.dbValue()`). The two paths produce the same wire-format string at runtime.
+
+### What still uses string literals (intentionally)
+
+- **SQL `WHERE` and `CASE` conditions** in cross-service projections — `WHERE current_status IN ('released', 'pending')`. These are engine-side comparisons against current column values, not statuses this code *writes*. Compile-time binding doesn't help here; a comment near the SQL pointing at the constants holder is enough.
+- **Application-layer Commands taking wire-shaped data** (e.g. `RecordSupplierPaymentCommand.paymentMethod : String`) — the controller can't import domain enums (hex rule), so the wire shape lives on the Command and the service converts via `Enum.fromDb(...)` inside its method body. The Command's `@Pattern(...)` annotation pins the input set; the conversion catches drift.
+- **Outbox/inbox internal machinery** (`outbox_message.status = 'pending'`, etc.) — this is messaging plumbing, not aggregate state; out of scope.
+
+### The "did we cover it" test
+
+Find Usages on the producer-side enum value (e.g. `WorkOrder.Status.RELEASED`) — every consumer in every service that pinned to the wire value should show up either through the enum's `dbValue()` (within-service uses) or through the matching cross-service constant (cross-service uses). A string literal that doesn't surface there is the gap.
+
 ## Instance-field naming: the full aggregate name in plural, not the class-kind suffix
 
 The type already says what kind of collaborator it is (`Repository`, `Lookup`, `QueryPort`, `Writer`, `Projection`); the field name says what's *in* it. Concretely:

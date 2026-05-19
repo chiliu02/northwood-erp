@@ -26,7 +26,7 @@ public class JdbcJournalEntryRepository implements JournalEntryRepository {
             rs.getString("journal_number"),
             postingDate.toLocalDate(),
             JournalEntry.SourceModule.fromDb(rs.getString("source_module")),
-            rs.getString("source_document_type"),
+            JournalEntry.SourceDocumentType.fromDb(rs.getString("source_document_type")),
             rs.getObject("source_document_id", UUID.class),
             rs.getString("description"),
             JournalEntry.Status.fromDb(rs.getString("status")),
@@ -113,7 +113,7 @@ public class JdbcJournalEntryRepository implements JournalEntryRepository {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
             """,
             entry.id().value(), entry.journalNumber(), Date.valueOf(entry.postingDate()),
-            entry.sourceModule().dbValue(), entry.sourceDocumentType(), entry.sourceDocumentId(),
+            entry.sourceModule().dbValue(), entry.sourceDocumentType().dbValue(), entry.sourceDocumentId(),
             entry.description(),
             entry.currencyCode(), entry.exchangeRate(),
             entry.exchangeRateCapturedAt() == null ? Timestamp.from(Instant.now()) : Timestamp.from(entry.exchangeRateCapturedAt()),

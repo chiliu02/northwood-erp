@@ -62,6 +62,41 @@ public final class JournalEntry {
     }
 
     /**
+     * Source-document classifier. The {@code source_document_type} column is
+     * free-form text in the schema (no CHECK), but in practice carries one of
+     * these wire-format values — each identifies the kind of business event
+     * the journal was posted for. Used by {@link #reverseOf(JournalEntry, String, java.time.LocalDate)}
+     * to mark reversal entries, and by reverse-by-source flows to find all
+     * journals posted from a given upstream document.
+     */
+    public enum SourceDocumentType {
+        SUPPLIER_INVOICE("supplier_invoice"),
+        CUSTOMER_INVOICE("customer_invoice"),
+        SUPPLIER_PAYMENT("supplier_payment"),
+        CUSTOMER_PAYMENT("customer_payment"),
+        GOODS_RECEIPT("goods_receipt"),
+        SHIPMENT_COST("shipment_cost"),
+        JOURNAL_REVERSAL("journal_reversal");
+
+        private final String dbValue;
+
+        SourceDocumentType(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static SourceDocumentType fromDb(String value) {
+            for (SourceDocumentType t : values()) {
+                if (t.dbValue.equals(value)) return t;
+            }
+            throw new IllegalArgumentException("Unknown journal_entry source_document_type: " + value);
+        }
+    }
+
+    /**
      * Journal-entry lifecycle status. Mirrors the schema CHECK on
      * {@code finance.journal_entry_header.status}. Lifecycle:
      * {@code DRAFT → POSTED → REVERSED}. {@code DRAFT} is load-bearing for
@@ -98,7 +133,7 @@ public final class JournalEntry {
     private final String journalNumber;
     private final LocalDate postingDate;
     private final SourceModule sourceModule;
-    private final String sourceDocumentType;
+    private final SourceDocumentType sourceDocumentType;
     private final UUID sourceDocumentId;
     private final String description;
     private final Status status;
@@ -112,7 +147,7 @@ public final class JournalEntry {
         String journalNumber,
         LocalDate postingDate,
         SourceModule sourceModule,
-        String sourceDocumentType,
+        SourceDocumentType sourceDocumentType,
         UUID sourceDocumentId,
         String description,
         String currencyCode,
@@ -196,7 +231,7 @@ public final class JournalEntry {
             "JE-REV-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
             postingDate,
             SourceModule.FINANCE,
-            "journal_reversal",
+            SourceDocumentType.JOURNAL_REVERSAL,
             original.id().value(),
             description,
             original.currencyCode,
@@ -207,7 +242,7 @@ public final class JournalEntry {
 
     public static JournalEntry reconstitute(
         JournalEntryId id, String journalNumber, LocalDate postingDate,
-        SourceModule sourceModule, String sourceDocumentType, UUID sourceDocumentId,
+        SourceModule sourceModule, SourceDocumentType sourceDocumentType, UUID sourceDocumentId,
         String description, Status status,
         String currencyCode, BigDecimal exchangeRate, Instant exchangeRateCapturedAt,
         List<JournalEntryLine> lines, long version
@@ -223,7 +258,7 @@ public final class JournalEntry {
 
     private JournalEntry(
         JournalEntryId id, String journalNumber, LocalDate postingDate,
-        SourceModule sourceModule, String sourceDocumentType, UUID sourceDocumentId,
+        SourceModule sourceModule, SourceDocumentType sourceDocumentType, UUID sourceDocumentId,
         String description, Status status,
         String currencyCode, BigDecimal exchangeRate, Instant exchangeRateCapturedAt,
         List<JournalEntryLine> lines, long version
@@ -247,7 +282,7 @@ public final class JournalEntry {
     public String journalNumber()                  { return journalNumber; }
     public LocalDate postingDate()                 { return postingDate; }
     public SourceModule sourceModule()             { return sourceModule; }
-    public String sourceDocumentType()             { return sourceDocumentType; }
+    public SourceDocumentType sourceDocumentType() { return sourceDocumentType; }
     public UUID sourceDocumentId()                 { return sourceDocumentId; }
     public String description()                    { return description; }
     public Status status()                         { return status; }

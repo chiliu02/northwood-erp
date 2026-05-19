@@ -28,8 +28,8 @@ public class JdbcPaymentRepository implements PaymentRepository {
         return Payment.reconstitute(
             PaymentId.of(rs.getObject("payment_id", UUID.class)),
             rs.getString("payment_number"),
-            rs.getString("payment_direction"),
-            rs.getString("payment_type"),
+            Payment.Direction.fromDb(rs.getString("payment_direction")),
+            Payment.Type.fromDb(rs.getString("payment_type")),
             rs.getObject("customer_id", UUID.class),
             rs.getObject("supplier_id", UUID.class),
             rs.getString("party_name"),
@@ -127,7 +127,7 @@ public class JdbcPaymentRepository implements PaymentRepository {
                 created_by, last_modified_by
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            p.id().value(), p.paymentNumber(), p.paymentDirection(), p.paymentType(),
+            p.id().value(), p.paymentNumber(), p.paymentDirection().dbValue(), p.paymentType().dbValue(),
             p.customerId(), p.supplierId(), p.partyName(),
             Date.valueOf(p.paymentDate()),
             p.paymentMethod().dbValue(), p.currencyCode(),

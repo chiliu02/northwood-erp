@@ -29,7 +29,7 @@ public record JournalEntryView(
             entry.journalNumber(),
             entry.postingDate(),
             entry.sourceModule().dbValue(),
-            entry.sourceDocumentType(),
+            entry.sourceDocumentType().dbValue(),
             entry.sourceDocumentId(),
             entry.description(),
             entry.status().dbValue(),

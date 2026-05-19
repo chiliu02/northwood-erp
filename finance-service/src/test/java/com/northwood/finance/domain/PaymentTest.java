@@ -250,8 +250,8 @@ class PaymentTest {
                 "PMT", SUPPLIER_A, "A", null, Payment.Method.CASH, "AUD", BigDecimal.TEN,
                 INVOICE_1, PO_1, "paid"
             );
-            assertThat(p.paymentDirection()).isEqualTo("outgoing");
-            assertThat(p.paymentType()).isEqualTo("supplier_payment");
+            assertThat(p.paymentDirection()).isEqualTo(Payment.Direction.OUTGOING);
+            assertThat(p.paymentType()).isEqualTo(Payment.Type.SUPPLIER_PAYMENT);
         }
 
         @Test void customer_payment_is_incoming() {
@@ -259,8 +259,8 @@ class PaymentTest {
                 "PMT", CUSTOMER_A, "A", null, Payment.Method.CASH, "AUD", BigDecimal.TEN,
                 INVOICE_1, SO_1, "paid"
             );
-            assertThat(p.paymentDirection()).isEqualTo("incoming");
-            assertThat(p.paymentType()).isEqualTo("customer_payment");
+            assertThat(p.paymentDirection()).isEqualTo(Payment.Direction.INCOMING);
+            assertThat(p.paymentType()).isEqualTo(Payment.Type.CUSTOMER_PAYMENT);
         }
     }
 }

@@ -28,7 +28,7 @@ class JournalEntryTest {
     private static JournalEntry posted(BigDecimal amount) {
         return JournalEntry.post(
             "JE-001", LocalDate.of(2026, 6, 1),
-            JournalEntry.SourceModule.FINANCE, "supplier_invoice", DOC, "test",
+            JournalEntry.SourceModule.FINANCE, JournalEntry.SourceDocumentType.SUPPLIER_INVOICE, DOC, "test",
             "AUD", BigDecimal.ONE,
             balancedPair(amount)
         );
@@ -38,7 +38,7 @@ class JournalEntryTest {
     class Post {
         @Test void requires_at_least_two_lines() {
             assertThatThrownBy(() -> JournalEntry.post(
-                "JE", LocalDate.now(), JournalEntry.SourceModule.FINANCE, "doc", DOC, "x",
+                "JE", LocalDate.now(), JournalEntry.SourceModule.FINANCE, JournalEntry.SourceDocumentType.SUPPLIER_INVOICE, DOC, "x",
                 "AUD", BigDecimal.ONE,
                 List.of(JournalEntryLine.debit(10, GL_DEBIT, "5000", "x", BigDecimal.TEN, "d", LocalDate.now()))
             )).isInstanceOf(IllegalArgumentException.class);
@@ -52,7 +52,7 @@ class JournalEntryTest {
                     new BigDecimal("90"), "c", LocalDate.now())
             );
             assertThatThrownBy(() -> JournalEntry.post(
-                "JE", LocalDate.now(), JournalEntry.SourceModule.FINANCE, "doc", DOC, "x",
+                "JE", LocalDate.now(), JournalEntry.SourceModule.FINANCE, JournalEntry.SourceDocumentType.SUPPLIER_INVOICE, DOC, "x",
                 "AUD", BigDecimal.ONE, unbalanced
             )).isInstanceOf(IllegalArgumentException.class);
         }
@@ -64,7 +64,7 @@ class JournalEntryTest {
 
         @Test void rejects_null_source_document_id() {
             assertThatThrownBy(() -> JournalEntry.post(
-                "JE", LocalDate.now(), JournalEntry.SourceModule.FINANCE, "doc", null, "x",
+                "JE", LocalDate.now(), JournalEntry.SourceModule.FINANCE, JournalEntry.SourceDocumentType.SUPPLIER_INVOICE, null, "x",
                 "AUD", BigDecimal.ONE, balancedPair(BigDecimal.TEN)
             )).isInstanceOf(NullPointerException.class);
         }
@@ -75,7 +75,7 @@ class JournalEntryTest {
         @Test void rejects_non_posted_original() {
             JournalEntry draft = JournalEntry.reconstitute(
                 JournalEntryId.newId(), "JE-X", LocalDate.now(),
-                JournalEntry.SourceModule.FINANCE, "doc", DOC, "x", JournalEntry.Status.DRAFT,
+                JournalEntry.SourceModule.FINANCE, JournalEntry.SourceDocumentType.SUPPLIER_INVOICE, DOC, "x", JournalEntry.Status.DRAFT,
                 "AUD", BigDecimal.ONE, java.time.Instant.now(),
                 balancedPair(BigDecimal.TEN), 0L
             );
@@ -100,7 +100,7 @@ class JournalEntryTest {
         @Test void links_to_original_via_source_document_id() {
             JournalEntry original = posted(new BigDecimal("100.00"));
             JournalEntry reversal = JournalEntry.reverseOf(original, "test", null);
-            assertThat(reversal.sourceDocumentType()).isEqualTo("journal_reversal");
+            assertThat(reversal.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.JOURNAL_REVERSAL);
             assertThat(reversal.sourceDocumentId()).isEqualTo(original.id().value());
         }
 

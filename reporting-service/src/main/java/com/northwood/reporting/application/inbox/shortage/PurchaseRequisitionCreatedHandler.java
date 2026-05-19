@@ -28,7 +28,7 @@ public class PurchaseRequisitionCreatedHandler extends AbstractInboxHandler<Purc
     protected void apply(PurchaseRequisitionCreated payload, EventEnvelope envelope) {
         // Only shortage-driven PRs flip the projection's status; manual PRs
         // for other operational reasons aren't part of this view.
-        if (!"work_order_shortage".equals(payload.sourceType())) return;
+        if (!PurchaseRequisitionCreated.SOURCE_TYPE_WORK_ORDER_SHORTAGE.equals(payload.sourceType())) return;
         if (payload.lines() == null) return;
         for (var l : payload.lines()) {
             projection.recordRequisitionLine(

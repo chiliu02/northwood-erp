@@ -6,6 +6,30 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-19 — §2.0.e cross-service wire-format constants cleanup
+
+Post-§2.0 hygiene slice. The stringly-typed scan after §2.0 found a handful of one-of-known-set wire-format values still pinned by string literal in cross-service consumers and a couple of remaining within-service categorical fields (Payment direction/type, JournalEntry source-document-type) that didn't have producer-side enums yet. Closed those.
+
+What shipped:
+
+- **`PurchaseRequisitionCreated.SOURCE_TYPE_*` constants** (manual / low_stock / work_order_shortage) on the event class in `purchasing-events`. `reporting.shortage.PurchaseRequisitionCreatedHandler:31` now references `SOURCE_TYPE_WORK_ORDER_SHORTAGE` instead of the literal — Find Usages on the value now surfaces this cross-service consumer.
+- **`Payment.Direction`** (INCOMING / OUTGOING) + **`Payment.Type`** (SUPPLIER_PAYMENT / CUSTOMER_PAYMENT) nested enums. Refactor flowed through `Payment` (4 factories + reconstitute + accessors), `JdbcPaymentRepository`, `PaymentView`, and tests. No schema CHECK exists on these columns today; the enum is the new source of truth.
+- **`WorkOrderStatuses`** + **`WorkOrderMaterialStatuses`** constants holder classes in `manufacturing-events`. `JdbcProductionPlanningProjection` parameter-binds the wire-format values it writes (RELEASED / IN_PROGRESS / COMPLETED / CANCELLED / SHORTAGE) instead of embedding them as SQL literals. SQL `WHERE`/`CASE` conditions left as literals per the documented exception (engine-side comparisons against current column values, not writes).
+- **`JournalEntry.SourceDocumentType`** nested enum (supplier_invoice / customer_invoice / supplier_payment / customer_payment / goods_receipt / shipment_cost / journal_reversal). `JournalEntry.post()` + `reverseOf()` factories + `JournalEntryService` private helpers all typed; the 6 public post*-method call sites pass the enum value. View converts at the boundary. The cross-controller-boundary methods (`findPostedIdsBySource`, `reverseBySourceDocument`) keep `String` per the hex rule — controllers can't import domain.
+
+### Convention documented
+
+Added a new ***Cross-service wire-format constants*** section to `docs/conventions.md` immediately after *Aggregate enumerated fields*, covering:
+- The two patterns: payload-field constants on the event class (`STATUS_*`, `SOURCE_TYPE_*`) and dedicated `*Statuses` constants holder classes in `<service>-events` for non-event-payload mirroring.
+- What stays as literals (intentionally): SQL WHERE/CASE conditions, application Commands taking wire-shaped data, outbox/inbox machinery.
+- The "did we cover it" test: Find Usages on the producer-side enum value should surface every cross-service consumer, either through `.dbValue()` (within service) or through the matching cross-service constant.
+
+Summary line added to `CLAUDE.md`.
+
+**Smoke**: `mvn -pl test-harness -am test` → full 16-module reactor green.
+
+---
+
 ## 2026-05-19 — §2.0.d finance bucket: CustomerInvoice / SupplierInvoice / Payment / JournalEntry enums (closes §2.0)
 
 Final §2.0 slice — the *finance* bucket. Four aggregates, 9 nested enums. Closes out the §2.0 migration that started with the SalesOrder pilot earlier today.
