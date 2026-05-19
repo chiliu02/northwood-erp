@@ -230,8 +230,12 @@ CREATE TABLE product.product (
     -- Shape A facets: valuation class drives finance's GL account selection;
     -- active BOM is the authoritative pointer (manufacturing keeps a parallel
     -- bom_header.is_active during the migration period); approved vendors
-    -- live in product.approved_vendor (separate, multi-valued).
-    valuation_class VARCHAR(50),
+    -- live in product.approved_vendor (separate, multi-valued). Wire-format
+    -- values mirror product.domain.ValuationClass.dbValue() (product-events).
+    valuation_class VARCHAR(50) CHECK (
+        valuation_class IS NULL
+        OR valuation_class IN ('raw_materials', 'finished_goods', 'semi_finished_goods')
+    ),
     active_bom_id UUID,
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (
         status IN ('active', 'inactive', 'discontinued')
@@ -2116,7 +2120,12 @@ CREATE TABLE finance.product_card (
     product_id      UUID PRIMARY KEY,
     standard_cost   NUMERIC(18, 6),
     currency_code   CHAR(3),
-    valuation_class VARCHAR(50),
+    -- Wire-format values mirror product.domain.ValuationClass.dbValue()
+    -- (product-events) and the matching CHECK on product.product.valuation_class.
+    valuation_class VARCHAR(50) CHECK (
+        valuation_class IS NULL
+        OR valuation_class IN ('raw_materials', 'finished_goods', 'semi_finished_goods')
+    ),
     discontinued_at TIMESTAMPTZ,
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -2909,24 +2918,27 @@ ON CONFLICT (tax_code) DO NOTHING;
 -- has one row per existing Product at boot — same shape the runtime
 -- ProductCreatedHandler produces on product.ProductCreated. Standard cost +
 -- currency seeded from product.standard_cost so day-1 COGS posting works
--- ahead of the first StandardCostChanged event. Valuation class derives
--- from product_type: raw / semi-finished → 'raw_materials', finished →
--- 'finished_goods'. Subsequent events update individual columns.
+-- ahead of the first StandardCostChanged event. Valuation class follows the
+-- product_type analogue: raw → 'raw_materials', finished → 'finished_goods',
+-- semi-finished → 'semi_finished_goods' (which JournalEntryService routes to
+-- the FG inventory + COGS accounts, same as finished goods). Wire-format
+-- values mirror product.domain.ValuationClass.dbValue(). Subsequent events
+-- update individual columns.
 INSERT INTO finance.product_card (
     product_id, standard_cost, currency_code, valuation_class
 ) VALUES
-    ('00000000-0000-7000-8000-000000000001', 320.00, 'AUD', 'finished_goods'),    -- FG-TABLE-001
-    ('00000000-0000-7000-8000-000000000002',  80.00, 'AUD', 'raw_materials'),     -- RM-BOARD-001
-    ('00000000-0000-7000-8000-000000000003',  25.00, 'AUD', 'raw_materials'),     -- RM-LEG-001
-    ('00000000-0000-7000-8000-000000000004',   5.00, 'AUD', 'raw_materials'),     -- RM-SCREW-001
-    ('00000000-0000-7000-8000-000000000005',  12.00, 'AUD', 'raw_materials'),     -- RM-VARNISH-001
-    ('00000000-0000-7000-8000-000000000200', 420.00, 'AUD', 'finished_goods'),    -- FG-CABINET-001
-    ('00000000-0000-7000-8000-000000000201',  65.00, 'AUD', 'semi_finished_good'),-- SA-DRAWER-001
-    ('00000000-0000-7000-8000-000000000202',  18.00, 'AUD', 'raw_materials'),     -- RM-DRAWER-FRONT-001
-    ('00000000-0000-7000-8000-000000000203',  14.00, 'AUD', 'raw_materials'),     -- RM-DRAWER-RUNNER-001
-    ('00000000-0000-7000-8000-000000000300', 720.00, 'AUD', 'finished_goods'),    -- FG-CHEST-001
-    ('00000000-0000-7000-8000-000000000301', 380.00, 'AUD', 'semi_finished_good'),-- SA-FRAME-001
-    ('00000000-0000-7000-8000-000000000302', 105.00, 'AUD', 'semi_finished_good') -- SA-PANEL-001
+    ('00000000-0000-7000-8000-000000000001', 320.00, 'AUD', 'finished_goods'),      -- FG-TABLE-001
+    ('00000000-0000-7000-8000-000000000002',  80.00, 'AUD', 'raw_materials'),       -- RM-BOARD-001
+    ('00000000-0000-7000-8000-000000000003',  25.00, 'AUD', 'raw_materials'),       -- RM-LEG-001
+    ('00000000-0000-7000-8000-000000000004',   5.00, 'AUD', 'raw_materials'),       -- RM-SCREW-001
+    ('00000000-0000-7000-8000-000000000005',  12.00, 'AUD', 'raw_materials'),       -- RM-VARNISH-001
+    ('00000000-0000-7000-8000-000000000200', 420.00, 'AUD', 'finished_goods'),      -- FG-CABINET-001
+    ('00000000-0000-7000-8000-000000000201',  65.00, 'AUD', 'semi_finished_goods'), -- SA-DRAWER-001
+    ('00000000-0000-7000-8000-000000000202',  18.00, 'AUD', 'raw_materials'),       -- RM-DRAWER-FRONT-001
+    ('00000000-0000-7000-8000-000000000203',  14.00, 'AUD', 'raw_materials'),       -- RM-DRAWER-RUNNER-001
+    ('00000000-0000-7000-8000-000000000300', 720.00, 'AUD', 'finished_goods'),      -- FG-CHEST-001
+    ('00000000-0000-7000-8000-000000000301', 380.00, 'AUD', 'semi_finished_goods'), -- SA-FRAME-001
+    ('00000000-0000-7000-8000-000000000302', 105.00, 'AUD', 'semi_finished_goods')  -- SA-PANEL-001
 ON CONFLICT (product_id) DO NOTHING;
 
 COMMIT;

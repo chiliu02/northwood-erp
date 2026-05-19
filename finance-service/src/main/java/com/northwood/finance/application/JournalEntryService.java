@@ -6,6 +6,7 @@ import com.northwood.finance.domain.JournalEntry;
 import com.northwood.finance.domain.JournalEntryId;
 import com.northwood.finance.domain.JournalEntryLine;
 import com.northwood.finance.domain.JournalEntryRepository;
+import com.northwood.product.domain.ValuationClass;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -85,9 +86,14 @@ public class JournalEntryService {
     }
 
     /**
-     * Inventory account code for a product, resolved by its valuation class.
-     * raw_materials → 1210, finished_goods/semi_finished_goods → 1220,
-     * fallback → 1200 (generic Inventory).
+     * Inventory account code for a product, resolved by its valuation class:
+     * {@link ValuationClass#RAW_MATERIALS} → 1210,
+     * {@link ValuationClass#FINISHED_GOODS} / {@link ValuationClass#SEMI_FINISHED_GOODS} → 1220.
+     * The switch is exhaustive over the enum — the schema CHECK on
+     * {@code finance.product_card.valuation_class} keeps the producer-side
+     * set aligned, so an unknown wire value is a data-integrity failure that
+     * surfaces from {@code ValuationClass.fromDb} on read, not a fallback
+     * here.
      *
      * <p><b>Silent-fallback contract on missing valuation-class projection.</b>
      * {@code finance.product_card.valuation_class} is an inbox-driven
@@ -111,13 +117,8 @@ public class JournalEntryService {
     private String inventoryAccountForProduct(UUID productId) {
         return productCards.findValuationClass(productId)
             .map(c -> switch (c) {
-                case "raw_materials" -> FinanceAccountCodes.RM_INVENTORY;
-                case "finished_goods", "semi_finished_goods" -> FinanceAccountCodes.FG_INVENTORY;
-                default -> {
-                    log.debug("inventoryAccountForProduct product_id={} valuation_class='{}' unrecognised; "
-                        + "falling back to generic Inventory account {}", productId, c, FinanceAccountCodes.INVENTORY);
-                    yield FinanceAccountCodes.INVENTORY;
-                }
+                case RAW_MATERIALS -> FinanceAccountCodes.RM_INVENTORY;
+                case FINISHED_GOODS, SEMI_FINISHED_GOODS -> FinanceAccountCodes.FG_INVENTORY;
             })
             .orElseGet(() -> {
                 log.debug("inventoryAccountForProduct product_id={} has no valuation-class projection row yet; "
@@ -127,23 +128,19 @@ public class JournalEntryService {
     }
 
     /**
-     * COGS account code for a product, resolved by its valuation class.
-     * raw_materials → 5200, finished_goods/semi_finished_goods → 5000,
-     * fallback → 5000 (generic COGS). Mirrors
-     * {@link #inventoryAccountForProduct} — see that method's Javadoc for the
-     * full silent-fallback rationale (projection-order-tolerant; DEBUG log on
-     * trigger; reclassification later).
+     * COGS account code for a product, resolved by its valuation class:
+     * {@link ValuationClass#RAW_MATERIALS} → 5200,
+     * {@link ValuationClass#FINISHED_GOODS} / {@link ValuationClass#SEMI_FINISHED_GOODS} → 5000.
+     * Mirrors {@link #inventoryAccountForProduct} — see that method's Javadoc
+     * for the full silent-fallback rationale on missing projection
+     * (projection-order-tolerant; DEBUG log on trigger; reclassification
+     * later). Switch is exhaustive over the enum.
      */
     private String cogsAccountForProduct(UUID productId) {
         return productCards.findValuationClass(productId)
             .map(c -> switch (c) {
-                case "raw_materials" -> FinanceAccountCodes.MATERIALS_COGS;
-                case "finished_goods", "semi_finished_goods" -> FinanceAccountCodes.COGS;
-                default -> {
-                    log.debug("cogsAccountForProduct product_id={} valuation_class='{}' unrecognised; "
-                        + "falling back to generic COGS account {}", productId, c, FinanceAccountCodes.COGS);
-                    yield FinanceAccountCodes.COGS;
-                }
+                case RAW_MATERIALS -> FinanceAccountCodes.MATERIALS_COGS;
+                case FINISHED_GOODS, SEMI_FINISHED_GOODS -> FinanceAccountCodes.COGS;
             })
             .orElseGet(() -> {
                 log.debug("cogsAccountForProduct product_id={} has no valuation-class projection row yet; "

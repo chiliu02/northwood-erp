@@ -2,6 +2,7 @@ package com.northwood.testharness.inmemory.finance;
 
 import com.northwood.finance.application.ProductCardLookup;
 import com.northwood.finance.application.inbox.ProductCardProjection;
+import com.northwood.product.domain.ValuationClass;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.HashMap;
@@ -33,9 +34,10 @@ public final class InMemoryProductCard implements ProductCardProjection, Product
     }
 
     @Override
-    public Optional<String> findValuationClass(UUID productId) {
+    public Optional<ValuationClass> findValuationClass(UUID productId) {
         Row r = byProductId.get(productId);
-        return Optional.ofNullable(r == null ? null : r.valuationClass());
+        return Optional.ofNullable(r == null ? null : r.valuationClass())
+            .map(ValuationClass::fromDb);
     }
 
     @Override

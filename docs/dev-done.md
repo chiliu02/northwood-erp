@@ -6,6 +6,28 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-19 — §2.0.f ValuationClass enum + schema CHECKs + seed fix
+
+Last of the §2.0 stringly-typed cleanup. The earlier slices typed status fields on each aggregate; this one types the cross-service categorical `valuation_class` that finance reads from its consumer-side product_card projection.
+
+What shipped:
+
+- **New enum `product.domain.ValuationClass`** in `product-events` (alongside `ProductType` — same `dbValue()` / `fromDb()` shape). Values: `RAW_MATERIALS` / `FINISHED_GOODS` / `SEMI_FINISHED_GOODS`. Hosted in `product-events` so finance can import it: the GL account-selection switches in `JournalEntryService.inventoryAccountForProduct` + `cogsAccountForProduct` are now exhaustive enum-switches, not String case labels with a fallback default. Note the plural `_goods` suffix — distinct from `ProductType.SEMI_FINISHED_GOOD` (singular); two different fields, two different conventions.
+- **Producer-side typing**. `Product.valuationClass` is `ValuationClass` (was `String`). `Product.changeValuationClass(ValuationClass)`. `Product.reconstitute(...)` + private constructor + accessor updated. The event payload still carries `String` wire-format (`ValuationClassChanged.newValuationClass()`); the aggregate writes `.dbValue()` when emitting. `JdbcProductRepository` converts via `fromDb` on read, `.dbValue()` on write. `ProductView` converts at the `from(...)` boundary. `ProductService.setValuationClass(UUID, String)` keeps `String` at the controller seam per the hex rule, parses via `ValuationClass.fromDb` inside — an unknown wire value surfaces as `IllegalArgumentException`.
+- **Consumer-side typing**. `ProductCardLookup.findValuationClass` returns `Optional<ValuationClass>` (was `Optional<String>`); `JdbcProductCardLookup` converts via `fromDb` on read; `InMemoryProductCard` mirrors the conversion. `JournalEntryService` switches are exhaustive over the enum; the missing-projection-row `.orElseGet(...)` fallback (silent-fallback contract preserved) is the only remaining defensive arm. Deleted the `default` arms — with the enum + schema CHECK aligned, an unrecognised value is now a data-integrity failure that surfaces from `fromDb`, not a fallback. Removed the misplaced `finance.application.ValuationClasses` consumer-side String holder that was created in an earlier draft of this slice.
+- **Schema CHECKs on both producer + projection columns.** `product.product.valuation_class` and `finance.product_card.valuation_class` now both `CHECK (valuation_class IS NULL OR valuation_class IN ('raw_materials', 'finished_goods', 'semi_finished_goods'))`. Two new Liquibase changesets — `2026-05-19-product-valuation-class-check.sql` (product-service) and `2026-05-19-product-card-valuation-class-check.sql` (finance-service, with a sibling normalisation changeset that updates legacy dev DBs from `'semi_finished_good'` singular to `'semi_finished_goods'` plural before the CHECK is added). Baseline `db/northwood_erp.sql` updated in both DDL spots so fresh-volume boots have the CHECK from the start.
+- **Seed bug fix in baseline `db/northwood_erp.sql`**. Lines 2924/2928/2929 previously wrote `'semi_finished_good'` (singular, copy-pasted from `product_type` values) into `finance.product_card.valuation_class` for SA-DRAWER-001, SA-FRAME-001, SA-PANEL-001. The `JournalEntryService` switches expect `'semi_finished_goods'` (plural) — the singular value silently fell through to the generic-account fallback (1200 Inventory / 5000 COGS) rather than routing to FG inventory/COGS as the comment intended. Now the SA SKUs carry the plural value and route to 1220 / 5000 correctly. Seed comment at line 2913 updated to match what the data actually writes.
+
+### Tests
+
+- `ProductTest.ChangeValuationClass` — typed enum throughout. Dropped the `rejects_blank_class` test (impossible to call with a typed enum); kept `rejects_null_class`. Swapped `"finished_goods_premium"` (never a real value) for `ValuationClass.RAW_MATERIALS` in the carries-old-value test.
+- `ProductServiceTest` — fixture `reconstitute` calls take the enum; `setValuationClass` still passes a wire-format String at the API seam. Added `rejects_unknown_wire_value` covering the new `fromDb` parse-and-throw path.
+- `JournalEntryServicePostingsTest` — the three `findValuationClass` mock stubs return `Optional.of(ValuationClass.X)` instead of `Optional.of("…")`.
+
+**Smoke**: `mvn -pl test-harness -am test` → BUILD SUCCESS across the 16-module reactor.
+
+---
+
 ## 2026-05-19 — §2.0.e cross-service wire-format constants cleanup
 
 Post-§2.0 hygiene slice. The stringly-typed scan after §2.0 found a handful of one-of-known-set wire-format values still pinned by string literal in cross-service consumers and a couple of remaining within-service categorical fields (Payment direction/type, JournalEntry source-document-type) that didn't have producer-side enums yet. Closed those.

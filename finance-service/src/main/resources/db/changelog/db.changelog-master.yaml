@@ -17,3 +17,5 @@ databaseChangeLog:
       file: db/changelog/changes/2026-05-15-consolidate-product-accounting.sql
   - include:
       file: db/changelog/changes/2026-05-18-rename-product-accounting-to-product-card.sql
+  - include:
+      file: db/changelog/changes/2026-05-19-product-card-valuation-class-check.sql

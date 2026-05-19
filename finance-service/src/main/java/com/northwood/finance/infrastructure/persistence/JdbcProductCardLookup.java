@@ -1,6 +1,7 @@
 package com.northwood.finance.infrastructure.persistence;
 
 import com.northwood.finance.application.ProductCardLookup;
+import com.northwood.product.domain.ValuationClass;
 import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,12 +31,13 @@ public class JdbcProductCardLookup implements ProductCardLookup {
     }
 
     @Override
-    public Optional<String> findValuationClass(UUID productId) {
+    public Optional<ValuationClass> findValuationClass(UUID productId) {
         try {
-            return Optional.ofNullable(jdbc.queryForObject(
+            String dbValue = jdbc.queryForObject(
                 "SELECT valuation_class FROM finance.product_card WHERE product_id = ?",
                 String.class, productId
-            ));
+            );
+            return Optional.ofNullable(dbValue).map(ValuationClass::fromDb);
         } catch (EmptyResultDataAccessException e) {
             return Optional.empty();
         }

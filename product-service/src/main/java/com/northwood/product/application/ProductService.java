@@ -7,6 +7,7 @@ import com.northwood.product.domain.Product;
 import com.northwood.product.domain.ProductId;
 import com.northwood.product.domain.ProductRepository;
 import com.northwood.product.domain.ProductType;
+import com.northwood.product.domain.ValuationClass;
 import com.northwood.shared.domain.Money;
 import com.northwood.shared.domain.Sku;
 import java.math.BigDecimal;
@@ -148,15 +149,25 @@ public class ProductService {
         products.save(product);
     }
 
+    /**
+     * Set the valuation class. String at the controller seam (per the
+     * hex-layering rule — {@code api/} doesn't import the domain enum); the
+     * wire-format value parses into {@link ValuationClass} here and is passed
+     * typed to the aggregate. An unknown wire value surfaces as
+     * {@link IllegalArgumentException} from {@code ValuationClass.fromDb} —
+     * the schema CHECK on {@code product.product.valuation_class} keeps the
+     * same set in sync.
+     */
     @Transactional
     public void setValuationClass(UUID productId, String valuationClass) {
         Product product = products.findById(ProductId.of(productId))
             .orElseThrow(() -> new ProductNotFoundException(productId));
-        if (valuationClass != null && valuationClass.equals(product.valuationClass())) {
+        ValuationClass parsed = ValuationClass.fromDb(valuationClass);
+        if (parsed == product.valuationClass()) {
             log.debug("setValuationClass product_id={} ignored — value unchanged ({})", productId, valuationClass);
             return;
         }
-        product.changeValuationClass(valuationClass);
+        product.changeValuationClass(parsed);
         products.save(product);
     }
 

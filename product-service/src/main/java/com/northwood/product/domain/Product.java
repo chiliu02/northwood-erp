@@ -81,7 +81,7 @@ public class Product {
     private Money standardCost;
     private BigDecimal reorderPoint;
     private BigDecimal reorderQuantity;
-    private String valuationClass;
+    private ValuationClass valuationClass;
     private UUID activeBomId;
     private Status status;
     private final long version;
@@ -146,7 +146,7 @@ public class Product {
         boolean stocked, boolean purchased, boolean manufactured, boolean sellable,
         Money salesPrice, Money standardCost,
         BigDecimal reorderPoint, BigDecimal reorderQuantity,
-        String valuationClass, UUID activeBomId,
+        ValuationClass valuationClass, UUID activeBomId,
         Status status, long version,
         List<ApprovedVendor> approvedVendors
     ) {
@@ -166,7 +166,7 @@ public class Product {
         boolean stocked, boolean purchased, boolean manufactured, boolean sellable,
         Money salesPrice, Money standardCost,
         BigDecimal reorderPoint, BigDecimal reorderQuantity,
-        String valuationClass, UUID activeBomId,
+        ValuationClass valuationClass, UUID activeBomId,
         Status status, long version
     ) {
         this.id = id;
@@ -286,24 +286,22 @@ public class Product {
     /**
      * Set the valuation class — drives finance's GL account selection.
      * Discontinued products reject the change. Emits
-     * {@link ValuationClassChanged} with old + new.
+     * {@link ValuationClassChanged} with old + new wire-format values
+     * (typed enum on the aggregate, {@code dbValue()} on the wire).
      */
-    public void changeValuationClass(String newValuationClass) {
+    public void changeValuationClass(ValuationClass newValuationClass) {
         if (status == Status.DISCONTINUED) {
             throw new IllegalStateException("Cannot change valuation class on a discontinued product");
         }
         Objects.requireNonNull(newValuationClass, "valuationClass");
-        if (newValuationClass.isBlank()) {
-            throw new IllegalArgumentException("valuationClass must not be blank");
-        }
-        if (newValuationClass.equals(this.valuationClass)) return;
-        String oldClass = this.valuationClass;
+        if (newValuationClass == this.valuationClass) return;
+        ValuationClass oldClass = this.valuationClass;
         this.valuationClass = newValuationClass;
         pendingEvents.add(new ValuationClassChanged(
             UUID.randomUUID(),
             id.value(),
-            oldClass,
-            newValuationClass,
+            oldClass == null ? null : oldClass.dbValue(),
+            newValuationClass.dbValue(),
             Instant.now()
         ));
     }
@@ -411,7 +409,7 @@ public class Product {
     public Money standardCost()            { return standardCost; }
     public BigDecimal reorderPoint()       { return reorderPoint; }
     public BigDecimal reorderQuantity()    { return reorderQuantity; }
-    public String valuationClass()         { return valuationClass; }
+    public ValuationClass valuationClass() { return valuationClass; }
     public UUID activeBomId()              { return activeBomId; }
     public Status status()                 { return status; }
     public long version()                  { return version; }

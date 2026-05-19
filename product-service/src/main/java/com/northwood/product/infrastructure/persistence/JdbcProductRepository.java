@@ -7,6 +7,7 @@ import com.northwood.product.domain.Product;
 import com.northwood.product.domain.ProductId;
 import com.northwood.product.domain.ProductRepository;
 import com.northwood.product.domain.ProductType;
+import com.northwood.product.domain.ValuationClass;
 import com.northwood.shared.domain.DomainEvent;
 import com.northwood.shared.domain.Money;
 import com.northwood.shared.domain.Sku;
@@ -104,6 +105,7 @@ public class JdbcProductRepository implements ProductRepository {
     private RowMapper<Product> rowMapper(Map<UUID, List<ApprovedVendor>> vendorsByProduct) {
         return (rs, n) -> {
             UUID pid = rs.getObject("product_id", UUID.class);
+            String valuationClassDb = rs.getString("valuation_class");
             return Product.reconstitute(
                 ProductId.of(pid),
                 new Sku(rs.getString("sku")),
@@ -119,7 +121,7 @@ public class JdbcProductRepository implements ProductRepository {
                 Money.of(rs.getBigDecimal("standard_cost"), "AUD"),
                 rs.getBigDecimal("reorder_point"),
                 rs.getBigDecimal("reorder_quantity"),
-                rs.getString("valuation_class"),
+                valuationClassDb == null ? null : ValuationClass.fromDb(valuationClassDb),
                 rs.getObject("active_bom_id", UUID.class),
                 Product.Status.fromDb(rs.getString("status")),
                 rs.getLong("version"),
@@ -205,7 +207,8 @@ public class JdbcProductRepository implements ProductRepository {
                 p.isStocked(), p.isPurchased(), p.isManufactured(), p.isSellable(),
                 p.salesPrice().amount(), p.standardCost().amount(),
                 p.reorderPoint(), p.reorderQuantity(),
-                p.valuationClass(), p.activeBomId(),
+                p.valuationClass() == null ? null : p.valuationClass().dbValue(),
+                p.activeBomId(),
                 p.status().dbValue(),
                 1L,
                 actor, actor
@@ -231,7 +234,8 @@ public class JdbcProductRepository implements ProductRepository {
             p.isStocked(), p.isPurchased(), p.isManufactured(), p.isSellable(),
             p.salesPrice().amount(), p.standardCost().amount(),
             p.reorderPoint(), p.reorderQuantity(),
-            p.valuationClass(), p.activeBomId(),
+            p.valuationClass() == null ? null : p.valuationClass().dbValue(),
+            p.activeBomId(),
             p.status().name().toLowerCase(),
             actor,
             p.id().value(), p.version()

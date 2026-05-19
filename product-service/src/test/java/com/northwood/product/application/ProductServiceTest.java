@@ -14,6 +14,7 @@ import com.northwood.product.domain.Product;
 import com.northwood.product.domain.ProductId;
 import com.northwood.product.domain.ProductRepository;
 import com.northwood.product.domain.ProductType;
+import com.northwood.product.domain.ValuationClass;
 import com.northwood.product.domain.events.ApprovedVendorListChanged;
 import com.northwood.product.domain.events.ActiveBomChanged;
 import com.northwood.product.domain.events.MakeVsBuyChanged;
@@ -69,7 +70,7 @@ class ProductServiceTest {
             Money.of(new BigDecimal("100.00"), "AUD"),
             Money.of(new BigDecimal("60.00"), "AUD"),
             new BigDecimal("5"), new BigDecimal("20"),
-            "finished_goods", null,
+            ValuationClass.FINISHED_GOODS, null,
             Product.Status.ACTIVE, 1L,
             List.of()
         );
@@ -84,7 +85,7 @@ class ProductServiceTest {
             Money.of(new BigDecimal("100.00"), "AUD"),
             Money.of(new BigDecimal("60.00"), "AUD"),
             new BigDecimal("5"), new BigDecimal("20"),
-            "finished_goods", null,
+            ValuationClass.FINISHED_GOODS, null,
             Product.Status.ACTIVE, 1L,
             vendors
         );
@@ -235,7 +236,7 @@ class ProductServiceTest {
 
             service.setValuationClass(PID, "raw_materials");
 
-            assertThat(p.valuationClass()).isEqualTo("raw_materials");
+            assertThat(p.valuationClass()).isEqualTo(ValuationClass.RAW_MATERIALS);
             List<DomainEvent> events = savedEvents();
             assertThat(events).hasSize(1).first().isInstanceOf(ValuationClassChanged.class);
         }
@@ -246,6 +247,15 @@ class ProductServiceTest {
 
             service.setValuationClass(PID, "finished_goods");
 
+            verify(repo, never()).save(org.mockito.ArgumentMatchers.any());
+        }
+
+        @Test void rejects_unknown_wire_value() {
+            Product p = activeFinishedGood();
+            when(repo.findById(ProductId.of(PID))).thenReturn(Optional.of(p));
+
+            assertThatThrownBy(() -> service.setValuationClass(PID, "not_a_class"))
+                .isInstanceOf(IllegalArgumentException.class);
             verify(repo, never()).save(org.mockito.ArgumentMatchers.any());
         }
     }

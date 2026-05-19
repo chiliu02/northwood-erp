@@ -16,6 +16,7 @@ import com.northwood.finance.domain.JournalEntryLine;
 import com.northwood.finance.domain.JournalEntryRepository;
 import com.northwood.finance.application.GlAccountLookup;
 import com.northwood.finance.application.GlAccountLookup.GlAccount;
+import com.northwood.product.domain.ValuationClass;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -148,7 +149,7 @@ class JournalEntryServicePostingsTest {
     class GoodsReceivedMultiDebit {
 
         @Test void single_class_posts_dr_rm_inventory_cr_grni() {
-            when(productCards.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of("raw_materials"));
+            when(productCards.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of(ValuationClass.RAW_MATERIALS));
 
             service.postGoodsReceived(
                 UUID.randomUUID(), "GR-001",
@@ -163,8 +164,8 @@ class JournalEntryServicePostingsTest {
         }
 
         @Test void multi_class_produces_one_debit_per_inventory_account_one_grni_credit() {
-            when(productCards.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of("raw_materials"));
-            when(productCards.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of("finished_goods"));
+            when(productCards.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of(ValuationClass.RAW_MATERIALS));
+            when(productCards.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of(ValuationClass.FINISHED_GOODS));
 
             service.postGoodsReceived(
                 UUID.randomUUID(), "GR-002",
@@ -211,8 +212,8 @@ class JournalEntryServicePostingsTest {
     class ShipmentCostMultiDebitMultiCredit {
 
         @Test void per_class_split_dr_cogs_cr_inventory_pair_per_class() {
-            when(productCards.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of("raw_materials"));
-            when(productCards.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of("finished_goods"));
+            when(productCards.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of(ValuationClass.RAW_MATERIALS));
+            when(productCards.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of(ValuationClass.FINISHED_GOODS));
 
             service.postShipmentCost(
                 UUID.randomUUID(), "SHP-001",

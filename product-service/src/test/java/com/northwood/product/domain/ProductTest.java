@@ -360,12 +360,6 @@ class ProductTest {
 
     @Nested
     class ChangeValuationClass {
-        @Test void rejects_blank_class() {
-            Product p = newProduct();
-            assertThatThrownBy(() -> p.changeValuationClass("  "))
-                .isInstanceOf(IllegalArgumentException.class);
-        }
-
         @Test void rejects_null_class() {
             Product p = newProduct();
             assertThatThrownBy(() -> p.changeValuationClass(null))
@@ -375,7 +369,7 @@ class ProductTest {
         @Test void emits_event_with_old_null_on_first_set() {
             Product p = newProduct();
             p.pullPendingEvents();
-            p.changeValuationClass("finished_goods");
+            p.changeValuationClass(ValuationClass.FINISHED_GOODS);
             ValuationClassChanged e = (ValuationClassChanged) p.pullPendingEvents().get(0);
             assertThat(e.oldValuationClass()).isNull();
             assertThat(e.newValuationClass()).isEqualTo("finished_goods");
@@ -383,33 +377,27 @@ class ProductTest {
 
         @Test void carries_old_value_on_subsequent_change() {
             Product p = newProduct();
-            p.changeValuationClass("finished_goods");
+            p.changeValuationClass(ValuationClass.FINISHED_GOODS);
             p.pullPendingEvents();
-            p.changeValuationClass("finished_goods_premium");
+            p.changeValuationClass(ValuationClass.RAW_MATERIALS);
             ValuationClassChanged e = (ValuationClassChanged) p.pullPendingEvents().get(0);
             assertThat(e.oldValuationClass()).isEqualTo("finished_goods");
-            assertThat(e.newValuationClass()).isEqualTo("finished_goods_premium");
+            assertThat(e.newValuationClass()).isEqualTo("raw_materials");
         }
 
         @Test void rejects_when_discontinued() {
             Product p = newProduct();
             p.discontinue();
-            assertThatThrownBy(() -> p.changeValuationClass("anything"))
+            assertThatThrownBy(() -> p.changeValuationClass(ValuationClass.FINISHED_GOODS))
                 .isInstanceOf(IllegalStateException.class);
         }
 
         @Test void no_op_emits_nothing_when_class_matches() {
             Product p = newProduct();
-            p.changeValuationClass("finished_goods");
+            p.changeValuationClass(ValuationClass.FINISHED_GOODS);
             p.pullPendingEvents();
-            p.changeValuationClass("finished_goods");
+            p.changeValuationClass(ValuationClass.FINISHED_GOODS);
             assertThat(p.pullPendingEvents()).isEmpty();
-        }
-
-        @Test void invariant_runs_before_no_op_check() {
-            Product p = newProduct();
-            assertThatThrownBy(() -> p.changeValuationClass("  "))
-                .isInstanceOf(IllegalArgumentException.class);
         }
     }
 
@@ -557,14 +545,14 @@ class ProductTest {
                 Money.of(new BigDecimal("10"), "AUD"),
                 Money.of(new BigDecimal("5"), "AUD"),
                 BigDecimal.ZERO, BigDecimal.ZERO,
-                "raw_materials", null,
+                ValuationClass.RAW_MATERIALS, null,
                 Product.Status.ACTIVE, 5L,
                 List.of()
             );
             assertThat(p.pullPendingEvents()).isEmpty();
             assertThat(p.id().value()).isEqualTo(id);
             assertThat(p.version()).isEqualTo(5L);
-            assertThat(p.valuationClass()).isEqualTo("raw_materials");
+            assertThat(p.valuationClass()).isEqualTo(ValuationClass.RAW_MATERIALS);
         }
     }
 

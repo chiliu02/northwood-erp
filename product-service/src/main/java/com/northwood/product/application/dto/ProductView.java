@@ -31,7 +31,7 @@ public record ProductView(
             p.standardCost().amount(),
             p.reorderPoint(),
             p.reorderQuantity(),
-            p.valuationClass(),
+            p.valuationClass() == null ? null : p.valuationClass().dbValue(),
             p.activeBomId(),
             p.status().dbValue(),
             p.version()
