@@ -142,6 +142,7 @@ Any `.orElse(SENTINEL)` / null-coalescing-to-default needs: method-level Javadoc
 - **`docs/architecture.md`** — Module layout, the *event classes as navigation anchor* principle (three operational tests for cross-service traceability), events jars (with `EVENT_TYPE` and status-constant hosting rules), DDD service template, aggregate test rules, outbox/inbox shared-module wiring.
 - **`docs/conventions.md`** — Full port/field-naming rules + `*Projection` sharp rule, hexagonal why-each-direction-is-forbidden, View/Command/Request patterns, exception wrapping (3 flavours), class-member-ordering rule, silent-fallback documentation rules, single-return + exhaustive-branch rule, PostgreSQL schema/table/column naming canonical statement.
 - **`docs/sagas.md`** — The three saga state machines, reusable saga base, saga manager class shape (manager/worker/handler/emitter split with locations).
+- **`docs/messaging-design.md`** — Outbox → Kafka → inbox flow, partition-key choice (`aggregateId` — the load-bearing design decision), ordering guarantees, DLT pinning, audit items for scaling past 1 partition. Load this when touching `KafkaEventPublisher`, `OutboxPublisher`, `SagaManager` concurrency, or any topic-config change (§2.14).
 - **`docs/persistence.md`** — Schema conventions detail, money & exchange rates, reference data + seed UUIDs, Liquibase changeset idempotency rules + `northwood_erp.sql` baseline.
 - **`docs/build-status.md`** — Per-service progress matrix and what's currently shipped vs skeleton.
 

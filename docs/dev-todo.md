@@ -158,6 +158,20 @@ Slices A–D shipped 2026-05-07 / 08 (split events, finance standard-cost projec
 
 **Slice E (deferred — pull forward only if the cross-currency throw fires in the demo dataset)** — wire `CurrencyConverter` into the BoM rollup so multi-currency component prices roll up to a target currency.
 
+### 2.14 Kafka topic partitions — pre-declare with configurable counts
+
+Today every event topic (`<service>.events` + matching `<topic>.dlt`) is auto-created on first publish (docker-compose `KAFKA_AUTO_CREATE_TOPICS_ENABLE=true`) with Kafka's default `num.partitions=1` — no `KAFKA_NUM_PARTITIONS` override, no `NewTopic` / `KafkaAdmin` bean, no `partitions:` setting in any `application-kafka.yml`. Means each consumer group has at most one active consumer per topic and the §2.6 cross-partition race regression is un-exercisable until partitions > 1.
+
+Scope: flip `KAFKA_AUTO_CREATE_TOPICS_ENABLE=false` in docker-compose, add `NewTopic` beans in `shared/.../kafka` that read partition counts from `northwood.kafka.topics.<name>.partitions` (default 1 for the showcase, override to 3+ when exercising the partition-race test). Cover the 6 event topics + their DLT companions. Spring's `KafkaAdmin` creates the lot on service startup if missing. Keep RF=1 — single-broker constraint stays.
+
+Audit items to clear before bumping any topic past 1 partition (full design in `docs/messaging-design.md` → *Hazards when scaling past 1 partition*):
+
+1. **DLT partition count must match source.** The error-handler recoverer pins `record.partition()` (`KafkaMessagingAutoConfiguration.java:93`); mismatched counts cause poison-pill quarantine failure. Pre-declare both source + DLT.
+2. **Verify saga concurrent-transition safety against a real broker.** Design is correct (`SELECT ... FOR UPDATE SKIP LOCKED` + optimistic `version` on `SagaPort`), but the synchronous test harness can't exercise the race. Need an integration-test target against a multi-partition broker.
+3. **Audit projection write patterns for read-modify-write.** Atomic SQL increment is safe; load-process-write isn't. Candidates: `JdbcProductionPlanningProjection`, `JdbcProductCardProjection`, `JdbcStockBalanceWriter`.
+4. **Re-test saga-prerequisite parking under realistic broker delay.** Multi-partition makes the "consequence event arrives before prerequisite saga row exists" path the common case, not the exception.
+5. **Document topic-pre-declaration in the new-service checklist.** After auto-create flips off, new services must declare their topics or first publish throws `UnknownTopicOrPartitionException`.
+
 ### 2.13 Saga lease TTL + retry backoff → `@Value`-driven config
 
 Three saga managers (`JdbcSalesOrderFulfilmentSagaManager:63`, `JdbcMakeToOrderSagaManager:43`, `JdbcPurchaseToPaySagaManager:37`) hardcode `Duration.ofSeconds(30)` lease TTL + `Duration.ofSeconds(15)` retry backoff. Triple-duplication of operational policy values; identified during §2.0.j as a candidate for constant extraction but better addressed as `@Value` config (matches the existing pattern for `northwood.saga.poll-interval` and `northwood.finance.match.priceTolerancePercent`). Two new property keys (e.g. `northwood.saga.lease-ttl-seconds`, `northwood.saga.retry-backoff-seconds`) with the current values as defaults; document in each saga manager Javadoc.
