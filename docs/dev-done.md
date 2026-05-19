@@ -6,6 +6,47 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — §1D.0 LGTM stack wired into docker-compose
+
+First slice of §1D (Observability). Goal: a `docker compose up -d` brings up Prometheus + Tempo + Loki + Promtail + Grafana with provisioned datasources and a skeleton dashboard, ready for §1D.1 to start pushing metrics / traces / logs in.
+
+### What shipped
+
+- **`docker-compose.yml`** gains 5 services under an *Observability* block: `prometheus` (`prom/prometheus:v3.0.1`), `tempo` (`grafana/tempo:2.7.0`), `loki` (`grafana/loki:3.3.0`), `promtail` (`grafana/promtail:3.3.0`), `grafana` (`grafana/grafana:11.3.1`). All named `northwood-<name>`, all on the project's default network, with named volumes so a `down -v` is the reset path.
+- **Ports published to host**: Grafana `3000`, Prometheus `9090`, Loki `3100`, Tempo `3200` (HTTP query) + `4317` (OTLP gRPC) + `4318` (OTLP HTTP). Spring services run on the Windows host and reach the stack via `localhost:<port>`; Prometheus reaches host services via `host.docker.internal:<service-port>` (wired through `extra_hosts: ["host.docker.internal:host-gateway"]` so Linux works the same as Docker-Desktop on Windows/macOS).
+- **Config files** mirror the existing `db/keycloak/` pattern:
+  - `db/prometheus/prometheus.yml` — scrape `host.docker.internal:8081–8087` (services) + `:8080` (demo BFF) + `:8089` (ERP BFF) on `/actuator/prometheus`. Targets stay red until §1D.1 wires the actuator endpoint.
+  - `db/tempo/tempo.yaml` — OTLP receivers on 4317 / 4318, local-filesystem backend, 24h block retention.
+  - `db/loki/loki-config.yaml` — single-binary monolithic mode, local-filesystem chunks, schema `tsdb` v13.
+  - `db/promtail/promtail-config.yaml` — tails the three infra containers (`northwood-postgres`, `northwood-kafka`, `northwood-keycloak`) via the docker SD config. Spring services push their own logs in §1D.1, so Promtail intentionally doesn't tail those.
+- **Grafana provisioning** under `db/grafana/`:
+  - `provisioning/datasources/datasources.yaml` wires 4 datasources — Prometheus, Tempo, Loki, Northwood-Postgres (for direct SQL drill-down into `audit_entry` + `outbox`). Tempo carries `tracesToLogsV2` + `tracesToMetrics` correlations pointing at the Loki + Prometheus UIDs respectively, so click-throughs from a trace span land on the right log lines once §1D.1 lands the `%X{traceId}` MDC injection. Loki carries a `derivedFields` regex (`traceId=([a-f0-9]+)`) that turns trace IDs in log lines into deep links back to Tempo.
+  - `provisioning/dashboards/dashboards.yaml` registers a `Northwood` folder pointing at `/var/lib/grafana/dashboards`.
+  - `dashboards/northwood-overview.json` — single-panel markdown skeleton that names every wired datasource and the slice that will fill in the real content (§1D.5).
+- **Grafana auth disabled** (`GF_AUTH_ANONYMOUS_ENABLED=true`, `GF_AUTH_ANONYMOUS_ORG_ROLE=Admin`, `GF_AUTH_DISABLE_LOGIN_FORM=true`) — never deploy this config beyond the showcase. `traceqlEditor` feature toggle enabled so the TraceQL panel in §1D.5 will work without re-config.
+
+### Smoke
+
+- `docker compose config --quiet` → no errors.
+- `docker compose up -d prometheus tempo loki promtail grafana` → all 5 containers up. `docker compose ps` shows port mappings.
+- HTTP probes after readiness: Prometheus `/-/healthy` 200, Tempo `/ready` 200 (10s after start), Loki `/ready` 200 (10s after start), Grafana `/api/health` 200.
+- `GET /api/datasources` returns 4 provisioned datasources with the expected UIDs. Health-probe results: Prometheus OK, Loki OK, Tempo 404 (known Grafana 11.3.1 Tempo-plugin quirk — `[plugin.notImplemented] method not implemented`; queries against the datasource work, the dedicated health endpoint just isn't implemented in the plugin yet), Postgres "no such host" if postgres isn't running — resolves to OK once `docker compose up -d postgres` runs in the same project.
+
+### Follow-ups noted
+
+- Postgres datasource health-check 400 is only seen when postgres isn't running in the same compose project. Documented in this entry rather than dev-todo since it's just a "run postgres first" sequencing point, not an open task.
+- The `host.docker.internal:host-gateway` `extra_hosts` is wired on prometheus only — services that should also reach the host on Linux can pick this up if/when that case arises.
+- Tempo Grafana-plugin health-probe 404 will go away on a future plugin update. Tracked here for context; no action.
+
+### What §1D.1 will need
+
+The shared module pom additions and `logback-spring.xml` will push to:
+- `http://localhost:4317` for OTLP gRPC traces (Tempo).
+- `http://localhost:3100/loki/api/v1/push` for log shipping (Loki).
+- Whatever port each service runs on for `/actuator/prometheus` scrape (Prometheus already configured to hit `host.docker.internal:<port>`).
+
+---
+
 ## 2026-05-19 — Liquibase consolidation + temporary disable
 
 Triggered by a stale-volume boot failure: a service hit `liquibase.exception.DatabaseException: ERROR: relation "inventory.goods_receipt_header" does not exist` while running an old-baseline changeset against a fresh schema. The changeset history had drifted out of sync with the rebaked baseline.

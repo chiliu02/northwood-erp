@@ -1,0 +1,18 @@
+# Northwood Grafana dashboard provisioning.
+#
+# Picks up any JSON dashboard under /var/lib/grafana/dashboards. Dashboards
+# stay editable in the UI; reload on file change every 10s.
+
+apiVersion: 1
+
+providers:
+  - name: northwood
+    orgId: 1
+    folder: Northwood
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

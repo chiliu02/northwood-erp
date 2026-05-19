@@ -1,0 +1,33 @@
+{
+  "annotations": { "list": [] },
+  "description": "Northwood ERP showcase overview — skeleton wired in §1D.0, filled in by §1D.5.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "text",
+      "title": "Northwood ERP — observability overview (skeleton)",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 6 },
+      "id": 1,
+      "options": {
+        "mode": "markdown",
+        "content": "## Northwood ERP — Observability\n\nThis dashboard is the **skeleton** wired in §1D.0 — the curated three-row board (service health, bus health, place-an-order trace drill-down) lands in §1D.5.\n\n**Datasources wired** (Configuration → Data sources to verify):\n- Prometheus — `http://prometheus:9090` (metrics; targets stay red until §1D.1)\n- Tempo — `http://tempo:3200` (traces; arrives in §1D.1 + §1D.2)\n- Loki — `http://loki:3100` (logs; arrives in §1D.1)\n- Northwood-Postgres — direct SQL read of `audit_entry` + `outbox`\n\n**Explore** → pick Tempo → search service `sales-service`. Empty until services are running with §1D.1 instrumentation, then a placed order traces through sales → inventory → manufacturing → finance.\n"
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["northwood", "skeleton"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Northwood — Overview (skeleton)",
+  "uid": "northwood-overview",
+  "version": 1,
+  "weekStart": ""
+}

@@ -1,0 +1,48 @@
+# Northwood Prometheus scrape config.
+#
+# Each Spring service runs on the Windows host (not in this compose network)
+# and exposes /actuator/prometheus on its service port. Prometheus reaches
+# them via host.docker.internal — wired on every compose target via
+# `extra_hosts: ["host.docker.internal:host-gateway"]` (already the default
+# DNS name on Docker Desktop for Windows/macOS).
+#
+# Targets stay "down" until §1D.1 wires the actuator prometheus endpoint into
+# the shared module. That's expected — Prometheus discovering an unreachable
+# target up-front is harmless and lets §1D.0 ship before §1D.1.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: northwood-showcase
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: northwood-services
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8081"]
+        labels: { service: product }
+      - targets: ["host.docker.internal:8082"]
+        labels: { service: sales }
+      - targets: ["host.docker.internal:8083"]
+        labels: { service: inventory }
+      - targets: ["host.docker.internal:8084"]
+        labels: { service: manufacturing }
+      - targets: ["host.docker.internal:8085"]
+        labels: { service: purchasing }
+      - targets: ["host.docker.internal:8086"]
+        labels: { service: finance }
+      - targets: ["host.docker.internal:8087"]
+        labels: { service: reporting }
+
+  - job_name: northwood-bffs
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8080"]
+        labels: { service: demo-web-ui-bff }
+      - targets: ["host.docker.internal:8089"]
+        labels: { service: erp-web-ui-bff }

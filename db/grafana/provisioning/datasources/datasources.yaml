@@ -1,0 +1,72 @@
+# Northwood Grafana datasource provisioning.
+#
+# Boots with all four LGTM datasources wired — Prometheus (metrics), Tempo
+# (traces), Loki (logs), Postgres (audit_entry + outbox snapshot). URLs
+# resolve via docker-compose service DNS within the northwood network.
+#
+# Tempo's tracesToLogs / tracesToMetrics correlations are deliberately
+# wired so click-throughs from a trace span land on the right log lines
+# and the right RED-style metric panel automatically — paired with the
+# %X{traceId} MDC injection landing in §1D.1.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    uid: northwood-prometheus
+    isDefault: true
+    editable: true
+
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    uid: northwood-tempo
+    editable: true
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: northwood-loki
+        spanStartTimeShift: -1h
+        spanEndTimeShift: 1h
+        filterByTraceID: true
+        filterBySpanID: false
+      tracesToMetrics:
+        datasourceUid: northwood-prometheus
+      serviceMap:
+        datasourceUid: northwood-prometheus
+      nodeGraph:
+        enabled: true
+      search:
+        hide: false
+      lokiSearch:
+        datasourceUid: northwood-loki
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    uid: northwood-loki
+    editable: true
+    jsonData:
+      derivedFields:
+        - datasourceUid: northwood-tempo
+          matcherRegex: "traceId=([a-f0-9]+)"
+          name: TraceID
+          url: "$${__value.raw}"
+
+  - name: Northwood-Postgres
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    uid: northwood-postgres
+    user: postgres
+    secureJsonData:
+      password: postgres
+    jsonData:
+      database: northwood_erp
+      sslmode: disable
+      postgresVersion: 1700
+    editable: true

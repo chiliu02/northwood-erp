@@ -121,7 +121,109 @@ services:
   #   depends_on:
   #     - postgres
 
+  # -------- Observability: LGTM stack (Loki / Grafana / Tempo / Prometheus) --------
+  #
+  # Wired in §1D.0. Phase-1 showcase posture: 100% trace sampling, single-instance
+  # everything, no auth on Grafana (anonymous Admin). Containers run on the host
+  # docker bridge; Spring services run on the Windows host and reach this stack
+  # via localhost:<port>. Prometheus reaches the host services through
+  # `host.docker.internal:<service-port>` — that DNS name is Docker-Desktop's
+  # built-in host loopback and works the same on Windows and macOS. On Linux
+  # `extra_hosts: ["host.docker.internal:host-gateway"]` is added to each
+  # consumer below so the same target syntax works there too.
+  #
+  # Why these images: Tempo + Loki + Promtail must move together (Grafana Labs
+  # ships them as one product line); Prometheus + Grafana are independent.
+  # Pinned to versions current at 2026-05-20 — bump as a single slice in 1D
+  # Phase 2 when the next minor lands.
+
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    container_name: northwood-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=24h
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./db/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - northwood-prometheusdata:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Tempo: distributed tracing backend. Receives OTLP from Spring services on
+  # 4317 (gRPC) / 4318 (HTTP). 3200 is the Grafana datasource HTTP endpoint.
+  # `--target=all` runs every microservice in one process — fine for showcase
+  # scale; production splits these (ingester/querier/compactor/distributor).
+  tempo:
+    image: grafana/tempo:2.7.0
+    container_name: northwood-tempo
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    ports:
+      - "3200:3200"  # Tempo HTTP API (Grafana queries this)
+      - "4317:4317"  # OTLP gRPC receiver (Spring services push here)
+      - "4318:4318"  # OTLP HTTP receiver
+    volumes:
+      - ./db/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - northwood-tempodata:/var/tempo
+
+  loki:
+    image: grafana/loki:3.3.0
+    container_name: northwood-loki
+    command: ["-config.file=/etc/loki/loki-config.yaml"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./db/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - northwood-lokidata:/loki
+
+  # Promtail tails docker container logs (postgres, kafka, keycloak) and ships
+  # them to Loki. Spring service logs are NOT tailed here — they run on the
+  # host and push directly via loki-logback-appender (configured in 1D.1).
+  # Promtail covers the "infra log line that mentions a service" path so all
+  # log searches surface in one place.
+  promtail:
+    image: grafana/promtail:3.3.0
+    container_name: northwood-promtail
+    command: ["-config.file=/etc/promtail/promtail-config.yaml"]
+    volumes:
+      - ./db/promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - northwood-promtaildata:/tmp
+    depends_on:
+      - loki
+
+  # Grafana: single pane. Anonymous Admin in dev mode — never deploy this
+  # config beyond the local showcase. Datasources + dashboards provisioned
+  # from db/grafana/provisioning/ so a fresh `docker compose up -d` boots
+  # with everything wired.
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: northwood-grafana
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./db/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./db/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - northwood-grafanadata:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+
 volumes:
   northwood-pgdata:
   northwood-kafkadata:
   northwood-keycloakdata:
+  northwood-prometheusdata:
+  northwood-tempodata:
+  northwood-lokidata:
+  northwood-promtaildata:
+  northwood-grafanadata:
