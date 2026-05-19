@@ -32,6 +32,22 @@ public final class JournalEntry {
     public static final String AGGREGATE_TYPE = FinanceAggregateTypes.JOURNAL_ENTRY;
 
     /**
+     * Human-readable number prefix for new journal entries; stamped by
+     * {@code JournalEntryService.post*} sites. Pure formatting choice — no
+     * consumer dispatches on this value, but surfacing it through a constant
+     * (parallel to other aggregates' {@code NUMBER_PREFIX}) keeps the prefix
+     * scheme rename-safe.
+     */
+    public static final String NUMBER_PREFIX = "JE-";
+
+    /**
+     * Reversal-entry variant of {@link #NUMBER_PREFIX}, stamped by
+     * {@link #reverseOf}. Distinct prefix so reversal numbers are visually
+     * separable from original postings in audit lists.
+     */
+    public static final String REVERSAL_NUMBER_PREFIX = "JE-REV-";
+
+    /**
      * Source-module classifier. Mirrors the schema CHECK on
      * {@code finance.journal_entry_header.source_module}. Identifies which
      * service originated the document being journalled.
@@ -228,7 +244,7 @@ public final class JournalEntry {
         String description = "Reversal of " + original.journalNumber
             + (reason == null || reason.isBlank() ? "" : " — " + reason);
         return post(
-            "JE-REV-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
+            REVERSAL_NUMBER_PREFIX + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
             postingDate,
             SourceModule.FINANCE,
             SourceDocumentType.JOURNAL_REVERSAL,

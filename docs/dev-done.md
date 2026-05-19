@@ -6,6 +6,27 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-19 — §2.0.h NUMBER_PREFIX constants on aggregate roots
+
+Hygiene pass after §2.0.g. Human-readable number prefixes (`"JE-"`, `"WO-"`, etc.) were inlined as String literals at every constructing site — 12 production-call sites across 5 aggregates. Not a wire-format / CHECK / dispatch concern (no consumer compares against these), but consistent enough across the project to be worth a constants pass: a future "rename the prefix scheme" change should touch one site per aggregate, not N sites scattered through services + tests.
+
+What shipped:
+
+- **5 new constants on the relevant aggregate roots**, alongside `AGGREGATE_TYPE`:
+  - `JournalEntry.NUMBER_PREFIX = "JE-"` + `JournalEntry.REVERSAL_NUMBER_PREFIX = "JE-REV-"` (separate constant because reversal numbers carry a distinct scheme so they're visually separable from original postings in audit lists).
+  - `WorkOrder.NUMBER_PREFIX = "WO-"`.
+  - `PurchaseOrder.NUMBER_PREFIX = "PO-"`.
+  - `PurchaseRequisition.NUMBER_PREFIX = "PR-"`.
+  - `CustomerInvoice.NUMBER_PREFIX = "INV-"`.
+- **12 production-site replacements** — 6× `"JE-"` in `JournalEntryService`, 1× `"JE-REV-"` in `JournalEntry.reverseOf`, 2× `"WO-"` in `MakeToOrderSagaWorker` + `WorkOrderReleaseService`, 1× `"PO-"` in `PurchaseOrderService`, 1× `"PR-"` in `RawMaterialShortageDetectedHandler`, 1× `"INV-"` in `CustomerInvoiceService`.
+- **2 test-fixture replacements** — `JournalEntryServiceReverseBySourceTest:47` (fixture journal number) and `RawMaterialShortageDetectedHandlerTest:73` (`startsWith` assertion).
+
+Pattern: not a §2.0-style enum (no schema CHECK, no consumer dispatch). The constant is documented as a "pure formatting choice" so the next reader doesn't assume there's wire-contract weight on the value.
+
+**Smoke**: `mvn -pl test-harness -am test` → BUILD SUCCESS across the 16-module reactor.
+
+---
+
 ## 2026-05-19 — §2.0.g StockMovementType / StockMovementDirection enums + source-type constants
 
 Hygiene slice after §2.0.f. The §2.0 enum convention applied to `inventory.stock_movement` — an append-only audit table written from three producers (goods receipt, shipment, work-order completion). Schema CHECKs on `movement_type` (7 values) and `direction` (in / out) had no Java mirror; producers passed bare String literals.

@@ -44,7 +44,7 @@ class JournalEntryServiceReverseBySourceTest {
     private JournalEntry postedEntry(JournalEntryId id, String sourceType, UUID sourceId, BigDecimal amount) {
         return JournalEntry.reconstitute(
             id,
-            "JE-" + id.value().toString().substring(0, 4),
+            JournalEntry.NUMBER_PREFIX + id.value().toString().substring(0, 4),
             LocalDate.of(2026, 6, 1),
             JournalEntry.SourceModule.FINANCE,
             JournalEntry.SourceDocumentType.fromDb(sourceType),

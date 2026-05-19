@@ -165,7 +165,7 @@ public class JournalEntryService {
         // produces a temporally-correct income statement (COGS only hits at
         // shipment, not at invoice approval).
         post(
-            "JE-" + journalSuffix(),
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
             postingDate,
             JournalEntry.SourceModule.FINANCE,
             JournalEntry.SourceDocumentType.SUPPLIER_INVOICE,
@@ -217,7 +217,7 @@ public class JournalEntryService {
         }
 
         postMultiDebit(
-            "JE-" + journalSuffix(),
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
             postingDate,
             JournalEntry.SourceModule.FINANCE,
             JournalEntry.SourceDocumentType.GOODS_RECEIPT,
@@ -269,7 +269,7 @@ public class JournalEntryService {
         }
 
         postMultiDebitMultiCredit(
-            "JE-" + journalSuffix(),
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
             postingDate,
             JournalEntry.SourceModule.FINANCE,
             JournalEntry.SourceDocumentType.SHIPMENT_COST,
@@ -293,7 +293,7 @@ public class JournalEntryService {
         LocalDate postingDate
     ) {
         post(
-            "JE-" + journalSuffix(),
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
             postingDate,
             JournalEntry.SourceModule.FINANCE,
             JournalEntry.SourceDocumentType.SUPPLIER_PAYMENT,
@@ -319,7 +319,7 @@ public class JournalEntryService {
         LocalDate postingDate
     ) {
         post(
-            "JE-" + journalSuffix(),
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
             postingDate,
             JournalEntry.SourceModule.FINANCE,
             JournalEntry.SourceDocumentType.CUSTOMER_INVOICE,
@@ -345,7 +345,7 @@ public class JournalEntryService {
         LocalDate postingDate
     ) {
         post(
-            "JE-" + journalSuffix(),
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
             postingDate,
             JournalEntry.SourceModule.FINANCE,
             JournalEntry.SourceDocumentType.CUSTOMER_PAYMENT,

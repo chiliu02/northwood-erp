@@ -44,6 +44,13 @@ public final class PurchaseOrder {
     public static final String AGGREGATE_TYPE = PurchasingAggregateTypes.PURCHASE_ORDER;
 
     /**
+     * Human-readable number prefix for new purchase orders; stamped by
+     * {@code PurchaseOrderService.createFromRequisition}. Pure formatting
+     * choice — no consumer dispatches on this value.
+     */
+    public static final String NUMBER_PREFIX = "PO-";
+
+    /**
      * Purchase-order header status. Mirrors the schema CHECK on
      * {@code purchasing.purchase_order_header.status}. Lifecycle:
      * {@code DRAFT → SENT → PARTIALLY_RECEIVED → RECEIVED → PAID} (driven by

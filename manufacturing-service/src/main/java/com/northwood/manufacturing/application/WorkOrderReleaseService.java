@@ -131,7 +131,7 @@ public class WorkOrderReleaseService {
         for (Component sub : subAssemblyComponents) {
             BigDecimal childPlanned = scaledQuantity(sub, planned);
             ReleaseCommand childCommand = new ReleaseCommand(
-                "WO-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
+                WorkOrder.NUMBER_PREFIX + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
                 command.salesOrderHeaderId(),
                 command.salesOrderLineId(),
                 workOrder.id().value(),

@@ -4,6 +4,7 @@ import com.northwood.manufacturing.domain.events.RawMaterialShortageDetected;
 import com.northwood.purchasing.application.PurchaseRequisitionService;
 import com.northwood.purchasing.application.dto.RequisitionLineRequest;
 import com.northwood.purchasing.application.dto.WorkOrderShortageCommand;
+import com.northwood.purchasing.domain.PurchaseRequisition;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
 import com.northwood.shared.application.messaging.EventEnvelope;
@@ -56,7 +57,7 @@ public class RawMaterialShortageDetectedHandler extends AbstractInboxHandler<Raw
             ));
         }
 
-        String requisitionNumber = "PR-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String requisitionNumber = PurchaseRequisition.NUMBER_PREFIX + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         requisitions.createForWorkOrderShortage(new WorkOrderShortageCommand(
             requisitionNumber,
             payload.workOrderId(),

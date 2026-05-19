@@ -103,7 +103,7 @@ public class CustomerInvoiceService {
             );
         }
 
-        String invoiceNumber = "INV-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String invoiceNumber = CustomerInvoice.NUMBER_PREFIX + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         CustomerInvoice invoice = CustomerInvoice.create(
             invoiceNumber,
             payload.aggregateId(),

@@ -28,6 +28,13 @@ public final class CustomerInvoice {
     public static final String AGGREGATE_TYPE = FinanceAggregateTypes.CUSTOMER_INVOICE;
 
     /**
+     * Human-readable number prefix for new customer invoices; stamped by
+     * {@code CustomerInvoiceService.create}. Pure formatting choice — no
+     * consumer dispatches on this value.
+     */
+    public static final String NUMBER_PREFIX = "INV-";
+
+    /**
      * Customer-invoice lifecycle status. Mirrors the schema CHECK on
      * {@code finance.customer_invoice_header.status}. Lifecycle:
      * {@code POSTED → PARTIALLY_PAID → PAID} (the {@code maintain_allocation_totals}

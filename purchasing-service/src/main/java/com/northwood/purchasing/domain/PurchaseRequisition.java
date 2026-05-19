@@ -35,6 +35,13 @@ public final class PurchaseRequisition {
     public static final String AGGREGATE_TYPE = PurchasingAggregateTypes.PURCHASE_REQUISITION;
 
     /**
+     * Human-readable number prefix for new requisitions; stamped by
+     * {@code RawMaterialShortageDetectedHandler} (and any future creation
+     * path). Pure formatting choice — no consumer dispatches on this value.
+     */
+    public static final String NUMBER_PREFIX = "PR-";
+
+    /**
      * Purchase-requisition source classifier. Mirrors the schema CHECK on
      * {@code purchasing.purchase_requisition_header.source_type}. Drives which
      * source ids the row carries: {@code MANUAL} → neither, {@code LOW_STOCK}

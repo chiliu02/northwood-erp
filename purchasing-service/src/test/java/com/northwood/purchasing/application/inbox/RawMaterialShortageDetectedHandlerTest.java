@@ -12,6 +12,7 @@ import com.northwood.manufacturing.domain.ManufacturingAggregateTypes;
 import com.northwood.manufacturing.domain.events.RawMaterialShortageDetected;
 import com.northwood.purchasing.application.PurchaseRequisitionService;
 import com.northwood.purchasing.application.dto.WorkOrderShortageCommand;
+import com.northwood.purchasing.domain.PurchaseRequisition;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
 import java.math.BigDecimal;
@@ -70,7 +71,7 @@ class RawMaterialShortageDetectedHandlerTest {
         WorkOrderShortageCommand cmd = cap.getValue();
         assertThat(cmd.workOrderId()).isEqualTo(WO);
         assertThat(cmd.lines()).hasSize(2);
-        assertThat(cmd.requisitionNumber()).startsWith("PR-");
+        assertThat(cmd.requisitionNumber()).startsWith(PurchaseRequisition.NUMBER_PREFIX);
         verify(inbox).recordProcessed(any());
     }
 

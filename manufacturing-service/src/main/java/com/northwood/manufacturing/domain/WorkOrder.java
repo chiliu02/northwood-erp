@@ -34,6 +34,14 @@ public final class WorkOrder {
     public static final String AGGREGATE_TYPE = ManufacturingAggregateTypes.WORK_ORDER;
 
     /**
+     * Human-readable number prefix for new work orders; stamped by
+     * {@code WorkOrderReleaseService.release} (manual + parent) and
+     * {@code MakeToOrderSagaWorker} (saga-driven release). Pure formatting
+     * choice — no consumer dispatches on this value.
+     */
+    public static final String NUMBER_PREFIX = "WO-";
+
+    /**
      * Work-order lifecycle status. Mirrors the schema CHECK on
      * {@code manufacturing.work_order.status}. Lifecycle:
      * {@code RELEASED} / {@code PLANNED} → {@code IN_PROGRESS} →
