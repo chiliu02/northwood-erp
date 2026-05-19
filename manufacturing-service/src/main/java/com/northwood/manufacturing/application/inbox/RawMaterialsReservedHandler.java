@@ -96,11 +96,11 @@ public class RawMaterialsReservedHandler extends AbstractInboxHandler<RawMateria
             CONSUMER_NAME, payload.workOrderId(), payload.status(), newState, payload.stockReservationId());
     }
 
-    private static String toMaterialStatus(String reservationStatus) {
+    private static WorkOrder.MaterialStatus toMaterialStatus(String reservationStatus) {
         return switch (reservationStatus) {
-            case RawMaterialsReserved.STATUS_RESERVED -> WorkOrder.MATERIAL_RESERVED;
-            case RawMaterialsReserved.STATUS_PARTIALLY_RESERVED -> WorkOrder.MATERIAL_PARTIALLY_RESERVED;
-            case RawMaterialsReserved.STATUS_FAILED -> WorkOrder.MATERIAL_SHORTAGE;
+            case RawMaterialsReserved.STATUS_RESERVED -> WorkOrder.MaterialStatus.RESERVED;
+            case RawMaterialsReserved.STATUS_PARTIALLY_RESERVED -> WorkOrder.MaterialStatus.PARTIALLY_RESERVED;
+            case RawMaterialsReserved.STATUS_FAILED -> WorkOrder.MaterialStatus.SHORTAGE;
             default -> throw new IllegalStateException(
                 "Unknown reservation status on " + RawMaterialsReserved.EVENT_TYPE + ": " + reservationStatus
             );

@@ -47,10 +47,10 @@ class WorkOrderPrioritisationServiceTest {
     private WorkOrder existingWo() {
         WorkOrderOperation op = new WorkOrderOperation(
             UUID.randomUUID(), 10, "OP-10", "Op", UUID.randomUUID(),
-            BigDecimal.ZERO, new BigDecimal("30"), "planned"
+            BigDecimal.ZERO, new BigDecimal("30"), WorkOrder.OperationStatus.PLANNED
         );
         WorkOrderMaterial mat = new WorkOrderMaterial(
-            UUID.randomUUID(), UUID.randomUUID(), "RM", "Material", new BigDecimal("1"), BigDecimal.ZERO, "pending"
+            UUID.randomUUID(), UUID.randomUUID(), "RM", "Material", new BigDecimal("1"), BigDecimal.ZERO, WorkOrder.MaterialLineStatus.REQUIRED
         );
         return WorkOrder.release(
             "WO-001", UUID.randomUUID(), UUID.randomUUID(), null,

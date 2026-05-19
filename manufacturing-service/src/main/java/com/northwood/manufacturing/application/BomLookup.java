@@ -1,5 +1,6 @@
 package com.northwood.manufacturing.application;
 
+import com.northwood.manufacturing.domain.Bom;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -120,7 +121,7 @@ public interface BomLookup {
         String componentName,
         BigDecimal quantityPerFinishedUnit,
         BigDecimal scrapFactorPercent,
-        String componentKind
+        Bom.ComponentKind componentKind
     ) {}
 
     record BomHeaderIdentity(String productSku, String productName) {}
@@ -147,7 +148,7 @@ public interface BomLookup {
         UUID componentProductId,
         String componentSku,
         String componentName,
-        String componentKind,
+        Bom.ComponentKind componentKind,
         BigDecimal quantityPerFinishedUnit,
         BigDecimal scrapFactorPercent,
         UUID childActiveBomHeaderId,

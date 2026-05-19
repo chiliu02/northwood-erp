@@ -23,7 +23,7 @@ class BomTest {
 
     private static BomLine.Spec lineSpec(UUID componentProductId, String sku) {
         return new BomLine.Spec(
-            componentProductId, sku, "Name " + sku, "raw_material",
+            componentProductId, sku, "Name " + sku, Bom.ComponentKind.RAW,
             new BigDecimal("2.000"), new BigDecimal("0.05")
         );
     }
@@ -136,7 +136,7 @@ class BomTest {
         @Test void rejects_spec_with_null_componentProductId() {
             Bom bom = newDraft();
             BomLine.Spec bad = new BomLine.Spec(
-                null, "RM", "n", "raw_material", BigDecimal.ONE, BigDecimal.ZERO
+                null, "RM", "n", Bom.ComponentKind.RAW, BigDecimal.ONE, BigDecimal.ZERO
             );
             assertThatThrownBy(() -> bom.addLine(bad))
                 .isInstanceOf(NullPointerException.class).hasMessageContaining("componentProductId");
@@ -163,7 +163,7 @@ class BomTest {
         @Test void records_removed_line_for_repository_delete_when_loaded_from_db() {
             BomLineId lineIdA = BomLineId.newId();
             BomLine loaded = new BomLine(
-                lineIdA, 1, COMPONENT_A, "RM-A", "Raw A", "raw_material",
+                lineIdA, 1, COMPONENT_A, "RM-A", "Raw A", Bom.ComponentKind.RAW,
                 new BigDecimal("2"), BigDecimal.ZERO
             );
             Bom bom = Bom.reconstitute(
@@ -247,7 +247,7 @@ class BomTest {
             BomId id = BomId.newId();
             BomLineId lineId = BomLineId.newId();
             BomLine line = new BomLine(
-                lineId, 5, COMPONENT_A, "RM-A", "Raw A", "raw_material",
+                lineId, 5, COMPONENT_A, "RM-A", "Raw A", Bom.ComponentKind.RAW,
                 new BigDecimal("2"), BigDecimal.ZERO
             );
             Bom bom = Bom.reconstitute(
@@ -265,7 +265,7 @@ class BomTest {
 
     private static Bom activeBomWithOneLine() {
         BomLine line = new BomLine(
-            BomLineId.newId(), 1, COMPONENT_A, "RM-A", "Raw A", "raw_material",
+            BomLineId.newId(), 1, COMPONENT_A, "RM-A", "Raw A", Bom.ComponentKind.RAW,
             new BigDecimal("2"), BigDecimal.ZERO
         );
         return Bom.reconstitute(

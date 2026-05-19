@@ -185,7 +185,7 @@ public class BomService {
                 command.componentProductId(),
                 command.componentSku(),
                 command.componentName(),
-                command.componentKind(),
+                Bom.ComponentKind.fromDb(command.componentKind()),
                 command.quantityPerFinishedUnit(),
                 command.scrapFactorPercent()
             ));

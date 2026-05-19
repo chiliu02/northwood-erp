@@ -65,7 +65,7 @@ class BomServiceTest {
 
     private Bom draftBomWithOneLine() {
         BomLine line = new BomLine(
-            BomLineId.of(LINE), 1, COMPONENT, "RM-001", "Raw 1", "raw_material",
+            BomLineId.of(LINE), 1, COMPONENT, "RM-001", "Raw 1", Bom.ComponentKind.RAW,
             new BigDecimal("2"), BigDecimal.ZERO
         );
         return Bom.reconstitute(
@@ -76,7 +76,7 @@ class BomServiceTest {
 
     private Bom activeBom() {
         BomLine line = new BomLine(
-            BomLineId.of(LINE), 1, COMPONENT, "RM-001", "Raw 1", "raw_material",
+            BomLineId.of(LINE), 1, COMPONENT, "RM-001", "Raw 1", Bom.ComponentKind.RAW,
             new BigDecimal("2"), BigDecimal.ZERO
         );
         return Bom.reconstitute(
@@ -91,7 +91,7 @@ class BomServiceTest {
 
     private AddLineCommand addLineCommand(UUID componentProductId) {
         return new AddLineCommand(
-            componentProductId, "RM-001", "Raw Material 001", "raw_material",
+            componentProductId, "RM-001", "Raw Material 001", "raw",
             new BigDecimal("2.000"), new BigDecimal("0.05")
         );
     }
@@ -274,11 +274,11 @@ class BomServiceTest {
 
         @Test void activates_runs_cycle_check_per_component_and_kicks_rollup() {
             BomLine first = new BomLine(
-                BomLineId.newId(), 1, COMPONENT, "RM-A", "Raw A", "raw_material",
+                BomLineId.newId(), 1, COMPONENT, "RM-A", "Raw A", Bom.ComponentKind.RAW,
                 new BigDecimal("2"), BigDecimal.ZERO
             );
             BomLine second = new BomLine(
-                BomLineId.newId(), 2, OTHER_COMPONENT, "RM-B", "Raw B", "raw_material",
+                BomLineId.newId(), 2, OTHER_COMPONENT, "RM-B", "Raw B", Bom.ComponentKind.RAW,
                 new BigDecimal("1"), BigDecimal.ZERO
             );
             Bom bom = Bom.reconstitute(
@@ -355,9 +355,9 @@ class BomServiceTest {
             Bom bom = Bom.reconstitute(
                 BomId.of(HEADER), FINISHED, "FG-001", "Finished Good 1", "1",
                 Bom.Status.DRAFT, List.of(
-                    new BomLine(BomLineId.newId(), 1, COMPONENT, "RM-A", "Raw A", "raw_material",
+                    new BomLine(BomLineId.newId(), 1, COMPONENT, "RM-A", "Raw A", Bom.ComponentKind.RAW,
                         BigDecimal.ONE, BigDecimal.ZERO),
-                    new BomLine(BomLineId.newId(), 2, OTHER_COMPONENT, "RM-B", "Raw B", "raw_material",
+                    new BomLine(BomLineId.newId(), 2, OTHER_COMPONENT, "RM-B", "Raw B", Bom.ComponentKind.RAW,
                         BigDecimal.ONE, BigDecimal.ZERO)
                 ), 2L
             );

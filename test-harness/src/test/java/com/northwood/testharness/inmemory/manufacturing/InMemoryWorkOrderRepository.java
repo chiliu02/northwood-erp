@@ -82,7 +82,7 @@ public final class InMemoryWorkOrderRepository implements WorkOrderRepository {
     public List<CompletedChild> findCompletedChildren(UUID parentWorkOrderId) {
         List<CompletedChild> out = new ArrayList<>();
         for (WorkOrder w : store.values()) {
-            if (parentWorkOrderId.equals(w.parentWorkOrderId()) && "completed".equals(w.status())) {
+            if (parentWorkOrderId.equals(w.parentWorkOrderId()) && w.status() == WorkOrder.Status.COMPLETED) {
                 out.add(new CompletedChild(w.id().value(), w.finishedProductId(), w.completedQuantity()));
             }
         }
@@ -100,7 +100,9 @@ public final class InMemoryWorkOrderRepository implements WorkOrderRepository {
         return out;
     }
 
-    private static boolean isTerminal(String status) {
-        return "completed".equals(status) || "closed".equals(status) || "cancelled".equals(status);
+    private static boolean isTerminal(WorkOrder.Status status) {
+        return status == WorkOrder.Status.COMPLETED
+            || status == WorkOrder.Status.CLOSED
+            || status == WorkOrder.Status.CANCELLED;
     }
 }

@@ -24,10 +24,10 @@ Northwood/
 ├── purchasing-service/           POs, requisitions, supplier prices + purchase_to_pay_saga
 ├── finance-service/              AP/AR invoices, payments, journal entries (perpetual inventory)
 ├── reporting-service/            Six read-side projections, inbox-only
+│
 ├── demo-web-ui-bff/              BFF for the technical demo SPA (port 8080)
 ├── demo-web-ui/                  React + Vite SPA for the technical demo (port 5173)
 ├── erp-web-ui-bff/               BFF for the operational ERP SPA (port 8089)
-│
 └── erp-web-ui/                   React + Vite SPA — operational ERP (port 5174)
 ```
 

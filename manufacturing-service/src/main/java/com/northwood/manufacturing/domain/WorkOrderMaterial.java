@@ -17,7 +17,7 @@ public final class WorkOrderMaterial {
     private final String componentName;
     private final BigDecimal requiredQuantity;
     private final BigDecimal unitCost;
-    private final String status;
+    private final WorkOrder.MaterialLineStatus status;
 
     public WorkOrderMaterial(
         UUID id,
@@ -26,7 +26,7 @@ public final class WorkOrderMaterial {
         String componentName,
         BigDecimal requiredQuantity,
         BigDecimal unitCost,
-        String status
+        WorkOrder.MaterialLineStatus status
     ) {
         if (requiredQuantity.signum() < 0) {
             throw new IllegalArgumentException("requiredQuantity must be >= 0");
@@ -40,11 +40,11 @@ public final class WorkOrderMaterial {
         this.status = status;
     }
 
-    public UUID id()                     { return id; }
-    public UUID componentProductId()     { return componentProductId; }
-    public String componentSku()         { return componentSku; }
-    public String componentName()        { return componentName; }
-    public BigDecimal requiredQuantity() { return requiredQuantity; }
-    public BigDecimal unitCost()         { return unitCost; }
-    public String status()               { return status; }
+    public UUID id()                              { return id; }
+    public UUID componentProductId()              { return componentProductId; }
+    public String componentSku()                  { return componentSku; }
+    public String componentName()                 { return componentName; }
+    public BigDecimal requiredQuantity()          { return requiredQuantity; }
+    public BigDecimal unitCost()                  { return unitCost; }
+    public WorkOrder.MaterialLineStatus status()  { return status; }
 }

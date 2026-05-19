@@ -59,14 +59,14 @@ class WorkOrderOperationServiceTest {
     private WorkOrderOperation op(int seq) {
         return new WorkOrderOperation(
             UUID.randomUUID(), seq, "OP-" + seq, "Op " + seq, WORKCENTRE,
-            BigDecimal.ZERO, new BigDecimal("30"), "planned"
+            BigDecimal.ZERO, new BigDecimal("30"), WorkOrder.OperationStatus.PLANNED
         );
     }
 
     private WorkOrderMaterial mat() {
         return new WorkOrderMaterial(
             UUID.randomUUID(), UUID.randomUUID(), "RM-X", "Material X",
-            new BigDecimal("4"), BigDecimal.ZERO, "pending"
+            new BigDecimal("4"), BigDecimal.ZERO, WorkOrder.MaterialLineStatus.REQUIRED
         );
     }
 
@@ -101,7 +101,7 @@ class WorkOrderOperationServiceTest {
 
             service.completeOperation(new CompleteOperationCommand(wo.id().value(), 10, new BigDecimal("30")));
 
-            assertThat(wo.status()).isEqualTo("in_progress");
+            assertThat(wo.status()).isEqualTo(WorkOrder.Status.IN_PROGRESS);
             verify(workOrders).save(wo);
             verifyNoInteractions(sagaManager, outbox);
         }
@@ -115,7 +115,7 @@ class WorkOrderOperationServiceTest {
 
             service.completeOperation(new CompleteOperationCommand(wo.id().value(), 10, new BigDecimal("30")));
 
-            assertThat(wo.status()).isEqualTo("completed");
+            assertThat(wo.status()).isEqualTo(WorkOrder.Status.COMPLETED);
             verify(sagaManager).applyManufacturingCompleted(wo.id().value());
             verify(outbox, never()).appendPending(any());
         }
@@ -128,7 +128,7 @@ class WorkOrderOperationServiceTest {
 
             service.completeOperation(new CompleteOperationCommand(wo.id().value(), 10, new BigDecimal("30")));
 
-            assertThat(wo.status()).isEqualTo("in_progress");
+            assertThat(wo.status()).isEqualTo(WorkOrder.Status.IN_PROGRESS);
             verify(workOrders).save(wo);
             verifyNoInteractions(sagaManager, outbox);
         }
@@ -170,7 +170,7 @@ class WorkOrderOperationServiceTest {
             parent.pullPendingEvents();
             parent.completeOperation(10, new BigDecimal("30"), false);
             parent.pullPendingEvents();
-            assertThat(parent.status()).isEqualTo("in_progress");
+            assertThat(parent.status()).isEqualTo(WorkOrder.Status.IN_PROGRESS);
 
             UUID parentId = parent.id().value();
             WorkOrder child = release(parentId, UUID.randomUUID(), List.of(op(10)));
@@ -189,8 +189,8 @@ class WorkOrderOperationServiceTest {
 
             service.completeOperation(new CompleteOperationCommand(child.id().value(), 10, new BigDecimal("30")));
 
-            assertThat(child.status()).isEqualTo("completed");
-            assertThat(parent.status()).isEqualTo("completed");
+            assertThat(child.status()).isEqualTo(WorkOrder.Status.COMPLETED);
+            assertThat(parent.status()).isEqualTo(WorkOrder.Status.COMPLETED);
             verify(sagaManager).applyManufacturingCompleted(child.id().value());
             verify(sagaManager).applyManufacturingCompleted(parentId);
             verify(workOrders).save(child);
@@ -216,8 +216,8 @@ class WorkOrderOperationServiceTest {
 
             service.completeOperation(new CompleteOperationCommand(child.id().value(), 10, new BigDecimal("30")));
 
-            assertThat(child.status()).isEqualTo("completed");
-            assertThat(parent.status()).isEqualTo("in_progress");
+            assertThat(child.status()).isEqualTo(WorkOrder.Status.COMPLETED);
+            assertThat(parent.status()).isEqualTo(WorkOrder.Status.IN_PROGRESS);
             verify(sagaManager).applyManufacturingCompleted(child.id().value());
             verify(sagaManager, never()).applyManufacturingCompleted(parentId);
             verify(workOrders).save(child);
@@ -274,7 +274,7 @@ class WorkOrderOperationServiceTest {
 
             service.skipOperation(wo.id().value(), 10, "no fixture available");
 
-            assertThat(wo.status()).isEqualTo("completed");
+            assertThat(wo.status()).isEqualTo(WorkOrder.Status.COMPLETED);
             verify(sagaManager).applyManufacturingCompleted(wo.id().value());
         }
 

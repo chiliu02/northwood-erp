@@ -17,7 +17,7 @@ public final class BomLine {
         UUID componentProductId,
         String componentSku,
         String componentName,
-        String componentKind,
+        Bom.ComponentKind componentKind,
         BigDecimal quantityPerFinishedUnit,
         BigDecimal scrapFactorPercent
     ) {}
@@ -27,7 +27,7 @@ public final class BomLine {
     private final UUID componentProductId;
     private final String componentSku;
     private final String componentName;
-    private final String componentKind;
+    private final Bom.ComponentKind componentKind;
     private final BigDecimal quantityPerFinishedUnit;
     private final BigDecimal scrapFactorPercent;
 
@@ -37,7 +37,7 @@ public final class BomLine {
         UUID componentProductId,
         String componentSku,
         String componentName,
-        String componentKind,
+        Bom.ComponentKind componentKind,
         BigDecimal quantityPerFinishedUnit,
         BigDecimal scrapFactorPercent
     ) {
@@ -56,7 +56,7 @@ public final class BomLine {
     public UUID componentProductId()            { return componentProductId; }
     public String componentSku()                { return componentSku; }
     public String componentName()               { return componentName; }
-    public String componentKind()               { return componentKind; }
+    public Bom.ComponentKind componentKind()    { return componentKind; }
     public BigDecimal quantityPerFinishedUnit() { return quantityPerFinishedUnit; }
     public BigDecimal scrapFactorPercent()      { return scrapFactorPercent; }
 }

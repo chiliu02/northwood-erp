@@ -6,6 +6,39 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-19 — §2.0.a foundation bucket: Product / Bom / WorkOrder / Customer enums
+
+Second §2.0 slice — the *foundation* bucket. Migrates the four aggregates that bridge across services (Product master, Customer master, the Bom + WorkOrder twin in manufacturing) onto the nested-enum-with-`dbValue()` convention documented in `docs/conventions.md` after the pilot.
+
+What shipped:
+
+- **`Product.Status`** — refactored existing plain enum (no `dbValue` before) into `ACTIVE("active") / INACTIVE("inactive") / DISCONTINUED("discontinued")`. `JdbcProductRepository` + `ProductView` switched from `.name().toLowerCase()` / `valueOf(...toUpperCase())` to `.dbValue()` / `fromDb()`. No data migration (column was already lowercase).
+- **`Customer.Status`** — was already enum-with-`dbValue()` style; aligned `JdbcCustomerRepository` + `CustomerView` to use `.dbValue()` / `fromDb()` (had been ad-hoc `.name().toLowerCase()` / `valueOf(...toUpperCase())`).
+- **`Bom.Status`** — refactored existing plain enum to `DRAFT("draft") / ACTIVE("active") / INACTIVE("inactive")`. Same persistence cleanup as Product.
+- **`Bom.ComponentKind`** — new nested enum on Bom: `RAW("raw") / SUB_ASSEMBLY("sub_assembly")`. `BomLine.componentKind` typed; `BomLine.Spec` typed; `BomLookup.Component` + `BomLookup.ComponentTreeRow` typed (application-layer records carry the enum end-to-end). DTO views convert at the `.dbValue()` boundary. Surfaced and fixed a latent test-hygiene bug: tests used `"raw_material"` (not in the schema CHECK) for `componentKind`; now correctly `Bom.ComponentKind.RAW`.
+- **`WorkOrder.Status`** — new nested enum, 10 values mirroring the schema CHECK. 6 actively produced (`RELEASED`, `IN_PROGRESS`, `COMPLETED`, `CLOSED`, `CANCELLED`, plus `PLANNED` allowed via `release()` path); 4 carry the schema-prep Javadoc tag (`MATERIAL_CHECK_PENDING`, `WAITING_FOR_MATERIALS`, `PARTIALLY_COMPLETED`, `BLOCKED`).
+- **`WorkOrder.MaterialStatus`** — header secondary, 6 values: `RESERVATION_PENDING` + `RESERVED` + `PARTIALLY_RESERVED` + `SHORTAGE` actively produced; `NOT_CHECKED` and `ISSUED` flagged schema-prep.
+- **`WorkOrder.MaterialLineStatus`** — per-line, 5 values: `REQUIRED` / `RESERVED` / `PARTIALLY_RESERVED` / `SHORTAGE` actively produced; `ISSUED` schema-prep.
+- **`WorkOrder.OperationStatus`** — per-operation, 4 values, all actively produced (`PLANNED`, `IN_PROGRESS`, `COMPLETED`, `SKIPPED`).
+- Aggregate body refactor on `WorkOrder` + `WorkOrderMaterial` + `WorkOrderOperation`: typed fields, state-machine guards switch from `String.equals(...)` to `==` enum comparisons.
+- `JdbcWorkOrderRepository` reads `fromDb` on header `status` / `material_status`, `MATERIAL_MAPPER` (`MaterialLineStatus`), `OPERATION_MAPPER` (`OperationStatus`); writes call `.dbValue()` at every site (insert header + lines + ops, update header + ops).
+- `RawMaterialsReservedHandler.toMaterialStatus(String)` returns `WorkOrder.MaterialStatus` directly; switch expression mapping inbox-event status to material status.
+- `WorkOrderReleaseService.buildMaterial` constructs `WorkOrder.MaterialLineStatus.REQUIRED`; operation construction uses `WorkOrder.OperationStatus.PLANNED`.
+- Application-layer `BomService.AddLineCommand` keeps `String componentKind` at the input boundary (controller hex rule prevents importing domain enum into `api/`); `BomService.addLine` converts via `Bom.ComponentKind.fromDb(...)` when building the domain `BomLine.Spec`.
+- All 6 `*View` DTOs in manufacturing/product/sales convert `enum → String` via `.dbValue()` in `from(...)` (same pattern as pilot).
+- Test-harness `InMemoryWorkOrderRepository` switched `String`-typed isTerminal helper to enum.
+- 8 manufacturing test files updated to construct domain objects with typed enums; `MaterialsCostRollupServiceTest` was already using the `Bom.ComponentKind.RAW`/`SUB_ASSEMBLY` shape so just got the import.
+
+**Discrepancy resolved during the slice:** test fixtures consistently used `"raw_material"` for `componentKind` and `"pending"` for material status — neither is in the respective schema CHECK. The migration surfaced both as compile errors that had to be fixed; the prod path's schema-prep + production code wasn't writing these latent-bug values, so there was no DB damage.
+
+**Hex-rule reminder applied 2026-05-19:** Controllers cannot import domain types. The api/BomController takes `String componentKind` from the wire DTO and passes it to the application Command; the application service does the `Bom.ComponentKind.fromDb(...)` conversion inside its method body — the boundary stays on the application side.
+
+**Smoke**: `mvn -pl test-harness -am test` → full 16-module reactor green; all manufacturing-service tests (138/138) + sales-service (133/133) + product-service + test-harness pass.
+
+Next: §2.0.b (sales+inventory + the GoodsReceipt/Shipment schema CHECK migrations).
+
+---
+
 ## 2026-05-19 — §2.0 pilot: SalesOrder status → enum-with-`dbValue()`
 
 Pilot slice of §2.0 (aggregate enumerated-column migration). Locked design decisions before coding (full discussion captured in §2.0 dev-todo block):

@@ -14,17 +14,6 @@ import java.util.UUID;
  */
 public final class WorkOrderOperation {
 
-    // ------------------------------------------------------------
-    // Status constants — wire-format strings stored in
-    // manufacturing.work_order_operation.status. Lifecycle:
-    // planned → in_progress → completed; skipped is the side rail
-    // for explicit-skip via WorkOrderOperationService.
-    // ------------------------------------------------------------
-    public static final String PLANNED = "planned";
-    public static final String IN_PROGRESS = "in_progress";
-    public static final String COMPLETED = "completed";
-    public static final String SKIPPED = "skipped";
-
     private final UUID id;
     private final int operationSequence;
     private final String operationCode;
@@ -32,7 +21,7 @@ public final class WorkOrderOperation {
     private final UUID workCenterId;
     private final BigDecimal plannedSetupMinutes;
     private final BigDecimal plannedRunMinutes;
-    private String status;
+    private WorkOrder.OperationStatus status;
     private BigDecimal actualMinutes;
     private Instant startedAt;
     private Instant completedAt;
@@ -46,7 +35,7 @@ public final class WorkOrderOperation {
         UUID workCenterId,
         BigDecimal plannedSetupMinutes,
         BigDecimal plannedRunMinutes,
-        String status
+        WorkOrder.OperationStatus status
     ) {
         this(id, operationSequence, operationCode, description, workCenterId,
             plannedSetupMinutes, plannedRunMinutes, status, BigDecimal.ZERO, null, null);
@@ -61,7 +50,7 @@ public final class WorkOrderOperation {
         UUID workCenterId,
         BigDecimal plannedSetupMinutes,
         BigDecimal plannedRunMinutes,
-        String status,
+        WorkOrder.OperationStatus status,
         BigDecimal actualMinutes,
         Instant startedAt,
         Instant completedAt
@@ -90,14 +79,14 @@ public final class WorkOrderOperation {
      * private; routed through {@link WorkOrder#skipOperation}.
      */
     void markSkipped() {
-        if (COMPLETED.equals(status) || SKIPPED.equals(status)) {
+        if (status == WorkOrder.OperationStatus.COMPLETED || status == WorkOrder.OperationStatus.SKIPPED) {
             throw new IllegalStateException(
-                "Operation " + operationSequence + " is already " + status + "; cannot skip"
+                "Operation " + operationSequence + " is already " + status.dbValue() + "; cannot skip"
             );
         }
-        if (!PLANNED.equals(status) && !IN_PROGRESS.equals(status)) {
+        if (status != WorkOrder.OperationStatus.PLANNED && status != WorkOrder.OperationStatus.IN_PROGRESS) {
             throw new IllegalStateException(
-                "Operation " + operationSequence + " status is " + status + "; cannot skip"
+                "Operation " + operationSequence + " status is " + status.dbValue() + "; cannot skip"
             );
         }
         Instant now = Instant.now();
@@ -105,7 +94,7 @@ public final class WorkOrderOperation {
             this.startedAt = now;
         }
         this.actualMinutes = BigDecimal.ZERO;
-        this.status = SKIPPED;
+        this.status = WorkOrder.OperationStatus.SKIPPED;
         this.completedAt = now;
     }
 
@@ -115,14 +104,14 @@ public final class WorkOrderOperation {
      * event emission) stay encapsulated.
      */
     void markCompleted(BigDecimal actualMinutes) {
-        if (COMPLETED.equals(status)) {
+        if (status == WorkOrder.OperationStatus.COMPLETED) {
             throw new IllegalStateException(
                 "Operation " + operationSequence + " is already completed"
             );
         }
-        if (!PLANNED.equals(status) && !IN_PROGRESS.equals(status)) {
+        if (status != WorkOrder.OperationStatus.PLANNED && status != WorkOrder.OperationStatus.IN_PROGRESS) {
             throw new IllegalStateException(
-                "Operation " + operationSequence + " status is " + status + "; cannot complete"
+                "Operation " + operationSequence + " status is " + status.dbValue() + "; cannot complete"
             );
         }
         if (actualMinutes == null || actualMinutes.signum() < 0) {
@@ -133,7 +122,7 @@ public final class WorkOrderOperation {
             this.startedAt = now;
         }
         this.actualMinutes = actualMinutes;
-        this.status = COMPLETED;
+        this.status = WorkOrder.OperationStatus.COMPLETED;
         this.completedAt = now;
     }
 
@@ -144,7 +133,7 @@ public final class WorkOrderOperation {
     public UUID workCenterId()             { return workCenterId; }
     public BigDecimal plannedSetupMinutes(){ return plannedSetupMinutes; }
     public BigDecimal plannedRunMinutes()  { return plannedRunMinutes; }
-    public String status()                 { return status; }
+    public WorkOrder.OperationStatus status() { return status; }
     public BigDecimal actualMinutes()      { return actualMinutes; }
     public Instant startedAt()             { return startedAt; }
     public Instant completedAt()           { return completedAt; }

@@ -47,7 +47,61 @@ public final class Bom {
      */
     public static final String AGGREGATE_TYPE = ManufacturingAggregateTypes.BOM;
 
-    public enum Status { DRAFT, ACTIVE, INACTIVE }
+    /**
+     * BOM lifecycle status. Mirrors the schema CHECK on
+     * {@code manufacturing.bom_header.status}. Lifecycle: {@code DRAFT}
+     * (editable) → {@code ACTIVE} (frozen) → {@code INACTIVE} (superseded).
+     */
+    public enum Status {
+        DRAFT("draft"),
+        ACTIVE("active"),
+        INACTIVE("inactive");
+
+        private final String dbValue;
+
+        Status(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static Status fromDb(String value) {
+            for (Status s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown bom status: " + value);
+        }
+    }
+
+    /**
+     * BOM-line component classification. Mirrors the schema CHECK on
+     * {@code manufacturing.bom_line.component_kind}. {@code RAW} for purchased
+     * materials; {@code SUB_ASSEMBLY} for components that themselves have an
+     * active BOM (recursive case — planning logic recurses on these).
+     */
+    public enum ComponentKind {
+        RAW("raw"),
+        SUB_ASSEMBLY("sub_assembly");
+
+        private final String dbValue;
+
+        ComponentKind(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static ComponentKind fromDb(String value) {
+            for (ComponentKind k : values()) {
+                if (k.dbValue.equals(value)) return k;
+            }
+            throw new IllegalArgumentException("Unknown bom_line component_kind: " + value);
+        }
+    }
 
     private final BomId id;
     private final UUID finishedProductId;

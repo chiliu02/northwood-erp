@@ -60,11 +60,11 @@ class RawMaterialsReservedHandlerTest {
     private static WorkOrder workOrderWithMaterial(UUID materialId, UUID componentProductId) {
         WorkOrderOperation op = new WorkOrderOperation(
             UUID.randomUUID(), 10, "OP-10", "Cut", UUID.randomUUID(),
-            BigDecimal.ZERO, new BigDecimal("30"), "planned"
+            BigDecimal.ZERO, new BigDecimal("30"), WorkOrder.OperationStatus.PLANNED
         );
         WorkOrderMaterial material = new WorkOrderMaterial(
             materialId, componentProductId, "RM-X", "Material X",
-            new BigDecimal("4"), BigDecimal.ZERO, "pending"
+            new BigDecimal("4"), BigDecimal.ZERO, WorkOrder.MaterialLineStatus.REQUIRED
         );
         return WorkOrder.release(
             "WO-001", SO_HEADER, SO_LINE, null,
@@ -118,7 +118,7 @@ class RawMaterialsReservedHandlerTest {
 
         verify(sagaManager).applyRawMaterialsReserved(eq(wo), eq("reserved"), any());
         verify(workOrders).save(loaded);
-        assertThat(loaded.materialStatus()).isEqualTo("reserved");
+        assertThat(loaded.materialStatus()).isEqualTo(WorkOrder.MaterialStatus.RESERVED);
         verifyNoInteractions(outbox);
     }
 
@@ -135,7 +135,7 @@ class RawMaterialsReservedHandlerTest {
         handler.handle(event(wo, "partially_reserved", List.of(shortage(matId, prodId, "2"))));
 
         verify(workOrders).save(loaded);
-        assertThat(loaded.materialStatus()).isEqualTo("partially_reserved");
+        assertThat(loaded.materialStatus()).isEqualTo(WorkOrder.MaterialStatus.PARTIALLY_RESERVED);
         ArgumentCaptor<OutboxRow> captor = ArgumentCaptor.forClass(OutboxRow.class);
         verify(outbox).appendPending(captor.capture());
         assertThat(captor.getValue().getEventType())
@@ -156,7 +156,7 @@ class RawMaterialsReservedHandlerTest {
         handler.handle(event(wo, "failed", List.of(shortage(matId, prodId, "4"))));
 
         verify(workOrders).save(loaded);
-        assertThat(loaded.materialStatus()).isEqualTo("shortage");
+        assertThat(loaded.materialStatus()).isEqualTo(WorkOrder.MaterialStatus.SHORTAGE);
     }
 
     @Test void already_processed_short_circuits() {

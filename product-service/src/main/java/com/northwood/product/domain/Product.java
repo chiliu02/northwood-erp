@@ -32,7 +32,34 @@ import com.northwood.shared.domain.DomainEvent;
  */
 public class Product {
 
-    public enum Status { ACTIVE, INACTIVE, DISCONTINUED }
+    /**
+     * Product lifecycle status. Mirrors the schema CHECK on
+     * {@code product.product.status}; carries its wire-format string via
+     * {@link #dbValue()} (same shape as {@link ProductType} /
+     * {@code Customer.Status}).
+     */
+    public enum Status {
+        ACTIVE("active"),
+        INACTIVE("inactive"),
+        DISCONTINUED("discontinued");
+
+        private final String dbValue;
+
+        Status(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static Status fromDb(String value) {
+            for (Status s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown product status: " + value);
+        }
+    }
 
     /**
      * Wire-format aggregate-type stamped onto {@code product.outbox_message.aggregate_type}

@@ -60,7 +60,7 @@ class SetPriorityCascadeTest {
             UUID.randomUUID(), UUID.randomUUID(), null,
             UUID.randomUUID(), "FG-001", "Finished Good 1",
             UUID.randomUUID(), new BigDecimal("10"),
-            "released", "reservation_pending",
+            WorkOrder.Status.RELEASED, WorkOrder.MaterialStatus.RESERVATION_PENDING,
             BigDecimal.ZERO, null, null,
             0L,
             List.of(), List.of()

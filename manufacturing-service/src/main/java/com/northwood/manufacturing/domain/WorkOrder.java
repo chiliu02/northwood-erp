@@ -33,23 +33,141 @@ public final class WorkOrder {
      */
     public static final String AGGREGATE_TYPE = ManufacturingAggregateTypes.WORK_ORDER;
 
-    // ------------------------------------------------------------
-    // Status constants — wire-format strings stored in
-    // manufacturing.work_order.status. Lifecycle: released → in_progress →
-    // completed; cancelled and closed are terminal side rails.
-    // ------------------------------------------------------------
-    public static final String RELEASED = "released";
-    public static final String PLANNED = "planned";
-    public static final String IN_PROGRESS = "in_progress";
-    public static final String COMPLETED = "completed";
-    public static final String CLOSED = "closed";
-    public static final String CANCELLED = "cancelled";
+    /**
+     * Work-order lifecycle status. Mirrors the schema CHECK on
+     * {@code manufacturing.work_order.status}. Lifecycle:
+     * {@code RELEASED} / {@code PLANNED} → {@code IN_PROGRESS} →
+     * {@code COMPLETED}; {@code CANCELLED} and {@code CLOSED} are terminal
+     * side rails.
+     */
+    public enum Status {
+        /** Schema-prep — not currently produced by Java. */
+        PLANNED("planned"),
+        /** Schema-prep — not currently produced by Java. */
+        MATERIAL_CHECK_PENDING("material_check_pending"),
+        /** Schema-prep — not currently produced by Java. */
+        WAITING_FOR_MATERIALS("waiting_for_materials"),
+        RELEASED("released"),
+        IN_PROGRESS("in_progress"),
+        /** Schema-prep — not currently produced by Java. */
+        PARTIALLY_COMPLETED("partially_completed"),
+        COMPLETED("completed"),
+        CLOSED("closed"),
+        CANCELLED("cancelled"),
+        /** Schema-prep — not currently produced by Java. */
+        BLOCKED("blocked");
 
-    /** Material status (separate field from status): pending / reserved / partially_reserved / shortage / consumed. */
-    public static final String MATERIAL_RESERVATION_PENDING = "reservation_pending";
-    public static final String MATERIAL_RESERVED = "reserved";
-    public static final String MATERIAL_PARTIALLY_RESERVED = "partially_reserved";
-    public static final String MATERIAL_SHORTAGE = "shortage";
+        private final String dbValue;
+
+        Status(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static Status fromDb(String value) {
+            for (Status s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown work_order status: " + value);
+        }
+    }
+
+    /**
+     * Material-reservation status (header-level secondary field). Mirrors the
+     * schema CHECK on {@code manufacturing.work_order.material_status}.
+     */
+    public enum MaterialStatus {
+        /** Schema-prep — not currently produced by Java. */
+        NOT_CHECKED("not_checked"),
+        RESERVATION_PENDING("reservation_pending"),
+        RESERVED("reserved"),
+        PARTIALLY_RESERVED("partially_reserved"),
+        SHORTAGE("shortage"),
+        /** Schema-prep — not currently produced by Java. */
+        ISSUED("issued");
+
+        private final String dbValue;
+
+        MaterialStatus(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static MaterialStatus fromDb(String value) {
+            for (MaterialStatus s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown work_order material_status: " + value);
+        }
+    }
+
+    /**
+     * Per-material-line status. Mirrors the schema CHECK on
+     * {@code manufacturing.work_order_material.status}. Tracked on each
+     * {@link WorkOrderMaterial} line; the header's {@link MaterialStatus}
+     * is the aggregate-level rollup of these.
+     */
+    public enum MaterialLineStatus {
+        REQUIRED("required"),
+        RESERVED("reserved"),
+        PARTIALLY_RESERVED("partially_reserved"),
+        SHORTAGE("shortage"),
+        /** Schema-prep — not currently produced by Java. */
+        ISSUED("issued");
+
+        private final String dbValue;
+
+        MaterialLineStatus(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static MaterialLineStatus fromDb(String value) {
+            for (MaterialLineStatus s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown work_order_material status: " + value);
+        }
+    }
+
+    /**
+     * Per-operation status. Mirrors the schema CHECK on
+     * {@code manufacturing.work_order_operation.status}. Lifecycle:
+     * {@code PLANNED} → {@code IN_PROGRESS} → {@code COMPLETED};
+     * {@code SKIPPED} is the side rail driven by operator action.
+     */
+    public enum OperationStatus {
+        PLANNED("planned"),
+        IN_PROGRESS("in_progress"),
+        COMPLETED("completed"),
+        SKIPPED("skipped");
+
+        private final String dbValue;
+
+        OperationStatus(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static OperationStatus fromDb(String value) {
+            for (OperationStatus s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown work_order_operation status: " + value);
+        }
+    }
 
     private final WorkOrderId id;
     private final String workOrderNumber;
@@ -61,8 +179,8 @@ public final class WorkOrder {
     private final String finishedProductName;
     private final UUID bomHeaderId;
     private final BigDecimal plannedQuantity;
-    private String status;
-    private String materialStatus;
+    private Status status;
+    private MaterialStatus materialStatus;
     private BigDecimal completedQuantity;
     private Instant actualStartAt;
     private Instant actualCompletedAt;
@@ -103,8 +221,8 @@ public final class WorkOrder {
             Objects.requireNonNull(finishedProductName),
             Objects.requireNonNull(bomHeaderId),
             plannedQuantity,
-            "released",
-            "reservation_pending",
+            Status.RELEASED,
+            MaterialStatus.RESERVATION_PENDING,
             BigDecimal.ZERO,
             null,
             null,
@@ -151,7 +269,7 @@ public final class WorkOrder {
         UUID salesOrderHeaderId, UUID salesOrderLineId, UUID parentWorkOrderId,
         UUID finishedProductId, String finishedProductSku, String finishedProductName,
         UUID bomHeaderId, BigDecimal plannedQuantity,
-        String status, String materialStatus,
+        Status status, MaterialStatus materialStatus,
         BigDecimal completedQuantity, Instant actualStartAt, Instant actualCompletedAt,
         long version,
         List<WorkOrderMaterial> materials, List<WorkOrderOperation> operations
@@ -174,7 +292,7 @@ public final class WorkOrder {
         UUID salesOrderHeaderId, UUID salesOrderLineId, UUID parentWorkOrderId,
         UUID finishedProductId, String finishedProductSku, String finishedProductName,
         UUID bomHeaderId, BigDecimal plannedQuantity,
-        String status, String materialStatus,
+        Status status, MaterialStatus materialStatus,
         BigDecimal completedQuantity, Instant actualStartAt, Instant actualCompletedAt,
         long version,
         List<WorkOrderMaterial> materials, List<WorkOrderOperation> operations
@@ -210,9 +328,9 @@ public final class WorkOrder {
      * (when the last child finishes) will release the gate.
      */
     public void completeOperation(int sequence, BigDecimal actualMinutes, boolean noPendingChildren) {
-        if (COMPLETED.equals(status) || CLOSED.equals(status) || CANCELLED.equals(status)) {
+        if (status == Status.COMPLETED || status == Status.CLOSED || status == Status.CANCELLED) {
             throw new IllegalStateException(
-                "Work order " + id.value() + " is " + status + "; cannot complete operations"
+                "Work order " + id.value() + " is " + status.dbValue() + "; cannot complete operations"
             );
         }
         WorkOrderOperation target = operations.stream()
@@ -223,20 +341,20 @@ public final class WorkOrder {
             ));
         for (WorkOrderOperation earlier : operations) {
             if (earlier.operationSequence() < sequence
-                && !COMPLETED.equals(earlier.status())
-                && !WorkOrderOperation.SKIPPED.equals(earlier.status())) {
+                && earlier.status() != OperationStatus.COMPLETED
+                && earlier.status() != OperationStatus.SKIPPED) {
                 throw new IllegalStateException(
                     "Cannot complete operation " + sequence
                         + " before operation " + earlier.operationSequence()
-                        + " (status=" + earlier.status() + ")"
+                        + " (status=" + earlier.status().dbValue() + ")"
                 );
             }
         }
 
         target.markCompleted(actualMinutes);
 
-        if (RELEASED.equals(status) || PLANNED.equals(status)) {
-            this.status = IN_PROGRESS;
+        if (status == Status.RELEASED || status == Status.PLANNED) {
+            this.status = Status.IN_PROGRESS;
             if (this.actualStartAt == null) {
                 this.actualStartAt = Instant.now();
             }
@@ -271,7 +389,7 @@ public final class WorkOrder {
      * aggregate trusts the caller; it doesn't go fetch children itself.
      */
     public void onChildCompleted(boolean nowAllChildrenComplete) {
-        if (COMPLETED.equals(status) || CLOSED.equals(status) || CANCELLED.equals(status)) {
+        if (status == Status.COMPLETED || status == Status.CLOSED || status == Status.CANCELLED) {
             return;
         }
         if (allOperationsCompleted() && nowAllChildrenComplete) {
@@ -292,10 +410,10 @@ public final class WorkOrder {
      * future polish.
      */
     public void cancel(String reason) {
-        if (COMPLETED.equals(status) || CLOSED.equals(status) || CANCELLED.equals(status)) {
+        if (status == Status.COMPLETED || status == Status.CLOSED || status == Status.CANCELLED) {
             return;
         }
-        this.status = CANCELLED;
+        this.status = Status.CANCELLED;
         this.actualCompletedAt = Instant.now();
         pendingEvents.add(new WorkOrderCancelled(
             UUID.randomUUID(),
@@ -321,27 +439,27 @@ public final class WorkOrder {
      * projection, not a domain transition; the {@code RawMaterialsReserved}
      * inbox event is the wire-level fact.
      */
-    public void applyReservationOutcome(String newMaterialStatus) {
-        if (!MATERIAL_RESERVED.equals(newMaterialStatus)
-            && !MATERIAL_PARTIALLY_RESERVED.equals(newMaterialStatus)
-            && !MATERIAL_SHORTAGE.equals(newMaterialStatus)) {
+    public void applyReservationOutcome(MaterialStatus newMaterialStatus) {
+        if (newMaterialStatus != MaterialStatus.RESERVED
+            && newMaterialStatus != MaterialStatus.PARTIALLY_RESERVED
+            && newMaterialStatus != MaterialStatus.SHORTAGE) {
             throw new IllegalArgumentException(
                 "Unknown material status: " + newMaterialStatus
-                    + " (must be one of " + MATERIAL_RESERVED + " / "
-                    + MATERIAL_PARTIALLY_RESERVED + " / " + MATERIAL_SHORTAGE + ")"
+                    + " (must be one of " + MaterialStatus.RESERVED + " / "
+                    + MaterialStatus.PARTIALLY_RESERVED + " / " + MaterialStatus.SHORTAGE + ")"
             );
         }
-        if (COMPLETED.equals(status) || CLOSED.equals(status) || CANCELLED.equals(status)) {
+        if (status == Status.COMPLETED || status == Status.CLOSED || status == Status.CANCELLED) {
             return;
         }
-        if (newMaterialStatus.equals(this.materialStatus)) {
+        if (newMaterialStatus == this.materialStatus) {
             return;
         }
         this.materialStatus = newMaterialStatus;
     }
 
     private void transitionToCompleted() {
-        this.status = COMPLETED;
+        this.status = Status.COMPLETED;
         this.completedQuantity = plannedQuantity;
         this.actualCompletedAt = Instant.now();
         pendingEvents.add(new WorkOrderManufacturingCompleted(
@@ -369,9 +487,9 @@ public final class WorkOrder {
      * still fires when the whole WO is done.
      */
     public void skipOperation(int sequence, String reason, boolean noPendingChildren) {
-        if (COMPLETED.equals(status) || CLOSED.equals(status) || CANCELLED.equals(status)) {
+        if (status == Status.COMPLETED || status == Status.CLOSED || status == Status.CANCELLED) {
             throw new IllegalStateException(
-                "Work order " + id.value() + " is " + status + "; cannot skip operations"
+                "Work order " + id.value() + " is " + status.dbValue() + "; cannot skip operations"
             );
         }
         WorkOrderOperation target = operations.stream()
@@ -382,20 +500,20 @@ public final class WorkOrder {
             ));
         for (WorkOrderOperation earlier : operations) {
             if (earlier.operationSequence() < sequence
-                && !COMPLETED.equals(earlier.status())
-                && !WorkOrderOperation.SKIPPED.equals(earlier.status())) {
+                && earlier.status() != OperationStatus.COMPLETED
+                && earlier.status() != OperationStatus.SKIPPED) {
                 throw new IllegalStateException(
                     "Cannot skip operation " + sequence
                         + " before operation " + earlier.operationSequence()
-                        + " (status=" + earlier.status() + ")"
+                        + " (status=" + earlier.status().dbValue() + ")"
                 );
             }
         }
 
         target.markSkipped();
 
-        if (RELEASED.equals(status) || PLANNED.equals(status)) {
-            this.status = IN_PROGRESS;
+        if (status == Status.RELEASED || status == Status.PLANNED) {
+            this.status = Status.IN_PROGRESS;
             if (this.actualStartAt == null) {
                 this.actualStartAt = Instant.now();
             }
@@ -408,7 +526,7 @@ public final class WorkOrder {
 
     private boolean allOperationsCompleted() {
         return operations.stream().allMatch(o ->
-            WorkOrderOperation.COMPLETED.equals(o.status()) || WorkOrderOperation.SKIPPED.equals(o.status()));
+            o.status() == OperationStatus.COMPLETED || o.status() == OperationStatus.SKIPPED);
     }
 
     public List<DomainEvent> pullPendingEvents() {
@@ -427,8 +545,8 @@ public final class WorkOrder {
     public String finishedProductName()           { return finishedProductName; }
     public UUID bomHeaderId()                     { return bomHeaderId; }
     public BigDecimal plannedQuantity()           { return plannedQuantity; }
-    public String status()                        { return status; }
-    public String materialStatus()                { return materialStatus; }
+    public Status status()                        { return status; }
+    public MaterialStatus materialStatus()        { return materialStatus; }
     public BigDecimal completedQuantity()         { return completedQuantity; }
     public Instant actualStartAt()                { return actualStartAt; }
     public Instant actualCompletedAt()            { return actualCompletedAt; }

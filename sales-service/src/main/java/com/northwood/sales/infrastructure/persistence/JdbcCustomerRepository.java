@@ -28,7 +28,7 @@ public class JdbcCustomerRepository implements CustomerRepository {
         rs.getString("phone"),
         rs.getString("billing_address"),
         rs.getString("shipping_address"),
-        Customer.Status.valueOf(rs.getString("status").toUpperCase()),
+        Customer.Status.fromDb(rs.getString("status")),
         rs.getLong("version")
     );
 
@@ -104,7 +104,7 @@ public class JdbcCustomerRepository implements CustomerRepository {
                 """,
                 c.id().value(), c.customerCode(), c.name(),
                 c.email(), c.phone(), c.billingAddress(), c.shippingAddress(),
-                c.status().name().toLowerCase(),
+                c.status().dbValue(),
                 1L,
                 actor, actor
             );
@@ -124,7 +124,7 @@ public class JdbcCustomerRepository implements CustomerRepository {
             """,
             c.name(), c.email(), c.phone(),
             c.billingAddress(), c.shippingAddress(),
-            c.status().name().toLowerCase(),
+            c.status().dbValue(),
             actor,
             c.id().value(), c.version()
         );

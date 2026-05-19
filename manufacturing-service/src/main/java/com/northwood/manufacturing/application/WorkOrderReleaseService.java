@@ -3,6 +3,7 @@ package com.northwood.manufacturing.application;
 import com.northwood.manufacturing.application.BomLookup.ActiveBom;
 import com.northwood.manufacturing.application.BomLookup.Component;
 import com.northwood.manufacturing.application.dto.ReleaseCommand;
+import com.northwood.manufacturing.domain.Bom;
 import com.northwood.manufacturing.domain.Routing;
 import com.northwood.manufacturing.domain.RoutingOperation;
 import com.northwood.manufacturing.domain.WorkOrder;
@@ -85,7 +86,7 @@ public class WorkOrderReleaseService {
         List<WorkOrderMaterial> materials = new ArrayList<>();
         List<Component> subAssemblyComponents = new ArrayList<>();
         for (Component c : bom.components()) {
-            if ("sub_assembly".equals(c.componentKind())) {
+            if (c.componentKind() == Bom.ComponentKind.SUB_ASSEMBLY) {
                 subAssemblyComponents.add(c);
                 continue;
             }
@@ -102,7 +103,7 @@ public class WorkOrderReleaseService {
                 op.workCenterId(),
                 op.plannedSetupMinutes(),
                 op.plannedRunMinutes(),
-                "planned"
+                WorkOrder.OperationStatus.PLANNED
             ));
         }
 
@@ -164,7 +165,7 @@ public class WorkOrderReleaseService {
             c.componentName(),
             required,
             BigDecimal.ZERO,
-            "required"
+            WorkOrder.MaterialLineStatus.REQUIRED
         );
     }
 

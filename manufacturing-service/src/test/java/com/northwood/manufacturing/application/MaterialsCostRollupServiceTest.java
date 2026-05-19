@@ -16,6 +16,7 @@ import com.northwood.manufacturing.application.inbox.ProductApprovedVendorProjec
 import com.northwood.manufacturing.application.inbox.ProductMaterialsCostProjection;
 import com.northwood.manufacturing.application.inbox.ProductReplenishmentProjection;
 import com.northwood.manufacturing.application.BomLookup;
+import com.northwood.manufacturing.domain.Bom;
 import com.northwood.shared.application.outbox.OutboxPort;
 import com.northwood.shared.application.outbox.OutboxRow;
 import com.northwood.shared.application.security.CurrentUserAccessor;
@@ -162,9 +163,9 @@ class MaterialsCostRollupServiceTest {
             when(bomLookup.findActiveByFinishedProductId(parent))
                 .thenReturn(Optional.of(new BomLookup.ActiveBom(UUID.randomUUID(), List.of(
                     new BomLookup.Component(componentA, "RM-A", "Component A",
-                        new BigDecimal("2"), BigDecimal.ZERO, "raw_material"),
+                        new BigDecimal("2"), BigDecimal.ZERO, Bom.ComponentKind.RAW),
                     new BomLookup.Component(componentB, "RM-B", "Component B",
-                        new BigDecimal("3"), BigDecimal.ZERO, "raw_material")
+                        new BigDecimal("3"), BigDecimal.ZERO, Bom.ComponentKind.RAW)
                 ))));
             when(materialsCosts.findByProductId(componentA)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
@@ -196,7 +197,7 @@ class MaterialsCostRollupServiceTest {
             when(bomLookup.findActiveByFinishedProductId(parent))
                 .thenReturn(Optional.of(new BomLookup.ActiveBom(UUID.randomUUID(), List.of(
                     new BomLookup.Component(componentA, "RM-A", "Component A",
-                        new BigDecimal("2"), new BigDecimal("10"), "raw_material") // 10% scrap
+                        new BigDecimal("2"), new BigDecimal("10"), Bom.ComponentKind.RAW) // 10% scrap
                 ))));
             when(materialsCosts.findByProductId(componentA)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
@@ -224,9 +225,9 @@ class MaterialsCostRollupServiceTest {
             when(bomLookup.findActiveByFinishedProductId(parent))
                 .thenReturn(Optional.of(new BomLookup.ActiveBom(UUID.randomUUID(), List.of(
                     new BomLookup.Component(componentA, "RM-A", "Component A",
-                        new BigDecimal("2"), BigDecimal.ZERO, "raw_material"),
+                        new BigDecimal("2"), BigDecimal.ZERO, Bom.ComponentKind.RAW),
                     new BomLookup.Component(componentB, "RM-B", "Component B",
-                        new BigDecimal("3"), BigDecimal.ZERO, "raw_material")
+                        new BigDecimal("3"), BigDecimal.ZERO, Bom.ComponentKind.RAW)
                 ))));
             when(materialsCosts.findByProductId(componentA)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
@@ -253,7 +254,7 @@ class MaterialsCostRollupServiceTest {
             when(bomLookup.findActiveByFinishedProductId(parent))
                 .thenReturn(Optional.of(new BomLookup.ActiveBom(UUID.randomUUID(), List.of(
                     new BomLookup.Component(componentA, "RM-A", "Component A",
-                        new BigDecimal("2"), BigDecimal.ZERO, "raw_material")
+                        new BigDecimal("2"), BigDecimal.ZERO, Bom.ComponentKind.RAW)
                 ))));
             // Component has a row but materialsCost is null (inputs_missing).
             when(materialsCosts.findByProductId(componentA)).thenReturn(Optional.of(
@@ -279,9 +280,9 @@ class MaterialsCostRollupServiceTest {
             when(bomLookup.findActiveByFinishedProductId(parent))
                 .thenReturn(Optional.of(new BomLookup.ActiveBom(UUID.randomUUID(), List.of(
                     new BomLookup.Component(componentA, "RM-A", "Component A",
-                        new BigDecimal("1"), BigDecimal.ZERO, "raw_material"),
+                        new BigDecimal("1"), BigDecimal.ZERO, Bom.ComponentKind.RAW),
                     new BomLookup.Component(componentB, "RM-B", "Component B",
-                        new BigDecimal("1"), BigDecimal.ZERO, "raw_material")
+                        new BigDecimal("1"), BigDecimal.ZERO, Bom.ComponentKind.RAW)
                 ))));
             when(materialsCosts.findByProductId(componentA)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
@@ -335,7 +336,7 @@ class MaterialsCostRollupServiceTest {
             when(bomLookup.findActiveByFinishedProductId(parent))
                 .thenReturn(Optional.of(new BomLookup.ActiveBom(UUID.randomUUID(), List.of(
                     new BomLookup.Component(rawMaterial, "RM", "Raw",
-                        new BigDecimal("2"), BigDecimal.ZERO, "raw_material")
+                        new BigDecimal("2"), BigDecimal.ZERO, Bom.ComponentKind.RAW)
                 ))));
             // After raw material's apply, its projection now returns the new cost.
             when(materialsCosts.findByProductId(parent)).thenReturn(Optional.empty());

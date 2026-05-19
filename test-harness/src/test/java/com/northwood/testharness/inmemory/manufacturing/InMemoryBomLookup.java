@@ -1,6 +1,7 @@
 package com.northwood.testharness.inmemory.manufacturing;
 
 import com.northwood.manufacturing.application.BomLookup;
+import com.northwood.manufacturing.domain.Bom;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,14 +38,14 @@ public final class InMemoryBomLookup implements BomLookup {
         UUID componentProductId, String sku, String name,
         BigDecimal qtyPerUnit, BigDecimal scrapPct
     ) {
-        return new Component(componentProductId, sku, name, qtyPerUnit, scrapPct, "raw");
+        return new Component(componentProductId, sku, name, qtyPerUnit, scrapPct, Bom.ComponentKind.RAW);
     }
 
     public static Component subAssemblyLine(
         UUID componentProductId, String sku, String name,
         BigDecimal qtyPerUnit, BigDecimal scrapPct
     ) {
-        return new Component(componentProductId, sku, name, qtyPerUnit, scrapPct, "sub_assembly");
+        return new Component(componentProductId, sku, name, qtyPerUnit, scrapPct, Bom.ComponentKind.SUB_ASSEMBLY);
     }
 
     @Override

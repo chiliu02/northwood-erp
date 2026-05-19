@@ -33,7 +33,7 @@ public record ProductView(
             p.reorderQuantity(),
             p.valuationClass(),
             p.activeBomId(),
-            p.status().name().toLowerCase(),
+            p.status().dbValue(),
             p.version()
         );
     }

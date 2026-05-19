@@ -108,7 +108,7 @@ public class WorkOrderOperationService {
         log.info("completed operation {} on work_order {} (status={}, actual_minutes={})",
             command.operationSequence(), workOrder.id().value(), workOrder.status(), command.actualMinutes());
 
-        if (WorkOrder.COMPLETED.equals(workOrder.status())) {
+        if (workOrder.status() == WorkOrder.Status.COMPLETED) {
             onWorkOrderCompleted(workOrder);
             if (workOrder.parentWorkOrderId() != null) {
                 cascadeToParent(workOrder.parentWorkOrderId(), workOrder.id().value());
@@ -134,7 +134,7 @@ public class WorkOrderOperationService {
         log.info("skipped operation {} on work_order {} (status={}, reason={})",
             operationSequence, workOrder.id().value(), workOrder.status(), reason);
 
-        if (WorkOrder.COMPLETED.equals(workOrder.status())) {
+        if (workOrder.status() == WorkOrder.Status.COMPLETED) {
             onWorkOrderCompleted(workOrder);
             if (workOrder.parentWorkOrderId() != null) {
                 cascadeToParent(workOrder.parentWorkOrderId(), workOrder.id().value());
@@ -151,9 +151,9 @@ public class WorkOrderOperationService {
         boolean siblingsAllDone = workOrders.countUnfinishedChildrenExcluding(parentId, justCompletedChildId) == 0;
         parent.onChildCompleted(siblingsAllDone);
 
-        if (!WorkOrder.COMPLETED.equals(parent.status())) {
+        if (parent.status() != WorkOrder.Status.COMPLETED) {
             log.debug("parent work_order {} held: ops_done={}, sibling_pending_count={}",
-                parentId, parent.operations().stream().allMatch(o -> WorkOrderOperation.COMPLETED.equals(o.status())),
+                parentId, parent.operations().stream().allMatch(o -> o.status() == WorkOrder.OperationStatus.COMPLETED),
                 workOrders.countUnfinishedChildrenExcluding(parentId, justCompletedChildId));
             return;
         }

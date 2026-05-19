@@ -1,6 +1,7 @@
 package com.northwood.manufacturing.infrastructure.persistence;
 
 import com.northwood.manufacturing.application.BomLookup;
+import com.northwood.manufacturing.domain.Bom;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -67,7 +68,7 @@ public class JdbcBomLookup implements BomLookup {
                 rs.getString("component_name"),
                 rs.getBigDecimal("quantity_per_finished_unit"),
                 rs.getBigDecimal("scrap_factor_percent"),
-                rs.getString("component_kind")
+                Bom.ComponentKind.fromDb(rs.getString("component_kind"))
             ),
             bomHeaderId
         );
@@ -179,7 +180,7 @@ public class JdbcBomLookup implements BomLookup {
                 rs.getObject("component_product_id", UUID.class),
                 rs.getString("component_sku"),
                 rs.getString("component_name"),
-                rs.getString("component_kind"),
+                Bom.ComponentKind.fromDb(rs.getString("component_kind")),
                 rs.getBigDecimal("quantity_per_finished_unit"),
                 rs.getBigDecimal("scrap_factor_percent"),
                 rs.getObject("child_active_bom_header_id", UUID.class),

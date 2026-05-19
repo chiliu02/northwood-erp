@@ -107,7 +107,7 @@ public class BomViewService {
                 r.componentProductId(),
                 r.componentSku(),
                 r.componentName(),
-                r.componentKind(),
+                r.componentKind().dbValue(),
                 total
             ));
         }
@@ -127,7 +127,7 @@ public class BomViewService {
                 r.componentProductId(),
                 r.componentSku(),
                 r.componentName(),
-                r.componentKind(),
+                r.componentKind().dbValue(),
                 r.quantityPerFinishedUnit(),
                 r.scrapFactorPercent(),
                 r.childActiveBomHeaderId(),

@@ -134,7 +134,7 @@ class JdbcWorkOrderRepositoryMaterialStatusIT {
             null, null, null,
             SEED_FG_PRODUCT_ID, "FG-TABLE-001", "Wooden Dining Table",
             SEED_BOM_HEADER_ID, BigDecimal.ONE,
-            "released", "reservation_pending",
+            WorkOrder.Status.RELEASED, WorkOrder.MaterialStatus.RESERVATION_PENDING,
             BigDecimal.ZERO, null, null,
             1L,
             List.of(), List.of()
@@ -144,7 +144,7 @@ class JdbcWorkOrderRepositoryMaterialStatusIT {
     @Test
     void update_persists_reserved_material_status() {
         WorkOrder wo = reconstituteForUpdate();
-        wo.applyReservationOutcome(WorkOrder.MATERIAL_RESERVED);
+        wo.applyReservationOutcome(WorkOrder.MaterialStatus.RESERVED);
 
         TX.executeWithoutResult(s -> REPO.save(wo));
 
@@ -156,7 +156,7 @@ class JdbcWorkOrderRepositoryMaterialStatusIT {
     @Test
     void update_persists_partially_reserved_material_status() {
         WorkOrder wo = reconstituteForUpdate();
-        wo.applyReservationOutcome(WorkOrder.MATERIAL_PARTIALLY_RESERVED);
+        wo.applyReservationOutcome(WorkOrder.MaterialStatus.PARTIALLY_RESERVED);
 
         TX.executeWithoutResult(s -> REPO.save(wo));
 
@@ -166,7 +166,7 @@ class JdbcWorkOrderRepositoryMaterialStatusIT {
     @Test
     void update_persists_shortage_material_status() {
         WorkOrder wo = reconstituteForUpdate();
-        wo.applyReservationOutcome(WorkOrder.MATERIAL_SHORTAGE);
+        wo.applyReservationOutcome(WorkOrder.MaterialStatus.SHORTAGE);
 
         TX.executeWithoutResult(s -> REPO.save(wo));
 

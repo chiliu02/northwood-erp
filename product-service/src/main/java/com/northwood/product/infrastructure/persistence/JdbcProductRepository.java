@@ -121,7 +121,7 @@ public class JdbcProductRepository implements ProductRepository {
                 rs.getBigDecimal("reorder_quantity"),
                 rs.getString("valuation_class"),
                 rs.getObject("active_bom_id", UUID.class),
-                Product.Status.valueOf(rs.getString("status").toUpperCase()),
+                Product.Status.fromDb(rs.getString("status")),
                 rs.getLong("version"),
                 vendorsByProduct.getOrDefault(pid, List.of())
             );
@@ -206,7 +206,7 @@ public class JdbcProductRepository implements ProductRepository {
                 p.salesPrice().amount(), p.standardCost().amount(),
                 p.reorderPoint(), p.reorderQuantity(),
                 p.valuationClass(), p.activeBomId(),
-                p.status().name().toLowerCase(),
+                p.status().dbValue(),
                 1L,
                 actor, actor
             );

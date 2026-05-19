@@ -53,11 +53,11 @@ class WorkOrderCancellationServiceTest {
     private WorkOrder activeWo() {
         WorkOrderOperation op = new WorkOrderOperation(
             UUID.randomUUID(), 10, "OP-10", "Op 10", WORKCENTRE,
-            BigDecimal.ZERO, new BigDecimal("30"), "planned"
+            BigDecimal.ZERO, new BigDecimal("30"), WorkOrder.OperationStatus.PLANNED
         );
         WorkOrderMaterial mat = new WorkOrderMaterial(
             UUID.randomUUID(), UUID.randomUUID(), "RM-X", "Material X",
-            new BigDecimal("4"), BigDecimal.ZERO, "pending"
+            new BigDecimal("4"), BigDecimal.ZERO, WorkOrder.MaterialLineStatus.REQUIRED
         );
         WorkOrder wo = WorkOrder.release(
             "WO-001", SO, SO_LINE, null,
@@ -98,8 +98,8 @@ class WorkOrderCancellationServiceTest {
 
         service.cancelForSalesOrder(SO, "customer requested");
 
-        assertThat(wo1.status()).isEqualTo("cancelled");
-        assertThat(wo2.status()).isEqualTo("cancelled");
+        assertThat(wo1.status()).isEqualTo(WorkOrder.Status.CANCELLED);
+        assertThat(wo2.status()).isEqualTo(WorkOrder.Status.CANCELLED);
         verify(workOrders).save(wo1);
         verify(workOrders).save(wo2);
         verify(sagaManager).cancelForWorkOrder(wo1.id().value());

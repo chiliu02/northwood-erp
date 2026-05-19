@@ -24,7 +24,7 @@ public record CustomerView(
             c.phone(),
             c.billingAddress(),
             c.shippingAddress(),
-            c.status().name().toLowerCase(),
+            c.status().dbValue(),
             c.version()
         );
     }

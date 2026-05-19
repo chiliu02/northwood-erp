@@ -24,14 +24,14 @@ class WorkOrderTest {
     private static WorkOrderOperation op(int seq) {
         return new WorkOrderOperation(
             UUID.randomUUID(), seq, "OP-" + seq, "Op " + seq, WORKCENTRE,
-            BigDecimal.ZERO, new BigDecimal("30"), "planned"
+            BigDecimal.ZERO, new BigDecimal("30"), WorkOrder.OperationStatus.PLANNED
         );
     }
 
     private static WorkOrderMaterial mat() {
         return new WorkOrderMaterial(
             UUID.randomUUID(), UUID.randomUUID(), "RM-X", "Material X",
-            new BigDecimal("4"), BigDecimal.ZERO, "pending"
+            new BigDecimal("4"), BigDecimal.ZERO, WorkOrder.MaterialLineStatus.REQUIRED
         );
     }
 
@@ -70,7 +70,7 @@ class WorkOrderTest {
 
         @Test void released_status_is_released() {
             WorkOrder wo = release(List.of(op(10)));
-            assertThat(wo.status()).isEqualTo("released");
+            assertThat(wo.status()).isEqualTo(WorkOrder.Status.RELEASED);
         }
 
         @Test void emits_WorkOrderCreated_with_materials_and_operations() {
@@ -119,7 +119,7 @@ class WorkOrderTest {
             WorkOrder wo = release(List.of(op(10), op(20)));
             wo.pullPendingEvents();
             wo.completeOperation(10, new BigDecimal("30"), true);
-            assertThat(wo.status()).isEqualTo("in_progress");
+            assertThat(wo.status()).isEqualTo(WorkOrder.Status.IN_PROGRESS);
             assertThat(wo.actualStartAt()).isNotNull();
         }
 
@@ -137,7 +137,7 @@ class WorkOrderTest {
             wo.completeOperation(10, new BigDecimal("30"), true);
             wo.pullPendingEvents();
             wo.completeOperation(20, new BigDecimal("30"), true);
-            assertThat(wo.status()).isEqualTo("completed");
+            assertThat(wo.status()).isEqualTo(WorkOrder.Status.COMPLETED);
             assertThat(wo.completedQuantity()).isEqualByComparingTo(BigDecimal.ONE);
             assertThat(wo.actualCompletedAt()).isNotNull();
             // last completion emits both OperationCompleted + WorkOrderManufacturingCompleted
@@ -150,7 +150,7 @@ class WorkOrderTest {
             WorkOrder wo = release(List.of(op(10)));
             wo.pullPendingEvents();
             wo.completeOperation(10, new BigDecimal("30"), false /* children pending */);
-            assertThat(wo.status()).isEqualTo("in_progress");
+            assertThat(wo.status()).isEqualTo(WorkOrder.Status.IN_PROGRESS);
             // OperationCompleted fired but NOT WorkOrderManufacturingCompleted
             List<DomainEvent> events = wo.pullPendingEvents();
             assertThat(events).hasSize(1).first().isInstanceOf(OperationCompleted.class);
@@ -182,7 +182,7 @@ class WorkOrderTest {
             WorkOrder wo = release(List.of(op(10)));
             wo.pullPendingEvents();
             wo.onChildCompleted(true);
-            assertThat(wo.status()).isEqualTo("released");  // unchanged
+            assertThat(wo.status()).isEqualTo(WorkOrder.Status.RELEASED);  // unchanged
             assertThat(wo.pullPendingEvents()).isEmpty();
         }
 
@@ -192,7 +192,7 @@ class WorkOrderTest {
             wo.completeOperation(10, new BigDecimal("30"), false);  // ops done, children still pending
             wo.pullPendingEvents();
             wo.onChildCompleted(false);  // not all children done yet
-            assertThat(wo.status()).isEqualTo("in_progress");
+            assertThat(wo.status()).isEqualTo(WorkOrder.Status.IN_PROGRESS);
             assertThat(wo.pullPendingEvents()).isEmpty();
         }
 
@@ -203,7 +203,7 @@ class WorkOrderTest {
             wo.completeOperation(10, new BigDecimal("30"), false);  // ops done, children still pending
             wo.pullPendingEvents();
             wo.onChildCompleted(true);  // last child done now
-            assertThat(wo.status()).isEqualTo("completed");
+            assertThat(wo.status()).isEqualTo(WorkOrder.Status.COMPLETED);
             assertThat(wo.pullPendingEvents()).hasSize(1)
                 .first().isInstanceOf(WorkOrderManufacturingCompleted.class);
         }
@@ -213,37 +213,41 @@ class WorkOrderTest {
     class ApplyReservationOutcome {
         @Test void starts_at_reservation_pending() {
             WorkOrder wo = release(List.of(op(10)));
-            assertThat(wo.materialStatus()).isEqualTo("reservation_pending");
+            assertThat(wo.materialStatus()).isEqualTo(WorkOrder.MaterialStatus.RESERVATION_PENDING);
         }
 
         @Test void reserved_transitions_material_status() {
             WorkOrder wo = release(List.of(op(10)));
-            wo.applyReservationOutcome(WorkOrder.MATERIAL_RESERVED);
-            assertThat(wo.materialStatus()).isEqualTo("reserved");
+            wo.applyReservationOutcome(WorkOrder.MaterialStatus.RESERVED);
+            assertThat(wo.materialStatus()).isEqualTo(WorkOrder.MaterialStatus.RESERVED);
         }
 
         @Test void partially_reserved_transitions_material_status() {
             WorkOrder wo = release(List.of(op(10)));
-            wo.applyReservationOutcome(WorkOrder.MATERIAL_PARTIALLY_RESERVED);
-            assertThat(wo.materialStatus()).isEqualTo("partially_reserved");
+            wo.applyReservationOutcome(WorkOrder.MaterialStatus.PARTIALLY_RESERVED);
+            assertThat(wo.materialStatus()).isEqualTo(WorkOrder.MaterialStatus.PARTIALLY_RESERVED);
         }
 
         @Test void shortage_transitions_material_status() {
             WorkOrder wo = release(List.of(op(10)));
-            wo.applyReservationOutcome(WorkOrder.MATERIAL_SHORTAGE);
-            assertThat(wo.materialStatus()).isEqualTo("shortage");
+            wo.applyReservationOutcome(WorkOrder.MaterialStatus.SHORTAGE);
+            assertThat(wo.materialStatus()).isEqualTo(WorkOrder.MaterialStatus.SHORTAGE);
         }
 
         @Test void emits_no_event() {
             WorkOrder wo = release(List.of(op(10)));
             wo.pullPendingEvents();
-            wo.applyReservationOutcome(WorkOrder.MATERIAL_RESERVED);
+            wo.applyReservationOutcome(WorkOrder.MaterialStatus.RESERVED);
             assertThat(wo.pullPendingEvents()).isEmpty();
         }
 
-        @Test void rejects_unknown_value() {
+        @Test void rejects_value_outside_happy_path_set() {
+            // The enum type itself ensures only schema-allowed values reach
+            // this method (compile-time). The aggregate's internal guard
+            // narrows further to the three expected outcomes — NOT_CHECKED
+            // and ISSUED are valid schema values but never legal here.
             WorkOrder wo = release(List.of(op(10)));
-            assertThatThrownBy(() -> wo.applyReservationOutcome("bogus"))
+            assertThatThrownBy(() -> wo.applyReservationOutcome(WorkOrder.MaterialStatus.NOT_CHECKED))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Unknown material status");
         }
@@ -259,7 +263,7 @@ class WorkOrderTest {
             // back from an event would be nonsensical (the reservation by
             // definition isn't pending any more once the outcome event fires).
             WorkOrder wo = release(List.of(op(10)));
-            assertThatThrownBy(() -> wo.applyReservationOutcome(WorkOrder.MATERIAL_RESERVATION_PENDING))
+            assertThatThrownBy(() -> wo.applyReservationOutcome(WorkOrder.MaterialStatus.RESERVATION_PENDING))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
@@ -268,8 +272,8 @@ class WorkOrderTest {
             wo.pullPendingEvents();
             wo.cancel("test");
             wo.pullPendingEvents();
-            wo.applyReservationOutcome(WorkOrder.MATERIAL_RESERVED);
-            assertThat(wo.materialStatus()).isEqualTo("reservation_pending");  // unchanged
+            wo.applyReservationOutcome(WorkOrder.MaterialStatus.RESERVED);
+            assertThat(wo.materialStatus()).isEqualTo(WorkOrder.MaterialStatus.RESERVATION_PENDING);  // unchanged
         }
 
         @Test void noop_on_completed() {
@@ -277,17 +281,17 @@ class WorkOrderTest {
             wo.pullPendingEvents();
             wo.completeOperation(10, new BigDecimal("30"), true);
             wo.pullPendingEvents();
-            wo.applyReservationOutcome(WorkOrder.MATERIAL_SHORTAGE);
+            wo.applyReservationOutcome(WorkOrder.MaterialStatus.SHORTAGE);
             // material_status whatever it was at completion — not 'shortage'
-            assertThat(wo.materialStatus()).isNotEqualTo("shortage");
+            assertThat(wo.materialStatus()).isNotEqualTo(WorkOrder.MaterialStatus.SHORTAGE);
         }
 
         @Test void noop_on_same_value() {
             WorkOrder wo = release(List.of(op(10)));
             wo.pullPendingEvents();  // drain the WorkOrderCreated from release
-            wo.applyReservationOutcome(WorkOrder.MATERIAL_RESERVED);
-            wo.applyReservationOutcome(WorkOrder.MATERIAL_RESERVED);
-            assertThat(wo.materialStatus()).isEqualTo("reserved");
+            wo.applyReservationOutcome(WorkOrder.MaterialStatus.RESERVED);
+            wo.applyReservationOutcome(WorkOrder.MaterialStatus.RESERVED);
+            assertThat(wo.materialStatus()).isEqualTo(WorkOrder.MaterialStatus.RESERVED);
             // No event was emitted (none ever is for this projection).
             assertThat(wo.pullPendingEvents()).isEmpty();
         }
@@ -298,7 +302,7 @@ class WorkOrderTest {
         @Test void rejects_zero_planned_run_minutes() {
             assertThatThrownBy(() -> new WorkOrderOperation(
                 UUID.randomUUID(), 10, "OP-10", "x", WORKCENTRE,
-                BigDecimal.ZERO, BigDecimal.ZERO, "planned"
+                BigDecimal.ZERO, BigDecimal.ZERO, WorkOrder.OperationStatus.PLANNED
             )).isInstanceOf(IllegalArgumentException.class);
         }
     }
@@ -308,14 +312,14 @@ class WorkOrderTest {
         @Test void rejects_negative_required_quantity() {
             assertThatThrownBy(() -> new WorkOrderMaterial(
                 UUID.randomUUID(), UUID.randomUUID(), "RM-X", "X",
-                new BigDecimal("-1"), BigDecimal.ZERO, "pending"
+                new BigDecimal("-1"), BigDecimal.ZERO, WorkOrder.MaterialLineStatus.REQUIRED
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void allows_zero_required_quantity() {
             new WorkOrderMaterial(
                 UUID.randomUUID(), UUID.randomUUID(), "RM-X", "X",
-                BigDecimal.ZERO, BigDecimal.ZERO, "pending"
+                BigDecimal.ZERO, BigDecimal.ZERO, WorkOrder.MaterialLineStatus.REQUIRED
             );
         }
     }
