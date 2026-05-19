@@ -158,6 +158,23 @@ Slices A–D shipped 2026-05-07 / 08 (split events, finance standard-cost projec
 
 **Slice E (deferred — pull forward only if the cross-currency throw fires in the demo dataset)** — wire `CurrencyConverter` into the BoM rollup so multi-currency component prices roll up to a target currency.
 
+### 2.15 Re-enable Liquibase once the schema stabilises
+
+Liquibase was disabled across all 7 services on 2026-05-19 after a stale-volume boot failure (see `dev-done.md` for the consolidation slice). The 21 pre-existing changesets were folded into `db/northwood_erp.sql` and removed; `northwood.liquibase.enabled: false` is set in every service's `application.yml`; each master changelog is empty.
+
+The disable is deliberate showcase-time hygiene — every slice that ships a structural change rebakes the baseline, the dev workflow is `docker compose down -v`, and the changeset-on-stale-volume failure mode (the one that triggered this) is a recurring loss.
+
+Re-enable when:
+- Baseline `northwood_erp.sql` is no longer changing meaningfully (no more pending structural slices that would force a rebake).
+- Production-style deploys are on the horizon (`docker compose down -v` stops being acceptable; preserving data across schema changes becomes load-bearing).
+- A migration story for the existing demo dataset is in place (Liquibase changesets must work alongside whatever data-migration approach we adopt).
+
+Re-enable steps:
+1. Flip `northwood.liquibase.enabled: true` in every service's `application.yml` (sales, inventory, manufacturing, purchasing, product, finance, reporting).
+2. Update the comment block in each `db/changelog/db.changelog-master.yaml` (and remove the "currently empty" framing).
+3. Verify on a fresh-volume boot that the empty changelogs no-op cleanly against the baseline.
+4. Future schema changes follow the original workflow: drop a `.sql` file in the service's `changes/` dir + add an `include` to its master.
+
 ### 2.14 Kafka topic partitions — pre-declare with configurable counts
 
 Today every event topic (`<service>.events` + matching `<topic>.dlt`) is auto-created on first publish (docker-compose `KAFKA_AUTO_CREATE_TOPICS_ENABLE=true`) with Kafka's default `num.partitions=1` — no `KAFKA_NUM_PARTITIONS` override, no `NewTopic` / `KafkaAdmin` bean, no `partitions:` setting in any `application-kafka.yml`. Means each consumer group has at most one active consumer per topic and the §2.6 cross-partition race regression is un-exercisable until partitions > 1.

@@ -6,6 +6,37 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-19 — Liquibase consolidation + temporary disable
+
+Triggered by a stale-volume boot failure: a service hit `liquibase.exception.DatabaseException: ERROR: relation "inventory.goods_receipt_header" does not exist` while running an old-baseline changeset against a fresh schema. The changeset history had drifted out of sync with the rebaked baseline.
+
+Decided to stop the bleeding: consolidate all 21 changesets into the baseline, delete them, disable Liquibase entirely, and pin a re-enable plan in dev-todo §2.15.
+
+What shipped:
+
+- **5 changeset effects folded into `db/northwood_erp.sql`** that weren't already there:
+  - `inventory.stock_item.discontinued_at TIMESTAMPTZ` (§1F.1 — ProductDiscontinued projection target).
+  - `finance.customer_invoice_header.flagged_for_collections BOOLEAN` (§1F.3 — AR-collections flag on CustomerDeactivated).
+  - `reporting.available_to_promise_view.discontinued_at TIMESTAMPTZ` (§1F.1 — same projection target on ATP).
+  - `reporting.customer_dashboard_status` new table (§1F.3 — per-customer status projection for dashboard widgets).
+  - `reporting.purchase_order_tracking_view.approved_at TIMESTAMPTZ` (§1F.4 — PurchaseOrderApproved wall-clock stamp).
+- **The other 16 changesets were verified redundant** — their effects were already in the baseline from prior rebakes. Deleted.
+- **All 21 changeset files deleted** across 7 service `changes/` dirs.
+- **All 7 master changelogs cleared to `databaseChangeLog: []`** with a comment block explaining the temporary disable and the re-enable path.
+- **`northwood.liquibase.enabled: false`** set in every service's `application.yml` (sales, inventory, manufacturing, purchasing, product, finance, reporting), with an inline comment pointing at the dev-todo entry.
+
+### Why disable entirely
+
+Defence-in-depth: even with empty changelogs, Liquibase still creates the `databasechangelog` + `databasechangeloglock` bookkeeping tables on every boot — noise that doesn't help while the baseline is the source of truth. The `enabled: false` flag skips Liquibase entirely. Either flag alone would be sufficient; both together makes the "Liquibase is paused, baseline is canonical" state harder to misread.
+
+### Re-enable criteria
+
+Captured in dev-todo §2.15. Short version: re-enable when (1) the schema stops needing rebakes, (2) production-style deploys are on the horizon, (3) a migration story for the existing demo dataset is in place.
+
+**Smoke**: no Java code change — pure schema + config. Tests don't exercise Liquibase, so no `mvn` smoke is meaningful here. Verification path is `docker compose down -v ; docker compose up -d postgres ; mvn -pl <service> spring-boot:run` on a fresh volume — the previously-failing path now boots clean because the migration history is empty.
+
+---
+
 ## 2026-05-19 — §2.0.j NUMBER_SUFFIX_LENGTH on aggregates + shared LineNumbering
 
 Sweep for numeric-literal extraction candidates after §2.0.i. Two clear wins surfaced; the rest were either already extracted as private constants, already `@Value`-driven, or borderline. Shipped both.

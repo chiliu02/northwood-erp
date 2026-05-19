@@ -1,19 +1,18 @@
 # Master changelog for product-service.
 #
-# The northwood_erp database is provisioned directly from db/northwood_erp.sql
-# (mounted into Postgres's docker init dir on first boot of a fresh volume).
-# This master changelog is intentionally empty: Liquibase creates the
-# databasechangelog and databasechangeloglock bookkeeping tables in the
-# product schema on first boot but applies no changesets.
+# Currently empty — Liquibase is disabled (`northwood.liquibase.enabled: false`
+# in application.yml) while the DB schema is still in showcase-flux. The
+# baseline `db/northwood_erp.sql` is the single source of truth for schema and
+# is rebaked every slice that ships a structural change; the development
+# workflow assumes `docker compose down -v` on schema changes.
 #
-# To add a future migration:
-#   1. Drop a Liquibase formatted-SQL file in changes/, e.g.
+# All prior changesets (2026-05-14 through 2026-05-19) were folded into the
+# baseline and removed in the consolidation slice (see docs/dev-todo.md for
+# the planned re-enable criteria).
+#
+# To re-enable migrations later:
+#   1. Flip `northwood.liquibase.enabled: true` in application.yml.
+#   2. Drop a Liquibase formatted-SQL file in changes/, e.g.
 #      changes/2026-06-01-add-something.sql
-#   2. Append an include entry below pointing at it.
-#
-# Example:
-#   - include:
-#       file: db/changelog/changes/2026-06-01-add-something.sql
-databaseChangeLog:
-  - include:
-      file: db/changelog/changes/2026-05-19-product-valuation-class-check.sql
+#   3. Append an include entry to databaseChangeLog below.
+databaseChangeLog: []

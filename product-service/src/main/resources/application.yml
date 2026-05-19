@@ -48,7 +48,10 @@ northwood:
   outbox:
     poll-interval: 1000  # ms
   liquibase:
-    enabled: true
+    # Disabled — see docs/dev-todo.md for re-enable criteria. The baseline
+    # db/northwood_erp.sql is the single source of truth while the schema
+    # is in showcase-flux.
+    enabled: false
     default-schema: product
     change-log: classpath:db/changelog/db.changelog-master.yaml
 

@@ -1,18 +1,18 @@
 # Master changelog for sales-service.
 #
-# The northwood_erp database is provisioned directly from db/northwood_erp.sql
-# (mounted into Postgres's docker init dir on first boot of a fresh volume).
-# Liquibase creates the databasechangelog and databasechangeloglock bookkeeping
-# tables in the sales schema on first boot, then applies changesets listed below.
+# Currently empty — Liquibase is disabled (`northwood.liquibase.enabled: false`
+# in application.yml) while the DB schema is still in showcase-flux. The
+# baseline `db/northwood_erp.sql` is the single source of truth for schema and
+# is rebaked every slice that ships a structural change; the development
+# workflow assumes `docker compose down -v` on schema changes.
 #
-# To add a future migration:
-#   1. Drop a Liquibase formatted-SQL file in changes/, e.g.
+# All prior changesets (2026-05-14 through 2026-05-19) were folded into the
+# baseline and removed in the consolidation slice (see docs/dev-todo.md for
+# the planned re-enable criteria).
+#
+# To re-enable migrations later:
+#   1. Flip `northwood.liquibase.enabled: true` in application.yml.
+#   2. Drop a Liquibase formatted-SQL file in changes/, e.g.
 #      changes/2026-06-01-add-customer-tier.sql
-#   2. Append an include entry below pointing at it.
-databaseChangeLog:
-  - include:
-      file: db/changelog/changes/2026-05-14-add-product-pricing-discontinued-at.sql
-  - include:
-      file: db/changelog/changes/2026-05-15-product-pricing-nullable-price.sql
-  - include:
-      file: db/changelog/changes/2026-05-18-rename-product-pricing-to-product-card.sql
+#   3. Append an include entry to databaseChangeLog below.
+databaseChangeLog: []

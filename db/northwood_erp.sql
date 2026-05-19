@@ -763,6 +763,9 @@ CREATE TABLE inventory.stock_item (
     -- above (sku/name/type/uom) are still projected from product events.
     reorder_point NUMERIC(18, 4) NOT NULL DEFAULT 0,
     reorder_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    -- Stamped from product.ProductDiscontinued so reorder-alert logic can
+    -- suppress alerts for retired SKUs (§1F.1).
+    discontinued_at TIMESTAMPTZ,
     version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -2203,6 +2206,10 @@ CREATE TABLE finance.customer_invoice_header (
     -- paid_amount maintained by trigger from finance.payment_allocation.
     paid_amount NUMERIC(18, 2) NOT NULL DEFAULT 0,
     outstanding_amount NUMERIC(18, 2) GENERATED ALWAYS AS (total_amount - paid_amount) STORED,
+    -- Flipped true by inbox handler on sales.CustomerDeactivated; read by the
+    -- future AR-collections UI to surface outstanding invoices for retired
+    -- customers (§1F.3).
+    flagged_for_collections BOOLEAN NOT NULL DEFAULT false,
     version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -3014,6 +3021,9 @@ CREATE TABLE reporting.available_to_promise_view (
     stock_status VARCHAR(40) NOT NULL DEFAULT 'unknown' CHECK (
         stock_status IN ('unknown', 'available', 'low_stock', 'out_of_stock', 'incoming')
     ),
+    -- Stamped from product.ProductDiscontinued; UI consumers filter / grey out
+    -- on IS NOT NULL (§1F.1).
+    discontinued_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -3069,6 +3079,16 @@ CREATE TABLE reporting.material_shortage_view (
 
 CREATE INDEX idx_material_shortage_view_status ON reporting.material_shortage_view(status);
 
+-- Per-customer status projection so dashboard widgets stop counting deactivated
+-- customers as active. Updates land from sales.CustomerDeactivated inbox
+-- handler (§1F.3); a future CustomerRegistered consumer will seed 'active' rows.
+CREATE TABLE reporting.customer_dashboard_status (
+    customer_id     UUID PRIMARY KEY,
+    status          VARCHAR(20) NOT NULL CHECK (status IN ('active', 'inactive')),
+    deactivated_at  TIMESTAMPTZ,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE reporting.purchase_order_tracking_view (
     purchase_order_header_id UUID PRIMARY KEY,
     purchase_order_number VARCHAR(50) NOT NULL,
@@ -3087,6 +3107,9 @@ CREATE TABLE reporting.purchase_order_tracking_view (
     invoice_status VARCHAR(40) NOT NULL DEFAULT 'not_invoiced',
     payment_status VARCHAR(40) NOT NULL DEFAULT 'unpaid',
     match_status VARCHAR(40) NOT NULL DEFAULT 'not_matched',
+    -- Stamped from purchasing.PurchaseOrderApproved; captures the wall-clock
+    -- moment po_status flipped to 'sent' (§1F.4).
+    approved_at TIMESTAMPTZ,
     last_goods_receipt_header_id UUID,
     last_supplier_invoice_header_id UUID,
     last_payment_id UUID,
