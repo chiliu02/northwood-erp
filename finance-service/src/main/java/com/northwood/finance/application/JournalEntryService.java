@@ -51,20 +51,9 @@ public class JournalEntryService {
 
     private static final Logger log = LoggerFactory.getLogger(JournalEntryService.class);
 
-    private static final String COGS_CODE = "5000";
-    private static final String AP_CODE = "2100";
-    private static final String BANK_CODE = "1000";
-    private static final String AR_CODE = "1100";
-    private static final String REVENUE_CODE = "4000";
-    /** Perpetual inventory: 1200 Inventory — fallback when product has no valuation class. */
-    private static final String INVENTORY_CODE = "1200";
-    /** Goods Received Not Invoiced — clears between receipt and invoice approval. */
-    private static final String GRNI_CODE = "1300";
-    // §3.2 + §3.6: per-class accounts. The valuation_class projection picks
-    // these instead of the generic 1200 / 5000.
-    private static final String RM_INVENTORY_CODE = "1210";
-    private static final String FG_INVENTORY_CODE = "1220";
-    private static final String MATERIALS_COGS_CODE = "5200";
+    // GL account-code aliases for this service's posting policy live in
+    // FinanceAccountCodes — reference-data identifiers, not status enums.
+    // See docs/conventions.md → "What still uses string literals".
 
     private final JournalEntryRepository journalEntries;
     private final JournalEntrySummaryQueryPort journalEntrySummaries;
@@ -122,18 +111,18 @@ public class JournalEntryService {
     private String inventoryAccountForProduct(UUID productId) {
         return productCards.findValuationClass(productId)
             .map(c -> switch (c) {
-                case "raw_materials" -> RM_INVENTORY_CODE;
-                case "finished_goods", "semi_finished_goods" -> FG_INVENTORY_CODE;
+                case "raw_materials" -> FinanceAccountCodes.RM_INVENTORY;
+                case "finished_goods", "semi_finished_goods" -> FinanceAccountCodes.FG_INVENTORY;
                 default -> {
                     log.debug("inventoryAccountForProduct product_id={} valuation_class='{}' unrecognised; "
-                        + "falling back to generic Inventory account {}", productId, c, INVENTORY_CODE);
-                    yield INVENTORY_CODE;
+                        + "falling back to generic Inventory account {}", productId, c, FinanceAccountCodes.INVENTORY);
+                    yield FinanceAccountCodes.INVENTORY;
                 }
             })
             .orElseGet(() -> {
                 log.debug("inventoryAccountForProduct product_id={} has no valuation-class projection row yet; "
-                    + "falling back to generic Inventory account {} (projection-order-tolerant)", productId, INVENTORY_CODE);
-                return INVENTORY_CODE;
+                    + "falling back to generic Inventory account {} (projection-order-tolerant)", productId, FinanceAccountCodes.INVENTORY);
+                return FinanceAccountCodes.INVENTORY;
             });
     }
 
@@ -148,18 +137,18 @@ public class JournalEntryService {
     private String cogsAccountForProduct(UUID productId) {
         return productCards.findValuationClass(productId)
             .map(c -> switch (c) {
-                case "raw_materials" -> MATERIALS_COGS_CODE;
-                case "finished_goods", "semi_finished_goods" -> COGS_CODE;
+                case "raw_materials" -> FinanceAccountCodes.MATERIALS_COGS;
+                case "finished_goods", "semi_finished_goods" -> FinanceAccountCodes.COGS;
                 default -> {
                     log.debug("cogsAccountForProduct product_id={} valuation_class='{}' unrecognised; "
-                        + "falling back to generic COGS account {}", productId, c, COGS_CODE);
-                    yield COGS_CODE;
+                        + "falling back to generic COGS account {}", productId, c, FinanceAccountCodes.COGS);
+                    yield FinanceAccountCodes.COGS;
                 }
             })
             .orElseGet(() -> {
                 log.debug("cogsAccountForProduct product_id={} has no valuation-class projection row yet; "
-                    + "falling back to generic COGS account {} (projection-order-tolerant)", productId, COGS_CODE);
-                return COGS_CODE;
+                    + "falling back to generic COGS account {} (projection-order-tolerant)", productId, FinanceAccountCodes.COGS);
+                return FinanceAccountCodes.COGS;
             });
     }
 
@@ -186,9 +175,9 @@ public class JournalEntryService {
             supplierInvoiceHeaderId,
             "Supplier invoice " + supplierInvoiceNumber + " (" + supplierName + ")",
             currencyCode,
-            GRNI_CODE,
+            FinanceAccountCodes.GRNI,
             "Clear GRNI for " + supplierName + " invoice " + supplierInvoiceNumber,
-            AP_CODE,
+            FinanceAccountCodes.AP,
             "Payable to " + supplierName,
             totalAmount,
             postingDate
@@ -240,7 +229,7 @@ public class JournalEntryService {
             currencyCode,
             debitsByAccount,
             "Stock received via " + goodsReceiptNumber,
-            GRNI_CODE,
+            FinanceAccountCodes.GRNI,
             "GRNI accrual for " + goodsReceiptNumber
         );
     }
@@ -314,9 +303,9 @@ public class JournalEntryService {
             paymentId,
             "Supplier payment " + paymentNumber + " to " + supplierName,
             currencyCode,
-            AP_CODE,
+            FinanceAccountCodes.AP,
             "Settle payable to " + supplierName,
-            BANK_CODE,
+            FinanceAccountCodes.BANK,
             "Bank disbursement to " + supplierName,
             amount,
             postingDate
@@ -340,9 +329,9 @@ public class JournalEntryService {
             customerInvoiceHeaderId,
             "Customer invoice " + invoiceNumber + " (" + customerName + ")",
             currencyCode,
-            AR_CODE,
+            FinanceAccountCodes.AR,
             "Receivable from " + customerName,
-            REVENUE_CODE,
+            FinanceAccountCodes.REVENUE,
             "Sales revenue from " + customerName,
             totalAmount,
             postingDate
@@ -366,9 +355,9 @@ public class JournalEntryService {
             paymentId,
             "Customer payment " + paymentNumber + " from " + customerName,
             currencyCode,
-            BANK_CODE,
+            FinanceAccountCodes.BANK,
             "Bank receipt from " + customerName,
-            AR_CODE,
+            FinanceAccountCodes.AR,
             "Settle receivable from " + customerName,
             amount,
             postingDate
