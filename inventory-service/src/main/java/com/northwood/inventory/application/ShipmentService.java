@@ -8,6 +8,9 @@ import com.northwood.inventory.domain.Shipment;
 import com.northwood.inventory.domain.ShipmentId;
 import com.northwood.inventory.domain.ShipmentLine;
 import com.northwood.inventory.domain.ShipmentRepository;
+import com.northwood.inventory.domain.StockMovementDirection;
+import com.northwood.inventory.domain.StockMovementSourceTypes;
+import com.northwood.inventory.domain.StockMovementType;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -140,9 +143,9 @@ public class ShipmentService {
             stockBalances.decrementOnHandAndReleaseReserved(warehouseId, l.productId(), l.shippedQuantity());
             movements.record(
                 warehouseId, l.productId(), l.productSku(), l.productName(),
-                "sales_shipment", "out",
+                StockMovementType.SALES_SHIPMENT, StockMovementDirection.OUT,
                 l.shippedQuantity(), l.unitCost(),
-                "shipment", shipment.id().value(), l.id()
+                StockMovementSourceTypes.SHIPMENT, shipment.id().value(), l.id()
             );
         }
 

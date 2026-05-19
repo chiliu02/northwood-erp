@@ -4,6 +4,9 @@ import com.northwood.inventory.application.StockBalanceWriter;
 import com.northwood.inventory.application.StockMovementWriter;
 import com.northwood.inventory.application.WarehouseLookup;
 import com.northwood.inventory.application.WipBalanceWriter;
+import com.northwood.inventory.domain.StockMovementDirection;
+import com.northwood.inventory.domain.StockMovementSourceTypes;
+import com.northwood.inventory.domain.StockMovementType;
 import com.northwood.manufacturing.domain.events.WorkOrderManufacturingCompleted;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
@@ -73,9 +76,9 @@ public class WorkOrderManufacturingCompletedHandler extends AbstractInboxHandler
             movements.record(
                 warehouseId, payload.finishedProductId(),
                 payload.finishedProductSku(), payload.finishedProductSku(),  // name approximated by sku — event doesn't carry name
-                "finished_goods_receipt", "in",
+                StockMovementType.FINISHED_GOODS_RECEIPT, StockMovementDirection.IN,
                 payload.completedQuantity(), null,
-                "work_order", payload.aggregateId(), null
+                StockMovementSourceTypes.WORK_ORDER, payload.aggregateId(), null
             );
             log.info("[{}] bumped FG stock_balance for {} ({}) by {} (work_order={})",
                 CONSUMER_NAME, payload.finishedProductSku(), payload.finishedProductId(),

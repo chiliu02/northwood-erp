@@ -1,5 +1,7 @@
 package com.northwood.inventory.application;
 
+import com.northwood.inventory.domain.StockMovementDirection;
+import com.northwood.inventory.domain.StockMovementType;
 import java.math.BigDecimal;
 import java.util.UUID;
 
@@ -24,8 +26,8 @@ public interface StockMovementWriter {
         UUID productId,
         String productSku,
         String productName,
-        String movementType,
-        String direction,
+        StockMovementType movementType,
+        StockMovementDirection direction,
         BigDecimal quantity,
         BigDecimal unitCost,
         String sourceType,

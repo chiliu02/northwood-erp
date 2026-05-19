@@ -1,6 +1,8 @@
 package com.northwood.testharness.inmemory.inventory;
 
 import com.northwood.inventory.application.StockMovementWriter;
+import com.northwood.inventory.domain.StockMovementDirection;
+import com.northwood.inventory.domain.StockMovementType;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,8 +19,8 @@ public final class InMemoryStockMovementWriter implements StockMovementWriter {
         UUID productId,
         String productSku,
         String productName,
-        String movementType,
-        String direction,
+        StockMovementType movementType,
+        StockMovementDirection direction,
         BigDecimal quantity,
         BigDecimal unitCost,
         String sourceType,
@@ -32,7 +34,7 @@ public final class InMemoryStockMovementWriter implements StockMovementWriter {
     public void record(
         UUID warehouseId, UUID productId,
         String productSku, String productName,
-        String movementType, String direction,
+        StockMovementType movementType, StockMovementDirection direction,
         BigDecimal quantity, BigDecimal unitCost,
         String sourceType, UUID sourceId, UUID sourceLineId
     ) {

@@ -1,6 +1,8 @@
 package com.northwood.inventory.infrastructure.persistence;
 
 import com.northwood.inventory.application.StockMovementWriter;
+import com.northwood.inventory.domain.StockMovementDirection;
+import com.northwood.inventory.domain.StockMovementType;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
@@ -34,8 +36,8 @@ public class JdbcStockMovementWriter implements StockMovementWriter {
         UUID productId,
         String productSku,
         String productName,
-        String movementType,
-        String direction,
+        StockMovementType movementType,
+        StockMovementDirection direction,
         BigDecimal quantity,
         BigDecimal unitCost,
         String sourceType,
@@ -59,7 +61,7 @@ public class JdbcStockMovementWriter implements StockMovementWriter {
             """,
             UUID.randomUUID(), warehouseId, productId,
             productSku, productName,
-            movementType, direction, quantity,
+            movementType.dbValue(), direction.dbValue(), quantity,
             cost, totalCost,
             sourceType, sourceId, sourceLineId,
             Timestamp.from(Instant.now())

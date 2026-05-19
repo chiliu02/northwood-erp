@@ -8,6 +8,9 @@ import com.northwood.inventory.domain.GoodsReceipt;
 import com.northwood.inventory.domain.GoodsReceiptId;
 import com.northwood.inventory.domain.GoodsReceiptLine;
 import com.northwood.inventory.domain.GoodsReceiptRepository;
+import com.northwood.inventory.domain.StockMovementDirection;
+import com.northwood.inventory.domain.StockMovementSourceTypes;
+import com.northwood.inventory.domain.StockMovementType;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -137,9 +140,9 @@ public class GoodsReceiptService {
             stockBalances.bump(warehouseId, l.productId(), l.receivedQuantity());
             movements.record(
                 warehouseId, l.productId(), l.productSku(), l.productName(),
-                "purchase_receipt", "in",
+                StockMovementType.PURCHASE_RECEIPT, StockMovementDirection.IN,
                 l.receivedQuantity(), l.unitCost(),
-                "goods_receipt", receipt.id().value(), l.id()
+                StockMovementSourceTypes.GOODS_RECEIPT, receipt.id().value(), l.id()
             );
         }
 

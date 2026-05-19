@@ -6,6 +6,34 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-19 — §2.0.g StockMovementType / StockMovementDirection enums + source-type constants
+
+Hygiene slice after §2.0.f. The §2.0 enum convention applied to `inventory.stock_movement` — an append-only audit table written from three producers (goods receipt, shipment, work-order completion). Schema CHECKs on `movement_type` (7 values) and `direction` (in / out) had no Java mirror; producers passed bare String literals.
+
+What shipped:
+
+- **`inventory.domain.StockMovementType`** enum — 7 values mirroring the schema CHECK. Three actively produced (`PURCHASE_RECEIPT` / `SALES_SHIPMENT` / `FINISHED_GOODS_RECEIPT`); four carry the `/** Schema-prep — not currently produced by Java. */` Javadoc tag (`MATERIAL_ISSUE`, `STOCK_ADJUSTMENT_IN`, `STOCK_ADJUSTMENT_OUT`, `RESERVATION_RELEASE`). `dbValue()` / `fromDb()` shape per the §2.0 convention.
+- **`inventory.domain.StockMovementDirection`** enum — `IN` / `OUT`. Same shape.
+- **Top-level in `inventory.domain`** (option (a)) rather than nested on an aggregate: `StockMovement` is an audit row written by `StockMovementWriter`, not an aggregate root with a `*Repository`. The host-the-enum-with-the-aggregate convention doesn't apply; package-level placement is the natural fit (parallel to `ValuationClass` / `ProductType` in `product.domain`).
+- **`StockMovementWriter.record(...)`** signature typed: `String movementType, String direction` → `StockMovementType movementType, StockMovementDirection direction`. `JdbcStockMovementWriter` writes `.dbValue()`. The read-side `StockMovementQueryPort.MovementRow` stays `String`-based — it's the wire shape served straight to the audit-list controller with no separate View DTO; typing it would force a parallel view-DTO layer for no real-world gain (the CHECK constraint is enforced on the write path).
+- **3 call sites updated**: `GoodsReceiptService:140`, `ShipmentService:143`, `WorkOrderManufacturingCompletedHandler:76`. Each now passes typed enum constants instead of string literals.
+
+### Source-type constants pass
+
+`stock_movement.source_type` is a free-form text column (no CHECK) — the polymorphic FK pointer paired with `source_id` that names which upstream business object generated the movement. Distinct from `outbox.aggregate_type` despite the overlap: `aggregate_type` uses CamelCase Java class names (`"GoodsReceipt"` / `"Shipment"` / `"WorkOrder"` via the `*AggregateTypes` holders), `source_type` uses snake_case audit labels (`"goods_receipt"` / `"shipment"` / `"work_order"`). Two different wire conventions, two different domains.
+
+- **`inventory.domain.StockMovementSourceTypes`** — public constants holder, three snake_case `static final String` values. Constants holder (not an enum) because the source-type domain is intentionally open: a future stock-adjustment slice may add `"manual"` or approver-flavoured values, and the audit list tolerates that without a producer-side enum migration. Javadoc spells out the divergence from `aggregate_type` so the next reader doesn't reach for `*AggregateTypes` and silently change the wire format.
+- All 3 call sites and 3 tests now reference the constants by name instead of the bare String literal.
+
+### Tests
+
+- `GoodsReceiptServiceTest`, `ShipmentServiceTest`, `WorkOrderManufacturingCompletedHandlerTest` — Mockito `eq(...)` arguments swapped from String literals to typed enum / constants references.
+- `InMemoryStockMovementWriter` (test-harness) — `record()` signature mirrors the production writer; the `Row` record stores the typed enums end-to-end.
+
+**Smoke**: `mvn -pl test-harness -am test` → BUILD SUCCESS across the 16-module reactor.
+
+---
+
 ## 2026-05-19 — §2.0.f ValuationClass enum + schema CHECKs + seed fix
 
 Last of the §2.0 stringly-typed cleanup. The earlier slices typed status fields on each aggregate; this one types the cross-service categorical `valuation_class` that finance reads from its consumer-side product_card projection.

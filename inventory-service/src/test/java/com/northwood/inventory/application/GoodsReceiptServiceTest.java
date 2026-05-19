@@ -13,6 +13,9 @@ import com.northwood.inventory.application.dto.GoodsReceiptLineRequest;
 import com.northwood.inventory.application.dto.PostGoodsReceiptCommand;
 import com.northwood.inventory.application.inbox.PurchaseOrderLineFactsProjection;
 import com.northwood.inventory.domain.GoodsReceiptRepository;
+import com.northwood.inventory.domain.StockMovementDirection;
+import com.northwood.inventory.domain.StockMovementSourceTypes;
+import com.northwood.inventory.domain.StockMovementType;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -62,9 +65,9 @@ class GoodsReceiptServiceTest {
         verify(stockBalances).bump(WAREHOUSE, PRODUCT_1, new BigDecimal("100"));
         verify(movements).record(
             eq(WAREHOUSE), eq(PRODUCT_1), eq("RM-1"), eq("Raw 1"),
-            eq("purchase_receipt"), eq("in"),
+            eq(StockMovementType.PURCHASE_RECEIPT), eq(StockMovementDirection.IN),
             eq(new BigDecimal("100")), eq(new BigDecimal("2.50")),
-            eq("goods_receipt"), any(), any()
+            eq(StockMovementSourceTypes.GOODS_RECEIPT), any(), any()
         );
     }
 

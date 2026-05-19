@@ -13,6 +13,9 @@ import com.northwood.inventory.application.dto.PostShipmentCommand;
 import com.northwood.inventory.application.dto.ShipmentLineRequest;
 import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection;
 import com.northwood.inventory.domain.ShipmentRepository;
+import com.northwood.inventory.domain.StockMovementDirection;
+import com.northwood.inventory.domain.StockMovementSourceTypes;
+import com.northwood.inventory.domain.StockMovementType;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -62,9 +65,9 @@ class ShipmentServiceTest {
         verify(stockBalances).decrementOnHandAndReleaseReserved(WAREHOUSE, PRODUCT_1, new BigDecimal("3"));
         verify(movements).record(
             eq(WAREHOUSE), eq(PRODUCT_1), eq("SKU-1"), eq("Product 1"),
-            eq("sales_shipment"), eq("out"),
+            eq(StockMovementType.SALES_SHIPMENT), eq(StockMovementDirection.OUT),
             eq(new BigDecimal("3")), eq(new BigDecimal("10.00")),
-            eq("shipment"), any(), any()
+            eq(StockMovementSourceTypes.SHIPMENT), any(), any()
         );
     }
 

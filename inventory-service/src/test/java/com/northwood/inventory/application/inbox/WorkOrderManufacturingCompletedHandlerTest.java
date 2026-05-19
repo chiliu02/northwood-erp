@@ -11,6 +11,9 @@ import com.northwood.inventory.application.StockBalanceWriter;
 import com.northwood.inventory.application.StockMovementWriter;
 import com.northwood.inventory.application.WarehouseLookup;
 import com.northwood.inventory.application.WipBalanceWriter;
+import com.northwood.inventory.domain.StockMovementDirection;
+import com.northwood.inventory.domain.StockMovementSourceTypes;
+import com.northwood.inventory.domain.StockMovementType;
 import com.northwood.manufacturing.domain.ManufacturingAggregateTypes;
 import com.northwood.manufacturing.domain.events.WorkOrderManufacturingCompleted;
 import com.northwood.shared.application.inbox.InboxPort;
@@ -71,9 +74,9 @@ class WorkOrderManufacturingCompletedHandlerTest {
         verify(stockBalances).bump(WAREHOUSE, PRODUCT, new BigDecimal("5"));
         verify(movements).record(
             eq(WAREHOUSE), eq(PRODUCT), eq("FG-001"), eq("FG-001"),
-            eq("finished_goods_receipt"), eq("in"),
+            eq(StockMovementType.FINISHED_GOODS_RECEIPT), eq(StockMovementDirection.IN),
             eq(new BigDecimal("5")), eq(null),
-            eq("work_order"), eq(WO), eq(null)
+            eq(StockMovementSourceTypes.WORK_ORDER), eq(WO), eq(null)
         );
         verifyNoInteractions(wipBalances);
     }
