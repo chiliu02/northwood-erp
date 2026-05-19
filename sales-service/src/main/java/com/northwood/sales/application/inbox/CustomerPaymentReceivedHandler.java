@@ -40,7 +40,7 @@ public class CustomerPaymentReceivedHandler extends AbstractInboxHandler<Custome
         boolean fullySettled = CustomerPaymentReceived.INVOICE_STATUS_PAID.equals(payload.invoiceStatusAfter());
         String newState = sagaManager.applyCustomerPaymentReceived(payload.salesOrderHeaderId(), fullySettled);
         if (COMPLETED.equals(newState)) {
-            statusProjection.markStatus(payload.salesOrderHeaderId(), SalesOrder.COMPLETED);
+            statusProjection.markStatus(payload.salesOrderHeaderId(), SalesOrder.Status.COMPLETED);
         }
     }
 }

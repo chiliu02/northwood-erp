@@ -66,7 +66,7 @@ class StockReservedHandlerTest {
         handler.handle(event("reserved", BigDecimal.ZERO));
 
         verify(sagaManager).applyStockReserved(eq(SO), eq("reserved"), any());
-        verify(statusProjection).markStatus(SO, SalesOrder.IN_FULFILMENT);
+        verify(statusProjection).markStatus(SO, SalesOrder.Status.IN_FULFILMENT);
         verify(inbox).recordProcessed(any());
     }
 

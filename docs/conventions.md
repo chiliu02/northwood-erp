@@ -102,6 +102,70 @@ Northwood is **not event-sourced** — aggregates have a canonical row in the DB
 
 **Historic audit.** The 2026-05-15 audit surfaced five `*Repository`-without-an-aggregate offenders; all resolved across §2.16–§2.18. The 2026-05-17 audit, prompted by formalising this section, surfaced one further violation: `inventory.StockItem`, which has the aggregate skeleton but emits zero events (every mutation is `applyReorderPolicy` driven by an inbound product-master fact, so it is structurally a *snapshot projection of upstream state* in the table above). Flagged for demotion as `dev-todo.md` §2.22; pull forward when an inventory-originated stock-fact slice (manual adjustment, stock-take, etc.) creates a legitimate first emitter.
 
+## Aggregate enumerated fields — nested enum with `dbValue()` / `fromDb()`
+
+Every enumerated column on an aggregate table — `status`, `line_status`, `material_status`, `match_status`, `payment_method`, `component_kind`, `source_type`, `source_module`, etc. — is modelled as a **nested enum on the aggregate root**, carrying its wire-format string via `dbValue()` and a parse helper `fromDb(String)`. Same shape as the original `ProductType` and `Customer.Status`.
+
+```java
+public final class SalesOrder {
+
+    public enum Status {
+        /** Schema-prep — not currently produced by Java. */
+        DRAFT("draft"),
+        SUBMITTED("submitted"),
+        IN_FULFILMENT("in_fulfilment"),
+        SHIPPED("shipped"),
+        COMPLETED("completed"),
+        CANCELLED("cancelled"),
+        REJECTED("rejected");
+
+        private final String dbValue;
+        Status(String dbValue) { this.dbValue = dbValue; }
+        public String dbValue() { return dbValue; }
+
+        public static Status fromDb(String value) {
+            for (Status s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown sales_order status: " + value);
+        }
+    }
+
+    public enum LineStatus { /* same shape, mirrors sales_order_line.line_status */ }
+
+    private Status status;
+    private static final Set<Status> NON_CANCELLABLE_STATUSES =
+        EnumSet.of(Status.SHIPPED, Status.COMPLETED, Status.CANCELLED, Status.REJECTED);
+    ...
+}
+```
+
+**Rules:**
+
+1. **Mirror the schema CHECK.** The enum lists every value the schema CHECK allows, even values not currently produced by Java. Schema-prep values carry a `/** Schema-prep — not currently produced by Java. */` Javadoc tag so the gap is visible. Trimming the enum to the Java-today set risks `fromDb()` throwing on a column value the schema accepts.
+2. **Lowercase `dbValue()` is the wire format.** Domain events, REST DTOs, and the column value all carry the lowercase string. The Java identifier (`UPPER_SNAKE_CASE`) is for Java-side type safety only — never appears on the wire.
+3. **No `@JsonValue` on `dbValue()`.** Wire-format conversion happens at the `*View.from(...)` boundary via `.dbValue()`. Keeps wire control explicit rather than depending on Jackson annotation behaviour.
+4. **`fromDb` throws `IllegalArgumentException` on an unknown string** — never silently default to a sentinel. A new schema value must show up at compile time when added to the enum, or as a loud error at the read site if it slips past.
+5. **Persistence calls `.dbValue()` on write and `Status.fromDb(rs.getString("status"))` on read.** No `.name().toLowerCase()` / `valueOf(s.toUpperCase())` ad-hoc conversions — those were the pre-2.0 anti-pattern.
+6. **Each aggregate keeps its own status field** even when single-valued today (e.g. `GoodsReceipt`, `Shipment` only ever write `POSTED`). Don't drop the column to tidy up; schema-prep for cancel/reverse paths is intentional. See [[feedback-aggregate-status-field]] in memory.
+7. **Type categories follow the same shape.** `ProductType`, `Payment.Method`, `JournalEntry.SourceModule`, `Bom.ComponentKind`, `PurchaseRequisition.SourceType`, `StockTrackingMode` — all enum-with-`dbValue()`. The "is it a *status* or a *category*?" distinction doesn't matter at this level; an enumerated column is an enumerated column.
+
+**Cross-service status values** (referenced from event payloads by consumer services) live on `<service>-events` event classes as `public static final String STATUS_*` constants regardless of the producer-side representation. That rule is independent and unchanged — see `docs/sagas.md`.
+
+**View DTO boundary:**
+
+```java
+public record SalesOrderView(..., String status, ...) {
+    public static SalesOrderView from(SalesOrder order) {
+        return new SalesOrderView(..., order.status().dbValue(), ...);
+    }
+}
+```
+
+The View carries `String status`; the conversion happens once in `from(...)`. Inbox handlers and application services pass the enum throughout; only the wire layer sees the string.
+
+**Status-projection ports** (the non-aggregate write path for header-status echoes — e.g. `SalesOrderHeaderStatusProjection.markStatus`) take the enum at the interface boundary and unwrap to `.dbValue()` inside the JDBC implementation. Same shape: typed in `application/`, string at the JDBC seam.
+
 ## Instance-field naming: the full aggregate name in plural, not the class-kind suffix
 
 The type already says what kind of collaborator it is (`Repository`, `Lookup`, `QueryPort`, `Writer`, `Projection`); the field name says what's *in* it. Concretely:

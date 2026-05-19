@@ -1,5 +1,6 @@
 package com.northwood.sales.application.inbox;
 
+import com.northwood.sales.domain.SalesOrder;
 import java.util.UUID;
 
 /**
@@ -17,5 +18,5 @@ import java.util.UUID;
  */
 public interface SalesOrderHeaderStatusProjection {
 
-    void markStatus(UUID salesOrderHeaderId, String headerStatus);
+    void markStatus(UUID salesOrderHeaderId, SalesOrder.Status headerStatus);
 }

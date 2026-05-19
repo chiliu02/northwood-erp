@@ -59,7 +59,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
         );
         return Optional.of(SalesOrder.reconstitute(
             SalesOrderId.of(h.salesOrderId), h.orderNumber, h.customerId, h.customerCode, h.customerName,
-            h.orderDate, h.requestedDeliveryDate, h.status, h.currencyCode, h.exchangeRate,
+            h.orderDate, h.requestedDeliveryDate, SalesOrder.Status.fromDb(h.status), h.currencyCode, h.exchangeRate,
             h.subtotal, h.tax, h.total, h.cancelledAt, h.version, lines
         ));
     }
@@ -90,7 +90,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
             o.id().value(), o.orderNumber(), o.customerId(), o.customerCode(), o.customerName(),
             Date.valueOf(o.orderDate()),
             o.requestedDeliveryDate() == null ? null : Date.valueOf(o.requestedDeliveryDate()),
-            o.status(), o.currencyCode(),
+            o.status().dbValue(), o.currencyCode(),
             o.exchangeRate(),
             o.subtotalAmount(), o.taxAmount(), o.totalAmount(),
             1L,
@@ -111,7 +111,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
                 line.orderedQuantity(), line.reservedQuantity(), java.math.BigDecimal.ZERO,
                 java.math.BigDecimal.ZERO, line.manufacturingRequiredQuantity(),
                 line.unitPrice(), line.taxRate(), line.taxAmount(), line.lineTotal(),
-                line.lineStatus()
+                line.lineStatus().dbValue()
             );
         }
     }
@@ -126,7 +126,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
                 last_modified_by = ?
             WHERE sales_order_header_id = ? AND version = ?
             """,
-            o.status(),
+            o.status().dbValue(),
             o.subtotalAmount(), o.taxAmount(), o.totalAmount(),
             o.cancelledAt() == null ? null : Timestamp.from(o.cancelledAt()),
             actor,
@@ -200,6 +200,6 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
         rs.getBigDecimal("tax_rate"),
         rs.getBigDecimal("reserved_quantity"),
         rs.getBigDecimal("manufacturing_required_quantity"),
-        rs.getString("line_status")
+        SalesOrder.LineStatus.fromDb(rs.getString("line_status"))
     );
 }

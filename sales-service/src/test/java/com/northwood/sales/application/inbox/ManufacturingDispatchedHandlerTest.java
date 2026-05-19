@@ -84,7 +84,7 @@ class ManufacturingDispatchedHandlerTest {
 
         handler.handle(event("rejected_no_bom", "rejected_no_bom"));
 
-        verify(statusProjection).markStatus(SO, SalesOrder.REJECTED);
+        verify(statusProjection).markStatus(SO, SalesOrder.Status.REJECTED);
         verify(compensationEmitter).emitCancellationRequest(eq(SO), contains("All 2 line(s) rejected"));
     }
 
@@ -97,7 +97,7 @@ class ManufacturingDispatchedHandlerTest {
 
         handler.handle(event("accepted", "rejected_no_bom", "accepted"));
 
-        verify(statusProjection).markStatus(SO, SalesOrder.REJECTED);
+        verify(statusProjection).markStatus(SO, SalesOrder.Status.REJECTED);
         verify(compensationEmitter).emitCancellationRequest(eq(SO), contains("1 of 3 line(s) rejected"));
     }
 

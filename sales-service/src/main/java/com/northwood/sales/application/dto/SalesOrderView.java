@@ -32,7 +32,7 @@ public record SalesOrderView(
             order.customerName(),
             order.orderDate(),
             order.requestedDeliveryDate(),
-            order.status(),
+            order.status().dbValue(),
             order.currencyCode(),
             order.subtotalAmount(),
             order.taxAmount(),

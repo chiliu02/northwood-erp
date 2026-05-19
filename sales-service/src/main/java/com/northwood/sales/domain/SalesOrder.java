@@ -6,6 +6,7 @@ import com.northwood.sales.domain.events.SalesOrderPlaced.PlacedLine;
 import com.northwood.sales.domain.events.SalesOrderShipped;
 import com.northwood.sales.domain.events.SalesOrderShipped.ShippedLine;
 import com.northwood.shared.domain.DomainEvent;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -41,28 +42,90 @@ public final class SalesOrder {
     ) {}
 
     /**
+     * SalesOrder header fulfilment status. Mirrors the schema CHECK on
+     * {@code sales.sales_order_header.status}; values flagged
+     * <i>schema-prep</i> are accepted by the column but not currently produced
+     * by Java — kept on the enum so {@link #fromDb(String)} can parse them.
+     *
+     * <p>Distinct from {@code SalesOrderFulfilmentSaga} state constants
+     * (different domain — saga progress vs header lifecycle).
+     */
+    public enum Status {
+        /** Schema-prep — not currently produced by Java. */
+        DRAFT("draft"),
+        SUBMITTED("submitted"),
+        /** Schema-prep — not currently produced by Java. */
+        CONFIRMED("confirmed"),
+        IN_FULFILMENT("in_fulfilment"),
+        SHIPPED("shipped"),
+        COMPLETED("completed"),
+        CANCELLED("cancelled"),
+        REJECTED("rejected");
+
+        private final String dbValue;
+
+        Status(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static Status fromDb(String value) {
+            for (Status s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown sales_order status: " + value);
+        }
+    }
+
+    /**
+     * SalesOrderLine fulfilment status. Mirrors the schema CHECK on
+     * {@code sales.sales_order_line.line_status}; values flagged
+     * <i>schema-prep</i> are accepted by the column but not currently produced
+     * by Java.
+     */
+    public enum LineStatus {
+        OPEN("open"),
+        RESERVED("reserved"),
+        PARTIALLY_RESERVED("partially_reserved"),
+        /** Schema-prep — not currently produced by Java. */
+        WAITING_FOR_PRODUCTION("waiting_for_production"),
+        /** Schema-prep — not currently produced by Java. */
+        READY_TO_SHIP("ready_to_ship"),
+        /** Schema-prep — not currently produced by Java. */
+        PARTIALLY_SHIPPED("partially_shipped"),
+        /** Schema-prep — not currently produced by Java. */
+        SHIPPED("shipped"),
+        /** Schema-prep — not currently produced by Java. */
+        CANCELLED("cancelled");
+
+        private final String dbValue;
+
+        LineStatus(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static LineStatus fromDb(String value) {
+            for (LineStatus s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown sales_order_line line_status: " + value);
+        }
+    }
+
+    /**
      * Wire-format aggregate-type stamped onto {@code sales.outbox_message.aggregate_type}
      * for events this aggregate emits. Same-service outbox writers reference this
      * constant; cross-service emitters that target this aggregate type carry their own
      * literal on the event class (see {@code ManufacturingDispatched.AGGREGATE_TYPE}).
      */
     public static final String AGGREGATE_TYPE = SalesAggregateTypes.SALES_ORDER;
-
-    // ------------------------------------------------------------
-    // Status constants — wire-format strings stored in
-    // sales.sales_order_header.status. The DB CHECK constraint and event
-    // payloads are the canonical form; these mirror the saga-state-constant
-    // pattern. Note: these are SalesOrder header statuses, distinct from
-    // the SalesOrderFulfilmentSaga state constants — different domains
-    // that happen to share some strings (e.g. COMPLETED).
-    // ------------------------------------------------------------
-    public static final String SUBMITTED = "submitted";
-    public static final String IN_FULFILMENT = "in_fulfilment";
-    public static final String READY_TO_SHIP = "ready_to_ship";
-    public static final String SHIPPED = "shipped";
-    public static final String COMPLETED = "completed";
-    public static final String CANCELLED = "cancelled";
-    public static final String REJECTED = "rejected";
 
     private final SalesOrderId id;
     private final String orderNumber;
@@ -78,7 +141,7 @@ public final class SalesOrder {
     private final String customerName;
     private final LocalDate orderDate;
     private final LocalDate requestedDeliveryDate;
-    private String status;
+    private Status status;
     private final String currencyCode;
     private final BigDecimal exchangeRate;
     private BigDecimal subtotalAmount;
@@ -90,8 +153,8 @@ public final class SalesOrder {
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
 
     /** Statuses past which a cancel is rejected with 409 (already shipped / paid / terminal). */
-    private static final Set<String> NON_CANCELLABLE_STATUSES =
-        Set.of(SHIPPED, COMPLETED, CANCELLED, REJECTED);
+    private static final Set<Status> NON_CANCELLABLE_STATUSES =
+        EnumSet.of(Status.SHIPPED, Status.COMPLETED, Status.CANCELLED, Status.REJECTED);
 
     public static SalesOrder place(
         String orderNumber,
@@ -115,7 +178,7 @@ public final class SalesOrder {
             Objects.requireNonNull(customerName, "customerName"),
             LocalDate.now(),
             requestedDeliveryDate,
-            SUBMITTED,
+            Status.SUBMITTED,
             Objects.requireNonNull(currencyCode, "currencyCode"),
             exchangeRate == null ? BigDecimal.ONE : exchangeRate,
             BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
@@ -160,7 +223,7 @@ public final class SalesOrder {
         String customerName,
         LocalDate orderDate,
         LocalDate requestedDeliveryDate,
-        String status,
+        Status status,
         String currencyCode,
         BigDecimal exchangeRate,
         BigDecimal subtotalAmount,
@@ -179,7 +242,7 @@ public final class SalesOrder {
 
     private SalesOrder(
         SalesOrderId id, String orderNumber, UUID customerId, String customerCode, String customerName,
-        LocalDate orderDate, LocalDate requestedDeliveryDate, String status, String currencyCode, BigDecimal exchangeRate,
+        LocalDate orderDate, LocalDate requestedDeliveryDate, Status status, String currencyCode, BigDecimal exchangeRate,
         BigDecimal subtotalAmount, BigDecimal taxAmount, BigDecimal totalAmount, Instant cancelledAt, long version,
         List<SalesOrderLine> lines
     ) {
@@ -238,7 +301,7 @@ public final class SalesOrder {
         LocalDate shipmentDate,
         List<ShippedLineInput> shippedLines
     ) {
-        this.status = SHIPPED;
+        this.status = Status.SHIPPED;
         Map<UUID, SalesOrderLine> byLineId = new HashMap<>();
         for (SalesOrderLine line : lines) {
             byLineId.put(line.lineId(), line);
@@ -287,7 +350,7 @@ public final class SalesOrder {
         if (NON_CANCELLABLE_STATUSES.contains(status)) {
             throw new OrderNotCancellableException(id, status);
         }
-        this.status = CANCELLED;
+        this.status = Status.CANCELLED;
         this.cancelledAt = Instant.now();
         this.pendingEvents.add(new SalesOrderCancellationRequested(
             UUID.randomUUID(),
@@ -324,7 +387,7 @@ public final class SalesOrder {
     public String customerName()              { return customerName; }
     public LocalDate orderDate()              { return orderDate; }
     public LocalDate requestedDeliveryDate()  { return requestedDeliveryDate; }
-    public String status()                    { return status; }
+    public Status status()                    { return status; }
     public String currencyCode()              { return currencyCode; }
     public BigDecimal exchangeRate()          { return exchangeRate; }
     public BigDecimal subtotalAmount()        { return subtotalAmount; }
@@ -337,16 +400,16 @@ public final class SalesOrder {
     /** Thrown by {@link #cancel(String)} when the order is already in a non-cancellable state. */
     public static final class OrderNotCancellableException extends RuntimeException {
         private final SalesOrderId orderId;
-        private final String currentStatus;
+        private final Status currentStatus;
 
-        public OrderNotCancellableException(SalesOrderId orderId, String currentStatus) {
-            super("Sales order " + orderId.value() + " is in status '" + currentStatus
+        public OrderNotCancellableException(SalesOrderId orderId, Status currentStatus) {
+            super("Sales order " + orderId.value() + " is in status '" + currentStatus.dbValue()
                 + "' and cannot be cancelled");
             this.orderId = orderId;
             this.currentStatus = currentStatus;
         }
 
         public SalesOrderId orderId()  { return orderId; }
-        public String currentStatus()  { return currentStatus; }
+        public Status currentStatus()  { return currentStatus; }
     }
 }

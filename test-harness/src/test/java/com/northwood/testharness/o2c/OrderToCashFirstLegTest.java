@@ -86,7 +86,7 @@ class OrderToCashFirstLegTest {
 
         assertThat(sales.orderStatus(orderId))
             .as("order header status projected to in_fulfilment")
-            .contains(SalesOrder.IN_FULFILMENT);
+            .contains(SalesOrder.Status.IN_FULFILMENT);
 
         assertThat(sales.outbox.all())
             .extracting(OutboxRow::getEventType)

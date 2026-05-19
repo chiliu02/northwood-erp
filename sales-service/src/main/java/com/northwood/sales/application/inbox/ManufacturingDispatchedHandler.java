@@ -62,7 +62,7 @@ public class ManufacturingDispatchedHandler extends AbstractInboxHandler<Manufac
             payload.salesOrderHeaderId(), acceptedCount, totalLines
         );
         if (STOCK_RESERVATION_FAILED.equals(newState)) {
-            statusProjection.markStatus(payload.salesOrderHeaderId(), SalesOrder.REJECTED);
+            statusProjection.markStatus(payload.salesOrderHeaderId(), SalesOrder.Status.REJECTED);
             String reason = buildRejectionReason(payload, acceptedCount, totalLines);
             compensationEmitter.emitCancellationRequest(payload.salesOrderHeaderId(), reason);
             log.info("[{}] sales_order={} rejected ({} accepted, {} rejected); compensation requested",

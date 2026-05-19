@@ -21,7 +21,7 @@ public record SalesOrderLineView(
         return new SalesOrderLineView(
             l.lineId(), l.lineNumber(), l.productId(), l.productSku(), l.productName(),
             l.orderedQuantity(), l.reservedQuantity(), l.unitPrice(),
-            l.lineTotal(), l.lineStatus()
+            l.lineTotal(), l.lineStatus().dbValue()
         );
     }
 }

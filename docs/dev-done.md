@@ -6,6 +6,35 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-19 — §2.0 pilot: SalesOrder status → enum-with-`dbValue()`
+
+Pilot slice of §2.0 (aggregate enumerated-column migration). Locked design decisions before coding (full discussion captured in §2.0 dev-todo block):
+
+- **Scope** = all enumerated columns on aggregates (status / type / source / match / method / kind / mode), not just lifecycle status.
+- **Schema/Java gap handling** = enum mirrors schema CHECK set; values not currently produced by Java carry a `/** Schema-prep — not currently produced by Java. */` Javadoc tag.
+- **No `@JsonValue`**: DTO `from()` converts `enum → String` at the boundary via `dbValue()`. Matches the existing `Customer.Status` + `CustomerView` pattern.
+- **Every aggregate keeps its own status field** even when single-valued today.
+
+What shipped on `SalesOrder`:
+
+- **`SalesOrder.Status`** (nested enum, 8 values, mirrors schema `sales_order_header.status` CHECK): `DRAFT` ‡, `SUBMITTED`, `CONFIRMED` ‡, `IN_FULFILMENT`, `SHIPPED`, `COMPLETED`, `CANCELLED`, `REJECTED`. (‡ = schema-prep tag.)
+- **`SalesOrder.LineStatus`** (nested enum, 8 values, mirrors `sales_order_line.line_status` CHECK): `OPEN`, `RESERVED`, `PARTIALLY_RESERVED`, plus 5 schema-prep values (`WAITING_FOR_PRODUCTION`, `READY_TO_SHIP`, `PARTIALLY_SHIPPED`, `SHIPPED`, `CANCELLED`).
+- Dropped dead constant `SalesOrder.READY_TO_SHIP` from the header (was unused on header — only line-level `ready_to_ship` is in the schema CHECK).
+- `SalesOrder` aggregate body: `Status status` field, `EnumSet<Status> NON_CANCELLABLE_STATUSES`, factory + `recordShipped` + `cancel` use enum values, `OrderNotCancellableException.currentStatus()` returns `Status`.
+- `SalesOrderLine.lineStatus` typed as `SalesOrder.LineStatus`; `markReserved()` uses enum values.
+- `JdbcSalesOrderRepository`: read paths call `SalesOrder.Status.fromDb(...)` / `SalesOrder.LineStatus.fromDb(...)`; write paths call `.dbValue()`. No SQL changed.
+- `SalesOrderHeaderStatusProjection.markStatus` signature changed to take `SalesOrder.Status`; JDBC impl unwraps via `.dbValue()`.
+- 3 inbox handlers (`StockReservedHandler`, `CustomerPaymentReceivedHandler`, `ManufacturingDispatchedHandler`) pass typed enums.
+- `SalesOrderView` / `SalesOrderLineView`: still `String status` field on the wire (unchanged wire format), populated via `.dbValue()` in the `from()` factory.
+- Test-harness: `InMemorySalesOrderHeaderStatusProjection` stores `Map<UUID, SalesOrder.Status>`; `SalesTestKit.orderStatus()` returns `Optional<SalesOrder.Status>`; o2c tests assert against enum values.
+- All sales-service tests + handler tests + harness o2c tests updated.
+
+**Smoke**: `mvn -pl sales-service test` → 133/133; `mvn -pl test-harness -am test` → full reactor green (16 modules build, 0 failures).
+
+Next: §2.0.a (foundation bucket — Product / Bom / WorkOrder / Customer verify).
+
+---
+
 ## 2026-05-18 — Flat BOM view aggregates duplicate components — one row per SKU, qty summed
 
 Reverses an earlier design choice. The §2.24.2 flat view previously surfaced the same component as multiple rows when it appeared on multiple paths (e.g. RM-SCREW-001 = 4 rows in the FG-CHEST-001 demo: depth 1 root + depth 2 via drawer + depth 2 via frame + depth 3 via panel). The user's call: dedupe to one row per unique `componentProductId`, summing the cumulative-per-finished-unit quantity across all paths.

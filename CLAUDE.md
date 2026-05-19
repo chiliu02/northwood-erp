@@ -115,6 +115,8 @@ Port / repository / lookup vocabulary (full rules in `docs/conventions.md`):
 
 **Instance-field name = full aggregate name in plural** (no abbreviations, no generic `repository` / `repo` / `lookup`): `salesOrders` not `orders`, `supplierInvoices` not `invoices`, `productCards` not `cards`. Detail + rationale: `docs/conventions.md`.
 
+**Aggregate enumerated fields = nested enum with `dbValue()` / `fromDb()`.** Status, type, kind, mode, source, match, method — every enumerated column on an aggregate table is a nested enum carrying its lowercase wire-format via `dbValue()`. Enum mirrors the schema CHECK set; schema-prep values (allowed by CHECK but not yet produced by Java) carry a `/** Schema-prep — not currently produced by Java. */` Javadoc tag. View DTOs convert `enum → String` via `.dbValue()` in their `from(...)` factory. Persistence reads via `Enum.fromDb(rs.getString(...))` and writes via `.dbValue()` — no `.name().toLowerCase()` ad-hoc conversions. Each aggregate keeps its own status field even when single-valued today. Detail + worked example: `docs/conventions.md` → *Aggregate enumerated fields*.
+
 ## Class member ordering summary
 
 - **All `static` fields above instance fields** — strict, no exceptions. Includes `private static final RowMapper<X>` lambdas in `Jdbc*` classes and SQL String constants in `Jdbc*QueryPort` classes. A `RowMapper` parked at the bottom of a repository is a code-review fail.

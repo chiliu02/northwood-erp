@@ -13,6 +13,7 @@ import com.northwood.sales.application.inbox.ShipmentPostedHandler;
 import com.northwood.sales.application.inbox.StockReservedHandler;
 import com.northwood.sales.application.inbox.WorkOrderCreatedHandler;
 import com.northwood.sales.application.inbox.WorkOrderManufacturingCompletedHandler;
+import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.sales.infrastructure.saga.JdbcSalesOrderFulfilmentSagaManager;
 import com.northwood.sales.infrastructure.saga.SalesOrderFulfilmentSagaWorker;
@@ -93,7 +94,7 @@ public final class SalesTestKit {
         return sagas.findBySalesOrderId(salesOrderId);
     }
 
-    public Optional<String> orderStatus(UUID salesOrderId) {
+    public Optional<SalesOrder.Status> orderStatus(UUID salesOrderId) {
         return statusProjection.get(salesOrderId);
     }
 

@@ -88,7 +88,7 @@ class OrderToCashHappyPathTest {
 
         SalesOrderFulfilmentSaga sagaAtReadyToShip = sales.findSagaBySalesOrderId(orderId).orElseThrow();
         assertThat(sagaAtReadyToShip.state()).isEqualTo(SalesOrderFulfilmentSaga.READY_TO_SHIP);
-        assertThat(sales.orderStatus(orderId)).contains(SalesOrder.IN_FULFILMENT);
+        assertThat(sales.orderStatus(orderId)).contains(SalesOrder.Status.IN_FULFILMENT);
 
         // Step 4: post the shipment through the real ShipmentService.
         // Inventory persists the Shipment aggregate, decrements on-hand,
@@ -137,7 +137,7 @@ class OrderToCashHappyPathTest {
         // is at completed.
         SalesOrderFulfilmentSaga sagaAtCompleted = sales.findSagaBySalesOrderId(orderId).orElseThrow();
         assertThat(sagaAtCompleted.state()).isEqualTo(SalesOrderFulfilmentSaga.COMPLETED);
-        assertThat(sales.orderStatus(orderId)).contains(SalesOrder.COMPLETED);
+        assertThat(sales.orderStatus(orderId)).contains(SalesOrder.Status.COMPLETED);
 
         // Cross-service event audit:
         assertThat(sales.outbox.all())

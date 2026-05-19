@@ -41,7 +41,7 @@ public class StockReservedHandler extends AbstractInboxHandler<StockReserved> {
     protected void apply(StockReserved payload, EventEnvelope envelope) {
         Map<Integer, BigDecimal> shortage = extractShortage(payload);
         sagaManager.applyStockReserved(payload.salesOrderId(), payload.status(), shortage);
-        statusProjection.markStatus(payload.salesOrderId(), SalesOrder.IN_FULFILMENT);
+        statusProjection.markStatus(payload.salesOrderId(), SalesOrder.Status.IN_FULFILMENT);
 
         log.info("[{}] sales_order={} status={} (reservation_id={})",
             CONSUMER_NAME, payload.salesOrderId(), payload.status(), payload.stockReservationId());

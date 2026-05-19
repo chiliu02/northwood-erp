@@ -29,7 +29,7 @@ class SalesOrderTest {
             BigDecimal.ZERO,
             BigDecimal.ZERO,
             BigDecimal.ZERO,
-            "pending"
+            SalesOrder.LineStatus.OPEN
         );
     }
 
@@ -96,7 +96,7 @@ class SalesOrderTest {
 
         @Test void initial_status_is_submitted() {
             SalesOrder so = placeWithLines(List.of(line(BigDecimal.ONE, BigDecimal.TEN)));
-            assertThat(so.status()).isEqualTo("submitted");
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.SUBMITTED);
         }
 
         @Test void emits_SalesOrderPlaced_with_full_line_set() {
@@ -160,7 +160,7 @@ class SalesOrderTest {
     @Nested
     class Cancel {
 
-        private static SalesOrder reconstituteWithStatus(String status) {
+        private static SalesOrder reconstituteWithStatus(SalesOrder.Status status) {
             return SalesOrder.reconstitute(
                 SalesOrderId.of(UUID.randomUUID()),
                 "SO-CXL-001",
@@ -176,47 +176,47 @@ class SalesOrderTest {
         }
 
         @Test void cancellable_when_submitted() {
-            SalesOrder so = reconstituteWithStatus("submitted");
+            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.SUBMITTED);
             so.cancel("customer changed mind");
-            assertThat(so.status()).isEqualTo("cancelled");
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.CANCELLED);
             assertThat(so.cancelledAt()).isNotNull();
             assertThat(so.pullPendingEvents()).hasSize(1)
                 .first().isInstanceOf(SalesOrderCancellationRequested.class);
         }
 
         @Test void cancellable_when_in_fulfilment() {
-            SalesOrder so = reconstituteWithStatus(SalesOrder.IN_FULFILMENT);
+            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.IN_FULFILMENT);
             so.cancel("supply chain disruption");
-            assertThat(so.status()).isEqualTo("cancelled");
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.CANCELLED);
         }
 
         @Test void rejected_when_already_shipped() {
-            SalesOrder so = reconstituteWithStatus("shipped");
+            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.SHIPPED);
             assertThatThrownBy(() -> so.cancel("too late"))
                 .isInstanceOf(SalesOrder.OrderNotCancellableException.class)
                 .hasMessageContaining("'shipped'");
         }
 
         @Test void rejected_when_completed() {
-            SalesOrder so = reconstituteWithStatus("completed");
+            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.COMPLETED);
             assertThatThrownBy(() -> so.cancel("too late"))
                 .isInstanceOf(SalesOrder.OrderNotCancellableException.class);
         }
 
         @Test void rejected_when_already_cancelled() {
-            SalesOrder so = reconstituteWithStatus("cancelled");
+            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.CANCELLED);
             assertThatThrownBy(() -> so.cancel("twice"))
                 .isInstanceOf(SalesOrder.OrderNotCancellableException.class);
         }
 
         @Test void rejected_when_rejected() {
-            SalesOrder so = reconstituteWithStatus("rejected");
+            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.REJECTED);
             assertThatThrownBy(() -> so.cancel("nope"))
                 .isInstanceOf(SalesOrder.OrderNotCancellableException.class);
         }
 
         @Test void cancel_event_carries_reason_and_order_number() {
-            SalesOrder so = reconstituteWithStatus("submitted");
+            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.SUBMITTED);
             so.cancel("test reason");
             DomainEvent event = so.pullPendingEvents().get(0);
             assertThat(event).isInstanceOf(SalesOrderCancellationRequested.class);
@@ -235,7 +235,7 @@ class SalesOrderTest {
                 "SO-X",
                 CUSTOMER, "C", "Cust",
                 LocalDate.now(), null,
-                SalesOrder.IN_FULFILMENT,
+                SalesOrder.Status.IN_FULFILMENT,
                 "AUD", BigDecimal.ONE,
                 new BigDecimal("100"), BigDecimal.ZERO, new BigDecimal("100"),
                 null,
@@ -243,7 +243,7 @@ class SalesOrderTest {
                 List.of(line(BigDecimal.ONE, new BigDecimal("100")))
             );
             assertThat(so.pullPendingEvents()).isEmpty();
-            assertThat(so.status()).isEqualTo(SalesOrder.IN_FULFILMENT);
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.IN_FULFILMENT);
             assertThat(so.version()).isEqualTo(3L);
         }
     }

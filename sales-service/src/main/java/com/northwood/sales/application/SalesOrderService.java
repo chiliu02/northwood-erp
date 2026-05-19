@@ -189,7 +189,7 @@ public class SalesOrderService {
                 req.taxRate() == null ? BigDecimal.ZERO : req.taxRate(),
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
-                SalesOrderLine.OPEN
+                SalesOrder.LineStatus.OPEN
             ));
             lineNumber += 10;
         }

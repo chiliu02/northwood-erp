@@ -66,7 +66,7 @@ class CustomerPaymentReceivedHandlerTest {
         handler.handle(event("paid"));
 
         verify(sagaManager).applyCustomerPaymentReceived(SO, true);
-        verify(statusProjection).markStatus(SO, SalesOrder.COMPLETED);
+        verify(statusProjection).markStatus(SO, SalesOrder.Status.COMPLETED);
         verify(inbox).recordProcessed(any());
     }
 

@@ -13,16 +13,6 @@ import java.util.UUID;
  */
 public final class SalesOrderLine {
 
-    // ------------------------------------------------------------
-    // Status constants — wire-format strings stored in
-    // sales.sales_order_line.line_status. Lifecycle:
-    // open → reserved (or partially_reserved) → shipped → ... (the line
-    // is mutated by SalesOrder.recordShipped via the aggregate).
-    // ------------------------------------------------------------
-    public static final String OPEN = "open";
-    public static final String RESERVED = "reserved";
-    public static final String PARTIALLY_RESERVED = "partially_reserved";
-
     private final UUID lineId;
     private final int lineNumber;
     private final UUID productId;
@@ -33,7 +23,7 @@ public final class SalesOrderLine {
     private final BigDecimal taxRate;
     private BigDecimal reservedQuantity;
     private BigDecimal manufacturingRequiredQuantity;
-    private String lineStatus;
+    private SalesOrder.LineStatus lineStatus;
 
     public SalesOrderLine(
         UUID lineId,
@@ -46,7 +36,7 @@ public final class SalesOrderLine {
         BigDecimal taxRate,
         BigDecimal reservedQuantity,
         BigDecimal manufacturingRequiredQuantity,
-        String lineStatus
+        SalesOrder.LineStatus lineStatus
     ) {
         if (orderedQuantity.signum() <= 0) {
             throw new IllegalArgumentException("orderedQuantity must be > 0");
@@ -81,7 +71,9 @@ public final class SalesOrderLine {
 
     void markReserved(BigDecimal quantity) {
         this.reservedQuantity = quantity;
-        this.lineStatus = quantity.compareTo(orderedQuantity) >= 0 ? RESERVED : PARTIALLY_RESERVED;
+        this.lineStatus = quantity.compareTo(orderedQuantity) >= 0
+            ? SalesOrder.LineStatus.RESERVED
+            : SalesOrder.LineStatus.PARTIALLY_RESERVED;
     }
 
     public UUID lineId()                              { return lineId; }
@@ -94,5 +86,5 @@ public final class SalesOrderLine {
     public BigDecimal taxRate()                       { return taxRate; }
     public BigDecimal reservedQuantity()              { return reservedQuantity; }
     public BigDecimal manufacturingRequiredQuantity() { return manufacturingRequiredQuantity; }
-    public String lineStatus()                        { return lineStatus; }
+    public SalesOrder.LineStatus lineStatus()         { return lineStatus; }
 }
