@@ -50,13 +50,13 @@ public class JdbcPurchaseOrderReceiptProjection implements PurchaseOrderReceiptP
             """, BigDecimal.class, purchaseOrderHeaderId);
 
         boolean fully = Boolean.TRUE.equals(fullyReceived);
-        String poStatus = fully ? PurchaseOrder.RECEIVED : PurchaseOrder.PARTIALLY_RECEIVED;
+        PurchaseOrder.Status poStatus = fully ? PurchaseOrder.Status.RECEIVED : PurchaseOrder.Status.PARTIALLY_RECEIVED;
         jdbc.update("""
             UPDATE purchasing.purchase_order_header
                SET status = ?, received_amount = ?, version = version + 1
              WHERE purchase_order_header_id = ?
             """,
-            poStatus, totalReceived, purchaseOrderHeaderId
+            poStatus.dbValue(), totalReceived, purchaseOrderHeaderId
         );
 
         return new ReceiptOutcome(fully, totalReceived);

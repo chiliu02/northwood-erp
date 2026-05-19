@@ -84,7 +84,7 @@ public class PurchaseRequisitionService {
 
         PurchaseRequisition pr = PurchaseRequisition.create(
             command.requisitionNumber(),
-            "manual",
+            PurchaseRequisition.SourceType.MANUAL,
             null,
             null,
             command.requestedBy(),
@@ -109,7 +109,7 @@ public class PurchaseRequisitionService {
 
         PurchaseRequisition pr = PurchaseRequisition.create(
             command.requisitionNumber(),
-            "work_order_shortage",
+            PurchaseRequisition.SourceType.WORK_ORDER_SHORTAGE,
             command.workOrderId(),
             null,
             "manufacturing.shortage-detector",
@@ -153,7 +153,7 @@ public class PurchaseRequisitionService {
                 line.requiredDate(),
                 defaultSupplier.id().value(),
                 defaultSupplier.name(),
-                PurchaseRequisitionLine.OPEN
+                PurchaseRequisition.LineStatus.OPEN
             ));
             lineNumber += 10;
         }

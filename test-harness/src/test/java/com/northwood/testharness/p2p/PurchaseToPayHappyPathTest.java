@@ -72,7 +72,7 @@ class PurchaseToPayHappyPathTest {
 
         // Find the PO that was created.
         PurchaseOrder po = purchasing.orders.findById(findCreatedPoId(purchasing)).orElseThrow();
-        assertThat(po.status()).isEqualTo(PurchaseOrder.DRAFT);
+        assertThat(po.status()).isEqualTo(PurchaseOrder.Status.DRAFT);
 
         // Saga inserted at started.
         PurchaseToPaySaga sagaAtStart = purchasing.sagas.findByPurchaseOrderId(po.id().value()).orElseThrow();

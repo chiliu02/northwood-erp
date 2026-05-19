@@ -98,13 +98,13 @@ public class PurchaseOrderService {
     public PurchaseOrderId convertFromRequisition(PurchaseRequisitionId prId, boolean autoApprove) {
         PurchaseRequisition pr = purchaseRequisitions.findById(prId)
             .orElseThrow(() -> new IllegalArgumentException("No requisition " + prId.value()));
-        if ("converted".equals(pr.status())) {
+        if (pr.status() == PurchaseRequisition.Status.CONVERTED) {
             log.debug("requisition {} already converted; idempotent skip", prId.value());
             return null;
         }
-        if (!PurchaseRequisition.APPROVED.equals(pr.status())) {
+        if (pr.status() != PurchaseRequisition.Status.APPROVED) {
             throw new IllegalStateException(
-                "Cannot convert requisition " + prId.value() + " from status=" + pr.status()
+                "Cannot convert requisition " + prId.value() + " from status=" + pr.status().dbValue()
             );
         }
 
@@ -135,7 +135,7 @@ public class PurchaseOrderService {
         }
 
         log.info("converted requisition {} → purchase_order {} (status={}, supplier={}, {} line(s))",
-            pr.requisitionNumber(), po.purchaseOrderNumber(), po.status(),
+            pr.requisitionNumber(), po.purchaseOrderNumber(), po.status().dbValue(),
             supplier.supplierCode(), lines.size());
         return po.id();
     }
@@ -347,7 +347,7 @@ public class PurchaseOrderService {
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
                 lineTotal,
-                PurchaseOrderLine.OPEN
+                PurchaseOrder.LineStatus.OPEN
             ));
         }
         return lines;

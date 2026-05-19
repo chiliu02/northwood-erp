@@ -22,7 +22,7 @@ class PurchaseRequisitionTest {
             UUID.randomUUID(), 10,
             PRODUCT, "RM-X", "X",
             BigDecimal.TEN, null,
-            SUPPLIER, "Acme", "open"
+            SUPPLIER, "Acme", PurchaseRequisition.LineStatus.OPEN
         );
     }
 
@@ -30,53 +30,54 @@ class PurchaseRequisitionTest {
     class Create {
         @Test void rejects_empty_lines() {
             assertThatThrownBy(() -> PurchaseRequisition.create(
-                "PR-001", "manual", null, null, "buyer", List.of()
+                "PR-001", PurchaseRequisition.SourceType.MANUAL, null, null, "buyer", List.of()
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void manual_must_not_have_source_ids() {
             assertThatThrownBy(() -> PurchaseRequisition.create(
-                "PR-001", "manual", WO, null, "buyer", List.of(line())
+                "PR-001", PurchaseRequisition.SourceType.MANUAL, WO, null, "buyer", List.of(line())
             )).isInstanceOf(IllegalArgumentException.class);
             assertThatThrownBy(() -> PurchaseRequisition.create(
-                "PR-001", "manual", null, PRODUCT, "buyer", List.of(line())
+                "PR-001", PurchaseRequisition.SourceType.MANUAL, null, PRODUCT, "buyer", List.of(line())
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void low_stock_requires_source_product_only() {
             assertThatThrownBy(() -> PurchaseRequisition.create(
-                "PR-001", "low_stock", null, null, "system", List.of(line())
+                "PR-001", PurchaseRequisition.SourceType.LOW_STOCK, null, null, "system", List.of(line())
             )).isInstanceOf(IllegalArgumentException.class);
             assertThatThrownBy(() -> PurchaseRequisition.create(
-                "PR-001", "low_stock", WO, PRODUCT, "system", List.of(line())
+                "PR-001", PurchaseRequisition.SourceType.LOW_STOCK, WO, PRODUCT, "system", List.of(line())
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void work_order_shortage_requires_source_work_order_only() {
             assertThatThrownBy(() -> PurchaseRequisition.create(
-                "PR-001", "work_order_shortage", null, null, "system", List.of(line())
+                "PR-001", PurchaseRequisition.SourceType.WORK_ORDER_SHORTAGE, null, null, "system", List.of(line())
             )).isInstanceOf(IllegalArgumentException.class);
             assertThatThrownBy(() -> PurchaseRequisition.create(
-                "PR-001", "work_order_shortage", WO, PRODUCT, "system", List.of(line())
+                "PR-001", PurchaseRequisition.SourceType.WORK_ORDER_SHORTAGE, WO, PRODUCT, "system", List.of(line())
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
-        @Test void rejects_unknown_source_type() {
-            assertThatThrownBy(() -> PurchaseRequisition.create(
-                "PR-001", "weird_source", null, null, "system", List.of(line())
-            )).isInstanceOf(IllegalArgumentException.class);
+        @Test void rejects_unknown_source_type_at_db_boundary() {
+            // SourceType.fromDb is the wire→enum boundary; the enum parameter
+            // on create() makes unknown values a compile-time impossibility.
+            assertThatThrownBy(() -> PurchaseRequisition.SourceType.fromDb("weird_source"))
+                .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void manual_requisition_auto_approved() {
             PurchaseRequisition pr = PurchaseRequisition.create(
-                "PR-001", "manual", null, null, "buyer", List.of(line())
+                "PR-001", PurchaseRequisition.SourceType.MANUAL, null, null, "buyer", List.of(line())
             );
-            assertThat(pr.status()).isEqualTo("approved");
+            assertThat(pr.status()).isEqualTo(PurchaseRequisition.Status.APPROVED);
         }
 
         @Test void emits_PurchaseRequisitionCreated_with_full_lines() {
             PurchaseRequisition pr = PurchaseRequisition.create(
-                "PR-001", "work_order_shortage", WO, null, "system",
+                "PR-001", PurchaseRequisition.SourceType.WORK_ORDER_SHORTAGE, WO, null, "system",
                 List.of(line(), line())
             );
             List<DomainEvent> events = pr.pullPendingEvents();
@@ -92,28 +93,28 @@ class PurchaseRequisitionTest {
     class MarkConverted {
         @Test void flips_approved_to_converted() {
             PurchaseRequisition pr = PurchaseRequisition.create(
-                "PR", "manual", null, null, "buyer", List.of(line())
+                "PR", PurchaseRequisition.SourceType.MANUAL, null, null, "buyer", List.of(line())
             );
             pr.pullPendingEvents();
             pr.markConverted();
-            assertThat(pr.status()).isEqualTo("converted");
+            assertThat(pr.status()).isEqualTo(PurchaseRequisition.Status.CONVERTED);
         }
 
         @Test void is_idempotent_when_already_converted() {
             PurchaseRequisition pr = PurchaseRequisition.create(
-                "PR", "manual", null, null, "buyer", List.of(line())
+                "PR", PurchaseRequisition.SourceType.MANUAL, null, null, "buyer", List.of(line())
             );
             pr.pullPendingEvents();
             pr.markConverted();
             pr.markConverted();   // second call should be a no-op
-            assertThat(pr.status()).isEqualTo("converted");
+            assertThat(pr.status()).isEqualTo(PurchaseRequisition.Status.CONVERTED);
         }
 
         @Test void rejects_when_in_terminal_states() {
             PurchaseRequisition pr = PurchaseRequisition.reconstitute(
                 PurchaseRequisitionId.newId(),
-                "PR", "manual", null, null,
-                "rejected", "buyer", List.of(line()), 3L
+                "PR", PurchaseRequisition.SourceType.MANUAL, null, null,
+                PurchaseRequisition.Status.REJECTED, "buyer", List.of(line()), 3L
             );
             assertThatThrownBy(pr::markConverted).isInstanceOf(IllegalStateException.class);
         }

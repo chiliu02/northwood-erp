@@ -21,8 +21,5 @@ public record PurchaseOrderLine(
     BigDecimal taxRate,
     BigDecimal taxAmount,
     BigDecimal lineTotal,
-    String status
-) {
-    /** Line status — wire-format strings stored in purchasing.purchase_order_line.status. */
-    public static final String OPEN = "open";
-}
+    PurchaseOrder.LineStatus status
+) {}

@@ -29,7 +29,7 @@ class PurchaseOrderTest {
             PRODUCT, "RM-X", "X",
             qty, unitPrice,
             BigDecimal.ZERO, BigDecimal.ZERO,
-            total, "open"
+            total, PurchaseOrder.LineStatus.OPEN
         );
     }
 
@@ -60,7 +60,7 @@ class PurchaseOrderTest {
                 "PO-001", supplier(), PR_HEADER, null, "AUD",
                 List.of(line(BigDecimal.TEN, new BigDecimal("80"))), true
             );
-            assertThat(po.status()).isEqualTo("sent");
+            assertThat(po.status()).isEqualTo(PurchaseOrder.Status.SENT);
         }
 
         @Test void totals_summed_from_line_totals() {
@@ -133,7 +133,7 @@ class PurchaseOrderTest {
                 "PO-001", supplier(), PR_HEADER, null, "AUD",
                 List.of(line(BigDecimal.TEN, new BigDecimal("80"))), false
             );
-            assertThat(po.status()).isEqualTo("draft");
+            assertThat(po.status()).isEqualTo(PurchaseOrder.Status.DRAFT);
         }
 
         @Test void emits_only_created_event_with_status_draft() {
@@ -159,7 +159,7 @@ class PurchaseOrderTest {
 
             po.approve("alice", "looks good");
 
-            assertThat(po.status()).isEqualTo("sent");
+            assertThat(po.status()).isEqualTo(PurchaseOrder.Status.SENT);
             List<DomainEvent> events = po.pullPendingEvents();
             assertThat(events).hasSize(1).first().isInstanceOf(PurchaseOrderApproved.class);
             PurchaseOrderApproved approved = (PurchaseOrderApproved) events.get(0);

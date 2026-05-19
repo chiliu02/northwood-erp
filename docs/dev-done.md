@@ -6,6 +6,30 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-19 — §2.0.c purchasing bucket: PurchaseRequisition + PurchaseOrder enums
+
+Fourth §2.0 slice — the *purchasing* bucket. Two aggregates, 5 nested enums.
+
+What shipped:
+
+- **`PurchaseRequisition.SourceType`** — manual / low_stock / work_order_shortage. Replaces the previous String parameter on `create()` + the `validateSource` switch's `default` branch (the enum-typed parameter makes unknown values a compile-time impossibility; the test for that behaviour now exercises `SourceType.fromDb("weird_source")` at the wire→enum boundary).
+- **`PurchaseRequisition.Status`** — 6 values mirroring schema CHECK (`draft, pending_approval, approved, rejected, converted, cancelled`); Java today writes APPROVED + CONVERTED + REJECTED (via reconstitute in tests); DRAFT + CANCELLED carry the schema-prep Javadoc.
+- **`PurchaseRequisition.LineStatus`** — open / converted / cancelled (Java writes OPEN only at create-time; the rest are schema-prep for per-line tracking).
+- **`PurchaseOrder.Status`** — 11 values; Java writes DRAFT, SENT, PARTIALLY_RECEIVED, RECEIVED, PAID; the other 6 (PENDING_APPROVAL, APPROVED, PARTIALLY_INVOICED, INVOICED, CLOSED, CANCELLED) are schema-prep.
+- **`PurchaseOrder.LineStatus`** — 6 values; OPEN actively produced; the other 5 schema-prep.
+- `PurchaseRequisition.markConverted()` switches from String `.equals` to `==` enum guards. `PurchaseOrder.approve()` + `PoNotApprovableException` typed.
+- Both `Jdbc*Repository` classes read via `fromDb()` + write via `.dbValue()` at every site (header status, line status, source_type).
+- `JdbcPurchaseOrderReceiptProjection` and `GoodsReceivedHandler` switch to typed enum mapping (`RECEIVED` / `PARTIALLY_RECEIVED`).
+- 4 view DTOs convert `enum → String` via `.dbValue()`.
+- `PurchaseOrderService.convertFromRequisition` guards on `pr.status() == PurchaseRequisition.Status.CONVERTED/APPROVED` directly. `PurchaseRequisitionService.createManual` / `createForWorkOrderShortage` pass `SourceType` enum.
+- Two test-harness P2P tests (HappyPath, RejectionPath) updated to compare against `PurchaseOrder.Status.DRAFT`.
+
+**Smoke**: `mvn -pl test-harness -am test` → full 16-module reactor green; purchasing-service + test-harness all pass.
+
+Next: §2.0.d (finance — CustomerInvoice, SupplierInvoice, Payment, JournalEntry — ~9 enums).
+
+---
+
 ## 2026-05-19 — §2.0.b sales/inventory bucket + GR/Shipment schema CHECK migration
 
 Third §2.0 slice — the *sales+inventory* bucket. Migrates the three inventory aggregates plus a schema CHECK migration on goods_receipt_header + shipment_header.

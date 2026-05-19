@@ -43,17 +43,87 @@ public final class PurchaseOrder {
      */
     public static final String AGGREGATE_TYPE = PurchasingAggregateTypes.PURCHASE_ORDER;
 
-    // ------------------------------------------------------------
-    // Status constants — wire-format strings stored in
-    // purchasing.purchase_order_header.status. Lifecycle:
-    // draft → sent → partially_received → received → paid (driven by
-    // inbox handlers + receipt projection). Auto-approve flow skips draft.
-    // ------------------------------------------------------------
-    public static final String DRAFT = "draft";
-    public static final String SENT = "sent";
-    public static final String PARTIALLY_RECEIVED = "partially_received";
-    public static final String RECEIVED = "received";
-    public static final String PAID = "paid";
+    /**
+     * Purchase-order header status. Mirrors the schema CHECK on
+     * {@code purchasing.purchase_order_header.status}. Lifecycle:
+     * {@code DRAFT → SENT → PARTIALLY_RECEIVED → RECEIVED → PAID} (driven by
+     * inbox handlers + receipt projection). Auto-approve flow skips
+     * {@code DRAFT}. Schema-prep values are intermediate workflow states that
+     * Java doesn't yet produce.
+     */
+    public enum Status {
+        DRAFT("draft"),
+        /** Schema-prep — not currently produced by Java. */
+        PENDING_APPROVAL("pending_approval"),
+        /** Schema-prep — not currently produced by Java. */
+        APPROVED("approved"),
+        SENT("sent"),
+        PARTIALLY_RECEIVED("partially_received"),
+        RECEIVED("received"),
+        /** Schema-prep — not currently produced by Java. */
+        PARTIALLY_INVOICED("partially_invoiced"),
+        /** Schema-prep — not currently produced by Java. */
+        INVOICED("invoiced"),
+        PAID("paid"),
+        /** Schema-prep — not currently produced by Java. */
+        CLOSED("closed"),
+        /** Schema-prep — not currently produced by Java. */
+        CANCELLED("cancelled");
+
+        private final String dbValue;
+
+        Status(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static Status fromDb(String value) {
+            for (Status s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown purchase_order status: " + value);
+        }
+    }
+
+    /**
+     * Purchase-order line status. Mirrors the schema CHECK on
+     * {@code purchasing.purchase_order_line.status}. Today's Java only writes
+     * {@code OPEN} (initial); the remaining values are schema-prep for the
+     * per-line receipt + invoice progression (Phase 2).
+     */
+    public enum LineStatus {
+        OPEN("open"),
+        /** Schema-prep — not currently produced by Java. */
+        PARTIALLY_RECEIVED("partially_received"),
+        /** Schema-prep — not currently produced by Java. */
+        RECEIVED("received"),
+        /** Schema-prep — not currently produced by Java. */
+        INVOICED("invoiced"),
+        /** Schema-prep — not currently produced by Java. */
+        CLOSED("closed"),
+        /** Schema-prep — not currently produced by Java. */
+        CANCELLED("cancelled");
+
+        private final String dbValue;
+
+        LineStatus(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static LineStatus fromDb(String value) {
+            for (LineStatus s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown purchase_order_line status: " + value);
+        }
+    }
 
     private final PurchaseOrderId id;
     private final String purchaseOrderNumber;
@@ -65,7 +135,7 @@ public final class PurchaseOrder {
     private final BigDecimal subtotalAmount;
     private final BigDecimal taxAmount;
     private final BigDecimal totalAmount;
-    private String status;
+    private Status status;
     private final List<PurchaseOrderLine> lines;
     private final long version;
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
@@ -107,7 +177,7 @@ public final class PurchaseOrder {
         tax = tax.setScale(2, RoundingMode.HALF_UP);
         BigDecimal total = subtotal.add(tax);
 
-        String initialStatus = autoApprove ? SENT : DRAFT;
+        Status initialStatus = autoApprove ? Status.SENT : Status.DRAFT;
         PurchaseOrderId id = PurchaseOrderId.newId();
         PurchaseOrder po = new PurchaseOrder(
             id, purchaseOrderNumber,
@@ -136,7 +206,7 @@ public final class PurchaseOrder {
             sourceWorkOrderId,
             po.currencyCode,
             total,
-            initialStatus,
+            initialStatus.dbValue(),
             wireLines,
             Instant.now()
         ));
@@ -162,10 +232,10 @@ public final class PurchaseOrder {
      * {@link PoNotApprovableException} if the status is anything else.
      */
     public void approve(String approver, String reason) {
-        if (!DRAFT.equals(status)) {
+        if (status != Status.DRAFT) {
             throw new PoNotApprovableException(id, status);
         }
-        this.status = SENT;
+        this.status = Status.SENT;
         pendingEvents.add(new PurchaseOrderApproved(
             UUID.randomUUID(),
             id.value(),
@@ -186,7 +256,7 @@ public final class PurchaseOrder {
         UUID purchaseRequisitionHeaderId,
         String currencyCode,
         BigDecimal subtotalAmount, BigDecimal taxAmount, BigDecimal totalAmount,
-        String status,
+        Status status,
         List<PurchaseOrderLine> lines, long version
     ) {
         return new PurchaseOrder(
@@ -206,7 +276,7 @@ public final class PurchaseOrder {
         UUID purchaseRequisitionHeaderId,
         String currencyCode,
         BigDecimal subtotalAmount, BigDecimal taxAmount, BigDecimal totalAmount,
-        String status,
+        Status status,
         List<PurchaseOrderLine> lines, long version
     ) {
         this.id = id;
@@ -240,23 +310,23 @@ public final class PurchaseOrder {
     public BigDecimal subtotalAmount()                     { return subtotalAmount; }
     public BigDecimal taxAmount()                          { return taxAmount; }
     public BigDecimal totalAmount()                        { return totalAmount; }
-    public String status()                                 { return status; }
+    public Status status()                                 { return status; }
     public List<PurchaseOrderLine> lines()                 { return List.copyOf(lines); }
     public long version()                                  { return version; }
 
     /** Thrown by {@link #approve} when the PO isn't in {@code 'draft'} status. */
     public static final class PoNotApprovableException extends RuntimeException {
         private final PurchaseOrderId orderId;
-        private final String currentStatus;
+        private final Status currentStatus;
 
-        public PoNotApprovableException(PurchaseOrderId orderId, String currentStatus) {
-            super("Purchase order " + orderId.value() + " is in status '" + currentStatus
+        public PoNotApprovableException(PurchaseOrderId orderId, Status currentStatus) {
+            super("Purchase order " + orderId.value() + " is in status '" + currentStatus.dbValue()
                 + "' and cannot be approved (must be 'draft')");
             this.orderId = orderId;
             this.currentStatus = currentStatus;
         }
 
         public PurchaseOrderId orderId()  { return orderId; }
-        public String currentStatus()     { return currentStatus; }
+        public Status currentStatus()     { return currentStatus; }
     }
 }

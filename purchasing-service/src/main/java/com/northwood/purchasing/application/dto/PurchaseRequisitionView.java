@@ -23,10 +23,10 @@ public record PurchaseRequisitionView(
         return new PurchaseRequisitionView(
             pr.id().value(),
             pr.requisitionNumber(),
-            pr.sourceType(),
+            pr.sourceType().dbValue(),
             pr.sourceWorkOrderId(),
             pr.sourceProductId(),
-            pr.status(),
+            pr.status().dbValue(),
             pr.requestedBy(),
             pr.version(),
             lineViews

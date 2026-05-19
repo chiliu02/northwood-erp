@@ -63,7 +63,7 @@ class PurchaseToPayRejectionPathTest {
             ))
         ));
         PurchaseOrder po = purchasing.orders.findById(findCreatedPoId(purchasing)).orElseThrow();
-        assertThat(po.status()).isEqualTo(PurchaseOrder.DRAFT);
+        assertThat(po.status()).isEqualTo(PurchaseOrder.Status.DRAFT);
 
         // Step 2: approve + drive worker to waiting_for_goods.
         purchasing.purchaseOrderService.approve(po.id().value(), "tom@example.com", "ok to send");

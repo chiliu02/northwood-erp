@@ -18,8 +18,5 @@ public record PurchaseRequisitionLine(
     LocalDate requiredDate,
     UUID suggestedSupplierId,
     String suggestedSupplierName,
-    String status
-) {
-    /** Line status — wire-format strings stored in purchasing.purchase_requisition_line.status. */
-    public static final String OPEN = "open";
-}
+    PurchaseRequisition.LineStatus status
+) {}

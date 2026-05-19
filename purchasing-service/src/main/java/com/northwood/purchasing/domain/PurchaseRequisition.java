@@ -34,24 +34,107 @@ public final class PurchaseRequisition {
      */
     public static final String AGGREGATE_TYPE = PurchasingAggregateTypes.PURCHASE_REQUISITION;
 
-    // ------------------------------------------------------------
-    // Status constants — wire-format strings stored in
-    // purchasing.purchase_requisition_header.status. Phase 1 collapses
-    // pending_approval → approved on creation; converted is set by
-    // markConverted() once a PO is created from the PR.
-    // ------------------------------------------------------------
-    public static final String PENDING_APPROVAL = "pending_approval";
-    public static final String APPROVED = "approved";
-    public static final String CONVERTED = "converted";
-    public static final String REJECTED = "rejected";
+    /**
+     * Purchase-requisition source classifier. Mirrors the schema CHECK on
+     * {@code purchasing.purchase_requisition_header.source_type}. Drives which
+     * source ids the row carries: {@code MANUAL} → neither, {@code LOW_STOCK}
+     * → {@code source_product_id}, {@code WORK_ORDER_SHORTAGE} →
+     * {@code source_work_order_id}.
+     */
+    public enum SourceType {
+        MANUAL("manual"),
+        LOW_STOCK("low_stock"),
+        WORK_ORDER_SHORTAGE("work_order_shortage");
 
+        private final String dbValue;
+
+        SourceType(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static SourceType fromDb(String value) {
+            for (SourceType t : values()) {
+                if (t.dbValue.equals(value)) return t;
+            }
+            throw new IllegalArgumentException("Unknown purchase_requisition source_type: " + value);
+        }
+    }
+
+    /**
+     * Purchase-requisition header status. Mirrors the schema CHECK on
+     * {@code purchasing.purchase_requisition_header.status}. Phase 1 collapses
+     * {@code pending_approval → approved} on creation; {@code CONVERTED} is
+     * set by {@link #markConverted()} once a PO is created from the PR.
+     */
+    public enum Status {
+        /** Schema-prep — not currently produced by Java. */
+        DRAFT("draft"),
+        PENDING_APPROVAL("pending_approval"),
+        APPROVED("approved"),
+        REJECTED("rejected"),
+        CONVERTED("converted"),
+        /** Schema-prep — not currently produced by Java. */
+        CANCELLED("cancelled");
+
+        private final String dbValue;
+
+        Status(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static Status fromDb(String value) {
+            for (Status s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown purchase_requisition status: " + value);
+        }
+    }
+
+    /**
+     * Purchase-requisition line status. Mirrors the schema CHECK on
+     * {@code purchasing.purchase_requisition_line.status}. Today's Java only
+     * writes {@code OPEN} (initial); {@code CONVERTED} / {@code CANCELLED} are
+     * schema-prep for per-line conversion tracking (Phase 2).
+     */
+    public enum LineStatus {
+        OPEN("open"),
+        /** Schema-prep — not currently produced by Java. */
+        CONVERTED("converted"),
+        /** Schema-prep — not currently produced by Java. */
+        CANCELLED("cancelled");
+
+        private final String dbValue;
+
+        LineStatus(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static LineStatus fromDb(String value) {
+            for (LineStatus s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown purchase_requisition_line status: " + value);
+        }
+    }
 
     private final PurchaseRequisitionId id;
     private final String requisitionNumber;
-    private final String sourceType;
+    private final SourceType sourceType;
     private final UUID sourceWorkOrderId;
     private final UUID sourceProductId;
-    private String status;
+    private Status status;
     private final String requestedBy;
     private final List<PurchaseRequisitionLine> lines;
     private final long version;
@@ -60,7 +143,7 @@ public final class PurchaseRequisition {
     /** Factory: a new requisition. Auto-approves at creation (phase 1). */
     public static PurchaseRequisition create(
         String requisitionNumber,
-        String sourceType,
+        SourceType sourceType,
         UUID sourceWorkOrderId,
         UUID sourceProductId,
         String requestedBy,
@@ -75,7 +158,7 @@ public final class PurchaseRequisition {
         PurchaseRequisitionId id = PurchaseRequisitionId.newId();
         PurchaseRequisition pr = new PurchaseRequisition(
             id, requisitionNumber, sourceType, sourceWorkOrderId, sourceProductId,
-            APPROVED, requestedBy, new ArrayList<>(lines), 0L
+            Status.APPROVED, requestedBy, new ArrayList<>(lines), 0L
         );
 
         List<RequestedLine> wireLines = new ArrayList<>();
@@ -89,10 +172,10 @@ public final class PurchaseRequisition {
             UUID.randomUUID(),
             id.value(),
             requisitionNumber,
-            sourceType,
+            sourceType.dbValue(),
             sourceWorkOrderId,
             sourceProductId,
-            APPROVED,
+            Status.APPROVED.dbValue(),
             wireLines,
             Instant.now()
         ));
@@ -102,8 +185,8 @@ public final class PurchaseRequisition {
     /** Factory: hydrate from the DB; emits no events. */
     public static PurchaseRequisition reconstitute(
         PurchaseRequisitionId id, String requisitionNumber,
-        String sourceType, UUID sourceWorkOrderId, UUID sourceProductId,
-        String status, String requestedBy,
+        SourceType sourceType, UUID sourceWorkOrderId, UUID sourceProductId,
+        Status status, String requestedBy,
         List<PurchaseRequisitionLine> lines, long version
     ) {
         return new PurchaseRequisition(
@@ -114,8 +197,8 @@ public final class PurchaseRequisition {
 
     private PurchaseRequisition(
         PurchaseRequisitionId id, String requisitionNumber,
-        String sourceType, UUID sourceWorkOrderId, UUID sourceProductId,
-        String status, String requestedBy,
+        SourceType sourceType, UUID sourceWorkOrderId, UUID sourceProductId,
+        Status status, String requestedBy,
         List<PurchaseRequisitionLine> lines, long version
     ) {
         this.id = id;
@@ -129,24 +212,23 @@ public final class PurchaseRequisition {
         this.version = version;
     }
 
-    private static void validateSource(String sourceType, UUID workOrderId, UUID productId) {
+    private static void validateSource(SourceType sourceType, UUID workOrderId, UUID productId) {
         switch (sourceType) {
-            case "manual" -> {
+            case MANUAL -> {
                 if (workOrderId != null || productId != null) {
                     throw new IllegalArgumentException("manual requisitions cannot carry source ids");
                 }
             }
-            case "low_stock" -> {
+            case LOW_STOCK -> {
                 if (productId == null || workOrderId != null) {
                     throw new IllegalArgumentException("low_stock requisitions need source_product_id only");
                 }
             }
-            case "work_order_shortage" -> {
+            case WORK_ORDER_SHORTAGE -> {
                 if (workOrderId == null || productId != null) {
                     throw new IllegalArgumentException("work_order_shortage requisitions need source_work_order_id only");
                 }
             }
-            default -> throw new IllegalArgumentException("unknown sourceType=" + sourceType);
         }
     }
 
@@ -157,15 +239,15 @@ public final class PurchaseRequisition {
      * ({@code rejected}, {@code cancelled}) reject the call.
      */
     public void markConverted() {
-        if (CONVERTED.equals(status)) {
+        if (status == Status.CONVERTED) {
             return;
         }
-        if (!APPROVED.equals(status)) {
+        if (status != Status.APPROVED) {
             throw new IllegalStateException(
-                "Cannot convert requisition " + id.value() + " from status=" + status
+                "Cannot convert requisition " + id.value() + " from status=" + status.dbValue()
             );
         }
-        this.status = CONVERTED;
+        this.status = Status.CONVERTED;
     }
 
     public List<DomainEvent> pullPendingEvents() {
@@ -176,10 +258,10 @@ public final class PurchaseRequisition {
 
     public PurchaseRequisitionId id()                       { return id; }
     public String requisitionNumber()                       { return requisitionNumber; }
-    public String sourceType()                              { return sourceType; }
+    public SourceType sourceType()                          { return sourceType; }
     public UUID sourceWorkOrderId()                         { return sourceWorkOrderId; }
     public UUID sourceProductId()                           { return sourceProductId; }
-    public String status()                                  { return status; }
+    public Status status()                                  { return status; }
     public String requestedBy()                             { return requestedBy; }
     public List<PurchaseRequisitionLine> lines()            { return List.copyOf(lines); }
     public long version()                                   { return version; }
