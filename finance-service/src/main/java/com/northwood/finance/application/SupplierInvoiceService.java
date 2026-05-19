@@ -87,7 +87,7 @@ public class SupplierInvoiceService {
             );
         }
 
-        String matchOutcome = decideMatchOutcome(
+        SupplierInvoice.MatchStatus matchOutcome = decideMatchOutcome(
             command.lines(), invoicedByPoLine, command.purchaseOrderHeaderId()
         );
 
@@ -125,7 +125,7 @@ public class SupplierInvoiceService {
         );
         supplierInvoices.save(invoice);
 
-        if ("matched".equals(matchOutcome)) {
+        if (matchOutcome == SupplierInvoice.MatchStatus.MATCHED) {
             // Bump invoiced_quantity on the projection so a subsequent invoice
             // for the same PO sees the cumulative figure.
             invoicedByPoLine.forEach(purchaseOrderLineFacts::bumpInvoiced);
@@ -143,11 +143,11 @@ public class SupplierInvoiceService {
 
         log.info("recorded supplier invoice {} for purchase_order={} → status={} (match={})",
             invoice.internalInvoiceNumber(), command.purchaseOrderHeaderId(),
-            invoice.status(), invoice.matchStatus());
+            invoice.status().dbValue(), invoice.matchStatus().dbValue());
         return SupplierInvoiceView.from(invoice);
     }
 
-    private String decideMatchOutcome(
+    private SupplierInvoice.MatchStatus decideMatchOutcome(
         List<RecordSupplierInvoiceCommand.Line> invoiceLines,
         Map<UUID, BigDecimal> invoicedByPoLine,
         UUID expectedPoHeaderId
@@ -164,7 +164,7 @@ public class SupplierInvoiceService {
             if (priceVariesOutsideTolerance(line.unitPrice(), facts.unitPrice())) {
                 log.warn("invoice line price {} varies from PO line price {} by more than {}% for po_line={}",
                     line.unitPrice(), facts.unitPrice(), priceTolerancePercent, poLineId);
-                return SupplierInvoice.MATCH_FAILED;
+                return SupplierInvoice.MatchStatus.FAILED;
             }
         }
 
@@ -175,26 +175,26 @@ public class SupplierInvoiceService {
             BigDecimal toInvoice = e.getValue();
             if (poLineId == null) {
                 log.warn("invoice line missing purchase_order_line_id; cannot 3-way match");
-                return SupplierInvoice.MATCH_FAILED;
+                return SupplierInvoice.MatchStatus.FAILED;
             }
             LineFacts facts = purchaseOrderLineFacts.findByLineId(poLineId);
             if (facts == null) {
                 log.warn("no po_line_facts for purchase_order_line_id={}; PO event may not have arrived", poLineId);
-                return SupplierInvoice.MATCH_FAILED;
+                return SupplierInvoice.MatchStatus.FAILED;
             }
             if (!facts.purchaseOrderHeaderId().equals(expectedPoHeaderId)) {
                 log.warn("invoice claims po_header={} but line {} belongs to po_header={}",
                     expectedPoHeaderId, poLineId, facts.purchaseOrderHeaderId());
-                return SupplierInvoice.MATCH_FAILED;
+                return SupplierInvoice.MatchStatus.FAILED;
             }
             BigDecimal cumulativeAfter = facts.invoicedQuantity().add(toInvoice);
             if (cumulativeAfter.compareTo(facts.receivedQuantity()) > 0) {
                 log.warn("invoice line {} would over-invoice: cumulative={} > received={}",
                     poLineId, cumulativeAfter, facts.receivedQuantity());
-                return SupplierInvoice.MATCH_FAILED;
+                return SupplierInvoice.MatchStatus.FAILED;
             }
         }
-        return SupplierInvoice.MATCH_MATCHED;
+        return SupplierInvoice.MatchStatus.MATCHED;
     }
 
     /**
@@ -272,7 +272,7 @@ public class SupplierInvoiceService {
     /** List supplier invoices currently parked at three_way_match_failed. */
     @Transactional(readOnly = true)
     public List<SupplierInvoiceView> findPendingReview() {
-        return supplierInvoices.findByStatus(SupplierInvoice.THREE_WAY_MATCH_FAILED).stream()
+        return supplierInvoices.findByStatus(SupplierInvoice.Status.THREE_WAY_MATCH_FAILED).stream()
             .map(SupplierInvoiceView::from)
             .toList();
     }

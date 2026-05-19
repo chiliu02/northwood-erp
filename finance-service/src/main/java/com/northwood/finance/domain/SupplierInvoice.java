@@ -31,22 +31,81 @@ public final class SupplierInvoice {
      */
     public static final String AGGREGATE_TYPE = FinanceAggregateTypes.SUPPLIER_INVOICE;
 
-    // ------------------------------------------------------------
-    // Status constants — wire-format strings stored in
-    // finance.supplier_invoice_header.status. The DB CHECK constraint and
-    // event payloads are the canonical form; these are the Java-side
-    // ergonomic mirroring the saga-state-constant pattern.
-    // ------------------------------------------------------------
-    public static final String APPROVED = "approved";
-    public static final String THREE_WAY_MATCH_FAILED = "three_way_match_failed";
-    public static final String PARTIALLY_PAID = "partially_paid";
-    public static final String PAID = "paid";
-    public static final String CANCELLED = "cancelled";
+    /**
+     * Supplier-invoice lifecycle status. Mirrors the schema CHECK on
+     * {@code finance.supplier_invoice_header.status}. The aggregate is
+     * <em>hybrid</em>: {@code record()} + {@code manualApprove()} +
+     * {@code manualReject()} write APPROVED / THREE_WAY_MATCH_FAILED /
+     * CANCELLED in Java; the {@code maintain_allocation_totals} DB trigger
+     * subsequently flips to PARTIALLY_PAID / PAID as supplier payments
+     * allocate. Other values are schema-prep for future workflow extensions.
+     */
+    public enum Status {
+        /** Schema-prep — not currently produced by Java or trigger. */
+        DRAFT("draft"),
+        /** Schema-prep — not currently produced by Java or trigger. */
+        THREE_WAY_MATCH_PENDING("three_way_match_pending"),
+        /** Schema-prep — not currently produced by Java or trigger. */
+        THREE_WAY_MATCH_PASSED("three_way_match_passed"),
+        THREE_WAY_MATCH_FAILED("three_way_match_failed"),
+        APPROVED("approved"),
+        /** Schema-prep — not currently produced by Java or trigger. */
+        POSTED("posted"),
+        PARTIALLY_PAID("partially_paid"),
+        PAID("paid"),
+        /** Schema-prep — not currently produced by Java or trigger. */
+        ON_HOLD("on_hold"),
+        CANCELLED("cancelled");
 
-    /** Match status (separate field from status). */
-    public static final String MATCH_MATCHED = "matched";
-    public static final String MATCH_VARIANCE = "variance";
-    public static final String MATCH_FAILED = "failed";
+        private final String dbValue;
+
+        Status(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static Status fromDb(String value) {
+            for (Status s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown supplier_invoice status: " + value);
+        }
+    }
+
+    /**
+     * Three-way match outcome (separate field from {@link Status}). Mirrors
+     * the schema CHECK on {@code finance.supplier_invoice_header.match_status}.
+     * Java writes MATCHED / VARIANCE / FAILED via {@code record()};
+     * {@code NOT_MATCHED} is the DB DEFAULT for hand-inserted rows that
+     * haven't yet run match.
+     */
+    public enum MatchStatus {
+        /** Schema-prep — not currently produced by Java; DB DEFAULT for hand-inserted rows. */
+        NOT_MATCHED("not_matched"),
+        MATCHED("matched"),
+        VARIANCE("variance"),
+        FAILED("failed");
+
+        private final String dbValue;
+
+        MatchStatus(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static MatchStatus fromDb(String value) {
+            for (MatchStatus s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown supplier_invoice match_status: " + value);
+        }
+    }
 
     private final SupplierInvoiceId id;
     private final String internalInvoiceNumber;
@@ -60,8 +119,8 @@ public final class SupplierInvoice {
     private final BigDecimal subtotalAmount;
     private final BigDecimal taxAmount;
     private final BigDecimal totalAmount;
-    private String status;
-    private String matchStatus;
+    private Status status;
+    private MatchStatus matchStatus;
     private final List<SupplierInvoiceLine> lines;
     private final long version;
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
@@ -84,7 +143,7 @@ public final class SupplierInvoice {
         String supplierName,
         String currencyCode,
         List<SupplierInvoiceLine> lines,
-        String matchOutcome
+        MatchStatus matchOutcome
     ) {
         Objects.requireNonNull(purchaseOrderHeaderId, "purchaseOrderHeaderId");
         Objects.requireNonNull(supplierId, "supplierId");
@@ -102,9 +161,10 @@ public final class SupplierInvoice {
         tax = tax.setScale(2, RoundingMode.HALF_UP);
         BigDecimal total = subtotal.add(tax);
 
-        boolean matched = MATCH_MATCHED.equals(matchOutcome);
-        String status = matched ? APPROVED : THREE_WAY_MATCH_FAILED;
-        String matchStatus = matched ? MATCH_MATCHED : matchOutcome;
+        Objects.requireNonNull(matchOutcome, "matchOutcome");
+        boolean matched = matchOutcome == MatchStatus.MATCHED;
+        Status status = matched ? Status.APPROVED : Status.THREE_WAY_MATCH_FAILED;
+        MatchStatus matchStatus = matchOutcome;
 
         SupplierInvoiceId id = SupplierInvoiceId.newId();
         SupplierInvoice si = new SupplierInvoice(
@@ -143,7 +203,7 @@ public final class SupplierInvoice {
         UUID supplierId, String supplierCode, String supplierName,
         String currencyCode,
         BigDecimal subtotalAmount, BigDecimal taxAmount, BigDecimal totalAmount,
-        String status, String matchStatus,
+        Status status, MatchStatus matchStatus,
         List<SupplierInvoiceLine> lines, long version
     ) {
         return new SupplierInvoice(
@@ -163,7 +223,7 @@ public final class SupplierInvoice {
         UUID supplierId, String supplierCode, String supplierName,
         String currencyCode,
         BigDecimal subtotalAmount, BigDecimal taxAmount, BigDecimal totalAmount,
-        String status, String matchStatus,
+        Status status, MatchStatus matchStatus,
         List<SupplierInvoiceLine> lines, long version
     ) {
         this.id = id;
@@ -196,14 +256,14 @@ public final class SupplierInvoice {
      * (or paid, or cancelled) invoice is rejected.
      */
     public void manualApprove(String reason) {
-        if (!THREE_WAY_MATCH_FAILED.equals(status)) {
+        if (status != Status.THREE_WAY_MATCH_FAILED) {
             throw new IllegalStateException(
                 "Cannot manually approve invoice " + id.value()
-                    + " in status=" + status + " (must be " + THREE_WAY_MATCH_FAILED + ")"
+                    + " in status=" + status.dbValue() + " (must be " + Status.THREE_WAY_MATCH_FAILED.dbValue() + ")"
             );
         }
-        this.status = APPROVED;
-        this.matchStatus = "matched";
+        this.status = Status.APPROVED;
+        this.matchStatus = MatchStatus.MATCHED;
         pendingEvents.add(new SupplierInvoiceApproved(
             UUID.randomUUID(),
             id.value(),
@@ -228,13 +288,13 @@ public final class SupplierInvoice {
      * would otherwise park at {@code goods_received} forever.
      */
     public void manualReject(String reason) {
-        if (!THREE_WAY_MATCH_FAILED.equals(status)) {
+        if (status != Status.THREE_WAY_MATCH_FAILED) {
             throw new IllegalStateException(
                 "Cannot manually reject invoice " + id.value()
-                    + " in status=" + status + " (must be " + THREE_WAY_MATCH_FAILED + ")"
+                    + " in status=" + status.dbValue() + " (must be " + Status.THREE_WAY_MATCH_FAILED.dbValue() + ")"
             );
         }
-        this.status = CANCELLED;
+        this.status = Status.CANCELLED;
         pendingEvents.add(new SupplierInvoiceRejected(
             UUID.randomUUID(),
             id.value(),
@@ -266,8 +326,8 @@ public final class SupplierInvoice {
     public BigDecimal subtotalAmount()             { return subtotalAmount; }
     public BigDecimal taxAmount()                  { return taxAmount; }
     public BigDecimal totalAmount()                { return totalAmount; }
-    public String status()                         { return status; }
-    public String matchStatus()                    { return matchStatus; }
+    public Status status()                         { return status; }
+    public MatchStatus matchStatus()               { return matchStatus; }
     public List<SupplierInvoiceLine> lines()       { return List.copyOf(lines); }
     public long version()                          { return version; }
 }

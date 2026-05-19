@@ -30,6 +30,6 @@ public interface CustomerInvoiceRepository {
         String currencyCode,
         BigDecimal totalAmount,
         BigDecimal paidAmount,
-        String status
+        CustomerInvoice.Status status
     ) {}
 }

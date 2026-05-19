@@ -181,7 +181,7 @@ public class JournalEntryService {
         post(
             "JE-" + journalSuffix(),
             postingDate,
-            "finance",
+            JournalEntry.SourceModule.FINANCE,
             "supplier_invoice",
             supplierInvoiceHeaderId,
             "Supplier invoice " + supplierInvoiceNumber + " (" + supplierName + ")",
@@ -233,7 +233,7 @@ public class JournalEntryService {
         postMultiDebit(
             "JE-" + journalSuffix(),
             postingDate,
-            "finance",
+            JournalEntry.SourceModule.FINANCE,
             "goods_receipt",
             goodsReceiptHeaderId,
             "Goods receipt " + goodsReceiptNumber,
@@ -285,7 +285,7 @@ public class JournalEntryService {
         postMultiDebitMultiCredit(
             "JE-" + journalSuffix(),
             postingDate,
-            "finance",
+            JournalEntry.SourceModule.FINANCE,
             "shipment_cost",
             shipmentHeaderId,
             "Shipment " + shipmentNumber + " — cost of goods sold",
@@ -309,7 +309,7 @@ public class JournalEntryService {
         post(
             "JE-" + journalSuffix(),
             postingDate,
-            "finance",
+            JournalEntry.SourceModule.FINANCE,
             "supplier_payment",
             paymentId,
             "Supplier payment " + paymentNumber + " to " + supplierName,
@@ -335,7 +335,7 @@ public class JournalEntryService {
         post(
             "JE-" + journalSuffix(),
             postingDate,
-            "finance",
+            JournalEntry.SourceModule.FINANCE,
             "customer_invoice",
             customerInvoiceHeaderId,
             "Customer invoice " + invoiceNumber + " (" + customerName + ")",
@@ -361,7 +361,7 @@ public class JournalEntryService {
         post(
             "JE-" + journalSuffix(),
             postingDate,
-            "finance",
+            JournalEntry.SourceModule.FINANCE,
             "customer_payment",
             paymentId,
             "Customer payment " + paymentNumber + " from " + customerName,
@@ -421,10 +421,10 @@ public class JournalEntryService {
         JournalEntry original = journalEntries.findById(originalId)
             .orElseThrow(() -> new IllegalArgumentException(
                 "No journal entry with id=" + originalJournalEntryId));
-        if (!JournalEntry.POSTED.equals(original.status())) {
+        if (original.status() != JournalEntry.Status.POSTED) {
             throw new IllegalStateException(
                 "Cannot reverse journal " + originalJournalEntryId
-                    + " in status=" + original.status() + " (must be posted)");
+                    + " in status=" + original.status().dbValue() + " (must be posted)");
         }
         JournalEntry reversal = JournalEntry.reverseOf(original, reason, postingDate);
         journalEntries.save(reversal);
@@ -440,7 +440,7 @@ public class JournalEntryService {
     private void post(
         String journalNumber,
         LocalDate postingDate,
-        String sourceModule,
+        JournalEntry.SourceModule sourceModule,
         String sourceDocumentType,
         UUID sourceDocumentId,
         String description,
@@ -488,7 +488,7 @@ public class JournalEntryService {
     private void postMultiDebit(
         String journalNumber,
         LocalDate postingDate,
-        String sourceModule,
+        JournalEntry.SourceModule sourceModule,
         String sourceDocumentType,
         UUID sourceDocumentId,
         String description,
@@ -533,7 +533,7 @@ public class JournalEntryService {
     private void postMultiDebitMultiCredit(
         String journalNumber,
         LocalDate postingDate,
-        String sourceModule,
+        JournalEntry.SourceModule sourceModule,
         String sourceDocumentType,
         UUID sourceDocumentId,
         String description,

@@ -34,10 +34,10 @@ public class JdbcPaymentRepository implements PaymentRepository {
             rs.getObject("supplier_id", UUID.class),
             rs.getString("party_name"),
             paymentDate == null ? LocalDate.now() : paymentDate.toLocalDate(),
-            rs.getString("payment_method"),
+            Payment.Method.fromDb(rs.getString("payment_method")),
             rs.getString("currency_code"),
             rs.getBigDecimal("amount"),
-            rs.getString("status"),
+            Payment.Status.fromDb(rs.getString("status")),
             List.of(),
             rs.getLong("version")
         );
@@ -48,7 +48,7 @@ public class JdbcPaymentRepository implements PaymentRepository {
         rs.getObject("customer_invoice_header_id", UUID.class),
         rs.getObject("supplier_invoice_header_id", UUID.class),
         rs.getBigDecimal("allocated_amount"),
-        rs.getString("status")
+        Payment.AllocationStatus.fromDb(rs.getString("status"))
     );
 
     private final JdbcTemplate jdbc;
@@ -117,7 +117,7 @@ public class JdbcPaymentRepository implements PaymentRepository {
     }
 
     private void insert(Payment p, String actor) {
-        Timestamp postedAt = Payment.POSTED.equals(p.status()) ? Timestamp.from(Instant.now()) : null;
+        Timestamp postedAt = p.status() == Payment.Status.POSTED ? Timestamp.from(Instant.now()) : null;
         jdbc.update("""
             INSERT INTO finance.payment (
                 payment_id, payment_number, payment_direction, payment_type,
@@ -130,8 +130,8 @@ public class JdbcPaymentRepository implements PaymentRepository {
             p.id().value(), p.paymentNumber(), p.paymentDirection(), p.paymentType(),
             p.customerId(), p.supplierId(), p.partyName(),
             Date.valueOf(p.paymentDate()),
-            p.paymentMethod(), p.currencyCode(),
-            p.amount(), p.status(),
+            p.paymentMethod().dbValue(), p.currencyCode(),
+            p.amount(), p.status().dbValue(),
             1L, postedAt,
             actor, actor
         );
@@ -145,7 +145,7 @@ public class JdbcPaymentRepository implements PaymentRepository {
                 """,
                 a.id(), p.id().value(),
                 a.customerInvoiceHeaderId(), a.supplierInvoiceHeaderId(),
-                a.allocatedAmount(), a.status()
+                a.allocatedAmount(), a.status().dbValue()
             );
         }
     }

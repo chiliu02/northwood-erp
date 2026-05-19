@@ -34,8 +34,8 @@ public class JdbcSupplierInvoiceRepository implements SupplierInvoiceRepository 
         rs.getBigDecimal("subtotal_amount"),
         rs.getBigDecimal("tax_amount"),
         rs.getBigDecimal("total_amount"),
-        rs.getString("status"),
-        rs.getString("match_status"),
+        SupplierInvoice.Status.fromDb(rs.getString("status")),
+        SupplierInvoice.MatchStatus.fromDb(rs.getString("match_status")),
         List.of(),
         rs.getLong("version")
     );
@@ -116,7 +116,7 @@ public class JdbcSupplierInvoiceRepository implements SupplierInvoiceRepository 
     }
 
     private void updateStatus(SupplierInvoice si, String actor) {
-        Timestamp approvedAt = SupplierInvoice.APPROVED.equals(si.status()) ? Timestamp.from(Instant.now()) : null;
+        Timestamp approvedAt = si.status() == SupplierInvoice.Status.APPROVED ? Timestamp.from(Instant.now()) : null;
         int rows = jdbc.update("""
             UPDATE finance.supplier_invoice_header
                SET status = ?, match_status = ?,
@@ -125,7 +125,7 @@ public class JdbcSupplierInvoiceRepository implements SupplierInvoiceRepository 
                    last_modified_by = ?
              WHERE supplier_invoice_header_id = ?
             """,
-            si.status(), si.matchStatus(), approvedAt, actor, si.id().value()
+            si.status().dbValue(), si.matchStatus().dbValue(), approvedAt, actor, si.id().value()
         );
         if (rows == 0) {
             throw new IllegalStateException(
@@ -135,7 +135,7 @@ public class JdbcSupplierInvoiceRepository implements SupplierInvoiceRepository 
     }
 
     @Override
-    public List<SupplierInvoice> findByStatus(String status) {
+    public List<SupplierInvoice> findByStatus(SupplierInvoice.Status status) {
         return jdbc.query("""
             SELECT supplier_invoice_header_id, internal_invoice_number, supplier_invoice_number,
                    purchase_order_header_id, goods_receipt_header_id,
@@ -146,7 +146,7 @@ public class JdbcSupplierInvoiceRepository implements SupplierInvoiceRepository 
              WHERE status = ?
              ORDER BY internal_invoice_number
             """,
-            HEADER_MAPPER, status
+            HEADER_MAPPER, status.dbValue()
         );
     }
 
@@ -186,7 +186,7 @@ public class JdbcSupplierInvoiceRepository implements SupplierInvoiceRepository 
                     rs.getString("currency_code"),
                     rs.getBigDecimal("total_amount"),
                     rs.getBigDecimal("paid_amount"),
-                    rs.getString("status")
+                    SupplierInvoice.Status.fromDb(rs.getString("status"))
                 ),
                 supplierInvoiceHeaderId
             ));
@@ -196,7 +196,7 @@ public class JdbcSupplierInvoiceRepository implements SupplierInvoiceRepository 
     }
 
     private void insert(SupplierInvoice si, String actor) {
-        Timestamp approvedAt = SupplierInvoice.APPROVED.equals(si.status()) ? Timestamp.from(Instant.now()) : null;
+        Timestamp approvedAt = si.status() == SupplierInvoice.Status.APPROVED ? Timestamp.from(Instant.now()) : null;
         jdbc.update("""
             INSERT INTO finance.supplier_invoice_header (
                 supplier_invoice_header_id, internal_invoice_number, supplier_invoice_number,
@@ -211,7 +211,7 @@ public class JdbcSupplierInvoiceRepository implements SupplierInvoiceRepository 
             si.purchaseOrderHeaderId(), si.goodsReceiptHeaderId(),
             si.supplierId(), si.supplierCode(), si.supplierName(),
             si.currencyCode(), si.subtotalAmount(), si.taxAmount(), si.totalAmount(),
-            si.status(), si.matchStatus(),
+            si.status().dbValue(), si.matchStatus().dbValue(),
             1L, approvedAt,
             actor, actor
         );

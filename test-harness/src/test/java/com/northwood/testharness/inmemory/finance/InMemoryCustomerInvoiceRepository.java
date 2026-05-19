@@ -63,8 +63,8 @@ public final class InMemoryCustomerInvoiceRepository implements CustomerInvoiceR
         CustomerInvoice inv = store.get(customerInvoiceHeaderId);
         if (inv == null) return Optional.empty();
         BigDecimal paid = paidByInvoice.getOrDefault(customerInvoiceHeaderId, BigDecimal.ZERO);
-        String status = paid.signum() <= 0 ? CustomerInvoice.POSTED
-            : (paid.compareTo(inv.totalAmount()) >= 0 ? CustomerInvoice.PAID : CustomerInvoice.PARTIALLY_PAID);
+        CustomerInvoice.Status status = paid.signum() <= 0 ? CustomerInvoice.Status.POSTED
+            : (paid.compareTo(inv.totalAmount()) >= 0 ? CustomerInvoice.Status.PAID : CustomerInvoice.Status.PARTIALLY_PAID);
         return Optional.of(new PaymentSnapshot(
             inv.customerId(), inv.customerName(), inv.salesOrderHeaderId(),
             inv.currencyCode(), inv.totalAmount(), paid, status

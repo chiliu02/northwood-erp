@@ -54,10 +54,10 @@ public final class InMemorySupplierInvoiceRepository implements SupplierInvoiceR
     }
 
     @Override
-    public List<SupplierInvoice> findByStatus(String status) {
+    public List<SupplierInvoice> findByStatus(SupplierInvoice.Status status) {
         List<SupplierInvoice> out = new ArrayList<>();
         for (SupplierInvoice inv : store.values()) {
-            if (status.equals(inv.status())) out.add(inv);
+            if (status == inv.status()) out.add(inv);
         }
         return out;
     }
@@ -72,8 +72,8 @@ public final class InMemorySupplierInvoiceRepository implements SupplierInvoiceR
         SupplierInvoice inv = store.get(supplierInvoiceHeaderId);
         if (inv == null) return Optional.empty();
         BigDecimal paid = paidByInvoice.getOrDefault(supplierInvoiceHeaderId, BigDecimal.ZERO);
-        String status = paid.signum() <= 0 ? inv.status()
-            : (paid.compareTo(inv.totalAmount()) >= 0 ? SupplierInvoice.PAID : SupplierInvoice.PARTIALLY_PAID);
+        SupplierInvoice.Status status = paid.signum() <= 0 ? inv.status()
+            : (paid.compareTo(inv.totalAmount()) >= 0 ? SupplierInvoice.Status.PAID : SupplierInvoice.Status.PARTIALLY_PAID);
         return Optional.of(new PaymentSnapshot(
             inv.supplierId(), inv.supplierName(), inv.purchaseOrderHeaderId(),
             inv.currencyCode(), inv.totalAmount(), paid, status

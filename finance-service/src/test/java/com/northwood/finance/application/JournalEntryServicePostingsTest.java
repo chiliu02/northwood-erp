@@ -259,10 +259,10 @@ class JournalEntryServicePostingsTest {
     @Nested
     class ReverseEntry {
 
-        private JournalEntry posted(JournalEntryId id, String status, BigDecimal amount) {
+        private JournalEntry posted(JournalEntryId id, JournalEntry.Status status, BigDecimal amount) {
             return JournalEntry.reconstitute(
                 id, "JE-X", POSTING_DATE,
-                "finance", "supplier_invoice", UUID.randomUUID(),
+                JournalEntry.SourceModule.FINANCE, "supplier_invoice", UUID.randomUUID(),
                 "test", status, "AUD", BigDecimal.ONE, Instant.now(),
                 List.of(
                     JournalEntryLine.debit(10, UUID.randomUUID(), "5000", "COGS", amount, "d", POSTING_DATE),
@@ -274,7 +274,7 @@ class JournalEntryServicePostingsTest {
 
         @Test void posts_swapped_lines_and_marks_original_reversed() {
             JournalEntryId id = JournalEntryId.of(UUID.randomUUID());
-            when(journals.findById(id)).thenReturn(Optional.of(posted(id, "posted", new BigDecimal("100.00"))));
+            when(journals.findById(id)).thenReturn(Optional.of(posted(id, JournalEntry.Status.POSTED, new BigDecimal("100.00"))));
 
             UUID reversalId = service.reverseEntry(id.value(), "test reason", POSTING_DATE);
 
@@ -292,7 +292,7 @@ class JournalEntryServicePostingsTest {
 
         @Test void rejects_non_posted_status() {
             JournalEntryId id = JournalEntryId.of(UUID.randomUUID());
-            when(journals.findById(id)).thenReturn(Optional.of(posted(id, "reversed", new BigDecimal("100.00"))));
+            when(journals.findById(id)).thenReturn(Optional.of(posted(id, JournalEntry.Status.REVERSED, new BigDecimal("100.00"))));
 
             assertThatThrownBy(() -> service.reverseEntry(id.value(), "test", POSTING_DATE))
                 .isInstanceOf(IllegalStateException.class)

@@ -13,9 +13,11 @@ import com.northwood.finance.application.dto.RecordCustomerPaymentCommand;
 import com.northwood.finance.application.dto.RecordCustomerPaymentMultiCommand;
 import com.northwood.finance.application.dto.RecordSupplierPaymentCommand;
 import com.northwood.finance.application.dto.RecordSupplierPaymentMultiCommand;
+import com.northwood.finance.domain.CustomerInvoice;
 import com.northwood.finance.domain.CustomerInvoiceRepository;
 import com.northwood.finance.domain.Payment;
 import com.northwood.finance.domain.PaymentRepository;
+import com.northwood.finance.domain.SupplierInvoice;
 import com.northwood.finance.domain.SupplierInvoiceRepository;
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
 import com.northwood.finance.domain.events.SupplierPaymentMade;
@@ -61,7 +63,8 @@ class PaymentServiceTest {
     ) {
         return new SupplierInvoiceRepository.PaymentSnapshot(
             supplierId, "Supplier-" + supplierId.toString().substring(0, 4),
-            PO, currency, new BigDecimal(total), new BigDecimal(paid), status
+            PO, currency, new BigDecimal(total), new BigDecimal(paid),
+            SupplierInvoice.Status.fromDb(status)
         );
     }
 
@@ -70,7 +73,8 @@ class PaymentServiceTest {
     ) {
         return new CustomerInvoiceRepository.PaymentSnapshot(
             customerId, "Customer-" + customerId.toString().substring(0, 4),
-            SO, currency, new BigDecimal(total), new BigDecimal(paid), status
+            SO, currency, new BigDecimal(total), new BigDecimal(paid),
+            CustomerInvoice.Status.fromDb(status)
         );
     }
 
@@ -100,7 +104,7 @@ class PaymentServiceTest {
             ));
 
             service.recordSupplierPayment(new RecordSupplierPaymentCommand(
-                "PMT-001", invoiceId, new BigDecimal("1100.00"), "EFT", PAY_DATE
+                "PMT-001", invoiceId, new BigDecimal("1100.00"), "bank_transfer", PAY_DATE
             ));
 
             SupplierPaymentMade event = firstSupplierEvent(capturedPayment());
@@ -117,7 +121,7 @@ class PaymentServiceTest {
             ));
 
             service.recordSupplierPayment(new RecordSupplierPaymentCommand(
-                "PMT-002", invoiceId, new BigDecimal("400.00"), "EFT", PAY_DATE
+                "PMT-002", invoiceId, new BigDecimal("400.00"), "bank_transfer", PAY_DATE
             ));
 
             SupplierPaymentMade event = firstSupplierEvent(capturedPayment());
@@ -131,7 +135,7 @@ class PaymentServiceTest {
             ));
 
             service.recordSupplierPayment(new RecordSupplierPaymentCommand(
-                "PMT-003", invoiceId, new BigDecimal("600.00"), "EFT", PAY_DATE
+                "PMT-003", invoiceId, new BigDecimal("600.00"), "bank_transfer", PAY_DATE
             ));
 
             SupplierPaymentMade event = firstSupplierEvent(capturedPayment());
@@ -145,7 +149,7 @@ class PaymentServiceTest {
             ));
 
             assertThatThrownBy(() -> service.recordSupplierPayment(new RecordSupplierPaymentCommand(
-                "PMT-X", invoiceId, new BigDecimal("100.00"), "EFT", PAY_DATE)))
+                "PMT-X", invoiceId, new BigDecimal("100.00"), "bank_transfer", PAY_DATE)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("must be approved or partially_paid");
             verify(payments, never()).save(any());
@@ -159,7 +163,7 @@ class PaymentServiceTest {
             ));
 
             assertThatThrownBy(() -> service.recordSupplierPayment(new RecordSupplierPaymentCommand(
-                "PMT-X", invoiceId, new BigDecimal("600.00"), "EFT", PAY_DATE)))
+                "PMT-X", invoiceId, new BigDecimal("600.00"), "bank_transfer", PAY_DATE)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("exceeds outstanding");
             verify(payments, never()).save(any());
@@ -170,7 +174,7 @@ class PaymentServiceTest {
             when(supplierInvoices.findPaymentSnapshot(invoiceId)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.recordSupplierPayment(new RecordSupplierPaymentCommand(
-                "PMT-X", invoiceId, new BigDecimal("100.00"), "EFT", PAY_DATE)))
+                "PMT-X", invoiceId, new BigDecimal("100.00"), "bank_transfer", PAY_DATE)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("No supplier invoice");
         }
@@ -186,7 +190,7 @@ class PaymentServiceTest {
             ));
 
             service.recordCustomerPayment(new RecordCustomerPaymentCommand(
-                "PMT-C-001", invoiceId, new BigDecimal("550.00"), "EFT", PAY_DATE
+                "PMT-C-001", invoiceId, new BigDecimal("550.00"), "bank_transfer", PAY_DATE
             ));
 
             CustomerPaymentReceived event = firstCustomerEvent(capturedPayment());
@@ -203,7 +207,7 @@ class PaymentServiceTest {
             ));
 
             assertThatThrownBy(() -> service.recordCustomerPayment(new RecordCustomerPaymentCommand(
-                "PMT-X", invoiceId, new BigDecimal("100.00"), "EFT", PAY_DATE)))
+                "PMT-X", invoiceId, new BigDecimal("100.00"), "bank_transfer", PAY_DATE)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("must be posted or partially_paid");
         }
@@ -215,7 +219,7 @@ class PaymentServiceTest {
             ));
 
             assertThatThrownBy(() -> service.recordCustomerPayment(new RecordCustomerPaymentCommand(
-                "PMT-X", invoiceId, new BigDecimal("600.00"), "EFT", PAY_DATE)))
+                "PMT-X", invoiceId, new BigDecimal("600.00"), "bank_transfer", PAY_DATE)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("exceeds outstanding");
         }
@@ -235,7 +239,7 @@ class PaymentServiceTest {
             ));
 
             service.recordSupplierPaymentMulti(new RecordSupplierPaymentMultiCommand(
-                "PMT-M-001", "EFT", PAY_DATE,
+                "PMT-M-001", "bank_transfer", PAY_DATE,
                 List.of(
                     new RecordSupplierPaymentMultiCommand.InvoiceLine(inv1, new BigDecimal("300.00")),
                     new RecordSupplierPaymentMultiCommand.InvoiceLine(inv2, new BigDecimal("700.00"))
@@ -259,7 +263,7 @@ class PaymentServiceTest {
             ));
 
             assertThatThrownBy(() -> service.recordSupplierPaymentMulti(new RecordSupplierPaymentMultiCommand(
-                "PMT-X", "EFT", PAY_DATE,
+                "PMT-X", "bank_transfer", PAY_DATE,
                 List.of(
                     new RecordSupplierPaymentMultiCommand.InvoiceLine(inv1, new BigDecimal("300.00")),
                     new RecordSupplierPaymentMultiCommand.InvoiceLine(inv2, new BigDecimal("200.00"))
@@ -280,7 +284,7 @@ class PaymentServiceTest {
             ));
 
             assertThatThrownBy(() -> service.recordSupplierPaymentMulti(new RecordSupplierPaymentMultiCommand(
-                "PMT-X", "EFT", PAY_DATE,
+                "PMT-X", "bank_transfer", PAY_DATE,
                 List.of(
                     new RecordSupplierPaymentMultiCommand.InvoiceLine(inv1, new BigDecimal("300.00")),
                     new RecordSupplierPaymentMultiCommand.InvoiceLine(inv2, new BigDecimal("200.00"))
@@ -291,7 +295,7 @@ class PaymentServiceTest {
 
         @Test void rejects_empty_invoice_list() {
             assertThatThrownBy(() -> service.recordSupplierPaymentMulti(new RecordSupplierPaymentMultiCommand(
-                "PMT-X", "EFT", PAY_DATE, List.of())))
+                "PMT-X", "bank_transfer", PAY_DATE, List.of())))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("at least one");
         }
@@ -303,7 +307,7 @@ class PaymentServiceTest {
             ));
 
             assertThatThrownBy(() -> service.recordSupplierPaymentMulti(new RecordSupplierPaymentMultiCommand(
-                "PMT-X", "EFT", PAY_DATE,
+                "PMT-X", "bank_transfer", PAY_DATE,
                 List.of(new RecordSupplierPaymentMultiCommand.InvoiceLine(inv1, new BigDecimal("200.00"))))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("exceeds outstanding");
@@ -324,7 +328,7 @@ class PaymentServiceTest {
             ));
 
             assertThatThrownBy(() -> service.recordCustomerPaymentMulti(new RecordCustomerPaymentMultiCommand(
-                "PMT-X", "EFT", PAY_DATE,
+                "PMT-X", "bank_transfer", PAY_DATE,
                 List.of(
                     new RecordCustomerPaymentMultiCommand.InvoiceLine(inv1, new BigDecimal("300.00")),
                     new RecordCustomerPaymentMultiCommand.InvoiceLine(inv2, new BigDecimal("200.00"))

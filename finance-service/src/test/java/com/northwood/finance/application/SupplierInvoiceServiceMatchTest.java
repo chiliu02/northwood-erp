@@ -92,7 +92,7 @@ class SupplierInvoiceServiceMatchTest {
 
             service.recordInvoice(command(new BigDecimal("5"), new BigDecimal("100.00")));
 
-            assertThat(savedInvoice().status()).isEqualTo("approved");
+            assertThat(savedInvoice().status()).isEqualTo(SupplierInvoice.Status.APPROVED);
             verify(journals, times(1)).postSupplierInvoiceApproval(any(), any(), any(), any(), any(), any());
         }
 
@@ -103,7 +103,7 @@ class SupplierInvoiceServiceMatchTest {
 
             service.recordInvoice(command(new BigDecimal("5"), new BigDecimal("101.50")));
 
-            assertThat(savedInvoice().status()).isEqualTo("approved");
+            assertThat(savedInvoice().status()).isEqualTo(SupplierInvoice.Status.APPROVED);
         }
 
         @Test void price_at_tolerance_boundary_passes() {
@@ -113,7 +113,7 @@ class SupplierInvoiceServiceMatchTest {
 
             service.recordInvoice(command(new BigDecimal("5"), new BigDecimal("102.00")));
 
-            assertThat(savedInvoice().status()).isEqualTo("approved");
+            assertThat(savedInvoice().status()).isEqualTo(SupplierInvoice.Status.APPROVED);
         }
 
         @Test void price_just_above_tolerance_fails_match() {
@@ -123,7 +123,7 @@ class SupplierInvoiceServiceMatchTest {
 
             service.recordInvoice(command(new BigDecimal("5"), new BigDecimal("103.00")));
 
-            assertThat(savedInvoice().status()).isEqualTo("three_way_match_failed");
+            assertThat(savedInvoice().status()).isEqualTo(SupplierInvoice.Status.THREE_WAY_MATCH_FAILED);
             verify(journals, never()).postSupplierInvoiceApproval(any(), any(), any(), any(), any(), any());
             verify(purchaseOrderLineFacts, never()).bumpInvoiced(eq(PO_LINE), any());
         }
@@ -135,7 +135,7 @@ class SupplierInvoiceServiceMatchTest {
 
             service.recordInvoice(command(new BigDecimal("5"), new BigDecimal("90.00")));
 
-            assertThat(savedInvoice().status()).isEqualTo("three_way_match_failed");
+            assertThat(savedInvoice().status()).isEqualTo(SupplierInvoice.Status.THREE_WAY_MATCH_FAILED);
         }
 
         @Test void zero_po_unit_price_skips_price_check_quantity_still_runs() {
@@ -146,7 +146,7 @@ class SupplierInvoiceServiceMatchTest {
 
             service.recordInvoice(command(new BigDecimal("5"), new BigDecimal("100.00")));
 
-            assertThat(savedInvoice().status()).isEqualTo("approved");
+            assertThat(savedInvoice().status()).isEqualTo(SupplierInvoice.Status.APPROVED);
         }
 
         @Test void price_outside_tolerance_takes_precedence_over_quantity_pass() {
@@ -156,7 +156,7 @@ class SupplierInvoiceServiceMatchTest {
             // qty 5 ≤ received 10 (would pass quantity), but price 110 vs 100 = 10% (fails)
             service.recordInvoice(command(new BigDecimal("5"), new BigDecimal("110.00")));
 
-            assertThat(savedInvoice().status()).isEqualTo("three_way_match_failed");
+            assertThat(savedInvoice().status()).isEqualTo(SupplierInvoice.Status.THREE_WAY_MATCH_FAILED);
         }
     }
 }

@@ -32,7 +32,7 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
         rs.getBigDecimal("subtotal_amount"),
         rs.getBigDecimal("tax_amount"),
         rs.getBigDecimal("total_amount"),
-        rs.getString("status"),
+        CustomerInvoice.Status.fromDb(rs.getString("status")),
         List.of(),
         rs.getLong("version")
     );
@@ -124,7 +124,7 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
                     rs.getString("currency_code"),
                     rs.getBigDecimal("total_amount"),
                     rs.getBigDecimal("paid_amount"),
-                    rs.getString("status")
+                    CustomerInvoice.Status.fromDb(rs.getString("status"))
                 ),
                 customerInvoiceHeaderId
             ));
@@ -147,7 +147,7 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
     }
 
     private void insert(CustomerInvoice ci, String actor) {
-        Timestamp postedAt = CustomerInvoice.POSTED.equals(ci.status()) ? Timestamp.from(Instant.now()) : null;
+        Timestamp postedAt = ci.status() == CustomerInvoice.Status.POSTED ? Timestamp.from(Instant.now()) : null;
         jdbc.update("""
             INSERT INTO finance.customer_invoice_header (
                 customer_invoice_header_id, invoice_number, sales_order_header_id,
@@ -161,7 +161,7 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
             ci.customerId(), ci.customerCode(), ci.customerName(),
             ci.currencyCode(),
             ci.subtotalAmount(), ci.taxAmount(), ci.totalAmount(),
-            ci.status(), 1L, postedAt,
+            ci.status().dbValue(), 1L, postedAt,
             actor, actor
         );
         for (CustomerInvoiceLine l : ci.lines()) {

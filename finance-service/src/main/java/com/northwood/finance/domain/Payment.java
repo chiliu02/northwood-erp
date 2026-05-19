@@ -49,9 +49,94 @@ public final class Payment {
      */
     public static final String AGGREGATE_TYPE = FinanceAggregateTypes.PAYMENT;
 
-    /** Status — wire-format string stored in finance.payment.status. */
-    public static final String POSTED = "posted";
+    /**
+     * Payment method. Mirrors the schema CHECK on
+     * {@code finance.payment.payment_method}.
+     */
+    public enum Method {
+        BANK_TRANSFER("bank_transfer"),
+        CASH("cash"),
+        CARD("card"),
+        CHEQUE("cheque");
 
+        private final String dbValue;
+
+        Method(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static Method fromDb(String value) {
+            for (Method m : values()) {
+                if (m.dbValue.equals(value)) return m;
+            }
+            throw new IllegalArgumentException("Unknown payment_method: " + value);
+        }
+    }
+
+    /**
+     * Payment lifecycle status. Mirrors the schema CHECK on
+     * {@code finance.payment.status}. Today's Java only ever writes
+     * {@code POSTED}; {@code DRAFT} / {@code CANCELLED} / {@code REVERSED}
+     * are schema-prep for future workflow paths.
+     */
+    public enum Status {
+        /** Schema-prep — not currently produced by Java. */
+        DRAFT("draft"),
+        POSTED("posted"),
+        /** Schema-prep — not currently produced by Java. */
+        CANCELLED("cancelled"),
+        /** Schema-prep — not currently produced by Java. */
+        REVERSED("reversed");
+
+        private final String dbValue;
+
+        Status(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static Status fromDb(String value) {
+            for (Status s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown payment status: " + value);
+        }
+    }
+
+    /**
+     * Allocation status (on {@link PaymentAllocation} child). Mirrors the
+     * schema CHECK on {@code finance.payment_allocation.status}. Today's Java
+     * only writes {@code POSTED}; {@code REVERSED} is schema-prep.
+     */
+    public enum AllocationStatus {
+        POSTED("posted"),
+        /** Schema-prep — not currently produced by Java. */
+        REVERSED("reversed");
+
+        private final String dbValue;
+
+        AllocationStatus(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static AllocationStatus fromDb(String value) {
+            for (AllocationStatus s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown payment_allocation status: " + value);
+        }
+    }
 
     private final PaymentId id;
     private final String paymentNumber;
@@ -61,10 +146,10 @@ public final class Payment {
     private final UUID supplierId;
     private final String partyName;
     private final LocalDate paymentDate;
-    private final String paymentMethod;
+    private final Method paymentMethod;
     private final String currencyCode;
     private final BigDecimal amount;
-    private final String status;
+    private final Status status;
     private final List<PaymentAllocation> allocations;
     private final long version;
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
@@ -80,7 +165,7 @@ public final class Payment {
         UUID supplierId,
         String supplierName,
         LocalDate paymentDate,
-        String paymentMethod,
+        Method paymentMethod,
         String currencyCode,
         BigDecimal amount,
         UUID supplierInvoiceHeaderId,
@@ -100,7 +185,7 @@ public final class Payment {
             null,
             supplierInvoiceHeaderId,
             amount,
-            "posted"
+            Payment.AllocationStatus.POSTED
         );
         Payment p = new Payment(
             id, paymentNumber,
@@ -110,7 +195,7 @@ public final class Payment {
             paymentMethod,
             currencyCode == null ? "AUD" : currencyCode,
             amount,
-            "posted",
+            Status.POSTED,
             List.of(allocation),
             0L
         );
@@ -123,7 +208,7 @@ public final class Payment {
             purchaseOrderHeaderId,
             supplierId,
             supplierName,
-            paymentMethod,
+            paymentMethod.dbValue(),
             p.currencyCode,
             amount,
             amount,
@@ -145,7 +230,7 @@ public final class Payment {
         UUID customerId,
         String customerName,
         LocalDate paymentDate,
-        String paymentMethod,
+        Method paymentMethod,
         String currencyCode,
         BigDecimal amount,
         UUID customerInvoiceHeaderId,
@@ -165,7 +250,7 @@ public final class Payment {
             customerInvoiceHeaderId,
             null,
             amount,
-            "posted"
+            Payment.AllocationStatus.POSTED
         );
         Payment p = new Payment(
             id, paymentNumber,
@@ -175,7 +260,7 @@ public final class Payment {
             paymentMethod,
             currencyCode == null ? "AUD" : currencyCode,
             amount,
-            "posted",
+            Status.POSTED,
             List.of(allocation),
             0L
         );
@@ -188,7 +273,7 @@ public final class Payment {
             salesOrderHeaderId,
             customerId,
             customerName,
-            paymentMethod,
+            paymentMethod.dbValue(),
             p.currencyCode,
             amount,
             amount,
@@ -211,7 +296,7 @@ public final class Payment {
         UUID supplierId,
         String supplierName,
         LocalDate paymentDate,
-        String paymentMethod,
+        Method paymentMethod,
         String currencyCode,
         List<SupplierAllocationLine> lines
     ) {
@@ -237,7 +322,7 @@ public final class Payment {
                 null,
                 l.supplierInvoiceHeaderId,
                 l.amount,
-                "posted"
+                Payment.AllocationStatus.POSTED
             ));
         }
         Payment p = new Payment(
@@ -248,7 +333,7 @@ public final class Payment {
             paymentMethod,
             currencyCode == null ? "AUD" : currencyCode,
             total,
-            "posted",
+            Status.POSTED,
             allocations,
             0L
         );
@@ -263,7 +348,7 @@ public final class Payment {
                 l.purchaseOrderHeaderId,
                 supplierId,
                 supplierName,
-                paymentMethod,
+                paymentMethod.dbValue(),
                 p.currencyCode,
                 total,           // payment-level total (informational)
                 l.amount,        // allocated to THIS invoice
@@ -283,7 +368,7 @@ public final class Payment {
         UUID customerId,
         String customerName,
         LocalDate paymentDate,
-        String paymentMethod,
+        Method paymentMethod,
         String currencyCode,
         List<CustomerAllocationLine> lines
     ) {
@@ -309,7 +394,7 @@ public final class Payment {
                 l.customerInvoiceHeaderId,
                 null,
                 l.amount,
-                "posted"
+                Payment.AllocationStatus.POSTED
             ));
         }
         Payment p = new Payment(
@@ -320,7 +405,7 @@ public final class Payment {
             paymentMethod,
             currencyCode == null ? "AUD" : currencyCode,
             total,
-            "posted",
+            Status.POSTED,
             allocations,
             0L
         );
@@ -335,7 +420,7 @@ public final class Payment {
                 l.salesOrderHeaderId,
                 customerId,
                 customerName,
-                paymentMethod,
+                paymentMethod.dbValue(),
                 p.currencyCode,
                 total,           // payment-level total
                 l.amount,        // allocated to THIS invoice
@@ -350,8 +435,8 @@ public final class Payment {
     public static Payment reconstitute(
         PaymentId id, String paymentNumber, String paymentDirection, String paymentType,
         UUID customerId, UUID supplierId, String partyName,
-        LocalDate paymentDate, String paymentMethod, String currencyCode,
-        BigDecimal amount, String status,
+        LocalDate paymentDate, Method paymentMethod, String currencyCode,
+        BigDecimal amount, Status status,
         List<PaymentAllocation> allocations, long version
     ) {
         return new Payment(
@@ -366,8 +451,8 @@ public final class Payment {
     private Payment(
         PaymentId id, String paymentNumber, String paymentDirection, String paymentType,
         UUID customerId, UUID supplierId, String partyName,
-        LocalDate paymentDate, String paymentMethod, String currencyCode,
-        BigDecimal amount, String status,
+        LocalDate paymentDate, Method paymentMethod, String currencyCode,
+        BigDecimal amount, Status status,
         List<PaymentAllocation> allocations, long version
     ) {
         this.id = id;
@@ -400,10 +485,10 @@ public final class Payment {
     public UUID supplierId()                       { return supplierId; }
     public String partyName()                      { return partyName; }
     public LocalDate paymentDate()                 { return paymentDate; }
-    public String paymentMethod()                  { return paymentMethod; }
+    public Method paymentMethod()                  { return paymentMethod; }
     public String currencyCode()                   { return currencyCode; }
     public BigDecimal amount()                     { return amount; }
-    public String status()                         { return status; }
+    public Status status()                         { return status; }
     public List<PaymentAllocation> allocations()   { return List.copyOf(allocations); }
     public long version()                          { return version; }
 }

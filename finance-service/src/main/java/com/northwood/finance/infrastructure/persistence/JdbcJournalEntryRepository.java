@@ -25,11 +25,11 @@ public class JdbcJournalEntryRepository implements JournalEntryRepository {
             JournalEntryId.of(rs.getObject("journal_entry_header_id", UUID.class)),
             rs.getString("journal_number"),
             postingDate.toLocalDate(),
-            rs.getString("source_module"),
+            JournalEntry.SourceModule.fromDb(rs.getString("source_module")),
             rs.getString("source_document_type"),
             rs.getObject("source_document_id", UUID.class),
             rs.getString("description"),
-            rs.getString("status"),
+            JournalEntry.Status.fromDb(rs.getString("status")),
             rs.getString("currency_code"),
             rs.getBigDecimal("exchange_rate"),
             captured == null ? null : captured.toInstant(),
@@ -113,7 +113,7 @@ public class JdbcJournalEntryRepository implements JournalEntryRepository {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
             """,
             entry.id().value(), entry.journalNumber(), Date.valueOf(entry.postingDate()),
-            entry.sourceModule(), entry.sourceDocumentType(), entry.sourceDocumentId(),
+            entry.sourceModule().dbValue(), entry.sourceDocumentType(), entry.sourceDocumentId(),
             entry.description(),
             entry.currencyCode(), entry.exchangeRate(),
             entry.exchangeRateCapturedAt() == null ? Timestamp.from(Instant.now()) : Timestamp.from(entry.exchangeRateCapturedAt()),
@@ -134,7 +134,7 @@ public class JdbcJournalEntryRepository implements JournalEntryRepository {
                 l.description(), Date.valueOf(l.postingDate())
             );
         }
-        if (JournalEntry.POSTED.equals(entry.status())) {
+        if (entry.status() == JournalEntry.Status.POSTED) {
             jdbc.update("""
                 UPDATE finance.journal_entry_header
                 SET status = 'posted', posted_at = now(), version = version + 1,

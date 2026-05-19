@@ -32,7 +32,7 @@ class SupplierInvoiceTest {
         );
     }
 
-    private static SupplierInvoice record(String matchOutcome) {
+    private static SupplierInvoice record(SupplierInvoice.MatchStatus matchOutcome) {
         return SupplierInvoice.record(
             "INT-001", "SUP-001", PO_HEADER, GR_HEADER,
             SUPPLIER, "ACME", "Acme Co",
@@ -44,31 +44,31 @@ class SupplierInvoiceTest {
     @Nested
     class Record {
         @Test void matched_outcome_emits_approved_event() {
-            SupplierInvoice si = record("matched");
-            assertThat(si.status()).isEqualTo("approved");
-            assertThat(si.matchStatus()).isEqualTo("matched");
+            SupplierInvoice si = record(SupplierInvoice.MatchStatus.MATCHED);
+            assertThat(si.status()).isEqualTo(SupplierInvoice.Status.APPROVED);
+            assertThat(si.matchStatus()).isEqualTo(SupplierInvoice.MatchStatus.MATCHED);
             List<DomainEvent> events = si.pullPendingEvents();
             assertThat(events).hasSize(1).first().isInstanceOf(SupplierInvoiceApproved.class);
         }
 
         @Test void failed_outcome_emits_no_event() {
-            SupplierInvoice si = record("failed");
-            assertThat(si.status()).isEqualTo("three_way_match_failed");
-            assertThat(si.matchStatus()).isEqualTo("failed");
+            SupplierInvoice si = record(SupplierInvoice.MatchStatus.FAILED);
+            assertThat(si.status()).isEqualTo(SupplierInvoice.Status.THREE_WAY_MATCH_FAILED);
+            assertThat(si.matchStatus()).isEqualTo(SupplierInvoice.MatchStatus.FAILED);
             assertThat(si.pullPendingEvents()).isEmpty();
         }
 
         @Test void variance_outcome_emits_no_event() {
-            SupplierInvoice si = record("variance");
-            assertThat(si.status()).isEqualTo("three_way_match_failed");
-            assertThat(si.matchStatus()).isEqualTo("variance");
+            SupplierInvoice si = record(SupplierInvoice.MatchStatus.VARIANCE);
+            assertThat(si.status()).isEqualTo(SupplierInvoice.Status.THREE_WAY_MATCH_FAILED);
+            assertThat(si.matchStatus()).isEqualTo(SupplierInvoice.MatchStatus.VARIANCE);
             assertThat(si.pullPendingEvents()).isEmpty();
         }
 
         @Test void rejects_empty_lines() {
             assertThatThrownBy(() -> SupplierInvoice.record(
                 "INT", "SUP", PO_HEADER, GR_HEADER,
-                SUPPLIER, "A", "A", "AUD", List.of(), "matched"
+                SUPPLIER, "A", "A", "AUD", List.of(), SupplierInvoice.MatchStatus.MATCHED
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
@@ -77,7 +77,7 @@ class SupplierInvoiceTest {
                 "INT", "SUP", null, GR_HEADER,
                 SUPPLIER, "A", "A", "AUD",
                 List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
-                "matched"
+                SupplierInvoice.MatchStatus.MATCHED
             )).isInstanceOf(NullPointerException.class);
         }
 
@@ -86,7 +86,7 @@ class SupplierInvoiceTest {
                 "INT", "SUP", PO_HEADER, GR_HEADER,
                 null, "A", "A", "AUD",
                 List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
-                "matched"
+                SupplierInvoice.MatchStatus.MATCHED
             )).isInstanceOf(NullPointerException.class);
         }
 
@@ -95,7 +95,7 @@ class SupplierInvoiceTest {
                 "INT", null, PO_HEADER, GR_HEADER,
                 SUPPLIER, "A", "A", "AUD",
                 List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
-                "matched"
+                SupplierInvoice.MatchStatus.MATCHED
             )).isInstanceOf(NullPointerException.class);
         }
 
@@ -104,7 +104,7 @@ class SupplierInvoiceTest {
                 "INT", "SUP", PO_HEADER, GR_HEADER,
                 SUPPLIER, "A", "A", "AUD",
                 List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
-                "matched"
+                SupplierInvoice.MatchStatus.MATCHED
             );
             // 5 * 80 = 400
             assertThat(si.subtotalAmount()).isEqualByComparingTo(new BigDecimal("400.00"));
@@ -112,7 +112,7 @@ class SupplierInvoiceTest {
         }
 
         @Test void emitted_event_carries_total_amount() {
-            SupplierInvoice si = record("matched");
+            SupplierInvoice si = record(SupplierInvoice.MatchStatus.MATCHED);
             SupplierInvoiceApproved e = (SupplierInvoiceApproved) si.pullPendingEvents().get(0);
             assertThat(e.totalAmount()).isEqualByComparingTo(new BigDecimal("400.00"));
             assertThat(e.purchaseOrderHeaderId()).isEqualTo(PO_HEADER);
@@ -122,23 +122,23 @@ class SupplierInvoiceTest {
     @Nested
     class ManualApprove {
         @Test void only_allowed_from_three_way_match_failed() {
-            SupplierInvoice si = record("matched");
+            SupplierInvoice si = record(SupplierInvoice.MatchStatus.MATCHED);
             si.pullPendingEvents();
             assertThatThrownBy(() -> si.manualApprove("override"))
                 .isInstanceOf(IllegalStateException.class);
         }
 
         @Test void flips_status_to_approved_and_emits_event() {
-            SupplierInvoice si = record("failed");
+            SupplierInvoice si = record(SupplierInvoice.MatchStatus.FAILED);
             si.manualApprove("price-tolerance OK");
-            assertThat(si.status()).isEqualTo("approved");
-            assertThat(si.matchStatus()).isEqualTo("matched");
+            assertThat(si.status()).isEqualTo(SupplierInvoice.Status.APPROVED);
+            assertThat(si.matchStatus()).isEqualTo(SupplierInvoice.MatchStatus.MATCHED);
             assertThat(si.pullPendingEvents()).hasSize(1)
                 .first().isInstanceOf(SupplierInvoiceApproved.class);
         }
 
         @Test void approval_event_routes_to_correct_PO() {
-            SupplierInvoice si = record("variance");
+            SupplierInvoice si = record(SupplierInvoice.MatchStatus.VARIANCE);
             si.manualApprove("acceptable variance");
             SupplierInvoiceApproved e = (SupplierInvoiceApproved) si.pullPendingEvents().get(0);
             assertThat(e.purchaseOrderHeaderId()).isEqualTo(PO_HEADER);
@@ -149,20 +149,20 @@ class SupplierInvoiceTest {
     @Nested
     class ManualReject {
         @Test void only_allowed_from_three_way_match_failed() {
-            SupplierInvoice si = record("matched");
+            SupplierInvoice si = record(SupplierInvoice.MatchStatus.MATCHED);
             si.pullPendingEvents();
             assertThatThrownBy(() -> si.manualReject("typo"))
                 .isInstanceOf(IllegalStateException.class);
         }
 
         @Test void flips_status_to_cancelled() {
-            SupplierInvoice si = record("failed");
+            SupplierInvoice si = record(SupplierInvoice.MatchStatus.FAILED);
             si.manualReject("supplier sent the wrong invoice");
-            assertThat(si.status()).isEqualTo("cancelled");
+            assertThat(si.status()).isEqualTo(SupplierInvoice.Status.CANCELLED);
         }
 
         @Test void emits_rejected_event() {
-            SupplierInvoice si = record("failed");
+            SupplierInvoice si = record(SupplierInvoice.MatchStatus.FAILED);
             si.manualReject("supplier sent the wrong invoice");
             List<DomainEvent> events = si.pullPendingEvents();
             assertThat(events).hasSize(1).first().isInstanceOf(SupplierInvoiceRejected.class);

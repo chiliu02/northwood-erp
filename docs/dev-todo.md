@@ -126,23 +126,7 @@ Pull forward only if a public-facing audience wants the orchestrated walkthrough
 
 ## 2. Polish on shipped slices
 
-### 2.0 Aggregate enumerated-column migration to enum-with-`dbValue()` (pilot shipped 2026-05-19, buckets remain)
-
-Migrate every enumerated column on every aggregate to a nested Java enum with `dbValue()` / `fromDb()`, mirroring the existing `Customer.Status` / `ProductType` pattern. Locked decisions 2026-05-19:
-
-- **Scope**: all enumerated columns on aggregates (status, type, source, match, method, kind, mode — not just lifecycle `status`). Reference data tables (`warehouse`, `work_center`, `supplier`, `routing_header`, etc.) are out of scope.
-- **Schema/Java gap handling**: the enum mirrors the schema CHECK set, even values not currently produced by Java. Schema-prep values carry a Javadoc tag: `/** Schema-prep — not currently produced by Java. */`.
-- **No `@JsonValue`**: View DTOs convert `enum → String` at the boundary via `from()` factories (e.g. `c.status().dbValue()`). Avoids depending on Jackson annotations to control wire format.
-- **Each aggregate keeps its own status field** even when single-valued today — `GoodsReceipt` / `Shipment` / `Payment` retain their column, schema CHECK migrations only correct the value set (see 2.0.b below). See [[feedback-aggregate-status-field]].
-- **No data migration needed** for the two plain-enum conversions (`Product.Status`, `Bom.Status`) — both already persist lowercase via ad-hoc `.toLowerCase()` in their `Jdbc*Repository`.
-
-#### Buckets remaining
-
-- **2.0.d Finance** — `CustomerInvoice.Status`, `SupplierInvoice.{Status, MatchStatus}`, `Payment.{Method, Status, AllocationStatus}`, `JournalEntry.{SourceModule, Status}`.
-
-Pilot + 2.0.a + 2.0.b + 2.0.c shipped. SalesOrder, Product, Customer, Bom (with ComponentKind), WorkOrder (with MaterialStatus / MaterialLineStatus / OperationStatus), StockReservation (shared header+line), GoodsReceipt + Shipment (with `cancelled` → `reversed` schema CHECK migration), PurchaseRequisition (with SourceType + LineStatus), PurchaseOrder (with LineStatus) all migrated.
-
-Cross-service status values (referenced by consumer services from events) live on `<service>-events` event classes as `public static final String STATUS_*` constants regardless of the producer-side representation — that's the locked rule and doesn't change.
+<!-- §2.0 fully shipped 2026-05-19 — see dev-done.md for the per-bucket entries. Convention captured in docs/conventions.md *Aggregate enumerated fields* + CLAUDE.md summary line. -->
 
 ### 2.3 Soft-cancel WIP path
 

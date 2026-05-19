@@ -83,10 +83,10 @@ public class PaymentService {
     @Transactional
     public PaymentView recordSupplierPayment(RecordSupplierPaymentCommand command) {
         SupplierInvoiceRepository.PaymentSnapshot inv = lookupSupplierInvoice(command.supplierInvoiceHeaderId());
-        if (!SupplierInvoice.APPROVED.equals(inv.status()) && !SupplierInvoice.PARTIALLY_PAID.equals(inv.status())) {
+        if (inv.status() != SupplierInvoice.Status.APPROVED && inv.status() != SupplierInvoice.Status.PARTIALLY_PAID) {
             throw new IllegalStateException(
                 "Cannot pay supplier invoice " + command.supplierInvoiceHeaderId()
-                    + " in status=" + inv.status() + " (must be approved or partially_paid)"
+                    + " in status=" + inv.status().dbValue() + " (must be approved or partially_paid)"
             );
         }
         BigDecimal outstandingBefore = inv.totalAmount().subtract(inv.paidAmount());
@@ -99,14 +99,14 @@ public class PaymentService {
 
         BigDecimal paidAfter = inv.paidAmount().add(command.amount());
         String invoiceStatusAfter = paidAfter.compareTo(inv.totalAmount()) >= 0
-            ? SupplierInvoice.PAID : SupplierInvoice.PARTIALLY_PAID;
+            ? SupplierInvoice.Status.PAID.dbValue() : SupplierInvoice.Status.PARTIALLY_PAID.dbValue();
 
         Payment payment = Payment.recordSupplierPayment(
             command.paymentNumber(),
             inv.supplierId(),
             inv.supplierName(),
             command.paymentDate(),
-            command.paymentMethod(),
+            Payment.Method.fromDb(command.paymentMethod()),
             inv.currencyCode(),
             command.amount(),
             command.supplierInvoiceHeaderId(),
@@ -139,10 +139,10 @@ public class PaymentService {
     @Transactional
     public PaymentView recordCustomerPayment(RecordCustomerPaymentCommand command) {
         PaymentSnapshot inv = lookupCustomerInvoice(command.customerInvoiceHeaderId());
-        if (!CustomerInvoice.POSTED.equals(inv.status()) && !CustomerInvoice.PARTIALLY_PAID.equals(inv.status())) {
+        if (inv.status() != CustomerInvoice.Status.POSTED && inv.status() != CustomerInvoice.Status.PARTIALLY_PAID) {
             throw new IllegalStateException(
                 "Cannot pay customer invoice " + command.customerInvoiceHeaderId()
-                    + " in status=" + inv.status() + " (must be posted or partially_paid)"
+                    + " in status=" + inv.status().dbValue() + " (must be posted or partially_paid)"
             );
         }
         BigDecimal outstandingBefore = inv.totalAmount().subtract(inv.paidAmount());
@@ -155,14 +155,14 @@ public class PaymentService {
 
         BigDecimal paidAfter = inv.paidAmount().add(command.amount());
         String invoiceStatusAfter = paidAfter.compareTo(inv.totalAmount()) >= 0
-            ? SupplierInvoice.PAID : SupplierInvoice.PARTIALLY_PAID;
+            ? CustomerInvoice.Status.PAID.dbValue() : CustomerInvoice.Status.PARTIALLY_PAID.dbValue();
 
         Payment payment = Payment.recordCustomerPayment(
             command.paymentNumber(),
             inv.customerId(),
             inv.customerName(),
             command.paymentDate(),
-            command.paymentMethod(),
+            Payment.Method.fromDb(command.paymentMethod()),
             inv.currencyCode(),
             command.amount(),
             command.customerInvoiceHeaderId(),
@@ -211,10 +211,10 @@ public class PaymentService {
         List<SupplierAllocationLine> lines = new ArrayList<>();
         for (RecordSupplierPaymentMultiCommand.InvoiceLine il : command.invoices()) {
             SupplierInvoiceRepository.PaymentSnapshot inv = lookupSupplierInvoice(il.supplierInvoiceHeaderId());
-            if (!SupplierInvoice.APPROVED.equals(inv.status()) && !SupplierInvoice.PARTIALLY_PAID.equals(inv.status())) {
+            if (inv.status() != SupplierInvoice.Status.APPROVED && inv.status() != SupplierInvoice.Status.PARTIALLY_PAID) {
                 throw new IllegalStateException(
                     "Cannot pay supplier invoice " + il.supplierInvoiceHeaderId()
-                        + " in status=" + inv.status() + " (must be approved or partially_paid)"
+                        + " in status=" + inv.status().dbValue() + " (must be approved or partially_paid)"
                 );
             }
             if (expectedSupplierId == null) {
@@ -241,7 +241,7 @@ public class PaymentService {
             }
             BigDecimal paidAfter = inv.paidAmount().add(il.amount());
             String invoiceStatusAfter = paidAfter.compareTo(inv.totalAmount()) >= 0
-                ? SupplierInvoice.PAID : SupplierInvoice.PARTIALLY_PAID;
+                ? SupplierInvoice.Status.PAID.dbValue() : SupplierInvoice.Status.PARTIALLY_PAID.dbValue();
             totalAmount = totalAmount.add(il.amount());
             lines.add(new SupplierAllocationLine(
                 il.supplierInvoiceHeaderId(),
@@ -256,7 +256,7 @@ public class PaymentService {
             expectedSupplierId,
             expectedSupplierName,
             command.paymentDate(),
-            command.paymentMethod(),
+            Payment.Method.fromDb(command.paymentMethod()),
             expectedCurrency,
             lines
         );
@@ -298,10 +298,10 @@ public class PaymentService {
         List<CustomerAllocationLine> lines = new ArrayList<>();
         for (RecordCustomerPaymentMultiCommand.InvoiceLine il : command.invoices()) {
             PaymentSnapshot inv = lookupCustomerInvoice(il.customerInvoiceHeaderId());
-            if (!CustomerInvoice.POSTED.equals(inv.status()) && !CustomerInvoice.PARTIALLY_PAID.equals(inv.status())) {
+            if (inv.status() != CustomerInvoice.Status.POSTED && inv.status() != CustomerInvoice.Status.PARTIALLY_PAID) {
                 throw new IllegalStateException(
                     "Cannot pay customer invoice " + il.customerInvoiceHeaderId()
-                        + " in status=" + inv.status() + " (must be posted or partially_paid)"
+                        + " in status=" + inv.status().dbValue() + " (must be posted or partially_paid)"
                 );
             }
             if (expectedCustomerId == null) {
@@ -328,7 +328,7 @@ public class PaymentService {
             }
             BigDecimal paidAfter = inv.paidAmount().add(il.amount());
             String invoiceStatusAfter = paidAfter.compareTo(inv.totalAmount()) >= 0
-                ? SupplierInvoice.PAID : SupplierInvoice.PARTIALLY_PAID;
+                ? CustomerInvoice.Status.PAID.dbValue() : CustomerInvoice.Status.PARTIALLY_PAID.dbValue();
             totalAmount = totalAmount.add(il.amount());
             lines.add(new CustomerAllocationLine(
                 il.customerInvoiceHeaderId(),
@@ -343,7 +343,7 @@ public class PaymentService {
             expectedCustomerId,
             expectedCustomerName,
             command.paymentDate(),
-            command.paymentMethod(),
+            Payment.Method.fromDb(command.paymentMethod()),
             expectedCurrency,
             lines
         );

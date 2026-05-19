@@ -56,7 +56,7 @@ class CustomerInvoiceTest {
                 "INV-001", SO, CUSTOMER, "CUST", "Cust", "AUD",
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             );
-            assertThat(ci.status()).isEqualTo("posted");
+            assertThat(ci.status()).isEqualTo(CustomerInvoice.Status.POSTED);
         }
 
         @Test void totals_summed_from_lines() {

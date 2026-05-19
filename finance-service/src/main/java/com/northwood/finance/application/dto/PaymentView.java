@@ -31,10 +31,10 @@ public record PaymentView(
             p.supplierId(),
             p.partyName(),
             p.paymentDate(),
-            p.paymentMethod(),
+            p.paymentMethod().dbValue(),
             p.currencyCode(),
             p.amount(),
-            p.status(),
+            p.status().dbValue(),
             p.version(),
             p.allocations().stream().map(PaymentAllocationView::from).toList()
         );

@@ -12,6 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.northwood.finance.application.dto.RecordSupplierInvoiceCommand;
 import com.northwood.finance.application.dto.RecordSupplierPaymentCommand;
+import com.northwood.finance.domain.SupplierInvoice;
 import com.northwood.purchasing.application.dto.CreateRequisitionCommand;
 import com.northwood.purchasing.application.dto.RequisitionLineRequest;
 import com.northwood.purchasing.domain.PurchaseOrder;
@@ -148,7 +149,7 @@ class PurchaseToPayHappyPathTest {
         assertThat(sagaInvoiceApproved.state()).isEqualTo(PurchaseToPaySaga.SUPPLIER_INVOICE_APPROVED);
 
         // Step 6: pay. Need to know the supplier invoice id.
-        UUID supplierInvoiceId = finance.supplierInvoices.findByStatus("approved").get(0).id().value();
+        UUID supplierInvoiceId = finance.supplierInvoices.findByStatus(SupplierInvoice.Status.APPROVED).get(0).id().value();
         // The harness doesn't model the maintain_allocation_totals trigger;
         // record the allocation manually so paidAmount matches before the
         // payment recordSupplierPayment validates it. Actually

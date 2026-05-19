@@ -13,7 +13,7 @@ public record PaymentAllocationView(
 ) {
     public static PaymentAllocationView from(PaymentAllocation a) {
         return new PaymentAllocationView(
-            a.id(), a.supplierInvoiceHeaderId(), a.allocatedAmount(), a.status()
+            a.id(), a.supplierInvoiceHeaderId(), a.allocatedAmount(), a.status().dbValue()
         );
     }
 }

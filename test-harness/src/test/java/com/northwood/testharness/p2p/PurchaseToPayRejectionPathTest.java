@@ -115,7 +115,7 @@ class PurchaseToPayRejectionPathTest {
         bus.drain();
 
         // Invoice is parked, saga unchanged.
-        var parked = finance.supplierInvoices.findByStatus(SupplierInvoice.THREE_WAY_MATCH_FAILED);
+        var parked = finance.supplierInvoices.findByStatus(SupplierInvoice.Status.THREE_WAY_MATCH_FAILED);
         assertThat(parked).hasSize(1);
         PurchaseToPaySaga sagaStillReceived = purchasing.sagas.findByPurchaseOrderId(po.id().value()).orElseThrow();
         assertThat(sagaStillReceived.state()).isEqualTo(PurchaseToPaySaga.GOODS_RECEIVED);
@@ -137,7 +137,7 @@ class PurchaseToPayRejectionPathTest {
             .contains(SupplierInvoiceRejected.EVENT_TYPE);
 
         // Invoice is terminal cancelled.
-        assertThat(finance.supplierInvoices.findAll().get(0).status()).isEqualTo(SupplierInvoice.CANCELLED);
+        assertThat(finance.supplierInvoices.findAll().get(0).status()).isEqualTo(SupplierInvoice.Status.CANCELLED);
     }
 
     private static PurchaseOrderId findCreatedPoId(PurchasingTestKit purchasing) {

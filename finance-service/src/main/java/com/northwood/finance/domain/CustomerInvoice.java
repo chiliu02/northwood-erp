@@ -27,15 +27,40 @@ public final class CustomerInvoice {
      */
     public static final String AGGREGATE_TYPE = FinanceAggregateTypes.CUSTOMER_INVOICE;
 
-    // ------------------------------------------------------------
-    // Status constants — wire-format strings stored in
-    // finance.customer_invoice_header.status. Lifecycle:
-    // posted → partially_paid → paid (driven by the
-    // maintain_allocation_totals DB trigger as customer payments allocate).
-    // ------------------------------------------------------------
-    public static final String POSTED = "posted";
-    public static final String PARTIALLY_PAID = "partially_paid";
-    public static final String PAID = "paid";
+    /**
+     * Customer-invoice lifecycle status. Mirrors the schema CHECK on
+     * {@code finance.customer_invoice_header.status}. Lifecycle:
+     * {@code POSTED → PARTIALLY_PAID → PAID} (the {@code maintain_allocation_totals}
+     * DB trigger flips the column as customer payments allocate). Java only
+     * ever writes {@code POSTED} itself; {@code PARTIALLY_PAID} / {@code PAID}
+     * arrive via the trigger but must be parseable on read.
+     */
+    public enum Status {
+        /** Schema-prep — not currently produced by Java or trigger. */
+        DRAFT("draft"),
+        POSTED("posted"),
+        PARTIALLY_PAID("partially_paid"),
+        PAID("paid"),
+        /** Schema-prep — not currently produced by Java or trigger. */
+        CANCELLED("cancelled");
+
+        private final String dbValue;
+
+        Status(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static Status fromDb(String value) {
+            for (Status s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown customer_invoice status: " + value);
+        }
+    }
 
     private final CustomerInvoiceId id;
     private final String invoiceNumber;
@@ -47,7 +72,7 @@ public final class CustomerInvoice {
     private final BigDecimal subtotalAmount;
     private final BigDecimal taxAmount;
     private final BigDecimal totalAmount;
-    private final String status;
+    private final Status status;
     private final List<CustomerInvoiceLine> lines;
     private final long version;
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
@@ -84,7 +109,7 @@ public final class CustomerInvoice {
             customerId, customerCode, customerName,
             currencyCode == null ? "AUD" : currencyCode,
             subtotal, tax, total,
-            "posted",
+            Status.POSTED,
             new ArrayList<>(lines), 0L
         );
 
@@ -98,7 +123,7 @@ public final class CustomerInvoice {
             customerName,
             ci.currencyCode,
             total,
-            "posted",
+            Status.POSTED.dbValue(),
             Instant.now()
         ));
         return ci;
@@ -110,7 +135,7 @@ public final class CustomerInvoice {
         UUID customerId, String customerCode, String customerName,
         String currencyCode,
         BigDecimal subtotalAmount, BigDecimal taxAmount, BigDecimal totalAmount,
-        String status,
+        Status status,
         List<CustomerInvoiceLine> lines, long version
     ) {
         return new CustomerInvoice(
@@ -128,7 +153,7 @@ public final class CustomerInvoice {
         UUID customerId, String customerCode, String customerName,
         String currencyCode,
         BigDecimal subtotalAmount, BigDecimal taxAmount, BigDecimal totalAmount,
-        String status,
+        Status status,
         List<CustomerInvoiceLine> lines, long version
     ) {
         this.id = id;
@@ -162,7 +187,7 @@ public final class CustomerInvoice {
     public BigDecimal subtotalAmount()           { return subtotalAmount; }
     public BigDecimal taxAmount()                { return taxAmount; }
     public BigDecimal totalAmount()              { return totalAmount; }
-    public String status()                       { return status; }
+    public Status status()                       { return status; }
     public List<CustomerInvoiceLine> lines()     { return List.copyOf(lines); }
     public long version()                        { return version; }
 }

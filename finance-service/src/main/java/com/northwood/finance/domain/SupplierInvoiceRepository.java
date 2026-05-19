@@ -13,7 +13,7 @@ public interface SupplierInvoiceRepository {
     void save(SupplierInvoice invoice);
 
     /** List invoices in a given status. Used by the manual-review UI. */
-    List<SupplierInvoice> findByStatus(String status);
+    List<SupplierInvoice> findByStatus(SupplierInvoice.Status status);
 
     /** All invoices, newest first. Used by the operational AP-payment picker. */
     List<SupplierInvoice> findAll();
@@ -33,6 +33,6 @@ public interface SupplierInvoiceRepository {
         String currencyCode,
         BigDecimal totalAmount,
         BigDecimal paidAmount,
-        String status
+        SupplierInvoice.Status status
     ) {}
 }

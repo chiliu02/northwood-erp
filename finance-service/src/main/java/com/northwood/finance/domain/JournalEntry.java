@@ -31,18 +31,77 @@ public final class JournalEntry {
      */
     public static final String AGGREGATE_TYPE = FinanceAggregateTypes.JOURNAL_ENTRY;
 
-    /** Status — wire-format string stored in finance.journal_entry_header.status. */
-    public static final String POSTED = "posted";
+    /**
+     * Source-module classifier. Mirrors the schema CHECK on
+     * {@code finance.journal_entry_header.source_module}. Identifies which
+     * service originated the document being journalled.
+     */
+    public enum SourceModule {
+        SALES("sales"),
+        INVENTORY("inventory"),
+        MANUFACTURING("manufacturing"),
+        PURCHASING("purchasing"),
+        FINANCE("finance");
 
+        private final String dbValue;
+
+        SourceModule(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static SourceModule fromDb(String value) {
+            for (SourceModule m : values()) {
+                if (m.dbValue.equals(value)) return m;
+            }
+            throw new IllegalArgumentException("Unknown journal_entry source_module: " + value);
+        }
+    }
+
+    /**
+     * Journal-entry lifecycle status. Mirrors the schema CHECK on
+     * {@code finance.journal_entry_header.status}. Lifecycle:
+     * {@code DRAFT → POSTED → REVERSED}. {@code DRAFT} is load-bearing for
+     * the two-phase save pattern in {@code JdbcJournalEntryRepository} —
+     * the {@code guard_journal_line_immutability} DB trigger rejects line
+     * INSERTs once the header is {@code POSTED}, so the repository inserts
+     * the header at {@code DRAFT} first, INSERTs lines, then UPDATEs to
+     * {@code POSTED}.
+     */
+    public enum Status {
+        DRAFT("draft"),
+        POSTED("posted"),
+        REVERSED("reversed");
+
+        private final String dbValue;
+
+        Status(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static Status fromDb(String value) {
+            for (Status s : values()) {
+                if (s.dbValue.equals(value)) return s;
+            }
+            throw new IllegalArgumentException("Unknown journal_entry status: " + value);
+        }
+    }
 
     private final JournalEntryId id;
     private final String journalNumber;
     private final LocalDate postingDate;
-    private final String sourceModule;
+    private final SourceModule sourceModule;
     private final String sourceDocumentType;
     private final UUID sourceDocumentId;
     private final String description;
-    private final String status;
+    private final Status status;
     private final String currencyCode;
     private final BigDecimal exchangeRate;
     private final Instant exchangeRateCapturedAt;
@@ -52,7 +111,7 @@ public final class JournalEntry {
     public static JournalEntry post(
         String journalNumber,
         LocalDate postingDate,
-        String sourceModule,
+        SourceModule sourceModule,
         String sourceDocumentType,
         UUID sourceDocumentId,
         String description,
@@ -80,7 +139,7 @@ public final class JournalEntry {
             postingDate == null ? LocalDate.now() : postingDate,
             sourceModule, sourceDocumentType, sourceDocumentId,
             description,
-            "posted",
+            Status.POSTED,
             currencyCode == null ? "AUD" : currencyCode,
             exchangeRate == null ? BigDecimal.ONE : exchangeRate,
             Instant.now(),
@@ -106,10 +165,10 @@ public final class JournalEntry {
         LocalDate reversalPostingDate
     ) {
         Objects.requireNonNull(original, "original");
-        if (!POSTED.equals(original.status)) {
+        if (original.status != Status.POSTED) {
             throw new IllegalStateException(
                 "Can only reverse a posted journal entry; original " + original.id().value()
-                    + " is in status=" + original.status
+                    + " is in status=" + original.status.dbValue()
             );
         }
         LocalDate postingDate = reversalPostingDate == null ? LocalDate.now() : reversalPostingDate;
@@ -136,7 +195,7 @@ public final class JournalEntry {
         return post(
             "JE-REV-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
             postingDate,
-            "finance",
+            SourceModule.FINANCE,
             "journal_reversal",
             original.id().value(),
             description,
@@ -148,8 +207,8 @@ public final class JournalEntry {
 
     public static JournalEntry reconstitute(
         JournalEntryId id, String journalNumber, LocalDate postingDate,
-        String sourceModule, String sourceDocumentType, UUID sourceDocumentId,
-        String description, String status,
+        SourceModule sourceModule, String sourceDocumentType, UUID sourceDocumentId,
+        String description, Status status,
         String currencyCode, BigDecimal exchangeRate, Instant exchangeRateCapturedAt,
         List<JournalEntryLine> lines, long version
     ) {
@@ -164,8 +223,8 @@ public final class JournalEntry {
 
     private JournalEntry(
         JournalEntryId id, String journalNumber, LocalDate postingDate,
-        String sourceModule, String sourceDocumentType, UUID sourceDocumentId,
-        String description, String status,
+        SourceModule sourceModule, String sourceDocumentType, UUID sourceDocumentId,
+        String description, Status status,
         String currencyCode, BigDecimal exchangeRate, Instant exchangeRateCapturedAt,
         List<JournalEntryLine> lines, long version
     ) {
@@ -187,11 +246,11 @@ public final class JournalEntry {
     public JournalEntryId id()                     { return id; }
     public String journalNumber()                  { return journalNumber; }
     public LocalDate postingDate()                 { return postingDate; }
-    public String sourceModule()                   { return sourceModule; }
+    public SourceModule sourceModule()             { return sourceModule; }
     public String sourceDocumentType()             { return sourceDocumentType; }
     public UUID sourceDocumentId()                 { return sourceDocumentId; }
     public String description()                    { return description; }
-    public String status()                         { return status; }
+    public Status status()                         { return status; }
     public String currencyCode()                   { return currencyCode; }
     public BigDecimal exchangeRate()               { return exchangeRate; }
     public Instant exchangeRateCapturedAt()        { return exchangeRateCapturedAt; }

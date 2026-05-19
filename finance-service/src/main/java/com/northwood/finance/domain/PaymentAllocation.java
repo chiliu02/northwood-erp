@@ -14,5 +14,5 @@ public record PaymentAllocation(
     UUID customerInvoiceHeaderId,
     UUID supplierInvoiceHeaderId,
     BigDecimal allocatedAmount,
-    String status
+    Payment.AllocationStatus status
 ) {}

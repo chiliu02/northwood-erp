@@ -6,6 +6,41 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-19 — §2.0.d finance bucket: CustomerInvoice / SupplierInvoice / Payment / JournalEntry enums (closes §2.0)
+
+Final §2.0 slice — the *finance* bucket. Four aggregates, 9 nested enums. Closes out the §2.0 migration that started with the SalesOrder pilot earlier today.
+
+What shipped:
+
+- **`CustomerInvoice.Status`** — 5 values (DRAFT ‡ / POSTED / PARTIALLY_PAID / PAID / CANCELLED ‡). Java's `create()` factory writes POSTED; the `maintain_allocation_totals` DB trigger writes PARTIALLY_PAID and PAID. (‡ = schema-prep Javadoc tag.)
+- **`SupplierInvoice.Status`** — 10 values; Java writes APPROVED / THREE_WAY_MATCH_FAILED / CANCELLED via `record()` / `manualApprove()` / `manualReject()`; trigger writes PARTIALLY_PAID / PAID. 5 schema-prep values (DRAFT, THREE_WAY_MATCH_PENDING/PASSED, POSTED, ON_HOLD).
+- **`SupplierInvoice.MatchStatus`** — 4 values (NOT_MATCHED ‡ / MATCHED / VARIANCE / FAILED). `SupplierInvoice.record()` factory's `matchOutcome` parameter is now typed; `SupplierInvoiceService.decideMatchOutcome()` returns `MatchStatus`.
+- **`Payment.Method`** — 4 values (BANK_TRANSFER / CASH / CARD / CHEQUE). All `Payment.record*()` factories take `Method`; events carry the wire-format String via `.dbValue()`.
+- **`Payment.Status`** — 4 values (DRAFT ‡ / POSTED / CANCELLED ‡ / REVERSED ‡). Java only writes POSTED today.
+- **`Payment.AllocationStatus`** (on PaymentAllocation child) — 2 values (POSTED / REVERSED ‡).
+- **`JournalEntry.SourceModule`** — 5 values (SALES / INVENTORY / MANUFACTURING / PURCHASING / FINANCE). Private helpers in `JournalEntryService` take the enum directly; all 6 call sites pass `SourceModule.FINANCE`.
+- **`JournalEntry.Status`** — 3 values (DRAFT / POSTED / REVERSED), all actively produced via the two-phase save + reversal flow.
+
+Plus:
+
+- Both `*InvoiceRepository.PaymentSnapshot` records (`CustomerInvoiceRepository` + `SupplierInvoiceRepository`) carry their respective `Status` enum end-to-end through `PaymentService` (no more String comparisons inside the application layer).
+- `PaymentService.recordSupplierPayment` / `recordCustomerPayment` / multi-variants wrap `command.paymentMethod()` (still a String per the Command-takes-wire-shape rule) with `Payment.Method.fromDb(...)` when constructing the domain `Payment`.
+- 5 view DTOs (`PaymentView`, `PaymentAllocationView`, `CustomerInvoiceView`, `SupplierInvoiceView`, `JournalEntryView`) convert `enum → String` via `.dbValue()` at the `from(...)` boundary.
+
+Surfaced and fixed another latent test-hygiene bug: `PaymentServiceTest` was passing `"EFT"` as `paymentMethod` — not in the schema CHECK (valid: bank_transfer / cash / card / cheque). Replaced with `"bank_transfer"`.
+
+**Smoke**: `mvn -pl test-harness -am test` → full 16-module reactor green; 112 finance-service tests pass.
+
+### §2.0 closeout
+
+§2.0 status-field representation migration is now fully shipped: pilot (SalesOrder) + 2.0.a (foundation: Product / Customer / Bom / WorkOrder) + 2.0.b (sales+inventory: StockReservation / GoodsReceipt / Shipment + schema CHECK migration) + 2.0.c (purchasing: PurchaseRequisition / PurchaseOrder) + 2.0.d (finance: CustomerInvoice / SupplierInvoice / Payment / JournalEntry).
+
+**14 aggregates migrated** to the nested-enum-with-`dbValue()` / `fromDb()` convention. **Convention documented** in `docs/conventions.md` (*Aggregate enumerated fields*) + summary in `CLAUDE.md`. **1 Liquibase schema-CHECK migration** shipped (`cancelled` → `reversed` on `goods_receipt_header` + `shipment_header`).
+
+Latent test-hygiene bugs caught by the typed-enum strictness across the migration: `"raw_material"` for componentKind (Bom — 2.0.a), `"shortage"` for stock_reservation_line status (2.0.b), `"EFT"` for payment_method (2.0.d). All replaced with valid schema values.
+
+---
+
 ## 2026-05-19 — §2.0.c purchasing bucket: PurchaseRequisition + PurchaseOrder enums
 
 Fourth §2.0 slice — the *purchasing* bucket. Two aggregates, 5 nested enums.
