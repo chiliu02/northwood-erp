@@ -11,6 +11,7 @@ import com.northwood.inventory.domain.GoodsReceiptRepository;
 import com.northwood.inventory.domain.StockMovementDirection;
 import com.northwood.inventory.domain.StockMovementSourceTypes;
 import com.northwood.inventory.domain.StockMovementType;
+import com.northwood.inventory.domain.WarehouseCodes;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -90,7 +91,7 @@ public class GoodsReceiptService {
 
     @Transactional
     public GoodsReceiptView post(PostGoodsReceiptCommand command) {
-        String warehouseCode = command.warehouseCode() == null ? "MAIN" : command.warehouseCode();
+        String warehouseCode = command.warehouseCode() == null ? WarehouseCodes.MAIN : command.warehouseCode();
         UUID warehouseId = warehouses.findIdByCode(warehouseCode);
 
         // Defence-in-depth: reject if any line's productId doesn't match the

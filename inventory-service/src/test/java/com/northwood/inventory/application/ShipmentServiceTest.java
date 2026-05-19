@@ -16,6 +16,7 @@ import com.northwood.inventory.domain.ShipmentRepository;
 import com.northwood.inventory.domain.StockMovementDirection;
 import com.northwood.inventory.domain.StockMovementSourceTypes;
 import com.northwood.inventory.domain.StockMovementType;
+import com.northwood.inventory.domain.WarehouseCodes;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -53,10 +54,10 @@ class ShipmentServiceTest {
     }
 
     @Test void single_line_decrements_stock_and_records_movement() {
-        when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
 
         // Unlinked line (null salesOrderLineId) skips validation — focus is on stock side effects.
-        service.post(cmd("MAIN", List.of(
+        service.post(cmd(WarehouseCodes.MAIN, List.of(
             new ShipmentLineRequest(null, PRODUCT_1, "SKU-1", "Product 1",
                 new BigDecimal("3"), new BigDecimal("10.00"))
         )));
@@ -72,9 +73,9 @@ class ShipmentServiceTest {
     }
 
     @Test void multiple_lines_decrement_each_independently() {
-        when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
 
-        service.post(cmd("MAIN", List.of(
+        service.post(cmd(WarehouseCodes.MAIN, List.of(
             new ShipmentLineRequest(null, PRODUCT_1, "SKU-1", "P1",
                 new BigDecimal("3"), new BigDecimal("10.00")),
             new ShipmentLineRequest(null, PRODUCT_2, "SKU-2", "P2",
@@ -87,20 +88,20 @@ class ShipmentServiceTest {
     }
 
     @Test void null_warehouse_code_defaults_to_MAIN() {
-        when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
 
         service.post(cmd(null, List.of(
             new ShipmentLineRequest(null, PRODUCT_1, "SKU", "P",
                 new BigDecimal("1"), null)
         )));
 
-        verify(warehouses).findIdByCode("MAIN");
+        verify(warehouses).findIdByCode(WarehouseCodes.MAIN);
     }
 
     @Test void null_unit_cost_treated_as_zero() {
-        when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
 
-        service.post(cmd("MAIN", List.of(
+        service.post(cmd(WarehouseCodes.MAIN, List.of(
             new ShipmentLineRequest(null, PRODUCT_1, "SKU", "P",
                 new BigDecimal("2"), null)
         )));
@@ -113,11 +114,11 @@ class ShipmentServiceTest {
     }
 
     @Test void linked_line_with_matching_product_passes_validation() {
-        when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
         UUID soLineId = UUID.randomUUID();
         when(salesOrderLineFacts.findProductIdForLine(soLineId)).thenReturn(Optional.of(PRODUCT_1));
 
-        service.post(cmd("MAIN", List.of(
+        service.post(cmd(WarehouseCodes.MAIN, List.of(
             new ShipmentLineRequest(soLineId, PRODUCT_1, "SKU-1", "P1",
                 new BigDecimal("3"), new BigDecimal("10.00"))
         )));
@@ -127,11 +128,11 @@ class ShipmentServiceTest {
     }
 
     @Test void linked_line_with_mismatched_product_rejects_with_400_exception() {
-        when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
         UUID soLineId = UUID.randomUUID();
         when(salesOrderLineFacts.findProductIdForLine(soLineId)).thenReturn(Optional.of(PRODUCT_1));
 
-        assertThatThrownBy(() -> service.post(cmd("MAIN", List.of(
+        assertThatThrownBy(() -> service.post(cmd(WarehouseCodes.MAIN, List.of(
             new ShipmentLineRequest(soLineId, PRODUCT_2, "SKU-2", "P2",
                 new BigDecimal("3"), new BigDecimal("10.00"))
         ))))
@@ -145,11 +146,11 @@ class ShipmentServiceTest {
     }
 
     @Test void linked_line_with_unknown_so_line_id_rejects_with_400_exception() {
-        when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
         UUID soLineId = UUID.randomUUID();
         when(salesOrderLineFacts.findProductIdForLine(soLineId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.post(cmd("MAIN", List.of(
+        assertThatThrownBy(() -> service.post(cmd(WarehouseCodes.MAIN, List.of(
             new ShipmentLineRequest(soLineId, PRODUCT_1, "SKU-1", "P1",
                 new BigDecimal("3"), new BigDecimal("10.00"))
         ))))
@@ -162,13 +163,13 @@ class ShipmentServiceTest {
     }
 
     @Test void mixed_lines_first_invalid_rejects_entire_command() {
-        when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
         UUID soLineGood = UUID.randomUUID();
         UUID soLineBad = UUID.randomUUID();
         when(salesOrderLineFacts.findProductIdForLine(soLineGood)).thenReturn(Optional.of(PRODUCT_1));
         when(salesOrderLineFacts.findProductIdForLine(soLineBad)).thenReturn(Optional.of(PRODUCT_2));
 
-        assertThatThrownBy(() -> service.post(cmd("MAIN", List.of(
+        assertThatThrownBy(() -> service.post(cmd(WarehouseCodes.MAIN, List.of(
             new ShipmentLineRequest(soLineGood, PRODUCT_1, "SKU-1", "P1",
                 new BigDecimal("3"), new BigDecimal("10.00")),
             new ShipmentLineRequest(soLineBad, PRODUCT_1, "SKU-1", "P1",  // claims PRODUCT_1, actually PRODUCT_2

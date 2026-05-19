@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.northwood.inventory.domain.events.GoodsReceived;
 import com.northwood.shared.domain.DomainEvent;
+import static com.northwood.inventory.domain.WarehouseCodes.MAIN;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
@@ -31,27 +32,27 @@ class GoodsReceiptTest {
     class Post {
         @Test void rejects_empty_lines() {
             assertThatThrownBy(() -> GoodsReceipt.post(
-                "GR-001", PO, SUPPLIER, "Acme", WH, "MAIN", List.of()
+                "GR-001", PO, SUPPLIER, "Acme", WH, MAIN, List.of()
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_PO() {
             assertThatThrownBy(() -> GoodsReceipt.post(
-                "GR-001", null, SUPPLIER, "Acme", WH, "MAIN",
+                "GR-001", null, SUPPLIER, "Acme", WH, MAIN,
                 List.of(line(BigDecimal.TEN, BigDecimal.ONE))
             )).isInstanceOf(NullPointerException.class);
         }
 
         @Test void rejects_null_warehouse() {
             assertThatThrownBy(() -> GoodsReceipt.post(
-                "GR-001", PO, SUPPLIER, "Acme", null, "MAIN",
+                "GR-001", PO, SUPPLIER, "Acme", null, MAIN,
                 List.of(line(BigDecimal.TEN, BigDecimal.ONE))
             )).isInstanceOf(NullPointerException.class);
         }
 
         @Test void posted_status_directly() {
             GoodsReceipt gr = GoodsReceipt.post(
-                "GR-001", PO, SUPPLIER, "Acme", WH, "MAIN",
+                "GR-001", PO, SUPPLIER, "Acme", WH, MAIN,
                 List.of(line(BigDecimal.TEN, BigDecimal.ONE))
             );
             assertThat(gr.status()).isEqualTo(GoodsReceipt.Status.POSTED);
@@ -59,7 +60,7 @@ class GoodsReceiptTest {
 
         @Test void emits_GoodsReceived_carrying_PO_and_lines() {
             GoodsReceipt gr = GoodsReceipt.post(
-                "GR-001", PO, SUPPLIER, "Acme", WH, "MAIN",
+                "GR-001", PO, SUPPLIER, "Acme", WH, MAIN,
                 List.of(line(BigDecimal.TEN, new BigDecimal("80.00")))
             );
             List<DomainEvent> events = gr.pullPendingEvents();

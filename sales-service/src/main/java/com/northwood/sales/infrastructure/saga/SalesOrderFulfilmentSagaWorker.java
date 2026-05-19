@@ -7,6 +7,7 @@ import com.northwood.sales.application.saga.SalesOrderLineSnapshotPort;
 import com.northwood.sales.application.saga.SalesOrderLineSnapshotPort.LineSnapshot;
 import com.northwood.sales.domain.events.ManufacturingRequested;
 import com.northwood.sales.domain.events.StockReservationRequested;
+import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.sales.domain.saga.FulfilmentSagaData;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.MANUFACTURING_REQUESTED;
@@ -53,7 +54,6 @@ public class SalesOrderFulfilmentSagaWorker {
 
     private static final Logger log = LoggerFactory.getLogger(SalesOrderFulfilmentSagaWorker.class);
     private static final int BATCH_SIZE = 10;
-    private static final String DEFAULT_WAREHOUSE = "MAIN";
 
     private final String workerId =
         "sales.fulfilment-worker@" + ManagementFactory.getRuntimeMXBean().getName();
@@ -117,7 +117,7 @@ public class SalesOrderFulfilmentSagaWorker {
             UUID.randomUUID(),
             salesOrderId,
             salesOrderId,
-            DEFAULT_WAREHOUSE,
+            WarehouseCodes.MAIN,
             lines,
             Instant.now()
         );

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.northwood.inventory.domain.InventoryAggregateTypes;
+import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.events.GoodsReceived;
 import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
 import com.northwood.manufacturing.application.saga.MakeToOrderShortageRecoveryQueryPort;
@@ -51,7 +52,7 @@ class GoodsReceivedHandlerTest {
         UUID eventId = UUID.randomUUID();
         GoodsReceived payload = new GoodsReceived(
             eventId, UUID.randomUUID(), "GR-001",
-            UUID.randomUUID(), UUID.randomUUID(), "MAIN",
+            UUID.randomUUID(), UUID.randomUUID(), WarehouseCodes.MAIN,
             List.of(new GoodsReceived.ReceivedLine(
                 UUID.randomUUID(), UUID.randomUUID(), productId,
                 "RM-X", "Material X", new BigDecimal(quantity), BigDecimal.ZERO

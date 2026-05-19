@@ -1,6 +1,7 @@
 package com.northwood.testharness.m2o;
 
 import com.northwood.inventory.domain.InventoryAggregateTypes;
+import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.events.GoodsReceived;
 import com.northwood.manufacturing.domain.events.RawMaterialShortageDetected;
 
@@ -125,7 +126,7 @@ class MakeToOrderShortagePathTest {
                 "GR-001",
                 UUID.randomUUID(),
                 InventoryTestKit.DEFAULT_WAREHOUSE_ID,
-                "MAIN",
+                WarehouseCodes.MAIN,
                 List.of(new com.northwood.inventory.domain.events.GoodsReceived.ReceivedLine(
                     UUID.randomUUID(), UUID.randomUUID(),
                     rawProductId, "RM-001", "Raw Material 1",

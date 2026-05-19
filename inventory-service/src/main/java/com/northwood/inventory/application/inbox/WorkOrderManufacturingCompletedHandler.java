@@ -7,6 +7,7 @@ import com.northwood.inventory.application.WipBalanceWriter;
 import com.northwood.inventory.domain.StockMovementDirection;
 import com.northwood.inventory.domain.StockMovementSourceTypes;
 import com.northwood.inventory.domain.StockMovementType;
+import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.manufacturing.domain.events.WorkOrderManufacturingCompleted;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
@@ -36,7 +37,6 @@ import tools.jackson.databind.ObjectMapper;
 public class WorkOrderManufacturingCompletedHandler extends AbstractInboxHandler<WorkOrderManufacturingCompleted> {
 
     public static final String CONSUMER_NAME = "inventory.production-confirmation";
-    private static final String DEFAULT_WAREHOUSE = "MAIN";
 
     private final StockBalanceWriter stockBalances;
     private final WipBalanceWriter wipBalances;
@@ -60,7 +60,7 @@ public class WorkOrderManufacturingCompletedHandler extends AbstractInboxHandler
 
     @Override
     protected void apply(WorkOrderManufacturingCompleted payload, EventEnvelope envelope) {
-        UUID warehouseId = warehouses.findIdByCode(DEFAULT_WAREHOUSE);
+        UUID warehouseId = warehouses.findIdByCode(WarehouseCodes.MAIN);
         if (payload.parentWorkOrderId() != null) {
             // Sub-assembly child completion → bump WIP, not FG stock. WIP
             // movements are out of scope for stock_movement (which is

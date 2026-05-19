@@ -6,6 +6,23 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-19 — §2.0.i WarehouseCodes constants holder
+
+Hygiene pass after §2.0.h, same flavour: a shared business-key value (`"MAIN"`) was inlined as bare String literals across multiple services. Four services had already started extracting a private `DEFAULT_WAREHOUSE = "MAIN"` constant — clear evidence the cleanup was already in progress — but other production sites still used the bare literal, and tests scattered it everywhere. Closing it out.
+
+What shipped:
+
+- **`inventory.domain.WarehouseCodes`** in `inventory-events` — public constants holder, one entry today (`MAIN = "MAIN"`). Class-level Javadoc explicitly marks this as a *phase-1 demo default*: saga workers, inbox handlers, and service-layer default-fallback sites pin to it because the schema doesn't yet carry "which warehouse" metadata on orders/routings. When real warehouse selection lands, Find Usages on `WarehouseCodes.MAIN` surfaces every site that needs revisiting.
+- **4 deleted local constants** — the duplicated `private static final String DEFAULT_WAREHOUSE = "MAIN"` in `SalesOrderFulfilmentSagaWorker`, `MakeToOrderSagaWorker`, `RawMaterialsReservedHandler`, `WorkOrderManufacturingCompletedHandler`. Replaced with `WarehouseCodes.MAIN`.
+- **3 production default-fallback literals** — `GoodsReceiptService` + `ShipmentService` + `StockReservationService` (`command.warehouseCode() == null ? "MAIN" : ...`) replaced with the constant.
+- **~15 test-fixture sites** across `inventory-service` (StockReservationServiceTest, ShipmentServiceTest, GoodsReceiptServiceTest, ShipmentTest, GoodsReceiptTest, WorkOrderManufacturingCompletedHandlerTest), `manufacturing-service` (GoodsReceivedHandlerTest), `purchasing-service` (GoodsReceivedHandlerTest, RawMaterialShortageDetectedHandlerTest), `finance-service` (GoodsReceivedHandlerTest), and `test-harness` (PurchaseToPayHappyPathTest, PurchaseToPayRejectionPathTest, OrderToCashHappyPathTest, MakeToOrderShortagePathTest, InventoryTestKit).
+
+Pattern: reference-data identifier (same shape as `FinanceAccountCodes.AP = "2100"` and `StockMovementSourceTypes.GOODS_RECEIPT`), not a §2.0 enum (no schema CHECK on `warehouse_code` — values are open). Hosted in `inventory-events` because warehouse is inventory's aggregate and cross-service consumers (sales saga worker, manufacturing handlers, test fixtures) need to compile against it.
+
+**Smoke**: `mvn -pl test-harness -am test` → BUILD SUCCESS across the 16-module reactor.
+
+---
+
 ## 2026-05-19 — §2.0.h NUMBER_PREFIX constants on aggregate roots
 
 Hygiene pass after §2.0.g. Human-readable number prefixes (`"JE-"`, `"WO-"`, etc.) were inlined as String literals at every constructing site — 12 production-call sites across 5 aggregates. Not a wire-format / CHECK / dispatch concern (no consumer compares against these), but consistent enough across the project to be worth a constants pass: a future "rename the prefix scheme" change should touch one site per aggregate, not N sites scattered through services + tests.

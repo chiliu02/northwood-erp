@@ -10,6 +10,7 @@ import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderMaterial;
 import com.northwood.manufacturing.domain.WorkOrderRepository;
+import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.manufacturing.domain.events.RawMaterialReservationRequested;
 import com.northwood.manufacturing.domain.events.RawMaterialReservationRequested.RequestedComponent;
 import com.northwood.manufacturing.domain.saga.MakeToOrderSaga;
@@ -53,7 +54,6 @@ public class MakeToOrderSagaWorker {
 
     private static final Logger log = LoggerFactory.getLogger(MakeToOrderSagaWorker.class);
     private static final int BATCH_SIZE = 10;
-    private static final String DEFAULT_WAREHOUSE = "MAIN";
 
     private final String workerId =
         "manufacturing.mto-worker@" + ManagementFactory.getRuntimeMXBean().getName();
@@ -153,7 +153,7 @@ public class MakeToOrderSagaWorker {
             workOrderId,
             workOrder.salesOrderHeaderId(),
             workOrder.salesOrderLineId(),
-            DEFAULT_WAREHOUSE,
+            WarehouseCodes.MAIN,
             components,
             Instant.now()
         );

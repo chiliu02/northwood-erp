@@ -14,6 +14,7 @@ import com.northwood.inventory.application.WipBalanceWriter;
 import com.northwood.inventory.domain.StockMovementDirection;
 import com.northwood.inventory.domain.StockMovementSourceTypes;
 import com.northwood.inventory.domain.StockMovementType;
+import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.manufacturing.domain.ManufacturingAggregateTypes;
 import com.northwood.manufacturing.domain.events.WorkOrderManufacturingCompleted;
 import com.northwood.shared.application.inbox.InboxPort;
@@ -67,7 +68,7 @@ class WorkOrderManufacturingCompletedHandlerTest {
     }
 
     @Test void top_level_wo_bumps_stock_balance_and_records_movement() {
-        when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
 
         handler.handle(event(null));
 
@@ -82,7 +83,7 @@ class WorkOrderManufacturingCompletedHandlerTest {
     }
 
     @Test void sub_assembly_child_bumps_wip_not_stock() {
-        when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
 
         handler.handle(event(UUID.randomUUID()));  // non-null parent → sub-assembly
 

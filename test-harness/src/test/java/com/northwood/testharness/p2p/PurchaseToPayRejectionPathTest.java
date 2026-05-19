@@ -4,6 +4,7 @@ import com.northwood.finance.application.dto.RecordSupplierInvoiceCommand;
 import com.northwood.finance.domain.SupplierInvoice;
 import com.northwood.finance.domain.events.SupplierInvoiceRejected;
 import com.northwood.inventory.domain.InventoryAggregateTypes;
+import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.events.GoodsReceived;
 import com.northwood.purchasing.application.dto.CreateRequisitionCommand;
 import com.northwood.purchasing.application.dto.RequisitionLineRequest;
@@ -76,7 +77,7 @@ class PurchaseToPayRejectionPathTest {
         UUID receiptEventId = UUID.randomUUID();
         GoodsReceived receipt = new GoodsReceived(
             receiptEventId, receiptHeaderId, "GR-REJ-001",
-            po.id().value(), InventoryTestKit.DEFAULT_WAREHOUSE_ID, "MAIN",
+            po.id().value(), InventoryTestKit.DEFAULT_WAREHOUSE_ID, WarehouseCodes.MAIN,
             List.of(new GoodsReceived.ReceivedLine(
                 UUID.randomUUID(), poLine.id(),
                 productId, "RM-201", "Raw Material 201",

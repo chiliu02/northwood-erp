@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import com.northwood.finance.application.JournalEntryService;
 import com.northwood.inventory.domain.InventoryAggregateTypes;
+import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.events.GoodsReceived;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
@@ -55,7 +56,7 @@ class GoodsReceivedHandlerTest {
     private EventEnvelope event(List<GoodsReceived.ReceivedLine> lines) {
         UUID eventId = UUID.randomUUID();
         GoodsReceived payload = new GoodsReceived(
-            eventId, GR, "GR-001", PO, UUID.randomUUID(), "MAIN",
+            eventId, GR, "GR-001", PO, UUID.randomUUID(), WarehouseCodes.MAIN,
             lines, Instant.now()
         );
         return new EventEnvelope(

@@ -3,6 +3,7 @@ package com.northwood.testharness.p2p;
 import com.northwood.finance.domain.events.SupplierInvoiceApproved;
 import com.northwood.finance.domain.events.SupplierPaymentMade;
 import com.northwood.inventory.domain.InventoryAggregateTypes;
+import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.events.GoodsReceived;
 import com.northwood.purchasing.domain.events.PurchaseOrderApproved;
 import com.northwood.purchasing.domain.events.PurchaseOrderCreated;
@@ -101,7 +102,7 @@ class PurchaseToPayHappyPathTest {
         com.northwood.inventory.domain.events.GoodsReceived purchasingReceipt =
             new com.northwood.inventory.domain.events.GoodsReceived(
                 receiptEventId, receiptHeaderId, "GR-001",
-                po.id().value(), InventoryTestKit.DEFAULT_WAREHOUSE_ID, "MAIN",
+                po.id().value(), InventoryTestKit.DEFAULT_WAREHOUSE_ID, WarehouseCodes.MAIN,
                 List.of(new com.northwood.inventory.domain.events.GoodsReceived.ReceivedLine(
                     UUID.randomUUID(), poLine.id(),
                     productId, "RM-101", "Raw Material 101",

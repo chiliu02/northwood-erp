@@ -7,6 +7,7 @@ import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderMaterial;
 import com.northwood.manufacturing.domain.WorkOrderRepository;
+import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.events.RawMaterialsReserved;
 import com.northwood.manufacturing.domain.events.RawMaterialShortageDetected;
 import com.northwood.manufacturing.domain.events.RawMaterialShortageDetected.ShortageComponent;
@@ -50,7 +51,6 @@ import tools.jackson.databind.ObjectMapper;
 public class RawMaterialsReservedHandler extends AbstractInboxHandler<RawMaterialsReserved> {
 
     public static final String CONSUMER_NAME = "manufacturing.make-to-order.raw-materials-reserved";
-    private static final String DEFAULT_WAREHOUSE = "MAIN";
 
     private final MakeToOrderSagaManager sagaManager;
     private final WorkOrderRepository workOrders;
@@ -150,7 +150,7 @@ public class RawMaterialsReservedHandler extends AbstractInboxHandler<RawMateria
             workOrder.id().value(),
             workOrder.salesOrderHeaderId(),
             workOrder.salesOrderLineId(),
-            DEFAULT_WAREHOUSE,
+            WarehouseCodes.MAIN,
             shortage,
             Instant.now()
         ), WorkOrder.AGGREGATE_TYPE, actorUserId);

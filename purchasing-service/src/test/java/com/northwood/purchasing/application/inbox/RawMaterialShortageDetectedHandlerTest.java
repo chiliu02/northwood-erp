@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.manufacturing.domain.ManufacturingAggregateTypes;
 import com.northwood.manufacturing.domain.events.RawMaterialShortageDetected;
 import com.northwood.purchasing.application.PurchaseRequisitionService;
@@ -46,7 +47,7 @@ class RawMaterialShortageDetectedHandlerTest {
     private EventEnvelope event(List<RawMaterialShortageDetected.ShortageComponent> components) {
         UUID eventId = UUID.randomUUID();
         RawMaterialShortageDetected payload = new RawMaterialShortageDetected(
-            eventId, WO, WO, UUID.randomUUID(), UUID.randomUUID(), "MAIN",
+            eventId, WO, WO, UUID.randomUUID(), UUID.randomUUID(), WarehouseCodes.MAIN,
             components, Instant.now()
         );
         return new EventEnvelope(

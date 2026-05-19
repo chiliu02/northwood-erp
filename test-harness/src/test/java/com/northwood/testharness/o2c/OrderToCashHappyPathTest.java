@@ -1,5 +1,6 @@
 package com.northwood.testharness.o2c;
 
+import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.events.StockReserved;
 import com.northwood.sales.domain.events.SalesOrderPlaced;
 import com.northwood.sales.domain.events.SalesOrderShipped;
@@ -103,7 +104,7 @@ class OrderToCashHappyPathTest {
             orderId,
             customerId,
             "Acme Corp",
-            "MAIN",
+            WarehouseCodes.MAIN,
             List.of(new ShipmentLineRequest(
                 placedLine.lineId(),
                 productId,

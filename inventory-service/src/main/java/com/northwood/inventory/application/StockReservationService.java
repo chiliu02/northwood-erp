@@ -7,6 +7,7 @@ import com.northwood.sales.domain.events.StockReservationRequested;
 import com.northwood.inventory.domain.StockReservation;
 import com.northwood.inventory.domain.StockReservationLine;
 import com.northwood.inventory.domain.StockReservationRepository;
+import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.StockReservationRepository.ReservedLineSnapshot;
 import com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied;
 import com.northwood.shared.application.outbox.OutboxPort;
@@ -72,7 +73,7 @@ public class StockReservationService {
 
     @Transactional
     public void reserveForSalesOrder(StockReservationRequested payload) {
-        UUID warehouseId = warehouses.findIdByCode(payload.warehouseCode() == null ? "MAIN" : payload.warehouseCode());
+        UUID warehouseId = warehouses.findIdByCode(payload.warehouseCode() == null ? WarehouseCodes.MAIN : payload.warehouseCode());
 
         List<StockReservationLine> lines = new ArrayList<>();
         for (StockReservationRequested.RequestedLine req : payload.lines()) {
@@ -97,7 +98,7 @@ public class StockReservationService {
 
     @Transactional
     public void reserveForWorkOrder(RawMaterialReservationRequested payload) {
-        UUID warehouseId = warehouses.findIdByCode(payload.warehouseCode() == null ? "MAIN" : payload.warehouseCode());
+        UUID warehouseId = warehouses.findIdByCode(payload.warehouseCode() == null ? WarehouseCodes.MAIN : payload.warehouseCode());
 
         // Phase 3 retry support: a make-to-order saga that previously landed
         // at raw_material_shortage will re-emit the reservation request after

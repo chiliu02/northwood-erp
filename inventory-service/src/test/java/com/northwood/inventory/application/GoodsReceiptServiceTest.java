@@ -16,6 +16,7 @@ import com.northwood.inventory.domain.GoodsReceiptRepository;
 import com.northwood.inventory.domain.StockMovementDirection;
 import com.northwood.inventory.domain.StockMovementSourceTypes;
 import com.northwood.inventory.domain.StockMovementType;
+import com.northwood.inventory.domain.WarehouseCodes;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -53,10 +54,10 @@ class GoodsReceiptServiceTest {
     }
 
     @Test void single_line_bumps_stock_balance_and_records_movement() {
-        when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
 
         // Unlinked line (null purchaseOrderLineId) skips validation — focus is on stock side effects.
-        service.post(cmd("MAIN", List.of(
+        service.post(cmd(WarehouseCodes.MAIN, List.of(
             new GoodsReceiptLineRequest(null, PRODUCT_1, "RM-1", "Raw 1",
                 new BigDecimal("100"), new BigDecimal("2.50"))
         )));
@@ -72,9 +73,9 @@ class GoodsReceiptServiceTest {
     }
 
     @Test void multiple_lines_each_bumped_independently() {
-        when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
 
-        service.post(cmd("MAIN", List.of(
+        service.post(cmd(WarehouseCodes.MAIN, List.of(
             new GoodsReceiptLineRequest(null, PRODUCT_1, "RM-1", "Raw 1",
                 new BigDecimal("100"), new BigDecimal("2.50")),
             new GoodsReceiptLineRequest(null, PRODUCT_2, "RM-2", "Raw 2",
@@ -87,19 +88,19 @@ class GoodsReceiptServiceTest {
     }
 
     @Test void null_warehouse_code_defaults_to_MAIN() {
-        when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
 
         service.post(cmd(null, List.of(
             new GoodsReceiptLineRequest(null, PRODUCT_1, "RM", "R", new BigDecimal("1"), null)
         )));
 
-        verify(warehouses).findIdByCode("MAIN");
+        verify(warehouses).findIdByCode(WarehouseCodes.MAIN);
     }
 
     @Test void null_unit_cost_treated_as_zero() {
-        when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
 
-        service.post(cmd("MAIN", List.of(
+        service.post(cmd(WarehouseCodes.MAIN, List.of(
             new GoodsReceiptLineRequest(null, PRODUCT_1, "RM", "R", new BigDecimal("5"), null)
         )));
 
@@ -111,11 +112,11 @@ class GoodsReceiptServiceTest {
     }
 
     @Test void linked_line_with_matching_product_passes_validation() {
-        when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
         UUID poLineId = UUID.randomUUID();
         when(purchaseOrderLineFacts.findProductIdForLine(poLineId)).thenReturn(Optional.of(PRODUCT_1));
 
-        service.post(cmd("MAIN", List.of(
+        service.post(cmd(WarehouseCodes.MAIN, List.of(
             new GoodsReceiptLineRequest(poLineId, PRODUCT_1, "RM-1", "Raw 1",
                 new BigDecimal("100"), new BigDecimal("2.50"))
         )));
@@ -125,11 +126,11 @@ class GoodsReceiptServiceTest {
     }
 
     @Test void linked_line_with_mismatched_product_rejects_with_400_exception() {
-        when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
         UUID poLineId = UUID.randomUUID();
         when(purchaseOrderLineFacts.findProductIdForLine(poLineId)).thenReturn(Optional.of(PRODUCT_1));
 
-        assertThatThrownBy(() -> service.post(cmd("MAIN", List.of(
+        assertThatThrownBy(() -> service.post(cmd(WarehouseCodes.MAIN, List.of(
             new GoodsReceiptLineRequest(poLineId, PRODUCT_2, "RM-2", "Raw 2",
                 new BigDecimal("100"), new BigDecimal("2.50"))
         ))))
@@ -143,11 +144,11 @@ class GoodsReceiptServiceTest {
     }
 
     @Test void linked_line_with_unknown_po_line_id_rejects_with_400_exception() {
-        when(warehouses.findIdByCode("MAIN")).thenReturn(WAREHOUSE);
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
         UUID poLineId = UUID.randomUUID();
         when(purchaseOrderLineFacts.findProductIdForLine(poLineId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.post(cmd("MAIN", List.of(
+        assertThatThrownBy(() -> service.post(cmd(WarehouseCodes.MAIN, List.of(
             new GoodsReceiptLineRequest(poLineId, PRODUCT_1, "RM-1", "Raw 1",
                 new BigDecimal("100"), new BigDecimal("2.50"))
         ))))

@@ -2,6 +2,7 @@ package com.northwood.testharness.kits;
 
 import com.northwood.inventory.application.ShipmentService;
 import com.northwood.inventory.application.StockReservationService;
+import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.application.inbox.RawMaterialReservationRequestedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderCancellationRequestedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderPlacedHandler;
@@ -53,7 +54,7 @@ public final class InventoryTestKit {
     public InventoryTestKit(SynchronousBus bus, ObjectMapper json) {
         this.reservations = new InMemoryStockReservationRepository(outbox, json);
         this.shipments = new InMemoryShipmentRepository(outbox, json);
-        this.warehouses.put("MAIN", DEFAULT_WAREHOUSE_ID);
+        this.warehouses.put(WarehouseCodes.MAIN, DEFAULT_WAREHOUSE_ID);
         this.service = new StockReservationService(
             reservations, stockBalances, stockBalances, warehouses, outbox, json
         );
