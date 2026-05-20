@@ -447,7 +447,7 @@ All keep `api/` on application types only:
 Each of the three flavours above produces an application-layer exception class that surfaces to the wire via the shared `DomainExceptionAdvice`. Concrete shape every such class follows:
 
 1. **Extend a marker base** — one of `shared.application.exception.NotFoundException` (HTTP 404), `ConflictException` (HTTP 409), or `BadRequestException` (HTTP 400). All three are thin subclasses of `AbstractDomainException`, which holds the wire-format code in a `private final String code` field and exposes it via a `final` `code()` accessor. Choose the marker by *what the caller can do about it* — retry with a different id (404), wait/fix state then retry (409), or fix the input (400).
-2. **Pass the wire-format code through `super("CODE_STRING", message[, cause])`** — the string literal goes in the constructor call directly. No `public static final String CODE` constant on the concrete class: the code is referenced exactly once (in `super(...)`), and the indirection through a constant doesn't earn its keep.
+2. **Declare `public static final String CODE = "<wire-format-string>"` on the concrete class and pass it through `super(CODE, message[, cause])`.** The constant sits above instance fields per the class-member-ordering rule. The string literal appears exactly once, at the constant declaration — every other reference (the `super(...)` call, tests, cross-service Java consumers) flows through `XxxException.CODE`. This mirrors the existing `EVENT_TYPE` / `AGGREGATE_TYPE` / `XxxStatuses` pattern: "Find Usages on `CustomerNotFoundException.CODE`" answers who produces, who consumes, and what depends on the wire-format string. The cost is one extra line per class; the win is the same compile-time anchor every other cross-service wire-format string already has.
 3. **Promote constructor arguments to typed fields with accessors.** Every constructor parameter that informs the error (`customerCode`, `status`, `sku`, etc.) becomes a `private final` field with a same-named accessor method. Pre-existing English `super(...)` message stays for logs and stack traces — it's no longer the wire-format body.
 4. **Implement `Map<String, Object> params()`** as a literal `Map.of(...)` over the typed fields. The shared advice serialises this directly into the JSON response body's `params` field. Keys are stable identifiers; values must be JSON-serialisable (UUIDs, Strings, Numbers, enums-via-`dbValue()`).
 
@@ -455,9 +455,10 @@ Skeleton:
 
 ```java
 public static class CustomerNotFoundException extends NotFoundException {
+    public static final String CODE = "CUSTOMER_NOT_FOUND";
     private final String customerCode;
     public CustomerNotFoundException(String customerCode) {
-        super("CUSTOMER_NOT_FOUND", "Customer not found: " + customerCode);
+        super(CODE, "Customer not found: " + customerCode);
         this.customerCode = customerCode;
     }
     public String customerCode() { return customerCode; }
@@ -467,7 +468,7 @@ public static class CustomerNotFoundException extends NotFoundException {
 
 When the application-layer exception wraps a domain or domain-port exception (flavours 2 + 3 above) and the wrapped cause doesn't yet expose typed accessors, fall back to `Map.of("detail", getMessage())` — the English message becomes the `detail` param. Flag the domain exception for typed-accessor follow-up rather than leaving the wrapper without `params()`.
 
-Tests that need to assert on the wire-format code should reference the string literal directly — there's no `CustomerNotFoundException.CODE` constant. Renaming a code is intentionally a touch-both-places change so the wire-contract drift is visible.
+Tests that need to assert on the wire-format code reference `XxxException.CODE` (e.g. `assertThat(response.code()).isEqualTo(CustomerNotFoundException.CODE)`). Renaming a code becomes a one-place change at the constant declaration; the indirection through the constant is what gives Find Usages and grep-by-symbol the property they need — the same property `EVENT_TYPE` / `AGGREGATE_TYPE` already carry.
 
 ## Error response shape
 

@@ -41,9 +41,10 @@ import org.springframework.transaction.annotation.Transactional;
 public class WorkOrderReleaseService {
 
     public static class BomNotFoundException extends NotFoundException {
+        public static final String CODE = "ACTIVE_BOM_NOT_FOUND";
         private final UUID finishedProductId;
         public BomNotFoundException(UUID finishedProductId) {
-            super("ACTIVE_BOM_NOT_FOUND", "No active BOM for finished_product_id=" + finishedProductId);
+            super(CODE, "No active BOM for finished_product_id=" + finishedProductId);
             this.finishedProductId = finishedProductId;
         }
         public UUID finishedProductId() { return finishedProductId; }
@@ -51,9 +52,10 @@ public class WorkOrderReleaseService {
     }
 
     public static class RoutingNotFoundException extends NotFoundException {
+        public static final String CODE = "ACTIVE_ROUTING_NOT_FOUND";
         private final UUID finishedProductId;
         public RoutingNotFoundException(UUID finishedProductId) {
-            super("ACTIVE_ROUTING_NOT_FOUND", "No active routing for finished_product_id=" + finishedProductId);
+            super(CODE, "No active routing for finished_product_id=" + finishedProductId);
             this.finishedProductId = finishedProductId;
         }
         public UUID finishedProductId() { return finishedProductId; }

@@ -11,7 +11,9 @@ import java.util.Map;
  * exception's English message.
  *
  * <p>Concrete exceptions implement {@link #code()} (a stable wire-format
- * uppercase-snake-case identifier like {@code "CUSTOMER_NOT_FOUND"}) and
+ * uppercase-snake-case identifier exposed as a {@code public static final
+ * String CODE} on the concrete class — e.g. {@code CustomerNotFoundException.CODE
+ * = "CUSTOMER_NOT_FOUND"}) and
  * {@link #params()} (the typed context the consumer needs to render a full
  * message — customer id, expected status, etc.). The exception's English
  * {@link Exception#getMessage()} stays useful for logs and stack traces; it
@@ -32,10 +34,14 @@ import java.util.Map;
 public interface DomainException {
 
     /**
-     * Stable wire-format identifier for this error condition. Convention:
-     * uppercase snake case, e.g. {@code "CUSTOMER_NOT_FOUND"}. Used as the
-     * lookup key in SPA message bundles; never changes once an exception
-     * class ships.
+     * Stable wire-format identifier for this error condition. Concrete
+     * subclasses expose this as a {@code public static final String CODE}
+     * field (uppercase snake case, e.g.
+     * {@code CustomerNotFoundException.CODE = "CUSTOMER_NOT_FOUND"}) and pass
+     * it through {@code super(CODE, ...)} so the literal is declared exactly
+     * once. {@link AbstractDomainException} stores it and this accessor
+     * returns it. Used as the lookup key in SPA message bundles; never changes
+     * once an exception class ships.
      */
     String code();
 

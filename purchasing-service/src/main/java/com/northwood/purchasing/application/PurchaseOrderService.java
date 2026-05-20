@@ -56,8 +56,9 @@ public class PurchaseOrderService {
      * (HTTP 409) instead of importing the domain exception type directly.
      */
     public static class PoNotApprovableException extends ConflictException {
+        public static final String CODE = "PO_NOT_APPROVABLE";
         public PoNotApprovableException(Throwable cause) {
-            super("PO_NOT_APPROVABLE", cause.getMessage(), cause);
+            super(CODE, cause.getMessage(), cause);
         }
         @Override public Map<String, Object> params() {
             // Domain exception's English message carries the receiver's state

@@ -67,9 +67,10 @@ public class BomService {
     ) {}
 
     public static class BomNotFoundException extends NotFoundException {
+        public static final String CODE = "BOM_NOT_FOUND";
         private final UUID bomHeaderId;
         public BomNotFoundException(UUID bomHeaderId) {
-            super("BOM_NOT_FOUND", "No BOM with bom_header_id=" + bomHeaderId);
+            super(CODE, "No BOM with bom_header_id=" + bomHeaderId);
             this.bomHeaderId = bomHeaderId;
         }
         public UUID bomHeaderId() { return bomHeaderId; }
@@ -77,9 +78,10 @@ public class BomService {
     }
 
     public static class BomLineNotFoundException extends NotFoundException {
+        public static final String CODE = "BOM_LINE_NOT_FOUND";
         private final UUID bomLineId;
         public BomLineNotFoundException(UUID bomLineId) {
-            super("BOM_LINE_NOT_FOUND", "No BOM line with bom_line_id=" + bomLineId);
+            super(CODE, "No BOM line with bom_line_id=" + bomLineId);
             this.bomLineId = bomLineId;
         }
         public UUID bomLineId() { return bomLineId; }
@@ -92,11 +94,12 @@ public class BomService {
      * instead of importing the domain exception type directly.
      */
     public static class BomNotEditableException extends ConflictException {
+        public static final String CODE = "BOM_NOT_EDITABLE";
         public BomNotEditableException(String message, Throwable cause) {
-            super("BOM_NOT_EDITABLE", message, cause);
+            super(CODE, message, cause);
         }
         public BomNotEditableException(String message) {
-            super("BOM_NOT_EDITABLE", message);
+            super(CODE, message);
         }
         @Override public Map<String, Object> params() { return Map.of("detail", getMessage()); }
     }
@@ -107,11 +110,12 @@ public class BomService {
      * (HTTP 409) instead of importing the domain exception type directly.
      */
     public static class BomCycleException extends ConflictException {
+        public static final String CODE = "BOM_CYCLE";
         public BomCycleException(String message, Throwable cause) {
-            super("BOM_CYCLE", message, cause);
+            super(CODE, message, cause);
         }
         public BomCycleException(String message) {
-            super("BOM_CYCLE", message);
+            super(CODE, message);
         }
         @Override public Map<String, Object> params() { return Map.of("detail", getMessage()); }
     }
@@ -124,10 +128,11 @@ public class BomService {
      * retired SKU, even before activation.
      */
     public static class BomComponentDiscontinuedException extends ConflictException {
+        public static final String CODE = "BOM_COMPONENT_DISCONTINUED";
         private final UUID componentProductId;
         private final String componentSku;
         public BomComponentDiscontinuedException(UUID componentProductId, String componentSku) {
-            super("BOM_COMPONENT_DISCONTINUED", "Component product " + componentSku + " (" + componentProductId
+            super(CODE, "Component product " + componentSku + " (" + componentProductId
                 + ") has been discontinued by product-service; cannot add to a BOM");
             this.componentProductId = componentProductId;
             this.componentSku = componentSku;

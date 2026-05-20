@@ -52,11 +52,12 @@ public class GoodsReceiptService {
      * client that bypassed the SPA picker.
      */
     public static class GoodsReceiptLineProductMismatchException extends BadRequestException {
+        public static final String CODE = "GOODS_RECEIPT_LINE_PRODUCT_MISMATCH";
         private final UUID purchaseOrderLineId;
         private final UUID expectedProductId;
         private final UUID actualProductId;
         public GoodsReceiptLineProductMismatchException(UUID purchaseOrderLineId, UUID expectedProductId, UUID actualProductId) {
-            super("GOODS_RECEIPT_LINE_PRODUCT_MISMATCH", expectedProductId == null
+            super(CODE, expectedProductId == null
                 ? "Unknown purchase_order_line_id=%s (no matching projection row; line may not belong to a created purchase order)".formatted(purchaseOrderLineId)
                 : "Product mismatch on purchase_order_line_id=%s: expected product=%s, got=%s".formatted(purchaseOrderLineId, expectedProductId, actualProductId)
             );

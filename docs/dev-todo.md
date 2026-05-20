@@ -124,6 +124,28 @@ Pull forward only if a public-facing audience wants the orchestrated walkthrough
 
 ---
 
+## 1H. Error-response shape — deferred follow-up (§1H shipped 2026-05-20)
+
+§1H Backend error-response shape + `DomainException` scaffolding shipped 2026-05-20 along with three follow-up tightening passes (hoist `code()` to marker bases → collapse bases into `AbstractDomainException` → re-introduce `CODE` constants on each concrete class). The remaining item below is deferred until a real consumer needs it.
+
+### 1H.1 Build-time generated error-code catalog
+
+Generate a single JSON artifact (e.g. `shared/build/error-codes.json`) by reflecting over every concrete subclass of `shared.application.exception.AbstractDomainException` at build time and emitting `{ code, marker, declaringClass, paramKeys[] }` per entry. Surfaces:
+
+- **Typed TypeScript const for the SPAs** — `demo-web-ui/src/generated/errorCodes.ts` and `erp-web-ui/src/generated/errorCodes.ts`, generated alongside the JSON. Each `ErrorResponse.code` becomes a typed union; missing-bundle-key checks become compile-time.
+- **Documentation surface** — Markdown table emitted to `docs/error-codes.generated.md` listing every code with its declaring class, HTTP status, and param keys.
+
+The constraint that makes this worth automating: the catalog must never drift from the actual Java constants. A hand-maintained `error-codes.json` becomes a worse artifact than no artifact the first time it goes stale.
+
+Pull forward when:
+- The SPA needs **typed dispatch** on `code` (today both SPAs treat `code` as a localisation lookup key — plain string equality, no exhaustiveness check needed).
+- A second locale lands and **missing-bundle-key bugs** become a real failure mode (§3.5 SPA i18n).
+- A **third Java consumer** of the codes appears (BFF branching, an external integration, something not yet on the radar).
+
+Skip indefinitely if the SPA never moves past "look up the code in the bundle, render English fallback if missing." The per-class `CODE` constants on the Java side already give producers + Java consumers a typed import path; the catalog only earns its keep when the *SPA* needs structured access.
+
+---
+
 ## 2. Polish on shipped slices
 
 <!-- §2.0 fully shipped 2026-05-19 — see dev-done.md for the per-bucket entries. Convention captured in docs/conventions.md *Aggregate enumerated fields* + CLAUDE.md summary line. -->

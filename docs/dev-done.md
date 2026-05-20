@@ -6,6 +6,35 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — §1H follow-up: re-introduce `public static final String CODE` on every concrete `DomainException`
+
+Reverses the "inline the CODE constants" half of the previous §1H tightening pass committed earlier today. The CODE constants are back on every concrete `DomainException` subclass; the `super(...)` call now goes through `CODE` instead of a string literal.
+
+### Why the reversal
+
+The previous removal argued the constant was a one-use indirection — passed once to `super(...)` and otherwise unused. That argument held under the assumption that no Java consumer ever needs to reference the wire-format string. Reviewed against the rest of the codebase's cross-service wire-format-constant pattern (`EVENT_TYPE` / `AGGREGATE_TYPE` / `XxxStatuses`), the consistency case wins:
+
+- Find Usages on `CustomerNotFoundException.CODE` answers who produces / consumes / depends on the code — the same property the event-class constants give.
+- Tests that need to assert on the code reference the constant rather than a fresh string literal, so a rename becomes a one-place change.
+- The BFF (or any future cross-service Java consumer) gets a typed compile-time anchor instead of duplicating the literal.
+- The "one-use indirection" framing missed that *every* wire-format constant in the codebase is one-use at the producer site (`StockReserved.STATUS_RESERVED` is used exactly once inside the `StockReserved` class — the consumers carry the rest of the uses). The point of the constant is to give the *consumer* a typed import path, not to deduplicate within the producer file.
+
+There's no principled reason exceptions should be the lone wire-format opt-out from this pattern.
+
+### What changed
+
+- **22 concrete exception classes across 10 files** re-gain `public static final String CODE = "..."` declarations, placed above instance fields per the class-member-ordering rule. The `super(...)` call switches from `super("CODE_STRING", ...)` to `super(CODE, ...)`. Grep for `super\("[A-Z_]+"` returns zero matches.
+- **`docs/conventions.md` → "Every application-layer exception implements `DomainException`"** — step 2 + skeleton + tests-note flipped back. The text now references the `EVENT_TYPE` / `AGGREGATE_TYPE` parallel explicitly.
+- **`shared.application.exception.DomainException`** Javadoc — references `CustomerNotFoundException.CODE = "CUSTOMER_NOT_FOUND"` rather than the bare literal in both places it appears.
+
+### Deferred follow-up
+
+Build-time generated error-code catalog (TypeScript const for SPAs + Markdown doc) deferred to `dev-todo.md` §1H.1 — only earns its keep when the SPA needs typed dispatch on `code` (today it's a localisation lookup key).
+
+### Smoke
+
+`mvn clean install -DskipTests` SUCCESS across 19 modules in ~27s.
+
 ## 2026-05-20 — §1H follow-up: collapse identical bases into `AbstractDomainException`; inline CODE constants
 
 Second tightening pass on §1H. The previous follow-up had pushed the `code` field + `code()` accessor into the three marker base classes (`NotFoundException`, `ConflictException`, `BadRequestException`) — but the three bases ended up identical except for the class name. And with `code()` already on the base, the `public static final String CODE` declaration on each concrete class was a one-use indirection.

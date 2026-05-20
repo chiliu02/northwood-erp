@@ -55,11 +55,12 @@ public class ShipmentService {
      * that bypassed the SPA picker.
      */
     public static class ShipmentLineProductMismatchException extends BadRequestException {
+        public static final String CODE = "SHIPMENT_LINE_PRODUCT_MISMATCH";
         private final UUID salesOrderLineId;
         private final UUID expectedProductId;
         private final UUID actualProductId;
         public ShipmentLineProductMismatchException(UUID salesOrderLineId, UUID expectedProductId, UUID actualProductId) {
-            super("SHIPMENT_LINE_PRODUCT_MISMATCH", expectedProductId == null
+            super(CODE, expectedProductId == null
                 ? "Unknown sales_order_line_id=%s (no matching projection row; line may not belong to a placed sales order)".formatted(salesOrderLineId)
                 : "Product mismatch on sales_order_line_id=%s: expected product=%s, got=%s".formatted(salesOrderLineId, expectedProductId, actualProductId)
             );
