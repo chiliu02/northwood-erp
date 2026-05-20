@@ -2,6 +2,9 @@ package com.northwood.purchasing.infrastructure.saga;
 
 import com.northwood.purchasing.domain.saga.PurchaseToPaySaga;
 import com.northwood.purchasing.application.saga.PurchaseToPaySagaPort;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.TraceContext;
+import io.micrometer.tracing.Tracer;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -19,9 +22,19 @@ import org.springframework.stereotype.Repository;
 public class JdbcPurchaseToPaySagaAdapter implements PurchaseToPaySagaPort {
 
     private final JdbcTemplate jdbc;
+    private final Tracer tracer;
 
-    public JdbcPurchaseToPaySagaAdapter(JdbcTemplate jdbc) {
+    public JdbcPurchaseToPaySagaAdapter(JdbcTemplate jdbc, Tracer tracer) {
         this.jdbc = jdbc;
+        this.tracer = tracer == null ? Tracer.NOOP : tracer;
+    }
+
+    /** §1D.3: returns current span's trace ID for the trace_id column on INSERT, or null. */
+    private String currentTraceId() {
+        Span span = tracer.currentSpan();
+        if (span == null) return null;
+        TraceContext ctx = span.context();
+        return ctx == null ? null : ctx.traceId();
     }
 
     @Override
@@ -114,15 +127,16 @@ public class JdbcPurchaseToPaySagaAdapter implements PurchaseToPaySagaPort {
                 saga_id, purchase_order_header_id,
                 saga_state, current_step, last_error,
                 retry_count, next_retry_at, lease_owner, lease_expires_at,
-                version, data
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
+                version, data, trace_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
             """,
             saga.sagaId(), saga.purchaseOrderHeaderId(),
             saga.state(), saga.currentStep(), saga.lastError(),
             saga.retryCount(), Timestamp.from(saga.nextRetryAt()),
             saga.leaseOwner(), saga.leaseExpiresAt() == null ? null : Timestamp.from(saga.leaseExpiresAt()),
             1L,
-            saga.dataJson()
+            saga.dataJson(),
+            currentTraceId()
         );
         saga.incrementVersion();
     }

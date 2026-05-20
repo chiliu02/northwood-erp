@@ -24,8 +24,7 @@ Two open decisions noted at plan time:
 
 | Slice | Title | Depends on | Headline change |
 |---|---|---|---|
-| **1D.3** | Schema: trace_id columns | — (independent) | One Liquibase changeset per table. `shared.audit_entry` gains `trace_id VARCHAR(32)` populated from current span. Each saga state table (`sales_order_fulfilment_saga`, `make_to_order_saga`, `purchase_to_pay_saga`) gains `trace_id` on row creation, preserved across transitions. Enables "give me the trace of this saga" via single column lookup. |
-| **1D.4** | SPA integration | 1D.2 | `EventsAggregatorController.EventRow` adds `traceparent`. `demo-web-ui/EventStreamContext` types pick it up. `EventLog.tsx` + `SagaConsole.tsx` each render a small `↗ trace` affordance per row → opens Grafana Tempo Explore at that trace. Grafana itself stays off-BFF on `:3000` (no BFF route needed). |
+| **1D.4** | SPA integration | 1D.2 (shipped), 1D.3 (shipped) | `EventsAggregatorController.EventRow` adds `traceparent`. `demo-web-ui/EventStreamContext` types pick it up. `EventLog.tsx` + `SagaConsole.tsx` each render a small `↗ trace` affordance per row → opens Grafana Tempo Explore at that trace. Grafana itself stays off-BFF on `:3000` (no BFF route needed). |
 | **1D.5** | Curated showcase dashboard | 1D.1 + 1D.2 + 1D.3 | One Grafana board, three rows. **Row 1** service health (up gauges, JVM heap, HTTP RPS). **Row 2** bus health — `outbox.pending` per service (custom Micrometer gauge), event throughput per Kafka topic, saga state distribution (counter per `state` per saga type). **Row 3** "a placed order's journey" — TraceQL panel `{name=~"POST /api/sales-orders"}`, click span → Loki logs for that span. |
 
 ### 1D Phase 2 — operational depth (deferred; resume after Phase 1 lands)

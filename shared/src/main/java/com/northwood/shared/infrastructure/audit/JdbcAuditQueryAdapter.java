@@ -35,7 +35,13 @@ public class JdbcAuditQueryAdapter implements AuditQueryPort {
     public List<AuditEntry> find(UUID aggregateId, Instant from, Instant to, int limit) {
         StringBuilder sql = new StringBuilder("""
             SELECT outbox_message_id, sequence_number, aggregate_type, aggregate_id,
-                   event_type, actor_user_id, correlation_id, created_at
+                   event_type, actor_user_id, correlation_id, created_at,
+                   -- §1D.3: surface the W3C trace ID stamped by OutboxPublisher
+                   -- (§1D.2) as a dedicated column on the API row. SUBSTRING
+                   -- extracts the 32-char traceId out of the
+                   -- "00-<traceId>-<spanId>-<flags>" header value, or NULL if
+                   -- the header is absent or malformed.
+                   SUBSTRING(headers->>'traceparent' FROM 4 FOR 32) AS trace_id
             FROM outbox_message
             WHERE 1=1
             """);
@@ -60,6 +66,14 @@ public class JdbcAuditQueryAdapter implements AuditQueryPort {
     private RowMapper<AuditEntry> rowMapper() {
         return (rs, n) -> {
             UUID corr = rs.getObject("correlation_id", UUID.class);
+            String traceId = rs.getString("trace_id");
+            // SUBSTRING gives us 32 chars even when the header is shorter
+            // (degenerate cases — e.g. NULL → NULL, "" → ""). Normalise empty
+            // back to NULL so the API contract stays simple ("present or
+            // null").
+            if (traceId != null && traceId.length() != 32) {
+                traceId = null;
+            }
             return new AuditEntry(
                 rs.getObject("outbox_message_id", UUID.class),
                 rs.getObject("sequence_number", Long.class),
@@ -69,6 +83,7 @@ public class JdbcAuditQueryAdapter implements AuditQueryPort {
                 rs.getString("event_type"),
                 rs.getString("actor_user_id"),
                 corr == null ? null : corr.toString(),
+                traceId,
                 rs.getTimestamp("created_at").toInstant()
             );
         };

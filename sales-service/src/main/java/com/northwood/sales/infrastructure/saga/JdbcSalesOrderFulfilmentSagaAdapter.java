@@ -2,6 +2,9 @@ package com.northwood.sales.infrastructure.saga;
 
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaPort;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.TraceContext;
+import io.micrometer.tracing.Tracer;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -26,9 +29,24 @@ import org.springframework.stereotype.Repository;
 public class JdbcSalesOrderFulfilmentSagaAdapter implements SalesOrderFulfilmentSagaPort {
 
     private final JdbcTemplate jdbc;
+    private final Tracer tracer;
 
-    public JdbcSalesOrderFulfilmentSagaAdapter(JdbcTemplate jdbc) {
+    public JdbcSalesOrderFulfilmentSagaAdapter(JdbcTemplate jdbc, Tracer tracer) {
         this.jdbc = jdbc;
+        this.tracer = tracer == null ? Tracer.NOOP : tracer;
+    }
+
+    /**
+     * Returns the current span's trace ID (32 hex chars) for §1D.3's
+     * {@code trace_id} column, or {@code null} when no span is active (unit
+     * tests, dev profile without Kafka). Captured at INSERT only — saga
+     * transitions never overwrite the original trace.
+     */
+    private String currentTraceId() {
+        Span span = tracer.currentSpan();
+        if (span == null) return null;
+        TraceContext ctx = span.context();
+        return ctx == null ? null : ctx.traceId();
     }
 
     @Override
@@ -118,14 +136,15 @@ public class JdbcSalesOrderFulfilmentSagaAdapter implements SalesOrderFulfilment
             INSERT INTO sales.sales_order_fulfilment_saga (
                 saga_id, sales_order_header_id, saga_state, current_step, last_error,
                 retry_count, next_retry_at, lease_owner, lease_expires_at,
-                version, data
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
+                version, data, trace_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
             """,
             saga.sagaId(), saga.salesOrderId(), saga.state(), saga.currentStep(), saga.lastError(),
             saga.retryCount(), Timestamp.from(saga.nextRetryAt()),
             saga.leaseOwner(), saga.leaseExpiresAt() == null ? null : Timestamp.from(saga.leaseExpiresAt()),
             1L,
-            saga.dataJson()
+            saga.dataJson(),
+            currentTraceId()
         );
         saga.incrementVersion();
     }

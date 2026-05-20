@@ -132,6 +132,9 @@ public class AuditAggregatorController {
      * Wire shape mirroring the shared module's AuditEntry — but as a
      * record local to the BFF so we don't add a Maven dep on
      * the shared module (the BFF stays light: Spring web + Kafka only).
+     *
+     * <p>{@code traceId} added §1D.3. Nullable: events emitted before §1D.2,
+     * or unit-test runs without an active span, carry null.
      */
     public record AuditRow(
         String outboxMessageId,
@@ -142,6 +145,7 @@ public class AuditAggregatorController {
         String eventType,
         String actorUserId,
         String correlationId,
+        String traceId,
         java.time.Instant occurredAt
     ) {}
 }

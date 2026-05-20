@@ -6,6 +6,61 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — §1D.3 trace_id columns on saga tables + audit-entry surface
+
+Fourth slice of §1D. Goal: surface trace IDs as first-class columns / fields so ops can answer "give me the trace of this saga / event" via a single SQL or API lookup, complementing the JSONB `headers->>'traceparent'` path stamped by §1D.2.
+
+### Scope correction at impl time
+
+The original §1D plan named `shared.audit_entry` as one of the tables to extend. No such table exists — the project's "audit log" is a *query view* over each service's `<schema>.outbox_message` table (see `shared/api/audit/AuditController` + `JdbcAuditQueryAdapter`). Re-scoped:
+- **Saga tables**: add a real `trace_id VARCHAR(32)` column populated at INSERT, never overwritten on transition. ✅
+- **Audit entries**: extract the trace ID from `outbox_message.headers->>'traceparent'` directly in the audit SQL and surface it as a typed field on the `AuditEntry` record + BFF `AuditRow`. No schema change needed — the JSONB header column already carries the value from §1D.2.
+
+### What shipped
+
+- **`db/northwood_erp.sql`** — `trace_id VARCHAR(32)` column added to 3 saga tables (nullable, no default):
+  - `sales.sales_order_fulfilment_saga`
+  - `manufacturing.make_to_order_saga`
+  - `purchasing.purchase_to_pay_saga`
+  - Width sized to W3C 32-hex-char trace IDs. Captured at INSERT, never updated by saga transitions — `save()` keeps the original row's trace ID intact (UPDATE statements don't touch the column).
+- **3 Jdbc saga adapters** (`JdbcSalesOrderFulfilmentSagaAdapter`, `JdbcMakeToOrderSagaAdapter`, `JdbcPurchaseToPaySagaAdapter`):
+  - Constructor adds `Tracer` (Boot auto-wires from `micrometer-tracing-bridge-otel`, `null` tolerated → collapse to `Tracer.NOOP`).
+  - Private `currentTraceId()` helper reads `tracer.currentSpan().context().traceId()`, returns null when no span is active.
+  - INSERT SQL gains `trace_id` column and the helper's return value as the bind parameter. `save()` UPDATEs left untouched — the trace_id sticks.
+- **`AuditEntry`** record gains a `traceId` field (String, nullable). Javadoc explains origin (`outbox_message.headers->>'traceparent'` from §1D.2), nullability semantics (pre-§1D.2 rows + test runs without a Tracer).
+- **`JdbcAuditQueryAdapter`** SELECT clause adds `SUBSTRING(headers->>'traceparent' FROM 4 FOR 32) AS trace_id` — extracts the 32-char traceId out of the W3C header value `00-<traceId>-<spanId>-<flags>`. RowMapper normalises non-32-char extractions back to null so the API contract stays simple ("present or null").
+- **`AuditAggregatorController.AuditRow`** in the ERP BFF gains the matching `traceId` field so Jackson's straight pass-through preserves the value across service hop → BFF aggregation → SPA.
+
+### Smoke
+
+- `mvn clean install -DskipTests` → **BUILD SUCCESS** across 19 modules.
+- `mvn -pl shared,sales-service,manufacturing-service,purchasing-service test` → all tests green (79 across the 4 modules including JdbcSagaManager tests for all 3 saga flavours).
+- `mvn -pl test-harness test` → all 8 end-to-end harness tests pass (place-order happy path, P2P happy + rejection, make-to-order shortage, etc.) — the saga-adapter signature change ripples cleanly because the InMemory test ports aren't affected and the Jdbc adapters are @Repository-injected.
+- Live "saga row's trace_id column reveals the source trace" verification deferred to §1D.5 dashboard acceptance, alongside §1D.2's connected-trace-tree check.
+
+### Trace-ID semantics across §1D pieces (cheat-sheet)
+
+| Source                                | What its `trace_id` means                                                                                  |
+|---|---|
+| `outbox_message.headers->>'traceparent'` | The trace under which `OutboxPublisher.drain()` *published* the event (Observation parent of the Kafka producer span). Set in §1D.2.        |
+| `*.sales_order_fulfilment_saga.trace_id`  | The trace under which the saga row was *inserted* — typically the consumer-side trace of the `SalesOrderPlaced` Kafka delivery that started the saga. Set in §1D.3 (this slice). |
+| `*.make_to_order_saga.trace_id`           | Consumer-side trace of the `ManufacturingRequested` delivery that started the M2O saga.                    |
+| `*.purchase_to_pay_saga.trace_id`         | Consumer-side trace of the `PurchaseOrderApproved` delivery that started the P2P saga.                     |
+
+Today these are typically distinct traces (each Kafka hop starts a new continuation rooted at the publish span). When chasing a full lineage, expect ~one trace per upstream event consumption.
+
+### What §1D.4 picks up directly
+
+- `traceId` field is now visible at every layer the SPA touches: service `/api/audit` → BFF `/api/audit` → SPA. §1D.4 wires a typed property in `EventStreamContext` + an `↗ trace` button rendering `traceId` into a Grafana Tempo Explore URL.
+
+### Diversions / notes
+
+- **No Liquibase changeset.** Liquibase is disabled across all 7 services (§2.15) — the deliberate posture during showcase-flux is "the baseline `db/northwood_erp.sql` is canonical; `docker compose down -v` is the dev reset". The 3-column add lands in the baseline alongside every prior structural slice since 2026-05-19.
+- **`AuditEntry` is now a 10-field record** (was 9). `JdbcAuditQueryAdapter` is the only constructor site in the project, so no other callers break.
+- **`SUBSTRING(headers->>'traceparent' FROM 4 FOR 32)`** is robust against null and short headers: PostgreSQL's `SUBSTRING` returns null on null input, returns whatever is available on short input. The RowMapper's "must be exactly 32 chars" guard catches the short case.
+
+---
+
 ## 2026-05-20 — §1D.2 Cross-service trace propagation
 
 Third slice of §1D. Goal: a placed order's trace flows continuously sales → inventory → manufacturing → finance through Kafka, with the same `traceparent` visible in `EventEnvelope.headers` so the SPA aggregator (§1D.4) can render a per-event trace-drilldown without parsing Kafka headers.

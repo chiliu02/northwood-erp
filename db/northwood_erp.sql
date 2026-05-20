@@ -602,6 +602,11 @@ CREATE TABLE sales.sales_order_fulfilment_saga (
     lease_owner VARCHAR(100),
     lease_expires_at TIMESTAMPTZ,
     version BIGINT NOT NULL DEFAULT 0,
+    -- §1D.3: W3C trace id (32 hex chars) of the consumer-side span that
+    -- created this saga row, captured once at INSERT and never updated. Lets
+    -- ops debug "what trace started this saga" via a single column lookup,
+    -- complementing the per-event headers->>'traceparent' on outbox_message.
+    trace_id VARCHAR(32),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     completed_at TIMESTAMPTZ
@@ -1444,6 +1449,8 @@ CREATE TABLE manufacturing.make_to_order_saga (
     lease_owner VARCHAR(100),
     lease_expires_at TIMESTAMPTZ,
     version BIGINT NOT NULL DEFAULT 0,
+    -- §1D.3: see sales.sales_order_fulfilment_saga.trace_id.
+    trace_id VARCHAR(32),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     completed_at TIMESTAMPTZ
@@ -1948,6 +1955,8 @@ CREATE TABLE purchasing.purchase_to_pay_saga (
     lease_owner VARCHAR(100),
     lease_expires_at TIMESTAMPTZ,
     version BIGINT NOT NULL DEFAULT 0,
+    -- §1D.3: see sales.sales_order_fulfilment_saga.trace_id.
+    trace_id VARCHAR(32),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     completed_at TIMESTAMPTZ
