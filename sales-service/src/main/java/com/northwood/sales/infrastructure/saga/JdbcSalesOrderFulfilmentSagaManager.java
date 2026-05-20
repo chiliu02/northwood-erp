@@ -55,12 +55,21 @@ public class JdbcSalesOrderFulfilmentSagaManager
 
     private final ObjectMapper json;
 
+    /**
+     * Lease + backoff durations are overridable via
+     * {@code northwood.saga.lease-ttl-seconds} (default 30s) and
+     * {@code northwood.saga.retry-backoff-seconds} (default 15s) — §2.13.
+     * Same defaults across all three saga managers; the per-service override
+     * exists so a single saga family can be tuned without touching siblings.
+     */
     public JdbcSalesOrderFulfilmentSagaManager(
         SalesOrderFulfilmentSagaPort sagaPort,
         ObjectMapper json,
-        PlatformTransactionManager transactionManager
+        PlatformTransactionManager transactionManager,
+        @org.springframework.beans.factory.annotation.Value("${northwood.saga.lease-ttl-seconds:30}") long leaseTtlSeconds,
+        @org.springframework.beans.factory.annotation.Value("${northwood.saga.retry-backoff-seconds:15}") long retryBackoffSeconds
     ) {
-        super(sagaPort, transactionManager, Duration.ofSeconds(30), Duration.ofSeconds(15));
+        super(sagaPort, transactionManager, Duration.ofSeconds(leaseTtlSeconds), Duration.ofSeconds(retryBackoffSeconds));
         this.json = json;
     }
 

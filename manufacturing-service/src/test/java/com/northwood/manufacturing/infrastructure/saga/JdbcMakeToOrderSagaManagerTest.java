@@ -47,7 +47,7 @@ class JdbcMakeToOrderSagaManagerTest {
 
     @BeforeEach
     void setUp() {
-        manager = new JdbcMakeToOrderSagaManager(sagas, json, txManager);
+        manager = new JdbcMakeToOrderSagaManager(sagas, json, txManager, 30L, 15L);
     }
 
     private MakeToOrderSaga sagaInState(String state, String dataJson) {

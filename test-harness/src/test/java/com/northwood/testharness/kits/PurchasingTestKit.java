@@ -79,7 +79,7 @@ public final class PurchasingTestKit {
         this.suppliers.putActive("SUP-001", "Default Supplier");
 
         PlatformTransactionManager txm = new NoopPlatformTransactionManager();
-        this.sagaManager = new JdbcPurchaseToPaySagaManager(sagas, txm);
+        this.sagaManager = new JdbcPurchaseToPaySagaManager(sagas, txm, 30L, 15L);
 
         this.purchaseOrderService = new PurchaseOrderService(
             orders, requisitions, suppliers, sagaManager, priceLookup, approvedVendorQuery

@@ -65,7 +65,7 @@ public final class SalesTestKit {
         this.orders = new InMemorySalesOrderRepository(outbox, json);
         this.lineSnapshots = new InMemorySalesOrderLineSnapshotPort(orders);
         PlatformTransactionManager txm = new NoopPlatformTransactionManager();
-        this.sagaManager = new JdbcSalesOrderFulfilmentSagaManager(sagas, json, txm);
+        this.sagaManager = new JdbcSalesOrderFulfilmentSagaManager(sagas, json, txm, 30L, 15L);
         this.sagaWorker = new SalesOrderFulfilmentSagaWorker(sagaManager, lineSnapshots, outbox, json);
         this.compensationEmitter = new SalesOrderCompensationEmitter(orders, outbox, json);
         this.service = new SalesOrderService(orders, sagaManager, customers, productCards);

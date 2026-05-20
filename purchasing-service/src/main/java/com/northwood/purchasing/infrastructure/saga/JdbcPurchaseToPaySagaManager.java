@@ -30,11 +30,18 @@ public class JdbcPurchaseToPaySagaManager
     extends SagaManager<PurchaseToPaySaga, PurchaseToPaySagaPort>
     implements PurchaseToPaySagaManager {
 
+    /**
+     * Lease + backoff durations are overridable via
+     * {@code northwood.saga.lease-ttl-seconds} (default 30s) and
+     * {@code northwood.saga.retry-backoff-seconds} (default 15s) — §2.13.
+     */
     public JdbcPurchaseToPaySagaManager(
         PurchaseToPaySagaPort sagaPort,
-        PlatformTransactionManager transactionManager
+        PlatformTransactionManager transactionManager,
+        @org.springframework.beans.factory.annotation.Value("${northwood.saga.lease-ttl-seconds:30}") long leaseTtlSeconds,
+        @org.springframework.beans.factory.annotation.Value("${northwood.saga.retry-backoff-seconds:15}") long retryBackoffSeconds
     ) {
-        super(sagaPort, transactionManager, Duration.ofSeconds(30), Duration.ofSeconds(15));
+        super(sagaPort, transactionManager, Duration.ofSeconds(leaseTtlSeconds), Duration.ofSeconds(retryBackoffSeconds));
     }
 
     @Override

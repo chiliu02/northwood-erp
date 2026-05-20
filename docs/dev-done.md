@@ -6,6 +6,33 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — §2.13 Saga lease TTL + retry backoff → @Value config
+
+Small refactor flagged during §2.0.j and parked in dev-todo as §2.13. Triple-duplication of `Duration.ofSeconds(30)` lease TTL + `Duration.ofSeconds(15)` retry backoff across `JdbcSalesOrderFulfilmentSagaManager`, `JdbcMakeToOrderSagaManager`, `JdbcPurchaseToPaySagaManager` is now a single property pair with the same defaults.
+
+### What shipped
+
+- Two new properties (defaults match the prior hardcoded values):
+  - `northwood.saga.lease-ttl-seconds` → 30
+  - `northwood.saga.retry-backoff-seconds` → 15
+- Each of the 3 `Jdbc*SagaManager` constructors gains `@Value`-annotated `long leaseTtlSeconds` + `long retryBackoffSeconds` params. Body passes `Duration.ofSeconds(...)` through to the `SagaManager` base. Javadoc on each constructor names the property keys.
+- 6 test call sites updated to pass `30L, 15L` (no fixed-arg overload added — the test-harness kits + per-service `Jdbc*SagaManagerTest` classes call the new constructor explicitly).
+
+### Why @Value over a constant
+
+The plan's own framing: matches the existing pattern for `northwood.saga.poll-interval` and `northwood.finance.match.priceTolerancePercent`. Operational policy values that a real ops user might want to tune per environment don't belong as compile-time constants. The §2.0.j hygiene sweep flagged this and explicitly excluded it from the constants pass for that reason.
+
+### Smoke
+
+- `mvn clean install -DskipTests` → BUILD SUCCESS across 19 modules.
+- `mvn -pl sales-service,manufacturing-service,purchasing-service,test-harness test` → all green (saga-manager unit tests in all three services + 8 end-to-end test-harness flows).
+
+### Follow-ups noted
+
+- The per-service override exists if a single saga family needs faster retry under load — the property key is global, not per-saga. If per-saga tuning becomes useful, splitting to `northwood.saga.<flow>.lease-ttl-seconds` is a localised follow-up; YAGNI for now.
+
+---
+
 ## 2026-05-19 — Liquibase consolidation + temporary disable
 
 Triggered by a stale-volume boot failure: a service hit `liquibase.exception.DatabaseException: ERROR: relation "inventory.goods_receipt_header" does not exist` while running an old-baseline changeset against a fresh schema. The changeset history had drifted out of sync with the rebaked baseline.

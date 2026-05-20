@@ -80,7 +80,7 @@ public final class ManufacturingTestKit {
         this.boms = new InMemoryBomRepository(outbox, json);
         this.shortageRecovery = new InMemoryMakeToOrderShortageRecoveryQueryPort(sagas, workOrders);
         PlatformTransactionManager txm = new NoopPlatformTransactionManager();
-        this.sagaManager = new JdbcMakeToOrderSagaManager(sagas, json, txm);
+        this.sagaManager = new JdbcMakeToOrderSagaManager(sagas, json, txm, 30L, 15L);
         this.releaseService = new WorkOrderReleaseService(workOrders, routings, bomLookup, sagaManager);
 
         CurrentUserAccessor currentUser = new CurrentUserAccessor();
