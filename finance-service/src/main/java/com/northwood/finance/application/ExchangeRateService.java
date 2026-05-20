@@ -29,9 +29,8 @@ public class ExchangeRateService {
      * (HTTP 404) instead of importing the domain exception directly.
      */
     public static class RateNotFoundException extends NotFoundException {
-        public static final String CODE = "EXCHANGE_RATE_NOT_FOUND";
         public RateNotFoundException(Throwable cause) {
-            super(CODE, cause.getMessage(), cause);
+            super("EXCHANGE_RATE_NOT_FOUND", cause.getMessage(), cause);
         }
         @Override public Map<String, Object> params() {
             // Domain exception's English message carries the missing-rate

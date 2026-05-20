@@ -22,10 +22,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class CustomerService {
 
     public static class CustomerNotFoundException extends NotFoundException {
-        public static final String CODE = "CUSTOMER_NOT_FOUND";
         private final UUID customerId;
         public CustomerNotFoundException(UUID id) {
-            super(CODE, "Customer not found: " + id);
+            super("CUSTOMER_NOT_FOUND", "Customer not found: " + id);
             this.customerId = id;
         }
         public UUID customerId() { return customerId; }
@@ -39,10 +38,9 @@ public class CustomerService {
      * reference it without reaching into infrastructure.
      */
     public static class DuplicateCustomerCodeException extends ConflictException {
-        public static final String CODE = "DUPLICATE_CUSTOMER_CODE";
         private final String customerCode;
         public DuplicateCustomerCodeException(String code, Throwable cause) {
-            super(CODE, "customer_code already exists: " + code, cause);
+            super("DUPLICATE_CUSTOMER_CODE", "customer_code already exists: " + code, cause);
             this.customerCode = code;
         }
         public String customerCode() { return customerCode; }

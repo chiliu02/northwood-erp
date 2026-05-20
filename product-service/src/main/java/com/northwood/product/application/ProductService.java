@@ -35,10 +35,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProductService {
 
     public static class ProductNotFoundException extends NotFoundException {
-        public static final String CODE = "PRODUCT_NOT_FOUND";
         private final UUID productId;
         public ProductNotFoundException(UUID id) {
-            super(CODE, "Product not found: " + id);
+            super("PRODUCT_NOT_FOUND", "Product not found: " + id);
             this.productId = id;
         }
         public UUID productId() { return productId; }

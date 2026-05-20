@@ -58,10 +58,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class WorkOrderOperationService {
 
     public static class WorkOrderNotFoundException extends NotFoundException {
-        public static final String CODE = "WORK_ORDER_NOT_FOUND";
         private final String workOrderId;
         public WorkOrderNotFoundException(String workOrderId) {
-            super(CODE, "No work order with id=" + workOrderId);
+            super("WORK_ORDER_NOT_FOUND", "No work order with id=" + workOrderId);
             this.workOrderId = workOrderId;
         }
         public String workOrderId() { return workOrderId; }

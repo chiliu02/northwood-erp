@@ -50,10 +50,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class SalesOrderService {
 
     public static class CustomerNotFoundException extends NotFoundException {
-        public static final String CODE = "CUSTOMER_NOT_FOUND";
         private final String customerCode;
         public CustomerNotFoundException(String customerCode) {
-            super(CODE, "Customer not found: " + customerCode);
+            super("CUSTOMER_NOT_FOUND", "Customer not found: " + customerCode);
             this.customerCode = customerCode;
         }
         public String customerCode() { return customerCode; }
@@ -67,11 +66,10 @@ public class SalesOrderService {
      * exists, the order request is malformed against current state.
      */
     public static class CustomerInactiveException extends ConflictException {
-        public static final String CODE = "CUSTOMER_INACTIVE";
         private final String customerCode;
         private final Customer.Status status;
         public CustomerInactiveException(String customerCode, Customer.Status status) {
-            super(CODE, "Customer " + customerCode + " is " + status.dbValue() + "; cannot accept new orders");
+            super("CUSTOMER_INACTIVE", "Customer " + customerCode + " is " + status.dbValue() + "; cannot accept new orders");
             this.customerCode = customerCode;
             this.status = status;
         }
@@ -83,10 +81,9 @@ public class SalesOrderService {
     }
 
     public static class OrderNotFoundException extends NotFoundException {
-        public static final String CODE = "ORDER_NOT_FOUND";
         private final UUID orderId;
         public OrderNotFoundException(UUID id) {
-            super(CODE, "Sales order not found: " + id);
+            super("ORDER_NOT_FOUND", "Sales order not found: " + id);
             this.orderId = id;
         }
         public UUID orderId() { return orderId; }
@@ -94,10 +91,9 @@ public class SalesOrderService {
     }
 
     public static class SagaNotFoundException extends NotFoundException {
-        public static final String CODE = "FULFILMENT_SAGA_NOT_FOUND";
         private final UUID salesOrderHeaderId;
         public SagaNotFoundException(UUID salesOrderHeaderId) {
-            super(CODE, "No fulfilment saga for sales order " + salesOrderHeaderId);
+            super("FULFILMENT_SAGA_NOT_FOUND", "No fulfilment saga for sales order " + salesOrderHeaderId);
             this.salesOrderHeaderId = salesOrderHeaderId;
         }
         public UUID salesOrderHeaderId() { return salesOrderHeaderId; }
@@ -111,9 +107,8 @@ public class SalesOrderService {
      * type — keeps the api → application → domain layering clean.
      */
     public static class OrderNotCancellableException extends ConflictException {
-        public static final String CODE = "ORDER_NOT_CANCELLABLE";
         public OrderNotCancellableException(Throwable cause) {
-            super(CODE, cause.getMessage(), cause);
+            super("ORDER_NOT_CANCELLABLE", cause.getMessage(), cause);
         }
         @Override public Map<String, Object> params() {
             // Domain exception's English message carries the receiver's state
@@ -124,10 +119,9 @@ public class SalesOrderService {
     }
 
     public static class UnknownPriceException extends BadRequestException {
-        public static final String CODE = "UNKNOWN_CATALOG_PRICE";
         private final String sku;
         public UnknownPriceException(String sku) {
-            super(CODE, "No catalog price for sku=" + sku + "; provide unitPrice on the line or wait for the projection to catch up");
+            super("UNKNOWN_CATALOG_PRICE", "No catalog price for sku=" + sku + "; provide unitPrice on the line or wait for the projection to catch up");
             this.sku = sku;
         }
         public String sku() { return sku; }
@@ -135,12 +129,11 @@ public class SalesOrderService {
     }
 
     public static class CurrencyMismatchException extends BadRequestException {
-        public static final String CODE = "CURRENCY_MISMATCH";
         private final String sku;
         private final String orderCurrency;
         private final String catalogCurrency;
         public CurrencyMismatchException(String sku, String orderCurrency, String catalogCurrency) {
-            super(CODE, "Order currency " + orderCurrency + " does not match catalog currency "
+            super("CURRENCY_MISMATCH", "Order currency " + orderCurrency + " does not match catalog currency "
                 + catalogCurrency + " for sku=" + sku);
             this.sku = sku;
             this.orderCurrency = orderCurrency;
@@ -155,11 +148,10 @@ public class SalesOrderService {
     }
 
     public static class ProductDiscontinuedException extends ConflictException {
-        public static final String CODE = "PRODUCT_DISCONTINUED";
         private final String sku;
         private final java.time.Instant discontinuedAt;
         public ProductDiscontinuedException(String sku, java.time.Instant discontinuedAt) {
-            super(CODE, "Product sku=" + sku + " was discontinued at " + discontinuedAt
+            super("PRODUCT_DISCONTINUED", "Product sku=" + sku + " was discontinued at " + discontinuedAt
                 + "; cannot accept new order lines for it");
             this.sku = sku;
             this.discontinuedAt = discontinuedAt;

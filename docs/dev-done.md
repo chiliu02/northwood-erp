@@ -6,6 +6,31 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — §1H follow-up: collapse identical bases into `AbstractDomainException`; inline CODE constants
+
+Second tightening pass on §1H. The previous follow-up had pushed the `code` field + `code()` accessor into the three marker base classes (`NotFoundException`, `ConflictException`, `BadRequestException`) — but the three bases ended up identical except for the class name. And with `code()` already on the base, the `public static final String CODE` declaration on each concrete class was a one-use indirection.
+
+### What changed
+
+- **New `AbstractDomainException`** — holds the `code` field, the `(code, message)` / `(code, message, cause)` protected constructors, and the `final code()` accessor.
+- **`NotFoundException` / `ConflictException` / `BadRequestException`** — now empty-body subclasses of `AbstractDomainException` with just two passthrough constructors. They exist solely so the shared `DomainExceptionAdvice` can dispatch via `@ExceptionHandler(NotFoundException.class)` etc. for HTTP-status routing.
+- **~17 concrete exception classes** — `public static final String CODE = "..."` declarations removed; the string literal moves into the `super("CODE_STRING", message)` call directly.
+- **`docs/conventions.md`** — "Every application-layer exception implements `DomainException`" skeleton updated: no `CODE` constant; the wire-format string lives in the `super(...)` call. New note that tests should reference the string literal rather than a class-static constant — renaming a code is intentionally a touch-both-places change so wire-contract drift is visible.
+
+### Why
+
+The original §1H shape carried two redundant indirections: an `@Override public String code()` on every concrete class (consolidated in the previous follow-up), and a `public static final String CODE` constant that was passed once to `super(...)` and otherwise unused. The constant's notional value — letting callers reference `CustomerNotFoundException.CODE` — turned out to be theoretical (no callers do, and the wire format is what tests actually need to assert against). Dropping it puts the code right where it ships from.
+
+Collapsing the three identical bases is a separate cleanup that fell out naturally — with `code()` storage centralised, the markers had nothing left to do except be type-distinct for Spring's `@ExceptionHandler` routing.
+
+### Numbers
+
+15 files changed, +66 −123 lines. The simplification removes nearly half the exception-related code in the concrete classes.
+
+### Smoke
+
+`mvn clean test` SUCCESS across 19 modules.
+
 ## 2026-05-20 — §1H follow-up: hoist `code()` to the marker base classes
 
 Direct follow-up to the §1H slice committed earlier today. The three marker bases (`NotFoundException`, `ConflictException`, `BadRequestException`) now take `code` as the first constructor argument, store it in a `private final String code` field, and expose it via a `final` `code()` accessor. Concrete subclasses pass their `CODE` via `super(CODE, message[, cause])` and drop the per-class `@Override public String code() { return CODE; }` boilerplate.

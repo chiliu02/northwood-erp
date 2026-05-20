@@ -41,10 +41,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class PurchaseRequisitionService {
 
     public static class ProductDiscontinuedException extends ConflictException {
-        public static final String CODE = "PRODUCT_DISCONTINUED";
         private final String sku;
         public ProductDiscontinuedException(String sku) {
-            super(CODE, "Product sku=" + sku + " has been discontinued by product-service; "
+            super("PRODUCT_DISCONTINUED", "Product sku=" + sku + " has been discontinued by product-service; "
                 + "cannot include it on a new requisition or purchase order");
             this.sku = sku;
         }
