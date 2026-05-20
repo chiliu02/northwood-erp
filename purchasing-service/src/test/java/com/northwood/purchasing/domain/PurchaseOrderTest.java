@@ -46,14 +46,14 @@ class PurchaseOrderTest {
             assertThatThrownBy(() -> PurchaseOrder.fromRequisition(
                 "PO-001", null, PR_HEADER, null, Currencies.AUD,
                 List.of(line(BigDecimal.TEN, new BigDecimal("80"))), true
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_purchase_requisition_header_id() {
             assertThatThrownBy(() -> PurchaseOrder.fromRequisition(
                 "PO-001", supplier(), null, null, Currencies.AUD,
                 List.of(line(BigDecimal.TEN, new BigDecimal("80"))), true
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void initial_status_is_sent() {

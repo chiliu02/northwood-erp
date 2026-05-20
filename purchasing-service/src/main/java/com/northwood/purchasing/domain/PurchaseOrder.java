@@ -3,6 +3,7 @@ package com.northwood.purchasing.domain;
 import com.northwood.purchasing.domain.events.PurchaseOrderApproved;
 import com.northwood.purchasing.domain.events.PurchaseOrderCreated;
 import com.northwood.purchasing.domain.events.PurchaseOrderCreated.OrderLine;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
@@ -10,7 +11,6 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -100,7 +100,7 @@ public final class PurchaseOrder {
             for (Status s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown purchase_order status: " + value);
+            throw Assert.unknownValue("purchase_order status", value);
         }
     }
 
@@ -137,7 +137,7 @@ public final class PurchaseOrder {
             for (LineStatus s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown purchase_order_line status: " + value);
+            throw Assert.unknownValue("purchase_order_line status", value);
         }
     }
 
@@ -177,11 +177,9 @@ public final class PurchaseOrder {
         List<PurchaseOrderLine> lines,
         boolean autoApprove
     ) {
-        Objects.requireNonNull(supplier, "supplier");
-        Objects.requireNonNull(purchaseRequisitionHeaderId, "purchaseRequisitionHeaderId");
-        if (lines == null || lines.isEmpty()) {
-            throw new IllegalArgumentException("at least one line is required to create a PO");
-        }
+        Assert.notNull(supplier, "supplier");
+        Assert.notNull(purchaseRequisitionHeaderId, "purchaseRequisitionHeaderId");
+        Assert.notEmpty(lines, "at least one line is required to create a PO");
 
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal tax = BigDecimal.ZERO;

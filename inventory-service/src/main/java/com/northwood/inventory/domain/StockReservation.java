@@ -4,12 +4,12 @@ import com.northwood.inventory.domain.events.RawMaterialsReserved;
 import com.northwood.inventory.domain.events.RawMaterialsReserved.ReservedComponent;
 import com.northwood.inventory.domain.events.StockReserved;
 import com.northwood.inventory.domain.events.StockReserved.ReservedLine;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.DomainEvent;
 import com.northwood.shared.domain.LineNumbering;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -67,7 +67,7 @@ public final class StockReservation {
             for (Status s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown stock_reservation status: " + value);
+            throw Assert.unknownValue("stock_reservation status", value);
         }
     }
 
@@ -86,11 +86,9 @@ public final class StockReservation {
         UUID warehouseId,
         List<StockReservationLine> lines
     ) {
-        Objects.requireNonNull(salesOrderId, "salesOrderId");
-        Objects.requireNonNull(warehouseId, "warehouseId");
-        if (lines == null || lines.isEmpty()) {
-            throw new IllegalArgumentException("at least one line is required");
-        }
+        Assert.notNull(salesOrderId, "salesOrderId");
+        Assert.notNull(warehouseId, "warehouseId");
+        Assert.notEmpty(lines, "at least one line is required");
         StockReservationId id = StockReservationId.newId();
         boolean anyShort = lines.stream().anyMatch(l -> l.shortageQuantity().signum() > 0);
         boolean nothingReserved = lines.stream().allMatch(l -> l.reservedQuantity().signum() == 0);
@@ -128,11 +126,9 @@ public final class StockReservation {
         UUID warehouseId,
         List<StockReservationLine> lines
     ) {
-        Objects.requireNonNull(workOrderId, "workOrderId");
-        Objects.requireNonNull(warehouseId, "warehouseId");
-        if (lines == null || lines.isEmpty()) {
-            throw new IllegalArgumentException("at least one line is required");
-        }
+        Assert.notNull(workOrderId, "workOrderId");
+        Assert.notNull(warehouseId, "warehouseId");
+        Assert.notEmpty(lines, "at least one line is required");
         StockReservationId id = StockReservationId.newId();
         boolean anyShort = lines.stream().anyMatch(l -> l.shortageQuantity().signum() > 0);
         boolean nothingReserved = lines.stream().allMatch(l -> l.reservedQuantity().signum() == 0);

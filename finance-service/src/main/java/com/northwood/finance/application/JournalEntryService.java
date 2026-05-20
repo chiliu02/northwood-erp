@@ -7,6 +7,7 @@ import com.northwood.finance.domain.JournalEntryId;
 import com.northwood.finance.domain.JournalEntryLine;
 import com.northwood.finance.domain.JournalEntryRepository;
 import com.northwood.product.domain.ValuationClass;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -408,11 +409,8 @@ public class JournalEntryService {
         JournalEntry original = journalEntries.findById(originalId)
             .orElseThrow(() -> new IllegalArgumentException(
                 "No journal entry with id=" + originalJournalEntryId));
-        if (original.status() != JournalEntry.Status.POSTED) {
-            throw new IllegalStateException(
-                "Cannot reverse journal " + originalJournalEntryId
+        Assert.state(original.status() == JournalEntry.Status.POSTED, "Cannot reverse journal " + originalJournalEntryId
                     + " in status=" + original.status().dbValue() + " (must be posted)");
-        }
         JournalEntry reversal = JournalEntry.reverseOf(original, reason, postingDate);
         journalEntries.save(reversal);
         journalEntries.markReversed(originalId);

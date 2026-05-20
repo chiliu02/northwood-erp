@@ -6,6 +6,7 @@ import com.northwood.finance.domain.SupplierInvoice;
 import com.northwood.finance.domain.SupplierInvoiceId;
 import com.northwood.finance.domain.SupplierInvoiceLine;
 import com.northwood.finance.domain.SupplierInvoiceRepository;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.DomainEvent;
 import com.northwood.shared.application.security.CurrentUserAccessor;
 import java.math.BigDecimal;
@@ -127,11 +128,7 @@ public class JdbcSupplierInvoiceRepository implements SupplierInvoiceRepository 
             """,
             si.status().dbValue(), si.matchStatus().dbValue(), approvedAt, actor, si.id().value()
         );
-        if (rows == 0) {
-            throw new IllegalStateException(
-                "supplier_invoice_header " + si.id().value() + " not found for status update"
-            );
-        }
+        Assert.state(rows > 0, "supplier_invoice_header " + si.id().value() + " not found for status update");
     }
 
     @Override

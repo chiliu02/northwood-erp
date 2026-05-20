@@ -1,6 +1,7 @@
 package com.northwood.finance.domain;
 
 import com.northwood.finance.domain.events.CustomerInvoiceCreated;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
@@ -8,7 +9,6 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -74,7 +74,7 @@ public final class CustomerInvoice {
             for (Status s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown customer_invoice status: " + value);
+            throw Assert.unknownValue("customer_invoice status", value);
         }
     }
 
@@ -103,11 +103,9 @@ public final class CustomerInvoice {
         String currencyCode,
         List<CustomerInvoiceLine> lines
     ) {
-        Objects.requireNonNull(salesOrderHeaderId, "salesOrderHeaderId");
-        Objects.requireNonNull(customerId, "customerId");
-        if (lines == null || lines.isEmpty()) {
-            throw new IllegalArgumentException("at least one line is required");
-        }
+        Assert.notNull(salesOrderHeaderId, "salesOrderHeaderId");
+        Assert.notNull(customerId, "customerId");
+        Assert.notEmpty(lines, "at least one line is required");
 
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal tax = BigDecimal.ZERO;

@@ -1,5 +1,6 @@
 package com.northwood.product.domain;
 
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.Money;
 import com.northwood.shared.domain.Sku;
 import java.math.BigDecimal;
@@ -57,7 +58,7 @@ public class Product {
             for (Status s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown product status: " + value);
+            throw Assert.unknownValue("product status", value);
         }
     }
 
@@ -109,15 +110,15 @@ public class Product {
     ) {
         Product p = new Product(
             ProductId.newId(),
-            Objects.requireNonNull(sku),
-            Objects.requireNonNull(name),
+            Assert.notNull(sku, "sku"),
+            Assert.notNull(name, "name"),
             description,
-            Objects.requireNonNull(productType),
-            Objects.requireNonNull(baseUomId),
+            Assert.notNull(productType, "productType"),
+            Assert.notNull(baseUomId, "baseUomId"),
             // sensible defaults; intent-named setters below for explicit changes
             false, false, false, false,
-            Objects.requireNonNull(salesPrice),
-            Objects.requireNonNull(standardCost),
+            Assert.notNull(salesPrice, "salesPrice"),
+            Assert.notNull(standardCost, "standardCost"),
             // Reorder defaults to 0/0; the planning steward sets it via
             // setReorderPolicy once the SKU is configured.
             BigDecimal.ZERO,
@@ -190,10 +191,8 @@ public class Product {
     }
 
     public void changeSalesPrice(Money newSalesPrice) {
-        if (status == Status.DISCONTINUED) {
-            throw new IllegalStateException("Cannot change sales price on a discontinued product");
-        }
-        Objects.requireNonNull(newSalesPrice, "newSalesPrice");
+        Assert.state(status != Status.DISCONTINUED, "Cannot change sales price on a discontinued product");
+        Assert.notNull(newSalesPrice, "newSalesPrice");
         if (newSalesPrice.equalsByValue(this.salesPrice)) return;
         Money oldSalesPrice = this.salesPrice;
         this.salesPrice = newSalesPrice;
@@ -208,10 +207,8 @@ public class Product {
     }
 
     public void changeStandardCost(Money newStandardCost) {
-        if (status == Status.DISCONTINUED) {
-            throw new IllegalStateException("Cannot change standard cost on a discontinued product");
-        }
-        Objects.requireNonNull(newStandardCost, "newStandardCost");
+        Assert.state(status != Status.DISCONTINUED, "Cannot change standard cost on a discontinued product");
+        Assert.notNull(newStandardCost, "newStandardCost");
         if (newStandardCost.equalsByValue(this.standardCost)) return;
         Money oldStandardCost = this.standardCost;
         this.standardCost = newStandardCost;
@@ -232,14 +229,8 @@ public class Product {
      * Emits {@link MakeVsBuyChanged} with old + new flags.
      */
     public void changeMakeVsBuy(boolean newIsPurchased, boolean newIsManufactured) {
-        if (status == Status.DISCONTINUED) {
-            throw new IllegalStateException("Cannot change make-vs-buy on a discontinued product");
-        }
-        if (!newIsPurchased && !newIsManufactured) {
-            throw new IllegalArgumentException(
-                "At least one of (purchased, manufactured) must be true; otherwise the SKU is unsourceable"
-            );
-        }
+        Assert.state(status != Status.DISCONTINUED, "Cannot change make-vs-buy on a discontinued product");
+        Assert.argument(newIsPurchased || newIsManufactured, "At least one of (purchased, manufactured) must be true; otherwise the SKU is unsourceable");
         if (this.purchased == newIsPurchased && this.manufactured == newIsManufactured) return;
         boolean oldPurchased = this.purchased;
         boolean oldManufactured = this.manufactured;
@@ -255,17 +246,11 @@ public class Product {
     }
 
     public void changeReorderPolicy(BigDecimal newReorderPoint, BigDecimal newReorderQuantity) {
-        if (status == Status.DISCONTINUED) {
-            throw new IllegalStateException("Cannot change reorder policy on a discontinued product");
-        }
-        Objects.requireNonNull(newReorderPoint, "reorderPoint");
-        Objects.requireNonNull(newReorderQuantity, "reorderQuantity");
-        if (newReorderPoint.signum() < 0) {
-            throw new IllegalArgumentException("reorderPoint must be >= 0");
-        }
-        if (newReorderQuantity.signum() < 0) {
-            throw new IllegalArgumentException("reorderQuantity must be >= 0");
-        }
+        Assert.state(status != Status.DISCONTINUED, "Cannot change reorder policy on a discontinued product");
+        Assert.notNull(newReorderPoint, "reorderPoint");
+        Assert.notNull(newReorderQuantity, "reorderQuantity");
+        Assert.argument(newReorderPoint.signum() >= 0, "reorderPoint must be >= 0");
+        Assert.argument(newReorderQuantity.signum() >= 0, "reorderQuantity must be >= 0");
         if (newReorderPoint.compareTo(this.reorderPoint) == 0
             && newReorderQuantity.compareTo(this.reorderQuantity) == 0) return;
         BigDecimal oldPoint = this.reorderPoint;
@@ -290,10 +275,8 @@ public class Product {
      * (typed enum on the aggregate, {@code dbValue()} on the wire).
      */
     public void changeValuationClass(ValuationClass newValuationClass) {
-        if (status == Status.DISCONTINUED) {
-            throw new IllegalStateException("Cannot change valuation class on a discontinued product");
-        }
-        Objects.requireNonNull(newValuationClass, "valuationClass");
+        Assert.state(status != Status.DISCONTINUED, "Cannot change valuation class on a discontinued product");
+        Assert.notNull(newValuationClass, "valuationClass");
         if (newValuationClass == this.valuationClass) return;
         ValuationClass oldClass = this.valuationClass;
         this.valuationClass = newValuationClass;
@@ -312,9 +295,7 @@ public class Product {
      * Emits {@link ActiveBomChanged} with old + new.
      */
     public void activateBom(UUID newBomHeaderId) {
-        if (status == Status.DISCONTINUED) {
-            throw new IllegalStateException("Cannot change active BOM on a discontinued product");
-        }
+        Assert.state(status != Status.DISCONTINUED, "Cannot change active BOM on a discontinued product");
         if (Objects.equals(newBomHeaderId, this.activeBomId)) return;
         UUID oldBomId = this.activeBomId;
         this.activeBomId = newBomHeaderId;
@@ -341,10 +322,8 @@ public class Product {
      * {@code ApprovedVendorRepository}; now the aggregate owns both.
      */
     public void setApprovedVendors(List<ApprovedVendor> newApprovedVendors) {
-        if (status == Status.DISCONTINUED) {
-            throw new IllegalStateException("Cannot change approved vendors on a discontinued product");
-        }
-        Objects.requireNonNull(newApprovedVendors, "approvedVendors");
+        Assert.state(status != Status.DISCONTINUED, "Cannot change approved vendors on a discontinued product");
+        Assert.notNull(newApprovedVendors, "approvedVendors");
         if (sameVendorSet(this.approvedVendors, newApprovedVendors)) {
             return;
         }

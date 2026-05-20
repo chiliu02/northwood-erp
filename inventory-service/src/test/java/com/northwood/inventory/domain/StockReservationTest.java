@@ -39,13 +39,13 @@ class StockReservationTest {
         @Test void rejects_null_sales_order_id() {
             assertThatThrownBy(() -> StockReservation.forSalesOrder(null, WH,
                 List.of(line(BigDecimal.TEN, BigDecimal.TEN, BigDecimal.ZERO))))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_warehouse_id() {
             assertThatThrownBy(() -> StockReservation.forSalesOrder(SO, null,
                 List.of(line(BigDecimal.TEN, BigDecimal.TEN, BigDecimal.ZERO))))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void full_reservation_status_is_reserved() {
@@ -87,13 +87,13 @@ class StockReservationTest {
         @Test void rejects_null_work_order_id() {
             assertThatThrownBy(() -> StockReservation.forWorkOrder(null, WH,
                 List.of(line(BigDecimal.TEN, BigDecimal.TEN, BigDecimal.ZERO))))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_warehouse_id() {
             assertThatThrownBy(() -> StockReservation.forWorkOrder(WO, null,
                 List.of(line(BigDecimal.TEN, BigDecimal.TEN, BigDecimal.ZERO))))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void emits_RawMaterialsReserved_keyed_on_work_order() {

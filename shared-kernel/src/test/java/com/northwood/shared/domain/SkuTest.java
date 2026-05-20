@@ -11,7 +11,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class SkuTest {
 
     @Test void rejects_null() {
-        assertThrows(NullPointerException.class, () -> new Sku(null));
+        assertThrows(IllegalArgumentException.class, () -> new Sku(null));
     }
 
     @ParameterizedTest

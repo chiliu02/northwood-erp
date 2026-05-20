@@ -14,6 +14,7 @@ import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaPort;
 import com.northwood.sales.domain.saga.FulfilmentSagaData;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.shared.application.saga.SagaManager;
+import com.northwood.shared.domain.Assert;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -122,13 +123,9 @@ public class JdbcSalesOrderFulfilmentSagaManager
             // map; the inventory side has nothing meaningful to say
             // otherwise. Fail loudly rather than stash an empty map and
             // let the worker discover the anomaly via its WARN guard.
-            if (shortageByLineNumber == null || shortageByLineNumber.isEmpty()) {
-                throw new IllegalStateException(
-                    StockReserved.EVENT_TYPE + " status=" + reservationStatus + " for sales_order="
+            Assert.stateNotEmpty(shortageByLineNumber, StockReserved.EVENT_TYPE + " status=" + reservationStatus + " for sales_order="
                     + salesOrderHeaderId + " arrived without a per-line shortage map. "
-                    + "Inventory must include shortageByLineNumber for partially_reserved / failed outcomes."
-                );
-            }
+                    + "Inventory must include shortageByLineNumber for partially_reserved / failed outcomes.");
             stashShortage(saga, shortageByLineNumber);
             saga.transitionTo(STOCK_RESERVED, "wait_for_next_step");
             saga.parkUntil(Instant.now());

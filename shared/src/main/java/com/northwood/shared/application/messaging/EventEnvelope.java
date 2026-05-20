@@ -1,5 +1,6 @@
 package com.northwood.shared.application.messaging;
 
+import com.northwood.shared.domain.Assert;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
@@ -43,13 +44,11 @@ public record EventEnvelope(
     public static final String HEADER_SOURCE_SERVICE = "source-service";
 
     public EventEnvelope {
-        if (eventId == null) throw new IllegalArgumentException("eventId");
-        if (aggregateType == null || aggregateType.isBlank())
-            throw new IllegalArgumentException("aggregateType");
-        if (aggregateId == null) throw new IllegalArgumentException("aggregateId");
-        if (eventType == null || eventType.isBlank())
-            throw new IllegalArgumentException("eventType");
-        if (payloadJson == null) throw new IllegalArgumentException("payloadJson");
+        Assert.notNull(eventId, "eventId");
+        Assert.notBlank(aggregateType, "aggregateType");
+        Assert.notNull(aggregateId, "aggregateId");
+        Assert.notBlank(eventType, "eventType");
+        Assert.notNull(payloadJson, "payloadJson");
         if (headers == null) headers = Map.of();
         if (occurredAt == null) occurredAt = Instant.now();
     }

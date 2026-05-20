@@ -1,5 +1,6 @@
 package com.northwood.product.domain;
 
+import com.northwood.shared.domain.Assert;
 /**
  * Mirrors the schema CHECK on {@code product.product.valuation_class}
  * (and {@code finance.product_card.valuation_class}). The string values
@@ -39,6 +40,6 @@ public enum ValuationClass {
         for (ValuationClass c : values()) {
             if (c.dbValue.equals(value)) return c;
         }
-        throw new IllegalArgumentException("Unknown valuation_class: " + value);
+        throw Assert.unknownValue("valuation_class", value);
     }
 }

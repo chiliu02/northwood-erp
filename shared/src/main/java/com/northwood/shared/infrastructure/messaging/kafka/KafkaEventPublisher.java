@@ -2,6 +2,7 @@ package com.northwood.shared.infrastructure.messaging.kafka;
 
 import com.northwood.shared.application.messaging.EventEnvelope;
 import com.northwood.shared.application.messaging.EventPublisher;
+import com.northwood.shared.domain.Assert;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -39,12 +40,8 @@ public class KafkaEventPublisher implements EventPublisher {
     @Override
     public void publish(EventEnvelope envelope) {
         String sourceService = envelope.headers().get(EventEnvelope.HEADER_SOURCE_SERVICE);
-        if (sourceService == null || sourceService.isBlank()) {
-            throw new IllegalStateException(
-                "EventEnvelope missing '" + EventEnvelope.HEADER_SOURCE_SERVICE
-                    + "' header (eventId=" + envelope.eventId() + ")"
-            );
-        }
+        Assert.stateNotBlank(sourceService, "EventEnvelope missing '" + EventEnvelope.HEADER_SOURCE_SERVICE
+                    + "' header (eventId=" + envelope.eventId() + ")");
         String topic = sourceService + ".events";
         String key = envelope.aggregateId().toString();
         String value;

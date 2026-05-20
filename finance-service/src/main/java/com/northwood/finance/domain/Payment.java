@@ -2,6 +2,7 @@ package com.northwood.finance.domain;
 
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
 import com.northwood.finance.domain.events.SupplierPaymentMade;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
@@ -9,7 +10,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -74,7 +74,7 @@ public final class Payment {
             for (Method m : values()) {
                 if (m.dbValue.equals(value)) return m;
             }
-            throw new IllegalArgumentException("Unknown payment_method: " + value);
+            throw Assert.unknownValue("payment_method", value);
         }
     }
 
@@ -107,7 +107,7 @@ public final class Payment {
             for (Status s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown payment status: " + value);
+            throw Assert.unknownValue("payment status", value);
         }
     }
 
@@ -134,7 +134,7 @@ public final class Payment {
             for (Direction d : values()) {
                 if (d.dbValue.equals(value)) return d;
             }
-            throw new IllegalArgumentException("Unknown payment_direction: " + value);
+            throw Assert.unknownValue("payment_direction", value);
         }
     }
 
@@ -161,7 +161,7 @@ public final class Payment {
             for (Type t : values()) {
                 if (t.dbValue.equals(value)) return t;
             }
-            throw new IllegalArgumentException("Unknown payment_type: " + value);
+            throw Assert.unknownValue("payment_type", value);
         }
     }
 
@@ -189,7 +189,7 @@ public final class Payment {
             for (AllocationStatus s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown payment_allocation status: " + value);
+            throw Assert.unknownValue("payment_allocation status", value);
         }
     }
 
@@ -227,12 +227,10 @@ public final class Payment {
         UUID purchaseOrderHeaderId,
         String invoiceStatusAfter
     ) {
-        Objects.requireNonNull(supplierId, "supplierId");
-        Objects.requireNonNull(supplierInvoiceHeaderId, "supplierInvoiceHeaderId");
-        Objects.requireNonNull(purchaseOrderHeaderId, "purchaseOrderHeaderId");
-        if (amount == null || amount.signum() <= 0) {
-            throw new IllegalArgumentException("amount must be > 0");
-        }
+        Assert.notNull(supplierId, "supplierId");
+        Assert.notNull(supplierInvoiceHeaderId, "supplierInvoiceHeaderId");
+        Assert.notNull(purchaseOrderHeaderId, "purchaseOrderHeaderId");
+        Assert.argument(amount != null && amount.signum() > 0, "amount must be > 0");
 
         PaymentId id = PaymentId.newId();
         PaymentAllocation allocation = new PaymentAllocation(
@@ -292,12 +290,10 @@ public final class Payment {
         UUID salesOrderHeaderId,
         String invoiceStatusAfter
     ) {
-        Objects.requireNonNull(customerId, "customerId");
-        Objects.requireNonNull(customerInvoiceHeaderId, "customerInvoiceHeaderId");
-        Objects.requireNonNull(salesOrderHeaderId, "salesOrderHeaderId");
-        if (amount == null || amount.signum() <= 0) {
-            throw new IllegalArgumentException("amount must be > 0");
-        }
+        Assert.notNull(customerId, "customerId");
+        Assert.notNull(customerInvoiceHeaderId, "customerInvoiceHeaderId");
+        Assert.notNull(salesOrderHeaderId, "salesOrderHeaderId");
+        Assert.argument(amount != null && amount.signum() > 0, "amount must be > 0");
 
         PaymentId id = PaymentId.newId();
         PaymentAllocation allocation = new PaymentAllocation(
@@ -355,17 +351,13 @@ public final class Payment {
         String currencyCode,
         List<SupplierAllocationLine> lines
     ) {
-        Objects.requireNonNull(supplierId, "supplierId");
-        if (lines == null || lines.isEmpty()) {
-            throw new IllegalArgumentException("at least one allocation line is required");
-        }
+        Assert.notNull(supplierId, "supplierId");
+        Assert.notEmpty(lines, "at least one allocation line is required");
         BigDecimal total = BigDecimal.ZERO;
         for (SupplierAllocationLine l : lines) {
-            Objects.requireNonNull(l.supplierInvoiceHeaderId, "supplierInvoiceHeaderId");
-            Objects.requireNonNull(l.purchaseOrderHeaderId, "purchaseOrderHeaderId");
-            if (l.amount == null || l.amount.signum() <= 0) {
-                throw new IllegalArgumentException("each allocation amount must be > 0");
-            }
+            Assert.notNull(l.supplierInvoiceHeaderId, "supplierInvoiceHeaderId");
+            Assert.notNull(l.purchaseOrderHeaderId, "purchaseOrderHeaderId");
+            Assert.argument(l.amount != null && l.amount.signum() > 0, "each allocation amount must be > 0");
             total = total.add(l.amount);
         }
 
@@ -427,17 +419,13 @@ public final class Payment {
         String currencyCode,
         List<CustomerAllocationLine> lines
     ) {
-        Objects.requireNonNull(customerId, "customerId");
-        if (lines == null || lines.isEmpty()) {
-            throw new IllegalArgumentException("at least one allocation line is required");
-        }
+        Assert.notNull(customerId, "customerId");
+        Assert.notEmpty(lines, "at least one allocation line is required");
         BigDecimal total = BigDecimal.ZERO;
         for (CustomerAllocationLine l : lines) {
-            Objects.requireNonNull(l.customerInvoiceHeaderId, "customerInvoiceHeaderId");
-            Objects.requireNonNull(l.salesOrderHeaderId, "salesOrderHeaderId");
-            if (l.amount == null || l.amount.signum() <= 0) {
-                throw new IllegalArgumentException("each allocation amount must be > 0");
-            }
+            Assert.notNull(l.customerInvoiceHeaderId, "customerInvoiceHeaderId");
+            Assert.notNull(l.salesOrderHeaderId, "salesOrderHeaderId");
+            Assert.argument(l.amount != null && l.amount.signum() > 0, "each allocation amount must be > 0");
             total = total.add(l.amount);
         }
 

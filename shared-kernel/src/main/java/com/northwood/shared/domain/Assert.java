@@ -16,20 +16,30 @@ import java.util.Map;
  * framework-free guarantee its {@code pom.xml} carries. This is a tiny,
  * zero-dependency equivalent shaped to the same idioms.
  *
- * <p><b>Shape conventions.</b>
+ * <p><b>Two axes: argument vs. state.</b>
  * <ul>
- *   <li>{@link #notNull}, {@link #isTrue}, {@link #notBlank}, {@link #notEmpty}
- *       throw {@link IllegalArgumentException} — caller passed in something
- *       that violates the contract.</li>
- *   <li>{@link #state} throws {@link IllegalStateException} — the receiver's
- *       current state doesn't permit the operation (e.g. mutating a posted
- *       invoice, advancing a saga from a non-startable state).</li>
- *   <li>{@link #unknownValue} returns the exception rather than throwing,
- *       so the caller writes {@code throw Assert.unknownValue(...)} —
- *       lets the compiler keep its control-flow analysis on the throw
- *       statement and matches the shape of the existing end-of-method
- *       fall-through throws in {@code fromDb} / {@code fromString} parsers.</li>
+ *   <li><b>Argument checks</b> throw {@link IllegalArgumentException} — the
+ *       caller passed in something that violates the contract.
+ *       {@link #notNull}, {@link #notBlank}, {@link #notEmpty},
+ *       {@link #argument}.</li>
+ *   <li><b>State checks</b> throw {@link IllegalStateException} — the
+ *       receiver's current state doesn't permit the operation (e.g.
+ *       mutating a posted invoice, advancing a saga from a non-startable
+ *       state). {@link #state}, {@link #stateNotNull},
+ *       {@link #stateNotBlank}, {@link #stateNotEmpty}.</li>
  * </ul>
+ *
+ * <p>The {@code state*} family mirrors the argument family one-for-one so a
+ * caller never has to spell out the negated boolean by hand:
+ * {@code Assert.stateNotEmpty(list, ...)} reads cleanly where
+ * {@code Assert.state(!list.isEmpty(), ...)} would carry a redundant {@code !}.
+ *
+ * <p>{@link #unknownValue} returns the exception rather than throwing, so the
+ * caller writes {@code throw Assert.unknownValue(...)} — lets the compiler
+ * keep the {@code throw} keyword visible for control-flow analysis
+ * (unreachable-code, definite-assignment) and matches the shape of the
+ * existing end-of-method fall-through throws in {@code fromDb} /
+ * {@code fromString} parsers.
  *
  * <p><b>Not covered.</b>
  * <ul>
@@ -42,56 +52,23 @@ import java.util.Map;
  */
 public final class Assert {
 
+    // ----------------------------------------------------------------------
+    // Argument checks — throw IllegalArgumentException
+    // ----------------------------------------------------------------------
+
     /**
      * Throws {@link IllegalArgumentException} with {@code message} when
-     * {@code obj} is null. Use for non-null argument checks at the top of
-     * factory methods, application service entry points, and constructor
-     * bodies.
+     * {@code obj} is null; otherwise returns {@code obj} unchanged. Use for
+     * non-null argument checks at the top of factory methods, application
+     * service entry points, and constructor bodies — including the chained
+     * shape {@code this.field = Assert.notNull(value, "value")} that
+     * mirrors {@link java.util.Objects#requireNonNull(Object, String)}.
      */
-    public static void notNull(Object obj, String message) {
+    public static <T> T notNull(T obj, String message) {
         if (obj == null) {
             throw new IllegalArgumentException(message);
         }
-    }
-
-    /**
-     * Throws {@link IllegalArgumentException} with {@code message} when
-     * {@code condition} is false. The condition is the <b>positive</b>
-     * statement of what should be true (e.g. {@code isTrue(qty > 0, ...)},
-     * not {@code isTrue(qty <= 0, ...)}). For checks shaped as "fail if
-     * this forbidden condition holds" use {@link #isFalse} instead —
-     * keeps the original phrasing without forcing the caller to invert.
-     */
-    public static void isTrue(boolean condition, String message) {
-        if (!condition) {
-            throw new IllegalArgumentException(message);
-        }
-    }
-
-    /**
-     * Throws {@link IllegalArgumentException} with {@code message} when
-     * {@code condition} is true — the forbidden-condition mirror of
-     * {@link #isTrue}. Use this when the original code shape is
-     * {@code if (cond) throw new IAE(...)} and inverting the condition
-     * would produce a double-negative (e.g. {@code isFalse(uomCode.isBlank(),
-     * "uomCode must not be blank")} reads better than {@code isTrue(
-     * !uomCode.isBlank(), ...)}).
-     */
-    public static void isFalse(boolean condition, String message) {
-        if (condition) {
-            throw new IllegalArgumentException(message);
-        }
-    }
-
-    /**
-     * Throws {@link IllegalStateException} with {@code message} when
-     * {@code condition} is false. Same shape as {@link #isTrue} but for
-     * receiver-state invariants rather than argument contracts.
-     */
-    public static void state(boolean condition, String message) {
-        if (!condition) {
-            throw new IllegalStateException(message);
-        }
+        return obj;
     }
 
     /**
@@ -123,6 +100,81 @@ public final class Assert {
             throw new IllegalArgumentException(message);
         }
     }
+
+    /**
+     * Throws {@link IllegalArgumentException} with {@code message} when
+     * {@code condition} is false. The condition is the <b>positive</b>
+     * statement of what should be true (e.g. {@code argument(qty > 0, ...)},
+     * not {@code argument(!(qty <= 0), ...)}). Use this for argument-shape
+     * predicates that don't fit the more-specific {@link #notNull} /
+     * {@link #notBlank} / {@link #notEmpty} helpers.
+     */
+    public static void argument(boolean condition, String message) {
+        if (!condition) {
+            throw new IllegalArgumentException(message);
+        }
+    }
+
+    // ----------------------------------------------------------------------
+    // State checks — throw IllegalStateException
+    // ----------------------------------------------------------------------
+
+    /**
+     * Throws {@link IllegalStateException} with {@code message} when
+     * {@code condition} is false. Same shape as {@link #argument} but for
+     * receiver-state invariants rather than argument contracts.
+     */
+    public static void state(boolean condition, String message) {
+        if (!condition) {
+            throw new IllegalStateException(message);
+        }
+    }
+
+    /**
+     * State-check mirror of {@link #notNull}: throws
+     * {@link IllegalStateException} when {@code obj} is null; otherwise
+     * returns {@code obj} for chaining. Use when the missing reference
+     * signals an invariant violation rather than a bad argument (e.g. a
+     * saga in a state that should have populated {@code workOrderId}).
+     */
+    public static <T> T stateNotNull(T obj, String message) {
+        if (obj == null) {
+            throw new IllegalStateException(message);
+        }
+        return obj;
+    }
+
+    /**
+     * State-check mirror of {@link #notBlank}: throws
+     * {@link IllegalStateException} when {@code text} is null, empty, or
+     * whitespace-only.
+     */
+    public static void stateNotBlank(String text, String message) {
+        if (text == null || text.isBlank()) {
+            throw new IllegalStateException(message);
+        }
+    }
+
+    /**
+     * State-check mirror of {@link #notEmpty(Collection, String)}: throws
+     * {@link IllegalStateException} when {@code collection} is null or empty.
+     */
+    public static void stateNotEmpty(Collection<?> collection, String message) {
+        if (collection == null || collection.isEmpty()) {
+            throw new IllegalStateException(message);
+        }
+    }
+
+    /** Same as {@link #stateNotEmpty(Collection, String)} for maps. */
+    public static void stateNotEmpty(Map<?, ?> map, String message) {
+        if (map == null || map.isEmpty()) {
+            throw new IllegalStateException(message);
+        }
+    }
+
+    // ----------------------------------------------------------------------
+    // Unknown enum / wire value fall-through
+    // ----------------------------------------------------------------------
 
     /**
      * Returns (does not throw) an {@link IllegalArgumentException} carrying

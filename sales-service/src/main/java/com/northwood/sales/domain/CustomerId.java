@@ -1,12 +1,12 @@
 package com.northwood.sales.domain;
 
-import java.util.Objects;
+import com.northwood.shared.domain.Assert;
 import java.util.UUID;
 
 /** Strongly-typed customer identifier. */
 public record CustomerId(UUID value) {
     public CustomerId {
-        Objects.requireNonNull(value, "value");
+        Assert.notNull(value, "value");
     }
 
     public static CustomerId newId() {

@@ -1,7 +1,7 @@
 package com.northwood.inventory.domain;
 
+import com.northwood.shared.domain.Assert;
 import java.math.BigDecimal;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -29,13 +29,11 @@ public final class StockReservationLine {
         BigDecimal shortageQuantity,
         StockReservation.Status status
     ) {
-        if (requestedQuantity.signum() <= 0) {
-            throw new IllegalArgumentException("requestedQuantity must be > 0");
-        }
-        this.lineId = Objects.requireNonNull(lineId);
-        this.productId = Objects.requireNonNull(productId);
-        this.productSku = Objects.requireNonNull(productSku);
-        this.productName = Objects.requireNonNull(productName);
+        Assert.argument(requestedQuantity.signum() > 0, "requestedQuantity must be > 0");
+        this.lineId = Assert.notNull(lineId, "lineId");
+        this.productId = Assert.notNull(productId, "productId");
+        this.productSku = Assert.notNull(productSku, "productSku");
+        this.productName = Assert.notNull(productName, "productName");
         this.requestedQuantity = requestedQuantity;
         this.reservedQuantity = reservedQuantity == null ? BigDecimal.ZERO : reservedQuantity;
         this.shortageQuantity = shortageQuantity == null ? BigDecimal.ZERO : shortageQuantity;

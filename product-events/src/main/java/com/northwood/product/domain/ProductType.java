@@ -1,5 +1,6 @@
 package com.northwood.product.domain;
 
+import com.northwood.shared.domain.Assert;
 /**
  * Mirrors the schema's product_type CHECK constraint. The string values must
  * match the database literals exactly.
@@ -29,6 +30,6 @@ public enum ProductType {
         for (ProductType t : values()) {
             if (t.dbValue.equals(value)) return t;
         }
-        throw new IllegalArgumentException("Unknown product_type: " + value);
+        throw Assert.unknownValue("product_type", value);
     }
 }

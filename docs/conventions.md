@@ -533,6 +533,102 @@ The exemplar is `SalesOrder.recordShipped` ↔ `CustomerInvoiceService.createFro
 
 The rule applies to fallbacks anywhere in the codebase. Code review should treat an undocumented `.orElse(SENTINEL)` / null-coalescing-to-default — or one missing from the `design-notes.md` index — as a fail.
 
+## Argument and state checks via `Assert`
+
+Argument validation and receiver-state invariants go through `com.northwood.shared.domain.Assert` — never inline `throw new IllegalArgumentException` / `throw new IllegalStateException` and never `Objects.requireNonNull`. The class lives in `shared-kernel` (deliberately Spring-free) so every layer — domain, application, infrastructure — can call it without violating the hexagonal import rules.
+
+### Two parallel families
+
+`Assert` is built around two axes — argument vs. state — with a one-for-one mirror so the caller never has to spell out a redundant negation:
+
+| Argument check (throws `IllegalArgumentException`) | State-check mirror (throws `IllegalStateException`) |
+|---|---|
+| `Assert.notNull(x, msg)` → `T` | `Assert.stateNotNull(x, msg)` → `T` |
+| `Assert.notBlank(str, msg)` | `Assert.stateNotBlank(str, msg)` |
+| `Assert.notEmpty(coll, msg)` (and `Map` overload) | `Assert.stateNotEmpty(coll, msg)` (and `Map` overload) |
+| `Assert.argument(cond, msg)` | `Assert.state(cond, msg)` |
+
+Plus the standalone `throw Assert.unknownValue("field", value)` returning an `IllegalArgumentException` for enum-parser fall-throughs with the literal "Unknown X: Y" message shape.
+
+There is **no** `isFalse` / `stateFalse` / `isTrue`. The earlier API carried both, then evolved as the migration revealed that forbidden-condition mirrors invited the `stateFalse(X != Y, ...)` anti-pattern (a structural double-negative). The current API forces every caller to write the positive condition. See *Prefer the positive form* below for the patterns that follow from this.
+
+### Method mapping (migrating legacy `throw` / `requireNonNull`)
+
+| Original idiom | Replacement |
+|---|---|
+| `Objects.requireNonNull(x, "x")` | `Assert.notNull(x, "x")` |
+| `this.field = Objects.requireNonNull(value, "value")` | `this.field = Assert.notNull(value, "value")` (returns `T`) |
+| `if (x == null) throw new IllegalArgumentException("msg")` | `Assert.notNull(x, "msg")` |
+| `if (str == null \|\| str.isBlank()) throw new IllegalArgumentException("msg")` | `Assert.notBlank(str, "msg")` |
+| `if (coll == null \|\| coll.isEmpty()) throw new IllegalArgumentException("msg")` | `Assert.notEmpty(coll, "msg")` |
+| `if (!cond) throw new IllegalArgumentException("msg")` | `Assert.argument(cond, "msg")` |
+| `if (cond) throw new IllegalArgumentException("msg")` | `Assert.argument(!cond, "msg")` *— invert the condition rather than fighting it; see below* |
+| `if (!cond) throw new IllegalStateException("msg")` | `Assert.state(cond, "msg")` |
+| `if (cond) throw new IllegalStateException("msg")` | `Assert.state(!cond, "msg")` *— see below* |
+| End-of-method / `default ->` `throw new IllegalArgumentException("Unknown X: " + value)` | `throw Assert.unknownValue("X", value)` |
+
+### Exception-type choice
+
+`Assert.notNull` throws `IllegalArgumentException`, **not** `NullPointerException`. The codebase-wide tradeoff: one Assert call site, one exception type — `IllegalArgumentException` for argument violations and `IllegalStateException` for receiver-state violations. The JDK's `Objects.requireNonNull` throws NPE; `Assert.notNull` does not. Tests that previously asserted `NullPointerException.class` for null-input checks now assert `IllegalArgumentException.class`.
+
+### Prefer the positive form
+
+When a `forbidden_cond` check fails, migrate by inverting the condition into a `required_cond` so the call reads as "what must be true." The migration is always possible — the question is whether the inversion looks cleaner than the original:
+
+```java
+// Wrong — `state` + `!=` reads OK when there's no positive predicate, but
+// here `status == ACTIVE` IS the positive predicate. Use it.
+Assert.state(status != Status.ACTIVE, "Cannot rename a non-active customer");
+//             ^^^^^^^^^^^^^^^^^^^^^^ negative form
+
+// Right
+Assert.state(status == Status.ACTIVE, "Cannot rename a non-active customer");
+```
+
+Apply De Morgan when the forbidden form is a compound:
+
+```java
+// "fail if status is COMPLETED or SKIPPED" → "require status to be one of the in-flight states"
+Assert.state(status != Status.COMPLETED && status != Status.SKIPPED, "...");      // mechanical
+Assert.state(status == Status.PLANNED  || status == Status.IN_PROGRESS, "...");   // preferred
+```
+
+Some checks have no positive opposite — `state(status != Status.DISCONTINUED, ...)` for the seven Product-mutator paths, `state(rows > 0, ...)` for "row found" checks. The `!=` / `>` / `<` here is the assertion itself, not a fight against double negation; leave it in that form.
+
+Same rule applies to `==null` checks: `argument(x != null, "x required")` is a worse spelling of `notNull(x, "x required")` — collapse to the helper.
+
+### What stays as inline throw
+
+`Assert` is for **preconditions and invariants only**. Keep inline:
+
+- **Exception translation.** `catch (JacksonException e) { throw new IllegalStateException("Cannot serialise event " + event.eventType(), e); }` — chains a cause; `Assert` doesn't take a cause argument by design.
+- **Context-specific switch defaults** where the message isn't the literal "Unknown X: Y" shape. `Assert.unknownValue("status", value)` produces exactly `"Unknown status: <value>"`; if the original message carries different context (e.g. `"Cannot resolve BFF target: " + name`), keep it inline.
+- **Domain exceptions** with their own type (e.g. `PoNotApprovableException`, `BomCycleException`). These are domain-meaningful errors, not generic argument-contract violations.
+
+### What goes in the message
+
+The Javadoc and the variable name. Don't bake call-stack context into the message — the stack trace already carries that. The message is a contract sentence: *"customerCode required"*, *"unitPrice must be > 0"*, *"Cannot change sales price on a discontinued product"*. Same shape the inline throws already use.
+
+### Why `unknownValue` returns rather than throws
+
+`Assert.unknownValue("status", value)` **returns** an `IllegalArgumentException` rather than throwing it. Callers write `throw Assert.unknownValue("status", value);`. This keeps the `throw` keyword visible at the call site so the compiler's control-flow analysis (unreachable-code, definite-assignment, missing-return) sees it as a terminating statement. A method that helpfully threw the exception itself would be flagged by the compiler as "missing return" at the fall-through end of a `fromDb` parser.
+
+### Why `unknownValue` returns rather than throws
+
+`Assert.unknownValue("status", value)` **returns** an `IllegalArgumentException` rather than throwing it. Callers write `throw Assert.unknownValue("status", value);`. This keeps the `throw` keyword visible at the call site so the compiler's control-flow analysis (unreachable-code, definite-assignment, missing-return) sees it as a terminating statement. A method that helpfully threw the exception itself would be flagged by the compiler as "missing return" at the fall-through end of a `fromDb` parser.
+
+### What stays as inline throw
+
+`Assert` is for **preconditions and invariants only**. Keep inline:
+
+- **Exception translation.** `catch (JacksonException e) { throw new IllegalStateException("Cannot serialise event " + event.eventType(), e); }` — chains a cause; `Assert` doesn't take a cause argument by design.
+- **Context-specific switch defaults** where the message isn't the literal "Unknown X: Y" shape. `Assert.unknownValue("status", value)` produces exactly `"Unknown status: <value>"`; if the original message carries different context (e.g. `"Cannot resolve BFF target: " + name`), keep it inline.
+- **Domain exceptions** with their own type (e.g. `PoNotApprovableException`, `BomCycleException`). These are domain-meaningful errors, not generic argument-contract violations.
+
+### What goes in the message
+
+The Javadoc and the variable name. Don't bake call-stack context into the message — the stack trace already carries that. The message is a contract sentence: *"customerCode required"*, *"unitPrice must be > 0"*, *"Cannot change sales price on a discontinued product"*. Same shape the inline throws already use.
+
 ## Single return path; make every branch exhaustive
 
 Two related rules for any method with branching logic:

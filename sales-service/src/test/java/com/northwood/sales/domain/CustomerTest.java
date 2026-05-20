@@ -45,7 +45,7 @@ class CustomerTest {
     class Register {
         @Test void rejects_null_customer_code() {
             assertThatThrownBy(() -> Customer.register(null, "n", null, null, null, null))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_blank_customer_code() {
@@ -55,7 +55,7 @@ class CustomerTest {
 
         @Test void rejects_null_name() {
             assertThatThrownBy(() -> Customer.register("CUST-X", null, null, null, null, null))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_blank_name() {
@@ -92,7 +92,7 @@ class CustomerTest {
         @Test void rejects_null() {
             Customer c = activeCustomer();
             assertThatThrownBy(() -> c.changeName(null))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_blank() {

@@ -2,11 +2,11 @@ package com.northwood.inventory.domain;
 
 import com.northwood.inventory.domain.events.GoodsReceived;
 import com.northwood.inventory.domain.events.GoodsReceived.ReceivedLine;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.DomainEvent;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -60,7 +60,7 @@ public final class GoodsReceipt {
             for (Status s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown goods_receipt status: " + value);
+            throw Assert.unknownValue("goods_receipt status", value);
         }
     }
 
@@ -86,11 +86,9 @@ public final class GoodsReceipt {
         String warehouseCode,
         List<GoodsReceiptLine> lines
     ) {
-        Objects.requireNonNull(purchaseOrderHeaderId, "purchaseOrderHeaderId");
-        Objects.requireNonNull(warehouseId, "warehouseId");
-        if (lines == null || lines.isEmpty()) {
-            throw new IllegalArgumentException("at least one line is required");
-        }
+        Assert.notNull(purchaseOrderHeaderId, "purchaseOrderHeaderId");
+        Assert.notNull(warehouseId, "warehouseId");
+        Assert.notEmpty(lines, "at least one line is required");
         GoodsReceiptId id = GoodsReceiptId.newId();
         GoodsReceipt gr = new GoodsReceipt(
             id, goodsReceiptNumber, purchaseOrderHeaderId,

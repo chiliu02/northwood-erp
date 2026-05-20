@@ -1,5 +1,6 @@
 package com.northwood.finance.domain;
 
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -7,7 +8,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -83,7 +83,7 @@ public final class JournalEntry {
             for (SourceModule m : values()) {
                 if (m.dbValue.equals(value)) return m;
             }
-            throw new IllegalArgumentException("Unknown journal_entry source_module: " + value);
+            throw Assert.unknownValue("journal_entry source_module", value);
         }
     }
 
@@ -118,7 +118,7 @@ public final class JournalEntry {
             for (SourceDocumentType t : values()) {
                 if (t.dbValue.equals(value)) return t;
             }
-            throw new IllegalArgumentException("Unknown journal_entry source_document_type: " + value);
+            throw Assert.unknownValue("journal_entry source_document_type", value);
         }
     }
 
@@ -151,7 +151,7 @@ public final class JournalEntry {
             for (Status s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown journal_entry status: " + value);
+            throw Assert.unknownValue("journal_entry status", value);
         }
     }
 
@@ -180,10 +180,8 @@ public final class JournalEntry {
         BigDecimal exchangeRate,
         List<JournalEntryLine> lines
     ) {
-        Objects.requireNonNull(sourceDocumentId, "sourceDocumentId");
-        if (lines == null || lines.size() < 2) {
-            throw new IllegalArgumentException("journal entry must have at least 2 lines (one debit, one credit)");
-        }
+        Assert.notNull(sourceDocumentId, "sourceDocumentId");
+        Assert.argument(lines != null && lines.size() >= 2, "journal entry must have at least 2 lines (one debit, one credit)");
         BigDecimal debits = BigDecimal.ZERO;
         BigDecimal credits = BigDecimal.ZERO;
         for (JournalEntryLine l : lines) {
@@ -225,13 +223,9 @@ public final class JournalEntry {
         String reason,
         LocalDate reversalPostingDate
     ) {
-        Objects.requireNonNull(original, "original");
-        if (original.status != Status.POSTED) {
-            throw new IllegalStateException(
-                "Can only reverse a posted journal entry; original " + original.id().value()
-                    + " is in status=" + original.status.dbValue()
-            );
-        }
+        Assert.notNull(original, "original");
+        Assert.state(original.status == Status.POSTED, "Can only reverse a posted journal entry; original " + original.id().value()
+                    + " is in status=" + original.status.dbValue());
         LocalDate postingDate = reversalPostingDate == null ? LocalDate.now() : reversalPostingDate;
         List<JournalEntryLine> reversedLines = new ArrayList<>();
         int seq = 10;

@@ -15,6 +15,7 @@ import com.northwood.finance.domain.PaymentId;
 import com.northwood.finance.domain.PaymentRepository;
 import com.northwood.finance.domain.SupplierInvoice;
 import com.northwood.finance.domain.SupplierInvoiceRepository;
+import com.northwood.shared.domain.Assert;
 import java.time.LocalDate;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -83,19 +84,11 @@ public class PaymentService {
     @Transactional
     public PaymentView recordSupplierPayment(RecordSupplierPaymentCommand command) {
         SupplierInvoiceRepository.PaymentSnapshot inv = lookupSupplierInvoice(command.supplierInvoiceHeaderId());
-        if (inv.status() != SupplierInvoice.Status.APPROVED && inv.status() != SupplierInvoice.Status.PARTIALLY_PAID) {
-            throw new IllegalStateException(
-                "Cannot pay supplier invoice " + command.supplierInvoiceHeaderId()
-                    + " in status=" + inv.status().dbValue() + " (must be approved or partially_paid)"
-            );
-        }
+        Assert.state(inv.status() == SupplierInvoice.Status.APPROVED || inv.status() == SupplierInvoice.Status.PARTIALLY_PAID, "Cannot pay supplier invoice " + command.supplierInvoiceHeaderId()
+                    + " in status=" + inv.status().dbValue() + " (must be approved or partially_paid)");
         BigDecimal outstandingBefore = inv.totalAmount().subtract(inv.paidAmount());
-        if (command.amount().compareTo(outstandingBefore) > 0) {
-            throw new IllegalArgumentException(
-                "Payment amount " + command.amount() + " exceeds outstanding " + outstandingBefore
-                    + " on invoice " + command.supplierInvoiceHeaderId()
-            );
-        }
+        Assert.argument(command.amount().compareTo(outstandingBefore) <= 0, "Payment amount " + command.amount() + " exceeds outstanding " + outstandingBefore
+                    + " on invoice " + command.supplierInvoiceHeaderId());
 
         BigDecimal paidAfter = inv.paidAmount().add(command.amount());
         String invoiceStatusAfter = paidAfter.compareTo(inv.totalAmount()) >= 0
@@ -139,19 +132,11 @@ public class PaymentService {
     @Transactional
     public PaymentView recordCustomerPayment(RecordCustomerPaymentCommand command) {
         PaymentSnapshot inv = lookupCustomerInvoice(command.customerInvoiceHeaderId());
-        if (inv.status() != CustomerInvoice.Status.POSTED && inv.status() != CustomerInvoice.Status.PARTIALLY_PAID) {
-            throw new IllegalStateException(
-                "Cannot pay customer invoice " + command.customerInvoiceHeaderId()
-                    + " in status=" + inv.status().dbValue() + " (must be posted or partially_paid)"
-            );
-        }
+        Assert.state(inv.status() == CustomerInvoice.Status.POSTED || inv.status() == CustomerInvoice.Status.PARTIALLY_PAID, "Cannot pay customer invoice " + command.customerInvoiceHeaderId()
+                    + " in status=" + inv.status().dbValue() + " (must be posted or partially_paid)");
         BigDecimal outstandingBefore = inv.totalAmount().subtract(inv.paidAmount());
-        if (command.amount().compareTo(outstandingBefore) > 0) {
-            throw new IllegalArgumentException(
-                "Payment amount " + command.amount() + " exceeds outstanding " + outstandingBefore
-                    + " on invoice " + command.customerInvoiceHeaderId()
-            );
-        }
+        Assert.argument(command.amount().compareTo(outstandingBefore) <= 0, "Payment amount " + command.amount() + " exceeds outstanding " + outstandingBefore
+                    + " on invoice " + command.customerInvoiceHeaderId());
 
         BigDecimal paidAfter = inv.paidAmount().add(command.amount());
         String invoiceStatusAfter = paidAfter.compareTo(inv.totalAmount()) >= 0
@@ -201,9 +186,7 @@ public class PaymentService {
      */
     @Transactional
     public PaymentView recordSupplierPaymentMulti(RecordSupplierPaymentMultiCommand command) {
-        if (command.invoices() == null || command.invoices().isEmpty()) {
-            throw new IllegalArgumentException("at least one invoice allocation is required");
-        }
+        Assert.notEmpty(command.invoices(), "at least one invoice allocation is required");
         UUID expectedSupplierId = null;
         String expectedSupplierName = null;
         String expectedCurrency = null;
@@ -211,12 +194,8 @@ public class PaymentService {
         List<SupplierAllocationLine> lines = new ArrayList<>();
         for (RecordSupplierPaymentMultiCommand.InvoiceLine il : command.invoices()) {
             SupplierInvoiceRepository.PaymentSnapshot inv = lookupSupplierInvoice(il.supplierInvoiceHeaderId());
-            if (inv.status() != SupplierInvoice.Status.APPROVED && inv.status() != SupplierInvoice.Status.PARTIALLY_PAID) {
-                throw new IllegalStateException(
-                    "Cannot pay supplier invoice " + il.supplierInvoiceHeaderId()
-                        + " in status=" + inv.status().dbValue() + " (must be approved or partially_paid)"
-                );
-            }
+            Assert.state(inv.status() == SupplierInvoice.Status.APPROVED || inv.status() == SupplierInvoice.Status.PARTIALLY_PAID, "Cannot pay supplier invoice " + il.supplierInvoiceHeaderId()
+                        + " in status=" + inv.status().dbValue() + " (must be approved or partially_paid)");
             if (expectedSupplierId == null) {
                 expectedSupplierId = inv.supplierId();
                 expectedSupplierName = inv.supplierName();
@@ -233,12 +212,8 @@ public class PaymentService {
                 );
             }
             BigDecimal outstandingBefore = inv.totalAmount().subtract(inv.paidAmount());
-            if (il.amount().compareTo(outstandingBefore) > 0) {
-                throw new IllegalArgumentException(
-                    "Allocation " + il.amount() + " exceeds outstanding " + outstandingBefore
-                        + " on invoice " + il.supplierInvoiceHeaderId()
-                );
-            }
+            Assert.argument(il.amount().compareTo(outstandingBefore) <= 0, "Allocation " + il.amount() + " exceeds outstanding " + outstandingBefore
+                        + " on invoice " + il.supplierInvoiceHeaderId());
             BigDecimal paidAfter = inv.paidAmount().add(il.amount());
             String invoiceStatusAfter = paidAfter.compareTo(inv.totalAmount()) >= 0
                 ? SupplierInvoice.Status.PAID.dbValue() : SupplierInvoice.Status.PARTIALLY_PAID.dbValue();
@@ -288,9 +263,7 @@ public class PaymentService {
      */
     @Transactional
     public PaymentView recordCustomerPaymentMulti(RecordCustomerPaymentMultiCommand command) {
-        if (command.invoices() == null || command.invoices().isEmpty()) {
-            throw new IllegalArgumentException("at least one invoice allocation is required");
-        }
+        Assert.notEmpty(command.invoices(), "at least one invoice allocation is required");
         UUID expectedCustomerId = null;
         String expectedCustomerName = null;
         String expectedCurrency = null;
@@ -298,12 +271,8 @@ public class PaymentService {
         List<CustomerAllocationLine> lines = new ArrayList<>();
         for (RecordCustomerPaymentMultiCommand.InvoiceLine il : command.invoices()) {
             PaymentSnapshot inv = lookupCustomerInvoice(il.customerInvoiceHeaderId());
-            if (inv.status() != CustomerInvoice.Status.POSTED && inv.status() != CustomerInvoice.Status.PARTIALLY_PAID) {
-                throw new IllegalStateException(
-                    "Cannot pay customer invoice " + il.customerInvoiceHeaderId()
-                        + " in status=" + inv.status().dbValue() + " (must be posted or partially_paid)"
-                );
-            }
+            Assert.state(inv.status() == CustomerInvoice.Status.POSTED || inv.status() == CustomerInvoice.Status.PARTIALLY_PAID, "Cannot pay customer invoice " + il.customerInvoiceHeaderId()
+                        + " in status=" + inv.status().dbValue() + " (must be posted or partially_paid)");
             if (expectedCustomerId == null) {
                 expectedCustomerId = inv.customerId();
                 expectedCustomerName = inv.customerName();
@@ -320,12 +289,8 @@ public class PaymentService {
                 );
             }
             BigDecimal outstandingBefore = inv.totalAmount().subtract(inv.paidAmount());
-            if (il.amount().compareTo(outstandingBefore) > 0) {
-                throw new IllegalArgumentException(
-                    "Allocation " + il.amount() + " exceeds outstanding " + outstandingBefore
-                        + " on invoice " + il.customerInvoiceHeaderId()
-                );
-            }
+            Assert.argument(il.amount().compareTo(outstandingBefore) <= 0, "Allocation " + il.amount() + " exceeds outstanding " + outstandingBefore
+                        + " on invoice " + il.customerInvoiceHeaderId());
             BigDecimal paidAfter = inv.paidAmount().add(il.amount());
             String invoiceStatusAfter = paidAfter.compareTo(inv.totalAmount()) >= 0
                 ? CustomerInvoice.Status.PAID.dbValue() : CustomerInvoice.Status.PARTIALLY_PAID.dbValue();

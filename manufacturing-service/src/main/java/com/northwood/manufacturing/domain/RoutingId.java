@@ -1,11 +1,11 @@
 package com.northwood.manufacturing.domain;
 
-import java.util.Objects;
+import com.northwood.shared.domain.Assert;
 import java.util.UUID;
 
 public record RoutingId(UUID value) {
     public RoutingId {
-        Objects.requireNonNull(value, "value");
+        Assert.notNull(value, "value");
     }
 
     public static RoutingId of(UUID value) {

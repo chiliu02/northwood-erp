@@ -3,6 +3,7 @@ package com.northwood.purchasing.application;
 import com.northwood.purchasing.application.dto.PriceView;
 import com.northwood.purchasing.domain.SupplierProductPrice;
 import com.northwood.purchasing.domain.SupplierProductPriceRepository;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.util.List;
@@ -47,11 +48,9 @@ public class SupplierProductPriceService {
      */
     @Transactional
     public UUID setPrice(UUID supplierId, UUID productId, String currencyCode, BigDecimal unitPrice) {
-        if (supplierId == null) throw new IllegalArgumentException("supplierId required");
-        if (productId == null) throw new IllegalArgumentException("productId required");
-        if (unitPrice == null || unitPrice.signum() <= 0) {
-            throw new IllegalArgumentException("unitPrice must be > 0");
-        }
+        Assert.notNull(supplierId, "supplierId required");
+        Assert.notNull(productId, "productId required");
+        Assert.argument(unitPrice != null && unitPrice.signum() > 0, "unitPrice must be > 0");
         String currency = Currencies.orBase(currencyCode);
 
         Optional<SupplierProductPrice> existing = supplierProductPrices.findByKey(supplierId, productId, currency);

@@ -6,6 +6,72 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — `Assert` rule documented, applied codebase-wide, API settled
+
+Folds the earlier *Assert precondition helper in shared-kernel* foundation into the project's rule set, rolls out the migration across every `main/` file, and lands on the final API shape after multiple review rounds. All argument and state checks across `main/` go through `com.northwood.shared.domain.Assert` — never inline `throw new IllegalArgumentException/IllegalStateException`, never `Objects.requireNonNull`. Documented exceptions stay as inline throws.
+
+### Final API shape
+
+Two parallel families, mirror-symmetric so the caller never spells out a redundant negation:
+
+| Argument (throws `IllegalArgumentException`) | State mirror (throws `IllegalStateException`) |
+|---|---|
+| `Assert.notNull(x, msg) → T` | `Assert.stateNotNull(x, msg) → T` |
+| `Assert.notBlank(s, msg)` | `Assert.stateNotBlank(s, msg)` |
+| `Assert.notEmpty(coll/map, msg)` | `Assert.stateNotEmpty(coll/map, msg)` |
+| `Assert.argument(cond, msg)` | `Assert.state(cond, msg)` |
+
+Plus `throw Assert.unknownValue("field", value)` — returns an `IllegalArgumentException` for enum-parser fall-throughs with the literal "Unknown X: Y" message shape. Returning rather than throwing keeps the `throw` keyword visible at the call site so the compiler's control-flow analysis (unreachable-code, definite-assignment, missing-return) sees the terminating statement.
+
+`notNull` and `stateNotNull` return `T` so the chained `this.field = Assert.notNull(value, "value")` shape works as a drop-in replacement for `Objects.requireNonNull`. Both throw their respective exception types on null — NOT `NullPointerException`. One Assert call, one exception type, regardless of which specific check fired.
+
+The earlier API also carried `isTrue`, `isFalse`, and `stateFalse`; this slice renamed `isTrue → argument` and removed both `*False` variants. The `*False` mirrors had been added to avoid double-negatives when migrating `if (cond) throw new IAE/ISE(msg)`, but in practice they invited a worse anti-pattern: `stateFalse(X != Y, ...)` (structural double-negative). Forcing the caller to write the positive condition turns out to be cleaner — and the `state*` family above covers the most common forbidden-condition shapes without compound boolean expressions at the call site.
+
+### Rule, documented
+
+- **`CLAUDE.md` → "Argument + state checks via `Assert`"** (one paragraph) names the two families and the documented exceptions that stay inline.
+- **`docs/conventions.md` → "Argument and state checks via `Assert`"** carries the full mapping table, the "Prefer the positive form" guidance (incl. De Morgan flips for compound conditions and the `!=`/`>` shapes that stay because they have no positive opposite), the `unknownValue`-returns-rather-than-throws rationale, and the explicit not-covered cases.
+
+### Migration scope and counts
+
+- **125 `Objects.requireNonNull` calls** → `Assert.notNull`. Bulk PowerShell substitution covering two-arg `Objects.requireNonNull(x, "x")` and single-arg `Objects.requireNonNull(x)` shapes (the latter uses the variable name as the message). Behaviour change: NPE → IAE on null.
+- **~280 `throw new IAE/ISE(...)` sites across `main/`** → `Assert.*`. Three-phase script: (1) null-check + isBlank + isEmpty patterns; (2) single-line `if (cond) throw new IAE/ISE("msg");`; (3) balanced-paren matching for multi-line throws with concatenated-string messages.
+- **End-of-method / case `throw new IAE("Unknown X: " + v);` sites** → `throw Assert.unknownValue("X", v);`. Covers `fromDb` parser fall-throughs and switch `default` clauses with the literal "Unknown X: Y" message shape.
+- **13 test files updated** — `NullPointerException.class` → `IllegalArgumentException.class` in `assertThrows(...)` and AssertJ `.isInstanceOf(...)` calls. Covers shared-kernel + every service's domain tests.
+- **`Assert` import added** to every modified file (alphabetical position among `com.northwood.*` imports); **`java.util.Objects` import removed** where no other `Objects.*` reference remains.
+
+### Post-migration cleanup passes (per-review iterations)
+
+The mechanical script left several anti-patterns the bulk regex couldn't avoid; these landed as follow-up sweeps once the call-site noise became visible:
+
+- **Pair collapses to `notBlank`** — 7 sites of the form `Assert.notNull(x, …); Assert.isFalse(x.isBlank(), …);` (one for each compact-constructor field that needed both checks) collapsed to a single `Assert.notBlank(x, …)`. Same for the multi-line `if (X == null \|\| X.isBlank()) throw new IAE(...)` shape (`EventEnvelope`).
+- **Anti-pattern: `*False(X == null, …)` and `*False(X != null, …)`** — 4 sites where the script's regex matched `if (X == null) throw …` generically; collapsed to `Assert.notNull(x, …)` / `Assert.state(x != null, …)` depending on argument-vs-state.
+- **Anti-pattern: `*False(X != Y, …)` and `*False(!cond, …)`** — 18 sites of "negative in a negative." Flipped via De Morgan to the positive equivalent: `state(status == X)`, `argument(cond)`, etc. Compound cases with `&&`-of-`!=` flipped to `||`-of-`==`. A handful (e.g. `state(status != Status.DISCONTINUED, …)` for the seven Product-mutator paths, `state(rows > 0, …)`) stayed in the negative form because they had no positive opposite — the convention's "Prefer the positive form" section covers this.
+- **Anti-pattern: `*False(X == null \|\| cond, …)`** — 11 sites. De Morgan to positive `argument(X != null && !cond, …)` or — better — to the dedicated helper: `notNull` / `notBlank` / `notEmpty` / `notEmpty` (Map) / `stateNotEmpty` / `stateNotBlank` / `stateNotNull` as appropriate.
+- **State-side mirror collapses** — 4 sites of `Assert.state(X != null && cond, …)` collapsed to the new `stateNotNull` / `stateNotBlank` / `stateNotEmpty` helpers introduced in this slice.
+
+Net effect across the whole slice (foundation + migration + cleanup + API refactor): 76 files changed, +733 −708 lines. The migration deletes more boilerplate than it adds.
+
+### Documented exceptions that stay as inline throws
+
+Per the convention's "What stays as inline throw" section, ~60 throws across ~30 files are intentionally left as inline:
+
+- **Exception translation in catch blocks** — `catch (JacksonException e) { throw new IllegalStateException("Cannot serialise event " + ..., e); }`. `Assert` doesn't take a cause argument by design.
+- **`BffTargets` switch-default throws** in `demo-web-ui-bff` + `erp-web-ui-bff` — the BFF modules deliberately don't depend on `shared-kernel`, so `Assert` isn't on their classpath. Adding the dep just for one switch default is overkill; the inline `throw new IllegalArgumentException("Unknown BFF target: " + name)` stays.
+- **Multi-condition `else if (cond) { throw new IAE(...); }` chains** (e.g. `PaymentService.recordMultiSupplierPayment`'s currency/supplier consistency checks) — these are if/else-if selectors where converting each body to an `Assert.*` call would require restructuring the chain. Inline form reads cleanly in the existing shape.
+
+### Files with the largest churn
+
+- `shared-kernel/src/main/java/com/northwood/shared/domain/Assert.java` — the helper class itself, +175 lines (10 public methods + Javadoc).
+- `manufacturing-service/domain/{WorkOrder, Bom, WorkOrderOperation, WorkOrderMaterial}.java` — heavy aggregate-root validation.
+- `finance-service/domain/{Payment, JournalEntry, CustomerInvoice, SupplierInvoice}.java` + `application/PaymentService.java` — similar density.
+- `product-service/domain/Product.java` — 12 throws migrated.
+- The `*Id` value-object records (BomId, CustomerId, …) — minimal change, just `Objects.requireNonNull` → `Assert.notNull` in compact constructors.
+
+### Smoke
+
+`mvn clean test` = SUCCESS across 19 modules. 79 shared-kernel tests (was 56 at the start of the slice; +23 for the Assert helper tests including the new `stateNotNull` / `stateNotBlank` / `stateNotEmpty` mirrors).
+
 ## 2026-05-20 — `Assert` precondition helper in shared-kernel
 
 Adds a project-local `com.northwood.shared.domain.Assert` utility — replaces the verbose `if (x == null) throw new IllegalArgumentException(...)` idiom with single-call equivalents (`Assert.notNull`, `Assert.isTrue`, `Assert.state`, `Assert.notBlank`, `Assert.notEmpty`, `Assert.unknownValue`). Sits in `shared-kernel` rather than reusing Spring's `org.springframework.util.Assert` because `shared-kernel`'s `pom.xml` carries an explicit framework-free guarantee ("*Deliberately Spring-free so it can be consumed by any layer without pulling in framework code.*"); pulling Spring in just for this utility would break that guarantee.
@@ -20,9 +86,7 @@ Adds a project-local `com.northwood.shared.domain.Assert` utility — replaces t
 - **`AssertTest.java`** — 21 tests covering each method's happy + throw paths (77 shared-kernel tests in total now, was 56).
 - **5 shared-kernel sites migrated** as demonstration — every `throw new IAE/ISE(...)` in `Sku`, `Quantity`, `Money` now goes through `Assert.isTrue(...)`. `Objects.requireNonNull` calls preserved so null-input behaviour stays NPE (the existing test suite asserts NPE.class for null args; flipping to IAE would have broken those tests, and the JDK-idiom `requireNonNull` is already concise enough).
 
-### Migration to the other ~184 main-code sites: TBD
-
-Deferred to a follow-up slice. Of the 189 sites identified across 70 main-code files, ~5 are clean null-checks that map straight to `Assert.notNull`, ~10 are end-of-method enum-parser throws that map to `Assert.unknownValue`, ~5 are exception-translation `catch`-rethrows that should stay as-is, and the bulk (~150) are `if (cond) throw new IAE(msg)` shapes whose conditions need inversion to become `Assert.isTrue(!cond, msg)`. The inversion mechanically works but reads as a double-negative at some sites — scope and per-site judgement call deferred.
+### Migration to the other ~184 main-code sites: see the following slice.
 
 ## 2026-05-20 — Centralise the `currencyCode == null ? AUD : currencyCode` fallback
 

@@ -17,6 +17,7 @@ import com.northwood.manufacturing.domain.saga.MakeToOrderSaga;
 import static com.northwood.manufacturing.domain.saga.MakeToOrderSaga.RAW_MATERIAL_RESERVATION_REQUESTED;
 import static com.northwood.manufacturing.domain.saga.MakeToOrderSaga.STARTED;
 import static com.northwood.manufacturing.domain.saga.MakeToOrderSaga.WORK_ORDER_CREATED;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.DomainEvent;
 import com.northwood.shared.application.outbox.OutboxPort;
 import com.northwood.shared.application.outbox.OutboxRow;
@@ -126,11 +127,7 @@ public class MakeToOrderSagaWorker {
 
     private void requestRawMaterialReservation(MakeToOrderSaga saga) {
         UUID workOrderId = saga.workOrderId();
-        if (workOrderId == null) {
-            throw new IllegalStateException(
-                "saga " + saga.sagaId() + " is in work_order_created but has no work_order_id"
-            );
-        }
+        Assert.stateNotNull(workOrderId, "saga " + saga.sagaId() + " is in work_order_created but has no work_order_id");
         WorkOrder workOrder = workOrders.findById(WorkOrderId.of(workOrderId))
             .orElseThrow(() -> new IllegalStateException(
                 "no work order " + workOrderId + " for saga " + saga.sagaId()

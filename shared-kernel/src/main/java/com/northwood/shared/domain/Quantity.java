@@ -1,7 +1,6 @@
 package com.northwood.shared.domain;
 
 import java.math.BigDecimal;
-import java.util.Objects;
 
 /**
  * Quantity is an amount plus its unit of measure. The schema uses NUMERIC(18,4)
@@ -13,9 +12,8 @@ import java.util.Objects;
 public record Quantity(BigDecimal amount, String uomCode) {
 
     public Quantity {
-        Objects.requireNonNull(amount, "amount");
-        Objects.requireNonNull(uomCode, "uomCode");
-        Assert.isFalse(uomCode.isBlank(), "uomCode must not be blank");
+        Assert.notNull(amount, "amount");
+        Assert.notBlank(uomCode, "uomCode must not be blank");
     }
 
     public static Quantity of(BigDecimal amount, String uomCode) {
@@ -50,7 +48,7 @@ public record Quantity(BigDecimal amount, String uomCode) {
     }
 
     private void requireSameUom(Quantity other) {
-        Assert.isTrue(uomCode.equals(other.uomCode),
+        Assert.argument(uomCode.equals(other.uomCode),
             "UoM mismatch: " + uomCode + " vs " + other.uomCode);
     }
 }

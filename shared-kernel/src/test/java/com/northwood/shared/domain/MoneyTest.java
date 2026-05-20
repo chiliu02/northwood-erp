@@ -16,11 +16,11 @@ class MoneyTest {
     @Nested
     class Construction {
         @Test void rejects_null_amount() {
-            assertThrows(NullPointerException.class, () -> new Money(null, Currencies.AUD));
+            assertThrows(IllegalArgumentException.class, () -> new Money(null, Currencies.AUD));
         }
 
         @Test void rejects_null_currency() {
-            assertThrows(NullPointerException.class, () -> new Money(BigDecimal.TEN, null));
+            assertThrows(IllegalArgumentException.class, () -> new Money(BigDecimal.TEN, null));
         }
 
         @Test void rejects_currency_other_than_three_letters() {

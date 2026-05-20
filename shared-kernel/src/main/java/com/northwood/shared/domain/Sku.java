@@ -1,6 +1,5 @@
 package com.northwood.shared.domain;
 
-import java.util.Objects;
 import java.util.regex.Pattern;
 
 /**
@@ -13,8 +12,8 @@ public record Sku(String value) {
     private static final Pattern PATTERN = Pattern.compile("^[A-Z][A-Z0-9_-]{1,49}$");
 
     public Sku {
-        Objects.requireNonNull(value, "value");
-        Assert.isTrue(PATTERN.matcher(value).matches(), "Invalid SKU: " + value);
+        Assert.notNull(value, "value");
+        Assert.argument(PATTERN.matcher(value).matches(), "Invalid SKU: " + value);
     }
 
     @Override

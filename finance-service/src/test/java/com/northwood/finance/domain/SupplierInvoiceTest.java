@@ -79,7 +79,7 @@ class SupplierInvoiceTest {
                 SUPPLIER, "A", "A", Currencies.AUD,
                 List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
                 SupplierInvoice.MatchStatus.MATCHED
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_supplier_id() {
@@ -88,7 +88,7 @@ class SupplierInvoiceTest {
                 null, "A", "A", Currencies.AUD,
                 List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
                 SupplierInvoice.MatchStatus.MATCHED
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_supplier_invoice_number() {
@@ -97,7 +97,7 @@ class SupplierInvoiceTest {
                 SUPPLIER, "A", "A", Currencies.AUD,
                 List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
                 SupplierInvoice.MatchStatus.MATCHED
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void totals_summed_from_lines() {

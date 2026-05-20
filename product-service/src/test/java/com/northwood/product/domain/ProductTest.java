@@ -78,42 +78,42 @@ class ProductTest {
             assertThatThrownBy(() -> Product.register(
                 null, "n", "d", ProductType.FINISHED_GOOD, UOM_EACH,
                 Money.zero(Currencies.AUD), Money.zero(Currencies.AUD)
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_name() {
             assertThatThrownBy(() -> Product.register(
                 new Sku("FG-X"), null, "d", ProductType.FINISHED_GOOD, UOM_EACH,
                 Money.zero(Currencies.AUD), Money.zero(Currencies.AUD)
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_product_type() {
             assertThatThrownBy(() -> Product.register(
                 new Sku("FG-X"), "n", "d", null, UOM_EACH,
                 Money.zero(Currencies.AUD), Money.zero(Currencies.AUD)
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_base_uom_id() {
             assertThatThrownBy(() -> Product.register(
                 new Sku("FG-X"), "n", "d", ProductType.FINISHED_GOOD, null,
                 Money.zero(Currencies.AUD), Money.zero(Currencies.AUD)
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_sales_price() {
             assertThatThrownBy(() -> Product.register(
                 new Sku("FG-X"), "n", "d", ProductType.FINISHED_GOOD, UOM_EACH,
                 null, Money.zero(Currencies.AUD)
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_standard_cost() {
             assertThatThrownBy(() -> Product.register(
                 new Sku("FG-X"), "n", "d", ProductType.FINISHED_GOOD, UOM_EACH,
                 Money.zero(Currencies.AUD), null
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
     }
 
@@ -149,7 +149,7 @@ class ProductTest {
         @Test void rejects_null() {
             Product p = newProduct();
             assertThatThrownBy(() -> p.changeSalesPrice(null))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void no_op_emits_nothing_when_value_matches() {
@@ -208,7 +208,7 @@ class ProductTest {
         @Test void rejects_null() {
             Product p = newProduct();
             assertThatThrownBy(() -> p.changeStandardCost(null))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void no_op_emits_nothing_when_value_matches() {
@@ -364,7 +364,7 @@ class ProductTest {
         @Test void rejects_null_class() {
             Product p = newProduct();
             assertThatThrownBy(() -> p.changeValuationClass(null))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void emits_event_with_old_null_on_first_set() {
@@ -500,7 +500,7 @@ class ProductTest {
         @Test void rejects_null_list() {
             Product p = newProduct();
             assertThatThrownBy(() -> p.setApprovedVendors(null))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_when_discontinued() {

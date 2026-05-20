@@ -1,5 +1,6 @@
 package com.northwood.inventory.domain;
 
+import com.northwood.shared.domain.Assert;
 /** Whether quantities are tracked at warehouse level for this SKU. */
 public enum StockTrackingMode {
     TRACKED("tracked"),
@@ -15,6 +16,6 @@ public enum StockTrackingMode {
         for (StockTrackingMode m : values()) {
             if (m.dbValue.equals(value)) return m;
         }
-        throw new IllegalArgumentException("Unknown stock_tracking_mode: " + value);
+        throw Assert.unknownValue("stock_tracking_mode", value);
     }
 }

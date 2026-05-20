@@ -2,11 +2,11 @@ package com.northwood.inventory.domain;
 
 import com.northwood.inventory.domain.events.ShipmentPosted;
 import com.northwood.inventory.domain.events.ShipmentPosted.ShippedLine;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.DomainEvent;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -61,7 +61,7 @@ public final class Shipment {
             for (Status s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown shipment status: " + value);
+            throw Assert.unknownValue("shipment status", value);
         }
     }
 
@@ -87,11 +87,9 @@ public final class Shipment {
         String warehouseCode,
         List<ShipmentLine> lines
     ) {
-        Objects.requireNonNull(salesOrderHeaderId, "salesOrderHeaderId");
-        Objects.requireNonNull(warehouseId, "warehouseId");
-        if (lines == null || lines.isEmpty()) {
-            throw new IllegalArgumentException("at least one line is required");
-        }
+        Assert.notNull(salesOrderHeaderId, "salesOrderHeaderId");
+        Assert.notNull(warehouseId, "warehouseId");
+        Assert.notEmpty(lines, "at least one line is required");
         ShipmentId id = ShipmentId.newId();
         Shipment s = new Shipment(
             id, shipmentNumber, salesOrderHeaderId,

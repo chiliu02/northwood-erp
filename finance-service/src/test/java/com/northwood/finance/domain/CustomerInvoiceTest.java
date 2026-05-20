@@ -42,14 +42,14 @@ class CustomerInvoiceTest {
             assertThatThrownBy(() -> CustomerInvoice.create(
                 "INV-001", null, CUSTOMER, "CUST", "Cust", Currencies.AUD,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_customer() {
             assertThatThrownBy(() -> CustomerInvoice.create(
                 "INV-001", SO, null, "CUST", "Cust", Currencies.AUD,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void posts_status_directly_to_posted() {

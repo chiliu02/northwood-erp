@@ -67,7 +67,7 @@ class JournalEntryTest {
             assertThatThrownBy(() -> JournalEntry.post(
                 "JE", LocalDate.now(), JournalEntry.SourceModule.FINANCE, JournalEntry.SourceDocumentType.SUPPLIER_INVOICE, null, "x",
                 Currencies.AUD, BigDecimal.ONE, balancedPair(BigDecimal.TEN)
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
     }
 

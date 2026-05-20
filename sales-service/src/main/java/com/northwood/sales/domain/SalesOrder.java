@@ -5,6 +5,7 @@ import com.northwood.sales.domain.events.SalesOrderPlaced;
 import com.northwood.sales.domain.events.SalesOrderPlaced.PlacedLine;
 import com.northwood.sales.domain.events.SalesOrderShipped;
 import com.northwood.sales.domain.events.SalesOrderShipped.ShippedLine;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import java.util.EnumSet;
@@ -17,7 +18,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -77,7 +77,7 @@ public final class SalesOrder {
             for (Status s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown sales_order status: " + value);
+            throw Assert.unknownValue("sales_order status", value);
         }
     }
 
@@ -116,7 +116,7 @@ public final class SalesOrder {
             for (LineStatus s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown sales_order_line line_status: " + value);
+            throw Assert.unknownValue("sales_order_line line_status", value);
         }
     }
 
@@ -167,20 +167,18 @@ public final class SalesOrder {
         BigDecimal exchangeRate,
         List<SalesOrderLine> lines
     ) {
-        if (lines == null || lines.isEmpty()) {
-            throw new IllegalArgumentException("at least one line is required");
-        }
+        Assert.notEmpty(lines, "at least one line is required");
         SalesOrderId id = SalesOrderId.newId();
         SalesOrder order = new SalesOrder(
             id,
-            Objects.requireNonNull(orderNumber, "orderNumber"),
-            Objects.requireNonNull(customerId, "customerId"),
-            Objects.requireNonNull(customerCode, "customerCode"),
-            Objects.requireNonNull(customerName, "customerName"),
+            Assert.notNull(orderNumber, "orderNumber"),
+            Assert.notNull(customerId, "customerId"),
+            Assert.notNull(customerCode, "customerCode"),
+            Assert.notNull(customerName, "customerName"),
             LocalDate.now(),
             requestedDeliveryDate,
             Status.SUBMITTED,
-            Objects.requireNonNull(currencyCode, "currencyCode"),
+            Assert.notNull(currencyCode, "currencyCode"),
             exchangeRate == null ? BigDecimal.ONE : exchangeRate,
             BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
             null,

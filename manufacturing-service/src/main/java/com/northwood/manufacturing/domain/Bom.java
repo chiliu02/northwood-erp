@@ -1,11 +1,11 @@
 package com.northwood.manufacturing.domain;
 
 import com.northwood.manufacturing.domain.events.BomActivated;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.DomainEvent;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -71,7 +71,7 @@ public final class Bom {
             for (Status s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown bom status: " + value);
+            throw Assert.unknownValue("bom status", value);
         }
     }
 
@@ -99,7 +99,7 @@ public final class Bom {
             for (ComponentKind k : values()) {
                 if (k.dbValue.equals(value)) return k;
             }
-            throw new IllegalArgumentException("Unknown bom_line component_kind: " + value);
+            throw Assert.unknownValue("bom_line component_kind", value);
         }
     }
 
@@ -155,19 +155,10 @@ public final class Bom {
         String finishedProductName,
         String version
     ) {
-        Objects.requireNonNull(finishedProductId, "finishedProductId");
-        Objects.requireNonNull(finishedProductSku, "finishedProductSku");
-        Objects.requireNonNull(finishedProductName, "finishedProductName");
-        Objects.requireNonNull(version, "version");
-        if (finishedProductSku.isBlank()) {
-            throw new IllegalArgumentException("finishedProductSku must not be blank");
-        }
-        if (finishedProductName.isBlank()) {
-            throw new IllegalArgumentException("finishedProductName must not be blank");
-        }
-        if (version.isBlank()) {
-            throw new IllegalArgumentException("version must not be blank");
-        }
+        Assert.notNull(finishedProductId, "finishedProductId");
+        Assert.notBlank(finishedProductSku, "finishedProductSku must not be blank");
+        Assert.notBlank(finishedProductName, "finishedProductName must not be blank");
+        Assert.notBlank(version, "version must not be blank");
         return new Bom(
             BomId.newId(),
             finishedProductId,
@@ -191,13 +182,13 @@ public final class Bom {
         List<BomLine> lines,
         long aggregateVersion
     ) {
-        Objects.requireNonNull(id, "id");
-        Objects.requireNonNull(finishedProductId, "finishedProductId");
-        Objects.requireNonNull(finishedProductSku, "finishedProductSku");
-        Objects.requireNonNull(finishedProductName, "finishedProductName");
-        Objects.requireNonNull(version, "version");
-        Objects.requireNonNull(status, "status");
-        Objects.requireNonNull(lines, "lines");
+        Assert.notNull(id, "id");
+        Assert.notNull(finishedProductId, "finishedProductId");
+        Assert.notNull(finishedProductSku, "finishedProductSku");
+        Assert.notNull(finishedProductName, "finishedProductName");
+        Assert.notNull(version, "version");
+        Assert.notNull(status, "status");
+        Assert.notNull(lines, "lines");
         return new Bom(
             id,
             finishedProductId,
@@ -221,12 +212,12 @@ public final class Bom {
      * single BOM.
      */
     public BomLine addLine(BomLine.Spec spec) {
-        Objects.requireNonNull(spec, "spec");
-        Objects.requireNonNull(spec.componentProductId(), "componentProductId");
-        Objects.requireNonNull(spec.componentSku(), "componentSku");
-        Objects.requireNonNull(spec.componentName(), "componentName");
-        Objects.requireNonNull(spec.componentKind(), "componentKind");
-        Objects.requireNonNull(spec.quantityPerFinishedUnit(), "quantityPerFinishedUnit");
+        Assert.notNull(spec, "spec");
+        Assert.notNull(spec.componentProductId(), "componentProductId");
+        Assert.notNull(spec.componentSku(), "componentSku");
+        Assert.notNull(spec.componentName(), "componentName");
+        Assert.notNull(spec.componentKind(), "componentKind");
+        Assert.notNull(spec.quantityPerFinishedUnit(), "quantityPerFinishedUnit");
         if (status != Status.DRAFT) {
             throw new BomNotEditableException(
                 "BOM " + id.value() + " is " + status + "; only DRAFT BOMs accept addLine"
@@ -255,7 +246,7 @@ public final class Bom {
 
     /** Remove a line from a draft BOM. Returns true iff the line existed. Rejects on non-draft status. */
     public boolean removeLine(BomLineId bomLineId) {
-        Objects.requireNonNull(bomLineId, "bomLineId");
+        Assert.notNull(bomLineId, "bomLineId");
         if (status != Status.DRAFT) {
             throw new BomNotEditableException(
                 "BOM " + id.value() + " is " + status + "; only DRAFT BOMs accept removeLine"

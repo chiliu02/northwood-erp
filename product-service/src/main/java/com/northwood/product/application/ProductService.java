@@ -8,6 +8,7 @@ import com.northwood.product.domain.ProductId;
 import com.northwood.product.domain.ProductRepository;
 import com.northwood.product.domain.ProductType;
 import com.northwood.product.domain.ValuationClass;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.Money;
 import com.northwood.shared.domain.Sku;
 import java.math.BigDecimal;
@@ -196,7 +197,7 @@ public class ProductService {
         UUID productId,
         List<ApprovedVendorCommand> vendors
     ) {
-        Objects.requireNonNull(vendors, "vendors");
+        Assert.notNull(vendors, "vendors");
         Product product = products.findById(ProductId.of(productId))
             .orElseThrow(() -> new ProductNotFoundException(productId));
         List<ApprovedVendor> mapped = vendors.stream()

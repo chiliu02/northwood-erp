@@ -38,22 +38,22 @@ class SupplierProductPriceTest {
 
     @Test void register_rejects_null_supplierId() {
         assertThatThrownBy(() -> SupplierProductPrice.register(null, PRODUCT, Currencies.AUD, BigDecimal.ONE))
-            .isInstanceOf(NullPointerException.class).hasMessageContaining("supplierId");
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("supplierId");
     }
 
     @Test void register_rejects_null_productId() {
         assertThatThrownBy(() -> SupplierProductPrice.register(SUPPLIER, null, Currencies.AUD, BigDecimal.ONE))
-            .isInstanceOf(NullPointerException.class).hasMessageContaining("productId");
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("productId");
     }
 
     @Test void register_rejects_null_currencyCode() {
         assertThatThrownBy(() -> SupplierProductPrice.register(SUPPLIER, PRODUCT, null, BigDecimal.ONE))
-            .isInstanceOf(NullPointerException.class).hasMessageContaining("currencyCode");
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("currencyCode");
     }
 
     @Test void register_rejects_null_unitPrice() {
         assertThatThrownBy(() -> SupplierProductPrice.register(SUPPLIER, PRODUCT, Currencies.AUD, null))
-            .isInstanceOf(NullPointerException.class).hasMessageContaining("unitPrice");
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("unitPrice");
     }
 
     @Test void register_rejects_blank_currencyCode() {
@@ -106,7 +106,7 @@ class SupplierProductPriceTest {
             new BigDecimal("10.00"), 1L
         );
         assertThatThrownBy(() -> price.updatePrice(null))
-            .isInstanceOf(NullPointerException.class).hasMessageContaining("newUnitPrice");
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("newUnitPrice");
     }
 
     @Test void updatePrice_rejects_zero_newUnitPrice() {

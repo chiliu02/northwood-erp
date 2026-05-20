@@ -2,7 +2,6 @@ package com.northwood.shared.domain;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.Objects;
 
 /**
  * Money is a value object: an amount in a given currency. That's the whole
@@ -23,9 +22,9 @@ import java.util.Objects;
 public record Money(BigDecimal amount, String currencyCode) {
 
     public Money {
-        Objects.requireNonNull(amount, "amount");
-        Objects.requireNonNull(currencyCode, "currencyCode");
-        Assert.isTrue(currencyCode.length() == 3, "currencyCode must be 3 letters: " + currencyCode);
+        Assert.notNull(amount, "amount");
+        Assert.notNull(currencyCode, "currencyCode");
+        Assert.argument(currencyCode.length() == 3, "currencyCode must be 3 letters: " + currencyCode);
     }
 
     public static Money of(BigDecimal amount, String currencyCode) {
@@ -74,7 +73,7 @@ public record Money(BigDecimal amount, String currencyCode) {
     }
 
     private void requireSameCurrency(Money other) {
-        Assert.isTrue(currencyCode.equals(other.currencyCode),
+        Assert.argument(currencyCode.equals(other.currencyCode),
             "Currency mismatch: " + currencyCode + " vs " + other.currencyCode);
     }
 }

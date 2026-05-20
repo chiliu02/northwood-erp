@@ -64,35 +64,35 @@ class SalesOrderTest {
             assertThatThrownBy(() -> SalesOrder.place(
                 null, CUSTOMER, "C", "Customer", null, Currencies.AUD, BigDecimal.ONE,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_customer_id() {
             assertThatThrownBy(() -> SalesOrder.place(
                 "SO-X", null, "C", "Customer", null, Currencies.AUD, BigDecimal.ONE,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_customer_code() {
             assertThatThrownBy(() -> SalesOrder.place(
                 "SO-X", CUSTOMER, null, "Customer", null, Currencies.AUD, BigDecimal.ONE,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_customer_name() {
             assertThatThrownBy(() -> SalesOrder.place(
                 "SO-X", CUSTOMER, "C", null, null, Currencies.AUD, BigDecimal.ONE,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_currency_code() {
             assertThatThrownBy(() -> SalesOrder.place(
                 "SO-X", CUSTOMER, "C", "Customer", null, null, BigDecimal.ONE,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void initial_status_is_submitted() {

@@ -1,12 +1,12 @@
 package com.northwood.purchasing.domain;
 
 import com.northwood.purchasing.domain.events.SupplierProductPriceChanged;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -67,16 +67,11 @@ public final class SupplierProductPrice {
         String currencyCode,
         BigDecimal unitPrice
     ) {
-        Objects.requireNonNull(supplierId, "supplierId");
-        Objects.requireNonNull(productId, "productId");
-        Objects.requireNonNull(currencyCode, "currencyCode");
-        Objects.requireNonNull(unitPrice, "unitPrice");
-        if (currencyCode.isBlank()) {
-            throw new IllegalArgumentException("currencyCode must not be blank");
-        }
-        if (unitPrice.signum() <= 0) {
-            throw new IllegalArgumentException("unitPrice must be > 0");
-        }
+        Assert.notNull(supplierId, "supplierId");
+        Assert.notNull(productId, "productId");
+        Assert.notBlank(currencyCode, "currencyCode must not be blank");
+        Assert.notNull(unitPrice, "unitPrice");
+        Assert.argument(unitPrice.signum() > 0, "unitPrice must be > 0");
         SupplierProductPriceId id = SupplierProductPriceId.newId();
         SupplierProductPrice price = new SupplierProductPrice(
             id, supplierId, productId, currencyCode, unitPrice, 0L
@@ -103,11 +98,11 @@ public final class SupplierProductPrice {
         BigDecimal unitPrice,
         long version
     ) {
-        Objects.requireNonNull(id, "id");
-        Objects.requireNonNull(supplierId, "supplierId");
-        Objects.requireNonNull(productId, "productId");
-        Objects.requireNonNull(currencyCode, "currencyCode");
-        Objects.requireNonNull(unitPrice, "unitPrice");
+        Assert.notNull(id, "id");
+        Assert.notNull(supplierId, "supplierId");
+        Assert.notNull(productId, "productId");
+        Assert.notNull(currencyCode, "currencyCode");
+        Assert.notNull(unitPrice, "unitPrice");
         return new SupplierProductPrice(id, supplierId, productId, currencyCode, unitPrice, version);
     }
 
@@ -117,10 +112,8 @@ public final class SupplierProductPrice {
      * have to short-circuit themselves.
      */
     public void updatePrice(BigDecimal newUnitPrice) {
-        Objects.requireNonNull(newUnitPrice, "newUnitPrice");
-        if (newUnitPrice.signum() <= 0) {
-            throw new IllegalArgumentException("newUnitPrice must be > 0");
-        }
+        Assert.notNull(newUnitPrice, "newUnitPrice");
+        Assert.argument(newUnitPrice.signum() > 0, "newUnitPrice must be > 0");
         if (this.unitPrice.compareTo(newUnitPrice) == 0) {
             return;
         }

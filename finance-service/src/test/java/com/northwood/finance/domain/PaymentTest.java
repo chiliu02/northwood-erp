@@ -63,21 +63,21 @@ class PaymentTest {
             assertThatThrownBy(() -> Payment.recordSupplierPayment(
                 "PMT", null, "A", null, Payment.Method.CASH, Currencies.AUD, BigDecimal.TEN,
                 INVOICE_1, PO_1, "paid"
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_invoice() {
             assertThatThrownBy(() -> Payment.recordSupplierPayment(
                 "PMT", SUPPLIER_A, "A", null, Payment.Method.CASH, Currencies.AUD, BigDecimal.TEN,
                 null, PO_1, "paid"
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_purchase_order_id() {
             assertThatThrownBy(() -> Payment.recordSupplierPayment(
                 "PMT", SUPPLIER_A, "A", null, Payment.Method.CASH, Currencies.AUD, BigDecimal.TEN,
                 INVOICE_1, null, "paid"
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
     }
 
@@ -145,21 +145,21 @@ class PaymentTest {
             assertThatThrownBy(() -> Payment.recordMultiSupplierPayment(
                 "PMT", null, "A", null, Payment.Method.CASH, Currencies.AUD,
                 List.of(new Payment.SupplierAllocationLine(INVOICE_1, PO_1, BigDecimal.TEN, "paid"))
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_allocation_with_null_invoice_id() {
             assertThatThrownBy(() -> Payment.recordMultiSupplierPayment(
                 "PMT", SUPPLIER_A, "A", null, Payment.Method.CASH, Currencies.AUD,
                 List.of(new Payment.SupplierAllocationLine(null, PO_1, BigDecimal.TEN, "paid"))
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_allocation_with_null_purchase_order_id() {
             assertThatThrownBy(() -> Payment.recordMultiSupplierPayment(
                 "PMT", SUPPLIER_A, "A", null, Payment.Method.CASH, Currencies.AUD,
                 List.of(new Payment.SupplierAllocationLine(INVOICE_1, null, BigDecimal.TEN, "paid"))
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void produces_one_payment_with_n_allocation_rows() {
@@ -205,42 +205,42 @@ class PaymentTest {
             assertThatThrownBy(() -> Payment.recordCustomerPayment(
                 "PMT", null, "A", null, Payment.Method.CASH, Currencies.AUD, BigDecimal.TEN,
                 INVOICE_1, SO_1, "paid"
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_customer_invoice_id() {
             assertThatThrownBy(() -> Payment.recordCustomerPayment(
                 "PMT", CUSTOMER_A, "A", null, Payment.Method.CASH, Currencies.AUD, BigDecimal.TEN,
                 null, SO_1, "paid"
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_sales_order_id() {
             assertThatThrownBy(() -> Payment.recordCustomerPayment(
                 "PMT", CUSTOMER_A, "A", null, Payment.Method.CASH, Currencies.AUD, BigDecimal.TEN,
                 INVOICE_1, null, "paid"
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void multi_rejects_null_customer_id() {
             assertThatThrownBy(() -> Payment.recordMultiCustomerPayment(
                 "PMT-MULTI-C", null, "A", null, Payment.Method.BANK_TRANSFER, Currencies.AUD,
                 List.of(new Payment.CustomerAllocationLine(INVOICE_1, SO_1, BigDecimal.TEN, "paid"))
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void multi_rejects_allocation_with_null_invoice_id() {
             assertThatThrownBy(() -> Payment.recordMultiCustomerPayment(
                 "PMT-MULTI-C", CUSTOMER_A, "A", null, Payment.Method.BANK_TRANSFER, Currencies.AUD,
                 List.of(new Payment.CustomerAllocationLine(null, SO_1, BigDecimal.TEN, "paid"))
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void multi_rejects_allocation_with_null_sales_order_id() {
             assertThatThrownBy(() -> Payment.recordMultiCustomerPayment(
                 "PMT-MULTI-C", CUSTOMER_A, "A", null, Payment.Method.BANK_TRANSFER, Currencies.AUD,
                 List.of(new Payment.CustomerAllocationLine(INVOICE_1, null, BigDecimal.TEN, "paid"))
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
     }
 

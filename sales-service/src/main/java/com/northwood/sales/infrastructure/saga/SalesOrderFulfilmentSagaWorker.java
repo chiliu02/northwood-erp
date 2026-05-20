@@ -14,6 +14,7 @@ import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.MANUFACTU
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STARTED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_REQUESTED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVED;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.DomainEvent;
 import com.northwood.shared.application.outbox.OutboxPort;
 import com.northwood.shared.application.outbox.OutboxRow;
@@ -96,11 +97,7 @@ public class SalesOrderFulfilmentSagaWorker {
     private void requestStockReservation(SalesOrderFulfilmentSaga saga) {
         UUID salesOrderId = saga.salesOrderId();
         List<LineSnapshot> snapshots = lineSnapshots.findLines(salesOrderId);
-        if (snapshots.isEmpty()) {
-            throw new IllegalStateException(
-                "No lines found for sales_order_header_id=" + salesOrderId + " — cannot request reservation"
-            );
-        }
+        Assert.stateNotEmpty(snapshots, "No lines found for sales_order_header_id=" + salesOrderId + " — cannot request reservation");
 
         List<StockReservationRequested.RequestedLine> lines = new ArrayList<>();
         for (LineSnapshot s : snapshots) {

@@ -13,6 +13,7 @@ import com.northwood.purchasing.domain.PurchaseRequisitionLine;
 import com.northwood.purchasing.domain.PurchaseRequisitionRepository;
 import com.northwood.purchasing.domain.Supplier;
 import com.northwood.purchasing.domain.SupplierId;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -102,11 +103,7 @@ public class PurchaseOrderService {
             log.debug("requisition {} already converted; idempotent skip", prId.value());
             return null;
         }
-        if (pr.status() != PurchaseRequisition.Status.APPROVED) {
-            throw new IllegalStateException(
-                "Cannot convert requisition " + prId.value() + " from status=" + pr.status().dbValue()
-            );
-        }
+        Assert.state(pr.status() == PurchaseRequisition.Status.APPROVED, "Cannot convert requisition " + prId.value() + " from status=" + pr.status().dbValue());
 
         Supplier supplier = pickSupplier(pr);
         List<PurchaseOrderLine> lines = buildLines(supplier.id(), pr.lines());

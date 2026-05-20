@@ -6,6 +6,7 @@ import com.northwood.manufacturing.domain.BomId;
 import com.northwood.manufacturing.domain.BomLine;
 import com.northwood.manufacturing.domain.BomLineId;
 import com.northwood.manufacturing.domain.BomRepository;
+import com.northwood.shared.domain.Assert;
 import java.math.BigDecimal;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -143,9 +144,7 @@ public class BomService {
      */
     @Transactional
     public UUID createDraft(CreateBomDraftCommand command) {
-        if (command.finishedProductId() == null) {
-            throw new IllegalArgumentException("finishedProductId required");
-        }
+        Assert.notNull(command.finishedProductId(), "finishedProductId required");
         String version = command.version() == null || command.version().isBlank()
             ? "1" : command.version();
         Bom bom;

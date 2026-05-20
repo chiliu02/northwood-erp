@@ -41,22 +41,22 @@ class BomTest {
 
         @Test void rejects_null_finishedProductId() {
             assertThatThrownBy(() -> Bom.draft(null, "FG-001", "n", "1"))
-                .isInstanceOf(NullPointerException.class).hasMessageContaining("finishedProductId");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("finishedProductId");
         }
 
         @Test void rejects_null_finishedProductSku() {
             assertThatThrownBy(() -> Bom.draft(FINISHED, null, "n", "1"))
-                .isInstanceOf(NullPointerException.class).hasMessageContaining("finishedProductSku");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("finishedProductSku");
         }
 
         @Test void rejects_null_finishedProductName() {
             assertThatThrownBy(() -> Bom.draft(FINISHED, "FG-001", null, "1"))
-                .isInstanceOf(NullPointerException.class).hasMessageContaining("finishedProductName");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("finishedProductName");
         }
 
         @Test void rejects_null_version() {
             assertThatThrownBy(() -> Bom.draft(FINISHED, "FG-001", "n", null))
-                .isInstanceOf(NullPointerException.class).hasMessageContaining("version");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("version");
         }
 
         @Test void rejects_blank_finishedProductSku() {
@@ -130,7 +130,7 @@ class BomTest {
         @Test void rejects_null_spec() {
             Bom bom = newDraft();
             assertThatThrownBy(() -> bom.addLine(null))
-                .isInstanceOf(NullPointerException.class).hasMessageContaining("spec");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("spec");
         }
 
         @Test void rejects_spec_with_null_componentProductId() {
@@ -139,7 +139,7 @@ class BomTest {
                 null, "RM", "n", Bom.ComponentKind.RAW, BigDecimal.ONE, BigDecimal.ZERO
             );
             assertThatThrownBy(() -> bom.addLine(bad))
-                .isInstanceOf(NullPointerException.class).hasMessageContaining("componentProductId");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("componentProductId");
         }
     }
 
@@ -192,7 +192,7 @@ class BomTest {
         @Test void rejects_null_bomLineId() {
             Bom bom = newDraft();
             assertThatThrownBy(() -> bom.removeLine(null))
-                .isInstanceOf(NullPointerException.class).hasMessageContaining("bomLineId");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("bomLineId");
         }
     }
 
