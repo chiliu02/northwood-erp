@@ -75,7 +75,11 @@ class JdbcStockBalanceWriterIT {
     }
 
     private static void loadBaseline() {
-        Path file = Path.of("..", "db", "northwood_erp.sql");
+        applySqlFile(Path.of("..", "db", "northwood_erp.sql"));
+        applySqlFile(Path.of("..", "db", "northwood_erp_seed.sql"));
+    }
+
+    private static void applySqlFile(Path file) {
         String sql;
         try {
             sql = Files.readString(file, StandardCharsets.UTF_8);
@@ -87,7 +91,7 @@ class JdbcStockBalanceWriterIT {
              Statement s = c.createStatement()) {
             s.execute(sql);
         } catch (SQLException e) {
-            throw new IllegalStateException("Failed to apply baseline schema", e);
+            throw new IllegalStateException("Failed to apply " + file.getFileName(), e);
         }
     }
 
