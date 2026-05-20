@@ -128,35 +128,25 @@ Pull forward only if a public-facing audience wants the orchestrated walkthrough
 
 <!-- §2.0 fully shipped 2026-05-19 — see dev-done.md for the per-bucket entries. Convention captured in docs/conventions.md *Aggregate enumerated fields* + CLAUDE.md summary line. -->
 
-### 2.3 Soft-cancel WIP path
-
-**From:** §1.1 cancel-order slice 2026-05-06 (which shipped hard-cancel). Today a cancel arriving during `manufacturing_in_progress` immediately flips the WO to `cancelled` regardless of operation progress — WIP is written off. A more realistic ERP would let in-progress WOs finish then scrap the produced finished goods to a write-off bucket.
-
-Scope:
-- Decision: hard vs soft per WO based on a configurable threshold (e.g. operations-completed % > 50%)? Or a runtime flag on the cancel command?
-- New events: `manufacturing.WorkOrderScrappedAfterCancel` (post-completion variant), inventory's WIP write-off.
-- Finance hookup: when scrapped, post a write-off journal (Dr 5500 Write-off / Cr 1220 FG Inventory).
-
-Wire into demo only after a clear narrative emerges — the showcase value of soft-cancel over hard-cancel is small and adds significant complexity.
-
-### 2.4 CurrencyConverter depth
-
-Today the converter handles same-currency pass-through, inverse-rate fallback, and now `GET /api/exchange-rate?from=…&to=…&date=…` (shipped §3 Slice E 2026-05-06). Remaining depth:
-
-- **Scheduled rate importer** — today rates are inserted manually for a few currency pairs. `@Scheduled` task fetching from an external feed would let the demo simulate a daily rate close.
-- **Triangulation through a base currency** — out of scope today (schema doesn't model a base currency); listed in §4 below.
-
 ### 2.6 Smoke-test gaps that need a running stack
 
 Most of the original §2.6 list moved into §2.5.1's harness test targets (cancel-order, multi-receipt, deeper sub-assembly recursion, setPriority — see `dev-done.md` cross-references). Only items that genuinely need the running Kafka + Postgres + 7-service stack remain:
 
 - **Sales fulfilment saga cross-partition race fix** (2026-05-05) — concurrent execution against partitioned Kafka; not reproducible in a synchronous in-memory harness. Existing happy-path multi-line test passes the regression by virtue of `expectedWorkOrderCount` being set correctly, so the gap is "no targeted assertion that the race specifically can't recur." Capture for the next end-to-end run; would need a deliberately-induced race (e.g. duplicate WorkOrderCreated emission with a 100ms delay).
 
-### 2.8 Pricing split — Slice E (cross-currency BoM rollup)
+### 2.14 Kafka topic partitions — pre-declare with configurable counts
 
-Slices A–D shipped 2026-05-07 / 08 (split events, finance standard-cost projection, manufacturing-owned materials-cost rollup, BoM-walk + recursive parent recompute). See `dev-done.md`.
+Today every event topic (`<service>.events` + matching `<topic>.dlt`) is auto-created on first publish (docker-compose `KAFKA_AUTO_CREATE_TOPICS_ENABLE=true`) with Kafka's default `num.partitions=1` — no `KAFKA_NUM_PARTITIONS` override, no `NewTopic` / `KafkaAdmin` bean, no `partitions:` setting in any `application-kafka.yml`. Means each consumer group has at most one active consumer per topic and the §2.6 cross-partition race regression is un-exercisable until partitions > 1.
 
-**Slice E (deferred — pull forward only if the cross-currency throw fires in the demo dataset)** — wire `CurrencyConverter` into the BoM rollup so multi-currency component prices roll up to a target currency.
+Scope: flip `KAFKA_AUTO_CREATE_TOPICS_ENABLE=false` in docker-compose, add `NewTopic` beans in `shared/.../kafka` that read partition counts from `northwood.kafka.topics.<name>.partitions` (default 1 for the showcase, override to 3+ when exercising the partition-race test). Cover the 6 event topics + their DLT companions. Spring's `KafkaAdmin` creates the lot on service startup if missing. Keep RF=1 — single-broker constraint stays.
+
+Audit items to clear before bumping any topic past 1 partition (full design in `docs/messaging-design.md` → *Hazards when scaling past 1 partition*):
+
+1. **DLT partition count must match source.** The error-handler recoverer pins `record.partition()` (`KafkaMessagingAutoConfiguration.java:93`); mismatched counts cause poison-pill quarantine failure. Pre-declare both source + DLT.
+2. **Verify saga concurrent-transition safety against a real broker.** Design is correct (`SELECT ... FOR UPDATE SKIP LOCKED` + optimistic `version` on `SagaPort`), but the synchronous test harness can't exercise the race. Need an integration-test target against a multi-partition broker.
+3. **Audit projection write patterns for read-modify-write.** Atomic SQL increment is safe; load-process-write isn't. Candidates: `JdbcProductionPlanningProjection`, `JdbcProductCardProjection`, `JdbcStockBalanceWriter`.
+4. **Re-test saga-prerequisite parking under realistic broker delay.** Multi-partition makes the "consequence event arrives before prerequisite saga row exists" path the common case, not the exception.
+5. **Document topic-pre-declaration in the new-service checklist.** After auto-create flips off, new services must declare their topics or first publish throws `UnknownTopicOrPartitionException`.
 
 ### 2.15 Re-enable Liquibase once the schema stabilises
 
@@ -174,24 +164,6 @@ Re-enable steps:
 2. Update the comment block in each `db/changelog/db.changelog-master.yaml` (and remove the "currently empty" framing).
 3. Verify on a fresh-volume boot that the empty changelogs no-op cleanly against the baseline.
 4. Future schema changes follow the original workflow: drop a `.sql` file in the service's `changes/` dir + add an `include` to its master.
-
-### 2.14 Kafka topic partitions — pre-declare with configurable counts
-
-Today every event topic (`<service>.events` + matching `<topic>.dlt`) is auto-created on first publish (docker-compose `KAFKA_AUTO_CREATE_TOPICS_ENABLE=true`) with Kafka's default `num.partitions=1` — no `KAFKA_NUM_PARTITIONS` override, no `NewTopic` / `KafkaAdmin` bean, no `partitions:` setting in any `application-kafka.yml`. Means each consumer group has at most one active consumer per topic and the §2.6 cross-partition race regression is un-exercisable until partitions > 1.
-
-Scope: flip `KAFKA_AUTO_CREATE_TOPICS_ENABLE=false` in docker-compose, add `NewTopic` beans in `shared/.../kafka` that read partition counts from `northwood.kafka.topics.<name>.partitions` (default 1 for the showcase, override to 3+ when exercising the partition-race test). Cover the 6 event topics + their DLT companions. Spring's `KafkaAdmin` creates the lot on service startup if missing. Keep RF=1 — single-broker constraint stays.
-
-Audit items to clear before bumping any topic past 1 partition (full design in `docs/messaging-design.md` → *Hazards when scaling past 1 partition*):
-
-1. **DLT partition count must match source.** The error-handler recoverer pins `record.partition()` (`KafkaMessagingAutoConfiguration.java:93`); mismatched counts cause poison-pill quarantine failure. Pre-declare both source + DLT.
-2. **Verify saga concurrent-transition safety against a real broker.** Design is correct (`SELECT ... FOR UPDATE SKIP LOCKED` + optimistic `version` on `SagaPort`), but the synchronous test harness can't exercise the race. Need an integration-test target against a multi-partition broker.
-3. **Audit projection write patterns for read-modify-write.** Atomic SQL increment is safe; load-process-write isn't. Candidates: `JdbcProductionPlanningProjection`, `JdbcProductCardProjection`, `JdbcStockBalanceWriter`.
-4. **Re-test saga-prerequisite parking under realistic broker delay.** Multi-partition makes the "consequence event arrives before prerequisite saga row exists" path the common case, not the exception.
-5. **Document topic-pre-declaration in the new-service checklist.** After auto-create flips off, new services must declare their topics or first publish throws `UnknownTopicOrPartitionException`.
-
-### 2.12 Role meta-annotations for `warehouse_manager`, `auditor`, `sysadmin`
-
-The 2026-05-13 `@PreAuthorize` → `@RequireXxx` sweep created annotations under `shared/api/security/` for the 10 realm roles that gate actual endpoints today. The other 3 realm roles defined in `db/keycloak/northwood-realm.json` — `warehouse_manager` (force-release reservations, post stock adjustments), `auditor` (read-only everywhere), `sysadmin` (Keycloak realm admin only) — don't have annotations because no endpoint gates on them today. Scaffold matching `@RequireWarehouseManager` / `@RequireAuditor` / `@RequireSysadmin` when the first endpoint needs them.
 
 ---
 
@@ -214,6 +186,44 @@ User direction 2026-05-04. Current journals fold tax-inclusive totals into COGS/
 ### 3.4 BOM authoring UI
 
 User direction 2026-05-06 — explicitly low-priority during the §1 Security + UI slice. **Read-only tree view shipped in both SPAs** — `erp-web-ui/src/routes/manufacturing/Boms.tsx` (Linda) and `demo-web-ui/src/routes/Boms.tsx` (Emma) since 2026-05-13. What's still deferred is the authoring half: create draft, add/remove lines, drag-reorder, run cycle detection on save, flip draft → active. Backend authoring path is fully wired (`BomService` + 4 REST endpoints on `BomController`); the demo can use REST + curl until the editor UI lands. Pull forward if a planning-tool angle becomes part of the showcase narrative.
+
+<!-- Section numbers below kept at their original §2.x values per the preamble's
+     "stable historical anchors" rule — dev-done.md + design-notes.md have ~13
+     cross-refs to §2.8 alone that would break under renumbering. -->
+
+### 2.3 Soft-cancel WIP path
+
+Deferred 2026-05-20 — demoted from §2 polish to §3 low-priority. Pull forward only if a soft-cancel narrative becomes part of the showcase.
+
+**From:** §1.1 cancel-order slice 2026-05-06 (which shipped hard-cancel). Today a cancel arriving during `manufacturing_in_progress` immediately flips the WO to `cancelled` regardless of operation progress — WIP is written off. A more realistic ERP would let in-progress WOs finish then scrap the produced finished goods to a write-off bucket.
+
+Scope:
+- Decision: hard vs soft per WO based on a configurable threshold (e.g. operations-completed % > 50%)? Or a runtime flag on the cancel command?
+- New events: `manufacturing.WorkOrderScrappedAfterCancel` (post-completion variant), inventory's WIP write-off.
+- Finance hookup: when scrapped, post a write-off journal (Dr 5500 Write-off / Cr 1220 FG Inventory).
+
+Wire into demo only after a clear narrative emerges — the showcase value of soft-cancel over hard-cancel is small and adds significant complexity.
+
+### 2.4 CurrencyConverter depth
+
+Deferred 2026-05-20 — demoted from §2 polish to §3 low-priority. Same lineage as §3.1 (multi-currency GL consolidation): the architecture is in place, single-currency end-to-end is the showcase. Pull forward only if the demo gains an FX-narrative beat.
+
+Today the converter handles same-currency pass-through, inverse-rate fallback, and now `GET /api/exchange-rate?from=…&to=…&date=…` (shipped §3 Slice E 2026-05-06). Remaining depth:
+
+- **Scheduled rate importer** — today rates are inserted manually for a few currency pairs. `@Scheduled` task fetching from an external feed would let the demo simulate a daily rate close.
+- **Triangulation through a base currency** — out of scope today (schema doesn't model a base currency); listed in §4 below.
+
+### 2.8 Pricing split — Slice E (cross-currency BoM rollup)
+
+Deferred 2026-05-20 — demoted from §2 polish to §3 low-priority. Slices A–D shipped 2026-05-07 / 08 (split events, finance standard-cost projection, manufacturing-owned materials-cost rollup, BoM-walk + recursive parent recompute — see `dev-done.md`). Slice E was always conditional on the cross-currency throw firing in the demo dataset.
+
+**Slice E** — wire `CurrencyConverter` into the BoM rollup so multi-currency component prices roll up to a target currency. Pull forward only if the cross-currency throw fires in the demo dataset.
+
+### 2.12 Role meta-annotations for `warehouse_manager`, `auditor`, `sysadmin`
+
+Deferred 2026-05-20 — demoted from §2 polish to §3 low-priority. Scaffolding-when-needed work; no current endpoint gates on these roles.
+
+The 2026-05-13 `@PreAuthorize` → `@RequireXxx` sweep created annotations under `shared/api/security/` for the 10 realm roles that gate actual endpoints today. The other 3 realm roles defined in `db/keycloak/northwood-realm.json` — `warehouse_manager` (force-release reservations, post stock adjustments), `auditor` (read-only everywhere), `sysadmin` (Keycloak realm admin only) — don't have annotations because no endpoint gates on them today. Scaffold matching `@RequireWarehouseManager` / `@RequireAuditor` / `@RequireSysadmin` when the first endpoint needs them.
 
 ---
 
