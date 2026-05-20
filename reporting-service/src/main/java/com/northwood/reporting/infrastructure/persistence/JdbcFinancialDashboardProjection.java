@@ -1,6 +1,7 @@
 package com.northwood.reporting.infrastructure.persistence;
 
 import com.northwood.reporting.application.inbox.FinancialDashboardProjection;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.time.Instant;
@@ -13,7 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public class JdbcFinancialDashboardProjection implements FinancialDashboardProjection {
 
-    private static final String DEFAULT_CURRENCY = "AUD";
+    private static final String DEFAULT_CURRENCY = Currencies.AUD;
 
     private final JdbcTemplate jdbc;
 

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.northwood.finance.domain.events.CustomerInvoiceCreated;
+import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
 import java.util.List;
@@ -33,27 +34,27 @@ class CustomerInvoiceTest {
     class Create {
         @Test void rejects_empty_lines() {
             assertThatThrownBy(() -> CustomerInvoice.create(
-                "INV-001", SO, CUSTOMER, "CUST", "Cust", "AUD", List.of()
+                "INV-001", SO, CUSTOMER, "CUST", "Cust", Currencies.AUD, List.of()
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_sales_order() {
             assertThatThrownBy(() -> CustomerInvoice.create(
-                "INV-001", null, CUSTOMER, "CUST", "Cust", "AUD",
+                "INV-001", null, CUSTOMER, "CUST", "Cust", Currencies.AUD,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             )).isInstanceOf(NullPointerException.class);
         }
 
         @Test void rejects_null_customer() {
             assertThatThrownBy(() -> CustomerInvoice.create(
-                "INV-001", SO, null, "CUST", "Cust", "AUD",
+                "INV-001", SO, null, "CUST", "Cust", Currencies.AUD,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             )).isInstanceOf(NullPointerException.class);
         }
 
         @Test void posts_status_directly_to_posted() {
             CustomerInvoice ci = CustomerInvoice.create(
-                "INV-001", SO, CUSTOMER, "CUST", "Cust", "AUD",
+                "INV-001", SO, CUSTOMER, "CUST", "Cust", Currencies.AUD,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             );
             assertThat(ci.status()).isEqualTo(CustomerInvoice.Status.POSTED);
@@ -61,7 +62,7 @@ class CustomerInvoiceTest {
 
         @Test void totals_summed_from_lines() {
             CustomerInvoice ci = CustomerInvoice.create(
-                "INV-001", SO, CUSTOMER, "CUST", "Cust", "AUD",
+                "INV-001", SO, CUSTOMER, "CUST", "Cust", Currencies.AUD,
                 List.of(
                     line(new BigDecimal("2"), new BigDecimal("100.00")),  // 200
                     line(new BigDecimal("3"), new BigDecimal("50.00"))    // 150
@@ -73,7 +74,7 @@ class CustomerInvoiceTest {
 
         @Test void emits_CustomerInvoiceCreated_with_routing_keys() {
             CustomerInvoice ci = CustomerInvoice.create(
-                "INV-001", SO, CUSTOMER, "CUST", "Cust", "AUD",
+                "INV-001", SO, CUSTOMER, "CUST", "Cust", Currencies.AUD,
                 List.of(line(BigDecimal.ONE, new BigDecimal("100")))
             );
             List<DomainEvent> events = ci.pullPendingEvents();
@@ -90,7 +91,7 @@ class CustomerInvoiceTest {
                 "INV-001", SO, CUSTOMER, "CUST", "Cust", null,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             );
-            assertThat(ci.currencyCode()).isEqualTo("AUD");
+            assertThat(ci.currencyCode()).isEqualTo(Currencies.AUD);
         }
     }
 }

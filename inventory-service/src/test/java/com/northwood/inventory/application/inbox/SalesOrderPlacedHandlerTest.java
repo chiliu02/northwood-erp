@@ -11,6 +11,7 @@ import com.northwood.sales.domain.SalesAggregateTypes;
 import com.northwood.sales.domain.events.SalesOrderPlaced;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -42,7 +43,7 @@ class SalesOrderPlacedHandlerTest {
         UUID eventId = UUID.randomUUID();
         SalesOrderPlaced payload = new SalesOrderPlaced(
             eventId, SO, "SO-001", UUID.randomUUID(), "CUST-001", "Acme",
-            "AUD", new BigDecimal("100.00"), lines, Instant.now()
+            Currencies.AUD, new BigDecimal("100.00"), lines, Instant.now()
         );
         return new EventEnvelope(
             eventId, SalesAggregateTypes.SALES_ORDER, SO,

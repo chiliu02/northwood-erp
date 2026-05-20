@@ -1,5 +1,6 @@
 package com.northwood.finance.domain;
 
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
@@ -200,7 +201,7 @@ public final class JournalEntry {
             sourceModule, sourceDocumentType, sourceDocumentId,
             description,
             Status.POSTED,
-            currencyCode == null ? "AUD" : currencyCode,
+            currencyCode == null ? Currencies.AUD : currencyCode,
             exchangeRate == null ? BigDecimal.ONE : exchangeRate,
             Instant.now(),
             new ArrayList<>(lines), 0L

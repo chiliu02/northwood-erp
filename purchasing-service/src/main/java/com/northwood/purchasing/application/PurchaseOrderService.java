@@ -13,6 +13,7 @@ import com.northwood.purchasing.domain.PurchaseRequisitionLine;
 import com.northwood.purchasing.domain.PurchaseRequisitionRepository;
 import com.northwood.purchasing.domain.Supplier;
 import com.northwood.purchasing.domain.SupplierId;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -58,7 +59,7 @@ public class PurchaseOrderService {
     }
 
     private static final Logger log = LoggerFactory.getLogger(PurchaseOrderService.class);
-    private static final String DEFAULT_CURRENCY = "AUD";
+    private static final String DEFAULT_CURRENCY = Currencies.AUD;
 
     private final PurchaseOrderRepository purchaseOrders;
     private final PurchaseRequisitionRepository purchaseRequisitions;

@@ -3,6 +3,7 @@ package com.northwood.purchasing.domain;
 import com.northwood.purchasing.domain.events.PurchaseOrderApproved;
 import com.northwood.purchasing.domain.events.PurchaseOrderCreated;
 import com.northwood.purchasing.domain.events.PurchaseOrderCreated.OrderLine;
+import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -198,7 +199,7 @@ public final class PurchaseOrder {
             id, purchaseOrderNumber,
             supplier.id().value(), supplier.supplierCode(), supplier.name(),
             purchaseRequisitionHeaderId,
-            currencyCode == null ? "AUD" : currencyCode,
+            currencyCode == null ? Currencies.AUD : currencyCode,
             subtotal, tax, total,
             initialStatus,
             new ArrayList<>(lines),

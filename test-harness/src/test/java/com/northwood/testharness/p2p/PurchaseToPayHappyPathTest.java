@@ -26,6 +26,7 @@ import com.northwood.testharness.inmemory.SynchronousBus;
 import com.northwood.testharness.kits.FinanceTestKit;
 import com.northwood.testharness.kits.InventoryTestKit;
 import com.northwood.testharness.kits.PurchasingTestKit;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -59,7 +60,7 @@ class PurchaseToPayHappyPathTest {
         // Seed: a product to purchase, supplier price.
         UUID productId = UUID.randomUUID();
         SupplierId defaultSupplierId = purchasing.suppliers.findByCode("SUP-001").orElseThrow().id();
-        purchasing.priceLookup.put(defaultSupplierId.value(), productId, "AUD", new BigDecimal("25.00"));
+        purchasing.priceLookup.put(defaultSupplierId.value(), productId, Currencies.AUD, new BigDecimal("25.00"));
 
         // Step 1: create manual PR. createManual auto-converts to PO at draft.
         var prView = purchasing.requisitionService.createManual(new CreateRequisitionCommand(
@@ -136,7 +137,7 @@ class PurchaseToPayHappyPathTest {
             defaultSupplierId.value(),
             "SUP-001",
             "Default Supplier",
-            "AUD",
+            Currencies.AUD,
             List.of(new RecordSupplierInvoiceCommand.Line(
                 poLine.id(), UUID.randomUUID(),
                 productId, "RM-101", "Raw Material 101",

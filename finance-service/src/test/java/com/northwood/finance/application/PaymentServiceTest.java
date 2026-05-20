@@ -21,6 +21,7 @@ import com.northwood.finance.domain.SupplierInvoice;
 import com.northwood.finance.domain.SupplierInvoiceRepository;
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
 import com.northwood.finance.domain.events.SupplierPaymentMade;
+import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -100,7 +101,7 @@ class PaymentServiceTest {
         @Test void approved_invoice_full_pay_emits_paid_status_and_posts_journal() {
             UUID invoiceId = UUID.randomUUID();
             when(supplierInvoices.findPaymentSnapshot(invoiceId)).thenReturn(Optional.of(
-                supplierSnap(SUPPLIER, "AUD", "approved", "1100.00", "0.00")
+                supplierSnap(SUPPLIER, Currencies.AUD, "approved", "1100.00", "0.00")
             ));
 
             service.recordSupplierPayment(new RecordSupplierPaymentCommand(
@@ -110,14 +111,14 @@ class PaymentServiceTest {
             SupplierPaymentMade event = firstSupplierEvent(capturedPayment());
             assertThat(event.invoiceStatusAfter()).isEqualTo("paid");
             verify(journals).postSupplierPayment(
-                any(), any(), eq("PMT-001"), eq(new BigDecimal("1100.00")), eq("AUD"), eq(PAY_DATE)
+                any(), any(), eq("PMT-001"), eq(new BigDecimal("1100.00")), eq(Currencies.AUD), eq(PAY_DATE)
             );
         }
 
         @Test void partial_payment_emits_partially_paid_status() {
             UUID invoiceId = UUID.randomUUID();
             when(supplierInvoices.findPaymentSnapshot(invoiceId)).thenReturn(Optional.of(
-                supplierSnap(SUPPLIER, "AUD", "approved", "1000.00", "0.00")
+                supplierSnap(SUPPLIER, Currencies.AUD, "approved", "1000.00", "0.00")
             ));
 
             service.recordSupplierPayment(new RecordSupplierPaymentCommand(
@@ -131,7 +132,7 @@ class PaymentServiceTest {
         @Test void partially_paid_input_status_is_accepted_for_top_up() {
             UUID invoiceId = UUID.randomUUID();
             when(supplierInvoices.findPaymentSnapshot(invoiceId)).thenReturn(Optional.of(
-                supplierSnap(SUPPLIER, "AUD", "partially_paid", "1000.00", "400.00")
+                supplierSnap(SUPPLIER, Currencies.AUD, "partially_paid", "1000.00", "400.00")
             ));
 
             service.recordSupplierPayment(new RecordSupplierPaymentCommand(
@@ -145,7 +146,7 @@ class PaymentServiceTest {
         @Test void rejects_draft_invoice_status() {
             UUID invoiceId = UUID.randomUUID();
             when(supplierInvoices.findPaymentSnapshot(invoiceId)).thenReturn(Optional.of(
-                supplierSnap(SUPPLIER, "AUD", "draft", "1000.00", "0.00")
+                supplierSnap(SUPPLIER, Currencies.AUD, "draft", "1000.00", "0.00")
             ));
 
             assertThatThrownBy(() -> service.recordSupplierPayment(new RecordSupplierPaymentCommand(
@@ -159,7 +160,7 @@ class PaymentServiceTest {
         @Test void rejects_when_amount_exceeds_outstanding() {
             UUID invoiceId = UUID.randomUUID();
             when(supplierInvoices.findPaymentSnapshot(invoiceId)).thenReturn(Optional.of(
-                supplierSnap(SUPPLIER, "AUD", "approved", "500.00", "0.00")
+                supplierSnap(SUPPLIER, Currencies.AUD, "approved", "500.00", "0.00")
             ));
 
             assertThatThrownBy(() -> service.recordSupplierPayment(new RecordSupplierPaymentCommand(
@@ -186,7 +187,7 @@ class PaymentServiceTest {
         @Test void posted_invoice_full_pay_emits_paid_and_posts_journal() {
             UUID invoiceId = UUID.randomUUID();
             when(customerInvoices.findPaymentSnapshot(invoiceId)).thenReturn(Optional.of(
-                customerSnap(CUSTOMER, "AUD", "posted", "550.00", "0.00")
+                customerSnap(CUSTOMER, Currencies.AUD, "posted", "550.00", "0.00")
             ));
 
             service.recordCustomerPayment(new RecordCustomerPaymentCommand(
@@ -196,14 +197,14 @@ class PaymentServiceTest {
             CustomerPaymentReceived event = firstCustomerEvent(capturedPayment());
             assertThat(event.invoiceStatusAfter()).isEqualTo("paid");
             verify(journals).postCustomerPayment(
-                any(), any(), eq("PMT-C-001"), eq(new BigDecimal("550.00")), eq("AUD"), eq(PAY_DATE)
+                any(), any(), eq("PMT-C-001"), eq(new BigDecimal("550.00")), eq(Currencies.AUD), eq(PAY_DATE)
             );
         }
 
         @Test void rejects_draft_invoice_status() {
             UUID invoiceId = UUID.randomUUID();
             when(customerInvoices.findPaymentSnapshot(invoiceId)).thenReturn(Optional.of(
-                customerSnap(CUSTOMER, "AUD", "draft", "100.00", "0.00")
+                customerSnap(CUSTOMER, Currencies.AUD, "draft", "100.00", "0.00")
             ));
 
             assertThatThrownBy(() -> service.recordCustomerPayment(new RecordCustomerPaymentCommand(
@@ -215,7 +216,7 @@ class PaymentServiceTest {
         @Test void rejects_amount_exceeds_outstanding() {
             UUID invoiceId = UUID.randomUUID();
             when(customerInvoices.findPaymentSnapshot(invoiceId)).thenReturn(Optional.of(
-                customerSnap(CUSTOMER, "AUD", "posted", "500.00", "0.00")
+                customerSnap(CUSTOMER, Currencies.AUD, "posted", "500.00", "0.00")
             ));
 
             assertThatThrownBy(() -> service.recordCustomerPayment(new RecordCustomerPaymentCommand(
@@ -232,10 +233,10 @@ class PaymentServiceTest {
             UUID inv1 = UUID.randomUUID();
             UUID inv2 = UUID.randomUUID();
             when(supplierInvoices.findPaymentSnapshot(inv1)).thenReturn(Optional.of(
-                supplierSnap(SUPPLIER, "AUD", "approved", "300.00", "0.00")
+                supplierSnap(SUPPLIER, Currencies.AUD, "approved", "300.00", "0.00")
             ));
             when(supplierInvoices.findPaymentSnapshot(inv2)).thenReturn(Optional.of(
-                supplierSnap(SUPPLIER, "AUD", "approved", "700.00", "0.00")
+                supplierSnap(SUPPLIER, Currencies.AUD, "approved", "700.00", "0.00")
             ));
 
             service.recordSupplierPaymentMulti(new RecordSupplierPaymentMultiCommand(
@@ -248,7 +249,7 @@ class PaymentServiceTest {
 
             verify(payments, times(1)).save(any());
             verify(journals).postSupplierPayment(
-                any(), any(), eq("PMT-M-001"), eq(new BigDecimal("1000.00")), eq("AUD"), eq(PAY_DATE)
+                any(), any(), eq("PMT-M-001"), eq(new BigDecimal("1000.00")), eq(Currencies.AUD), eq(PAY_DATE)
             );
         }
 
@@ -256,10 +257,10 @@ class PaymentServiceTest {
             UUID inv1 = UUID.randomUUID();
             UUID inv2 = UUID.randomUUID();
             when(supplierInvoices.findPaymentSnapshot(inv1)).thenReturn(Optional.of(
-                supplierSnap(SUPPLIER, "AUD", "approved", "300.00", "0.00")
+                supplierSnap(SUPPLIER, Currencies.AUD, "approved", "300.00", "0.00")
             ));
             when(supplierInvoices.findPaymentSnapshot(inv2)).thenReturn(Optional.of(
-                supplierSnap(OTHER_SUPPLIER, "AUD", "approved", "200.00", "0.00")
+                supplierSnap(OTHER_SUPPLIER, Currencies.AUD, "approved", "200.00", "0.00")
             ));
 
             assertThatThrownBy(() -> service.recordSupplierPaymentMulti(new RecordSupplierPaymentMultiCommand(
@@ -277,10 +278,10 @@ class PaymentServiceTest {
             UUID inv1 = UUID.randomUUID();
             UUID inv2 = UUID.randomUUID();
             when(supplierInvoices.findPaymentSnapshot(inv1)).thenReturn(Optional.of(
-                supplierSnap(SUPPLIER, "AUD", "approved", "300.00", "0.00")
+                supplierSnap(SUPPLIER, Currencies.AUD, "approved", "300.00", "0.00")
             ));
             when(supplierInvoices.findPaymentSnapshot(inv2)).thenReturn(Optional.of(
-                supplierSnap(SUPPLIER, "USD", "approved", "200.00", "0.00")
+                supplierSnap(SUPPLIER, Currencies.USD, "approved", "200.00", "0.00")
             ));
 
             assertThatThrownBy(() -> service.recordSupplierPaymentMulti(new RecordSupplierPaymentMultiCommand(
@@ -303,7 +304,7 @@ class PaymentServiceTest {
         @Test void rejects_when_per_line_amount_exceeds_outstanding() {
             UUID inv1 = UUID.randomUUID();
             when(supplierInvoices.findPaymentSnapshot(inv1)).thenReturn(Optional.of(
-                supplierSnap(SUPPLIER, "AUD", "approved", "100.00", "0.00")
+                supplierSnap(SUPPLIER, Currencies.AUD, "approved", "100.00", "0.00")
             ));
 
             assertThatThrownBy(() -> service.recordSupplierPaymentMulti(new RecordSupplierPaymentMultiCommand(
@@ -321,10 +322,10 @@ class PaymentServiceTest {
             UUID inv1 = UUID.randomUUID();
             UUID inv2 = UUID.randomUUID();
             when(customerInvoices.findPaymentSnapshot(inv1)).thenReturn(Optional.of(
-                customerSnap(CUSTOMER, "AUD", "posted", "300.00", "0.00")
+                customerSnap(CUSTOMER, Currencies.AUD, "posted", "300.00", "0.00")
             ));
             when(customerInvoices.findPaymentSnapshot(inv2)).thenReturn(Optional.of(
-                customerSnap(OTHER_CUSTOMER, "AUD", "posted", "200.00", "0.00")
+                customerSnap(OTHER_CUSTOMER, Currencies.AUD, "posted", "200.00", "0.00")
             ));
 
             assertThatThrownBy(() -> service.recordCustomerPaymentMulti(new RecordCustomerPaymentMultiCommand(

@@ -20,6 +20,7 @@ import com.northwood.manufacturing.domain.Bom;
 import com.northwood.shared.application.outbox.OutboxPort;
 import com.northwood.shared.application.outbox.OutboxRow;
 import com.northwood.shared.application.security.CurrentUserAccessor;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -74,10 +75,10 @@ class MaterialsCostRollupServiceTest {
             when(materialsCosts.findByProductId(product)).thenReturn(Optional.empty());
             when(bomLookup.findParentProductIdsByComponent(product)).thenReturn(List.of());
 
-            rollup.onSupplierPriceChange(supplier, product, "AUD", new BigDecimal("12.50"));
+            rollup.onSupplierPriceChange(supplier, product, Currencies.AUD, new BigDecimal("12.50"));
 
             verify(materialsCosts).apply(
-                eq(product), eq(new BigDecimal("12.50")), eq("AUD"),
+                eq(product), eq(new BigDecimal("12.50")), eq(Currencies.AUD),
                 eq("supplier_price_change"), any(Instant.class)
             );
             ArgumentCaptor<OutboxRow> rowCaptor = ArgumentCaptor.forClass(OutboxRow.class);
@@ -96,7 +97,7 @@ class MaterialsCostRollupServiceTest {
                 .thenReturn(Optional.of(new ProductReplenishmentProjection.Replenishment(true, false)));
             when(approvedVendors.findPreferredSupplierId(product)).thenReturn(Optional.of(supplierA));
 
-            rollup.onSupplierPriceChange(supplierB, product, "AUD", new BigDecimal("9.99"));
+            rollup.onSupplierPriceChange(supplierB, product, Currencies.AUD, new BigDecimal("9.99"));
 
             verify(materialsCosts, never()).apply(any(), any(), anyString(), anyString(), any());
             verify(outbox, never()).appendPending(any());
@@ -114,7 +115,7 @@ class MaterialsCostRollupServiceTest {
             when(materialsCosts.findByProductId(product)).thenReturn(Optional.empty());
             when(bomLookup.findParentProductIdsByComponent(product)).thenReturn(List.of());
 
-            rollup.onSupplierPriceChange(supplier, product, "AUD", new BigDecimal("12.50"));
+            rollup.onSupplierPriceChange(supplier, product, Currencies.AUD, new BigDecimal("12.50"));
 
             verify(materialsCosts).apply(
                 eq(product), eq((BigDecimal) null), eq((String) null),
@@ -130,7 +131,7 @@ class MaterialsCostRollupServiceTest {
             when(bomLookup.findActiveByFinishedProductId(product))
                 .thenReturn(Optional.of(new BomLookup.ActiveBom(bom, List.of())));
 
-            rollup.onSupplierPriceChange(supplier, product, "AUD", new BigDecimal("12.50"));
+            rollup.onSupplierPriceChange(supplier, product, Currencies.AUD, new BigDecimal("12.50"));
 
             verify(materialsCosts, never()).apply(any(), any(), anyString(), anyString(), any());
             verify(outbox, never()).appendPending(any());
@@ -144,7 +145,7 @@ class MaterialsCostRollupServiceTest {
             when(replenishment.findByProductId(product))
                 .thenReturn(Optional.of(new ProductReplenishmentProjection.Replenishment(false, true)));
 
-            rollup.onSupplierPriceChange(supplier, product, "AUD", new BigDecimal("12.50"));
+            rollup.onSupplierPriceChange(supplier, product, Currencies.AUD, new BigDecimal("12.50"));
 
             verify(materialsCosts, never()).apply(any(), any(), anyString(), anyString(), any());
             verify(outbox, never()).appendPending(any());
@@ -169,12 +170,12 @@ class MaterialsCostRollupServiceTest {
                 ))));
             when(materialsCosts.findByProductId(componentA)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
-                    componentA, new BigDecimal("5.00"), "AUD",
+                    componentA, new BigDecimal("5.00"), Currencies.AUD,
                     "supplier_price_change", Instant.now()
                 )));
             when(materialsCosts.findByProductId(componentB)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
-                    componentB, new BigDecimal("4.00"), "AUD",
+                    componentB, new BigDecimal("4.00"), Currencies.AUD,
                     "supplier_price_change", Instant.now()
                 )));
             when(materialsCosts.findByProductId(parent)).thenReturn(Optional.empty());
@@ -184,7 +185,7 @@ class MaterialsCostRollupServiceTest {
 
             // 2 * 5 + 3 * 4 = 22.00
             verify(materialsCosts).apply(
-                eq(parent), eq(new BigDecimal("22.000000")), eq("AUD"),
+                eq(parent), eq(new BigDecimal("22.000000")), eq(Currencies.AUD),
                 eq("bom_activated"), any(Instant.class)
             );
         }
@@ -201,7 +202,7 @@ class MaterialsCostRollupServiceTest {
                 ))));
             when(materialsCosts.findByProductId(componentA)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
-                    componentA, new BigDecimal("5.00"), "AUD",
+                    componentA, new BigDecimal("5.00"), Currencies.AUD,
                     "supplier_price_change", Instant.now()
                 )));
             when(materialsCosts.findByProductId(parent)).thenReturn(Optional.empty());
@@ -211,7 +212,7 @@ class MaterialsCostRollupServiceTest {
 
             // 2 * 1.1 * 5 = 11.00
             verify(materialsCosts).apply(
-                eq(parent), eq(new BigDecimal("11.000000")), eq("AUD"),
+                eq(parent), eq(new BigDecimal("11.000000")), eq(Currencies.AUD),
                 eq("bom_activated"), any(Instant.class)
             );
         }
@@ -231,7 +232,7 @@ class MaterialsCostRollupServiceTest {
                 ))));
             when(materialsCosts.findByProductId(componentA)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
-                    componentA, new BigDecimal("5.00"), "AUD",
+                    componentA, new BigDecimal("5.00"), Currencies.AUD,
                     "supplier_price_change", Instant.now()
                 )));
             when(materialsCosts.findByProductId(componentB)).thenReturn(Optional.empty()); // missing
@@ -286,12 +287,12 @@ class MaterialsCostRollupServiceTest {
                 ))));
             when(materialsCosts.findByProductId(componentA)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
-                    componentA, new BigDecimal("5.00"), "AUD",
+                    componentA, new BigDecimal("5.00"), Currencies.AUD,
                     "supplier_price_change", Instant.now()
                 )));
             when(materialsCosts.findByProductId(componentB)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
-                    componentB, new BigDecimal("4.00"), "USD",
+                    componentB, new BigDecimal("4.00"), Currencies.USD,
                     "supplier_price_change", Instant.now()
                 )));
 
@@ -348,20 +349,20 @@ class MaterialsCostRollupServiceTest {
             when(materialsCosts.findByProductId(rawMaterial))
                 .thenReturn(Optional.empty()) // first call (no-op suppression check on apply)
                 .thenReturn(Optional.of(new ProductMaterialsCostProjection.MaterialsCost(
-                    rawMaterial, new BigDecimal("12.50"), "AUD",
+                    rawMaterial, new BigDecimal("12.50"), Currencies.AUD,
                     "supplier_price_change", Instant.now()
                 ))); // subsequent call (parent's BoM walk)
 
-            rollup.onSupplierPriceChange(supplier, rawMaterial, "AUD", new BigDecimal("12.50"));
+            rollup.onSupplierPriceChange(supplier, rawMaterial, Currencies.AUD, new BigDecimal("12.50"));
 
             // Raw material's apply
             verify(materialsCosts).apply(
-                eq(rawMaterial), eq(new BigDecimal("12.50")), eq("AUD"),
+                eq(rawMaterial), eq(new BigDecimal("12.50")), eq(Currencies.AUD),
                 eq("supplier_price_change"), any(Instant.class)
             );
             // Parent's apply: 2 * 12.50 = 25.00, reason child_materials_cost_changed
             verify(materialsCosts).apply(
-                eq(parent), eq(new BigDecimal("25.000000")), eq("AUD"),
+                eq(parent), eq(new BigDecimal("25.000000")), eq(Currencies.AUD),
                 eq("child_materials_cost_changed"), any(Instant.class)
             );
             verify(outbox, times(2)).appendPending(any());
@@ -381,11 +382,11 @@ class MaterialsCostRollupServiceTest {
             when(approvedVendors.findPreferredSupplierId(product)).thenReturn(Optional.of(supplier));
             when(materialsCosts.findByProductId(product)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
-                    product, new BigDecimal("12.50"), "AUD",
+                    product, new BigDecimal("12.50"), Currencies.AUD,
                     "supplier_price_change", Instant.now()
                 )));
 
-            rollup.onSupplierPriceChange(supplier, product, "AUD", new BigDecimal("12.50"));
+            rollup.onSupplierPriceChange(supplier, product, Currencies.AUD, new BigDecimal("12.50"));
 
             verify(materialsCosts, never()).apply(any(), any(), anyString(), anyString(), any());
             verify(outbox, never()).appendPending(any());

@@ -2,6 +2,7 @@ package com.northwood.finance.domain;
 
 import com.northwood.finance.domain.events.SupplierInvoiceApproved;
 import com.northwood.finance.domain.events.SupplierInvoiceRejected;
+import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -173,7 +174,7 @@ public final class SupplierInvoice {
             Objects.requireNonNull(supplierInvoiceNumber),
             purchaseOrderHeaderId, goodsReceiptHeaderId,
             supplierId, supplierCode, supplierName,
-            currencyCode == null ? "AUD" : currencyCode,
+            currencyCode == null ? Currencies.AUD : currencyCode,
             subtotal, tax, total,
             status, matchStatus,
             new ArrayList<>(lines),

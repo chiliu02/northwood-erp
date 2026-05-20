@@ -2,6 +2,7 @@ package com.northwood.testharness.inmemory.purchasing;
 
 import com.northwood.purchasing.application.SupplierProductPriceLookup;
 import com.northwood.purchasing.domain.SupplierId;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.HashMap;
@@ -17,7 +18,7 @@ public final class InMemorySupplierProductPriceLookup implements SupplierProduct
     private final Map<Key, BigDecimal> prices = new HashMap<>();
 
     public InMemorySupplierProductPriceLookup put(UUID supplierId, UUID productId, String currency, BigDecimal price) {
-        prices.put(new Key(supplierId, productId, Objects.requireNonNullElse(currency, "AUD")), price);
+        prices.put(new Key(supplierId, productId, Objects.requireNonNullElse(currency, Currencies.AUD)), price);
         return this;
     }
 

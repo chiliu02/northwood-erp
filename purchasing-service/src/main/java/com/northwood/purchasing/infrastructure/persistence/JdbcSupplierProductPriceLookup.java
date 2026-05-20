@@ -2,6 +2,7 @@ package com.northwood.purchasing.infrastructure.persistence;
 
 import com.northwood.purchasing.application.SupplierProductPriceLookup;
 import com.northwood.purchasing.domain.SupplierId;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.time.LocalDate;
@@ -33,7 +34,7 @@ public class JdbcSupplierProductPriceLookup implements SupplierProductPriceLooku
         LocalDate at,
         BigDecimal quantity
     ) {
-        String currency = currencyCode == null ? "AUD" : currencyCode;
+        String currency = currencyCode == null ? Currencies.AUD : currencyCode;
         LocalDate when = at == null ? LocalDate.now() : at;
         BigDecimal qty = quantity == null ? BigDecimal.ZERO : quantity;
         // Pick the row whose effective range covers `when`, whose

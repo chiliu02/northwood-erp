@@ -5,6 +5,7 @@ import com.northwood.inventory.domain.events.GoodsReceived;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
 import com.northwood.shared.application.messaging.EventEnvelope;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -67,7 +68,7 @@ public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
             payload.aggregateId(),
             payload.goodsReceiptNumber(),
             lineCosts,
-            "AUD",
+            Currencies.AUD,
             postingDate
         );
 

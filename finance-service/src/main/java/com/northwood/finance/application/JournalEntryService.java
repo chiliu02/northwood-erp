@@ -7,6 +7,7 @@ import com.northwood.finance.domain.JournalEntryId;
 import com.northwood.finance.domain.JournalEntryLine;
 import com.northwood.finance.domain.JournalEntryRepository;
 import com.northwood.product.domain.ValuationClass;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -455,7 +456,7 @@ public class JournalEntryService {
             sourceDocumentType,
             sourceDocumentId,
             description,
-            currencyCode == null ? "AUD" : currencyCode,
+            currencyCode == null ? Currencies.AUD : currencyCode,
             BigDecimal.ONE,
             lines
         );
@@ -501,7 +502,7 @@ public class JournalEntryService {
         JournalEntry entry = JournalEntry.post(
             journalNumber, postingDate,
             sourceModule, sourceDocumentType, sourceDocumentId,
-            description, currencyCode == null ? "AUD" : currencyCode, BigDecimal.ONE,
+            description, currencyCode == null ? Currencies.AUD : currencyCode, BigDecimal.ONE,
             lines
         );
         journalEntries.save(entry);
@@ -547,7 +548,7 @@ public class JournalEntryService {
         JournalEntry entry = JournalEntry.post(
             journalNumber, postingDate,
             sourceModule, sourceDocumentType, sourceDocumentId,
-            description, currencyCode == null ? "AUD" : currencyCode, BigDecimal.ONE,
+            description, currencyCode == null ? Currencies.AUD : currencyCode, BigDecimal.ONE,
             lines
         );
         journalEntries.save(entry);

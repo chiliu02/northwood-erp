@@ -11,6 +11,7 @@ import com.northwood.product.domain.ProductAggregateTypes;
 import com.northwood.product.application.ProductService;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
@@ -26,7 +27,7 @@ class ProductMaterialsCostComputedHandlerTest {
 
     private static final UUID PRODUCT = UUID.randomUUID();
     private static final BigDecimal COST = new BigDecimal("42.50");
-    private static final String CURRENCY = "AUD";
+    private static final String CURRENCY = Currencies.AUD;
 
     @Mock InboxPort inbox;
     @Mock ProductService productService;

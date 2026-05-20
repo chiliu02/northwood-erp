@@ -26,6 +26,7 @@ import com.northwood.testharness.inmemory.SynchronousBus;
 import com.northwood.testharness.kits.FinanceTestKit;
 import com.northwood.testharness.kits.InventoryTestKit;
 import com.northwood.testharness.kits.SalesTestKit;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -64,14 +65,14 @@ class OrderToCashHappyPathTest {
         // Seed: customer + product + stock for direct-ship.
         sales.customers.put("CUST-001", "Acme Corp", Customer.Status.ACTIVE);
         UUID productId = UUID.randomUUID();
-        sales.productCards.put(productId, new BigDecimal("100.00"), "AUD");
+        sales.productCards.put(productId, new BigDecimal("100.00"), Currencies.AUD);
         inventory.seedStock(productId, new BigDecimal("50"));
 
         // Step 1: place the order. Saga starts.
         UUID orderId = sales.placeOrder(new PlaceOrderCommand(
             "SO-9001", "CUST-001",
             LocalDate.of(2026, 5, 20),
-            "AUD",
+            Currencies.AUD,
             List.of(new OrderLine(productId, "FG-001", "Finished Good 1",
                 new BigDecimal("3"), null, BigDecimal.ZERO))
         ));

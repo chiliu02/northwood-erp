@@ -5,6 +5,7 @@ import com.northwood.sales.domain.events.SalesOrderPlaced;
 import com.northwood.sales.domain.events.SalesOrderPlaced.PlacedLine;
 import com.northwood.sales.domain.events.SalesOrderShipped;
 import com.northwood.sales.domain.events.SalesOrderShipped.ShippedLine;
+import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -328,7 +329,7 @@ public final class SalesOrder {
             customerCode,
             customerName,
             shipmentDate,
-            currencyCode == null ? "AUD" : currencyCode,
+            currencyCode == null ? Currencies.AUD : currencyCode,
             eventLines,
             Instant.now()
         ));

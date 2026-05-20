@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.northwood.sales.domain.events.SalesOrderCancellationRequested;
 import com.northwood.sales.domain.events.SalesOrderPlaced;
+import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -39,7 +40,7 @@ class SalesOrderTest {
             CUSTOMER,
             "CUST-001", "Test Customer",
             LocalDate.of(2026, 6, 1),
-            "AUD",
+            Currencies.AUD,
             BigDecimal.ONE,
             lines
         );
@@ -49,40 +50,40 @@ class SalesOrderTest {
     class Place {
         @Test void rejects_empty_lines() {
             assertThatThrownBy(() -> SalesOrder.place(
-                "SO-X", CUSTOMER, "C", "Customer", null, "AUD", BigDecimal.ONE, List.of()
+                "SO-X", CUSTOMER, "C", "Customer", null, Currencies.AUD, BigDecimal.ONE, List.of()
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_lines() {
             assertThatThrownBy(() -> SalesOrder.place(
-                "SO-X", CUSTOMER, "C", "Customer", null, "AUD", BigDecimal.ONE, null
+                "SO-X", CUSTOMER, "C", "Customer", null, Currencies.AUD, BigDecimal.ONE, null
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_order_number() {
             assertThatThrownBy(() -> SalesOrder.place(
-                null, CUSTOMER, "C", "Customer", null, "AUD", BigDecimal.ONE,
+                null, CUSTOMER, "C", "Customer", null, Currencies.AUD, BigDecimal.ONE,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             )).isInstanceOf(NullPointerException.class);
         }
 
         @Test void rejects_null_customer_id() {
             assertThatThrownBy(() -> SalesOrder.place(
-                "SO-X", null, "C", "Customer", null, "AUD", BigDecimal.ONE,
+                "SO-X", null, "C", "Customer", null, Currencies.AUD, BigDecimal.ONE,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             )).isInstanceOf(NullPointerException.class);
         }
 
         @Test void rejects_null_customer_code() {
             assertThatThrownBy(() -> SalesOrder.place(
-                "SO-X", CUSTOMER, null, "Customer", null, "AUD", BigDecimal.ONE,
+                "SO-X", CUSTOMER, null, "Customer", null, Currencies.AUD, BigDecimal.ONE,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             )).isInstanceOf(NullPointerException.class);
         }
 
         @Test void rejects_null_customer_name() {
             assertThatThrownBy(() -> SalesOrder.place(
-                "SO-X", CUSTOMER, "C", null, null, "AUD", BigDecimal.ONE,
+                "SO-X", CUSTOMER, "C", null, null, Currencies.AUD, BigDecimal.ONE,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             )).isInstanceOf(NullPointerException.class);
         }
@@ -167,7 +168,7 @@ class SalesOrderTest {
                 CUSTOMER, "CUST-001", "Test Customer",
                 LocalDate.now(), null,
                 status,
-                "AUD", BigDecimal.ONE,
+                Currencies.AUD, BigDecimal.ONE,
                 new BigDecimal("100"), BigDecimal.ZERO, new BigDecimal("100"),
                 null,
                 1L,
@@ -236,7 +237,7 @@ class SalesOrderTest {
                 CUSTOMER, "C", "Cust",
                 LocalDate.now(), null,
                 SalesOrder.Status.IN_FULFILMENT,
-                "AUD", BigDecimal.ONE,
+                Currencies.AUD, BigDecimal.ONE,
                 new BigDecimal("100"), BigDecimal.ZERO, new BigDecimal("100"),
                 null,
                 3L,

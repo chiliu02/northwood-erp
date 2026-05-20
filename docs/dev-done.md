@@ -6,6 +6,28 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — Extract `Currencies` constants in shared-kernel
+
+The codebase had 281 `"AUD"` / `"USD"` string literals across 54 files — `Money.of(...)` calls, projection writers defaulting null `currencyCode`, REST `@RequestParam(defaultValue = "AUD")`, and cross-currency rejection tests. Past the project's "N≥3 sites = extract" threshold by orders of magnitude.
+
+### What shipped
+
+- **`shared-kernel/src/main/java/com/northwood/shared/domain/Currencies.java`** (new) — constants-holder with `public static final String AUD = "AUD"`, `USD = "USD"`, `NZD = "NZD"`. NZD has zero Java references today; it's schema-prep alongside `finance.tax_code = 'GST_NZ_15'`. Javadoc explains why constants and not an enum — ISO 4217 is open-set (180+ codes), `java.util.Currency` exists for runtime lookup, and locking the domain to a closed set buys nothing while making inbound external strings (`Currency.valueOf`) awkward.
+- **54 files refactored** — every `"AUD"` → `Currencies.AUD`, every `"USD"` → `Currencies.USD`. Touches main code (10 files: `JdbcProductRepository`, `SalesOrder`, `PurchaseOrder`, the journal/payment/invoice aggregates, projection writers, `FinancialDashboardController`) and tests (44 files across all 7 services + test-harness). Done via a one-shot PowerShell script that handled both literal substitution and import insertion (alphabetical position among `com.northwood.*` imports).
+- **`CLAUDE.md` "Cross-service wire-format constants"** — added the `Currencies.AUD` example alongside `WorkOrderStatuses.RELEASED` so the pattern is discoverable.
+
+### Why constants, not enum
+
+Three options were on the table: enum, constants-holder, or do nothing. The enum gives compile-time switch coverage that the codebase doesn't actually use, and forces every external-source currency string through `Currency.valueOf(...)` with explicit catch. The constants-holder gives named references (replaces 280 magic strings, IDE-discoverable) without the closed-set commitment. The "do nothing" option was defensible since multi-currency is deprioritised, but the literal repetition was already past the project's documented extraction threshold.
+
+### Annotation defaults
+
+`@RequestParam(name = "currency", defaultValue = "AUD")` in `FinancialDashboardController` worked syntactically after the swap because `Currencies.AUD` is a constant expression (JLS §15.29 — `public static final String` initialized with a string literal). Worth flagging because annotation values are stricter than regular references.
+
+### Smoke
+
+`mvn clean install -DskipTests` SUCCESS across 19 modules. `mvn test` SUCCESS — every module green, including the cross-currency rejection tests in `MoneyTest` (still pass `Currencies.USD` vs `Currencies.AUD` for the same `IllegalArgumentException` assertion).
+
 ## 2026-05-20 — Seed: relocate WC-ASSEMBLY UUID to break a cross-schema collision
 
 Cosmetic follow-up to the previous slice. The original baseline had `00000000-0000-7000-8000-000000000040` reused across two schemas — `purchasing.supplier` (SUP-001) and `manufacturing.work_center` (WC-ASSEMBLY). No UNIQUE conflict (different schemas) and no cross-schema FK (banned), so functionally harmless. But the §0 fixture-UUID registry expanded in the previous slice listed both at the same value, which read confusingly. Resolution: keep SUP-001 at `…040` (7 references) and relocate WC-ASSEMBLY to `…500` (14 references touched).

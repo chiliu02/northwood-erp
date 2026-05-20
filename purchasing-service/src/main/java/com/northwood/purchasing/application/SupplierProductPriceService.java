@@ -3,6 +3,7 @@ package com.northwood.purchasing.application;
 import com.northwood.purchasing.application.dto.PriceView;
 import com.northwood.purchasing.domain.SupplierProductPrice;
 import com.northwood.purchasing.domain.SupplierProductPriceRepository;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -26,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SupplierProductPriceService {
 
     private static final Logger log = LoggerFactory.getLogger(SupplierProductPriceService.class);
-    private static final String DEFAULT_CURRENCY = "AUD";
+    private static final String DEFAULT_CURRENCY = Currencies.AUD;
 
     private final SupplierProductPriceRepository supplierProductPrices;
 

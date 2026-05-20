@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.northwood.finance.domain.events.SupplierInvoiceApproved;
 import com.northwood.finance.domain.events.SupplierInvoiceRejected;
+import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
 import java.util.List;
@@ -36,7 +37,7 @@ class SupplierInvoiceTest {
         return SupplierInvoice.record(
             "INT-001", "SUP-001", PO_HEADER, GR_HEADER,
             SUPPLIER, "ACME", "Acme Co",
-            "AUD", List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
+            Currencies.AUD, List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
             matchOutcome
         );
     }
@@ -68,14 +69,14 @@ class SupplierInvoiceTest {
         @Test void rejects_empty_lines() {
             assertThatThrownBy(() -> SupplierInvoice.record(
                 "INT", "SUP", PO_HEADER, GR_HEADER,
-                SUPPLIER, "A", "A", "AUD", List.of(), SupplierInvoice.MatchStatus.MATCHED
+                SUPPLIER, "A", "A", Currencies.AUD, List.of(), SupplierInvoice.MatchStatus.MATCHED
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_purchase_order_header_id() {
             assertThatThrownBy(() -> SupplierInvoice.record(
                 "INT", "SUP", null, GR_HEADER,
-                SUPPLIER, "A", "A", "AUD",
+                SUPPLIER, "A", "A", Currencies.AUD,
                 List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
                 SupplierInvoice.MatchStatus.MATCHED
             )).isInstanceOf(NullPointerException.class);
@@ -84,7 +85,7 @@ class SupplierInvoiceTest {
         @Test void rejects_null_supplier_id() {
             assertThatThrownBy(() -> SupplierInvoice.record(
                 "INT", "SUP", PO_HEADER, GR_HEADER,
-                null, "A", "A", "AUD",
+                null, "A", "A", Currencies.AUD,
                 List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
                 SupplierInvoice.MatchStatus.MATCHED
             )).isInstanceOf(NullPointerException.class);
@@ -93,7 +94,7 @@ class SupplierInvoiceTest {
         @Test void rejects_null_supplier_invoice_number() {
             assertThatThrownBy(() -> SupplierInvoice.record(
                 "INT", null, PO_HEADER, GR_HEADER,
-                SUPPLIER, "A", "A", "AUD",
+                SUPPLIER, "A", "A", Currencies.AUD,
                 List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
                 SupplierInvoice.MatchStatus.MATCHED
             )).isInstanceOf(NullPointerException.class);
@@ -102,7 +103,7 @@ class SupplierInvoiceTest {
         @Test void totals_summed_from_lines() {
             SupplierInvoice si = SupplierInvoice.record(
                 "INT", "SUP", PO_HEADER, GR_HEADER,
-                SUPPLIER, "A", "A", "AUD",
+                SUPPLIER, "A", "A", Currencies.AUD,
                 List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
                 SupplierInvoice.MatchStatus.MATCHED
             );

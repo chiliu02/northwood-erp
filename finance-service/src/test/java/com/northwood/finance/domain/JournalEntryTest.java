@@ -1,5 +1,6 @@
 package com.northwood.finance.domain;
 
+import com.northwood.shared.domain.Currencies;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -29,7 +30,7 @@ class JournalEntryTest {
         return JournalEntry.post(
             "JE-001", LocalDate.of(2026, 6, 1),
             JournalEntry.SourceModule.FINANCE, JournalEntry.SourceDocumentType.SUPPLIER_INVOICE, DOC, "test",
-            "AUD", BigDecimal.ONE,
+            Currencies.AUD, BigDecimal.ONE,
             balancedPair(amount)
         );
     }
@@ -39,7 +40,7 @@ class JournalEntryTest {
         @Test void requires_at_least_two_lines() {
             assertThatThrownBy(() -> JournalEntry.post(
                 "JE", LocalDate.now(), JournalEntry.SourceModule.FINANCE, JournalEntry.SourceDocumentType.SUPPLIER_INVOICE, DOC, "x",
-                "AUD", BigDecimal.ONE,
+                Currencies.AUD, BigDecimal.ONE,
                 List.of(JournalEntryLine.debit(10, GL_DEBIT, "5000", "x", BigDecimal.TEN, "d", LocalDate.now()))
             )).isInstanceOf(IllegalArgumentException.class);
         }
@@ -53,7 +54,7 @@ class JournalEntryTest {
             );
             assertThatThrownBy(() -> JournalEntry.post(
                 "JE", LocalDate.now(), JournalEntry.SourceModule.FINANCE, JournalEntry.SourceDocumentType.SUPPLIER_INVOICE, DOC, "x",
-                "AUD", BigDecimal.ONE, unbalanced
+                Currencies.AUD, BigDecimal.ONE, unbalanced
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
@@ -65,7 +66,7 @@ class JournalEntryTest {
         @Test void rejects_null_source_document_id() {
             assertThatThrownBy(() -> JournalEntry.post(
                 "JE", LocalDate.now(), JournalEntry.SourceModule.FINANCE, JournalEntry.SourceDocumentType.SUPPLIER_INVOICE, null, "x",
-                "AUD", BigDecimal.ONE, balancedPair(BigDecimal.TEN)
+                Currencies.AUD, BigDecimal.ONE, balancedPair(BigDecimal.TEN)
             )).isInstanceOf(NullPointerException.class);
         }
     }
@@ -76,7 +77,7 @@ class JournalEntryTest {
             JournalEntry draft = JournalEntry.reconstitute(
                 JournalEntryId.newId(), "JE-X", LocalDate.now(),
                 JournalEntry.SourceModule.FINANCE, JournalEntry.SourceDocumentType.SUPPLIER_INVOICE, DOC, "x", JournalEntry.Status.DRAFT,
-                "AUD", BigDecimal.ONE, java.time.Instant.now(),
+                Currencies.AUD, BigDecimal.ONE, java.time.Instant.now(),
                 balancedPair(BigDecimal.TEN), 0L
             );
             assertThatThrownBy(() -> JournalEntry.reverseOf(draft, "test", null))

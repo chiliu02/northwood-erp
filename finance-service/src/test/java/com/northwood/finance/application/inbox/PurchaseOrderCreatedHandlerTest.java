@@ -12,6 +12,7 @@ import com.northwood.purchasing.domain.PurchasingAggregateTypes;
 import com.northwood.purchasing.domain.events.PurchaseOrderCreated;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -51,7 +52,7 @@ class PurchaseOrderCreatedHandlerTest {
         UUID eventId = UUID.randomUUID();
         PurchaseOrderCreated payload = new PurchaseOrderCreated(
             eventId, PO, "PO-001", SUPPLIER, "SUP-001", "Acme",
-            UUID.randomUUID(), null, "AUD",
+            UUID.randomUUID(), null, Currencies.AUD,
             new BigDecimal("0"), "draft", lines, Instant.now()
         );
         return new EventEnvelope(
@@ -66,7 +67,7 @@ class PurchaseOrderCreatedHandlerTest {
         handler.handle(event(List.of(line(10, "5.00"), line(20, "12.00"))));
 
         verify(projection, times(2)).applyPurchaseOrderCreated(
-            eq(PO), eq(SUPPLIER), eq("Acme"), eq("AUD"),
+            eq(PO), eq(SUPPLIER), eq("Acme"), eq(Currencies.AUD),
             any(), any(), any(), any(), any(), any()
         );
         verify(inbox).recordProcessed(any());

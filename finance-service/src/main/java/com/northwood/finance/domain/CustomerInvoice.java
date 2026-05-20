@@ -1,6 +1,7 @@
 package com.northwood.finance.domain;
 
 import com.northwood.finance.domain.events.CustomerInvoiceCreated;
+import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -122,7 +123,7 @@ public final class CustomerInvoice {
         CustomerInvoice ci = new CustomerInvoice(
             id, invoiceNumber, salesOrderHeaderId,
             customerId, customerCode, customerName,
-            currencyCode == null ? "AUD" : currencyCode,
+            currencyCode == null ? Currencies.AUD : currencyCode,
             subtotal, tax, total,
             Status.POSTED,
             new ArrayList<>(lines), 0L

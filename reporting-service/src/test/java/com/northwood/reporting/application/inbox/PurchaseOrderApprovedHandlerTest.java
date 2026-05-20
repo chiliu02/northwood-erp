@@ -10,6 +10,7 @@ import com.northwood.purchasing.domain.PurchasingAggregateTypes;
 import com.northwood.purchasing.domain.events.PurchaseOrderApproved;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
@@ -42,7 +43,7 @@ class PurchaseOrderApprovedHandlerTest {
         UUID eventId = UUID.randomUUID();
         PurchaseOrderApproved payload = new PurchaseOrderApproved(
             eventId, PO, "PO-001",
-            UUID.randomUUID(), "AUD", new BigDecimal("100.00"),
+            UUID.randomUUID(), Currencies.AUD, new BigDecimal("100.00"),
             ACTOR, "ok", APPROVED_AT
         );
         return new EventEnvelope(

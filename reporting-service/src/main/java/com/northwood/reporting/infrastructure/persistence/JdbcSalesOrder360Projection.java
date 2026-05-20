@@ -3,6 +3,7 @@ package com.northwood.reporting.infrastructure.persistence;
 
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
 import com.northwood.reporting.application.inbox.SalesOrder360Projection;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Timestamp;
@@ -90,7 +91,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
             customerId, customerName,
             orderDate == null ? null : Date.valueOf(orderDate),
             requestedDeliveryDate == null ? null : Date.valueOf(requestedDeliveryDate),
-            currencyCode == null ? "AUD" : currencyCode,
+            currencyCode == null ? Currencies.AUD : currencyCode,
             totalAmount == null ? BigDecimal.ZERO : totalAmount,
             totalAmount == null ? BigDecimal.ZERO : totalAmount,
             eventType,

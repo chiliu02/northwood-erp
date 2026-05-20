@@ -15,6 +15,7 @@ import com.northwood.sales.application.dto.PlaceOrderCommand.OrderLine;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.sales.domain.Customer;
 import com.northwood.sales.domain.SalesOrderRepository;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -50,7 +51,7 @@ class SalesOrderServicePlaceOrderTest {
 
     private PlaceOrderCommand commandWithUnitPrice(BigDecimal unitPrice) {
         return new PlaceOrderCommand(
-            "SO-1001", "CUST-1", LocalDate.now().plusDays(7), "AUD",
+            "SO-1001", "CUST-1", LocalDate.now().plusDays(7), Currencies.AUD,
             List.of(new OrderLine(
                 PRODUCT_ID, "SKU-1", "Widget",
                 new BigDecimal("2"), unitPrice, BigDecimal.ZERO
@@ -60,7 +61,7 @@ class SalesOrderServicePlaceOrderTest {
 
     @Test void placeOrder_rejects_discontinued_product_even_when_caller_supplies_unitPrice() {
         when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
-            new CatalogPrice(new BigDecimal("10.00"), "AUD", Instant.parse("2026-05-14T03:15:00Z"))
+            new CatalogPrice(new BigDecimal("10.00"), Currencies.AUD, Instant.parse("2026-05-14T03:15:00Z"))
         ));
 
         assertThatThrownBy(() -> service.placeOrder(commandWithUnitPrice(new BigDecimal("99.99"))))
@@ -74,7 +75,7 @@ class SalesOrderServicePlaceOrderTest {
 
     @Test void placeOrder_rejects_discontinued_product_when_using_catalog_unitPrice() {
         when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
-            new CatalogPrice(new BigDecimal("10.00"), "AUD", Instant.parse("2026-05-14T03:15:00Z"))
+            new CatalogPrice(new BigDecimal("10.00"), Currencies.AUD, Instant.parse("2026-05-14T03:15:00Z"))
         ));
 
         assertThatThrownBy(() -> service.placeOrder(commandWithUnitPrice(null)))
@@ -85,7 +86,7 @@ class SalesOrderServicePlaceOrderTest {
 
     @Test void placeOrder_accepts_live_product() {
         when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
-            new CatalogPrice(new BigDecimal("10.00"), "AUD", null)
+            new CatalogPrice(new BigDecimal("10.00"), Currencies.AUD, null)
         ));
 
         service.placeOrder(commandWithUnitPrice(null));

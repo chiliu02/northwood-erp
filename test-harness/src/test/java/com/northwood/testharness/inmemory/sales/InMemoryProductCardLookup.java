@@ -1,6 +1,7 @@
 package com.northwood.testharness.inmemory.sales;
 
 import com.northwood.sales.application.ProductCardLookup;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.HashMap;
@@ -21,7 +22,7 @@ public final class InMemoryProductCardLookup implements ProductCardLookup {
         CatalogPrice existing = byProductId.get(productId);
         byProductId.put(productId, new CatalogPrice(
             existing == null ? BigDecimal.ZERO : existing.salesPrice(),
-            existing == null ? "AUD" : existing.currencyCode(),
+            existing == null ? Currencies.AUD : existing.currencyCode(),
             discontinuedAt
         ));
         return this;

@@ -2,6 +2,7 @@ package com.northwood.finance.domain;
 
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
 import com.northwood.finance.domain.events.SupplierPaymentMade;
+import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -247,7 +248,7 @@ public final class Payment {
             null, supplierId, supplierName,
             paymentDate == null ? LocalDate.now() : paymentDate,
             paymentMethod,
-            currencyCode == null ? "AUD" : currencyCode,
+            currencyCode == null ? Currencies.AUD : currencyCode,
             amount,
             Status.POSTED,
             List.of(allocation),
@@ -312,7 +313,7 @@ public final class Payment {
             customerId, null, customerName,
             paymentDate == null ? LocalDate.now() : paymentDate,
             paymentMethod,
-            currencyCode == null ? "AUD" : currencyCode,
+            currencyCode == null ? Currencies.AUD : currencyCode,
             amount,
             Status.POSTED,
             List.of(allocation),
@@ -385,7 +386,7 @@ public final class Payment {
             null, supplierId, supplierName,
             paymentDate == null ? LocalDate.now() : paymentDate,
             paymentMethod,
-            currencyCode == null ? "AUD" : currencyCode,
+            currencyCode == null ? Currencies.AUD : currencyCode,
             total,
             Status.POSTED,
             allocations,
@@ -457,7 +458,7 @@ public final class Payment {
             customerId, null, customerName,
             paymentDate == null ? LocalDate.now() : paymentDate,
             paymentMethod,
-            currencyCode == null ? "AUD" : currencyCode,
+            currencyCode == null ? Currencies.AUD : currencyCode,
             total,
             Status.POSTED,
             allocations,
