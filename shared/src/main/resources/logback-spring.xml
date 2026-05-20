@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Northwood shared logback configuration.
+
+  Wired in §1D.1. Every service that depends on the shared module picks this
+  up because Spring Boot resolves `logback-spring.xml` from the classpath at
+  boot, and only this jar declares one. Service-specific level overrides
+  still come from each application.yml `logging.level.*` block — that
+  mechanism layers on top of this file.
+
+  Two appenders:
+
+    CONSOLE — PATTERN encoder, includes %X{traceId}/%X{spanId} from MDC so
+              IntelliJ-console-readable lines carry trace IDs once Micrometer
+              Tracing populates them. The pattern is Boot's stock dev pattern
+              with a `[traceId=… spanId=…]` segment inserted.
+
+    LOKI    — loki-logback-appender pushes structured JSON events to Loki at
+              ${LOKI_URL}. Service name + level + trace/span IDs are promoted
+              to Loki labels so log queries like
+                {service="sales-service"} |= "Saga"
+              and
+                {service="sales-service"} | logfmt | traceId="abc…"
+              work directly in Grafana. Async batched in a worker thread —
+              non-blocking, silent best-effort if Loki is unreachable (drops
+              oldest on overflow). Safe for unit-test JVMs that never bring
+              docker-compose up.
+
+  Spring services run on the Windows host, not inside the compose network,
+  so Loki is reached at localhost:3100. Override via -DLOKI_URL=… or the
+  LOKI_URL env var when the service moves into the compose network.
+-->
+<configuration scan="false" debug="false">
+
+    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="northwood"/>
+    <property name="LOKI_URL" value="${LOKI_URL:-http://localhost:3100/loki/api/v1/push}"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %-40logger{40} [traceId=%X{traceId:-} spanId=%X{spanId:-}] -- %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">
+        <http>
+            <url>${LOKI_URL}</url>
+            <!-- Drop oldest if Loki is unreachable; never block the application thread. -->
+            <connectionTimeoutMs>3000</connectionTimeoutMs>
+            <requestTimeoutMs>5000</requestTimeoutMs>
+        </http>
+        <format>
+            <!-- Labels stay low-cardinality (service + level) so Loki's index
+                 doesn't explode. Thread / logger / trace IDs go into the
+                 message line; trace IDs are also picked up by the Loki
+                 datasource's `derivedFields` regex (db/grafana/provisioning/
+                 datasources/datasources.yaml) for click-through to Tempo. -->
+            <label>
+                <pattern>service=${appName},level=%level</pattern>
+                <readMarkers>true</readMarkers>
+            </label>
+            <message>
+                <pattern>traceId=%X{traceId:-} spanId=%X{spanId:-} thread=%thread logger=%logger{20} | %msg %ex</pattern>
+            </message>
+        </format>
+        <batchMaxItems>500</batchMaxItems>
+        <batchTimeoutMs>5000</batchTimeoutMs>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="LOKI"/>
+    </root>
+
+</configuration>

@@ -25,7 +25,18 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, info, metrics
+        # §1D.1: prometheus joined the include set so Grafana can scrape this
+        # service's metrics. `health, info, metrics` predate §1D.
+        include: health, info, metrics, prometheus
+  # §1D.1: trace + log correlation. Sampling defaults to 1.0 (rich demo data);
+  # override NORTHWOOD_TRACING_SAMPLING to 0.1 for prod-style runs. OTLP_ENDPOINT
+  # points at Tempo (docker-compose service published to localhost:4317).
+  tracing:
+    sampling:
+      probability: ${NORTHWOOD_TRACING_SAMPLING:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTLP_ENDPOINT:http://localhost:4317}
 
 northwood:
   outbox:

@@ -46,6 +46,14 @@ public class OAuth2ResourceServerSecurityConfig {
                     "/actuator/health",
                     "/actuator/health/**",
                     "/actuator/info",
+                    // §1D.1: Prometheus scrapes this endpoint anonymously (no
+                    // JWT-aware client on the Prometheus side). Acceptable
+                    // because /actuator/prometheus exposes JVM/HTTP histograms,
+                    // not business data — and the docker-compose stack runs on
+                    // localhost. /actuator/metrics stays auth-gated because it
+                    // exposes the metric registry's tag-set which can reveal
+                    // route names; only /prometheus needs to be open.
+                    "/actuator/prometheus",
                     "/v3/api-docs",
                     "/v3/api-docs/**",
                     "/v3/api-docs.yaml",

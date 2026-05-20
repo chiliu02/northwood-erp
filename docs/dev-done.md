@@ -6,6 +6,53 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — §1D.1 Shared instrumentation (Micrometer + OTel + Loki)
+
+Second slice of §1D. Goal: every service exposes `/actuator/prometheus`, emits OTLP spans to Tempo, and pushes structured logs to Loki, all through one shared-module dep set rather than per-service.
+
+### What shipped
+
+- **`shared/pom.xml`** — 5 new deps consolidated under a single comment block:
+  - `io.micrometer:micrometer-registry-prometheus` (BOM-managed → 1.16.4).
+  - `io.micrometer:micrometer-tracing-bridge-otel` (BOM-managed → 1.6.4).
+  - `io.opentelemetry:opentelemetry-exporter-otlp` (BOM-managed → 1.55.0; pulls OkHttp sender + autoconfigure-spi).
+  - `net.logstash.logback:logstash-logback-encoder:8.0` (explicit; not in BOM).
+  - `com.github.loki4j:loki-logback-appender:1.5.2` (explicit; not in BOM).
+- **`shared/src/main/resources/logback-spring.xml`** — first logback config in the project (previously Boot's stock). Two appenders:
+  - **CONSOLE** PATTERN encoder with `%X{traceId:-}` / `%X{spanId:-}` segments inline, so IntelliJ-console lines carry trace IDs once Micrometer Tracing populates MDC. Kept PATTERN (not JSON) for IDE readability — decision pinned at impl time, JSON-stdout deferred since Loki ingest is via direct `loki-logback-appender` push, not Promtail tailing stdout.
+  - **LOKI** `Loki4jAppender` pushing to `${LOKI_URL:-http://localhost:3100/loki/api/v1/push}`. Labels stay low-cardinality (`service=${appName},level=%level`) to avoid Loki index explosion; trace/span/thread/logger live in the message line. Non-blocking — batched in a worker thread, drops oldest on overflow if Loki is unreachable. Safe for unit-test JVMs.
+- **`OAuth2ResourceServerSecurityConfig`** gains `/actuator/prometheus` in the permit-all list. Prometheus has no JWT-aware client; the endpoint exposes JVM/HTTP histograms only, not business data. `/actuator/metrics` deliberately stays auth-gated since it can leak route names via tag enumeration.
+- **9 application.yml's updated** (7 services + 2 BFFs) — each gets:
+  - `prometheus` added to `management.endpoints.web.exposure.include` (BFFs gained a `management:` block; they didn't have one).
+  - `management.tracing.sampling.probability=${NORTHWOOD_TRACING_SAMPLING:1.0}` — configurable property only, default 1.0 (decision: no profile coupling; env-var override when prod arrives).
+  - `management.otlp.tracing.endpoint=${OTLP_ENDPOINT:http://localhost:4317}` pointing at Tempo's gRPC receiver.
+- **Each service's `spring.application.name`** verified — all 9 already set it (product-service, sales-service, inventory-service, manufacturing-service, purchasing-service, finance-service, reporting-service, demo-web-ui-bff, erp-web-ui-bff). No edits needed there.
+
+### Smoke
+
+1. `mvn clean install -DskipTests` → **BUILD SUCCESS** across 19 modules.
+2. `mvn -pl shared dependency:tree -Dincludes='io.micrometer:*,io.opentelemetry:*,net.logstash.logback:*,com.github.loki4j:*'` → resolves cleanly; Boot BOM ships the Micrometer + OTel versions, only logstash + loki4j pin explicitly.
+3. `docker compose up -d postgres prometheus tempo loki grafana` + `mvn -pl product-service spring-boot:run` → service starts in ~3s, no logback config warnings.
+4. `GET /actuator/prometheus` (anonymous, post-permit) → **200**, 33KB of metrics including `jvm_memory_used_bytes`, `http_server_requests_seconds_count{uri="/actuator/prometheus"}`, `tomcat_threads_*`.
+5. Loki `query_range` for `{service="product-service"}` → 2 streams returned, log lines carry `traceId=... spanId=... thread=main logger=...` in the message; labels are `{service="product-service", level="INFO|WARN", ...}`. End-to-end log shipping confirmed.
+
+### Decisions pinned at impl time (resolves open questions from the §1D plan)
+
+- **Sampling rate**: 100% always via `NORTHWOOD_TRACING_SAMPLING` (default 1.0). No profile gating — env-var override is the prod-tuning knob. Documented in every `application.yml` comment.
+- **Stdout format**: PATTERN (not JSON). Trace/span IDs are in the inline pattern segment so they're visible in IntelliJ. Loki gets JSON via the direct `loki-logback-appender` push — Promtail doesn't tail Spring stdout.
+
+### Diversions from the original plan (one notable)
+
+- The original §1D.0 plan paragraph mentioned `Promtail` tailing infra container logs only, and §1D.1 listed `loki-logback-appender` for Spring services. Both wired exactly as planned. **However**, the original §1D plan ROW for 1D.1 said *"JSON stdout"* — pinned to PATTERN instead (rationale above). The structured-data path to Loki (`service`, `level` as labels + trace IDs in message) achieves the same Grafana-side query experience.
+- Loki4j 1.5.2 doesn't support `<structuredMetadata>` (newer-version feature). First boot warned `Ignoring unknown property [structuredMetadata]`. Fixed by collapsing into the message pattern + low-cardinality labels.
+
+### Follow-ups noted
+
+- The Loki `derivedFields` regex on the datasource (wired in §1D.0) is `traceId=([a-f0-9]+)` — it'll match the new message-pattern segment once a real trace lands in §1D.2.
+- `/actuator/metrics` stays auth-gated; if a human ops view of the metric registry becomes useful, add a `@RequireOps` annotation rather than blanket-permitting.
+
+---
+
 ## 2026-05-20 — §1D.0 LGTM stack wired into docker-compose
 
 First slice of §1D (Observability). Goal: a `docker compose up -d` brings up Prometheus + Tempo + Loki + Promtail + Grafana with provisioned datasources and a skeleton dashboard, ready for §1D.1 to start pushing metrics / traces / logs in.

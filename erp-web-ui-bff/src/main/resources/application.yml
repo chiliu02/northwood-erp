@@ -27,6 +27,21 @@ spring:
 server:
   port: 8089
 
+# §1D.1: observability. spring-boot-starter-actuator is already on this
+# module's classpath; this block exposes the prometheus + metrics + health
+# endpoints and wires the OTLP tracing exporter at the Tempo gRPC port.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  tracing:
+    sampling:
+      probability: ${NORTHWOOD_TRACING_SAMPLING:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTLP_ENDPOINT:http://localhost:4317}
+
 # Per-target service URLs. Override per environment via env vars
 # (NORTHWOOD_BFF_TARGETS_PRODUCT etc.) or another property source.
 northwood:

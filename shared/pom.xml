@@ -91,6 +91,38 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- §1D.1: observability. Five deps that together let every service
+             expose Prometheus metrics, emit OTLP traces to Tempo, and push
+             structured logs to Loki. Centralised here so every consuming
+             service inherits the same instrumentation without duplicating
+             the dep list — matches the existing shared-module pattern for
+             actuator + security + persistence machinery. Versions for the
+             Micrometer + OpenTelemetry deps are BOM-managed; loki4j and
+             logstash-encoder pin explicit versions because Spring Boot's
+             BOM doesn't cover them. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>8.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.loki4j</groupId>
+            <artifactId>loki-logback-appender</artifactId>
+            <version>1.5.2</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
