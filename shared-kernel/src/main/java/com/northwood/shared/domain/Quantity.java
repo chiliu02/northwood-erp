@@ -15,9 +15,7 @@ public record Quantity(BigDecimal amount, String uomCode) {
     public Quantity {
         Objects.requireNonNull(amount, "amount");
         Objects.requireNonNull(uomCode, "uomCode");
-        if (uomCode.isBlank()) {
-            throw new IllegalArgumentException("uomCode must not be blank");
-        }
+        Assert.isFalse(uomCode.isBlank(), "uomCode must not be blank");
     }
 
     public static Quantity of(BigDecimal amount, String uomCode) {
@@ -52,10 +50,7 @@ public record Quantity(BigDecimal amount, String uomCode) {
     }
 
     private void requireSameUom(Quantity other) {
-        if (!uomCode.equals(other.uomCode)) {
-            throw new IllegalArgumentException(
-                "UoM mismatch: " + uomCode + " vs " + other.uomCode
-            );
-        }
+        Assert.isTrue(uomCode.equals(other.uomCode),
+            "UoM mismatch: " + uomCode + " vs " + other.uomCode);
     }
 }

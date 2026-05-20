@@ -25,9 +25,7 @@ public record Money(BigDecimal amount, String currencyCode) {
     public Money {
         Objects.requireNonNull(amount, "amount");
         Objects.requireNonNull(currencyCode, "currencyCode");
-        if (currencyCode.length() != 3) {
-            throw new IllegalArgumentException("currencyCode must be 3 letters: " + currencyCode);
-        }
+        Assert.isTrue(currencyCode.length() == 3, "currencyCode must be 3 letters: " + currencyCode);
     }
 
     public static Money of(BigDecimal amount, String currencyCode) {
@@ -76,10 +74,7 @@ public record Money(BigDecimal amount, String currencyCode) {
     }
 
     private void requireSameCurrency(Money other) {
-        if (!currencyCode.equals(other.currencyCode)) {
-            throw new IllegalArgumentException(
-                "Currency mismatch: " + currencyCode + " vs " + other.currencyCode
-            );
-        }
+        Assert.isTrue(currencyCode.equals(other.currencyCode),
+            "Currency mismatch: " + currencyCode + " vs " + other.currencyCode);
     }
 }

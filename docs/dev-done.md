@@ -6,6 +6,24 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — `Assert` precondition helper in shared-kernel
+
+Adds a project-local `com.northwood.shared.domain.Assert` utility — replaces the verbose `if (x == null) throw new IllegalArgumentException(...)` idiom with single-call equivalents (`Assert.notNull`, `Assert.isTrue`, `Assert.state`, `Assert.notBlank`, `Assert.notEmpty`, `Assert.unknownValue`). Sits in `shared-kernel` rather than reusing Spring's `org.springframework.util.Assert` because `shared-kernel`'s `pom.xml` carries an explicit framework-free guarantee ("*Deliberately Spring-free so it can be consumed by any layer without pulling in framework code.*"); pulling Spring in just for this utility would break that guarantee.
+
+### What shipped
+
+- **`Assert.java`** — seven methods plus a Javadoc-heavy class header that documents which patterns the class targets and which it deliberately leaves alone (exception translation, context-specific switch defaults).
+  - `notNull` / `isTrue` / `isFalse` / `notBlank` / `notEmpty(Collection)` / `notEmpty(Map)` throw `IllegalArgumentException` — argument violations
+  - `state` throws `IllegalStateException` — receiver invariant violations
+  - `isFalse` is the forbidden-condition mirror of `isTrue`: lets sites originally shaped as `if (cond) throw IAE(...)` migrate to `Assert.isFalse(cond, ...)` without forcing a double-negative (`Assert.isTrue(!cond, ...)`)
+  - `unknownValue(field, value)` **returns** an `IllegalArgumentException` (caller writes `throw Assert.unknownValue(...)`) — keeps the `throw` keyword visible at the call site for the compiler's control-flow analysis and matches the existing end-of-method fall-through shape in `fromDb` / `fromString` parsers
+- **`AssertTest.java`** — 21 tests covering each method's happy + throw paths (77 shared-kernel tests in total now, was 56).
+- **5 shared-kernel sites migrated** as demonstration — every `throw new IAE/ISE(...)` in `Sku`, `Quantity`, `Money` now goes through `Assert.isTrue(...)`. `Objects.requireNonNull` calls preserved so null-input behaviour stays NPE (the existing test suite asserts NPE.class for null args; flipping to IAE would have broken those tests, and the JDK-idiom `requireNonNull` is already concise enough).
+
+### Migration to the other ~184 main-code sites: TBD
+
+Deferred to a follow-up slice. Of the 189 sites identified across 70 main-code files, ~5 are clean null-checks that map straight to `Assert.notNull`, ~10 are end-of-method enum-parser throws that map to `Assert.unknownValue`, ~5 are exception-translation `catch`-rethrows that should stay as-is, and the bulk (~150) are `if (cond) throw new IAE(msg)` shapes whose conditions need inversion to become `Assert.isTrue(!cond, msg)`. The inversion mechanically works but reads as a double-negative at some sites — scope and per-site judgement call deferred.
+
 ## 2026-05-20 — Centralise the `currencyCode == null ? AUD : currencyCode` fallback
 
 Follow-up to the `Currencies` extraction. 18 inline ternaries of the shape `currencyCode == null ? Currencies.AUD : currencyCode` lived across 13 files (finance / sales / purchasing domain factories, the matching projection writers, and `JdbcSupplierProductPriceLookup`) — each one a null-coalescing-to-default silent fallback that the project's own rule (`CLAUDE.md` → *Document silent fallbacks*) requires to be Javadoc'd, log-line'd, and indexed in `docs/design-notes.md`. 18× the documentation surface wasn't going to happen; centralising made the rule observable in practice.

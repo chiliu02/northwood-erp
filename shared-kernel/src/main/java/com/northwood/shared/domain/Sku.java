@@ -14,9 +14,7 @@ public record Sku(String value) {
 
     public Sku {
         Objects.requireNonNull(value, "value");
-        if (!PATTERN.matcher(value).matches()) {
-            throw new IllegalArgumentException("Invalid SKU: " + value);
-        }
+        Assert.isTrue(PATTERN.matcher(value).matches(), "Invalid SKU: " + value);
     }
 
     @Override
