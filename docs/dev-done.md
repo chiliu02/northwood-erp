@@ -6,6 +6,12 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — Seed: relocate WC-ASSEMBLY UUID to break a cross-schema collision
+
+Cosmetic follow-up to the previous slice. The original baseline had `00000000-0000-7000-8000-000000000040` reused across two schemas — `purchasing.supplier` (SUP-001) and `manufacturing.work_center` (WC-ASSEMBLY). No UNIQUE conflict (different schemas) and no cross-schema FK (banned), so functionally harmless. But the §0 fixture-UUID registry expanded in the previous slice listed both at the same value, which read confusingly. Resolution: keep SUP-001 at `…040` (7 references) and relocate WC-ASSEMBLY to `…500` (14 references touched).
+
+Also corrected a mis-framing in the previous slice's dev-done.md entry: `purchasing.product_card` is *by design* empty at day-1, not an "unseeded projection gap." The table carries only `(product_id, discontinued_at)` and tracks discontinued products; zero rows = nothing discontinued, which is the truthful day-1 state. The 4 services that seed `product_card` carry price/cost columns purchasing's doesn't.
+
 ## 2026-05-20 — Seed: expand `northwood_erp_seed.sql` for diversity + corner cases
 
 Follow-up to the schema/seed split shipped earlier today. The seed went from single-row-per-aggregate (1 customer, 1 supplier, 1 warehouse) to a multi-row showcase fixture set so demos can exercise regional / status / multi-source / multi-warehouse / volume-tier paths without manual data-loading after `docker compose up -d`. 30 INSERTs total (was 25); file grew 501 → 696 lines.
@@ -26,13 +32,13 @@ Aggregate row additions, with their projection ripples:
 
 The §0 block at the top of the seed file is now an exhaustive registry rather than a partial one — every product, warehouse, customer, supplier, BOM, routing, and work-center fixture is listed with its UUID and a one-word category. Future seed additions should add their UUID here too.
 
-### Pre-existing gap NOT fixed in this slice
+### `purchasing.product_card` empty by design (not a gap)
 
-`purchasing.product_card` (the purchasing-side product master projection) is not seeded today. The other four services (sales / manufacturing / finance / reporting) seed their `product_card` for day-1 cost/price availability ahead of the first event. Purchasing apparently doesn't need that day-1 backfill — runtime `ProductCreatedHandler` populates from events. Flagged for separate hygiene if it bites later.
+Initially flagged this as an unseeded projection; it isn't. The table carries only `(product_id, discontinued_at)` and is the read-side for `DiscontinuedProductLookup`, which filters on `discontinued_at IS NOT NULL`. Rows are added by the runtime `ProductDiscontinuedHandler` when a product gets discontinued — zero rows at day-1 means "no products are discontinued," which is the truthful day-1 state. Sales / manufacturing / finance / reporting seed their `product_card` because those carry pricing or cost columns needed at day-1; purchasing's card carries no such columns.
 
-### Cross-schema UUID collision
+### Cross-schema UUID collision (fixed in follow-up slice)
 
-`00000000-0000-7000-8000-000000000040` is used by both `purchasing.supplier` (SUP-001) and `manufacturing.work_center` (WC-ASSEMBLY). Pre-existing — no UNIQUE conflict because they live in different schemas — left alone but listed in the §0 registry so future readers see it.
+Original baseline had `00000000-0000-7000-8000-000000000040` reused by `purchasing.supplier` (SUP-001) and `manufacturing.work_center` (WC-ASSEMBLY). No UNIQUE conflict because they sit in different schemas, but the §0 registry listing both at the same UUID read oddly. Resolved in the slice entry above.
 
 ## 2026-05-20 — Schema baseline split: `northwood_erp.sql` + `northwood_erp_seed.sql`
 
