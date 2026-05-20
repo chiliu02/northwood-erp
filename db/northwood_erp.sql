@@ -1,6 +1,14 @@
 -- northwood_erp.sql
--- Northwood Furniture Co. Mini ERP Database
+-- Northwood Furniture Co. Mini ERP — schema baseline
 -- PostgreSQL installation script
+--
+-- This file is the canonical schema baseline: extensions, schemas, roles,
+-- grants, DDL, partitions, functions, and PL/pgSQL constraints. It contains
+-- NO data — demo seed (products, BOMs, customers, suppliers, GL chart, etc.)
+-- lives in the companion file db/northwood_erp_seed.sql. They were one file
+-- until 2026-05-20; splitting them lets a developer choose between "from
+-- scratch" (schema only, populate at runtime via events) and "ready to demo"
+-- (schema + seed) without editing either file.
 --
 -- The script assumes the target database already exists and that you are
 -- already connected to it. Two ways to run it:
@@ -8,10 +16,13 @@
 --   (a) Standalone psql:
 --         createdb -U postgres northwood_erp
 --         psql -U postgres -d northwood_erp -f northwood_erp.sql
+--         # optional: psql -U postgres -d northwood_erp -f northwood_erp_seed.sql
 --
 --   (b) Docker (`/docker-entrypoint-initdb.d/`): the postgres entrypoint
 --       creates the database via POSTGRES_DB and runs every *.sql here while
---       connected to it. Just mount this file into that directory.
+--       connected to it. The default docker-compose.yml mounts this file
+--       only; pass `-f docker-compose.yml -f docker-compose.seed.yml` on
+--       `up` to also mount the seed file.
 --
 -- The DROP DATABASE / CREATE DATABASE / \connect block that earlier versions
 -- of this script carried is gone — both invocation paths above already have
@@ -26,10 +37,11 @@
 --
 --   * Organised as one self-contained section per service. Each section is
 --     wrapped in BEGIN/COMMIT and contains: schema creation, idempotent role
---     creation, grants, all DDL (including the service's own outbox/inbox),
---     and the service's seed data. Lifting any one section out into its own
---     services/<name>/install.sql produces a working installer for that
---     service against its own database.
+--     creation, grants, and all DDL (including the service's own outbox/inbox).
+--     Lifting any one section out into its own services/<name>/install.sql
+--     produces a working installer for that service against its own database.
+--     The matching seed section in db/northwood_erp_seed.sql §<same number>
+--     ships the demo fixture rows for that service when wanted.
 --
 --   * The shared bootstrap (extensions, `shared` schema, `uuid_generate_v7()`,
 --     `set_updated_at()`) lives in a single transaction at the top. In a
@@ -46,11 +58,6 @@
 --     (supplier_id on finance.payment, product_id on every projection, etc.)
 --     are plain UUIDs maintained via event projection — never enforced by FK.
 --
---   * Seed data is split per service. Cross-context fixture data (the wooden
---     table BOM that joins product, inventory, and manufacturing) uses
---     well-known constant UUIDs declared once in §0 below. Each service's
---     seed references the constants directly — no joins across schemas.
---
 --   * Each service's section ends with a final block of grants on tables and
 --     sequences (`SELECT, INSERT, UPDATE` on tables, `USAGE, SELECT` on
 --     sequences). These run after the DDL so newly-created objects are
@@ -66,52 +73,19 @@
 --     separate connection pool per service, each authenticated with its own
 --     `<service>_service` role. `search_path` is set per pool so the service
 --     can only see its own schema and `shared`.
---   * Replace the cross-context seed with event replay. The hardcoded UUIDs
---     are a pragmatic shortcut for a showcase; a more authentic dev loop
---     would have product master emit `ProductCreated` events that downstream
---     services consume to populate their projections.
+--   * Ship demo seed data. The companion file db/northwood_erp_seed.sql
+--     carries the cross-context fixture rows (the wooden table BOM that
+--     joins product, inventory, and manufacturing) keyed off well-known
+--     constant UUIDs; see that file's §0 for the registry. The hardcoded
+--     UUIDs are a pragmatic shortcut for a showcase; a more authentic dev
+--     loop would have product master emit `ProductCreated` events that
+--     downstream services consume to populate their projections.
 --
 -- Domain invariants enforced in this schema: balanced journals, posted-document
 -- immutability, payment allocation totals never exceed payment amount, range-
 -- partitioned movement/journal tables, sequence-numbered outbox cursors, OCC
 -- versioning, saga leases. See each service's section for the per-aggregate
 -- detail.
--- ============================================================================
-
--- ============================================================================
--- §0  WELL-KNOWN FIXTURE UUIDs
--- ----------------------------------------------------------------------------
--- These constants let each service's seed reference cross-context entities
--- (product, BOMs, warehouse, customer, supplier) by literal UUID without
--- joining across schemas. They are NOT used by application code and are NOT
--- checked into a registry; they exist purely so the showcase has consistent
--- demo data after the database-per-service split.
---
--- Format: 00000000-0000-7000-8nnn-nnnnnnnnnnnn  (valid UUIDv7 layout)
---
---   Products:
---     FG-TABLE-001    00000000-0000-7000-8000-000000000001
---     RM-BOARD-001    00000000-0000-7000-8000-000000000002
---     RM-LEG-001      00000000-0000-7000-8000-000000000003
---     RM-SCREW-001    00000000-0000-7000-8000-000000000004
---     RM-VARNISH-001  00000000-0000-7000-8000-000000000005
---
---   Units of measure:
---     EA              00000000-0000-7000-8000-000000000010
---     L               00000000-0000-7000-8000-000000000011
---     KG              00000000-0000-7000-8000-000000000012
---
---   Warehouse:
---     MAIN            00000000-0000-7000-8000-000000000020
---
---   Customer:
---     CUST-001        00000000-0000-7000-8000-000000000030
---
---   Supplier:
---     SUP-001         00000000-0000-7000-8000-000000000040
---
---   BOM (manufacturing):
---     Wooden Table    00000000-0000-7000-8000-000000000100
 -- ============================================================================
 
 -- ============================================================================
@@ -344,65 +318,8 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA product TO product_service;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA product TO product_service;
 
 -- ----------------------------------------------------------------------------
--- PRODUCT: seed
+-- PRODUCT: seed lives in db/northwood_erp_seed.sql §SEED: PRODUCT.
 -- ----------------------------------------------------------------------------
-INSERT INTO product.unit_of_measure (uom_id, code, name) VALUES
-    ('00000000-0000-7000-8000-000000000010', 'EA', 'Each'),
-    ('00000000-0000-7000-8000-000000000011', 'L',  'Litre'),
-    ('00000000-0000-7000-8000-000000000012', 'KG', 'Kilogram')
-ON CONFLICT (code) DO NOTHING;
-
-INSERT INTO product.product (
-    product_id, sku, name, description, product_type, base_uom_id,
-    is_stocked, is_purchased, is_manufactured, is_sellable,
-    sales_price, standard_cost
-) VALUES
-    ('00000000-0000-7000-8000-000000000001', 'FG-TABLE-001',   'Wooden Dining Table',
-     'Finished wooden dining table',  'finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  true,  650.00, 320.00),
-    ('00000000-0000-7000-8000-000000000002', 'RM-BOARD-001',   'Wooden Board',
-     'Timber board for table top',    'raw_material',  '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false,   0.00,  80.00),
-    ('00000000-0000-7000-8000-000000000003', 'RM-LEG-001',     'Table Leg',
-     'Timber table leg',              'raw_material',  '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false,   0.00,  25.00),
-    ('00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',   'Screw Pack',
-     'Screw pack for one table',      'raw_material',  '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false,   0.00,   5.00),
-    ('00000000-0000-7000-8000-000000000005', 'RM-VARNISH-001', 'Varnish Pack',
-     'Varnish portion for one table', 'raw_material',  '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false,   0.00,  12.00),
-    -- Sub-assembly demo set: a cabinet whose BOM has a drawer sub-assembly
-    -- plus extra raw materials. Drives the sub-assembly recursion path in
-    -- WorkOrderReleaseService and the BOM cycle detector's "this would close
-    -- a loop" rejection path.
-    ('00000000-0000-7000-8000-000000000200', 'FG-CABINET-001', 'Storage Cabinet',
-     'Wooden storage cabinet with drawer', 'finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  true,  890.00, 420.00),
-    ('00000000-0000-7000-8000-000000000201', 'SA-DRAWER-001', 'Cabinet Drawer Sub-assembly',
-     'Drawer pre-built for cabinet',       'semi_finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  false, 0.00,    65.00),
-    ('00000000-0000-7000-8000-000000000202', 'RM-DRAWER-FRONT-001', 'Drawer Front Panel',
-     'Pre-cut front panel for drawer',     'raw_material',       '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false, 0.00,    18.00),
-    ('00000000-0000-7000-8000-000000000203', 'RM-DRAWER-RUNNER-001', 'Drawer Runner',
-     'Slide runner pair for drawer',       'raw_material',       '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false, 0.00,    14.00),
-    -- Multi-level BOM demo set: chest of drawers, with a frame sub-assembly
-    -- that itself contains a panel sub-assembly. Exercises the §2.24.3
-    -- recursive-CTE walk through 3 levels, and demonstrates the "same
-    -- component used at multiple depths" case — RM-SCREW-001 appears at
-    -- depth 1 (chest), depth 2 (frame + drawer), and depth 3 (panel).
-    ('00000000-0000-7000-8000-000000000300', 'FG-CHEST-001', 'Chest of Drawers',
-     'Wooden chest of drawers with two drawers and a panelled frame', 'finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  true,  1490.00, 720.00),
-    ('00000000-0000-7000-8000-000000000301', 'SA-FRAME-001', 'Chest Frame Sub-assembly',
-     'Panelled frame that holds the chest drawers',                   'semi_finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  false, 0.00,     380.00),
-    ('00000000-0000-7000-8000-000000000302', 'SA-PANEL-001', 'Side Panel Sub-assembly',
-     'Side panel built from board + varnish + screws',                'semi_finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  false, 0.00,     105.00)
-ON CONFLICT (sku) DO NOTHING;
 
 COMMIT;
 
@@ -675,40 +592,8 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA sales TO sales_service;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA sales TO sales_service;
 
 -- ----------------------------------------------------------------------------
--- SALES: seed
+-- SALES: seed lives in db/northwood_erp_seed.sql §SEED: SALES.
 -- ----------------------------------------------------------------------------
-INSERT INTO sales.customer (
-    customer_id, customer_code, name, email, phone, billing_address, shipping_address
-) VALUES (
-    '00000000-0000-7000-8000-000000000030',
-    'CUST-001', 'Sydney Home Living',
-    'orders@sydneyhomeliving.example', '+61 2 9000 0001',
-    'Sydney NSW', 'Sydney NSW'
-)
-ON CONFLICT (customer_code) DO NOTHING;
-
--- Backfill sales.product_card from product.product so the projection has
--- one row per existing Product at boot — same shape the runtime
--- ProductCreatedHandler produces on product.ProductCreated. Raw materials and
--- semi-finished goods are unsellable from the sales perspective, so their
--- price + currency are NULL (lifecycle: created → discontinued, never priced).
--- The two finished goods carry their real prices so the demo scenarios that
--- place orders don't need a separate SalesPriceChanged seed to be sellable.
-INSERT INTO sales.product_card (product_id, sales_price, currency_code)
-VALUES
-    ('00000000-0000-7000-8000-000000000001', 650.00, 'AUD'),  -- FG-TABLE-001
-    ('00000000-0000-7000-8000-000000000002', NULL,   NULL),   -- RM-BOARD-001
-    ('00000000-0000-7000-8000-000000000003', NULL,   NULL),   -- RM-LEG-001
-    ('00000000-0000-7000-8000-000000000004', NULL,   NULL),   -- RM-SCREW-001
-    ('00000000-0000-7000-8000-000000000005', NULL,   NULL),   -- RM-VARNISH-001
-    ('00000000-0000-7000-8000-000000000200', 890.00, 'AUD'),  -- FG-CABINET-001
-    ('00000000-0000-7000-8000-000000000201', NULL,   NULL),   -- SA-DRAWER-001
-    ('00000000-0000-7000-8000-000000000202', NULL,   NULL),   -- RM-DRAWER-FRONT-001
-    ('00000000-0000-7000-8000-000000000203', NULL,   NULL),   -- RM-DRAWER-RUNNER-001
-    ('00000000-0000-7000-8000-000000000300', 1490.00,'AUD'),  -- FG-CHEST-001
-    ('00000000-0000-7000-8000-000000000301', NULL,   NULL),   -- SA-FRAME-001
-    ('00000000-0000-7000-8000-000000000302', NULL,   NULL)    -- SA-PANEL-001
-ON CONFLICT (product_id) DO NOTHING;
 
 COMMIT;
 
@@ -1060,49 +945,8 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA inventory TO inventory_serv
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA inventory TO inventory_service;
 
 -- ----------------------------------------------------------------------------
--- INVENTORY: seed
--- Uses fixture UUIDs from §0; no cross-schema joins.
--- The stock_item table is inventory's local projection of product master;
--- in production it would be populated by consuming ProductCreated events.
+-- INVENTORY: seed lives in db/northwood_erp_seed.sql §SEED: INVENTORY.
 -- ----------------------------------------------------------------------------
-INSERT INTO inventory.warehouse (warehouse_id, warehouse_code, name, address)
-VALUES (
-    '00000000-0000-7000-8000-000000000020',
-    'MAIN', 'Main Warehouse', 'Sydney NSW'
-)
-ON CONFLICT (warehouse_code) DO NOTHING;
-
-INSERT INTO inventory.stock_item (
-    product_id, product_sku, product_name, product_type, base_uom_code, stock_tracking_mode,
-    reorder_point, reorder_quantity
-) VALUES
-    ('00000000-0000-7000-8000-000000000001', 'FG-TABLE-001',   'Wooden Dining Table', 'finished_good', 'EA', 'tracked',  2,  5),
-    ('00000000-0000-7000-8000-000000000002', 'RM-BOARD-001',   'Wooden Board',        'raw_material',  'EA', 'tracked', 10, 20),
-    ('00000000-0000-7000-8000-000000000003', 'RM-LEG-001',     'Table Leg',           'raw_material',  'EA', 'tracked', 20, 40),
-    ('00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',   'Screw Pack',          'raw_material',  'EA', 'tracked', 10, 30),
-    ('00000000-0000-7000-8000-000000000005', 'RM-VARNISH-001', 'Varnish Pack',        'raw_material',  'EA', 'tracked', 10, 30),
-    -- Sub-assembly demo set:
-    ('00000000-0000-7000-8000-000000000200', 'FG-CABINET-001',       'Storage Cabinet',           'finished_good',      'EA', 'tracked', 1,  3),
-    ('00000000-0000-7000-8000-000000000201', 'SA-DRAWER-001',        'Cabinet Drawer Sub-assembly', 'semi_finished_good', 'EA', 'tracked', 0,  0),
-    ('00000000-0000-7000-8000-000000000202', 'RM-DRAWER-FRONT-001',  'Drawer Front Panel',        'raw_material',       'EA', 'tracked', 5, 10),
-    ('00000000-0000-7000-8000-000000000203', 'RM-DRAWER-RUNNER-001', 'Drawer Runner',             'raw_material',       'EA', 'tracked', 5, 10)
-ON CONFLICT (product_id) DO NOTHING;
-
-INSERT INTO inventory.stock_balance (
-    warehouse_id, product_id, on_hand_quantity, reserved_quantity, average_cost
-) VALUES
-    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000001',  2, 0, 320.00),
-    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000002',  5, 0,  80.00),
-    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000003', 20, 0,  25.00),
-    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000004', 20, 0,   5.00),
-    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000005', 20, 0,  12.00),
-    -- Sub-assembly demo set: cabinet/drawer parts. Sub-assembly itself is
-    -- not pre-stocked (its child WO produces it on demand); raws are.
-    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000200',  0, 0, 420.00),
-    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000201',  0, 0,  65.00),
-    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000202', 10, 0,  18.00),
-    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000203', 10, 0,  14.00)
-ON CONFLICT (warehouse_id, product_id) DO NOTHING;
 
 COMMIT;
 
@@ -1536,166 +1380,8 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA manufacturing TO manufactur
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA manufacturing TO manufacturing_service;
 
 -- ----------------------------------------------------------------------------
--- MANUFACTURING: seed
--- Wooden Table BOM. Fixture UUIDs from §0; no cross-schema joins.
+-- MANUFACTURING: seed lives in db/northwood_erp_seed.sql §SEED: MANUFACTURING.
 -- ----------------------------------------------------------------------------
-
--- Manufacturing card: mirror product.product is_purchased / is_manufactured
--- so manufacturing has a row per existing SKU at boot. Runtime keeps it in
--- step via the inbox handlers on product.MakeVsBuyChanged + ActiveBomChanged
--- + ProductDiscontinued + the local materials-cost rollup engine.
-INSERT INTO manufacturing.product_card (product_id, is_purchased, is_manufactured)
-VALUES
-    ('00000000-0000-7000-8000-000000000001', false, true),
-    ('00000000-0000-7000-8000-000000000002', true,  false),
-    ('00000000-0000-7000-8000-000000000003', true,  false),
-    ('00000000-0000-7000-8000-000000000004', true,  false),
-    ('00000000-0000-7000-8000-000000000005', true,  false),
-    ('00000000-0000-7000-8000-000000000200', false, true),
-    ('00000000-0000-7000-8000-000000000201', false, true),
-    ('00000000-0000-7000-8000-000000000202', true,  false),
-    ('00000000-0000-7000-8000-000000000203', true,  false),
-    ('00000000-0000-7000-8000-000000000300', false, true),
-    ('00000000-0000-7000-8000-000000000301', false, true),
-    ('00000000-0000-7000-8000-000000000302', false, true)
-ON CONFLICT (product_id) DO NOTHING;
-
-INSERT INTO manufacturing.bom_header (
-    bom_header_id, finished_product_id, finished_product_sku, finished_product_name, version, status
-) VALUES (
-    '00000000-0000-7000-8000-000000000100',
-    '00000000-0000-7000-8000-000000000001',
-    'FG-TABLE-001', 'Wooden Dining Table', '1', 'active'
-)
-ON CONFLICT (finished_product_id, version) DO NOTHING;
-
-INSERT INTO manufacturing.bom_line (
-    bom_header_id, line_number, component_product_id, component_sku, component_name,
-    component_kind, quantity_per_finished_unit, scrap_factor_percent
-) VALUES
-    ('00000000-0000-7000-8000-000000000100', 1, '00000000-0000-7000-8000-000000000002', 'RM-BOARD-001',   'Wooden Board', 'raw', 1.000000, 0),
-    ('00000000-0000-7000-8000-000000000100', 2, '00000000-0000-7000-8000-000000000003', 'RM-LEG-001',     'Table Leg',    'raw', 4.000000, 0),
-    ('00000000-0000-7000-8000-000000000100', 3, '00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',   'Screw Pack',   'raw', 1.000000, 0),
-    ('00000000-0000-7000-8000-000000000100', 4, '00000000-0000-7000-8000-000000000005', 'RM-VARNISH-001', 'Varnish Pack', 'raw', 1.000000, 0)
-ON CONFLICT (bom_header_id, line_number) DO NOTHING;
-
--- Sub-assembly demo: cabinet's BOM has the drawer as a sub_assembly plus raws;
--- the drawer's BOM has only raws. Together these exercise the recursion in
--- WorkOrderReleaseService and provide a non-trivial graph for cycle detection.
-INSERT INTO manufacturing.bom_header (
-    bom_header_id, finished_product_id, finished_product_sku, finished_product_name, version, status
-) VALUES
-    ('00000000-0000-7000-8000-000000000210',
-     '00000000-0000-7000-8000-000000000200',
-     'FG-CABINET-001', 'Storage Cabinet', '1', 'active'),
-    ('00000000-0000-7000-8000-000000000211',
-     '00000000-0000-7000-8000-000000000201',
-     'SA-DRAWER-001',  'Cabinet Drawer Sub-assembly', '1', 'active')
-ON CONFLICT (finished_product_id, version) DO NOTHING;
-
-INSERT INTO manufacturing.bom_line (
-    bom_header_id, line_number, component_product_id, component_sku, component_name,
-    component_kind, quantity_per_finished_unit, scrap_factor_percent
-) VALUES
-    -- Cabinet → drawer (sub-assembly) + raw materials
-    ('00000000-0000-7000-8000-000000000210', 1, '00000000-0000-7000-8000-000000000201', 'SA-DRAWER-001', 'Cabinet Drawer Sub-assembly', 'sub_assembly', 1.000000, 0),
-    ('00000000-0000-7000-8000-000000000210', 2, '00000000-0000-7000-8000-000000000002', 'RM-BOARD-001',   'Wooden Board', 'raw', 2.000000, 0),
-    ('00000000-0000-7000-8000-000000000210', 3, '00000000-0000-7000-8000-000000000005', 'RM-VARNISH-001', 'Varnish Pack', 'raw', 1.000000, 0),
-    -- Drawer → raws only
-    ('00000000-0000-7000-8000-000000000211', 1, '00000000-0000-7000-8000-000000000202', 'RM-DRAWER-FRONT-001',  'Drawer Front Panel', 'raw', 1.000000, 0),
-    ('00000000-0000-7000-8000-000000000211', 2, '00000000-0000-7000-8000-000000000203', 'RM-DRAWER-RUNNER-001', 'Drawer Runner',      'raw', 2.000000, 0),
-    ('00000000-0000-7000-8000-000000000211', 3, '00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',         'Screw Pack',         'raw', 1.000000, 0)
-ON CONFLICT (bom_header_id, line_number) DO NOTHING;
-
--- Multi-level demo: a chest of drawers whose BOM nests two sub-assemblies
--- deep (chest → frame → panel) and uses RM-SCREW-001 at four positions
--- across three depths. Exercises the §2.24.3 recursive-CTE walk in
--- BomLookup.findActiveBomTreeRows and the flat-view's "same component
--- at multiple paths" case in the SPAs.
-INSERT INTO manufacturing.bom_header (
-    bom_header_id, finished_product_id, finished_product_sku, finished_product_name, version, status
-) VALUES
-    ('00000000-0000-7000-8000-000000000310',
-     '00000000-0000-7000-8000-000000000300',
-     'FG-CHEST-001', 'Chest of Drawers', '1', 'active'),
-    ('00000000-0000-7000-8000-000000000311',
-     '00000000-0000-7000-8000-000000000301',
-     'SA-FRAME-001', 'Chest Frame Sub-assembly', '1', 'active'),
-    ('00000000-0000-7000-8000-000000000312',
-     '00000000-0000-7000-8000-000000000302',
-     'SA-PANEL-001', 'Side Panel Sub-assembly', '1', 'active')
-ON CONFLICT (finished_product_id, version) DO NOTHING;
-
-INSERT INTO manufacturing.bom_line (
-    bom_header_id, line_number, component_product_id, component_sku, component_name,
-    component_kind, quantity_per_finished_unit, scrap_factor_percent
-) VALUES
-    -- Chest → 2× drawer (sub-assembly), 1× frame (sub-assembly), 3× screw, 2× varnish
-    ('00000000-0000-7000-8000-000000000310', 1, '00000000-0000-7000-8000-000000000201', 'SA-DRAWER-001',  'Cabinet Drawer Sub-assembly', 'sub_assembly', 2.000000, 0),
-    ('00000000-0000-7000-8000-000000000310', 2, '00000000-0000-7000-8000-000000000301', 'SA-FRAME-001',   'Chest Frame Sub-assembly',    'sub_assembly', 1.000000, 0),
-    ('00000000-0000-7000-8000-000000000310', 3, '00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',   'Screw Pack',                  'raw',          3.000000, 0),
-    ('00000000-0000-7000-8000-000000000310', 4, '00000000-0000-7000-8000-000000000005', 'RM-VARNISH-001', 'Varnish Pack',                'raw',          2.000000, 0),
-    -- Frame → 2× panel (sub-sub-assembly), 1× board (top), 4× screw
-    ('00000000-0000-7000-8000-000000000311', 1, '00000000-0000-7000-8000-000000000302', 'SA-PANEL-001', 'Side Panel Sub-assembly', 'sub_assembly', 2.000000, 0),
-    ('00000000-0000-7000-8000-000000000311', 2, '00000000-0000-7000-8000-000000000002', 'RM-BOARD-001', 'Wooden Board',            'raw',          1.000000, 0),
-    ('00000000-0000-7000-8000-000000000311', 3, '00000000-0000-7000-8000-000000000004', 'RM-SCREW-001', 'Screw Pack',              'raw',          4.000000, 0),
-    -- Panel → 1× board, 1× varnish, 2× screw
-    ('00000000-0000-7000-8000-000000000312', 1, '00000000-0000-7000-8000-000000000002', 'RM-BOARD-001',   'Wooden Board', 'raw', 1.000000, 0),
-    ('00000000-0000-7000-8000-000000000312', 2, '00000000-0000-7000-8000-000000000005', 'RM-VARNISH-001', 'Varnish Pack', 'raw', 1.000000, 0),
-    ('00000000-0000-7000-8000-000000000312', 3, '00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',   'Screw Pack',   'raw', 2.000000, 0)
-ON CONFLICT (bom_header_id, line_number) DO NOTHING;
-
-INSERT INTO manufacturing.work_center (work_center_id, work_center_code, name)
-VALUES (
-    '00000000-0000-7000-8000-000000000040',
-    'WC-ASSEMBLY', 'Assembly Bay'
-) ON CONFLICT (work_center_code) DO NOTHING;
-
-INSERT INTO manufacturing.routing_header (
-    routing_header_id, finished_product_id, finished_product_sku, finished_product_name, version, status
-) VALUES (
-    '00000000-0000-7000-8000-000000000050',
-    '00000000-0000-7000-8000-000000000001',
-    'FG-TABLE-001', 'Wooden Dining Table', '1', 'active'
-) ON CONFLICT (finished_product_id, version) DO NOTHING;
-
-INSERT INTO manufacturing.routing_operation (
-    routing_operation_id,
-    routing_header_id, operation_sequence, operation_code, description,
-    work_center_id, planned_setup_minutes, planned_run_minutes
-) VALUES
-    ('00000000-0000-7000-8000-000000000051', '00000000-0000-7000-8000-000000000050', 10, 'CUT',      'Cut to size',     '00000000-0000-7000-8000-000000000040',  5, 30),
-    ('00000000-0000-7000-8000-000000000052', '00000000-0000-7000-8000-000000000050', 20, 'DRILL',    'Drill leg holes', '00000000-0000-7000-8000-000000000040',  5, 20),
-    ('00000000-0000-7000-8000-000000000053', '00000000-0000-7000-8000-000000000050', 30, 'ASSEMBLE', 'Assemble',        '00000000-0000-7000-8000-000000000040', 10, 60),
-    ('00000000-0000-7000-8000-000000000054', '00000000-0000-7000-8000-000000000050', 40, 'FINISH',   'Varnish + sand',  '00000000-0000-7000-8000-000000000040',  5, 45)
-ON CONFLICT (routing_header_id, operation_sequence) DO NOTHING;
-
--- Sub-assembly demo: routings for the cabinet and the drawer. Both run on
--- WC-ASSEMBLY for now; introducing a second work centre is a separate slice.
-INSERT INTO manufacturing.routing_header (
-    routing_header_id, finished_product_id, finished_product_sku, finished_product_name, version, status
-) VALUES
-    ('00000000-0000-7000-8000-000000000060',
-     '00000000-0000-7000-8000-000000000200',
-     'FG-CABINET-001', 'Storage Cabinet', '1', 'active'),
-    ('00000000-0000-7000-8000-000000000070',
-     '00000000-0000-7000-8000-000000000201',
-     'SA-DRAWER-001',  'Cabinet Drawer Sub-assembly', '1', 'active')
-ON CONFLICT (finished_product_id, version) DO NOTHING;
-
-INSERT INTO manufacturing.routing_operation (
-    routing_operation_id,
-    routing_header_id, operation_sequence, operation_code, description,
-    work_center_id, planned_setup_minutes, planned_run_minutes
-) VALUES
-    -- Cabinet routing
-    ('00000000-0000-7000-8000-000000000061', '00000000-0000-7000-8000-000000000060', 10, 'CUT',      'Cut to size',     '00000000-0000-7000-8000-000000000040',  5, 20),
-    ('00000000-0000-7000-8000-000000000062', '00000000-0000-7000-8000-000000000060', 20, 'ASSEMBLE', 'Assemble cabinet','00000000-0000-7000-8000-000000000040', 10, 45),
-    ('00000000-0000-7000-8000-000000000063', '00000000-0000-7000-8000-000000000060', 30, 'FINISH',   'Varnish',         '00000000-0000-7000-8000-000000000040',  5, 30),
-    -- Drawer routing
-    ('00000000-0000-7000-8000-000000000071', '00000000-0000-7000-8000-000000000070', 10, 'CUT',      'Cut drawer parts','00000000-0000-7000-8000-000000000040',  5, 15),
-    ('00000000-0000-7000-8000-000000000072', '00000000-0000-7000-8000-000000000070', 20, 'ASSEMBLE', 'Assemble drawer', '00000000-0000-7000-8000-000000000040',  5, 20)
-ON CONFLICT (routing_header_id, operation_sequence) DO NOTHING;
 
 COMMIT;
 
@@ -2037,45 +1723,8 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA purchasing TO purchasing_se
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA purchasing TO purchasing_service;
 
 -- ----------------------------------------------------------------------------
--- PURCHASING: seed
+-- PURCHASING: seed lives in db/northwood_erp_seed.sql §SEED: PURCHASING.
 -- ----------------------------------------------------------------------------
-INSERT INTO purchasing.supplier (
-    supplier_id, supplier_code, name, email, phone, address
-) VALUES (
-    '00000000-0000-7000-8000-000000000040',
-    'SUP-001', 'Australian Timber Supplies',
-    'sales@austimber.example', '+61 2 9000 1001',
-    'Newcastle NSW'
-)
-ON CONFLICT (supplier_code) DO NOTHING;
-
--- Supplier price list — six purchased products at standard cost.
-INSERT INTO purchasing.supplier_product_price
-    (supplier_product_price_id, supplier_id, product_id, currency_code, unit_price)
-VALUES
-    ('00000000-0000-7000-8000-000000000601',
-     '00000000-0000-7000-8000-000000000040',
-     '00000000-0000-7000-8000-000000000002', 'AUD', 80.000000),
-    ('00000000-0000-7000-8000-000000000602',
-     '00000000-0000-7000-8000-000000000040',
-     '00000000-0000-7000-8000-000000000003', 'AUD', 25.000000),
-    ('00000000-0000-7000-8000-000000000603',
-     '00000000-0000-7000-8000-000000000040',
-     '00000000-0000-7000-8000-000000000004', 'AUD', 5.000000),
-    ('00000000-0000-7000-8000-000000000604',
-     '00000000-0000-7000-8000-000000000040',
-     '00000000-0000-7000-8000-000000000005', 'AUD', 12.000000),
-    ('00000000-0000-7000-8000-000000000605',
-     '00000000-0000-7000-8000-000000000040',
-     '00000000-0000-7000-8000-000000000202', 'AUD', 18.000000),
-    ('00000000-0000-7000-8000-000000000606',
-     '00000000-0000-7000-8000-000000000040',
-     '00000000-0000-7000-8000-000000000203', 'AUD', 14.000000)
--- ON CONFLICT must match the table's unique constraint exactly
--- (supplier_product_price_unique_tier on all five columns); the defaulted
--- effective_from = '1970-01-01' and min_quantity = 0 are part of that key.
-ON CONFLICT (supplier_id, product_id, currency_code, effective_from, min_quantity)
-    DO NOTHING;
 
 COMMIT;
 
@@ -2898,55 +2547,8 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA finance TO finance_service;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA finance TO finance_service;
 
 -- ----------------------------------------------------------------------------
--- FINANCE: seed
+-- FINANCE: seed lives in db/northwood_erp_seed.sql §SEED: FINANCE.
 -- ----------------------------------------------------------------------------
-INSERT INTO finance.gl_account (account_code, account_name, account_type) VALUES
-    ('1000', 'Bank',                          'asset'),
-    ('1100', 'Accounts Receivable',           'asset'),
-    ('1200', 'Inventory',                     'asset'),
-    ('1210', 'Raw Materials Inventory',       'asset'),
-    ('1220', 'Finished Goods Inventory',      'asset'),
-    ('1300', 'Work In Progress',              'asset'),
-    ('2100', 'Accounts Payable',              'liability'),
-    ('2200', 'Goods Received Not Invoiced',   'liability'),
-    ('4000', 'Sales Revenue',                 'revenue'),
-    ('5000', 'Cost of Goods Sold',            'expense'),
-    ('5100', 'Production Variance',           'expense'),
-    ('5200', 'Materials Cost',                'expense')
-ON CONFLICT (account_code) DO NOTHING;
-
-INSERT INTO finance.tax_code (tax_code, description, rate) VALUES
-    ('GST_AU_10', 'Australian GST 10%',       0.10),
-    ('GST_FREE',  'GST-free supply',          0.00),
-    ('NO_TAX',    'No tax (export, etc)',     0.00)
-ON CONFLICT (tax_code) DO NOTHING;
-
--- Backfill finance.product_card from product.product so the projection
--- has one row per existing Product at boot — same shape the runtime
--- ProductCreatedHandler produces on product.ProductCreated. Standard cost +
--- currency seeded from product.standard_cost so day-1 COGS posting works
--- ahead of the first StandardCostChanged event. Valuation class follows the
--- product_type analogue: raw → 'raw_materials', finished → 'finished_goods',
--- semi-finished → 'semi_finished_goods' (which JournalEntryService routes to
--- the FG inventory + COGS accounts, same as finished goods). Wire-format
--- values mirror product.domain.ValuationClass.dbValue(). Subsequent events
--- update individual columns.
-INSERT INTO finance.product_card (
-    product_id, standard_cost, currency_code, valuation_class
-) VALUES
-    ('00000000-0000-7000-8000-000000000001', 320.00, 'AUD', 'finished_goods'),      -- FG-TABLE-001
-    ('00000000-0000-7000-8000-000000000002',  80.00, 'AUD', 'raw_materials'),       -- RM-BOARD-001
-    ('00000000-0000-7000-8000-000000000003',  25.00, 'AUD', 'raw_materials'),       -- RM-LEG-001
-    ('00000000-0000-7000-8000-000000000004',   5.00, 'AUD', 'raw_materials'),       -- RM-SCREW-001
-    ('00000000-0000-7000-8000-000000000005',  12.00, 'AUD', 'raw_materials'),       -- RM-VARNISH-001
-    ('00000000-0000-7000-8000-000000000200', 420.00, 'AUD', 'finished_goods'),      -- FG-CABINET-001
-    ('00000000-0000-7000-8000-000000000201',  65.00, 'AUD', 'semi_finished_goods'), -- SA-DRAWER-001
-    ('00000000-0000-7000-8000-000000000202',  18.00, 'AUD', 'raw_materials'),       -- RM-DRAWER-FRONT-001
-    ('00000000-0000-7000-8000-000000000203',  14.00, 'AUD', 'raw_materials'),       -- RM-DRAWER-RUNNER-001
-    ('00000000-0000-7000-8000-000000000300', 720.00, 'AUD', 'finished_goods'),      -- FG-CHEST-001
-    ('00000000-0000-7000-8000-000000000301', 380.00, 'AUD', 'semi_finished_goods'), -- SA-FRAME-001
-    ('00000000-0000-7000-8000-000000000302', 105.00, 'AUD', 'semi_finished_goods')  -- SA-PANEL-001
-ON CONFLICT (product_id) DO NOTHING;
 
 COMMIT;
 
@@ -3202,29 +2804,13 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA reporting TO reporting_serv
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA reporting TO reporting_service;
 
 -- ----------------------------------------------------------------------------
--- REPORTING: minimal seed
+-- REPORTING: seed lives in db/northwood_erp_seed.sql §SEED: REPORTING.
 -- Read models are otherwise populated by projection consumers draining
 -- events from the bus into reporting.inbox_message and applying them to
--- the read tables. The product_card cache is seeded here so that
--- day-1 inventory_value computation works ahead of the first
--- StandardCostChanged event; subsequent events update individual rows.
+-- the read tables. The product_card cache is seeded so that day-1
+-- inventory_value computation works ahead of the first StandardCostChanged
+-- event; subsequent events update individual rows.
 -- ----------------------------------------------------------------------------
-
-INSERT INTO reporting.product_card (product_id, standard_cost, currency_code)
-VALUES
-    ('00000000-0000-7000-8000-000000000001', 320.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000002',  80.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000003',  25.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000004',   5.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000005',  12.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000200', 420.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000201',  65.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000202',  18.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000203',  14.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000300', 720.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000301', 380.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000302', 105.00, 'AUD')
-ON CONFLICT (product_id) DO NOTHING;
 
 COMMIT;
 

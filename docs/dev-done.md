@@ -6,6 +6,28 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — Schema baseline split: `northwood_erp.sql` + `northwood_erp_seed.sql`
+
+Carved the demo seed rows out of the schema baseline so a fresh `docker compose up -d` can either come up with an empty schema (populate via events from zero) or with the showcase fixtures, without editing either file.
+
+### What shipped
+
+- **`db/northwood_erp.sql`** — now schema-only: extensions, schemas, roles, grants, partitions, PL/pgSQL functions, triggers. Every `INSERT` block is gone (393 lines stripped). Each per-service section keeps its `BEGIN/COMMIT` and gains a one-line `-- <SERVICE>: seed lives in db/northwood_erp_seed.sql §SEED: <SERVICE>` pointer where the seed used to be. The `§0 WELL-KNOWN FIXTURE UUIDs` comment block moved with the seeds (it's only meaningful when reading them). Header design-notes block updated to call out the split and reference the seed file as the demo-fixture source.
+- **`db/northwood_erp_seed.sql`** (new, 501 lines) — the data-side companion. Mirrors the §2..§8 layout of the schema file with `§SEED: <SERVICE>` sections, each wrapped in `BEGIN/COMMIT`. Holds the §0 UUID registry, the seven service seeds (products, BOMs, customers, suppliers, GL chart, etc.), and a header explaining both run paths. Every INSERT keeps its `ON CONFLICT DO NOTHING` so the file is safe to re-run.
+- **`docker-compose.seed.yml`** (new) — additive override. Mounts the seed file into `/docker-entrypoint-initdb.d/02-northwood_erp_seed.sql` alongside the base schema mount. Comments explain why an override (not a profile) and how compose list-append merges the volumes.
+- **`docker-compose.yml`** — the postgres `volumes:` comment block reworded: schema only by default, point at the override file for seeded.
+- **`.claude/commands/smoke.md`** — gained a Variant table (schema only vs. schema + seed), with the override-file `up` invocation. Default kept as schema + seed since most slice demos expect populated data.
+- **`docs/persistence.md` "Reference data and seed UUIDs"** — points at the seed file as the canonical fixture home; documents the two run modes and the re-seed-via-`psql` flow. Knock-on edits to two adjacent rules that named the schema file as the seed source.
+- **`docs/dev-todo.md` §2.15** — Liquibase re-enable criteria reworded to refer to the *baseline pair* (`northwood_erp.sql` + `northwood_erp_seed.sql`) rather than the single file.
+
+### Why this design
+
+The user wanted to be able to demo "from scratch as well as something already there." Schema-only-by-default makes the explicit `-f docker-compose.yml -f docker-compose.seed.yml` invocation the seeded path — discoverable from the commented mount block in the base compose file, and copy-pasteable from `smoke.md`. Using an override file (not a Compose profile and not a `psql exec` after-the-fact) was chosen because postgres only runs `/docker-entrypoint-initdb.d/` scripts once on first volume init: the seed has to be present at `up` time, so the right control point is "what's mounted in the init dir."
+
+### Liquibase remains disabled
+
+§2.15 still applies. The split changes which file the seed lives in but not the "every structural slice rebakes the baseline" workflow.
+
 ## 2026-05-20 — §2.13 Saga lease TTL + retry backoff → @Value config
 
 Small refactor flagged during §2.0.j and parked in dev-todo as §2.13. Triple-duplication of `Duration.ofSeconds(30)` lease TTL + `Duration.ofSeconds(15)` retry backoff across `JdbcSalesOrderFulfilmentSagaManager`, `JdbcMakeToOrderSagaManager`, `JdbcPurchaseToPaySagaManager` is now a single property pair with the same defaults.

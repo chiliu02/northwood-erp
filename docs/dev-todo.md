@@ -150,12 +150,12 @@ Audit items to clear before bumping any topic past 1 partition (full design in `
 
 ### 2.15 Re-enable Liquibase once the schema stabilises
 
-Liquibase was disabled across all 7 services on 2026-05-19 after a stale-volume boot failure (see `dev-done.md` for the consolidation slice). The 21 pre-existing changesets were folded into `db/northwood_erp.sql` and removed; `northwood.liquibase.enabled: false` is set in every service's `application.yml`; each master changelog is empty.
+Liquibase was disabled across all 7 services on 2026-05-19 after a stale-volume boot failure (see `dev-done.md` for the consolidation slice). The 21 pre-existing changesets were folded into `db/northwood_erp.sql` and removed; `northwood.liquibase.enabled: false` is set in every service's `application.yml`; each master changelog is empty. On 2026-05-20 the baseline was split into schema (`db/northwood_erp.sql`) + seed (`db/northwood_erp_seed.sql`); together they are still the canonical source of truth for the showcase.
 
 The disable is deliberate showcase-time hygiene — every slice that ships a structural change rebakes the baseline, the dev workflow is `docker compose down -v`, and the changeset-on-stale-volume failure mode (the one that triggered this) is a recurring loss.
 
 Re-enable when:
-- Baseline `northwood_erp.sql` is no longer changing meaningfully (no more pending structural slices that would force a rebake).
+- The baseline pair (`northwood_erp.sql` + `northwood_erp_seed.sql`) is no longer changing meaningfully (no more pending structural slices that would force a rebake).
 - Production-style deploys are on the horizon (`docker compose down -v` stops being acceptable; preserving data across schema changes becomes load-bearing).
 - A migration story for the existing demo dataset is in place (Liquibase changesets must work alongside whatever data-migration approach we adopt).
 
