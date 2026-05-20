@@ -1,33 +1,257 @@
 {
   "annotations": { "list": [] },
-  "description": "Northwood ERP showcase overview — skeleton wired in §1D.0, filled in by §1D.5.",
+  "description": "Northwood ERP showcase observability board (§1D.5). Three rows: service health, bus health, a placed-order's journey.",
   "editable": true,
   "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
+  "graphTooltip": 1,
   "id": null,
   "links": [],
-  "liveNow": false,
+  "liveNow": true,
   "panels": [
     {
-      "type": "text",
-      "title": "Northwood ERP — observability overview (skeleton)",
-      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 6 },
-      "id": 1,
+      "type": "row",
+      "title": "Service health",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "id": 100,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Services up",
+      "gridPos": { "x": 0, "y": 1, "w": 6, "h": 6 },
+      "id": 101,
+      "datasource": { "type": "prometheus", "uid": "northwood-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service) (up{job=\"northwood-services\"})",
+          "legendFormat": "{{service}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "DOWN", "color": "red" } }, "type": "value" },
+            { "options": { "1": { "text": "UP", "color": "green" } }, "type": "value" }
+          ],
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 1, "color": "green" }
+            ]
+          }
+        }
+      },
       "options": {
-        "mode": "markdown",
-        "content": "## Northwood ERP — Observability\n\nThis dashboard is the **skeleton** wired in §1D.0 — the curated three-row board (service health, bus health, place-an-order trace drill-down) lands in §1D.5.\n\n**Datasources wired** (Configuration → Data sources to verify):\n- Prometheus — `http://prometheus:9090` (metrics; targets stay red until §1D.1)\n- Tempo — `http://tempo:3200` (traces; arrives in §1D.1 + §1D.2)\n- Loki — `http://loki:3100` (logs; arrives in §1D.1)\n- Northwood-Postgres — direct SQL read of `audit_entry` + `outbox`\n\n**Explore** → pick Tempo → search service `sales-service`. Empty until services are running with §1D.1 instrumentation, then a placed order traces through sales → inventory → manufacturing → finance.\n"
+        "graphMode": "none",
+        "colorMode": "background",
+        "textMode": "value_and_name",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM heap used",
+      "gridPos": { "x": 6, "y": 1, "w": 9, "h": 6 },
+      "id": 102,
+      "datasource": { "type": "prometheus", "uid": "northwood-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service) (jvm_memory_used_bytes{area=\"heap\", job=\"northwood-services\"})",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1 }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP requests/sec",
+      "gridPos": { "x": 15, "y": 1, "w": 9, "h": 6 },
+      "id": 103,
+      "datasource": { "type": "prometheus", "uid": "northwood-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service) (rate(http_server_requests_seconds_count{job=\"northwood-services\"}[1m]))",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1 }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+
+    {
+      "type": "row",
+      "title": "Bus health",
+      "gridPos": { "x": 0, "y": 7, "w": 24, "h": 1 },
+      "id": 200,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Outbox pending (per service)",
+      "description": "northwood_outbox_pending — custom gauge polled on every Prometheus scrape (§1D.5). -1 means the service has no outbox_message table (reporting).",
+      "gridPos": { "x": 0, "y": 8, "w": 8, "h": 7 },
+      "id": 201,
+      "datasource": { "type": "prometheus", "uid": "northwood-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "northwood_outbox_pending_rows",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1 },
+          "mappings": [
+            { "options": { "-1": { "text": "n/a" } }, "type": "value" }
+          ]
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Kafka publish rate (per topic)",
+      "description": "rate(spring_kafka_template_seconds_count) — auto-instrumented by Spring Kafka's observation-enabled producer (§1D.2).",
+      "gridPos": { "x": 8, "y": 8, "w": 8, "h": 7 },
+      "id": 202,
+      "datasource": { "type": "prometheus", "uid": "northwood-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (name) (rate(spring_kafka_template_seconds_count[1m]))",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1 }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "type": "barchart",
+      "title": "Saga state distribution",
+      "description": "northwood_saga_count — per (saga type, state). Refreshed every 15s (§1D.5).",
+      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 7 },
+      "id": 203,
+      "datasource": { "type": "prometheus", "uid": "northwood-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "northwood_saga_count_rows",
+          "legendFormat": "{{type}} · {{state}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 1, "fillOpacity": 80 }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "showValue": "auto",
+        "stacking": "none",
+        "groupWidth": 0.7,
+        "barWidth": 0.97,
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      }
+    },
+
+    {
+      "type": "row",
+      "title": "A placed order's journey",
+      "gridPos": { "x": 0, "y": 15, "w": 24, "h": 1 },
+      "id": 300,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "traces",
+      "title": "Recent sales-order traces",
+      "description": "TraceQL: traces named `POST /api/sales-orders`. Click a span row to drill into Tempo; the Logs panel below renders logs for the same trace via the Loki↔Tempo correlation wired in §1D.0.",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 9 },
+      "id": 301,
+      "datasource": { "type": "tempo", "uid": "northwood-tempo" },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "traceqlSearch",
+          "limit": 20,
+          "filters": [
+            {
+              "id": "name",
+              "tag": "name",
+              "operator": "=~",
+              "value": "POST /api/sales-orders.*",
+              "scope": "span"
+            }
+          ]
+        }
+      ],
+      "options": {}
+    },
+    {
+      "type": "logs",
+      "title": "Service logs (last 5 minutes)",
+      "description": "All Spring-service logs from Loki. Trace IDs in each line are click-able and deep-link to Tempo via the `derivedFields` regex on the Loki datasource (§1D.0).",
+      "gridPos": { "x": 0, "y": 25, "w": 24, "h": 10 },
+      "id": 302,
+      "datasource": { "type": "loki", "uid": "northwood-loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{service=~\".+-service|.+-bff\"}",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
       }
     }
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["northwood", "skeleton"],
+  "tags": ["northwood", "showcase"],
   "templating": { "list": [] },
-  "time": { "from": "now-1h", "to": "now" },
+  "time": { "from": "now-30m", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "Northwood — Overview (skeleton)",
+  "title": "Northwood — Overview",
   "uid": "northwood-overview",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

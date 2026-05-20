@@ -10,23 +10,9 @@ Section numbers are stable historical anchors referenced from `dev-done.md` (~30
 
 ---
 
-## 1D. Observability — LGTM stack + SPA trace integration (PLANNED 2026-05-13, not started)
+## 1D. Observability — Phase 2 deferred set (Phase 1 shipped 2026-05-20)
 
-Northwood has Spring Boot Actuator on every service + both BFFs today, plus a persistent audit log and the SPA Saga Console / Event Log for cross-service visibility. What's missing: **distributed tracing** (the causal-chain view that complements the event drawer's *what happened* view), **metrics** (the *is it healthy* view), and **log aggregation** (one query surface across 7 services).
-
-Design discussion + scope decisions captured 2026-05-13. Audience = **both** (Phase 1 demo storytelling, Phase 2 ops). Stack = **LGTM** (Loki / Grafana / Tempo / Prometheus — all run cheap in docker-compose, all under Grafana). SPA depth = **trace IDs surfaced in Event Log + Saga Console** with click-through to Grafana Tempo explore.
-
-Two open decisions noted at plan time:
-- Sampling rate: 100% under `dev` profile (rich demo data), 1-10% the typical prod posture — pin at implementation time.
-- Custom-metrics scope: planned **technical-flavour** gauges (outbox lag, saga state distribution, event throughput) since "Business-domain metrics + custom dashboards" wasn't picked in scope. Revisit if a business-KPI panel becomes part of the demo narrative.
-
-### 1D Phase 1 — showcase (sequential where noted; otherwise parallelizable)
-
-| Slice | Title | Depends on | Headline change |
-|---|---|---|---|
-| **1D.5** | Curated showcase dashboard | 1D.1 + 1D.2 + 1D.3 (all shipped) | One Grafana board, three rows. **Row 1** service health (up gauges, JVM heap, HTTP RPS). **Row 2** bus health — `outbox.pending` per service (custom Micrometer gauge), event throughput per Kafka topic, saga state distribution (counter per `state` per saga type). **Row 3** "a placed order's journey" — TraceQL panel `{name=~"POST /api/sales-orders"}`, click span → Loki logs for that span. |
-
-### 1D Phase 2 — operational depth (deferred; resume after Phase 1 lands)
+§1D Phase 1 (LGTM stack + cross-service tracing + curated showcase dashboard) shipped across slices 1D.0 → 1D.5 on 2026-05-20 — see `dev-done.md`. Phase 2 below is what was deliberately deferred at plan time; pull forward when a real ops story lands.
 
 - **2.1 Alertmanager** wired to Slack/email. Sample rules: outbox stuck (pending > N for > M min), saga stuck in non-terminal state > N min, error-rate spike.
 - **2.2 SLO panels** — 99% of events processed within 5s; 99% of saga transitions within 30s.
@@ -34,13 +20,9 @@ Two open decisions noted at plan time:
 - **2.4 Exemplars** on latency histograms — click a slow bucket to jump to a trace from that bucket.
 - **2.5 Loki labels** — promote `aggregateId`, `sagaId`, `eventType` from MDC into Loki labels so log queries like `{service="sales"} | json | sagaId="..."` work.
 
-### Estimate
-
-Phase 1: ~3-5 working sessions depending on dashboard polish. Phase 2 can be paused indefinitely — the Phase 1 foundation supports it but nothing in Phase 2 is story-critical.
-
 ### Why not now
 
-Logged 2026-05-13 but **not started** — capturing the design while it's fresh, picking up after the next demo-narrative beat. Pull forward when the audience question "how do you debug across 7 services?" lands in a real demo.
+Phase 1 closes the demo-story question "how do you debug across 7 services?". Phase 2 is the operational-depth story — alerts, SLOs, k8s-shape probes — which is only load-bearing once Northwood runs against real traffic. Resume when that's on the table.
 
 ---
 

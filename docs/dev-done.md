@@ -6,6 +6,68 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — §1D.5 Curated Grafana showcase dashboard + custom Micrometer gauges
+
+Final slice of §1D Phase 1. One Grafana board, three rows, plus the two custom gauges the bus-health row needs.
+
+### What shipped
+
+**Custom Micrometer gauges:**
+
+- `northwood.outbox.pending{service="..."}` — registered by **`OutboxMetricsAutoConfiguration`** in the shared module. `SELECT COUNT(*) FROM outbox_message WHERE status='pending'` runs on every Prometheus scrape (~15s). Cheap query; uses the existing `status='pending'` index. Reporting-service has no outbox table — the gauge catches the SQL error and reports `-1`, which the dashboard value-maps to `n/a`. Wired into `META-INF/spring/...AutoConfiguration.imports` so every service inheriting `shared` picks it up.
+- `northwood.saga.count{type="...", state="..."}` — registered by per-service **`SagaStateMetrics`** in `sales-service`, `manufacturing-service`, `purchasing-service` (3 sibling classes, near-identical, one per saga type). MultiGauge re-published every 15s via `@Scheduled`; `SELECT saga_state, COUNT(*) FROM <flow>_saga GROUP BY saga_state`. Sub-millisecond on the existing per-table `idx_*_saga_state` index. Primed once on startup via `@PostConstruct` so the gauge isn't empty for the first scrape window.
+
+**Grafana dashboard (`db/grafana/dashboards/northwood-overview.json`):**
+
+Replaced the §1D.0 skeleton (markdown-only placeholder, `v1`) with the curated `v2` board — 11 panels across 3 rows.
+
+| Row | Panel | Datasource | Query | Notes |
+|---|---|---|---|---|
+| 1 Service health | Services up (stat) | Prometheus | `sum by (service) (up{job="northwood-services"})` | Green/red per service, named-value layout. |
+| 1 Service health | JVM heap used (timeseries) | Prometheus | `sum by (service) (jvm_memory_used_bytes{area="heap"})` | One line per service. |
+| 1 Service health | HTTP requests/sec (timeseries) | Prometheus | `sum by (service) (rate(http_server_requests_seconds_count[1m]))` | One line per service. |
+| 2 Bus health | Outbox pending (timeseries) | Prometheus | `northwood_outbox_pending_rows` | Custom gauge above; `-1` value-mapped to `n/a` for reporting. |
+| 2 Bus health | Kafka publish rate (timeseries) | Prometheus | `sum by (name) (rate(spring_kafka_template_seconds_count[1m]))` | Auto-instrumented by §1D.2's observation-enabled producer. |
+| 2 Bus health | Saga state distribution (barchart) | Prometheus | `northwood_saga_count_rows` | Horizontal bars; one per `(type, state)`. |
+| 3 Order journey | Recent sales-order traces (traces panel) | Tempo | TraceQL filter `name =~ "POST /api/sales-orders.*"` | Click a span → drill into Tempo. |
+| 3 Order journey | Service logs (logs panel) | Loki | `{service =~ ".+-service|.+-bff"}` | Last 30m view; trace IDs in lines are click-able via §1D.0's `derivedFields` Loki↔Tempo link. |
+
+`liveNow: true`, `refresh: 30s`, `time: now-30m..now`. Grafana provisioning picked up the new JSON within 10s of write (provisioning rescan cadence wired in §1D.0) — `GET /api/dashboards/uid/northwood-overview` returns `v2`, 11 panels, title "Northwood — Overview".
+
+### Smoke
+
+- `mvn clean install -DskipTests` → **BUILD SUCCESS** across 19 modules with the 4 new metric classes.
+- `Get-Content db/grafana/dashboards/northwood-overview.json | ConvertFrom-Json` parses cleanly — 11 panels in the expected types.
+- Live Grafana picked up the dashboard via provisioning rescan; `GET /api/dashboards/uid/northwood-overview` returns `v2`.
+- End-to-end "drive an order, watch the trace span sales → inventory → manufacturing → finance + the saga column move" verification deferred — that's a user-side IntelliJ exercise once all 7 services are up + Kafka is reachable.
+
+### Decisions / notes
+
+- **Metric naming**: `northwood.outbox.pending` and `northwood.saga.count` use Micrometer dotted naming. Prometheus auto-converts to `_` and appends the base unit, so they appear in PromQL as `northwood_outbox_pending_rows` / `northwood_saga_count_rows`. The dashboard queries match the Prometheus form.
+- **Saga gauge polling**: 15s `@Scheduled` interval matches the Prometheus scrape cadence (`db/prometheus/prometheus.yml:scrape_interval: 15s`). Polling faster than the scrape would waste DB roundtrips with no observable benefit. Polling slower than the scrape would cause stale data between scrapes. Pinned at parity.
+- **`MultiGauge`** over a per-state set of plain Gauges because the saga state set isn't fixed: cancellation flows add transient `compensating` / `compensated` states that only exist when those branches fire. MultiGauge registers / unregisters automatically on each refresh.
+- **No metric for `outbox.published` rate or `outbox.failed`** — `spring_kafka_template_seconds_count` already covers the bus-publish rate end-to-end; failed rows would need a third gauge polling `WHERE status='failed'`. Deferred to §1D Phase 2 alongside Alertmanager.
+- **No `up` gauge for the BFFs** in the "Services up" panel — the panel filter `job="northwood-services"` deliberately excludes them. BFFs are scraped under `job="northwood-bffs"` (see prometheus config) but aren't part of the "is the ERP running" story; if a separate "BFFs up" panel becomes useful it's a one-target add.
+
+### What this closes (and what stays open)
+
+§1D Phase 1 is now complete: docker-compose LGTM stack (§1D.0), per-service instrumentation (§1D.1), cross-service trace propagation (§1D.2), trace_id columns + audit surface (§1D.3), SPA `↗ trace` affordance (§1D.4), curated dashboard + custom gauges (§1D.5). The §1D entry in dev-todo is restructured to "Phase 2 deferred set" with the alerting / SLO / probes / exemplars / Loki-label work captured for when an operational story drives them.
+
+### Demo flow that exercises every wiring
+
+1. Start docker-compose (`docker compose up -d`), then all 7 services with `SPRING_PROFILES_ACTIVE=kafka`, then the demo SPA.
+2. Open `http://localhost:3000` (Grafana) → "Northwood — Overview" dashboard.
+3. In the demo SPA, place a sales order. Watch:
+   - Row 1 "HTTP requests/sec" spikes on sales-service.
+   - Row 2 "Outbox pending" briefly ticks up then falls (sales drains its outbox).
+   - Row 2 "Kafka publish rate" spikes per `*.events` topic as each saga step lands.
+   - Row 2 "Saga state distribution" shows new bars for `sales_order_fulfilment` + `make_to_order` (and `purchase_to_pay` if a shortage triggers a PR).
+   - Row 3 "Recent sales-order traces" shows a new trace; clicking expands into a span tree spanning sales → inventory → manufacturing → finance.
+4. In the SPA's Event Log, click `↗ trace` on any event row → opens the same trace in Tempo Explore (`http://localhost:3000/explore?...`).
+5. In the SPA's Saga Console, click `↗ trace` on any saga card → opens the trace that *started* that saga.
+
+---
+
 ## 2026-05-20 — §1D.4 SPA traceparent integration
 
 Fifth slice of §1D. Each row in the demo SPA's Event Log and Saga Console now carries a `↗ trace` button that deep-links into Grafana Tempo Explore on its W3C trace ID. Grafana stays off-BFF on `:3000` — the SPA opens the explore URL directly in a new tab.
