@@ -6,6 +6,24 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-21 — §1D hotfix: `spring-boot-starter-opentelemetry` so the `Tracer` bean actually publishes
+
+§1D.2 added a `io.micrometer.tracing.Tracer` dependency to `OutboxPublisher` and the three `Jdbc*SagaAdapter` classes (sales / manufacturing / purchasing). The implementations all null-tolerate it (`tracer == null ? Tracer.NOOP : tracer`), but the Spring wiring on the `@Bean` factory methods + `@Repository` constructors requires it to be non-null — so the null-handling was dead code under the current dep set.
+
+Boot 4.0.5 quietly moved tracer auto-config **out of `spring-boot-starter-actuator`** and into a separate starter (`spring-boot-starter-opentelemetry`). The shared module had the raw libraries (`micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp`) but not the Boot auto-config jars (`spring-boot-opentelemetry` + `spring-boot-micrometer-tracing-opentelemetry`) that contribute the `AutoConfiguration.imports` entries — so Boot never published a `Tracer` bean and any context boot under the kafka profile would have failed. Production hadn't noticed yet because no `@SpringBootTest` had booted the full context post-§1D.2; `inventory-service`'s new `ReorderPolicyChangedSeamIT` was the first to exercise it.
+
+### What shipped
+
+- `shared/pom.xml`: swapped the two raw deps for `spring-boot-starter-opentelemetry`. Starter transitively brings the same libraries back plus the two Boot auto-config jars. Net dep count is unchanged; tracing actually works now.
+- Updated comment in `shared/pom.xml` to call out the Boot 4 split explicitly so the next contributor doesn't repeat the mistake.
+- Added a "Tracer / OTel auto-config no longer ships with actuator" entry to `~/.claude/notes/spring-boot-4.md`.
+
+### Smoke
+
+`mvn -pl inventory-service verify -Dit.test=ReorderPolicyChangedSeamIT` → BUILD SUCCESS, `Tests run: 1, Failures: 0, Errors: 0`. Loki connection errors during the run are the loki-logback appender flailing against a non-running local Loki — expected when the LGTM stack isn't up, non-fatal.
+
+---
+
 ## 2026-05-20 — §1D.5 Curated Grafana showcase dashboard + custom Micrometer gauges
 
 Final slice of §1D Phase 1. One Grafana board, three rows, plus the two custom gauges the bus-health row needs.
