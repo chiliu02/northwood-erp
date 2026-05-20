@@ -65,29 +65,65 @@
 --
 -- Format: 00000000-0000-7000-8nnn-nnnnnnnnnnnn  (valid UUIDv7 layout)
 --
---   Products:
+--   Products (finished goods):
 --     FG-TABLE-001    00000000-0000-7000-8000-000000000001
---     RM-BOARD-001    00000000-0000-7000-8000-000000000002
---     RM-LEG-001      00000000-0000-7000-8000-000000000003
---     RM-SCREW-001    00000000-0000-7000-8000-000000000004
---     RM-VARNISH-001  00000000-0000-7000-8000-000000000005
+--     FG-CABINET-001  00000000-0000-7000-8000-000000000200
+--     FG-CHEST-001    00000000-0000-7000-8000-000000000300
+--     FG-CHAIR-001    00000000-0000-7000-8000-000000000400
+--
+--   Products (raw materials):
+--     RM-BOARD-001         00000000-0000-7000-8000-000000000002
+--     RM-LEG-001           00000000-0000-7000-8000-000000000003
+--     RM-SCREW-001         00000000-0000-7000-8000-000000000004
+--     RM-VARNISH-001       00000000-0000-7000-8000-000000000005
+--     RM-DRAWER-FRONT-001  00000000-0000-7000-8000-000000000202
+--     RM-DRAWER-RUNNER-001 00000000-0000-7000-8000-000000000203
+--
+--   Products (semi-finished sub-assemblies):
+--     SA-DRAWER-001   00000000-0000-7000-8000-000000000201
+--     SA-FRAME-001    00000000-0000-7000-8000-000000000301
+--     SA-PANEL-001    00000000-0000-7000-8000-000000000302
 --
 --   Units of measure:
 --     EA              00000000-0000-7000-8000-000000000010
 --     L               00000000-0000-7000-8000-000000000011
 --     KG              00000000-0000-7000-8000-000000000012
 --
---   Warehouse:
+--   Warehouses:
 --     MAIN            00000000-0000-7000-8000-000000000020
+--     MELB            00000000-0000-7000-8000-000000000021
 --
---   Customer:
---     CUST-001        00000000-0000-7000-8000-000000000030
+--   Customers (5; region + status diversity):
+--     CUST-001 Sydney         00000000-0000-7000-8000-000000000030  (active)
+--     CUST-002 Melbourne      00000000-0000-7000-8000-000000000031  (active)
+--     CUST-003 Brisbane       00000000-0000-7000-8000-000000000032  (active)
+--     CUST-004 Perth hotel    00000000-0000-7000-8000-000000000033  (active)
+--     CUST-005 Adelaide       00000000-0000-7000-8000-000000000034  (blocked — corner case)
 --
---   Supplier:
---     SUP-001         00000000-0000-7000-8000-000000000040
+--   Suppliers (5; category + status diversity):
+--     SUP-001 timber          00000000-0000-7000-8000-000000000040  (active)
+--     SUP-002 hardware        00000000-0000-7000-8000-000000000041  (active; has volume tier)
+--     SUP-003 finishing       00000000-0000-7000-8000-000000000042  (active)
+--     SUP-004 alt-timber      00000000-0000-7000-8000-000000000043  (active; multi-source vs SUP-001)
+--     SUP-005 discontinued    00000000-0000-7000-8000-000000000044  (blocked — corner case)
 --
---   BOM (manufacturing):
+--   BOMs (manufacturing.bom_header):
 --     Wooden Table    00000000-0000-7000-8000-000000000100
+--     Cabinet         00000000-0000-7000-8000-000000000210
+--     Cabinet drawer  00000000-0000-7000-8000-000000000211
+--     Chest           00000000-0000-7000-8000-000000000310
+--     Chest frame     00000000-0000-7000-8000-000000000311
+--     Chest panel     00000000-0000-7000-8000-000000000312
+--     Chair           00000000-0000-7000-8000-000000000410
+--
+--   Routings (manufacturing.routing_header):
+--     Wooden Table    00000000-0000-7000-8000-000000000050
+--     Cabinet         00000000-0000-7000-8000-000000000060
+--     Cabinet drawer  00000000-0000-7000-8000-000000000070
+--     Chair           00000000-0000-7000-8000-000000000080
+--
+--   Work centers (manufacturing.work_center):
+--     WC-ASSEMBLY     00000000-0000-7000-8000-000000000040
 -- ============================================================================
 
 
@@ -152,7 +188,15 @@ INSERT INTO product.product (
      true, false, true,  false, 0.00,     380.00),
     ('00000000-0000-7000-8000-000000000302', 'SA-PANEL-001', 'Side Panel Sub-assembly',
      'Side panel built from board + varnish + screws',                'semi_finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  false, 0.00,     105.00)
+     true, false, true,  false, 0.00,     105.00),
+    -- Simple FG demo set: a chair. Re-uses RM-LEG/BOARD/SCREW/VARNISH, so adds
+    -- no new raws. The chair BOM (§SEED: MANUFACTURING) is the first one in
+    -- the seed that carries non-zero scrap_factor_percent values — exercises
+    -- the requirement = qty_per_unit × (1 + scrap/100) planning path with
+    -- realistic numbers rather than the zero-scrap default.
+    ('00000000-0000-7000-8000-000000000400', 'FG-CHAIR-001', 'Wooden Dining Chair',
+     'Companion chair for FG-TABLE-001',                              'finished_good',      '00000000-0000-7000-8000-000000000010',
+     true, false, true,  true,  220.00,   120.00)
 ON CONFLICT (sku) DO NOTHING;
 
 COMMIT;
@@ -164,14 +208,33 @@ COMMIT;
 
 BEGIN;
 
+-- Five demo customers spanning regions + statuses. CUST-005 sits in 'blocked'
+-- so the credit-hold filter on order-placement has a real row to suppress;
+-- if a future slice adds an 'inactive' path, add a sixth row rather than
+-- mutating CUST-005 — the showcase wants both states visible.
 INSERT INTO sales.customer (
-    customer_id, customer_code, name, email, phone, billing_address, shipping_address
-) VALUES (
-    '00000000-0000-7000-8000-000000000030',
-    'CUST-001', 'Sydney Home Living',
-    'orders@sydneyhomeliving.example', '+61 2 9000 0001',
-    'Sydney NSW', 'Sydney NSW'
-)
+    customer_id, customer_code, name, email, phone, billing_address, shipping_address, status
+) VALUES
+    ('00000000-0000-7000-8000-000000000030',
+     'CUST-001', 'Sydney Home Living',
+     'orders@sydneyhomeliving.example',    '+61 2 9000 0001',
+     'Sydney NSW',    'Sydney NSW',    'active'),
+    ('00000000-0000-7000-8000-000000000031',
+     'CUST-002', 'Melbourne Modern Furnishings',
+     'buyers@melbmodern.example',          '+61 3 9000 0002',
+     'Melbourne VIC', 'Melbourne VIC', 'active'),
+    ('00000000-0000-7000-8000-000000000032',
+     'CUST-003', 'Brisbane Boutique Living',
+     'sales@brisboutique.example',         '+61 7 9000 0003',
+     'Brisbane QLD',  'Brisbane QLD',  'active'),
+    ('00000000-0000-7000-8000-000000000033',
+     'CUST-004', 'Perth Premier Hotel Group',
+     'procurement@perthpremier.example',   '+61 8 9000 0004',
+     'Perth WA',      'Perth WA',      'active'),
+    ('00000000-0000-7000-8000-000000000034',
+     'CUST-005', 'Adelaide Outlet Co.',
+     'accounts@adelaideoutlet.example',    '+61 8 9000 0005',
+     'Adelaide SA',   'Adelaide SA',   'blocked')
 ON CONFLICT (customer_code) DO NOTHING;
 
 -- Backfill sales.product_card from product.product so the projection has
@@ -194,7 +257,8 @@ VALUES
     ('00000000-0000-7000-8000-000000000203', NULL,   NULL),   -- RM-DRAWER-RUNNER-001
     ('00000000-0000-7000-8000-000000000300', 1490.00,'AUD'),  -- FG-CHEST-001
     ('00000000-0000-7000-8000-000000000301', NULL,   NULL),   -- SA-FRAME-001
-    ('00000000-0000-7000-8000-000000000302', NULL,   NULL)    -- SA-PANEL-001
+    ('00000000-0000-7000-8000-000000000302', NULL,   NULL),   -- SA-PANEL-001
+    ('00000000-0000-7000-8000-000000000400', 220.00, 'AUD')   -- FG-CHAIR-001
 ON CONFLICT (product_id) DO NOTHING;
 
 COMMIT;
@@ -209,11 +273,15 @@ COMMIT;
 
 BEGIN;
 
+-- Two-warehouse setup so demos exercise multi-location ATP + stock-transfer
+-- corner cases. MAIN carries the full catalogue; MELB only mirrors what a
+-- regional dispatch hub realistically pre-stocks (finished tables + the
+-- raws used to assemble chairs locally) and runs empty on the cabinet /
+-- chest families.
 INSERT INTO inventory.warehouse (warehouse_id, warehouse_code, name, address)
-VALUES (
-    '00000000-0000-7000-8000-000000000020',
-    'MAIN', 'Main Warehouse', 'Sydney NSW'
-)
+VALUES
+    ('00000000-0000-7000-8000-000000000020', 'MAIN', 'Main Warehouse',     'Sydney NSW'),
+    ('00000000-0000-7000-8000-000000000021', 'MELB', 'Melbourne Dispatch', 'Melbourne VIC')
 ON CONFLICT (warehouse_code) DO NOTHING;
 
 INSERT INTO inventory.stock_item (
@@ -229,7 +297,8 @@ INSERT INTO inventory.stock_item (
     ('00000000-0000-7000-8000-000000000200', 'FG-CABINET-001',       'Storage Cabinet',           'finished_good',      'EA', 'tracked', 1,  3),
     ('00000000-0000-7000-8000-000000000201', 'SA-DRAWER-001',        'Cabinet Drawer Sub-assembly', 'semi_finished_good', 'EA', 'tracked', 0,  0),
     ('00000000-0000-7000-8000-000000000202', 'RM-DRAWER-FRONT-001',  'Drawer Front Panel',        'raw_material',       'EA', 'tracked', 5, 10),
-    ('00000000-0000-7000-8000-000000000203', 'RM-DRAWER-RUNNER-001', 'Drawer Runner',             'raw_material',       'EA', 'tracked', 5, 10)
+    ('00000000-0000-7000-8000-000000000203', 'RM-DRAWER-RUNNER-001', 'Drawer Runner',             'raw_material',       'EA', 'tracked', 5, 10),
+    ('00000000-0000-7000-8000-000000000400', 'FG-CHAIR-001',         'Wooden Dining Chair',       'finished_good',      'EA', 'tracked', 5, 10)
 ON CONFLICT (product_id) DO NOTHING;
 
 INSERT INTO inventory.stock_balance (
@@ -245,7 +314,23 @@ INSERT INTO inventory.stock_balance (
     ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000200',  0, 0, 420.00),
     ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000201',  0, 0,  65.00),
     ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000202', 10, 0,  18.00),
-    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000203', 10, 0,  14.00)
+    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000203', 10, 0,  14.00),
+    -- Chair in MAIN: 3 pre-built; assembled locally from existing raws.
+    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000400',  3, 0, 120.00),
+    -- MELB stocks: finished table + the raws needed to assemble chairs.
+    -- Cabinet/chest families intentionally absent so the ATP-across-locations
+    -- view has obvious 0-on-hand cells. Costs match MAIN since average_cost
+    -- is per (warehouse, product) but seeded identically at day-1.
+    ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000001',  1, 0, 320.00),
+    ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000002',  3, 0,  80.00),
+    ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000003',  8, 0,  25.00),
+    ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000004',  0, 0,   5.00),
+    ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000005',  0, 0,  12.00),
+    ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000200',  0, 0, 420.00),
+    ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000201',  0, 0,  65.00),
+    ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000202',  0, 0,  18.00),
+    ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000203',  0, 0,  14.00),
+    ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000400',  0, 0, 120.00)
 ON CONFLICT (warehouse_id, product_id) DO NOTHING;
 
 COMMIT;
@@ -275,7 +360,8 @@ VALUES
     ('00000000-0000-7000-8000-000000000203', true,  false),
     ('00000000-0000-7000-8000-000000000300', false, true),
     ('00000000-0000-7000-8000-000000000301', false, true),
-    ('00000000-0000-7000-8000-000000000302', false, true)
+    ('00000000-0000-7000-8000-000000000302', false, true),
+    ('00000000-0000-7000-8000-000000000400', false, true)
 ON CONFLICT (product_id) DO NOTHING;
 
 INSERT INTO manufacturing.bom_header (
@@ -415,6 +501,49 @@ INSERT INTO manufacturing.routing_operation (
     ('00000000-0000-7000-8000-000000000072', '00000000-0000-7000-8000-000000000070', 20, 'ASSEMBLE', 'Assemble drawer', '00000000-0000-7000-8000-000000000040',  5, 20)
 ON CONFLICT (routing_header_id, operation_sequence) DO NOTHING;
 
+-- Chair demo: simple FG that re-uses existing raws and is the first BOM in
+-- the seed with non-zero scrap_factor_percent. Screws lose ~2% to misfeeds
+-- on assembly; varnish loses ~5% to brush retention and overspray. The
+-- planner consumes (qty_per_unit × (1 + scrap/100)) — exercises both the
+-- "raw material with scrap" path and the integer-vs-decimal handling in
+-- the rollup since RM-BOARD/VARNISH are fractional (0.500000) per chair.
+INSERT INTO manufacturing.bom_header (
+    bom_header_id, finished_product_id, finished_product_sku, finished_product_name, version, status
+) VALUES (
+    '00000000-0000-7000-8000-000000000410',
+    '00000000-0000-7000-8000-000000000400',
+    'FG-CHAIR-001', 'Wooden Dining Chair', '1', 'active'
+)
+ON CONFLICT (finished_product_id, version) DO NOTHING;
+
+INSERT INTO manufacturing.bom_line (
+    bom_header_id, line_number, component_product_id, component_sku, component_name,
+    component_kind, quantity_per_finished_unit, scrap_factor_percent
+) VALUES
+    ('00000000-0000-7000-8000-000000000410', 1, '00000000-0000-7000-8000-000000000003', 'RM-LEG-001',     'Table Leg',    'raw', 4.000000, 0),
+    ('00000000-0000-7000-8000-000000000410', 2, '00000000-0000-7000-8000-000000000002', 'RM-BOARD-001',   'Wooden Board', 'raw', 0.500000, 0),
+    ('00000000-0000-7000-8000-000000000410', 3, '00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',   'Screw Pack',   'raw', 1.000000, 2),
+    ('00000000-0000-7000-8000-000000000410', 4, '00000000-0000-7000-8000-000000000005', 'RM-VARNISH-001', 'Varnish Pack', 'raw', 0.500000, 5)
+ON CONFLICT (bom_header_id, line_number) DO NOTHING;
+
+INSERT INTO manufacturing.routing_header (
+    routing_header_id, finished_product_id, finished_product_sku, finished_product_name, version, status
+) VALUES (
+    '00000000-0000-7000-8000-000000000080',
+    '00000000-0000-7000-8000-000000000400',
+    'FG-CHAIR-001', 'Wooden Dining Chair', '1', 'active'
+) ON CONFLICT (finished_product_id, version) DO NOTHING;
+
+INSERT INTO manufacturing.routing_operation (
+    routing_operation_id,
+    routing_header_id, operation_sequence, operation_code, description,
+    work_center_id, planned_setup_minutes, planned_run_minutes
+) VALUES
+    ('00000000-0000-7000-8000-000000000081', '00000000-0000-7000-8000-000000000080', 10, 'CUT',      'Cut chair parts',  '00000000-0000-7000-8000-000000000040', 5, 15),
+    ('00000000-0000-7000-8000-000000000082', '00000000-0000-7000-8000-000000000080', 20, 'ASSEMBLE', 'Assemble chair',   '00000000-0000-7000-8000-000000000040', 5, 25),
+    ('00000000-0000-7000-8000-000000000083', '00000000-0000-7000-8000-000000000080', 30, 'FINISH',   'Varnish + polish', '00000000-0000-7000-8000-000000000040', 5, 20)
+ON CONFLICT (routing_header_id, operation_sequence) DO NOTHING;
+
 COMMIT;
 
 
@@ -424,14 +553,38 @@ COMMIT;
 
 BEGIN;
 
+-- Five demo suppliers spanning categories and statuses:
+--   SUP-001  timber       (existing — feeds RM-BOARD/LEG)
+--   SUP-002  hardware     (RM-SCREW + RM-DRAWER-RUNNER, has volume tier)
+--   SUP-003  finishing    (RM-VARNISH, undercuts SUP-001's price)
+--   SUP-004  alt-timber   (RM-BOARD/LEG, dual-source scenario vs SUP-001)
+--   SUP-005  blocked      (corner case: 'blocked' supplier; carries no prices)
+-- Multi-source coverage (SUP-001 vs SUP-004 on board+leg; SUP-001 vs SUP-002
+-- on screw; SUP-001 vs SUP-003 on varnish) exercises supplier-selection paths
+-- that single-source seed couldn't.
 INSERT INTO purchasing.supplier (
-    supplier_id, supplier_code, name, email, phone, address
-) VALUES (
-    '00000000-0000-7000-8000-000000000040',
-    'SUP-001', 'Australian Timber Supplies',
-    'sales@austimber.example', '+61 2 9000 1001',
-    'Newcastle NSW'
-)
+    supplier_id, supplier_code, name, email, phone, address, status
+) VALUES
+    ('00000000-0000-7000-8000-000000000040',
+     'SUP-001', 'Australian Timber Supplies',
+     'sales@austimber.example',          '+61 2 9000 1001',
+     'Newcastle NSW', 'active'),
+    ('00000000-0000-7000-8000-000000000041',
+     'SUP-002', 'Sydney Hardware Wholesale',
+     'orders@sydneyhardware.example',    '+61 2 9000 1002',
+     'Sydney NSW',    'active'),
+    ('00000000-0000-7000-8000-000000000042',
+     'SUP-003', 'Coastal Coatings & Finishes',
+     'sales@coastalcoatings.example',    '+61 2 9000 1003',
+     'Wollongong NSW','active'),
+    ('00000000-0000-7000-8000-000000000043',
+     'SUP-004', 'Highland Timber NSW',
+     'sales@highlandtimber.example',     '+61 2 9000 1004',
+     'Bathurst NSW',  'active'),
+    ('00000000-0000-7000-8000-000000000044',
+     'SUP-005', 'Discontinued Outback Co.',
+     'closed@outback-discontinued.example', '+61 8 9000 1005',
+     'Alice Springs NT', 'blocked')
 ON CONFLICT (supplier_code) DO NOTHING;
 
 -- Supplier price list — six purchased products at standard cost.
@@ -455,10 +608,42 @@ VALUES
      '00000000-0000-7000-8000-000000000202', 'AUD', 18.000000),
     ('00000000-0000-7000-8000-000000000606',
      '00000000-0000-7000-8000-000000000040',
-     '00000000-0000-7000-8000-000000000203', 'AUD', 14.000000)
+     '00000000-0000-7000-8000-000000000203', 'AUD', 14.000000),
+-- Alternative-source base-tier prices for the new suppliers (min_quantity
+-- defaults to 0). SUP-002 undercuts SUP-001 on screws; SUP-003 undercuts
+-- on varnish; SUP-004 sits slightly above on board/leg as a backup source.
+    ('00000000-0000-7000-8000-000000000607',
+     '00000000-0000-7000-8000-000000000041',
+     '00000000-0000-7000-8000-000000000004', 'AUD', 4.500000),
+    ('00000000-0000-7000-8000-000000000609',
+     '00000000-0000-7000-8000-000000000041',
+     '00000000-0000-7000-8000-000000000203', 'AUD', 13.500000),
+    ('00000000-0000-7000-8000-000000000610',
+     '00000000-0000-7000-8000-000000000042',
+     '00000000-0000-7000-8000-000000000005', 'AUD', 11.000000),
+    ('00000000-0000-7000-8000-000000000611',
+     '00000000-0000-7000-8000-000000000043',
+     '00000000-0000-7000-8000-000000000002', 'AUD', 82.000000),
+    ('00000000-0000-7000-8000-000000000612',
+     '00000000-0000-7000-8000-000000000043',
+     '00000000-0000-7000-8000-000000000003', 'AUD', 26.000000)
 -- ON CONFLICT must match the table's unique constraint exactly
 -- (supplier_product_price_unique_tier on all five columns); the defaulted
 -- effective_from = '1970-01-01' and min_quantity = 0 are part of that key.
+ON CONFLICT (supplier_id, product_id, currency_code, effective_from, min_quantity)
+    DO NOTHING;
+
+-- Volume-discount tier example: SUP-002 charges 3.80 for screws once the
+-- order reaches 100 packs (vs 4.50 at the base tier). Lookup picks the row
+-- with the highest min_quantity ≤ ordered quantity, so PO for 50 → 4.50,
+-- PO for 200 → 3.80. Sits in its own INSERT because it carries an explicit
+-- min_quantity column the base rows don't.
+INSERT INTO purchasing.supplier_product_price
+    (supplier_product_price_id, supplier_id, product_id, currency_code, unit_price, min_quantity)
+VALUES
+    ('00000000-0000-7000-8000-000000000608',
+     '00000000-0000-7000-8000-000000000041',
+     '00000000-0000-7000-8000-000000000004', 'AUD', 3.800000, 100)
 ON CONFLICT (supplier_id, product_id, currency_code, effective_from, min_quantity)
     DO NOTHING;
 
@@ -471,6 +656,10 @@ COMMIT;
 
 BEGIN;
 
+-- Chart of accounts. Adds the equity side (3xxx) so the trial-balance view
+-- has a non-empty equity column from day-1, plus two operational accounts
+-- (sales discounts as a revenue contra, freight expense) that future demo
+-- scenarios can post against without needing a fresh CoA addition.
 INSERT INTO finance.gl_account (account_code, account_name, account_type) VALUES
     ('1000', 'Bank',                          'asset'),
     ('1100', 'Accounts Receivable',           'asset'),
@@ -480,14 +669,23 @@ INSERT INTO finance.gl_account (account_code, account_name, account_type) VALUES
     ('1300', 'Work In Progress',              'asset'),
     ('2100', 'Accounts Payable',              'liability'),
     ('2200', 'Goods Received Not Invoiced',   'liability'),
+    ('3000', 'Owner''s Equity',               'equity'),
+    ('3100', 'Retained Earnings',             'equity'),
     ('4000', 'Sales Revenue',                 'revenue'),
+    ('4100', 'Sales Discounts',               'revenue'),
     ('5000', 'Cost of Goods Sold',            'expense'),
     ('5100', 'Production Variance',           'expense'),
-    ('5200', 'Materials Cost',                'expense')
+    ('5200', 'Materials Cost',                'expense'),
+    ('5300', 'Freight Expense',               'expense')
 ON CONFLICT (account_code) DO NOTHING;
 
+-- Tax codes. GST_NZ_15 is schema-prep — no Java code path produces or
+-- consumes it today (per dev-todo: multi-currency GL consolidation is
+-- deprioritised). Carrying the row lets a future NZ-customer scenario
+-- post against it without needing a CoA addition first.
 INSERT INTO finance.tax_code (tax_code, description, rate) VALUES
     ('GST_AU_10', 'Australian GST 10%',       0.10),
+    ('GST_NZ_15', 'New Zealand GST 15%',      0.15),
     ('GST_FREE',  'GST-free supply',          0.00),
     ('NO_TAX',    'No tax (export, etc)',     0.00)
 ON CONFLICT (tax_code) DO NOTHING;
@@ -516,7 +714,8 @@ INSERT INTO finance.product_card (
     ('00000000-0000-7000-8000-000000000203',  14.00, 'AUD', 'raw_materials'),       -- RM-DRAWER-RUNNER-001
     ('00000000-0000-7000-8000-000000000300', 720.00, 'AUD', 'finished_goods'),      -- FG-CHEST-001
     ('00000000-0000-7000-8000-000000000301', 380.00, 'AUD', 'semi_finished_goods'), -- SA-FRAME-001
-    ('00000000-0000-7000-8000-000000000302', 105.00, 'AUD', 'semi_finished_goods')  -- SA-PANEL-001
+    ('00000000-0000-7000-8000-000000000302', 105.00, 'AUD', 'semi_finished_goods'), -- SA-PANEL-001
+    ('00000000-0000-7000-8000-000000000400', 120.00, 'AUD', 'finished_goods')       -- FG-CHAIR-001
 ON CONFLICT (product_id) DO NOTHING;
 
 COMMIT;
@@ -546,7 +745,8 @@ VALUES
     ('00000000-0000-7000-8000-000000000203',  14.00, 'AUD'),
     ('00000000-0000-7000-8000-000000000300', 720.00, 'AUD'),
     ('00000000-0000-7000-8000-000000000301', 380.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000302', 105.00, 'AUD')
+    ('00000000-0000-7000-8000-000000000302', 105.00, 'AUD'),
+    ('00000000-0000-7000-8000-000000000400', 120.00, 'AUD')
 ON CONFLICT (product_id) DO NOTHING;
 
 COMMIT;

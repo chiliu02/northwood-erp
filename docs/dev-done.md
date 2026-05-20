@@ -6,6 +6,34 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — Seed: expand `northwood_erp_seed.sql` for diversity + corner cases
+
+Follow-up to the schema/seed split shipped earlier today. The seed went from single-row-per-aggregate (1 customer, 1 supplier, 1 warehouse) to a multi-row showcase fixture set so demos can exercise regional / status / multi-source / multi-warehouse / volume-tier paths without manual data-loading after `docker compose up -d`. 30 INSERTs total (was 25); file grew 501 → 696 lines.
+
+### What shipped
+
+Aggregate row additions, with their projection ripples:
+
+- **Customers** → 5 (was 1). CUST-002 Melbourne, CUST-003 Brisbane, CUST-004 Perth (industrial hotel buyer), CUST-005 Adelaide with `status='blocked'` as a credit-hold corner case. `sales.customer` switched to multi-row INSERT with the `status` column explicit.
+- **Suppliers** → 5 (was 1). SUP-002 hardware (screws + drawer runners), SUP-003 finishing (varnish), SUP-004 alternative timber (multi-source against SUP-001 on board/leg), SUP-005 blocked. `purchasing.supplier` switched to multi-row with `status` explicit.
+- **Supplier prices** → 12 rows (was 6). Adds 5 new base-tier rows + 1 volume-tier row in a separate INSERT (SUP-002 charges 4.50 for screws at base, 3.80 at `min_quantity = 100`). The tier row lives in its own INSERT so the base rows don't have to spell out `min_quantity = 0` defensively.
+- **Warehouses** → 2 (was 1). `MELB Melbourne Dispatch` (active). Ripple in `inventory.stock_balance`: 9 new MELB rows mirroring the existing 9 stock-items, with realistic regional levels (table + assemble-locally raws pre-stocked, cabinet/chest families at 0). Cross-warehouse ATP now has obvious 0-on-hand cells to show.
+- **GL accounts** → 16 (was 12). 3000 Owner's Equity, 3100 Retained Earnings, 4100 Sales Discounts, 5300 Freight Expense — gives day-1 trial balance non-empty equity column + ops accounts for future demo scenarios.
+- **Tax codes** → 4 (was 3). Added `GST_NZ_15` as schema-prep for NZ-customer scenarios. No Java code path produces or consumes it today.
+- **Products** → 13 (was 12). FG-CHAIR-001 — simple FG that re-uses existing raws (4 legs + ½ board + 1 screw pack + ½ varnish pack). Projections rippled into all five product-card carrying schemas (sales / inventory.stock_item + 2× stock_balance / manufacturing / finance / reporting). BOM (`bom_header 410` + 4 lines) is the **first** in the seed with non-zero `scrap_factor_percent` — 2% on screws, 5% on varnish — exercising the requirement = `qty_per_unit × (1 + scrap/100)` planning path with realistic numbers. Routing (`routing_header 080` + 3 ops) shares WC-ASSEMBLY with the table/cabinet/drawer routings.
+
+### §0 fixture-UUID registry updated
+
+The §0 block at the top of the seed file is now an exhaustive registry rather than a partial one — every product, warehouse, customer, supplier, BOM, routing, and work-center fixture is listed with its UUID and a one-word category. Future seed additions should add their UUID here too.
+
+### Pre-existing gap NOT fixed in this slice
+
+`purchasing.product_card` (the purchasing-side product master projection) is not seeded today. The other four services (sales / manufacturing / finance / reporting) seed their `product_card` for day-1 cost/price availability ahead of the first event. Purchasing apparently doesn't need that day-1 backfill — runtime `ProductCreatedHandler` populates from events. Flagged for separate hygiene if it bites later.
+
+### Cross-schema UUID collision
+
+`00000000-0000-7000-8000-000000000040` is used by both `purchasing.supplier` (SUP-001) and `manufacturing.work_center` (WC-ASSEMBLY). Pre-existing — no UNIQUE conflict because they live in different schemas — left alone but listed in the §0 registry so future readers see it.
+
 ## 2026-05-20 — Schema baseline split: `northwood_erp.sql` + `northwood_erp_seed.sql`
 
 Carved the demo seed rows out of the schema baseline so a fresh `docker compose up -d` can either come up with an empty schema (populate via events from zero) or with the showcase fixtures, without editing either file.
