@@ -27,7 +27,7 @@ public class FinancialDashboardController {
     /** All days for the currency (newest first). */
     @GetMapping
     public List<FinancialDashboardView> list(
-        @RequestParam(name = "currency", defaultValue = Currencies.AUD) String currencyCode
+        @RequestParam(name = "currency", defaultValue = Currencies.BASE_CURRENCY) String currencyCode
     ) {
         return port.findByCurrency(currencyCode);
     }
@@ -39,7 +39,7 @@ public class FinancialDashboardController {
      */
     @GetMapping("/snapshot")
     public FinancialDashboardSnapshot snapshot(
-        @RequestParam(name = "currency", defaultValue = Currencies.AUD) String currencyCode
+        @RequestParam(name = "currency", defaultValue = Currencies.BASE_CURRENCY) String currencyCode
     ) {
         return port.findSnapshot(currencyCode);
     }
@@ -47,7 +47,7 @@ public class FinancialDashboardController {
     @GetMapping("/{date}")
     public ResponseEntity<FinancialDashboardView> get(
         @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
-        @RequestParam(name = "currency", defaultValue = Currencies.AUD) String currencyCode
+        @RequestParam(name = "currency", defaultValue = Currencies.BASE_CURRENCY) String currencyCode
     ) {
         return port.findByDate(date, currencyCode)
             .map(ResponseEntity::ok)

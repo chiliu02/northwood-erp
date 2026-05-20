@@ -123,7 +123,7 @@ public final class CustomerInvoice {
         CustomerInvoice ci = new CustomerInvoice(
             id, invoiceNumber, salesOrderHeaderId,
             customerId, customerCode, customerName,
-            currencyCode == null ? Currencies.AUD : currencyCode,
+            Currencies.orBase(currencyCode),
             subtotal, tax, total,
             Status.POSTED,
             new ArrayList<>(lines), 0L

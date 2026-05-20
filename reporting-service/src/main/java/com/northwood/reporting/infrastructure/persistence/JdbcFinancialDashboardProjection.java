@@ -14,8 +14,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public class JdbcFinancialDashboardProjection implements FinancialDashboardProjection {
 
-    private static final String DEFAULT_CURRENCY = Currencies.AUD;
-
     private final JdbcTemplate jdbc;
 
     public JdbcFinancialDashboardProjection(JdbcTemplate jdbc) {
@@ -57,7 +55,7 @@ public class JdbcFinancialDashboardProjection implements FinancialDashboardProje
     @Override
     @Transactional
     public void refreshDailyBalances(LocalDate date, String currencyCode) {
-        String currency = currencyCode == null ? DEFAULT_CURRENCY : currencyCode;
+        String currency = Currencies.orBase(currencyCode);
         // Single round-trip: four scalar sub-selects feed an UPSERT. AR / AP /
         // inventory_value mirror JdbcFinancialDashboardQueryPort.findSnapshot's
         // SQL exactly — that path stays as the as-of-now realtime view; this
@@ -123,7 +121,7 @@ public class JdbcFinancialDashboardProjection implements FinancialDashboardProje
                               Instant occurredAt, boolean recomputeGross) {
         LocalDate date = (occurredAt == null ? Instant.now() : occurredAt)
             .atZone(ZoneId.systemDefault()).toLocalDate();
-        String currency = currencyCode == null ? DEFAULT_CURRENCY : currencyCode;
+        String currency = Currencies.orBase(currencyCode);
         String grossUpdate = recomputeGross
             ? "gross_profit = (financial_dashboard_daily.sales_revenue + CASE WHEN 'COL' = 'sales_revenue' THEN ? ELSE 0 END)"
               + " - (financial_dashboard_daily.cost_of_goods_sold + CASE WHEN 'COL' = 'cost_of_goods_sold' THEN ? ELSE 0 END),"

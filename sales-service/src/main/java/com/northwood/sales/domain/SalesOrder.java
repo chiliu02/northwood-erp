@@ -329,7 +329,7 @@ public final class SalesOrder {
             customerCode,
             customerName,
             shipmentDate,
-            currencyCode == null ? Currencies.AUD : currencyCode,
+            Currencies.orBase(currencyCode),
             eventLines,
             Instant.now()
         ));

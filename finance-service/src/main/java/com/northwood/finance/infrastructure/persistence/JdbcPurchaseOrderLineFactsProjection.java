@@ -54,7 +54,7 @@ public class JdbcPurchaseOrderLineFactsProjection implements PurchaseOrderLineFa
                 unit_price = EXCLUDED.unit_price
             """,
             purchaseOrderLineId, purchaseOrderHeaderId,
-            supplierId, supplierName, currencyCode == null ? Currencies.AUD : currencyCode,
+            supplierId, supplierName, Currencies.orBase(currencyCode),
             productId, productSku, productName,
             orderedQuantity, unitPrice == null ? BigDecimal.ZERO : unitPrice
         );

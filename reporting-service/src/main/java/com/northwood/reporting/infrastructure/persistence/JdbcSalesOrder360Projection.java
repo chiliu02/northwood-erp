@@ -91,7 +91,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
             customerId, customerName,
             orderDate == null ? null : Date.valueOf(orderDate),
             requestedDeliveryDate == null ? null : Date.valueOf(requestedDeliveryDate),
-            currencyCode == null ? Currencies.AUD : currencyCode,
+            Currencies.orBase(currencyCode),
             totalAmount == null ? BigDecimal.ZERO : totalAmount,
             totalAmount == null ? BigDecimal.ZERO : totalAmount,
             eventType,

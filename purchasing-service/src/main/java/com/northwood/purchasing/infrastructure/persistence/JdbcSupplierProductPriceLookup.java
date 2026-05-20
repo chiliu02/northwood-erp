@@ -34,7 +34,7 @@ public class JdbcSupplierProductPriceLookup implements SupplierProductPriceLooku
         LocalDate at,
         BigDecimal quantity
     ) {
-        String currency = currencyCode == null ? Currencies.AUD : currencyCode;
+        String currency = Currencies.orBase(currencyCode);
         LocalDate when = at == null ? LocalDate.now() : at;
         BigDecimal qty = quantity == null ? BigDecimal.ZERO : quantity;
         // Pick the row whose effective range covers `when`, whose

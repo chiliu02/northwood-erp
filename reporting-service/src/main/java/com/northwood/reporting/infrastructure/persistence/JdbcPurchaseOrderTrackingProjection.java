@@ -91,7 +91,7 @@ public class JdbcPurchaseOrderTrackingProjection implements PurchaseOrderTrackin
             supplierId, supplierName,
             poStatus == null ? "sent" : poStatus,
             Date.valueOf(orderDate),
-            currencyCode == null ? Currencies.AUD : currencyCode,
+            Currencies.orBase(currencyCode),
             ordered, ordered,
             sourceWorkOrderId,
             actorUserId

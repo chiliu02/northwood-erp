@@ -91,7 +91,7 @@ public class ShipmentPostedCogsHandler extends AbstractInboxHandler<ShipmentPost
             payload.aggregateId(),
             payload.shipmentNumber(),
             lineCosts,
-            Currencies.AUD,
+            Currencies.BASE_CURRENCY,
             postingDate
         );
 

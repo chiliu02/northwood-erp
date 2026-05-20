@@ -201,7 +201,7 @@ public final class JournalEntry {
             sourceModule, sourceDocumentType, sourceDocumentId,
             description,
             Status.POSTED,
-            currencyCode == null ? Currencies.AUD : currencyCode,
+            Currencies.orBase(currencyCode),
             exchangeRate == null ? BigDecimal.ONE : exchangeRate,
             Instant.now(),
             new ArrayList<>(lines), 0L

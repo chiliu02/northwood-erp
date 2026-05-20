@@ -456,7 +456,7 @@ public class JournalEntryService {
             sourceDocumentType,
             sourceDocumentId,
             description,
-            currencyCode == null ? Currencies.AUD : currencyCode,
+            Currencies.orBase(currencyCode),
             BigDecimal.ONE,
             lines
         );
@@ -502,7 +502,7 @@ public class JournalEntryService {
         JournalEntry entry = JournalEntry.post(
             journalNumber, postingDate,
             sourceModule, sourceDocumentType, sourceDocumentId,
-            description, currencyCode == null ? Currencies.AUD : currencyCode, BigDecimal.ONE,
+            description, Currencies.orBase(currencyCode), BigDecimal.ONE,
             lines
         );
         journalEntries.save(entry);
@@ -548,7 +548,7 @@ public class JournalEntryService {
         JournalEntry entry = JournalEntry.post(
             journalNumber, postingDate,
             sourceModule, sourceDocumentType, sourceDocumentId,
-            description, currencyCode == null ? Currencies.AUD : currencyCode, BigDecimal.ONE,
+            description, Currencies.orBase(currencyCode), BigDecimal.ONE,
             lines
         );
         journalEntries.save(entry);

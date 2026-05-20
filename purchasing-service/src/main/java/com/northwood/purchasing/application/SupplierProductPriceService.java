@@ -27,7 +27,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class SupplierProductPriceService {
 
     private static final Logger log = LoggerFactory.getLogger(SupplierProductPriceService.class);
-    private static final String DEFAULT_CURRENCY = Currencies.AUD;
 
     private final SupplierProductPriceRepository supplierProductPrices;
 
@@ -53,7 +52,7 @@ public class SupplierProductPriceService {
         if (unitPrice == null || unitPrice.signum() <= 0) {
             throw new IllegalArgumentException("unitPrice must be > 0");
         }
-        String currency = currencyCode == null ? DEFAULT_CURRENCY : currencyCode;
+        String currency = Currencies.orBase(currencyCode);
 
         Optional<SupplierProductPrice> existing = supplierProductPrices.findByKey(supplierId, productId, currency);
         SupplierProductPrice price;

@@ -44,7 +44,7 @@ public class JdbcProductCardProjection implements ProductCardProjection {
     @Override
     @Transactional
     public void applyStandardCost(UUID productId, BigDecimal standardCost, String currencyCode) {
-        String currency = currencyCode == null ? Currencies.AUD : currencyCode;
+        String currency = Currencies.orBase(currencyCode);
         int rows = jdbc.update("""
             UPDATE finance.product_card
                SET standard_cost = ?,

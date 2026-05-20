@@ -6,6 +6,28 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — Centralise the `currencyCode == null ? AUD : currencyCode` fallback
+
+Follow-up to the `Currencies` extraction. 18 inline ternaries of the shape `currencyCode == null ? Currencies.AUD : currencyCode` lived across 13 files (finance / sales / purchasing domain factories, the matching projection writers, and `JdbcSupplierProductPriceLookup`) — each one a null-coalescing-to-default silent fallback that the project's own rule (`CLAUDE.md` → *Document silent fallbacks*) requires to be Javadoc'd, log-line'd, and indexed in `docs/design-notes.md`. 18× the documentation surface wasn't going to happen; centralising made the rule observable in practice.
+
+### What shipped
+
+- **`Currencies.orBase(String currencyCode)`** — static helper returning `currencyCode` when non-null, else `AUD`. Javadoc carries the four required parts: trigger (nullable code reaches a sink needing non-null), substitution (AUD), the "no runtime log today" rationale (static helper has no entity-id context per `design-notes.md` operating notes), and two named tightening alternatives (throw NPE once upstream is audited; thread call-site context to enable DEBUG logging).
+- **13 files / 18 sites refactored** — every matching ternary swapped to `Currencies.orBase(currencyCode)` via a one-shot PowerShell substitution. No import additions needed; `Currencies` was already imported at every site by the previous slice.
+- **`Currencies.BASE_CURRENCY` alias added** — names the showcase base independent of which currency it points at (today `AUD`). `Currencies.AUD` keeps its meaning ("Australian dollar specifically" — used by tests asserting AUD behaviour and the cross-currency-rejection USD fixture); `Currencies.BASE_CURRENCY` is the right symbol when the intent is "whatever the company default is" (REST `defaultValue`, projection backfill defaults, domain factories with no per-row currency column). `orBase()` now returns `BASE_CURRENCY` — single source of truth for the base currency value.
+- **3 service-local `DEFAULT_CURRENCY = Currencies.AUD` constants deleted** — `PurchaseOrderService`, `SupplierProductPriceService`, `JdbcFinancialDashboardProjection`. Three pure-fallback usages (1 in `SupplierProductPriceService`, 2 in `JdbcFinancialDashboardProjection`) became `Currencies.orBase(currencyCode)`; non-fallback hardcoded-currency usages became `Currencies.BASE_CURRENCY`. The local constants were an aliasing layer that hid which calls were fallbacks vs hardcoded defaults — removing them makes the distinction visible at the call site.
+- **10 main-code `Currencies.AUD` literals → `Currencies.BASE_CURRENCY`** — same base-vs-AUD reasoning applied beyond the 3 ex-`DEFAULT_CURRENCY` sites: `JdbcProductRepository` (×2, reading product.product rows that lack a currency column), `GoodsReceivedHandler` + `ShipmentPostedCogsHandler` (handler-side hardcoded base where the inbound event lacks a `currencyCode` field), `FinancialDashboardController` (×3 `@RequestParam(defaultValue = ...)`), and `PurchaseOrderService` (×3 — new PO default + two price-list lookups). Test code stays on `Currencies.AUD` since tests assert AUD-specific behaviour or pass through USD/AUD fixtures.
+- **`docs/design-notes.md` row #8** — adds the fallback to the canonical *Documented silent fallbacks* table with emitter, trigger, substitution, log level (`none — deliberately silent`), downstream consumers (~all 13 files), and the two tightening alternatives.
+
+### What I deliberately did NOT change
+
+- **`InMemoryProductCardLookup.markDiscontinued` (test-harness)** — has `existing == null ? Currencies.AUD : existing.currencyCode()`. Different shape: the null check is on a wrapper object before accessing one of its methods, not on the currency code itself. Reshaping it to call `orBase` (e.g. `orBase(existing == null ? null : existing.currencyCode())`) is longer and less clear. Left inline.
+- **No runtime log added.** Per `design-notes.md` operating notes, fallback logs must carry entity-id context to be useful. `Currencies.orBase` has none — adding a context-less log line would violate the rule it's supposed to satisfy. Documented as a tightening alternative if the silent default ever stops being acceptable.
+
+### Smoke
+
+`mvn clean install -DskipTests` SUCCESS across 19 modules; `mvn test` SUCCESS across all modules.
+
 ## 2026-05-20 — Extract `Currencies` constants in shared-kernel
 
 The codebase had 281 `"AUD"` / `"USD"` string literals across 54 files — `Money.of(...)` calls, projection writers defaulting null `currencyCode`, REST `@RequestParam(defaultValue = "AUD")`, and cross-currency rejection tests. Past the project's "N≥3 sites = extract" threshold by orders of magnitude.

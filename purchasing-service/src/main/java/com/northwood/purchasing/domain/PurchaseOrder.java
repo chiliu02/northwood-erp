@@ -199,7 +199,7 @@ public final class PurchaseOrder {
             id, purchaseOrderNumber,
             supplier.id().value(), supplier.supplierCode(), supplier.name(),
             purchaseRequisitionHeaderId,
-            currencyCode == null ? Currencies.AUD : currencyCode,
+            Currencies.orBase(currencyCode),
             subtotal, tax, total,
             initialStatus,
             new ArrayList<>(lines),

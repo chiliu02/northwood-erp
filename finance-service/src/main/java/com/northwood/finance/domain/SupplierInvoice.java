@@ -174,7 +174,7 @@ public final class SupplierInvoice {
             Objects.requireNonNull(supplierInvoiceNumber),
             purchaseOrderHeaderId, goodsReceiptHeaderId,
             supplierId, supplierCode, supplierName,
-            currencyCode == null ? Currencies.AUD : currencyCode,
+            Currencies.orBase(currencyCode),
             subtotal, tax, total,
             status, matchStatus,
             new ArrayList<>(lines),

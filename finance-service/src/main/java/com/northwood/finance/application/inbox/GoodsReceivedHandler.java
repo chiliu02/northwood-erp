@@ -68,7 +68,7 @@ public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
             payload.aggregateId(),
             payload.goodsReceiptNumber(),
             lineCosts,
-            Currencies.AUD,
+            Currencies.BASE_CURRENCY,
             postingDate
         );
 

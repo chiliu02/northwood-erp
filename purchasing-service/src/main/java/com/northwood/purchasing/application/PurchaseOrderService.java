@@ -59,7 +59,6 @@ public class PurchaseOrderService {
     }
 
     private static final Logger log = LoggerFactory.getLogger(PurchaseOrderService.class);
-    private static final String DEFAULT_CURRENCY = Currencies.AUD;
 
     private final PurchaseOrderRepository purchaseOrders;
     private final PurchaseRequisitionRepository purchaseRequisitions;
@@ -117,7 +116,7 @@ public class PurchaseOrderService {
             supplier,
             pr.id().value(),
             pr.sourceWorkOrderId(),
-            DEFAULT_CURRENCY,
+            Currencies.BASE_CURRENCY,
             lines,
             autoApprove
         );
@@ -287,7 +286,7 @@ public class PurchaseOrderService {
         BigDecimal total = BigDecimal.ZERO;
         for (PurchaseRequisitionLine l : lines) {
             Optional<BigDecimal> price = priceList.findUnitPrice(
-                supplierId, l.productId(), DEFAULT_CURRENCY,
+                supplierId, l.productId(), Currencies.BASE_CURRENCY,
                 java.time.LocalDate.now(), l.requestedQuantity());
             if (price.isEmpty()) {
                 return null;
@@ -328,7 +327,7 @@ public class PurchaseOrderService {
             // Pass quantity so tiered pricing kicks in — a 100-unit request
             // gets the volume discount tier instead of the base price.
             BigDecimal unitPrice = priceList.findUnitPrice(
-                    supplierId, pl.productId(), DEFAULT_CURRENCY,
+                    supplierId, pl.productId(), Currencies.BASE_CURRENCY,
                     java.time.LocalDate.now(), pl.requestedQuantity())
                 .orElseGet(() -> {
                     log.warn("no price-list entry for supplier={} product={} ({}); falling back to 0",

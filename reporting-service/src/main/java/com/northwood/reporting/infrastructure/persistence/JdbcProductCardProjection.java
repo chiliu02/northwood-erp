@@ -31,7 +31,7 @@ public class JdbcProductCardProjection implements ProductCardProjection {
                 standard_cost = EXCLUDED.standard_cost,
                 currency_code = EXCLUDED.currency_code
             """,
-            productId, standardCost, currencyCode == null ? Currencies.AUD : currencyCode
+            productId, standardCost, Currencies.orBase(currencyCode)
         );
         log.debug("reporting product_card updated: product={} cost={} {}", productId, standardCost, currencyCode);
     }
