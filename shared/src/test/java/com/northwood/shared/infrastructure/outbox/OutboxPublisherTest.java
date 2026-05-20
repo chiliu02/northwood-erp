@@ -12,6 +12,8 @@ import com.northwood.shared.application.messaging.EventEnvelope;
 import com.northwood.shared.application.messaging.EventPublisher;
 import com.northwood.shared.application.outbox.OutboxPort;
 import com.northwood.shared.application.outbox.OutboxRow;
+import io.micrometer.observation.ObservationRegistry;
+import io.micrometer.tracing.Tracer;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,7 +48,7 @@ class OutboxPublisherTest {
 
     @BeforeEach
     void setUp() {
-        publisher = new OutboxPublisher(outbox, bus, "sales");
+        publisher = new OutboxPublisher(outbox, bus, "sales", Tracer.NOOP, ObservationRegistry.NOOP);
     }
 
     private static OutboxRow pendingRow(String eventType) {
@@ -117,7 +119,7 @@ class OutboxPublisherTest {
     }
 
     @Test void drain_uses_service_name_in_envelope_header() {
-        publisher = new OutboxPublisher(outbox, bus, "purchasing");
+        publisher = new OutboxPublisher(outbox, bus, "purchasing", Tracer.NOOP, ObservationRegistry.NOOP);
         OutboxRow row = pendingRow("purchasing.PurchaseOrderCreated");
         when(outbox.findPending(Mockito.anyInt())).thenReturn(List.of(row));
 
@@ -127,5 +129,46 @@ class OutboxPublisherTest {
         verify(bus).publish(cap.capture());
         assertThat(cap.getValue().headers().get(EventEnvelope.HEADER_SOURCE_SERVICE))
             .isEqualTo("purchasing");
+    }
+
+    @Test void drain_stamps_w3c_traceparent_when_tracer_has_current_span() {
+        // §1D.2: when a Tracer with an active span is supplied, the publisher
+        // serialises the trace context as a W3C traceparent string into the
+        // envelope's headers map. The BFF events aggregator (§1D.4) reads this
+        // header to render the SPA's "↗ trace" affordance.
+        Tracer tracer = Mockito.mock(Tracer.class);
+        io.micrometer.tracing.Span span = Mockito.mock(io.micrometer.tracing.Span.class);
+        io.micrometer.tracing.TraceContext ctx = Mockito.mock(io.micrometer.tracing.TraceContext.class);
+        Mockito.when(tracer.currentSpan()).thenReturn(span);
+        Mockito.when(span.context()).thenReturn(ctx);
+        Mockito.when(ctx.traceId()).thenReturn("00112233445566778899aabbccddeeff");
+        Mockito.when(ctx.spanId()).thenReturn("0011223344556677");
+        Mockito.when(ctx.sampled()).thenReturn(Boolean.TRUE);
+
+        publisher = new OutboxPublisher(outbox, bus, "sales", tracer, ObservationRegistry.NOOP);
+        OutboxRow row = pendingRow("sales.SalesOrderPlaced");
+        when(outbox.findPending(Mockito.anyInt())).thenReturn(List.of(row));
+
+        publisher.drain();
+
+        ArgumentCaptor<EventEnvelope> cap = ArgumentCaptor.forClass(EventEnvelope.class);
+        verify(bus).publish(cap.capture());
+        assertThat(cap.getValue().headers().get(EventEnvelope.HEADER_TRACEPARENT))
+            .isEqualTo("00-00112233445566778899aabbccddeeff-0011223344556677-01");
+    }
+
+    @Test void drain_omits_traceparent_when_tracer_has_no_current_span() {
+        Tracer tracer = Mockito.mock(Tracer.class);
+        Mockito.when(tracer.currentSpan()).thenReturn(null);
+
+        publisher = new OutboxPublisher(outbox, bus, "sales", tracer, ObservationRegistry.NOOP);
+        OutboxRow row = pendingRow("sales.SalesOrderPlaced");
+        when(outbox.findPending(Mockito.anyInt())).thenReturn(List.of(row));
+
+        publisher.drain();
+
+        ArgumentCaptor<EventEnvelope> cap = ArgumentCaptor.forClass(EventEnvelope.class);
+        verify(bus).publish(cap.capture());
+        assertThat(cap.getValue().headers()).doesNotContainKey(EventEnvelope.HEADER_TRACEPARENT);
     }
 }

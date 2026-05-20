@@ -3,6 +3,8 @@ package com.northwood.sales.infrastructure.messaging;
 import com.northwood.shared.application.messaging.EventPublisher;
 import com.northwood.shared.infrastructure.outbox.OutboxPublisher;
 import com.northwood.shared.application.outbox.OutboxPort;
+import io.micrometer.observation.ObservationRegistry;
+import io.micrometer.tracing.Tracer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -21,8 +23,10 @@ public class SalesOutboxConfig {
     @Bean
     public OutboxPublisher salesOutboxPublisher(
         OutboxPort outboxPort,
-        EventPublisher eventPublisher
+        EventPublisher eventPublisher,
+        Tracer tracer,
+        ObservationRegistry observationRegistry
     ) {
-        return new OutboxPublisher(outboxPort, eventPublisher, SERVICE_NAME);
+        return new OutboxPublisher(outboxPort, eventPublisher, SERVICE_NAME, tracer, observationRegistry);
     }
 }

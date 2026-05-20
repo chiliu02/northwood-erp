@@ -10,6 +10,11 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       auto-offset-reset: earliest
+    # §1D.2: turn on Spring Kafka's Micrometer observation so @KafkaListener-
+    # managed containers continue the producer's trace via a consumer span.
+    # Reporting is consumer-only — no template observation needed.
+    listener:
+      observation-enabled: true
 
 northwood:
   kafka:

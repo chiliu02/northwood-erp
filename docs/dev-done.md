@@ -6,6 +6,58 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — §1D.2 Cross-service trace propagation
+
+Third slice of §1D. Goal: a placed order's trace flows continuously sales → inventory → manufacturing → finance through Kafka, with the same `traceparent` visible in `EventEnvelope.headers` so the SPA aggregator (§1D.4) can render a per-event trace-drilldown without parsing Kafka headers.
+
+### What shipped
+
+- **`EventEnvelope.HEADER_TRACEPARENT = "traceparent"`** — public constant alongside the existing `HEADER_SOURCE_SERVICE`. Stamped by `OutboxPublisher`, read by §1D.4's BFF events aggregator. Class-level Javadoc explains the publish-side / consume-side split.
+- **`OutboxPublisher`** now wraps each pending row's publish in a Micrometer `Observation` named `outbox.publish` (low-cardinality tags: `service`, `eventType`). Inside the observation, `tracer.currentSpan().context()` is read and serialised as a W3C `00-<traceId>-<spanId>-<flags>` string into the envelope's headers map. `Tracer.NOOP` + `ObservationRegistry.NOOP` defaults keep the class test-friendly (existing tests passed `tracer=null` and saw no traceparent header, as expected).
+- **Constructor signature** changed from `(OutboxPort, EventPublisher, String)` → `(OutboxPort, EventPublisher, String, Tracer, ObservationRegistry)`. 6 service `*OutboxConfig` beans updated (sales, inventory, manufacturing, product, purchasing, finance) — reporting is inbox-only so no config. Spring auto-wires both new beans from `micrometer-tracing-bridge-otel`.
+- **`OutboxPublisherTest`** — 2 new tests:
+  - `drain_stamps_w3c_traceparent_when_tracer_has_current_span` — mocks Tracer + Span + TraceContext, asserts envelope header equals `00-...-...-01`.
+  - `drain_omits_traceparent_when_tracer_has_no_current_span` — `currentSpan()` returns null, header absent.
+  - Existing 4 tests updated to pass `Tracer.NOOP, ObservationRegistry.NOOP`.
+- **7 service `application-kafka.yml` files** gain `spring.kafka.template.observation-enabled: true` and `spring.kafka.listener.observation-enabled: true` (producer-only services skip listener; consumer-only services skip template). This is the load-bearing wiring — Spring Kafka's observation-enabled `KafkaTemplate.send` stamps a W3C `traceparent` header on the Kafka record itself, and `@KafkaListener` containers continue the trace via a consumer span. The OutboxPublisher Observation that wraps `bus.publish(...)` becomes the parent of that Kafka-producer span.
+
+### Tracing topology after this slice
+
+```
+[OutboxPublisher.drain @Scheduled tick]
+  └─ Observation: outbox.publish (service, eventType)
+       ├─ KafkaTemplate.send → producer span ── traceparent on record ─→
+       │                                                                 │
+       │                                                       (across the bus)
+       │                                                                 │
+       │                                                                 ▼
+       │                                  [Consumer service: @KafkaListener span]
+       │                                       └─ inbox handler → projection / saga
+       │                                            └─ new outbox row written (under listener span)
+       │                                                 └─ next service's OutboxPublisher.publish ...
+```
+
+Each outbox row's `traceparent` header in the EventEnvelope JSON now matches the trace ID of the publish that produced it, which is the same trace ID that flows on the Kafka record into the consumer.
+
+### Smoke
+
+1. `mvn -pl shared test -Dtest=OutboxPublisherTest` → **6/6 pass** (2 new tests + 4 updated existing).
+2. `mvn clean install -DskipTests` across 19 modules → **BUILD SUCCESS**.
+3. Live "trace tree spans 4 services" verification deferred to §1D.5 dashboard acceptance — that's where Tempo TraceQL panels will render the full tree from a placed order. The wiring is unit-test-verified here; the visual proof comes once the user runs all 7 services + Kafka in IntelliJ.
+
+### Open items for §1D.4 (SPA)
+
+- `EventsAggregatorController.EventRow` already exposes `headers` to the SPA. §1D.4 adds a typed `traceparent: string | null` field and an `↗ trace` button.
+- Grafana Tempo Explore URL format for the SPA link-out: `http://localhost:3000/explore?orgId=1&left={"datasource":"northwood-tempo","queries":[{"refId":"A","queryType":"traceId","query":"<traceId>"}]}` — capture in §1D.4.
+
+### Diversions / decisions worth noting
+
+- Originally considered adding `trace_id` to `outbox_message` so the *originating-HTTP-request* trace survives the drainer delay. Rejected for this slice — the schema add belongs in §1D.3, and the consumer-perspective ask (BFF + SPA drilldown) is fully served by the publish-trace, which is what the `outbox.publish` Observation captures.
+- The plan mentioned auto-instrumented `RestClient` for the saga aggregator + ERP BFF. Boot 4 + Micrometer + OTel auto-instruments `RestClient` when a `RestClient.Builder` bean is used — no explicit code change needed. Both BFFs already use `RestClient`, so this is free once §1D.1 deps + sampling probability are in place (both done).
+- `OutboxPublisher` accepts `null` for both `Tracer` and `ObservationRegistry` defensively (collapses to NOOPs). Spring auto-wires real instances in production wiring; the null-tolerance is a unit-test ergonomic, not a production posture.
+
+---
+
 ## 2026-05-20 — §1D.1 Shared instrumentation (Micrometer + OTel + Loki)
 
 Second slice of §1D. Goal: every service exposes `/actuator/prometheus`, emits OTLP spans to Tempo, and pushes structured logs to Loki, all through one shared-module dep set rather than per-service.

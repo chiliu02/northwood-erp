@@ -42,6 +42,18 @@ public record EventEnvelope(
      */
     public static final String HEADER_SOURCE_SERVICE = "source-service";
 
+    /**
+     * W3C trace-context header carrying the current trace's
+     * {@code 00-<traceId>-<spanId>-<flags>} string. Stamped by
+     * {@code OutboxPublisher} inside the per-row Micrometer observation so it
+     * captures the publish-side span. Read by the BFF events aggregator (§1D.4)
+     * to surface a trace-drilldown affordance in the SPA Event Log / Saga
+     * Console — without that consumer having to crack the Kafka record headers
+     * separately. The corresponding header on the Kafka record itself is
+     * stamped by Spring Kafka's observation-enabled producer.
+     */
+    public static final String HEADER_TRACEPARENT = "traceparent";
+
     public EventEnvelope {
         if (eventId == null) throw new IllegalArgumentException("eventId");
         if (aggregateType == null || aggregateType.isBlank())

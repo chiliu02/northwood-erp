@@ -14,6 +14,15 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       auto-offset-reset: earliest
+    # §1D.2: turn on Spring Kafka's Micrometer observation so KafkaTemplate.send
+    # creates a producer span (W3C traceparent stamped on the record headers)
+    # and @KafkaListener-managed containers continue the trace via a consumer
+    # span. Combined with OutboxPublisher's per-row Observation wrap, every
+    # cross-service event preserves trace context through the bus.
+    template:
+      observation-enabled: true
+    listener:
+      observation-enabled: true
 
 northwood:
   kafka:
