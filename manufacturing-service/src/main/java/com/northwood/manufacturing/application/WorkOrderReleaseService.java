@@ -11,10 +11,12 @@ import com.northwood.manufacturing.domain.WorkOrderMaterial;
 import com.northwood.manufacturing.domain.WorkOrderOperation;
 import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
 import com.northwood.manufacturing.domain.WorkOrderRepository;
+import com.northwood.shared.application.exception.NotFoundException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,16 +40,28 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class WorkOrderReleaseService {
 
-    public static class BomNotFoundException extends RuntimeException {
+    public static class BomNotFoundException extends NotFoundException {
+        public static final String CODE = "ACTIVE_BOM_NOT_FOUND";
+        private final UUID finishedProductId;
         public BomNotFoundException(UUID finishedProductId) {
             super("No active BOM for finished_product_id=" + finishedProductId);
+            this.finishedProductId = finishedProductId;
         }
+        public UUID finishedProductId() { return finishedProductId; }
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() { return Map.of("finishedProductId", finishedProductId); }
     }
 
-    public static class RoutingNotFoundException extends RuntimeException {
+    public static class RoutingNotFoundException extends NotFoundException {
+        public static final String CODE = "ACTIVE_ROUTING_NOT_FOUND";
+        private final UUID finishedProductId;
         public RoutingNotFoundException(UUID finishedProductId) {
             super("No active routing for finished_product_id=" + finishedProductId);
+            this.finishedProductId = finishedProductId;
         }
+        public UUID finishedProductId() { return finishedProductId; }
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() { return Map.of("finishedProductId", finishedProductId); }
     }
 
     private static final Logger log = LoggerFactory.getLogger(WorkOrderReleaseService.class);

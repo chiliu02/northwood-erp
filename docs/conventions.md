@@ -442,6 +442,39 @@ All keep `api/` on application types only:
 2. **Domain-thrown, application-wrapped.** When an aggregate throws a domain exception (e.g. `SalesOrder.OrderNotCancellableException`, `PurchaseOrder.PoNotApprovableException`), the application service catches it inside the use-case method and rethrows an application-layer counterpart (`SalesOrderService.OrderNotCancellableException`, `PurchaseOrderService.PoNotApprovableException`) that preserves message + cause. Controllers catch only the application version.
 3. **Domain-port-thrown, application-wrapped.** Same pattern when a domain port (e.g. `CurrencyConverter.RateNotFoundException`) is invoked from the application service; the service catches + rethrows (`ExchangeRateService.RateNotFoundException`).
 
+### Every application-layer exception implements `DomainException`
+
+Each of the three flavours above produces an application-layer exception class that surfaces to the wire via the shared `DomainExceptionAdvice`. Concrete shape every such class follows:
+
+1. **Extend a marker base** — one of `shared.application.exception.NotFoundException` (HTTP 404), `ConflictException` (HTTP 409), or `BadRequestException` (HTTP 400). The base extends `RuntimeException` and implements `DomainException`, so the concrete class inherits both. Choose by *what the caller can do about it* — retry with a different id (404), wait/fix state then retry (409), or fix the input (400).
+2. **Add a `public static final String CODE`** carrying the wire-format identifier — uppercase snake case, e.g. `"CUSTOMER_NOT_FOUND"`. The constant pairs with the {@code @Override public String code() { return CODE; }} method so callers + the advice + tests can reference the same value.
+3. **Promote constructor arguments to typed fields with accessors.** Every constructor parameter that informs the error (`customerCode`, `status`, `sku`, etc.) becomes a `private final` field with a same-named accessor method. Pre-existing English `super(...)` message stays for logs and stack traces — it's no longer the wire-format body.
+4. **Implement `Map<String, Object> params()`** as a literal `Map.of(...)` over the typed fields. The shared advice serialises this directly into the JSON response body's `params` field. Keys are stable identifiers; values must be JSON-serialisable (UUIDs, Strings, Numbers, enums-via-`dbValue()`).
+
+When the application-layer exception wraps a domain or domain-port exception (flavours 2 + 3 above) and the wrapped cause doesn't yet expose typed accessors, fall back to `Map.of("detail", getMessage())` — the English message becomes the `detail` param. Flag the domain exception for typed-accessor follow-up rather than leaving the wrapper without `params()`.
+
+## Error response shape
+
+Every 4xx HTTP response in the codebase shares one wire format:
+
+```json
+{ "code": "CUSTOMER_NOT_FOUND", "params": { "customerCode": "CUST-099" } }
+```
+
+Backed by `com.northwood.shared.api.exception.ErrorResponse` (a `record(String code, Map<String, Object> params)`) and emitted by `com.northwood.shared.api.exception.DomainExceptionAdvice` — a single `@RestControllerAdvice` registered into every service via `DomainExceptionAutoConfiguration`. SPAs look up the `code` in their message bundle and substitute `params`.
+
+Five `@ExceptionHandler` methods make up the advice:
+
+- `NotFoundException` / `ConflictException` / `BadRequestException` → status driven by which base class the exception extends; body is `new ErrorResponse(e.code(), e.params())`.
+- Untyped `IllegalArgumentException` → HTTP 400 with `code = "GENERIC_ARGUMENT_VIOLATION"`, `params = { detail: e.getMessage() }`. Fires when an `Assert.argument(...)` inside a service reaches the wire without being wrapped in a typed `BadRequestException`. The advice logs a WARN suggesting the promotion; clients still get a usable 400.
+- Untyped `IllegalStateException` → HTTP 409 with `code = "GENERIC_STATE_VIOLATION"`, same `detail` shape. Same logic for `Assert.state(...)`.
+
+Per-controller `@ExceptionHandler` methods are **not used** — adding one is a code-review fail. The shared advice picks up any `DomainException` subclass via Spring's nearest-supertype match; service-specific handling lives in the exception class (the `CODE` + typed `params()`), not in the controller.
+
+### No `Locale` / `ResourceBundle` / Spring `MessageSource` on the backend
+
+Translation of `code` → localised message lives in the SPA (see `docs/architecture.md` → *Localisation lives in the SPAs, not the backend*). The advice is locale-free; the same JSON ships regardless of who's calling. Backend log messages and `Assert.*` messages stay English, dev/operator-facing.
+
 ## Command return shape
 
 Command services return a `*View` directly — controller skips any refetch query:

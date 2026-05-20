@@ -6,8 +6,11 @@ import com.northwood.manufacturing.domain.BomId;
 import com.northwood.manufacturing.domain.BomLine;
 import com.northwood.manufacturing.domain.BomLineId;
 import com.northwood.manufacturing.domain.BomRepository;
+import com.northwood.shared.application.exception.ConflictException;
+import com.northwood.shared.application.exception.NotFoundException;
 import com.northwood.shared.domain.Assert;
 import java.math.BigDecimal;
+import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,16 +66,28 @@ public class BomService {
         BigDecimal scrapFactorPercent
     ) {}
 
-    public static class BomNotFoundException extends RuntimeException {
+    public static class BomNotFoundException extends NotFoundException {
+        public static final String CODE = "BOM_NOT_FOUND";
+        private final UUID bomHeaderId;
         public BomNotFoundException(UUID bomHeaderId) {
             super("No BOM with bom_header_id=" + bomHeaderId);
+            this.bomHeaderId = bomHeaderId;
         }
+        public UUID bomHeaderId() { return bomHeaderId; }
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() { return Map.of("bomHeaderId", bomHeaderId); }
     }
 
-    public static class BomLineNotFoundException extends RuntimeException {
+    public static class BomLineNotFoundException extends NotFoundException {
+        public static final String CODE = "BOM_LINE_NOT_FOUND";
+        private final UUID bomLineId;
         public BomLineNotFoundException(UUID bomLineId) {
             super("No BOM line with bom_line_id=" + bomLineId);
+            this.bomLineId = bomLineId;
         }
+        public UUID bomLineId() { return bomLineId; }
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() { return Map.of("bomLineId", bomLineId); }
     }
 
     /**
@@ -80,14 +95,16 @@ public class BomService {
      * {@link Bom.BomNotEditableException}. Controllers catch this (HTTP 409)
      * instead of importing the domain exception type directly.
      */
-    public static class BomNotEditableException extends RuntimeException {
+    public static class BomNotEditableException extends ConflictException {
+        public static final String CODE = "BOM_NOT_EDITABLE";
         public BomNotEditableException(String message, Throwable cause) {
             super(message, cause);
         }
-
         public BomNotEditableException(String message) {
             super(message);
         }
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() { return Map.of("detail", getMessage()); }
     }
 
     /**
@@ -95,14 +112,16 @@ public class BomService {
      * plus the post-save cycle-detection findings. Controllers catch this
      * (HTTP 409) instead of importing the domain exception type directly.
      */
-    public static class BomCycleException extends RuntimeException {
+    public static class BomCycleException extends ConflictException {
+        public static final String CODE = "BOM_CYCLE";
         public BomCycleException(String message, Throwable cause) {
             super(message, cause);
         }
-
         public BomCycleException(String message) {
             super(message);
         }
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() { return Map.of("detail", getMessage()); }
     }
 
     /**
@@ -112,10 +131,21 @@ public class BomService {
      * planner shouldn't be allowed to author a draft BOM that names a
      * retired SKU, even before activation.
      */
-    public static class BomComponentDiscontinuedException extends RuntimeException {
+    public static class BomComponentDiscontinuedException extends ConflictException {
+        public static final String CODE = "BOM_COMPONENT_DISCONTINUED";
+        private final UUID componentProductId;
+        private final String componentSku;
         public BomComponentDiscontinuedException(UUID componentProductId, String componentSku) {
             super("Component product " + componentSku + " (" + componentProductId
                 + ") has been discontinued by product-service; cannot add to a BOM");
+            this.componentProductId = componentProductId;
+            this.componentSku = componentSku;
+        }
+        public UUID componentProductId() { return componentProductId; }
+        public String componentSku() { return componentSku; }
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() {
+            return Map.of("componentProductId", componentProductId, "componentSku", componentSku);
         }
     }
 

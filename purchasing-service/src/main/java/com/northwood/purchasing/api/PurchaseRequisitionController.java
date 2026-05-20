@@ -10,7 +10,6 @@ import java.net.URI;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -51,8 +50,4 @@ public class PurchaseRequisitionController {
             .orElse(ResponseEntity.notFound().build());
     }
 
-    @ExceptionHandler(ProductDiscontinuedException.class)
-    public ResponseEntity<String> handleDiscontinued(ProductDiscontinuedException e) {
-        return ResponseEntity.status(409).body(e.getMessage());
-    }
 }

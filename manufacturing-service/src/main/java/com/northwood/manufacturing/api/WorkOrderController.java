@@ -13,7 +13,6 @@ import com.northwood.shared.api.security.RequireProductionSupervisor;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -101,13 +100,5 @@ public class WorkOrderController {
         return ResponseEntity.noContent().build();
     }
 
-    @ExceptionHandler(WorkOrderNotFoundException.class)
-    public ResponseEntity<String> handleNotFound(WorkOrderNotFoundException e) {
-        return ResponseEntity.status(404).body(e.getMessage());
-    }
 
-    @ExceptionHandler({IllegalStateException.class, IllegalArgumentException.class})
-    public ResponseEntity<String> handleConflict(RuntimeException e) {
-        return ResponseEntity.status(409).body(e.getMessage());
-    }
 }

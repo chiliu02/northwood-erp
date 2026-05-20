@@ -7,7 +7,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -48,10 +47,6 @@ public class ExchangeRateController {
         ));
     }
 
-    @ExceptionHandler(RateNotFoundException.class)
-    public ResponseEntity<String> handleNotFound(RateNotFoundException e) {
-        return ResponseEntity.status(404).body(e.getMessage());
-    }
 
     public record ExchangeRateResponse(
         String fromCurrency,

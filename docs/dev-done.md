@@ -6,6 +6,55 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — §1H Backend error-response shape for i18n-readiness
+
+Every 4xx HTTP response now ships a typed `{ code: "...", params: { ... } }` JSON body instead of the older `ResponseEntity<String>` carrying an English exception message. SPA clients dispatch off the stable `code` and substitute `params` for rendering — backend remains locale-free per the architecture decision (`docs/architecture.md` → *Localisation lives in the SPAs, not the backend*).
+
+### Shared infrastructure (foundation)
+
+Six new types under `shared`:
+
+- **`shared.application.exception.DomainException`** — interface carrying `code()` + `params()`. Every application-layer exception that surfaces to the wire implements this.
+- **`shared.application.exception.{NotFoundException, ConflictException, BadRequestException}`** — three abstract bases extending `RuntimeException` and implementing `DomainException`. Choice of base drives the HTTP status (404 / 409 / 400 respectively); application code stays free of Spring's `HttpStatus` type.
+- **`shared.api.exception.ErrorResponse`** — `record(String code, Map<String, Object> params)`. Single wire format for every 4xx response. Compact constructor validates `code` non-blank and coerces null `params` to `Map.of()`.
+- **`shared.api.exception.DomainExceptionAdvice`** — single `@RestControllerAdvice` with five handlers: one per marker base, plus untyped `IllegalArgumentException` → HTTP 400 + `code = "GENERIC_ARGUMENT_VIOLATION"` and `IllegalStateException` → HTTP 409 + `code = "GENERIC_STATE_VIOLATION"` fallbacks for `Assert.*` calls that reach the wire without being wrapped. Both fallbacks log a WARN suggesting promotion to a typed exception.
+- **`shared.infrastructure.exception.DomainExceptionAutoConfiguration`** — `@AutoConfiguration` registering the advice as a bean in every service that has Spring MVC on the classpath. Mirrors the `AuditAutoConfiguration` shape; added to `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`.
+
+### Exception classes migrated (~17 classes across 6 services)
+
+Each existing application-layer exception got: extends a marker base, adds `public static final String CODE`, promotes constructor args to typed fields with accessors, implements `code()` + `params()`. Coverage:
+
+- **sales-service** (10): `SalesOrderService.{CustomerNotFoundException, CustomerInactiveException, OrderNotFoundException, SagaNotFoundException, OrderNotCancellableException, UnknownPriceException, CurrencyMismatchException, ProductDiscontinuedException}`, `CustomerService.{CustomerNotFoundException, DuplicateCustomerCodeException}`.
+- **manufacturing-service** (7): `BomService.{BomNotFoundException, BomLineNotFoundException, BomNotEditableException, BomCycleException, BomComponentDiscontinuedException}`, `WorkOrderReleaseService.{BomNotFoundException, RoutingNotFoundException}`, `WorkOrderOperationService.WorkOrderNotFoundException`.
+- **purchasing-service** (2): `PurchaseRequisitionService.ProductDiscontinuedException`, `PurchaseOrderService.PoNotApprovableException`.
+- **inventory-service** (2): `ShipmentService.ShipmentLineProductMismatchException`, `GoodsReceiptService.GoodsReceiptLineProductMismatchException`. Both handle nullable `expectedProductId` / `actualProductId` by omitting the field from `params()` rather than inserting nulls (Map.of / copyOf reject nulls; SPA falls back on missing keys cleanly).
+- **finance-service** (1): `ExchangeRateService.RateNotFoundException`.
+- **product-service** (1): `ProductService.ProductNotFoundException`.
+
+Exception-wrapping flavours where the cause is a domain exception without typed accessors (e.g. `Bom.BomCycleException`, `PurchaseOrder.PoNotApprovableException`) fall back to `params = { detail: getMessage() }` until the underlying domain exception is promoted to typed accessors — flagged as a follow-up rather than blocking on it.
+
+### Per-controller `@ExceptionHandler` methods removed (~20 methods across 13 controllers)
+
+The shared advice handles every exception type that previously had a per-controller handler. The controllers now contain only their REST endpoint methods. Unused imports (`@ExceptionHandler`, `ResponseEntity` where only handlers used it, the exception class imports themselves) were cleaned up where the bulk script could reach.
+
+### Conventions doc updates
+
+- **`docs/conventions.md` → "Exception wrapping — three flavours"** gains a new "Every application-layer exception implements `DomainException`" subsection laying out the four required parts (extend a marker base, declare `CODE`, promote args to typed fields, implement `params()`).
+- **`docs/conventions.md` → new "Error response shape" section** documents the `ErrorResponse` wire format, the five advice handlers, and the "no per-controller `@ExceptionHandler`" rule.
+- The section also reasserts the i18n design choice: no `Locale` / `ResourceBundle` / Spring `MessageSource` on the backend; translation lives SPA-side per `docs/architecture.md`.
+
+### Smoke
+
+`mvn clean install -DskipTests` SUCCESS across 19 modules. `mvn clean test` SUCCESS across all modules — no test fixtures needed updating because tests either go through the service layer directly (don't touch the controller's response shape) or assert HTTP status codes that the new advice preserves.
+
+### What this enables
+
+- §3.5 SPA i18n becomes a straight "look up `code`, render with `params`" exercise — no parsing English error messages.
+- New domain exceptions ship with their typed accessors + `CODE` from day 1, by convention.
+- Test fixtures can assert on the `code` (stable identifier) rather than the English message text (which can change without warning).
+
+---
+
 ## 2026-05-20 — `Assert` rule documented, applied codebase-wide, API settled
 
 Folds the earlier *Assert precondition helper in shared-kernel* foundation into the project's rule set, rolls out the migration across every `main/` file, and lands on the final API shape after multiple review rounds. All argument and state checks across `main/` go through `com.northwood.shared.domain.Assert` — never inline `throw new IllegalArgumentException/IllegalStateException`, never `Objects.requireNonNull`. Documented exceptions stay as inline throws.

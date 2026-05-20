@@ -13,11 +13,15 @@ import com.northwood.sales.domain.SalesOrder.ShippedLineInput;
 import com.northwood.sales.domain.SalesOrderId;
 import com.northwood.sales.domain.SalesOrderLine;
 import com.northwood.sales.domain.SalesOrderRepository;
+import com.northwood.shared.application.exception.BadRequestException;
+import com.northwood.shared.application.exception.ConflictException;
+import com.northwood.shared.application.exception.NotFoundException;
 import com.northwood.shared.domain.LineNumbering;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -45,34 +49,63 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SalesOrderService {
 
-    public static class CustomerNotFoundException extends RuntimeException {
-        public CustomerNotFoundException(String code) {
-            super("Customer not found: " + code);
+    public static class CustomerNotFoundException extends NotFoundException {
+        public static final String CODE = "CUSTOMER_NOT_FOUND";
+        private final String customerCode;
+        public CustomerNotFoundException(String customerCode) {
+            super("Customer not found: " + customerCode);
+            this.customerCode = customerCode;
         }
+        public String customerCode() { return customerCode; }
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() { return Map.of("customerCode", customerCode); }
     }
 
     /**
      * Thrown when {@link #placeOrder(PlaceOrderCommand)} resolves the customer
      * but its {@code status != 'active'} (i.e. {@code 'inactive'} or
-     * {@code 'blocked'}). Mapped to HTTP 409 by the controller — the customer
+     * {@code 'blocked'}). Mapped to HTTP 409 by the shared advice — the customer
      * exists, the order request is malformed against current state.
      */
-    public static class CustomerInactiveException extends RuntimeException {
-        public CustomerInactiveException(String code, Customer.Status status) {
-            super("Customer " + code + " is " + status.dbValue() + "; cannot accept new orders");
+    public static class CustomerInactiveException extends ConflictException {
+        public static final String CODE = "CUSTOMER_INACTIVE";
+        private final String customerCode;
+        private final Customer.Status status;
+        public CustomerInactiveException(String customerCode, Customer.Status status) {
+            super("Customer " + customerCode + " is " + status.dbValue() + "; cannot accept new orders");
+            this.customerCode = customerCode;
+            this.status = status;
+        }
+        public String customerCode() { return customerCode; }
+        public Customer.Status status() { return status; }
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() {
+            return Map.of("customerCode", customerCode, "status", status.dbValue());
         }
     }
 
-    public static class OrderNotFoundException extends RuntimeException {
+    public static class OrderNotFoundException extends NotFoundException {
+        public static final String CODE = "ORDER_NOT_FOUND";
+        private final UUID orderId;
         public OrderNotFoundException(UUID id) {
             super("Sales order not found: " + id);
+            this.orderId = id;
         }
+        public UUID orderId() { return orderId; }
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() { return Map.of("orderId", orderId); }
     }
 
-    public static class SagaNotFoundException extends RuntimeException {
+    public static class SagaNotFoundException extends NotFoundException {
+        public static final String CODE = "FULFILMENT_SAGA_NOT_FOUND";
+        private final UUID salesOrderHeaderId;
         public SagaNotFoundException(UUID salesOrderHeaderId) {
             super("No fulfilment saga for sales order " + salesOrderHeaderId);
+            this.salesOrderHeaderId = salesOrderHeaderId;
         }
+        public UUID salesOrderHeaderId() { return salesOrderHeaderId; }
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() { return Map.of("salesOrderHeaderId", salesOrderHeaderId); }
     }
 
     /**
@@ -81,29 +114,68 @@ public class SalesOrderService {
      * (HTTP 409) instead of reaching into {@code domain/} for the exception
      * type — keeps the api → application → domain layering clean.
      */
-    public static class OrderNotCancellableException extends RuntimeException {
+    public static class OrderNotCancellableException extends ConflictException {
+        public static final String CODE = "ORDER_NOT_CANCELLABLE";
         public OrderNotCancellableException(Throwable cause) {
             super(cause.getMessage(), cause);
         }
-    }
-
-    public static class UnknownPriceException extends RuntimeException {
-        public UnknownPriceException(String sku) {
-            super("No catalog price for sku=" + sku + "; provide unitPrice on the line or wait for the projection to catch up");
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() {
+            // Domain exception's English message carries the receiver's state
+            // (status + which transition was rejected) — surfaced as 'detail'
+            // until a typed domain exception is introduced.
+            return Map.of("detail", getMessage());
         }
     }
 
-    public static class CurrencyMismatchException extends RuntimeException {
+    public static class UnknownPriceException extends BadRequestException {
+        public static final String CODE = "UNKNOWN_CATALOG_PRICE";
+        private final String sku;
+        public UnknownPriceException(String sku) {
+            super("No catalog price for sku=" + sku + "; provide unitPrice on the line or wait for the projection to catch up");
+            this.sku = sku;
+        }
+        public String sku() { return sku; }
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() { return Map.of("sku", sku); }
+    }
+
+    public static class CurrencyMismatchException extends BadRequestException {
+        public static final String CODE = "CURRENCY_MISMATCH";
+        private final String sku;
+        private final String orderCurrency;
+        private final String catalogCurrency;
         public CurrencyMismatchException(String sku, String orderCurrency, String catalogCurrency) {
             super("Order currency " + orderCurrency + " does not match catalog currency "
                 + catalogCurrency + " for sku=" + sku);
+            this.sku = sku;
+            this.orderCurrency = orderCurrency;
+            this.catalogCurrency = catalogCurrency;
+        }
+        public String sku() { return sku; }
+        public String orderCurrency() { return orderCurrency; }
+        public String catalogCurrency() { return catalogCurrency; }
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() {
+            return Map.of("sku", sku, "orderCurrency", orderCurrency, "catalogCurrency", catalogCurrency);
         }
     }
 
-    public static class ProductDiscontinuedException extends RuntimeException {
+    public static class ProductDiscontinuedException extends ConflictException {
+        public static final String CODE = "PRODUCT_DISCONTINUED";
+        private final String sku;
+        private final java.time.Instant discontinuedAt;
         public ProductDiscontinuedException(String sku, java.time.Instant discontinuedAt) {
             super("Product sku=" + sku + " was discontinued at " + discontinuedAt
                 + "; cannot accept new order lines for it");
+            this.sku = sku;
+            this.discontinuedAt = discontinuedAt;
+        }
+        public String sku() { return sku; }
+        public java.time.Instant discontinuedAt() { return discontinuedAt; }
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() {
+            return Map.of("sku", sku, "discontinuedAt", discontinuedAt.toString());
         }
     }
 

@@ -8,11 +8,13 @@ import com.northwood.product.domain.ProductId;
 import com.northwood.product.domain.ProductRepository;
 import com.northwood.product.domain.ProductType;
 import com.northwood.product.domain.ValuationClass;
+import com.northwood.shared.application.exception.NotFoundException;
 import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.Money;
 import com.northwood.shared.domain.Sku;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -32,10 +34,16 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ProductService {
 
-    public static class ProductNotFoundException extends RuntimeException {
+    public static class ProductNotFoundException extends NotFoundException {
+        public static final String CODE = "PRODUCT_NOT_FOUND";
+        private final UUID productId;
         public ProductNotFoundException(UUID id) {
             super("Product not found: " + id);
+            this.productId = id;
         }
+        public UUID productId() { return productId; }
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() { return Map.of("productId", productId); }
     }
 
     private static final Logger log = LoggerFactory.getLogger(ProductService.class);

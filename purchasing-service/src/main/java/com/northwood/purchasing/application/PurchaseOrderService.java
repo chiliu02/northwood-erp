@@ -13,12 +13,14 @@ import com.northwood.purchasing.domain.PurchaseRequisitionLine;
 import com.northwood.purchasing.domain.PurchaseRequisitionRepository;
 import com.northwood.purchasing.domain.Supplier;
 import com.northwood.purchasing.domain.SupplierId;
+import com.northwood.shared.application.exception.ConflictException;
 import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -53,9 +55,17 @@ public class PurchaseOrderService {
      * {@link PurchaseOrder.PoNotApprovableException}. Controllers catch this
      * (HTTP 409) instead of importing the domain exception type directly.
      */
-    public static class PoNotApprovableException extends RuntimeException {
+    public static class PoNotApprovableException extends ConflictException {
+        public static final String CODE = "PO_NOT_APPROVABLE";
         public PoNotApprovableException(Throwable cause) {
             super(cause.getMessage(), cause);
+        }
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() {
+            // Domain exception's English message carries the receiver's state
+            // (PO status + which transition was rejected) — surfaced as 'detail'
+            // until a typed domain exception is introduced.
+            return Map.of("detail", getMessage());
         }
     }
 

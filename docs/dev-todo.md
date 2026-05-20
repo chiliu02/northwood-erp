@@ -114,22 +114,6 @@ All actionable items (§1F.1 – §1F.6) shipped 2026-05-14 / 2026-05-15. The de
 
 ---
 
-## 1H. Backend error-response shape for i18n-readiness
-
-Switch every `@ExceptionHandler` method (~40 across ~13 controllers) from returning `ResponseEntity<String>` with `e.getMessage()` as the body to returning a typed `ErrorResponse { code, params }` DTO. The SPA looks up the message bundle key off `code` and renders with `params`. Domain exception classes (~15: `CustomerNotFoundException`, `OrderNotCancellableException`, `ProductDiscontinuedException`, etc.) gain typed accessors so the handler can lift params (e.g. `customerId()`, `currentStatus()`) into the response without parsing the English message.
-
-Centralise via a single `@RestControllerAdvice` in `shared/api/exception/` so per-controller handlers shrink to zero except where a controller adds a domain-specific exception not in the shared catalog. Add an `ErrorCode` constants holder (or a sealed `ErrorResponse.Code` enum) listing every code the backend emits — same shape as the existing wire-format constants pattern.
-
-Convention follow-ups in `docs/conventions.md`:
-- Update *Exception wrapping — three flavours* to require typed param accessors on every new domain exception.
-- Add an *Error response shape* section pointing at the shared advice + the `ErrorResponse` DTO + the code-constant convention.
-
-Inline `Assert.*` messages stay English — they're now dev/log-facing, not user-facing, since the @ControllerAdvice translates the domain exceptions into codes before they reach the wire.
-
-**No `ResourceBundle` / Spring `MessageSource` on the backend.** Translation lives SPA-side per §3.5; the backend stays locale-free and ships `{ code, params }` regardless of the caller's locale. Rationale in `docs/architecture.md` → *Localisation lives in the SPAs, not the backend*.
-
-Independent of when i18n actually lands (§3.5 below) — the typed-error-response shape is a useful cleanup on its own (better-typed client error handling, no English text in the API contract).
-
 ## 1G.5 erp-web-ui — Story 7.1 scenario runner (parked)
 
 Every individual mutation exists across the persona pages, but there's no scripted-scenario runner like `demo-web-ui`'s `ScenarioRunnerModal`. An operator has to navigate 5–6 pages in order (Sarah places order → Linda completes ops → Mike posts shipment → Olivia processes payment, etc.). The "watch all three sagas march in lockstep" framing is weaker than demo-web-ui's because no orchestrator pauses on saga state.

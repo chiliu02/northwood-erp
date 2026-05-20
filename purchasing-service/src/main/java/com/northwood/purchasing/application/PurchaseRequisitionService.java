@@ -9,9 +9,11 @@ import com.northwood.purchasing.domain.PurchaseRequisitionId;
 import com.northwood.purchasing.domain.PurchaseRequisitionLine;
 import com.northwood.purchasing.domain.PurchaseRequisitionRepository;
 import com.northwood.purchasing.domain.Supplier;
+import com.northwood.shared.application.exception.ConflictException;
 import com.northwood.shared.domain.LineNumbering;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -38,11 +40,17 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class PurchaseRequisitionService {
 
-    public static class ProductDiscontinuedException extends RuntimeException {
+    public static class ProductDiscontinuedException extends ConflictException {
+        public static final String CODE = "PRODUCT_DISCONTINUED";
+        private final String sku;
         public ProductDiscontinuedException(String sku) {
             super("Product sku=" + sku + " has been discontinued by product-service; "
                 + "cannot include it on a new requisition or purchase order");
+            this.sku = sku;
         }
+        public String sku() { return sku; }
+        @Override public String code() { return CODE; }
+        @Override public Map<String, Object> params() { return Map.of("sku", sku); }
     }
 
     private static final Logger log = LoggerFactory.getLogger(PurchaseRequisitionService.class);
