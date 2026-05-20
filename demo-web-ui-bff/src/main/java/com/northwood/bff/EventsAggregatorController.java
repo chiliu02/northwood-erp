@@ -46,6 +46,13 @@ public class EventsAggregatorController {
         String sourceService,    // derived from topic name (e.g. "sales" from "sales.events")
         String aggregateType,
         UUID aggregateId,
+        // §1D.4: W3C trace ID extracted from EventEnvelope.headers.traceparent
+        // (stamped by §1D.2's OutboxPublisher). Surfaced as a top-level field
+        // so the SPA's Event Log can render a `↗ trace` affordance per row
+        // that deep-links to Grafana Tempo Explore. Nullable: legacy events,
+        // unit-test runs, or messages from a service that hasn't picked up
+        // §1D.2 wiring yet.
+        String traceId,
         Instant occurredAt,
         Instant receivedAt
     ) {}
@@ -109,6 +116,7 @@ public class EventsAggregatorController {
                 sourceService,
                 getString(env, "aggregateType"),
                 getUuid(env, "aggregateId"),
+                extractTraceId(env),
                 getInstant(env, "occurredAt"),
                 Instant.now()
             );
@@ -117,6 +125,25 @@ public class EventsAggregatorController {
                 record.topic(), record.partition(), record.offset(), e.toString());
             return null;
         }
+    }
+
+    /**
+     * §1D.4: pull the 32-char trace ID out of the EventEnvelope's
+     * {@code headers.traceparent} (W3C {@code 00-<traceId>-<spanId>-<flags>}
+     * format, stamped by {@code OutboxPublisher} in §1D.2). Returns null when
+     * the header is missing, malformed, or the trace ID segment isn't 32
+     * hex chars — the SPA renders a disabled trace button in that case.
+     */
+    private static String extractTraceId(ObjectNode env) {
+        JsonNode headers = env.get("headers");
+        if (headers == null || !headers.isObject()) return null;
+        JsonNode tp = headers.get("traceparent");
+        if (tp == null || tp.isNull()) return null;
+        String s = tp.asText();
+        // Format: version-traceId-spanId-flags = "00-<32hex>-<16hex>-<2hex>"
+        if (s.length() < 36 || s.charAt(2) != '-' || s.charAt(35) != '-') return null;
+        String traceId = s.substring(3, 35);
+        return traceId.length() == 32 ? traceId : null;
     }
 
     private static String topicToService(String topic) {

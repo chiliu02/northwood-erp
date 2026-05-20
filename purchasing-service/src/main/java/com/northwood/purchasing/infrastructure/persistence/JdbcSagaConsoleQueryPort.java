@@ -14,7 +14,7 @@ public class JdbcSagaConsoleQueryPort implements SagaConsoleQueryPort {
 
     private static final String SQL_LIST = """
         SELECT saga_id, purchase_order_header_id, saga_state, current_step,
-               last_error, retry_count, version,
+               last_error, retry_count, version, trace_id,
                created_at, updated_at, completed_at
           FROM purchasing.purchase_to_pay_saga
          ORDER BY updated_at DESC
@@ -45,6 +45,7 @@ public class JdbcSagaConsoleQueryPort implements SagaConsoleQueryPort {
             rs.getString("last_error"),
             rs.getInt("retry_count"),
             rs.getLong("version"),
+            rs.getString("trace_id"),
             createdAt   == null ? null : createdAt.toInstant(),
             updatedAt   == null ? null : updatedAt.toInstant(),
             completedAt == null ? null : completedAt.toInstant()

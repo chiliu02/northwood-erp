@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity, AlertTriangle, CheckCircle2, Clock, RotateCw, WifiOff } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle2, Clock, ExternalLink, RotateCw, WifiOff } from "lucide-react";
 import { useSagaStream, type SagaRow } from "@/sagas/stream";
 import {
   SAGA_CATALOGS,
@@ -11,6 +11,7 @@ import {
 import { PERSONAS } from "@/personas";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { cn, truncateUuid } from "@/lib/utils";
+import { traceExploreUrl } from "@/lib/tracing";
 
 export function SagaConsole() {
   // Single aggregated stream from the BFF — one EventSource for all three
@@ -132,7 +133,10 @@ function SagaCard({ row, catalog, faded }: {
       }
     >
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="font-mono text-xs text-text-muted">{truncateUuid(row.domainKey)}</span>
+        <span className="flex items-center gap-2">
+          <span className="font-mono text-xs text-text-muted">{truncateUuid(row.domainKey)}</span>
+          <TraceLink traceId={row.traceId} />
+        </span>
         {/* Pulse the badge when the saga state transitions; the existing
             tint-fade on the card background reinforces the same moment. */}
         <span
@@ -236,6 +240,24 @@ function SideRailNotice({ state }: { state: string }) {
       Off the forward path · waiting on external event ·
       <span className="ml-1 font-mono">{state}</span>
     </p>
+  );
+}
+
+// §1D.4: ↗ trace affordance per saga row. Opens Grafana Tempo Explore in a
+// new tab on the row's W3C trace ID (captured at saga INSERT in §1D.3).
+function TraceLink({ traceId }: { traceId: string | null }) {
+  const url = traceExploreUrl(traceId);
+  if (!url) return null;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      title={`Open trace ${traceId} in Grafana Tempo`}
+      className="inline-flex items-center gap-0.5 text-[11px] text-text-faint hover:text-text-default"
+    >
+      <ExternalLink className="h-3 w-3" /> trace
+    </a>
   );
 }
 

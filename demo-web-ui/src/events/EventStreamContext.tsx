@@ -14,6 +14,8 @@ export interface EventRow {
   sourceService: string;
   aggregateType: string | null;
   aggregateId: string | null;
+  /** §1D.4: 32-char W3C trace ID extracted from EventEnvelope.headers.traceparent (§1D.2). Null on legacy events. */
+  traceId: string | null;
   occurredAt: string | null;
   receivedAt: string;
 }
@@ -24,6 +26,8 @@ export interface DemoEvent {
   eventType: string;
   aggregateType: string | null;
   aggregateId: string;
+  /** Mirror of EventRow.traceId so consumers don't have to dig into raw. */
+  traceId: string | null;
   occurredAt: string;
   raw: EventRow;
 }
@@ -62,6 +66,7 @@ export function EventStreamProvider({ children }: { children: ReactNode }) {
           eventType: row.eventType,
           aggregateType: row.aggregateType,
           aggregateId: row.aggregateId ?? "",
+          traceId: row.traceId,
           occurredAt: row.occurredAt ?? row.receivedAt,
           raw: row,
         };

@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from "react";
-import { Pause, Play, Trash2 } from "lucide-react";
+import { ExternalLink, Pause, Play, Trash2 } from "lucide-react";
 import { Button, Input, Select } from "@/components/ui/Form";
 import { cn, formatTime, truncateUuid } from "@/lib/utils";
+import { traceExploreUrl } from "@/lib/tracing";
 import { useEventStream, type DemoEvent, type ServiceKey } from "@/events/EventStreamContext";
 
 // Full-screen variant of the bottom EventDrawer. Both read from the same
@@ -99,6 +100,7 @@ export function EventLog() {
               <th className="px-3 py-2 font-semibold">Service</th>
               <th className="px-3 py-2 font-semibold">Event type</th>
               <th className="px-3 py-2 font-semibold">Aggregate</th>
+              <th className="px-3 py-2 font-semibold">Trace</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border-subtle">
@@ -112,7 +114,7 @@ export function EventLog() {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-3 py-10 text-center text-text-faint">
+                <td colSpan={5} className="px-3 py-10 text-center text-text-faint">
                   {events.length === 0
                     ? "Waiting for events. Drive a flow (place an order, post a receipt, etc.) to see them stream in."
                     : "No events match the current filters."}
@@ -150,10 +152,13 @@ function EventLogRow({ event, expanded, onToggle }: {
         <td className="w-56 px-3 py-1.5 font-mono text-text-faint">
           {event.aggregateType ?? "?"} · {truncateUuid(event.aggregateId)}
         </td>
+        <td className="w-20 px-3 py-1.5">
+          <TraceLink traceId={event.traceId} />
+        </td>
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={4} className="bg-bg-base/40 px-6 py-3">
+          <td colSpan={5} className="bg-bg-base/40 px-6 py-3">
             <pre className="overflow-x-auto whitespace-pre-wrap text-[11px] text-text-muted">
               {JSON.stringify(event.raw, null, 2)}
             </pre>
@@ -172,5 +177,26 @@ function EventTypeLabel({ value }: { value: string }) {
       <span className="text-text-faint">{value.slice(0, dot + 1)}</span>
       <span>{value.slice(dot + 1)}</span>
     </>
+  );
+}
+
+// §1D.4: ↗ trace affordance. Opens Grafana Tempo Explore in a new tab.
+// Falls back to a dimmed em-dash for legacy events without a trace ID.
+function TraceLink({ traceId }: { traceId: string | null }) {
+  const url = traceExploreUrl(traceId);
+  if (!url) {
+    return <span className="text-text-faint" title="no trace id">—</span>;
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      title={`Open trace ${traceId} in Grafana Tempo`}
+      className="inline-flex items-center gap-0.5 text-xs text-text-muted hover:text-text-default"
+    >
+      <ExternalLink className="h-3 w-3" /> trace
+    </a>
   );
 }

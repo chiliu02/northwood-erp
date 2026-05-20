@@ -13,6 +13,8 @@ export interface SagaRow {
   lastError: string | null;
   retryCount: number;
   version: number;
+  /** §1D.4: 32-char W3C trace ID stamped at row INSERT (§1D.3). Null on legacy rows or runs without tracing. */
+  traceId: string | null;
   createdAt: string | null;
   updatedAt: string | null;
   completedAt: string | null;

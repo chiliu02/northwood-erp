@@ -62,6 +62,11 @@ public class SagaAggregatorController {
         String lastError,
         int retryCount,
         long version,
+        // §1D.4: W3C trace ID stamped at row INSERT by §1D.3's saga adapter.
+        // Passed through verbatim from upstream `/api/sagas` so the SPA's Saga
+        // Console can render a `↗ trace` affordance per row that deep-links to
+        // Grafana Tempo Explore. Nullable for saga rows written before §1D.3.
+        String traceId,
         Instant createdAt,
         Instant updatedAt,
         Instant completedAt

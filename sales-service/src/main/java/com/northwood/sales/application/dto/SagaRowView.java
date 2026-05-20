@@ -20,6 +20,7 @@ public record SagaRowView(
     String lastError,
     int retryCount,
     long version,
+    String traceId,
     Instant createdAt,
     Instant updatedAt,
     Instant completedAt

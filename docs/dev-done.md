@@ -6,6 +6,46 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — §1D.4 SPA traceparent integration
+
+Fifth slice of §1D. Each row in the demo SPA's Event Log and Saga Console now carries a `↗ trace` button that deep-links into Grafana Tempo Explore on its W3C trace ID. Grafana stays off-BFF on `:3000` — the SPA opens the explore URL directly in a new tab.
+
+### What shipped
+
+- **Backend wire shape** picks up `traceId` end-to-end:
+  - 3 service `SagaRowView` records gain `String traceId` (sales, manufacturing, purchasing).
+  - 3 service `JdbcSagaConsoleQueryPort` SELECTs add `trace_id` to the list query + RowMapper.
+  - BFF `SagaAggregatorController.SagaRow` gains `String traceId` — Jackson pass-through across the per-service `/api/sagas` fetch + the SSE re-broadcast.
+  - BFF `EventsAggregatorController.EventRow` gains `String traceId` + a private `extractTraceId(envelope)` that pulls the 32-char ID out of `EventEnvelope.headers.traceparent` (W3C `00-<traceId>-<spanId>-<flags>`). Returns null on missing / malformed headers — the SPA falls back to a dimmed em-dash.
+- **SPA wiring**:
+  - New `demo-web-ui/src/lib/tracing.ts` — single `traceExploreUrl(traceId)` helper. Validates 32-hex format, builds `http://localhost:3000/explore?orgId=1&left=<encoded JSON>` with the Grafana Tempo Explore `queryType=traceId` shape. Returns null for missing / malformed IDs so callers can render a disabled state.
+  - `demo-web-ui/src/sagas/stream.ts` `SagaRow` interface gains `traceId: string | null`.
+  - `demo-web-ui/src/events/EventStreamContext.tsx` `EventRow` + `DemoEvent` both gain `traceId`. The SSE listener forwards it onto the `DemoEvent` rendered to consumers.
+  - `EventLog.tsx` — new 5th column "Trace" with an icon+label `↗ trace` `<a>` per row. Wired with `e.stopPropagation()` so the click doesn't toggle the row's expanded view. `colSpan`s updated for empty-state + expanded raw JSON.
+  - `SagaConsole.tsx` `SagaCard` — `↗ trace` link rendered next to the truncated `domainKey` in the card header. Compact `[ExternalLink] trace` styling matches the existing `retry`, `v<version>` chips.
+
+### Smoke
+
+1. `mvn clean install -DskipTests` across 19 modules → **BUILD SUCCESS**.
+2. `cd demo-web-ui && npm install && npm run build` → Vite production build clean (1674 modules transformed, 418KB bundle / 111KB gzipped), TypeScript project-references compile passes.
+3. End-to-end click-through verification deferred to §1D.5 dashboard acceptance — that's where the Tempo Explore page is wired to render real traces from a placed order.
+
+### Trace ID precedence in the SPA
+
+- **Saga Console** card uses `saga_row.trace_id` — the trace at saga *creation* (consumer-side span of the upstream event that started the saga).
+- **Event Log** row uses `EventEnvelope.headers.traceparent` — the trace at event *publish* (OutboxPublisher's `outbox.publish` Observation span).
+
+For a flow that's still alive, a saga row's trace is upstream of its successor events; the user navigating the SPA can pivot between perspectives via the same `↗ trace` button on either surface.
+
+### Decisions / notes
+
+- **`extractTraceId` lives in the BFF, not the SPA.** Keeping the W3C parsing on the Java side means the SPA never sees malformed headers; the contract is "ID present + 32-hex, or null". This mirrors §1D.3's `SUBSTRING(... FROM 4 FOR 32)` extraction in `JdbcAuditQueryAdapter`.
+- **`traceExploreUrl` URL format** matches what Grafana 11.x's `/explore` accepts when given a `left=` JSON blob with `datasource: northwood-tempo`, `queries: [{ queryType: "traceId", query: <id> }]`, `range: now-1h..now`. Wired against the datasource UID we registered in §1D.0's `db/grafana/provisioning/datasources/datasources.yaml`.
+- **`erp-web-ui` left alone.** The plan called for `demo-web-ui`'s Event Log + Saga Console specifically; the ERP-web-ui audit log already gets `traceId` through `AuditAggregatorController.AuditRow` (§1D.3) but rendering a button there is outside the plan's scope. If the operational UI benefits from the same affordance, it's a small follow-up — the BFF wire shape is already in place.
+- **No InMemory test ports affected** — they don't construct `SagaRowView` directly. JDBC adapter changes ripple cleanly because Spring auto-wires.
+
+---
+
 ## 2026-05-20 — §1D.3 trace_id columns on saga tables + audit-entry surface
 
 Fourth slice of §1D. Goal: surface trace IDs as first-class columns / fields so ops can answer "give me the trace of this saga / event" via a single SQL or API lookup, complementing the JSONB `headers->>'traceparent'` path stamped by §1D.2.
