@@ -7,15 +7,27 @@ package com.northwood.shared.application.exception;
  *
  * <p>Concrete subclasses live alongside their application service and
  * carry typed accessors for the lookup key (customer code, order id,
- * etc.) plus the {@code code()} / {@code params()} contract.
+ * etc.) plus the {@link #params()} implementation. The {@code code}
+ * field is set once by the constructor and exposed via the final
+ * {@link #code()} accessor so subclasses don't repeat the same
+ * {@code @Override} boilerplate.
  */
 public abstract class NotFoundException extends RuntimeException implements DomainException {
 
-    protected NotFoundException(String message) {
+    private final String code;
+
+    protected NotFoundException(String code, String message) {
         super(message);
+        this.code = code;
     }
 
-    protected NotFoundException(String message, Throwable cause) {
+    protected NotFoundException(String code, String message, Throwable cause) {
         super(message, cause);
+        this.code = code;
+    }
+
+    @Override
+    public final String code() {
+        return code;
     }
 }

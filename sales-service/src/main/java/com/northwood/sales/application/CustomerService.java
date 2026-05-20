@@ -25,11 +25,10 @@ public class CustomerService {
         public static final String CODE = "CUSTOMER_NOT_FOUND";
         private final UUID customerId;
         public CustomerNotFoundException(UUID id) {
-            super("Customer not found: " + id);
+            super(CODE, "Customer not found: " + id);
             this.customerId = id;
         }
         public UUID customerId() { return customerId; }
-        @Override public String code() { return CODE; }
         @Override public Map<String, Object> params() { return Map.of("customerId", customerId); }
     }
 
@@ -43,11 +42,10 @@ public class CustomerService {
         public static final String CODE = "DUPLICATE_CUSTOMER_CODE";
         private final String customerCode;
         public DuplicateCustomerCodeException(String code, Throwable cause) {
-            super("customer_code already exists: " + code, cause);
+            super(CODE, "customer_code already exists: " + code, cause);
             this.customerCode = code;
         }
         public String customerCode() { return customerCode; }
-        @Override public String code() { return CODE; }
         @Override public Map<String, Object> params() { return Map.of("customerCode", customerCode); }
     }
 

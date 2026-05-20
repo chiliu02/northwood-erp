@@ -53,11 +53,10 @@ public class SalesOrderService {
         public static final String CODE = "CUSTOMER_NOT_FOUND";
         private final String customerCode;
         public CustomerNotFoundException(String customerCode) {
-            super("Customer not found: " + customerCode);
+            super(CODE, "Customer not found: " + customerCode);
             this.customerCode = customerCode;
         }
         public String customerCode() { return customerCode; }
-        @Override public String code() { return CODE; }
         @Override public Map<String, Object> params() { return Map.of("customerCode", customerCode); }
     }
 
@@ -72,13 +71,12 @@ public class SalesOrderService {
         private final String customerCode;
         private final Customer.Status status;
         public CustomerInactiveException(String customerCode, Customer.Status status) {
-            super("Customer " + customerCode + " is " + status.dbValue() + "; cannot accept new orders");
+            super(CODE, "Customer " + customerCode + " is " + status.dbValue() + "; cannot accept new orders");
             this.customerCode = customerCode;
             this.status = status;
         }
         public String customerCode() { return customerCode; }
         public Customer.Status status() { return status; }
-        @Override public String code() { return CODE; }
         @Override public Map<String, Object> params() {
             return Map.of("customerCode", customerCode, "status", status.dbValue());
         }
@@ -88,11 +86,10 @@ public class SalesOrderService {
         public static final String CODE = "ORDER_NOT_FOUND";
         private final UUID orderId;
         public OrderNotFoundException(UUID id) {
-            super("Sales order not found: " + id);
+            super(CODE, "Sales order not found: " + id);
             this.orderId = id;
         }
         public UUID orderId() { return orderId; }
-        @Override public String code() { return CODE; }
         @Override public Map<String, Object> params() { return Map.of("orderId", orderId); }
     }
 
@@ -100,11 +97,10 @@ public class SalesOrderService {
         public static final String CODE = "FULFILMENT_SAGA_NOT_FOUND";
         private final UUID salesOrderHeaderId;
         public SagaNotFoundException(UUID salesOrderHeaderId) {
-            super("No fulfilment saga for sales order " + salesOrderHeaderId);
+            super(CODE, "No fulfilment saga for sales order " + salesOrderHeaderId);
             this.salesOrderHeaderId = salesOrderHeaderId;
         }
         public UUID salesOrderHeaderId() { return salesOrderHeaderId; }
-        @Override public String code() { return CODE; }
         @Override public Map<String, Object> params() { return Map.of("salesOrderHeaderId", salesOrderHeaderId); }
     }
 
@@ -117,9 +113,8 @@ public class SalesOrderService {
     public static class OrderNotCancellableException extends ConflictException {
         public static final String CODE = "ORDER_NOT_CANCELLABLE";
         public OrderNotCancellableException(Throwable cause) {
-            super(cause.getMessage(), cause);
+            super(CODE, cause.getMessage(), cause);
         }
-        @Override public String code() { return CODE; }
         @Override public Map<String, Object> params() {
             // Domain exception's English message carries the receiver's state
             // (status + which transition was rejected) — surfaced as 'detail'
@@ -132,11 +127,10 @@ public class SalesOrderService {
         public static final String CODE = "UNKNOWN_CATALOG_PRICE";
         private final String sku;
         public UnknownPriceException(String sku) {
-            super("No catalog price for sku=" + sku + "; provide unitPrice on the line or wait for the projection to catch up");
+            super(CODE, "No catalog price for sku=" + sku + "; provide unitPrice on the line or wait for the projection to catch up");
             this.sku = sku;
         }
         public String sku() { return sku; }
-        @Override public String code() { return CODE; }
         @Override public Map<String, Object> params() { return Map.of("sku", sku); }
     }
 
@@ -146,7 +140,7 @@ public class SalesOrderService {
         private final String orderCurrency;
         private final String catalogCurrency;
         public CurrencyMismatchException(String sku, String orderCurrency, String catalogCurrency) {
-            super("Order currency " + orderCurrency + " does not match catalog currency "
+            super(CODE, "Order currency " + orderCurrency + " does not match catalog currency "
                 + catalogCurrency + " for sku=" + sku);
             this.sku = sku;
             this.orderCurrency = orderCurrency;
@@ -155,7 +149,6 @@ public class SalesOrderService {
         public String sku() { return sku; }
         public String orderCurrency() { return orderCurrency; }
         public String catalogCurrency() { return catalogCurrency; }
-        @Override public String code() { return CODE; }
         @Override public Map<String, Object> params() {
             return Map.of("sku", sku, "orderCurrency", orderCurrency, "catalogCurrency", catalogCurrency);
         }
@@ -166,14 +159,13 @@ public class SalesOrderService {
         private final String sku;
         private final java.time.Instant discontinuedAt;
         public ProductDiscontinuedException(String sku, java.time.Instant discontinuedAt) {
-            super("Product sku=" + sku + " was discontinued at " + discontinuedAt
+            super(CODE, "Product sku=" + sku + " was discontinued at " + discontinuedAt
                 + "; cannot accept new order lines for it");
             this.sku = sku;
             this.discontinuedAt = discontinuedAt;
         }
         public String sku() { return sku; }
         public java.time.Instant discontinuedAt() { return discontinuedAt; }
-        @Override public String code() { return CODE; }
         @Override public Map<String, Object> params() {
             return Map.of("sku", sku, "discontinuedAt", discontinuedAt.toString());
         }

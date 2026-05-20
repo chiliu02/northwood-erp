@@ -8,15 +8,27 @@ package com.northwood.shared.application.exception;
  *
  * <p>Concrete subclasses live alongside their application service and
  * carry typed accessors for the current state (status enum, version,
- * etc.) plus the {@code code()} / {@code params()} contract.
+ * etc.) plus the {@link #params()} implementation. The {@code code}
+ * field is set once by the constructor and exposed via the final
+ * {@link #code()} accessor so subclasses don't repeat the same
+ * {@code @Override} boilerplate.
  */
 public abstract class ConflictException extends RuntimeException implements DomainException {
 
-    protected ConflictException(String message) {
+    private final String code;
+
+    protected ConflictException(String code, String message) {
         super(message);
+        this.code = code;
     }
 
-    protected ConflictException(String message, Throwable cause) {
+    protected ConflictException(String code, String message, Throwable cause) {
         super(message, cause);
+        this.code = code;
+    }
+
+    @Override
+    public final String code() {
+        return code;
     }
 }

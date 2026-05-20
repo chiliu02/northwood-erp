@@ -6,6 +6,24 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-20 — §1H follow-up: hoist `code()` to the marker base classes
+
+Direct follow-up to the §1H slice committed earlier today. The three marker bases (`NotFoundException`, `ConflictException`, `BadRequestException`) now take `code` as the first constructor argument, store it in a `private final String code` field, and expose it via a `final` `code()` accessor. Concrete subclasses pass their `CODE` via `super(CODE, message[, cause])` and drop the per-class `@Override public String code() { return CODE; }` boilerplate.
+
+### What changed
+
+- **Three base classes** — gained a `code` field + `final code()` accessor + new `(code, message)` / `(code, message, cause)` protected constructors.
+- **~17 concrete exception classes across 6 services** — `super(...)` calls now lead with `CODE`; `@Override public String code()` removed.
+- **`docs/conventions.md` skeleton** — "Every application-layer exception implements `DomainException`" rewritten with the new 5-step shape (added: declare CODE constant; pass CODE through super; the base handles code() once). A code skeleton was added so the pattern is copy-pasteable.
+
+### Why
+
+The original §1H shape had concrete classes both declare `CODE` and override `code()` to return it. The override could drift between subclasses, and every concrete class carried the same one-line method. Pushing the field down to the base eliminates both — the constructor signature visually carries the code, the base's `final code()` prevents accidental override, and the concrete class loses a line of boilerplate.
+
+### Smoke
+
+`mvn clean test` SUCCESS across 19 modules. Concrete exception classes are smaller (no override method); base classes carry the common storage.
+
 ## 2026-05-20 — §1H Backend error-response shape for i18n-readiness
 
 Every 4xx HTTP response now ships a typed `{ code: "...", params: { ... } }` JSON body instead of the older `ResponseEntity<String>` carrying an English exception message. SPA clients dispatch off the stable `code` and substitute `params` for rendering — backend remains locale-free per the architecture decision (`docs/architecture.md` → *Localisation lives in the SPAs, not the backend*).

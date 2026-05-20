@@ -8,8 +8,10 @@ package com.northwood.shared.application.exception;
  *
  * <p>Concrete subclasses live alongside their application service and
  * carry typed accessors for the offending input (the supplied currency
- * code, the SKU with no catalogue price, etc.) plus the {@code code()} /
- * {@code params()} contract.
+ * code, the SKU with no catalogue price, etc.) plus the {@link #params()}
+ * implementation. The {@code code} field is set once by the constructor
+ * and exposed via the final {@link #code()} accessor so subclasses don't
+ * repeat the same {@code @Override} boilerplate.
  *
  * <p><b>vs. {@code Assert.argument(...)}.</b> The {@link com.northwood.shared.domain.Assert}
  * helpers throw {@link IllegalArgumentException} for argument-contract
@@ -21,11 +23,20 @@ package com.northwood.shared.application.exception;
  */
 public abstract class BadRequestException extends RuntimeException implements DomainException {
 
-    protected BadRequestException(String message) {
+    private final String code;
+
+    protected BadRequestException(String code, String message) {
         super(message);
+        this.code = code;
     }
 
-    protected BadRequestException(String message, Throwable cause) {
+    protected BadRequestException(String code, String message, Throwable cause) {
         super(message, cause);
+        this.code = code;
+    }
+
+    @Override
+    public final String code() {
+        return code;
     }
 }

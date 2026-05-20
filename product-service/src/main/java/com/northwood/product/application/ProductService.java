@@ -38,11 +38,10 @@ public class ProductService {
         public static final String CODE = "PRODUCT_NOT_FOUND";
         private final UUID productId;
         public ProductNotFoundException(UUID id) {
-            super("Product not found: " + id);
+            super(CODE, "Product not found: " + id);
             this.productId = id;
         }
         public UUID productId() { return productId; }
-        @Override public String code() { return CODE; }
         @Override public Map<String, Object> params() { return Map.of("productId", productId); }
     }
 

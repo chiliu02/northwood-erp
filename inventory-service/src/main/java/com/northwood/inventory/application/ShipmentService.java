@@ -60,7 +60,7 @@ public class ShipmentService {
         private final UUID expectedProductId;
         private final UUID actualProductId;
         public ShipmentLineProductMismatchException(UUID salesOrderLineId, UUID expectedProductId, UUID actualProductId) {
-            super(expectedProductId == null
+            super(CODE, expectedProductId == null
                 ? "Unknown sales_order_line_id=%s (no matching projection row; line may not belong to a placed sales order)".formatted(salesOrderLineId)
                 : "Product mismatch on sales_order_line_id=%s: expected product=%s, got=%s".formatted(salesOrderLineId, expectedProductId, actualProductId)
             );
@@ -71,7 +71,6 @@ public class ShipmentService {
         public UUID salesOrderLineId() { return salesOrderLineId; }
         public UUID expectedProductId() { return expectedProductId; }
         public UUID actualProductId() { return actualProductId; }
-        @Override public String code() { return CODE; }
         @Override public Map<String, Object> params() {
             // expectedProductId / actualProductId are null in the "unknown
             // line id" branch — omit rather than insert nulls (Map.of / copyOf

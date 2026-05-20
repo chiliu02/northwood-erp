@@ -31,9 +31,8 @@ public class ExchangeRateService {
     public static class RateNotFoundException extends NotFoundException {
         public static final String CODE = "EXCHANGE_RATE_NOT_FOUND";
         public RateNotFoundException(Throwable cause) {
-            super(cause.getMessage(), cause);
+            super(CODE, cause.getMessage(), cause);
         }
-        @Override public String code() { return CODE; }
         @Override public Map<String, Object> params() {
             // Domain exception's English message carries the missing-rate
             // tuple (from/to/date) — surfaced as 'detail' until the domain

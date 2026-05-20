@@ -44,12 +44,11 @@ public class PurchaseRequisitionService {
         public static final String CODE = "PRODUCT_DISCONTINUED";
         private final String sku;
         public ProductDiscontinuedException(String sku) {
-            super("Product sku=" + sku + " has been discontinued by product-service; "
+            super(CODE, "Product sku=" + sku + " has been discontinued by product-service; "
                 + "cannot include it on a new requisition or purchase order");
             this.sku = sku;
         }
         public String sku() { return sku; }
-        @Override public String code() { return CODE; }
         @Override public Map<String, Object> params() { return Map.of("sku", sku); }
     }
 

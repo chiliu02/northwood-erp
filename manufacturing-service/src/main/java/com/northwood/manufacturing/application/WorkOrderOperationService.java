@@ -61,11 +61,10 @@ public class WorkOrderOperationService {
         public static final String CODE = "WORK_ORDER_NOT_FOUND";
         private final String workOrderId;
         public WorkOrderNotFoundException(String workOrderId) {
-            super("No work order with id=" + workOrderId);
+            super(CODE, "No work order with id=" + workOrderId);
             this.workOrderId = workOrderId;
         }
         public String workOrderId() { return workOrderId; }
-        @Override public String code() { return CODE; }
         @Override public Map<String, Object> params() { return Map.of("workOrderId", workOrderId); }
     }
 

@@ -57,7 +57,7 @@ public class GoodsReceiptService {
         private final UUID expectedProductId;
         private final UUID actualProductId;
         public GoodsReceiptLineProductMismatchException(UUID purchaseOrderLineId, UUID expectedProductId, UUID actualProductId) {
-            super(expectedProductId == null
+            super(CODE, expectedProductId == null
                 ? "Unknown purchase_order_line_id=%s (no matching projection row; line may not belong to a created purchase order)".formatted(purchaseOrderLineId)
                 : "Product mismatch on purchase_order_line_id=%s: expected product=%s, got=%s".formatted(purchaseOrderLineId, expectedProductId, actualProductId)
             );
@@ -68,7 +68,6 @@ public class GoodsReceiptService {
         public UUID purchaseOrderLineId() { return purchaseOrderLineId; }
         public UUID expectedProductId() { return expectedProductId; }
         public UUID actualProductId() { return actualProductId; }
-        @Override public String code() { return CODE; }
         @Override public Map<String, Object> params() {
             Map<String, Object> p = new HashMap<>();
             p.put("purchaseOrderLineId", purchaseOrderLineId);
