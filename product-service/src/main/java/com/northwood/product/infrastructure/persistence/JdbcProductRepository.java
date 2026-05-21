@@ -8,6 +8,7 @@ import com.northwood.product.domain.ProductId;
 import com.northwood.product.domain.ProductRepository;
 import com.northwood.product.domain.ProductType;
 import com.northwood.product.domain.ValuationClass;
+import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import com.northwood.shared.domain.Money;
 import com.northwood.shared.domain.Sku;
@@ -117,8 +118,8 @@ public class JdbcProductRepository implements ProductRepository {
                 rs.getBoolean("is_purchased"),
                 rs.getBoolean("is_manufactured"),
                 rs.getBoolean("is_sellable"),
-                Money.of(rs.getBigDecimal("sales_price"), "AUD"),
-                Money.of(rs.getBigDecimal("standard_cost"), "AUD"),
+                Money.of(rs.getBigDecimal("sales_price"), Currencies.BASE_CURRENCY),
+                Money.of(rs.getBigDecimal("standard_cost"), Currencies.BASE_CURRENCY),
                 rs.getBigDecimal("reorder_point"),
                 rs.getBigDecimal("reorder_quantity"),
                 valuationClassDb == null ? null : ValuationClass.fromDb(valuationClassDb),

@@ -28,24 +28,13 @@ Phase 1 closes the demo-story question "how do you debug across 7 services?". Ph
 
 ## 1E. GitHub publish prep — remaining items (PLANNED 2026-05-13, foundation shipped)
 
-Foundation pieces (LICENSE, .gitignore extension, secrets sweep) landed 2026-05-13 — see `dev-done.md`. Remaining items deferred so the user can decide tone/voice on the README themselves.
+Foundation pieces (LICENSE, .gitignore extension, secrets sweep) landed 2026-05-13; §1E.1 (README public-facing prose rewrite + Saga Console screenshot) landed 2026-05-21 — see `dev-done.md`. Remaining: CI workflow (§1E.2) and GitHub-side metadata (§1E.3).
 
 ### Decisions locked 2026-05-13
 
 - **License**: Apache 2.0 (Copyright 2026 Chi Liu).
 - **Repo name**: `northwood-erp`.
 - **Default branch**: `main` (already).
-
-### 1E.1 README polish for public audience
-
-Current `README.md` is project-internal — assumes the reader is already inside the codebase. Public-facing rewrite needs:
-
-- **One-line elevator pitch** at the top: something like *"Event-driven microservices ERP architecture showcase — Spring Boot 4, 7 services with sagas + outbox/inbox, BFFs, two React/Vite demo SPAs."*
-- **Requirements** stated explicitly: JDK 21, Docker (Postgres 17 + Kafka 4.1.2 + Keycloak), Node 20+, Maven 3.9+, Windows / macOS / Linux supported.
-- **Screenshot or short GIF** of the Saga Console + Event Log + a curated demo flow. Visual cue carries more than prose for an architecture demo. (Could be in `docs/screenshots/` referenced relatively, or hosted on a GitHub Pages branch.)
-- **"Demo credentials" disclosure section** listing the four items from the secrets sweep (Keycloak BFF secret, 13 user passwords, 7 service DB passwords, demo BFF bypass token) with the env-var override for each. Single most important addition for any consumer who might try to deploy this for real.
-- **"Where to read next" pointers** to `CLAUDE.md`, `docs/demo-script.md`, `docs/architecture.md`, `docs/conventions.md` — the existing internal docs are useful to outside readers too, just need a roadmap to them.
-- Keep the existing repository-structure tree (`README.md:10-30`-ish); it's already concise and useful for orientation.
 
 ### 1E.2 GitHub Actions CI workflow
 
@@ -101,56 +90,37 @@ Pull forward only if a public-facing audience wants the orchestrated walkthrough
 
 ---
 
+## 1H. Error-response shape — deferred follow-up (§1H shipped 2026-05-20)
+
+§1H Backend error-response shape + `DomainException` scaffolding shipped 2026-05-20 along with three follow-up tightening passes (hoist `code()` to marker bases → collapse bases into `AbstractDomainException` → re-introduce `CODE` constants on each concrete class). The remaining item below is deferred until a real consumer needs it.
+
+### 1H.1 Build-time generated error-code catalog
+
+Generate a single JSON artifact (e.g. `shared/build/error-codes.json`) by reflecting over every concrete subclass of `shared.application.exception.AbstractDomainException` at build time and emitting `{ code, marker, declaringClass, paramKeys[] }` per entry. Surfaces:
+
+- **Typed TypeScript const for the SPAs** — `demo-web-ui/src/generated/errorCodes.ts` and `erp-web-ui/src/generated/errorCodes.ts`, generated alongside the JSON. Each `ErrorResponse.code` becomes a typed union; missing-bundle-key checks become compile-time.
+- **Documentation surface** — Markdown table emitted to `docs/error-codes.generated.md` listing every code with its declaring class, HTTP status, and param keys.
+
+The constraint that makes this worth automating: the catalog must never drift from the actual Java constants. A hand-maintained `error-codes.json` becomes a worse artifact than no artifact the first time it goes stale.
+
+Pull forward when:
+- The SPA needs **typed dispatch** on `code` (today both SPAs treat `code` as a localisation lookup key — plain string equality, no exhaustiveness check needed).
+- A second locale lands and **missing-bundle-key bugs** become a real failure mode (§3.5 SPA i18n).
+- A **third Java consumer** of the codes appears (BFF branching, an external integration, something not yet on the radar).
+
+Skip indefinitely if the SPA never moves past "look up the code in the bundle, render English fallback if missing." The per-class `CODE` constants on the Java side already give producers + Java consumers a typed import path; the catalog only earns its keep when the *SPA* needs structured access.
+
+---
+
 ## 2. Polish on shipped slices
 
 <!-- §2.0 fully shipped 2026-05-19 — see dev-done.md for the per-bucket entries. Convention captured in docs/conventions.md *Aggregate enumerated fields* + CLAUDE.md summary line. -->
-
-### 2.3 Soft-cancel WIP path
-
-**From:** §1.1 cancel-order slice 2026-05-06 (which shipped hard-cancel). Today a cancel arriving during `manufacturing_in_progress` immediately flips the WO to `cancelled` regardless of operation progress — WIP is written off. A more realistic ERP would let in-progress WOs finish then scrap the produced finished goods to a write-off bucket.
-
-Scope:
-- Decision: hard vs soft per WO based on a configurable threshold (e.g. operations-completed % > 50%)? Or a runtime flag on the cancel command?
-- New events: `manufacturing.WorkOrderScrappedAfterCancel` (post-completion variant), inventory's WIP write-off.
-- Finance hookup: when scrapped, post a write-off journal (Dr 5500 Write-off / Cr 1220 FG Inventory).
-
-Wire into demo only after a clear narrative emerges — the showcase value of soft-cancel over hard-cancel is small and adds significant complexity.
-
-### 2.4 CurrencyConverter depth
-
-Today the converter handles same-currency pass-through, inverse-rate fallback, and now `GET /api/exchange-rate?from=…&to=…&date=…` (shipped §3 Slice E 2026-05-06). Remaining depth:
-
-- **Scheduled rate importer** — today rates are inserted manually for a few currency pairs. `@Scheduled` task fetching from an external feed would let the demo simulate a daily rate close.
-- **Triangulation through a base currency** — out of scope today (schema doesn't model a base currency); listed in §4 below.
 
 ### 2.6 Smoke-test gaps that need a running stack
 
 Most of the original §2.6 list moved into §2.5.1's harness test targets (cancel-order, multi-receipt, deeper sub-assembly recursion, setPriority — see `dev-done.md` cross-references). Only items that genuinely need the running Kafka + Postgres + 7-service stack remain:
 
 - **Sales fulfilment saga cross-partition race fix** (2026-05-05) — concurrent execution against partitioned Kafka; not reproducible in a synchronous in-memory harness. Existing happy-path multi-line test passes the regression by virtue of `expectedWorkOrderCount` being set correctly, so the gap is "no targeted assertion that the race specifically can't recur." Capture for the next end-to-end run; would need a deliberately-induced race (e.g. duplicate WorkOrderCreated emission with a 100ms delay).
-
-### 2.8 Pricing split — Slice E (cross-currency BoM rollup)
-
-Slices A–D shipped 2026-05-07 / 08 (split events, finance standard-cost projection, manufacturing-owned materials-cost rollup, BoM-walk + recursive parent recompute). See `dev-done.md`.
-
-**Slice E (deferred — pull forward only if the cross-currency throw fires in the demo dataset)** — wire `CurrencyConverter` into the BoM rollup so multi-currency component prices roll up to a target currency.
-
-### 2.15 Re-enable Liquibase once the schema stabilises
-
-Liquibase was disabled across all 7 services on 2026-05-19 after a stale-volume boot failure (see `dev-done.md` for the consolidation slice). The 21 pre-existing changesets were folded into `db/northwood_erp.sql` and removed; `northwood.liquibase.enabled: false` is set in every service's `application.yml`; each master changelog is empty.
-
-The disable is deliberate showcase-time hygiene — every slice that ships a structural change rebakes the baseline, the dev workflow is `docker compose down -v`, and the changeset-on-stale-volume failure mode (the one that triggered this) is a recurring loss.
-
-Re-enable when:
-- Baseline `northwood_erp.sql` is no longer changing meaningfully (no more pending structural slices that would force a rebake).
-- Production-style deploys are on the horizon (`docker compose down -v` stops being acceptable; preserving data across schema changes becomes load-bearing).
-- A migration story for the existing demo dataset is in place (Liquibase changesets must work alongside whatever data-migration approach we adopt).
-
-Re-enable steps:
-1. Flip `northwood.liquibase.enabled: true` in every service's `application.yml` (sales, inventory, manufacturing, purchasing, product, finance, reporting).
-2. Update the comment block in each `db/changelog/db.changelog-master.yaml` (and remove the "currently empty" framing).
-3. Verify on a fresh-volume boot that the empty changelogs no-op cleanly against the baseline.
-4. Future schema changes follow the original workflow: drop a `.sql` file in the service's `changes/` dir + add an `include` to its master.
 
 ### 2.14 Kafka topic partitions — pre-declare with configurable counts
 
@@ -166,13 +136,22 @@ Audit items to clear before bumping any topic past 1 partition (full design in `
 4. **Re-test saga-prerequisite parking under realistic broker delay.** Multi-partition makes the "consequence event arrives before prerequisite saga row exists" path the common case, not the exception.
 5. **Document topic-pre-declaration in the new-service checklist.** After auto-create flips off, new services must declare their topics or first publish throws `UnknownTopicOrPartitionException`.
 
-### 2.13 Saga lease TTL + retry backoff → `@Value`-driven config
+### 2.15 Re-enable Liquibase once the schema stabilises
 
-Three saga managers (`JdbcSalesOrderFulfilmentSagaManager:63`, `JdbcMakeToOrderSagaManager:43`, `JdbcPurchaseToPaySagaManager:37`) hardcode `Duration.ofSeconds(30)` lease TTL + `Duration.ofSeconds(15)` retry backoff. Triple-duplication of operational policy values; identified during §2.0.j as a candidate for constant extraction but better addressed as `@Value` config (matches the existing pattern for `northwood.saga.poll-interval` and `northwood.finance.match.priceTolerancePercent`). Two new property keys (e.g. `northwood.saga.lease-ttl-seconds`, `northwood.saga.retry-backoff-seconds`) with the current values as defaults; document in each saga manager Javadoc.
+Liquibase was disabled across all 7 services on 2026-05-19 after a stale-volume boot failure (see `dev-done.md` for the consolidation slice). The 21 pre-existing changesets were folded into `db/northwood_erp.sql` and removed; `northwood.liquibase.enabled: false` is set in every service's `application.yml`; each master changelog is empty. On 2026-05-20 the baseline was split into schema (`db/northwood_erp.sql`) + seed (`db/northwood_erp_seed.sql`); together they are still the canonical source of truth for the showcase.
 
-### 2.12 Role meta-annotations for `warehouse_manager`, `auditor`, `sysadmin`
+The disable is deliberate showcase-time hygiene — every slice that ships a structural change rebakes the baseline, the dev workflow is `docker compose down -v`, and the changeset-on-stale-volume failure mode (the one that triggered this) is a recurring loss.
 
-The 2026-05-13 `@PreAuthorize` → `@RequireXxx` sweep created annotations under `shared/api/security/` for the 10 realm roles that gate actual endpoints today. The other 3 realm roles defined in `db/keycloak/northwood-realm.json` — `warehouse_manager` (force-release reservations, post stock adjustments), `auditor` (read-only everywhere), `sysadmin` (Keycloak realm admin only) — don't have annotations because no endpoint gates on them today. Scaffold matching `@RequireWarehouseManager` / `@RequireAuditor` / `@RequireSysadmin` when the first endpoint needs them.
+Re-enable when:
+- The baseline pair (`northwood_erp.sql` + `northwood_erp_seed.sql`) is no longer changing meaningfully (no more pending structural slices that would force a rebake).
+- Production-style deploys are on the horizon (`docker compose down -v` stops being acceptable; preserving data across schema changes becomes load-bearing).
+- A migration story for the existing demo dataset is in place (Liquibase changesets must work alongside whatever data-migration approach we adopt).
+
+Re-enable steps:
+1. Flip `northwood.liquibase.enabled: true` in every service's `application.yml` (sales, inventory, manufacturing, purchasing, product, finance, reporting).
+2. Update the comment block in each `db/changelog/db.changelog-master.yaml` (and remove the "currently empty" framing).
+3. Verify on a fresh-volume boot that the empty changelogs no-op cleanly against the baseline.
+4. Future schema changes follow the original workflow: drop a `.sql` file in the service's `changes/` dir + add an `include` to its master.
 
 ---
 
@@ -195,6 +174,54 @@ User direction 2026-05-04. Current journals fold tax-inclusive totals into COGS/
 ### 3.4 BOM authoring UI
 
 User direction 2026-05-06 — explicitly low-priority during the §1 Security + UI slice. **Read-only tree view shipped in both SPAs** — `erp-web-ui/src/routes/manufacturing/Boms.tsx` (Linda) and `demo-web-ui/src/routes/Boms.tsx` (Emma) since 2026-05-13. What's still deferred is the authoring half: create draft, add/remove lines, drag-reorder, run cycle detection on save, flip draft → active. Backend authoring path is fully wired (`BomService` + 4 REST endpoints on `BomController`); the demo can use REST + curl until the editor UI lands. Pull forward if a planning-tool angle becomes part of the showcase narrative.
+
+### 3.5 SPA internationalisation
+
+Adopt `react-i18next` (or equivalent ICU MessageFormat library) in both `demo-web-ui` and `erp-web-ui`. Extract every JSX text node, button label, placeholder, title, and aria-label to per-feature namespaced `en.json` bundles (~200+ strings per SPA). Add a top-bar locale switcher persisted to `localStorage`. Locale-aware number / date / currency rendering via `Intl.NumberFormat` + `Intl.DateTimeFormat` at every render site (today: `BigDecimal.toString()` + ISO dates).
+
+Wire SPA-side error display off the backend's `ErrorResponse { code, params }` (depends on §1H landing first): each `code` maps to a bundle key under `errors.*`, params substituted by the i18n library's interpolation.
+
+What stays English-keyed (not translated): `dbValue()` wire-format strings rendered as status badges — translate the *label* shown to the user, but the value comparison stays on the wire-format string. Same for currency codes (`AUD` / `NZD` / `USD` — ISO 4217, never localised).
+
+Pull forward when a second locale is actually planned for the demo. Doing it speculatively turns into dead-weight maintenance until a real second-locale beat exists.
+
+<!-- Section numbers below kept at their original §2.x values per the preamble's
+     "stable historical anchors" rule — dev-done.md + design-notes.md have ~13
+     cross-refs to §2.8 alone that would break under renumbering. -->
+
+### 2.3 Soft-cancel WIP path
+
+Deferred 2026-05-20 — demoted from §2 polish to §3 low-priority. Pull forward only if a soft-cancel narrative becomes part of the showcase.
+
+**From:** §1.1 cancel-order slice 2026-05-06 (which shipped hard-cancel). Today a cancel arriving during `manufacturing_in_progress` immediately flips the WO to `cancelled` regardless of operation progress — WIP is written off. A more realistic ERP would let in-progress WOs finish then scrap the produced finished goods to a write-off bucket.
+
+Scope:
+- Decision: hard vs soft per WO based on a configurable threshold (e.g. operations-completed % > 50%)? Or a runtime flag on the cancel command?
+- New events: `manufacturing.WorkOrderScrappedAfterCancel` (post-completion variant), inventory's WIP write-off.
+- Finance hookup: when scrapped, post a write-off journal (Dr 5500 Write-off / Cr 1220 FG Inventory).
+
+Wire into demo only after a clear narrative emerges — the showcase value of soft-cancel over hard-cancel is small and adds significant complexity.
+
+### 2.4 CurrencyConverter depth
+
+Deferred 2026-05-20 — demoted from §2 polish to §3 low-priority. Same lineage as §3.1 (multi-currency GL consolidation): the architecture is in place, single-currency end-to-end is the showcase. Pull forward only if the demo gains an FX-narrative beat.
+
+Today the converter handles same-currency pass-through, inverse-rate fallback, and now `GET /api/exchange-rate?from=…&to=…&date=…` (shipped §3 Slice E 2026-05-06). Remaining depth:
+
+- **Scheduled rate importer** — today rates are inserted manually for a few currency pairs. `@Scheduled` task fetching from an external feed would let the demo simulate a daily rate close.
+- **Triangulation through a base currency** — out of scope today (schema doesn't model a base currency); listed in §4 below.
+
+### 2.8 Pricing split — Slice E (cross-currency BoM rollup)
+
+Deferred 2026-05-20 — demoted from §2 polish to §3 low-priority. Slices A–D shipped 2026-05-07 / 08 (split events, finance standard-cost projection, manufacturing-owned materials-cost rollup, BoM-walk + recursive parent recompute — see `dev-done.md`). Slice E was always conditional on the cross-currency throw firing in the demo dataset.
+
+**Slice E** — wire `CurrencyConverter` into the BoM rollup so multi-currency component prices roll up to a target currency. Pull forward only if the cross-currency throw fires in the demo dataset.
+
+### 2.12 Role meta-annotations for `warehouse_manager`, `auditor`, `sysadmin`
+
+Deferred 2026-05-20 — demoted from §2 polish to §3 low-priority. Scaffolding-when-needed work; no current endpoint gates on these roles.
+
+The 2026-05-13 `@PreAuthorize` → `@RequireXxx` sweep created annotations under `shared/api/security/` for the 10 realm roles that gate actual endpoints today. The other 3 realm roles defined in `db/keycloak/northwood-realm.json` — `warehouse_manager` (force-release reservations, post stock adjustments), `auditor` (read-only everywhere), `sysadmin` (Keycloak realm admin only) — don't have annotations because no endpoint gates on them today. Scaffold matching `@RequireWarehouseManager` / `@RequireAuditor` / `@RequireSysadmin` when the first endpoint needs them.
 
 ---
 

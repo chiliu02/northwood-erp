@@ -3,6 +3,7 @@ package com.northwood.reporting.infrastructure.persistence;
 
 import com.northwood.finance.domain.events.SupplierPaymentMade;
 import com.northwood.reporting.application.inbox.PurchaseOrderTrackingProjection;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Timestamp;
@@ -90,7 +91,7 @@ public class JdbcPurchaseOrderTrackingProjection implements PurchaseOrderTrackin
             supplierId, supplierName,
             poStatus == null ? "sent" : poStatus,
             Date.valueOf(orderDate),
-            currencyCode == null ? "AUD" : currencyCode,
+            Currencies.orBase(currencyCode),
             ordered, ordered,
             sourceWorkOrderId,
             actorUserId

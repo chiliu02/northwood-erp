@@ -11,6 +11,7 @@ import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.events.RawMaterialsReserved;
 import com.northwood.manufacturing.domain.events.RawMaterialShortageDetected;
 import com.northwood.manufacturing.domain.events.RawMaterialShortageDetected.ShortageComponent;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.DomainEvent;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
@@ -130,12 +131,8 @@ public class RawMaterialsReservedHandler extends AbstractInboxHandler<RawMateria
                 continue;
             }
             WorkOrderMaterial m = bySku.get(c.workOrderMaterialId());
-            if (m == null) {
-                throw new IllegalStateException(
-                    "ReservedComponent work_order_material_id=" + c.workOrderMaterialId()
-                        + " not found on work_order " + payload.workOrderId()
-                );
-            }
+            Assert.stateNotNull(m, "ReservedComponent work_order_material_id=" + c.workOrderMaterialId()
+                        + " not found on work_order " + payload.workOrderId());
             shortage.add(new ShortageComponent(
                 m.id(), m.componentProductId(), m.componentSku(), m.componentName(), qty
             ));

@@ -1,12 +1,12 @@
 package com.northwood.manufacturing.domain;
 
-import java.util.Objects;
+import com.northwood.shared.domain.Assert;
 import java.util.UUID;
 
 public record BomLineId(UUID value) {
 
     public BomLineId {
-        Objects.requireNonNull(value, "value");
+        Assert.notNull(value, "value");
     }
 
     public static BomLineId of(UUID value) {

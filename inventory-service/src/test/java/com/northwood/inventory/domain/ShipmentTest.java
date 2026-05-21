@@ -40,14 +40,14 @@ class ShipmentTest {
             assertThatThrownBy(() -> Shipment.post(
                 "SH-001", null, CUSTOMER, "Cust", WH, MAIN,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_warehouse_id() {
             assertThatThrownBy(() -> Shipment.post(
                 "SH-001", SO, CUSTOMER, "Cust", null, MAIN,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void posted_status_directly() {

@@ -16,6 +16,7 @@ import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.events.GoodsReceived;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -82,7 +83,7 @@ class GoodsReceivedHandlerTest {
         verify(projection).applyGoodsReceived(poLine2, new BigDecimal("4"));
 
         ArgumentCaptor<List<JournalEntryService.LineCost>> captor = ArgumentCaptor.forClass(List.class);
-        verify(journals).postGoodsReceived(eq(GR), eq("GR-001"), captor.capture(), eq("AUD"), any());
+        verify(journals).postGoodsReceived(eq(GR), eq("GR-001"), captor.capture(), eq(Currencies.AUD), any());
         List<JournalEntryService.LineCost> costs = captor.getValue();
         assertThat(costs).hasSize(2);
         assertThat(costs.get(0).productId()).isEqualTo(prod1);

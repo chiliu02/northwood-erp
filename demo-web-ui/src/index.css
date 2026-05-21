@@ -1,7 +1,6 @@
 @import "tailwindcss";
 
-/* Tailwind v4: theme tokens are CSS custom properties under @theme.
-   These mirror demo-web-ui-design.md § Style guide. */
+/* Tailwind v4: theme tokens are CSS custom properties under @theme. */
 @theme {
   --font-sans: "Inter", "Geist Sans", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -55,7 +54,7 @@ body {
 }
 
 /* ----------------------------------------------------------------------------
- * Motion — Phase 6 of demo-web-ui-design.md § Style guide.
+ * Motion — audience-facing animations.
  *
  * Three audience-facing animations:
  *   1. `northwood-pulse`     — scale 1.0 → 1.08 → 1.0 over 600ms when a saga

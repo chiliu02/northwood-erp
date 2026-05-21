@@ -12,6 +12,7 @@ import com.northwood.sales.domain.SalesAggregateTypes;
 import com.northwood.sales.domain.events.SalesOrderShipped;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -45,7 +46,7 @@ class SalesOrderShippedHandlerTest {
         SalesOrderShipped payload = new SalesOrderShipped(
             eventId, SO, "SO-001", UUID.randomUUID(), "SHP-001",
             UUID.randomUUID(), "CUST-001", "Acme",
-            LocalDate.now(), "AUD",
+            LocalDate.now(), Currencies.AUD,
             List.of(new SalesOrderShipped.ShippedLine(
                 UUID.randomUUID(), 10, UUID.randomUUID(), "SKU", "Product",
                 new BigDecimal("2"), new BigDecimal("100.00"), new BigDecimal("0.10")

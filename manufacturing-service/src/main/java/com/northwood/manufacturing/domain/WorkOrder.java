@@ -6,12 +6,12 @@ import com.northwood.manufacturing.domain.events.WorkOrderCreated;
 import com.northwood.manufacturing.domain.events.WorkOrderCreated.MaterialLine;
 import com.northwood.manufacturing.domain.events.WorkOrderCreated.OperationLine;
 import com.northwood.manufacturing.domain.events.WorkOrderManufacturingCompleted;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -87,7 +87,7 @@ public final class WorkOrder {
             for (Status s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown work_order status: " + value);
+            throw Assert.unknownValue("work_order status", value);
         }
     }
 
@@ -119,7 +119,7 @@ public final class WorkOrder {
             for (MaterialStatus s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown work_order material_status: " + value);
+            throw Assert.unknownValue("work_order material_status", value);
         }
     }
 
@@ -151,7 +151,7 @@ public final class WorkOrder {
             for (MaterialLineStatus s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown work_order_material status: " + value);
+            throw Assert.unknownValue("work_order_material status", value);
         }
     }
 
@@ -181,7 +181,7 @@ public final class WorkOrder {
             for (OperationStatus s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown work_order_operation status: " + value);
+            throw Assert.unknownValue("work_order_operation status", value);
         }
     }
 
@@ -219,23 +219,19 @@ public final class WorkOrder {
         List<WorkOrderMaterial> materials,
         List<WorkOrderOperation> operations
     ) {
-        if (plannedQuantity == null || plannedQuantity.signum() <= 0) {
-            throw new IllegalArgumentException("plannedQuantity must be > 0");
-        }
-        if (operations == null || operations.isEmpty()) {
-            throw new IllegalArgumentException("at least one operation is required to release a work order");
-        }
+        Assert.argument(plannedQuantity != null && plannedQuantity.signum() > 0, "plannedQuantity must be > 0");
+        Assert.notEmpty(operations, "at least one operation is required to release a work order");
         WorkOrderId id = WorkOrderId.newId();
         WorkOrder wo = new WorkOrder(
             id,
-            Objects.requireNonNull(workOrderNumber),
+            Assert.notNull(workOrderNumber, "workOrderNumber"),
             salesOrderHeaderId,
             salesOrderLineId,
             parentWorkOrderId,
-            Objects.requireNonNull(finishedProductId),
-            Objects.requireNonNull(finishedProductSku),
-            Objects.requireNonNull(finishedProductName),
-            Objects.requireNonNull(bomHeaderId),
+            Assert.notNull(finishedProductId, "finishedProductId"),
+            Assert.notNull(finishedProductSku, "finishedProductSku"),
+            Assert.notNull(finishedProductName, "finishedProductName"),
+            Assert.notNull(bomHeaderId, "bomHeaderId"),
             plannedQuantity,
             Status.RELEASED,
             MaterialStatus.RESERVATION_PENDING,
@@ -344,11 +340,7 @@ public final class WorkOrder {
      * (when the last child finishes) will release the gate.
      */
     public void completeOperation(int sequence, BigDecimal actualMinutes, boolean noPendingChildren) {
-        if (status == Status.COMPLETED || status == Status.CLOSED || status == Status.CANCELLED) {
-            throw new IllegalStateException(
-                "Work order " + id.value() + " is " + status.dbValue() + "; cannot complete operations"
-            );
-        }
+        Assert.state(status != Status.COMPLETED && status != Status.CLOSED && status != Status.CANCELLED, "Work order " + id.value() + " is " + status.dbValue() + "; cannot complete operations");
         WorkOrderOperation target = operations.stream()
             .filter(o -> o.operationSequence() == sequence)
             .findFirst()
@@ -356,15 +348,11 @@ public final class WorkOrder {
                 "No operation with sequence " + sequence + " on work order " + id.value()
             ));
         for (WorkOrderOperation earlier : operations) {
-            if (earlier.operationSequence() < sequence
-                && earlier.status() != OperationStatus.COMPLETED
-                && earlier.status() != OperationStatus.SKIPPED) {
-                throw new IllegalStateException(
-                    "Cannot complete operation " + sequence
+            Assert.state(earlier.operationSequence() >= sequence
+                || earlier.status() == OperationStatus.COMPLETED
+                || earlier.status() == OperationStatus.SKIPPED, "Cannot complete operation " + sequence
                         + " before operation " + earlier.operationSequence()
-                        + " (status=" + earlier.status().dbValue() + ")"
-                );
-            }
+                        + " (status=" + earlier.status().dbValue() + ")");
         }
 
         target.markCompleted(actualMinutes);
@@ -456,15 +444,11 @@ public final class WorkOrder {
      * inbox event is the wire-level fact.
      */
     public void applyReservationOutcome(MaterialStatus newMaterialStatus) {
-        if (newMaterialStatus != MaterialStatus.RESERVED
-            && newMaterialStatus != MaterialStatus.PARTIALLY_RESERVED
-            && newMaterialStatus != MaterialStatus.SHORTAGE) {
-            throw new IllegalArgumentException(
-                "Unknown material status: " + newMaterialStatus
+        Assert.argument(newMaterialStatus == MaterialStatus.RESERVED
+            || newMaterialStatus == MaterialStatus.PARTIALLY_RESERVED
+            || newMaterialStatus == MaterialStatus.SHORTAGE, "Unknown material status: " + newMaterialStatus
                     + " (must be one of " + MaterialStatus.RESERVED + " / "
-                    + MaterialStatus.PARTIALLY_RESERVED + " / " + MaterialStatus.SHORTAGE + ")"
-            );
-        }
+                    + MaterialStatus.PARTIALLY_RESERVED + " / " + MaterialStatus.SHORTAGE + ")");
         if (status == Status.COMPLETED || status == Status.CLOSED || status == Status.CANCELLED) {
             return;
         }
@@ -503,11 +487,7 @@ public final class WorkOrder {
      * still fires when the whole WO is done.
      */
     public void skipOperation(int sequence, String reason, boolean noPendingChildren) {
-        if (status == Status.COMPLETED || status == Status.CLOSED || status == Status.CANCELLED) {
-            throw new IllegalStateException(
-                "Work order " + id.value() + " is " + status.dbValue() + "; cannot skip operations"
-            );
-        }
+        Assert.state(status != Status.COMPLETED && status != Status.CLOSED && status != Status.CANCELLED, "Work order " + id.value() + " is " + status.dbValue() + "; cannot skip operations");
         WorkOrderOperation target = operations.stream()
             .filter(o -> o.operationSequence() == sequence)
             .findFirst()
@@ -515,15 +495,11 @@ public final class WorkOrder {
                 "No operation with sequence " + sequence + " on work order " + id.value()
             ));
         for (WorkOrderOperation earlier : operations) {
-            if (earlier.operationSequence() < sequence
-                && earlier.status() != OperationStatus.COMPLETED
-                && earlier.status() != OperationStatus.SKIPPED) {
-                throw new IllegalStateException(
-                    "Cannot skip operation " + sequence
+            Assert.state(earlier.operationSequence() >= sequence
+                || earlier.status() == OperationStatus.COMPLETED
+                || earlier.status() == OperationStatus.SKIPPED, "Cannot skip operation " + sequence
                         + " before operation " + earlier.operationSequence()
-                        + " (status=" + earlier.status().dbValue() + ")"
-                );
-            }
+                        + " (status=" + earlier.status().dbValue() + ")");
         }
 
         target.markSkipped();

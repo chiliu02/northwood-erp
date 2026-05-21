@@ -1,6 +1,7 @@
 package com.northwood.reporting.infrastructure.persistence;
 
 import com.northwood.reporting.application.inbox.ProductCardProjection;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -30,7 +31,7 @@ public class JdbcProductCardProjection implements ProductCardProjection {
                 standard_cost = EXCLUDED.standard_cost,
                 currency_code = EXCLUDED.currency_code
             """,
-            productId, standardCost, currencyCode == null ? "AUD" : currencyCode
+            productId, standardCost, Currencies.orBase(currencyCode)
         );
         log.debug("reporting product_card updated: product={} cost={} {}", productId, standardCost, currencyCode);
     }

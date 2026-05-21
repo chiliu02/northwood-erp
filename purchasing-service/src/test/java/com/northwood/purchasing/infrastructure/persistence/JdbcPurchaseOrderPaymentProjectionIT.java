@@ -77,7 +77,11 @@ class JdbcPurchaseOrderPaymentProjectionIT {
      * above still connects as postgres but with the production search_path.
      */
     private static void loadBaseline() {
-        Path file = Path.of("..", "db", "northwood_erp.sql");
+        applySqlFile(Path.of("..", "db", "northwood_erp.sql"));
+        applySqlFile(Path.of("..", "db", "northwood_erp_seed.sql"));
+    }
+
+    private static void applySqlFile(Path file) {
         String sql;
         try {
             sql = Files.readString(file, StandardCharsets.UTF_8);
@@ -92,7 +96,7 @@ class JdbcPurchaseOrderPaymentProjectionIT {
              Statement s = c.createStatement()) {
             s.execute(sql);
         } catch (SQLException e) {
-            throw new IllegalStateException("Failed to apply baseline schema", e);
+            throw new IllegalStateException("Failed to apply " + file.getFileName(), e);
         }
     }
 

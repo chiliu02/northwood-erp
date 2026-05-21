@@ -14,6 +14,7 @@ import com.northwood.shared.application.outbox.OutboxRow;
 import com.northwood.testharness.inmemory.SynchronousBus;
 import com.northwood.testharness.kits.InventoryTestKit;
 import com.northwood.testharness.kits.SalesTestKit;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -48,13 +49,13 @@ class CancelCompensationTest {
 
         sales.customers.put("CUST-001", "Acme Corp", Customer.Status.ACTIVE);
         UUID productId = UUID.randomUUID();
-        sales.productCards.put(productId, new BigDecimal("100.00"), "AUD");
+        sales.productCards.put(productId, new BigDecimal("100.00"), Currencies.AUD);
         inventory.seedStock(productId, new BigDecimal("50"));
 
         // Step 1: place + cancel.
         UUID orderId = sales.placeOrder(new PlaceOrderCommand(
             "SO-CXL-001", "CUST-001",
-            LocalDate.of(2026, 5, 15), "AUD",
+            LocalDate.of(2026, 5, 15), Currencies.AUD,
             List.of(new OrderLine(productId, "WIDGET-001", "Widget",
                 new BigDecimal("3"), null, BigDecimal.ZERO))
         ));

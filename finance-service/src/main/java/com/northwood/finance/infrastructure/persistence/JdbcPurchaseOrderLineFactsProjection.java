@@ -1,6 +1,7 @@
 package com.northwood.finance.infrastructure.persistence;
 
 import com.northwood.finance.application.inbox.PurchaseOrderLineFactsProjection;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -53,7 +54,7 @@ public class JdbcPurchaseOrderLineFactsProjection implements PurchaseOrderLineFa
                 unit_price = EXCLUDED.unit_price
             """,
             purchaseOrderLineId, purchaseOrderHeaderId,
-            supplierId, supplierName, currencyCode == null ? "AUD" : currencyCode,
+            supplierId, supplierName, Currencies.orBase(currencyCode),
             productId, productSku, productName,
             orderedQuantity, unitPrice == null ? BigDecimal.ZERO : unitPrice
         );

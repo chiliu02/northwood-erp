@@ -442,6 +442,56 @@ All keep `api/` on application types only:
 2. **Domain-thrown, application-wrapped.** When an aggregate throws a domain exception (e.g. `SalesOrder.OrderNotCancellableException`, `PurchaseOrder.PoNotApprovableException`), the application service catches it inside the use-case method and rethrows an application-layer counterpart (`SalesOrderService.OrderNotCancellableException`, `PurchaseOrderService.PoNotApprovableException`) that preserves message + cause. Controllers catch only the application version.
 3. **Domain-port-thrown, application-wrapped.** Same pattern when a domain port (e.g. `CurrencyConverter.RateNotFoundException`) is invoked from the application service; the service catches + rethrows (`ExchangeRateService.RateNotFoundException`).
 
+### Every application-layer exception implements `DomainException`
+
+Each of the three flavours above produces an application-layer exception class that surfaces to the wire via the shared `DomainExceptionAdvice`. Concrete shape every such class follows:
+
+1. **Extend a marker base** — one of `shared.application.exception.NotFoundException` (HTTP 404), `ConflictException` (HTTP 409), or `BadRequestException` (HTTP 400). All three are thin subclasses of `AbstractDomainException`, which holds the wire-format code in a `private final String code` field and exposes it via a `final` `code()` accessor. Choose the marker by *what the caller can do about it* — retry with a different id (404), wait/fix state then retry (409), or fix the input (400).
+2. **Declare `public static final String CODE = "<wire-format-string>"` on the concrete class and pass it through `super(CODE, message[, cause])`.** The constant sits above instance fields per the class-member-ordering rule. The string literal appears exactly once, at the constant declaration — every other reference (the `super(...)` call, tests, cross-service Java consumers) flows through `XxxException.CODE`. This mirrors the existing `EVENT_TYPE` / `AGGREGATE_TYPE` / `XxxStatuses` pattern: "Find Usages on `CustomerNotFoundException.CODE`" answers who produces, who consumes, and what depends on the wire-format string. The cost is one extra line per class; the win is the same compile-time anchor every other cross-service wire-format string already has.
+3. **Promote constructor arguments to typed fields with accessors.** Every constructor parameter that informs the error (`customerCode`, `status`, `sku`, etc.) becomes a `private final` field with a same-named accessor method. Pre-existing English `super(...)` message stays for logs and stack traces — it's no longer the wire-format body.
+4. **Implement `Map<String, Object> params()`** as a literal `Map.of(...)` over the typed fields. The shared advice serialises this directly into the JSON response body's `params` field. Keys are stable identifiers; values must be JSON-serialisable (UUIDs, Strings, Numbers, enums-via-`dbValue()`).
+
+Skeleton:
+
+```java
+public static class CustomerNotFoundException extends NotFoundException {
+    public static final String CODE = "CUSTOMER_NOT_FOUND";
+    private final String customerCode;
+    public CustomerNotFoundException(String customerCode) {
+        super(CODE, "Customer not found: " + customerCode);
+        this.customerCode = customerCode;
+    }
+    public String customerCode() { return customerCode; }
+    @Override public Map<String, Object> params() { return Map.of("customerCode", customerCode); }
+}
+```
+
+When the application-layer exception wraps a domain or domain-port exception (flavours 2 + 3 above) and the wrapped cause doesn't yet expose typed accessors, fall back to `Map.of("detail", getMessage())` — the English message becomes the `detail` param. Flag the domain exception for typed-accessor follow-up rather than leaving the wrapper without `params()`.
+
+Tests that need to assert on the wire-format code reference `XxxException.CODE` (e.g. `assertThat(response.code()).isEqualTo(CustomerNotFoundException.CODE)`). Renaming a code becomes a one-place change at the constant declaration; the indirection through the constant is what gives Find Usages and grep-by-symbol the property they need — the same property `EVENT_TYPE` / `AGGREGATE_TYPE` already carry.
+
+## Error response shape
+
+Every 4xx HTTP response in the codebase shares one wire format:
+
+```json
+{ "code": "CUSTOMER_NOT_FOUND", "params": { "customerCode": "CUST-099" } }
+```
+
+Backed by `com.northwood.shared.api.exception.ErrorResponse` (a `record(String code, Map<String, Object> params)`) and emitted by `com.northwood.shared.api.exception.DomainExceptionAdvice` — a single `@RestControllerAdvice` registered into every service via `DomainExceptionAutoConfiguration`. SPAs look up the `code` in their message bundle and substitute `params`.
+
+Five `@ExceptionHandler` methods make up the advice:
+
+- `NotFoundException` / `ConflictException` / `BadRequestException` → status driven by which base class the exception extends; body is `new ErrorResponse(e.code(), e.params())`.
+- Untyped `IllegalArgumentException` → HTTP 400 with `code = "GENERIC_ARGUMENT_VIOLATION"`, `params = { detail: e.getMessage() }`. Fires when an `Assert.argument(...)` inside a service reaches the wire without being wrapped in a typed `BadRequestException`. The advice logs a WARN suggesting the promotion; clients still get a usable 400.
+- Untyped `IllegalStateException` → HTTP 409 with `code = "GENERIC_STATE_VIOLATION"`, same `detail` shape. Same logic for `Assert.state(...)`.
+
+Per-controller `@ExceptionHandler` methods are **not used** — adding one is a code-review fail. The shared advice picks up any `DomainException` subclass via Spring's nearest-supertype match; service-specific handling lives in the exception class (the `CODE` + typed `params()`), not in the controller.
+
+### No `Locale` / `ResourceBundle` / Spring `MessageSource` on the backend
+
+Translation of `code` → localised message lives in the SPA (see `docs/architecture.md` → *Localisation lives in the SPAs, not the backend*). The advice is locale-free; the same JSON ships regardless of who's calling. Backend log messages and `Assert.*` messages stay English, dev/operator-facing.
+
 ## Command return shape
 
 Command services return a `*View` directly — controller skips any refetch query:
@@ -532,6 +582,102 @@ When a method substitutes a sentinel / default value rather than throwing on a m
 The exemplar is `SalesOrder.recordShipped` ↔ `CustomerInvoiceService.createFromShippedOrder` (sales-service / finance-service): an unmatched `salesOrderLineId` substitutes `lineNumber=0`, `unitPrice=ZERO`, `taxRate=ZERO` (saga must keep flowing on a fait-accompli shipment); the consumer detects `lineNumber == 0` as the sentinel and emits one DEBUG log per invocation when the count is non-zero. The other five compliant sites are listed in the `design-notes.md` table; refer there rather than duplicating here so the index stays single-sourced.
 
 The rule applies to fallbacks anywhere in the codebase. Code review should treat an undocumented `.orElse(SENTINEL)` / null-coalescing-to-default — or one missing from the `design-notes.md` index — as a fail.
+
+## Argument and state checks via `Assert`
+
+Argument validation and receiver-state invariants go through `com.northwood.shared.domain.Assert` — never inline `throw new IllegalArgumentException` / `throw new IllegalStateException` and never `Objects.requireNonNull`. The class lives in `shared-kernel` (deliberately Spring-free) so every layer — domain, application, infrastructure — can call it without violating the hexagonal import rules.
+
+### Two parallel families
+
+`Assert` is built around two axes — argument vs. state — with a one-for-one mirror so the caller never has to spell out a redundant negation:
+
+| Argument check (throws `IllegalArgumentException`) | State-check mirror (throws `IllegalStateException`) |
+|---|---|
+| `Assert.notNull(x, msg)` → `T` | `Assert.stateNotNull(x, msg)` → `T` |
+| `Assert.notBlank(str, msg)` | `Assert.stateNotBlank(str, msg)` |
+| `Assert.notEmpty(coll, msg)` (and `Map` overload) | `Assert.stateNotEmpty(coll, msg)` (and `Map` overload) |
+| `Assert.argument(cond, msg)` | `Assert.state(cond, msg)` |
+
+Plus the standalone `throw Assert.unknownValue("field", value)` returning an `IllegalArgumentException` for enum-parser fall-throughs with the literal "Unknown X: Y" message shape.
+
+There is **no** `isFalse` / `stateFalse` / `isTrue`. The earlier API carried both, then evolved as the migration revealed that forbidden-condition mirrors invited the `stateFalse(X != Y, ...)` anti-pattern (a structural double-negative). The current API forces every caller to write the positive condition. See *Prefer the positive form* below for the patterns that follow from this.
+
+### Method mapping (migrating legacy `throw` / `requireNonNull`)
+
+| Original idiom | Replacement |
+|---|---|
+| `Objects.requireNonNull(x, "x")` | `Assert.notNull(x, "x")` |
+| `this.field = Objects.requireNonNull(value, "value")` | `this.field = Assert.notNull(value, "value")` (returns `T`) |
+| `if (x == null) throw new IllegalArgumentException("msg")` | `Assert.notNull(x, "msg")` |
+| `if (str == null \|\| str.isBlank()) throw new IllegalArgumentException("msg")` | `Assert.notBlank(str, "msg")` |
+| `if (coll == null \|\| coll.isEmpty()) throw new IllegalArgumentException("msg")` | `Assert.notEmpty(coll, "msg")` |
+| `if (!cond) throw new IllegalArgumentException("msg")` | `Assert.argument(cond, "msg")` |
+| `if (cond) throw new IllegalArgumentException("msg")` | `Assert.argument(!cond, "msg")` *— invert the condition rather than fighting it; see below* |
+| `if (!cond) throw new IllegalStateException("msg")` | `Assert.state(cond, "msg")` |
+| `if (cond) throw new IllegalStateException("msg")` | `Assert.state(!cond, "msg")` *— see below* |
+| End-of-method / `default ->` `throw new IllegalArgumentException("Unknown X: " + value)` | `throw Assert.unknownValue("X", value)` |
+
+### Exception-type choice
+
+`Assert.notNull` throws `IllegalArgumentException`, **not** `NullPointerException`. The codebase-wide tradeoff: one Assert call site, one exception type — `IllegalArgumentException` for argument violations and `IllegalStateException` for receiver-state violations. The JDK's `Objects.requireNonNull` throws NPE; `Assert.notNull` does not. Tests that previously asserted `NullPointerException.class` for null-input checks now assert `IllegalArgumentException.class`.
+
+### Prefer the positive form
+
+When a `forbidden_cond` check fails, migrate by inverting the condition into a `required_cond` so the call reads as "what must be true." The migration is always possible — the question is whether the inversion looks cleaner than the original:
+
+```java
+// Wrong — `state` + `!=` reads OK when there's no positive predicate, but
+// here `status == ACTIVE` IS the positive predicate. Use it.
+Assert.state(status != Status.ACTIVE, "Cannot rename a non-active customer");
+//             ^^^^^^^^^^^^^^^^^^^^^^ negative form
+
+// Right
+Assert.state(status == Status.ACTIVE, "Cannot rename a non-active customer");
+```
+
+Apply De Morgan when the forbidden form is a compound:
+
+```java
+// "fail if status is COMPLETED or SKIPPED" → "require status to be one of the in-flight states"
+Assert.state(status != Status.COMPLETED && status != Status.SKIPPED, "...");      // mechanical
+Assert.state(status == Status.PLANNED  || status == Status.IN_PROGRESS, "...");   // preferred
+```
+
+Some checks have no positive opposite — `state(status != Status.DISCONTINUED, ...)` for the seven Product-mutator paths, `state(rows > 0, ...)` for "row found" checks. The `!=` / `>` / `<` here is the assertion itself, not a fight against double negation; leave it in that form.
+
+Same rule applies to `==null` checks: `argument(x != null, "x required")` is a worse spelling of `notNull(x, "x required")` — collapse to the helper.
+
+### What stays as inline throw
+
+`Assert` is for **preconditions and invariants only**. Keep inline:
+
+- **Exception translation.** `catch (JacksonException e) { throw new IllegalStateException("Cannot serialise event " + event.eventType(), e); }` — chains a cause; `Assert` doesn't take a cause argument by design.
+- **Context-specific switch defaults** where the message isn't the literal "Unknown X: Y" shape. `Assert.unknownValue("status", value)` produces exactly `"Unknown status: <value>"`; if the original message carries different context (e.g. `"Cannot resolve BFF target: " + name`), keep it inline.
+- **Domain exceptions** with their own type (e.g. `PoNotApprovableException`, `BomCycleException`). These are domain-meaningful errors, not generic argument-contract violations.
+
+### What goes in the message
+
+The Javadoc and the variable name. Don't bake call-stack context into the message — the stack trace already carries that. The message is a contract sentence: *"customerCode required"*, *"unitPrice must be > 0"*, *"Cannot change sales price on a discontinued product"*. Same shape the inline throws already use.
+
+### Why `unknownValue` returns rather than throws
+
+`Assert.unknownValue("status", value)` **returns** an `IllegalArgumentException` rather than throwing it. Callers write `throw Assert.unknownValue("status", value);`. This keeps the `throw` keyword visible at the call site so the compiler's control-flow analysis (unreachable-code, definite-assignment, missing-return) sees it as a terminating statement. A method that helpfully threw the exception itself would be flagged by the compiler as "missing return" at the fall-through end of a `fromDb` parser.
+
+### Why `unknownValue` returns rather than throws
+
+`Assert.unknownValue("status", value)` **returns** an `IllegalArgumentException` rather than throwing it. Callers write `throw Assert.unknownValue("status", value);`. This keeps the `throw` keyword visible at the call site so the compiler's control-flow analysis (unreachable-code, definite-assignment, missing-return) sees it as a terminating statement. A method that helpfully threw the exception itself would be flagged by the compiler as "missing return" at the fall-through end of a `fromDb` parser.
+
+### What stays as inline throw
+
+`Assert` is for **preconditions and invariants only**. Keep inline:
+
+- **Exception translation.** `catch (JacksonException e) { throw new IllegalStateException("Cannot serialise event " + event.eventType(), e); }` — chains a cause; `Assert` doesn't take a cause argument by design.
+- **Context-specific switch defaults** where the message isn't the literal "Unknown X: Y" shape. `Assert.unknownValue("status", value)` produces exactly `"Unknown status: <value>"`; if the original message carries different context (e.g. `"Cannot resolve BFF target: " + name`), keep it inline.
+- **Domain exceptions** with their own type (e.g. `PoNotApprovableException`, `BomCycleException`). These are domain-meaningful errors, not generic argument-contract violations.
+
+### What goes in the message
+
+The Javadoc and the variable name. Don't bake call-stack context into the message — the stack trace already carries that. The message is a contract sentence: *"customerCode required"*, *"unitPrice must be > 0"*, *"Cannot change sales price on a discontinued product"*. Same shape the inline throws already use.
 
 ## Single return path; make every branch exhaustive
 

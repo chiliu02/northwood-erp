@@ -26,6 +26,7 @@ import com.northwood.testharness.inmemory.SynchronousBus;
 import com.northwood.testharness.kits.FinanceTestKit;
 import com.northwood.testharness.kits.InventoryTestKit;
 import com.northwood.testharness.kits.SalesTestKit;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -40,8 +41,7 @@ import tools.jackson.databind.ObjectMapper;
  * goods_shipped → invoice_created → completed}. With enough on-hand stock
  * to cover the order, {@code applyStockReserved} shortcuts directly from
  * {@code stock_reservation_requested} to {@code ready_to_ship}, skipping
- * the manufacturing leg entirely (see Side rail 2 in
- * {@code docs/SalesOrderFulfilmentSaga.md}).
+ * the manufacturing leg entirely.
  *
  * <p>Shipment + customer payment are driven through the real
  * {@code ShipmentService.post} and {@code PaymentService.recordCustomerPayment}
@@ -64,14 +64,14 @@ class OrderToCashHappyPathTest {
         // Seed: customer + product + stock for direct-ship.
         sales.customers.put("CUST-001", "Acme Corp", Customer.Status.ACTIVE);
         UUID productId = UUID.randomUUID();
-        sales.productCards.put(productId, new BigDecimal("100.00"), "AUD");
+        sales.productCards.put(productId, new BigDecimal("100.00"), Currencies.AUD);
         inventory.seedStock(productId, new BigDecimal("50"));
 
         // Step 1: place the order. Saga starts.
         UUID orderId = sales.placeOrder(new PlaceOrderCommand(
             "SO-9001", "CUST-001",
             LocalDate.of(2026, 5, 20),
-            "AUD",
+            Currencies.AUD,
             List.of(new OrderLine(productId, "FG-001", "Finished Good 1",
                 new BigDecimal("3"), null, BigDecimal.ZERO))
         ));

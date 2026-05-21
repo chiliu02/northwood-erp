@@ -1,0 +1,34 @@
+# Northwood ERP — demo-seed override.
+#
+# Layered on top of docker-compose.yml to additionally mount the seed file
+# into Postgres's init-script directory. The base compose file mounts only
+# the schema baseline (db/northwood_erp.sql); this override adds the demo
+# fixtures (db/northwood_erp_seed.sql) — products, BOMs, customers, suppliers,
+# GL chart, etc. — alongside it so a fresh volume comes up populated.
+#
+# Usage (from repo root):
+#
+#   # Schema only — empty database after first boot
+#   docker compose down -v
+#   docker compose up -d
+#
+#   # Schema + seed — same baseline plus showcase fixtures
+#   docker compose down -v
+#   docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d
+#
+# Why an override file: Postgres runs files in /docker-entrypoint-initdb.d/
+# exactly once, on the first boot of a fresh data volume. The seed has to be
+# present at the time `up` is called — there is no "load the seed later"
+# without re-creating the volume or running psql manually. Using an override
+# (rather than a profile) keeps the schema-only path the no-flag default and
+# the seeded path an explicit, copy-pasteable command.
+#
+# Compose merges this file's volumes list into the base file's via list-append
+# semantics, so the schema mount (01-northwood_erp.sql) stays in place and
+# the seed mount (02-northwood_erp_seed.sql) is added after it — alphabetical
+# order in the init directory drives execution order.
+
+services:
+  postgres:
+    volumes:
+      - ./db/northwood_erp_seed.sql:/docker-entrypoint-initdb.d/02-northwood_erp_seed.sql:ro

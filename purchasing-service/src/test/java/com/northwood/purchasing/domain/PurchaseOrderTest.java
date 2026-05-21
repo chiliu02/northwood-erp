@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.northwood.purchasing.domain.events.PurchaseOrderApproved;
 import com.northwood.purchasing.domain.events.PurchaseOrderCreated;
+import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
 import java.util.List;
@@ -37,27 +38,27 @@ class PurchaseOrderTest {
     class FromRequisition_AutoApprove {
         @Test void rejects_empty_lines() {
             assertThatThrownBy(() -> PurchaseOrder.fromRequisition(
-                "PO-001", supplier(), PR_HEADER, null, "AUD", List.of(), true
+                "PO-001", supplier(), PR_HEADER, null, Currencies.AUD, List.of(), true
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_supplier() {
             assertThatThrownBy(() -> PurchaseOrder.fromRequisition(
-                "PO-001", null, PR_HEADER, null, "AUD",
+                "PO-001", null, PR_HEADER, null, Currencies.AUD,
                 List.of(line(BigDecimal.TEN, new BigDecimal("80"))), true
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_purchase_requisition_header_id() {
             assertThatThrownBy(() -> PurchaseOrder.fromRequisition(
-                "PO-001", supplier(), null, null, "AUD",
+                "PO-001", supplier(), null, null, Currencies.AUD,
                 List.of(line(BigDecimal.TEN, new BigDecimal("80"))), true
-            )).isInstanceOf(NullPointerException.class);
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void initial_status_is_sent() {
             PurchaseOrder po = PurchaseOrder.fromRequisition(
-                "PO-001", supplier(), PR_HEADER, null, "AUD",
+                "PO-001", supplier(), PR_HEADER, null, Currencies.AUD,
                 List.of(line(BigDecimal.TEN, new BigDecimal("80"))), true
             );
             assertThat(po.status()).isEqualTo(PurchaseOrder.Status.SENT);
@@ -65,7 +66,7 @@ class PurchaseOrderTest {
 
         @Test void totals_summed_from_line_totals() {
             PurchaseOrder po = PurchaseOrder.fromRequisition(
-                "PO-001", supplier(), PR_HEADER, null, "AUD",
+                "PO-001", supplier(), PR_HEADER, null, Currencies.AUD,
                 List.of(
                     line(new BigDecimal("5"), new BigDecimal("80")),    // 400
                     line(new BigDecimal("10"), new BigDecimal("25"))    // 250
@@ -77,7 +78,7 @@ class PurchaseOrderTest {
 
         @Test void emits_both_created_and_approved_events() {
             PurchaseOrder po = PurchaseOrder.fromRequisition(
-                "PO-001", supplier(), PR_HEADER, null, "AUD",
+                "PO-001", supplier(), PR_HEADER, null, Currencies.AUD,
                 List.of(line(new BigDecimal("5"), new BigDecimal("80"))), true
             );
             List<DomainEvent> events = po.pullPendingEvents();
@@ -88,7 +89,7 @@ class PurchaseOrderTest {
 
         @Test void created_event_carries_status_sent() {
             PurchaseOrder po = PurchaseOrder.fromRequisition(
-                "PO-001", supplier(), PR_HEADER, null, "AUD",
+                "PO-001", supplier(), PR_HEADER, null, Currencies.AUD,
                 List.of(line(new BigDecimal("5"), new BigDecimal("80"))), true
             );
             PurchaseOrderCreated e = (PurchaseOrderCreated) po.pullPendingEvents().get(0);
@@ -98,7 +99,7 @@ class PurchaseOrderTest {
 
         @Test void approved_event_carries_system_approver() {
             PurchaseOrder po = PurchaseOrder.fromRequisition(
-                "PO-001", supplier(), PR_HEADER, null, "AUD",
+                "PO-001", supplier(), PR_HEADER, null, Currencies.AUD,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN)), true
             );
             PurchaseOrderApproved e = (PurchaseOrderApproved) po.pullPendingEvents().get(1);
@@ -108,7 +109,7 @@ class PurchaseOrderTest {
         @Test void carries_supplier_identity_into_event() {
             Supplier s = supplier();
             PurchaseOrder po = PurchaseOrder.fromRequisition(
-                "PO-001", s, PR_HEADER, null, "AUD",
+                "PO-001", s, PR_HEADER, null, Currencies.AUD,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN)), true
             );
             PurchaseOrderCreated e = (PurchaseOrderCreated) po.pullPendingEvents().get(0);
@@ -122,7 +123,7 @@ class PurchaseOrderTest {
                 "PO-001", supplier(), PR_HEADER, null, null,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN)), true
             );
-            assertThat(po.currencyCode()).isEqualTo("AUD");
+            assertThat(po.currencyCode()).isEqualTo(Currencies.AUD);
         }
     }
 
@@ -130,7 +131,7 @@ class PurchaseOrderTest {
     class FromRequisition_Draft {
         @Test void initial_status_is_draft() {
             PurchaseOrder po = PurchaseOrder.fromRequisition(
-                "PO-001", supplier(), PR_HEADER, null, "AUD",
+                "PO-001", supplier(), PR_HEADER, null, Currencies.AUD,
                 List.of(line(BigDecimal.TEN, new BigDecimal("80"))), false
             );
             assertThat(po.status()).isEqualTo(PurchaseOrder.Status.DRAFT);
@@ -138,7 +139,7 @@ class PurchaseOrderTest {
 
         @Test void emits_only_created_event_with_status_draft() {
             PurchaseOrder po = PurchaseOrder.fromRequisition(
-                "PO-001", supplier(), PR_HEADER, null, "AUD",
+                "PO-001", supplier(), PR_HEADER, null, Currencies.AUD,
                 List.of(line(BigDecimal.TEN, new BigDecimal("80"))), false
             );
             List<DomainEvent> events = po.pullPendingEvents();
@@ -152,7 +153,7 @@ class PurchaseOrderTest {
     class Approve {
         @Test void flips_draft_to_sent_and_emits_approved() {
             PurchaseOrder po = PurchaseOrder.fromRequisition(
-                "PO-001", supplier(), PR_HEADER, null, "AUD",
+                "PO-001", supplier(), PR_HEADER, null, Currencies.AUD,
                 List.of(line(BigDecimal.TEN, new BigDecimal("80"))), false
             );
             po.pullPendingEvents();  // drain the Created event
@@ -169,7 +170,7 @@ class PurchaseOrderTest {
 
         @Test void rejected_when_already_sent() {
             PurchaseOrder po = PurchaseOrder.fromRequisition(
-                "PO-001", supplier(), PR_HEADER, null, "AUD",
+                "PO-001", supplier(), PR_HEADER, null, Currencies.AUD,
                 List.of(line(BigDecimal.TEN, new BigDecimal("80"))), true
             );
             assertThatThrownBy(() -> po.approve("alice", "double-approve"))

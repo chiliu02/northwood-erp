@@ -7,6 +7,8 @@ import com.northwood.finance.domain.JournalEntryId;
 import com.northwood.finance.domain.JournalEntryLine;
 import com.northwood.finance.domain.JournalEntryRepository;
 import com.northwood.product.domain.ValuationClass;
+import com.northwood.shared.domain.Assert;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -407,11 +409,8 @@ public class JournalEntryService {
         JournalEntry original = journalEntries.findById(originalId)
             .orElseThrow(() -> new IllegalArgumentException(
                 "No journal entry with id=" + originalJournalEntryId));
-        if (original.status() != JournalEntry.Status.POSTED) {
-            throw new IllegalStateException(
-                "Cannot reverse journal " + originalJournalEntryId
+        Assert.state(original.status() == JournalEntry.Status.POSTED, "Cannot reverse journal " + originalJournalEntryId
                     + " in status=" + original.status().dbValue() + " (must be posted)");
-        }
         JournalEntry reversal = JournalEntry.reverseOf(original, reason, postingDate);
         journalEntries.save(reversal);
         journalEntries.markReversed(originalId);
@@ -455,7 +454,7 @@ public class JournalEntryService {
             sourceDocumentType,
             sourceDocumentId,
             description,
-            currencyCode == null ? "AUD" : currencyCode,
+            Currencies.orBase(currencyCode),
             BigDecimal.ONE,
             lines
         );
@@ -501,7 +500,7 @@ public class JournalEntryService {
         JournalEntry entry = JournalEntry.post(
             journalNumber, postingDate,
             sourceModule, sourceDocumentType, sourceDocumentId,
-            description, currencyCode == null ? "AUD" : currencyCode, BigDecimal.ONE,
+            description, Currencies.orBase(currencyCode), BigDecimal.ONE,
             lines
         );
         journalEntries.save(entry);
@@ -547,7 +546,7 @@ public class JournalEntryService {
         JournalEntry entry = JournalEntry.post(
             journalNumber, postingDate,
             sourceModule, sourceDocumentType, sourceDocumentId,
-            description, currencyCode == null ? "AUD" : currencyCode, BigDecimal.ONE,
+            description, Currencies.orBase(currencyCode), BigDecimal.ONE,
             lines
         );
         journalEntries.save(entry);

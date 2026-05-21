@@ -82,7 +82,7 @@ Event-driven systems trade direct call graphs for decoupled producers and consum
 |---|---|
 | `<Event>.EVENT_TYPE` constants for every event type string | *Events jars* section below |
 | `<AggregateRoot>.AGGREGATE_TYPE` (or `<Event>.AGGREGATE_TYPE` for cross-service / no-aggregate cases) for every outbox `aggregate_type` string | `docs/sagas.md` § *Saga manager class shape* |
-| Distinct Java class per wire-format suffix, even when the wire format would collide (see `InventorySalesOrderCancellationApplied` / `ManufacturingSalesOrderCancellationApplied`) | Javadoc on each affected event class + the note in `docs/event-flow.html` |
+| Distinct Java class per wire-format suffix, even when the wire format would collide (see `InventorySalesOrderCancellationApplied` / `ManufacturingSalesOrderCancellationApplied`) | Javadoc on each affected event class |
 | Each inbox handler passes `<Event>.class` + `<Event>.EVENT_TYPE` to its `AbstractInboxHandler` constructor — registration is a structural Java reference | *Events jars* section below |
 | Plain Java imports per type (no wildcards, no FQN inline) so the import block stays a faithful TOC | This section + IDE convention |
 
@@ -218,3 +218,18 @@ The `shared` module provides reusable pieces. The module is internally split —
 ## Spring Data JDBC, not JPA
 
 JDBC is chosen so aggregate boundaries are explicit — loading a Product loads only the Product, with no implicit lazy traversals into other contexts. The infrastructure layer manages SQL directly via `JdbcTemplate`, which lines up cleanly with `version` columns for optimistic concurrency.
+
+## Localisation lives in the SPAs, not the backend
+
+The codebase commits to *codes + params at the API boundary, translation SPA-side*. The backend stays locale-free: REST responses are the same byte-for-byte regardless of who's calling. Two consequences worth naming explicitly:
+
+- **No `java.util.ResourceBundle`, no Spring `MessageSource`, no `LocaleResolver` / `Accept-Language` handling anywhere in `shared` or any service.** Error responses are typed `ErrorResponse { code, params }` records (see `docs/dev-todo.md` §1H for the rollout); status enums emit their `dbValue()` wire format; logs and `Assert.*` messages stay English (operator-facing, not user-facing).
+- **SPAs own the entire translation surface.** Both `demo-web-ui` and `erp-web-ui` will adopt `react-i18next`-style message bundles (`docs/dev-todo.md` §3.5) keyed by feature namespace. The bundle holds the localised text for each backend `code` plus every JSX string.
+
+Why this split rather than backend-side localisation:
+
+1. **The translatable content lives where the rendering happens.** Almost every user-facing string is JSX text in the SPA. The backend's only user-facing strings are exception messages reaching the wire; once those become codes, the backend ships zero localised content. A `ResourceBundle` per service would duplicate infrastructure the SPA already needs.
+2. **Locale-free API responses keep contracts stable.** Two SPAs in different locales get identical JSON. No `Accept-Language` plumbing in controllers, no locale-dependent error message strings appearing in audit logs, no test-fixture drift between locales. The `ErrorResponse.code` is a wire-format constant in the same family as `Currencies.AUD` and `WorkOrderStatuses.RELEASED` — stable across deployments and consumers.
+3. **The hexagonal layering stays simple.** No `Locale` parameter threading from `api/` down to `application/` services to look up the right message. The application layer would have no reason to know about locale; pulling that in just for error formatting would be a wrong-kind-of-coupling.
+
+`ResourceBundle` / `MessageSource` would only become the right answer for surfaces the backend renders itself: PDF invoices, email notifications, log streams piped to a localised ops console. The codebase has none of these today; if any are added later, that surface gets its own localisation decision — but the API contract stays codes + params.

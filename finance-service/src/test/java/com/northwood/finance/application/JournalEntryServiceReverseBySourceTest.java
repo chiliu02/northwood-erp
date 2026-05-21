@@ -13,6 +13,7 @@ import com.northwood.finance.domain.JournalEntryId;
 import com.northwood.finance.domain.JournalEntryLine;
 import com.northwood.finance.domain.JournalEntryRepository;
 import com.northwood.finance.application.GlAccountLookup;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -51,7 +52,7 @@ class JournalEntryServiceReverseBySourceTest {
             sourceId,
             "test",
             JournalEntry.Status.POSTED,
-            "AUD",
+            Currencies.AUD,
             BigDecimal.ONE,
             java.time.Instant.now(),
             List.of(

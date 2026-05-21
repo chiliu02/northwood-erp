@@ -16,6 +16,7 @@ import com.northwood.finance.domain.events.CustomerPaymentReceived;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
@@ -48,7 +49,7 @@ class CustomerPaymentReceivedHandlerTest {
         CustomerPaymentReceived payload = new CustomerPaymentReceived(
             eventId, UUID.randomUUID(), "PMT-001",
             UUID.randomUUID(), SO, UUID.randomUUID(), "Acme",
-            "EFT", "AUD",
+            "EFT", Currencies.AUD,
             new BigDecimal("1000.00"), new BigDecimal("1000.00"),
             invoiceStatusAfter, Instant.now()
         );

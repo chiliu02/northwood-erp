@@ -5,6 +5,7 @@ import com.northwood.sales.domain.events.CustomerContactChanged;
 import com.northwood.sales.domain.events.CustomerDeactivated;
 import com.northwood.sales.domain.events.CustomerNameChanged;
 import com.northwood.sales.domain.events.CustomerRegistered;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.DomainEvent;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -56,7 +57,7 @@ public class Customer {
             for (Status s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown customer status: " + value);
+            throw Assert.unknownValue("customer status", value);
         }
     }
 
@@ -102,10 +103,8 @@ public class Customer {
         String email, String phone,
         String billingAddress, String shippingAddress
     ) {
-        Objects.requireNonNull(customerCode, "customerCode");
-        if (customerCode.isBlank()) throw new IllegalArgumentException("customerCode required");
-        Objects.requireNonNull(name, "name");
-        if (name.isBlank()) throw new IllegalArgumentException("name required");
+        Assert.notBlank(customerCode, "customerCode required");
+        Assert.notBlank(name, "name required");
 
         CustomerId id = CustomerId.newId();
         Customer c = new Customer(
@@ -142,11 +141,8 @@ public class Customer {
      * cannot be renamed (operationally suspect).
      */
     public void changeName(String newName) {
-        Objects.requireNonNull(newName, "newName");
-        if (newName.isBlank()) throw new IllegalArgumentException("newName required");
-        if (status != Status.ACTIVE) {
-            throw new IllegalStateException("Cannot rename a non-active customer (status=" + status + ")");
-        }
+        Assert.notBlank(newName, "newName required");
+        Assert.state(status == Status.ACTIVE, "Cannot rename a non-active customer (status=" + status + ")");
         if (newName.equals(this.name)) return;
         String oldName = this.name;
         this.name = newName;
@@ -157,9 +153,7 @@ public class Customer {
 
     /** Update email + phone. No-op suppression on identical values. */
     public void changeContact(String email, String phone) {
-        if (status != Status.ACTIVE) {
-            throw new IllegalStateException("Cannot change contact on a non-active customer (status=" + status + ")");
-        }
+        Assert.state(status == Status.ACTIVE, "Cannot change contact on a non-active customer (status=" + status + ")");
         if (Objects.equals(this.email, email) && Objects.equals(this.phone, phone)) return;
         this.email = email;
         this.phone = phone;
@@ -169,9 +163,7 @@ public class Customer {
     }
 
     public void changeBillingAddress(String newAddress) {
-        if (status != Status.ACTIVE) {
-            throw new IllegalStateException("Cannot change billing address on a non-active customer (status=" + status + ")");
-        }
+        Assert.state(status == Status.ACTIVE, "Cannot change billing address on a non-active customer (status=" + status + ")");
         if (Objects.equals(this.billingAddress, newAddress)) return;
         String old = this.billingAddress;
         this.billingAddress = newAddress;
@@ -181,9 +173,7 @@ public class Customer {
     }
 
     public void changeShippingAddress(String newAddress) {
-        if (status != Status.ACTIVE) {
-            throw new IllegalStateException("Cannot change shipping address on a non-active customer (status=" + status + ")");
-        }
+        Assert.state(status == Status.ACTIVE, "Cannot change shipping address on a non-active customer (status=" + status + ")");
         if (Objects.equals(this.shippingAddress, newAddress)) return;
         String old = this.shippingAddress;
         this.shippingAddress = newAddress;
@@ -195,9 +185,7 @@ public class Customer {
     /** Soft-delete. Idempotent — re-deactivating an inactive customer is a no-op. */
     public void deactivate(String reason) {
         if (status == Status.INACTIVE) return;
-        if (status == Status.BLOCKED) {
-            throw new IllegalStateException("Blocked customers cannot be deactivated; use the unblock+deactivate path");
-        }
+        Assert.state(status != Status.BLOCKED, "Blocked customers cannot be deactivated; use the unblock+deactivate path");
         this.status = Status.INACTIVE;
         pendingEvents.add(new CustomerDeactivated(
             UUID.randomUUID(), id.value(), reason, Instant.now()

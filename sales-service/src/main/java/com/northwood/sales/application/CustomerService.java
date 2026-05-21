@@ -4,7 +4,10 @@ import com.northwood.sales.application.dto.CustomerView;
 import com.northwood.sales.domain.Customer;
 import com.northwood.sales.domain.CustomerId;
 import com.northwood.sales.domain.CustomerRepository;
+import com.northwood.shared.application.exception.ConflictException;
+import com.northwood.shared.application.exception.NotFoundException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -18,10 +21,15 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class CustomerService {
 
-    public static class CustomerNotFoundException extends RuntimeException {
+    public static class CustomerNotFoundException extends NotFoundException {
+        public static final String CODE = "CUSTOMER_NOT_FOUND";
+        private final UUID customerId;
         public CustomerNotFoundException(UUID id) {
-            super("Customer not found: " + id);
+            super(CODE, "Customer not found: " + id);
+            this.customerId = id;
         }
+        public UUID customerId() { return customerId; }
+        @Override public Map<String, Object> params() { return Map.of("customerId", customerId); }
     }
 
     /**
@@ -30,10 +38,15 @@ public class CustomerService {
      * than on the JDBC adapter so the controller (and other callers) can
      * reference it without reaching into infrastructure.
      */
-    public static class DuplicateCustomerCodeException extends RuntimeException {
+    public static class DuplicateCustomerCodeException extends ConflictException {
+        public static final String CODE = "DUPLICATE_CUSTOMER_CODE";
+        private final String customerCode;
         public DuplicateCustomerCodeException(String code, Throwable cause) {
-            super("customer_code already exists: " + code, cause);
+            super(CODE, "customer_code already exists: " + code, cause);
+            this.customerCode = code;
         }
+        public String customerCode() { return customerCode; }
+        @Override public Map<String, Object> params() { return Map.of("customerCode", customerCode); }
     }
 
     private final CustomerRepository customers;

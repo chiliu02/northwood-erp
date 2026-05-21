@@ -17,7 +17,8 @@ PowerShell on Windows. Run from repo root.
 
 ```powershell
 mvn clean install -DskipTests                       # build all modules
-docker compose up -d                                # postgres + kafka + keycloak
+docker compose up -d                                # postgres + kafka + keycloak (empty schema)
+docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d   # ...same infra + demo seed data
 mvn -pl product-service spring-boot:run             # run a single service
 mvn -pl product-service test                        # test a single service
 mvn -pl product-service test -Dtest=ProductApplicationTests#main_methodIsCallable
@@ -117,7 +118,7 @@ Port / repository / lookup vocabulary (full rules in `docs/conventions.md`):
 
 **Aggregate enumerated fields = nested enum with `dbValue()` / `fromDb()`.** Status, type, kind, mode, source, match, method — every enumerated column on an aggregate table is a nested enum carrying its lowercase wire-format via `dbValue()`. Enum mirrors the schema CHECK set; schema-prep values (allowed by CHECK but not yet produced by Java) carry a `/** Schema-prep — not currently produced by Java. */` Javadoc tag. View DTOs convert `enum → String` via `.dbValue()` in their `from(...)` factory. Persistence reads via `Enum.fromDb(rs.getString(...))` and writes via `.dbValue()` — no `.name().toLowerCase()` ad-hoc conversions. Each aggregate keeps its own status field even when single-valued today. Detail + worked example: `docs/conventions.md` → *Aggregate enumerated fields*.
 
-**Cross-service wire-format constants.** Cross-service consumers (different service) can't import another service's domain — schema-per-service rule. So the wire-format values get a compile-time anchor on the producer's `<service>-events` jar: on the event class itself for payload fields (`StockReserved.STATUS_RESERVED`, `PurchaseRequisitionCreated.SOURCE_TYPE_WORK_ORDER_SHORTAGE`), or in a dedicated `XxxStatuses` constants-holder class when the consumer needs to read/write the value but no single event payload field carries it (`WorkOrderStatuses.RELEASED` consumed by `reporting.JdbcProductionPlanningProjection`). Producer keeps using its nested enum's `dbValue()`; both paths produce the same string at runtime. SQL `WHERE`/`CASE` literals and `outbox.status = 'pending'` machinery are intentionally left as literals. Detail + the "did we cover it" test: `docs/conventions.md` → *Cross-service wire-format constants*.
+**Cross-service wire-format constants.** Cross-service consumers (different service) can't import another service's domain — schema-per-service rule. So the wire-format values get a compile-time anchor on the producer's `<service>-events` jar: on the event class itself for payload fields (`StockReserved.STATUS_RESERVED`, `PurchaseRequisitionCreated.SOURCE_TYPE_WORK_ORDER_SHORTAGE`), or in a dedicated `XxxStatuses` constants-holder class when the consumer needs to read/write the value but no single event payload field carries it (`WorkOrderStatuses.RELEASED` consumed by `reporting.JdbcProductionPlanningProjection`). Currency codes live in `shared.domain.Currencies` for the same reason — `Currencies.AUD` rather than `"AUD"` at every `Money` construction site, projection writer, or test fixture. Producer keeps using its nested enum's `dbValue()`; both paths produce the same string at runtime. SQL `WHERE`/`CASE` literals and `outbox.status = 'pending'` machinery are intentionally left as literals. Detail + the "did we cover it" test: `docs/conventions.md` → *Cross-service wire-format constants*.
 
 ## Class member ordering summary
 
@@ -132,6 +133,10 @@ Detail + the why: `docs/conventions.md` → *Class member ordering*.
 - **Singular table names.** `product`, `sales_order_line`, `outbox_message`. Detail: `docs/persistence.md`.
 - **`_header` on master-detail parents only when child is `_line`.** Otherwise bare singular (`work_order` + `work_order_material`).
 - **FK columns end in `_id`** and reference the singular table; `<header>_id` for line→header. PK on `_header` tables is `<header>_id`; PK on bare-singular tables is `<table>_id`.
+
+## Argument + state checks via `Assert`
+
+Argument validation and receiver-state invariants go through `com.northwood.shared.domain.Assert` (in `shared-kernel` — Spring-free, callable from every layer). **Never** inline `throw new IllegalArgumentException/IllegalStateException` and **never** `Objects.requireNonNull` — both are code-review fails. Two parallel families: **argument checks** throw `IllegalArgumentException` — `notNull` / `notBlank` / `notEmpty` / `argument`. **State checks** throw `IllegalStateException` — `state` / `stateNotNull` / `stateNotBlank` / `stateNotEmpty`. The `state*` family mirrors the argument family one-for-one so the caller never spells out a redundant negation by hand. `Assert.notNull` and `Assert.stateNotNull` return `T` for the chained `this.field = Assert.notNull(value, "value")` shape and throw **`IllegalArgumentException`** / **`IllegalStateException`** for null (vs `Objects.requireNonNull`'s `NPE`) — codebase-wide one-exception-type-per-Assert tradeoff. `throw Assert.unknownValue("field", value)` is the enum-parser fall-through helper for the literal "Unknown X: Y" message shape. Exception translation (`catch (X e) { throw new ISE("...", e); }` — Assert doesn't take a cause), context-specific switch defaults whose message isn't "Unknown X: Y", and domain-typed exceptions (`PoNotApprovableException`, `BomCycleException`) stay as inline throws. Detail + full mapping table + worked examples: `docs/conventions.md` → *Argument and state checks via `Assert`*.
 
 ## Document silent fallbacks
 

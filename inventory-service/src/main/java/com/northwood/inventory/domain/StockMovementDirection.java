@@ -1,5 +1,6 @@
 package com.northwood.inventory.domain;
 
+import com.northwood.shared.domain.Assert;
 /**
  * Mirrors the schema CHECK on {@code inventory.stock_movement.direction}.
  * The string values must match the database literals exactly.
@@ -26,6 +27,6 @@ public enum StockMovementDirection {
         for (StockMovementDirection d : values()) {
             if (d.dbValue.equals(value)) return d;
         }
-        throw new IllegalArgumentException("Unknown stock_movement direction: " + value);
+        throw Assert.unknownValue("stock_movement direction", value);
     }
 }

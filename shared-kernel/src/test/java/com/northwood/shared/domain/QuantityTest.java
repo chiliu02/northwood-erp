@@ -14,11 +14,11 @@ class QuantityTest {
     @Nested
     class Construction {
         @Test void rejects_null_amount() {
-            assertThrows(NullPointerException.class, () -> new Quantity(null, "EA"));
+            assertThrows(IllegalArgumentException.class, () -> new Quantity(null, "EA"));
         }
 
         @Test void rejects_null_uom() {
-            assertThrows(NullPointerException.class, () -> new Quantity(BigDecimal.ONE, null));
+            assertThrows(IllegalArgumentException.class, () -> new Quantity(BigDecimal.ONE, null));
         }
 
         @Test void rejects_blank_uom() {

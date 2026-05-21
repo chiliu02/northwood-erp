@@ -1,4 +1,4 @@
-// Persona metadata mirrored from user-stories.md and demo-web-ui-design.md.
+// Persona metadata for the demo SPA.
 // The accent colour is identity-only — never used for status — and matches
 // the --color-persona-* CSS custom properties in index.css.
 

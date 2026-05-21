@@ -19,6 +19,7 @@ import com.northwood.testharness.inmemory.SynchronousBus;
 import com.northwood.testharness.kits.FinanceTestKit;
 import com.northwood.testharness.kits.InventoryTestKit;
 import com.northwood.testharness.kits.PurchasingTestKit;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -52,7 +53,7 @@ class PurchaseToPayRejectionPathTest {
 
         UUID productId = UUID.randomUUID();
         SupplierId supplierId = purchasing.suppliers.findByCode("SUP-001").orElseThrow().id();
-        purchasing.priceLookup.put(supplierId.value(), productId, "AUD", new BigDecimal("25.00"));
+        purchasing.priceLookup.put(supplierId.value(), productId, Currencies.AUD, new BigDecimal("25.00"));
 
         // Step 1: PR → PO at draft.
         purchasing.requisitionService.createManual(new CreateRequisitionCommand(
@@ -106,7 +107,7 @@ class PurchaseToPayRejectionPathTest {
             supplierId.value(),
             "SUP-001",
             "Default Supplier",
-            "AUD",
+            Currencies.AUD,
             List.of(new RecordSupplierInvoiceCommand.Line(
                 poLine.id(), UUID.randomUUID(),
                 productId, "RM-201", "Raw Material 201",

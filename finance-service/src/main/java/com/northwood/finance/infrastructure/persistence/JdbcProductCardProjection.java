@@ -1,6 +1,7 @@
 package com.northwood.finance.infrastructure.persistence;
 
 import com.northwood.finance.application.inbox.ProductCardProjection;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -43,7 +44,7 @@ public class JdbcProductCardProjection implements ProductCardProjection {
     @Override
     @Transactional
     public void applyStandardCost(UUID productId, BigDecimal standardCost, String currencyCode) {
-        String currency = currencyCode == null ? "AUD" : currencyCode;
+        String currency = Currencies.orBase(currencyCode);
         int rows = jdbc.update("""
             UPDATE finance.product_card
                SET standard_cost = ?,

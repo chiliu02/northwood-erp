@@ -50,7 +50,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
 
     @BeforeEach
     void setUp() {
-        manager = new JdbcSalesOrderFulfilmentSagaManager(sagas, json, txManager);
+        manager = new JdbcSalesOrderFulfilmentSagaManager(sagas, json, txManager, 30L, 15L);
     }
 
     private SalesOrderFulfilmentSaga sagaInState(String state, FulfilmentSagaData data) {

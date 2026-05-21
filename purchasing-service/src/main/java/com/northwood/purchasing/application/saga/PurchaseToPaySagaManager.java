@@ -18,8 +18,6 @@ import java.util.function.Consumer;
  * return value — e.g. {@code "completed"} triggers
  * {@code paymentProjection.markFullyPaid}, {@code "supplier_payment_made"}
  * triggers {@code paymentProjection.addPartialPayment}.
- *
- * <p>State machine documented in {@code PurchaseToPaySaga.md} at the repo root.
  */
 public interface PurchaseToPaySagaManager {
 

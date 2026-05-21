@@ -17,6 +17,7 @@ import com.northwood.finance.domain.JournalEntryRepository;
 import com.northwood.finance.application.GlAccountLookup;
 import com.northwood.finance.application.GlAccountLookup.GlAccount;
 import com.northwood.product.domain.ValuationClass;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -85,7 +86,7 @@ class JournalEntryServicePostingsTest {
             UUID invoiceId = UUID.randomUUID();
             service.postSupplierInvoiceApproval(
                 invoiceId, "Acme Supplies", "INV-001",
-                new BigDecimal("1100.00"), "AUD", POSTING_DATE
+                new BigDecimal("1100.00"), Currencies.AUD, POSTING_DATE
             );
 
             JournalEntry entry = capturedSave();
@@ -100,7 +101,7 @@ class JournalEntryServicePostingsTest {
             UUID paymentId = UUID.randomUUID();
             service.postSupplierPayment(
                 paymentId, "Acme Supplies", "PMT-001",
-                new BigDecimal("1100.00"), "AUD", POSTING_DATE
+                new BigDecimal("1100.00"), Currencies.AUD, POSTING_DATE
             );
 
             JournalEntry entry = capturedSave();
@@ -113,7 +114,7 @@ class JournalEntryServicePostingsTest {
             UUID invoiceId = UUID.randomUUID();
             service.postCustomerInvoiceCreation(
                 invoiceId, "Globex Ltd", "CINV-001",
-                new BigDecimal("550.00"), "AUD", POSTING_DATE
+                new BigDecimal("550.00"), Currencies.AUD, POSTING_DATE
             );
 
             JournalEntry entry = capturedSave();
@@ -126,7 +127,7 @@ class JournalEntryServicePostingsTest {
             UUID paymentId = UUID.randomUUID();
             service.postCustomerPayment(
                 paymentId, "Globex Ltd", "PMT-002",
-                new BigDecimal("550.00"), "AUD", POSTING_DATE
+                new BigDecimal("550.00"), Currencies.AUD, POSTING_DATE
             );
 
             JournalEntry entry = capturedSave();
@@ -141,7 +142,7 @@ class JournalEntryServicePostingsTest {
                 new BigDecimal("100.00"), null, POSTING_DATE
             );
 
-            assertThat(capturedSave().currencyCode()).isEqualTo("AUD");
+            assertThat(capturedSave().currencyCode()).isEqualTo(Currencies.AUD);
         }
     }
 
@@ -154,7 +155,7 @@ class JournalEntryServicePostingsTest {
             service.postGoodsReceived(
                 UUID.randomUUID(), "GR-001",
                 List.of(new LineCost(PRODUCT_RM, new BigDecimal("400.00"))),
-                "AUD", POSTING_DATE
+                Currencies.AUD, POSTING_DATE
             );
 
             JournalEntry entry = capturedSave();
@@ -173,7 +174,7 @@ class JournalEntryServicePostingsTest {
                     new LineCost(PRODUCT_RM, new BigDecimal("300.00")),
                     new LineCost(PRODUCT_FG, new BigDecimal("700.00"))
                 ),
-                "AUD", POSTING_DATE
+                Currencies.AUD, POSTING_DATE
             );
 
             JournalEntry entry = capturedSave();
@@ -189,7 +190,7 @@ class JournalEntryServicePostingsTest {
             service.postGoodsReceived(
                 UUID.randomUUID(), "GR-003",
                 List.of(new LineCost(PRODUCT_UNCLASSIFIED, new BigDecimal("200.00"))),
-                "AUD", POSTING_DATE
+                Currencies.AUD, POSTING_DATE
             );
 
             JournalEntry entry = capturedSave();
@@ -201,7 +202,7 @@ class JournalEntryServicePostingsTest {
             service.postGoodsReceived(
                 UUID.randomUUID(), "GR-EMPTY",
                 List.of(new LineCost(PRODUCT_RM, BigDecimal.ZERO)),
-                "AUD", POSTING_DATE
+                Currencies.AUD, POSTING_DATE
             );
 
             verify(journals, never()).save(any());
@@ -221,7 +222,7 @@ class JournalEntryServicePostingsTest {
                     new LineCost(PRODUCT_RM, new BigDecimal("100.00")),
                     new LineCost(PRODUCT_FG, new BigDecimal("400.00"))
                 ),
-                "AUD", POSTING_DATE
+                Currencies.AUD, POSTING_DATE
             );
 
             JournalEntry entry = capturedSave();
@@ -238,7 +239,7 @@ class JournalEntryServicePostingsTest {
             service.postShipmentCost(
                 UUID.randomUUID(), "SHP-002",
                 List.of(new LineCost(PRODUCT_UNCLASSIFIED, new BigDecimal("250.00"))),
-                "AUD", POSTING_DATE
+                Currencies.AUD, POSTING_DATE
             );
 
             JournalEntry entry = capturedSave();
@@ -250,7 +251,7 @@ class JournalEntryServicePostingsTest {
             service.postShipmentCost(
                 UUID.randomUUID(), "SHP-EMPTY",
                 List.of(new LineCost(PRODUCT_FG, BigDecimal.ZERO)),
-                "AUD", POSTING_DATE
+                Currencies.AUD, POSTING_DATE
             );
 
             verify(journals, never()).save(any());
@@ -264,7 +265,7 @@ class JournalEntryServicePostingsTest {
             return JournalEntry.reconstitute(
                 id, "JE-X", POSTING_DATE,
                 JournalEntry.SourceModule.FINANCE, JournalEntry.SourceDocumentType.SUPPLIER_INVOICE, UUID.randomUUID(),
-                "test", status, "AUD", BigDecimal.ONE, Instant.now(),
+                "test", status, Currencies.AUD, BigDecimal.ONE, Instant.now(),
                 List.of(
                     JournalEntryLine.debit(10, UUID.randomUUID(), "5000", "COGS", amount, "d", POSTING_DATE),
                     JournalEntryLine.credit(20, UUID.randomUUID(), "2100", "AP", amount, "c", POSTING_DATE)

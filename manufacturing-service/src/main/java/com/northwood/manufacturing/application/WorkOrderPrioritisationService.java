@@ -10,6 +10,7 @@ import com.northwood.manufacturing.domain.events.WorkOrderPriorityChanged;
 import com.northwood.shared.application.outbox.OutboxPort;
 import com.northwood.shared.application.outbox.OutboxRow;
 import com.northwood.shared.application.security.CurrentUserAccessor;
+import com.northwood.shared.domain.Assert;
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
@@ -58,10 +59,7 @@ public class WorkOrderPrioritisationService {
 
     @Transactional
     public void setPriority(UUID workOrderId, String priority, String reason) {
-        if (!ALLOWED_PRIORITIES.contains(priority)) {
-            throw new IllegalArgumentException(
-                "priority must be one of " + ALLOWED_PRIORITIES + ", got: " + priority);
-        }
+        Assert.argument(ALLOWED_PRIORITIES.contains(priority), "priority must be one of " + ALLOWED_PRIORITIES + ", got: " + priority);
 
         if (workOrders.findById(WorkOrderId.of(workOrderId)).isEmpty()) {
             throw new WorkOrderNotFoundException(workOrderId.toString());

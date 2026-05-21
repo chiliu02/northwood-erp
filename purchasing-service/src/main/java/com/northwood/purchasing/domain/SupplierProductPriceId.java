@@ -1,12 +1,12 @@
 package com.northwood.purchasing.domain;
 
-import java.util.Objects;
+import com.northwood.shared.domain.Assert;
 import java.util.UUID;
 
 public record SupplierProductPriceId(UUID value) {
 
     public SupplierProductPriceId {
-        Objects.requireNonNull(value, "value");
+        Assert.notNull(value, "value");
     }
 
     public static SupplierProductPriceId of(UUID value) {

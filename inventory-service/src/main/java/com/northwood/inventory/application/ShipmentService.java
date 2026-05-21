@@ -12,9 +12,12 @@ import com.northwood.inventory.domain.StockMovementDirection;
 import com.northwood.inventory.domain.StockMovementSourceTypes;
 import com.northwood.inventory.domain.StockMovementType;
 import com.northwood.inventory.domain.WarehouseCodes;
+import com.northwood.shared.application.exception.BadRequestException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -51,12 +54,32 @@ public class ShipmentService {
      * by the controller. Defence-in-depth: catches a buggy / malicious client
      * that bypassed the SPA picker.
      */
-    public static class ShipmentLineProductMismatchException extends RuntimeException {
+    public static class ShipmentLineProductMismatchException extends BadRequestException {
+        public static final String CODE = "SHIPMENT_LINE_PRODUCT_MISMATCH";
+        private final UUID salesOrderLineId;
+        private final UUID expectedProductId;
+        private final UUID actualProductId;
         public ShipmentLineProductMismatchException(UUID salesOrderLineId, UUID expectedProductId, UUID actualProductId) {
-            super(expectedProductId == null
+            super(CODE, expectedProductId == null
                 ? "Unknown sales_order_line_id=%s (no matching projection row; line may not belong to a placed sales order)".formatted(salesOrderLineId)
                 : "Product mismatch on sales_order_line_id=%s: expected product=%s, got=%s".formatted(salesOrderLineId, expectedProductId, actualProductId)
             );
+            this.salesOrderLineId = salesOrderLineId;
+            this.expectedProductId = expectedProductId;
+            this.actualProductId = actualProductId;
+        }
+        public UUID salesOrderLineId() { return salesOrderLineId; }
+        public UUID expectedProductId() { return expectedProductId; }
+        public UUID actualProductId() { return actualProductId; }
+        @Override public Map<String, Object> params() {
+            // expectedProductId / actualProductId are null in the "unknown
+            // line id" branch — omit rather than insert nulls (Map.of / copyOf
+            // reject nulls; the SPA falls back on missing keys cleanly).
+            Map<String, Object> p = new HashMap<>();
+            p.put("salesOrderLineId", salesOrderLineId);
+            if (expectedProductId != null) p.put("expectedProductId", expectedProductId);
+            if (actualProductId != null) p.put("actualProductId", actualProductId);
+            return Map.copyOf(p);
         }
     }
 

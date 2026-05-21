@@ -1,5 +1,6 @@
 package com.northwood.shared.infrastructure.saga;
 
+import com.northwood.shared.domain.Assert;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -62,15 +63,13 @@ public class SagaStateInvariantChecker {
         Set<String> dbStates = readCheckLiterals(check);
         Set<String> missing = new LinkedHashSet<>(check.codeStates());
         missing.removeAll(dbStates);
-        if (!missing.isEmpty()) {
-            throw new IllegalStateException(String.format(
+        Assert.state(missing.isEmpty(), String.format(
                 "Saga state CHECK on %s.%s.%s is missing %d code-side state(s): %s. "
                     + "Code can write these but the DB CHECK will reject them at INSERT/UPDATE. "
                     + "Add them via a Liquibase changeset (drop + re-add the CHECK).",
                 check.schemaName(), check.tableName(), check.columnName(),
                 missing.size(), missing
             ));
-        }
         log.debug("saga-state invariant ok: {}.{}.{} (code states ⊆ db states; db has {} state(s))",
             check.schemaName(), check.tableName(), check.columnName(), dbStates.size());
     }
@@ -115,20 +114,12 @@ public class SagaStateInvariantChecker {
                 states.add(m.group(1));
             }
         }
-        if (!foundColumnCheck) {
-            throw new IllegalStateException(
-                "No CHECK constraint on " + check.schemaName() + "." + check.tableName()
-                    + "." + check.columnName() + " — cannot verify state list."
-            );
-        }
-        if (states.isEmpty()) {
-            throw new IllegalStateException(
-                "CHECK constraint on " + check.schemaName() + "." + check.tableName()
+        Assert.state(foundColumnCheck, "No CHECK constraint on " + check.schemaName() + "." + check.tableName()
+                    + "." + check.columnName() + " — cannot verify state list.");
+        Assert.stateNotEmpty(states, "CHECK constraint on " + check.schemaName() + "." + check.tableName()
                     + "." + check.columnName() + " yielded no string literals — "
                     + "the regex used to extract state names didn't match. "
-                    + "Check the constraint definition shape."
-            );
-        }
+                    + "Check the constraint definition shape.");
         return Collections.unmodifiableSet(states);
     }
 }

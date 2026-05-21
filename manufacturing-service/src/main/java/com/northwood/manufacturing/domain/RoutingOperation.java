@@ -1,7 +1,7 @@
 package com.northwood.manufacturing.domain;
 
+import com.northwood.shared.domain.Assert;
 import java.math.BigDecimal;
-import java.util.Objects;
 import java.util.UUID;
 
 public final class RoutingOperation {
@@ -23,13 +23,13 @@ public final class RoutingOperation {
         BigDecimal plannedSetupMinutes,
         BigDecimal plannedRunMinutes
     ) {
-        this.id = Objects.requireNonNull(id);
+        this.id = Assert.notNull(id, "id");
         this.operationSequence = operationSequence;
-        this.operationCode = Objects.requireNonNull(operationCode);
+        this.operationCode = Assert.notNull(operationCode, "operationCode");
         this.description = description;
-        this.workCenterId = Objects.requireNonNull(workCenterId);
+        this.workCenterId = Assert.notNull(workCenterId, "workCenterId");
         this.plannedSetupMinutes = plannedSetupMinutes == null ? BigDecimal.ZERO : plannedSetupMinutes;
-        this.plannedRunMinutes = Objects.requireNonNull(plannedRunMinutes);
+        this.plannedRunMinutes = Assert.notNull(plannedRunMinutes, "plannedRunMinutes");
     }
 
     public UUID id()                        { return id; }

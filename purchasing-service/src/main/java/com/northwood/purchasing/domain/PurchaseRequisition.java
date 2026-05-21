@@ -2,11 +2,11 @@ package com.northwood.purchasing.domain;
 
 import com.northwood.purchasing.domain.events.PurchaseRequisitionCreated;
 import com.northwood.purchasing.domain.events.PurchaseRequisitionCreated.RequestedLine;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.DomainEvent;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -75,7 +75,7 @@ public final class PurchaseRequisition {
             for (SourceType t : values()) {
                 if (t.dbValue.equals(value)) return t;
             }
-            throw new IllegalArgumentException("Unknown purchase_requisition source_type: " + value);
+            throw Assert.unknownValue("purchase_requisition source_type", value);
         }
     }
 
@@ -109,7 +109,7 @@ public final class PurchaseRequisition {
             for (Status s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown purchase_requisition status: " + value);
+            throw Assert.unknownValue("purchase_requisition status", value);
         }
     }
 
@@ -140,7 +140,7 @@ public final class PurchaseRequisition {
             for (LineStatus s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown purchase_requisition_line status: " + value);
+            throw Assert.unknownValue("purchase_requisition_line status", value);
         }
     }
 
@@ -164,10 +164,8 @@ public final class PurchaseRequisition {
         String requestedBy,
         List<PurchaseRequisitionLine> lines
     ) {
-        Objects.requireNonNull(sourceType, "sourceType");
-        if (lines == null || lines.isEmpty()) {
-            throw new IllegalArgumentException("at least one line is required");
-        }
+        Assert.notNull(sourceType, "sourceType");
+        Assert.notEmpty(lines, "at least one line is required");
         validateSource(sourceType, sourceWorkOrderId, sourceProductId);
 
         PurchaseRequisitionId id = PurchaseRequisitionId.newId();
@@ -230,19 +228,13 @@ public final class PurchaseRequisition {
     private static void validateSource(SourceType sourceType, UUID workOrderId, UUID productId) {
         switch (sourceType) {
             case MANUAL -> {
-                if (workOrderId != null || productId != null) {
-                    throw new IllegalArgumentException("manual requisitions cannot carry source ids");
-                }
+                Assert.argument(workOrderId == null && productId == null, "manual requisitions cannot carry source ids");
             }
             case LOW_STOCK -> {
-                if (productId == null || workOrderId != null) {
-                    throw new IllegalArgumentException("low_stock requisitions need source_product_id only");
-                }
+                Assert.argument(productId != null && workOrderId == null, "low_stock requisitions need source_product_id only");
             }
             case WORK_ORDER_SHORTAGE -> {
-                if (workOrderId == null || productId != null) {
-                    throw new IllegalArgumentException("work_order_shortage requisitions need source_work_order_id only");
-                }
+                Assert.argument(workOrderId != null && productId == null, "work_order_shortage requisitions need source_work_order_id only");
             }
         }
     }
@@ -257,11 +249,7 @@ public final class PurchaseRequisition {
         if (status == Status.CONVERTED) {
             return;
         }
-        if (status != Status.APPROVED) {
-            throw new IllegalStateException(
-                "Cannot convert requisition " + id.value() + " from status=" + status.dbValue()
-            );
-        }
+        Assert.state(status == Status.APPROVED, "Cannot convert requisition " + id.value() + " from status=" + status.dbValue());
         this.status = Status.CONVERTED;
     }
 

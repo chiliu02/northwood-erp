@@ -26,6 +26,13 @@ spring:
 northwood:
   outbox:
     poll-interval: 1000
+  saga:
+    poll-interval: 1000
+    # §2.13: claim-lease TTL + retry backoff for the @Scheduled saga worker.
+    # Defaults shown; uncomment to override per environment (e.g. raise
+    # lease-ttl under heavy load so a slow advance doesn't lose the lease).
+    # lease-ttl-seconds: 30
+    # retry-backoff-seconds: 15
   kafka:
     # Purchasing subscribes to:
     # - manufacturing.events for RawMaterialShortageDetected (auto-creates a

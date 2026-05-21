@@ -319,6 +319,364 @@ The shared module pom additions and `logback-spring.xml` will push to:
 - `http://localhost:3100/loki/api/v1/push` for log shipping (Loki).
 - Whatever port each service runs on for `/actuator/prometheus` scrape (Prometheus already configured to hit `host.docker.internal:<port>`).
 
+## 2026-05-21 — docs/ declutter: keep only Claude-required docs under `docs/`
+
+Moved 11 human-facing / visual docs out of `docs/` (out of the repo entirely) so `docs/` holds only what Claude Code actually loads: the seven `CLAUDE.md`-wired guidance docs (`architecture`, `conventions`, `persistence`, `sagas`, `messaging-design`, `design-notes`, `build-status`) plus `demo-script.md`, `dev-todo.md`, `dev-done.md`, and `screenshots/`.
+
+Moved out (now untracked): `.claude-chrome-3.1-script.md`; the three saga state-diagrams (`SalesOrderFulfilmentSaga.md`, `MakeToOrderSaga.md`, `PurchaseToPaySaga.md`); `bugs-caught-by-tests.md`; `user-stories.md`; the two SPA design docs (`demo-web-ui-design.md`, `erp-web-ui-design.md`); and the three HTML visual references (`event-flow.html`, `domain-driven design.html`, `projections.html`).
+
+Stripped the now-dangling references from the docs that stay:
+- `README.md` "Where to read next" — dropped the demo/ERP design-rationale, user-stories, and bugs-caught-by-tests rows.
+- `docs/demo-script.md` — Companion-docs line, "out of scope" intro, and "Where to next" list trimmed to surviving docs (`CLAUDE.md`, `dev-todo.md`).
+- `docs/architecture.md` — dropped the `event-flow.html` pointer from the wire-format-suffix row.
+- `docs/design-notes.md` — "the 2026-05-14 `event-flow.html` audit" → "the 2026-05-14 event-flow audit".
+- `demo-web-ui/README.md`, `erp-web-ui/README.md` — dropped the `docs/*-design.md` "see design rationale" links.
+
+`dev-done.md` history left as-is (append-only; its references to the moved files were correct when written). Memory updated: the saga-diagram "keep in sync" rule is suspended while those files live outside the repo.
+
+Also stripped the dangling refs from source comments — `MakeToOrderSagaManager` / `PurchaseToPaySagaManager` Javadocs ("State machine documented in …Saga.md"), `OrderToCashHappyPathTest` (Side-rail pointer), `demo-web-ui/src/index.css` (×2), `demo-web-ui/src/personas.ts`. All comment-only — no build/test impact.
+
+## 2026-05-21 — §1E.1: README public-facing rewrite + Saga Console screenshot
+
+Rewrote `README.md` from project-internal orientation to a public-audience front page, in the existing terse / link-heavy / Pacioli-framed voice (not a new marketing tone). Concrete changes:
+
+- **Elevator-pitch opening sentence** (no separate blockquote tagline — folded into the lead): *"Event-driven microservices architecture showcase for CQRS, Saga orchestration, and the transactional outbox/inbox pattern, structured around a small ERP domain (…)."* Leads by naming the patterns rather than counting modules; the concrete tech enumeration lives in Stack + the repo tree. Pacioli framing paragraph stays below it.
+- **`## Requirements` table** — JDK 21, Maven 3.9+, Docker + Compose (Postgres 17 / Kafka 4.1.2 / Keycloak 26), Node 20+ — plus an OS-neutral note (developed on Windows/PowerShell; macOS/Linux use the same commands).
+- **`## Demo credentials & secrets`** — the load-bearing addition. Table of all committed demo-grade secrets with default + env-var override + location: Keycloak BFF client secret (`KEYCLOAK_BFF_CLIENT_SECRET`), 13 demo users (password = username, in `db/keycloak/northwood-realm.json`), Keycloak bootstrap admin (`admin`/`admin`), 7 service DB passwords (`<SERVICE>_DB_PASSWORD`), demo-SPA bypass token (`NORTHWOOD_SECURITY_DEMOBYPASS_TOKEN`, empty = disabled). Prose distinguishes erp-web-ui's real OIDC login from demo-web-ui's synthetic all-roles bypass.
+- **`## Screenshots`** section added near the top, referencing `docs/screenshots/demo-saga-console.png` — the Saga Console + Event Log driving a place-order flow. The PNG is captured and committed alongside this entry, so the link resolves.
+- **`## License`** footer — Apache 2.0, Copyright 2026 Chi Liu.
+- Capitalised "Saga" in prose throughout (per-conversation style direction); code/table identifiers like `sales_order_fulfilment_saga` stay literal. Repo tree's docker-compose line now names Keycloak 26; Stack gained a Keycloak + Spring Security bullet; "a React demo UI" → "two React demo UIs". Existing repo tree + "Where to read next" + Tests + Tear down sections retained.
+
+No build/test impact (docs only). **Follow-up:** §1E.2 CI workflow and §1E.3 GitHub metadata still open.
+
+## 2026-05-20 — §1H follow-up: re-introduce `public static final String CODE` on every concrete `DomainException`
+
+Reverses the "inline the CODE constants" half of the previous §1H tightening pass committed earlier today. The CODE constants are back on every concrete `DomainException` subclass; the `super(...)` call now goes through `CODE` instead of a string literal.
+
+### Why the reversal
+
+The previous removal argued the constant was a one-use indirection — passed once to `super(...)` and otherwise unused. That argument held under the assumption that no Java consumer ever needs to reference the wire-format string. Reviewed against the rest of the codebase's cross-service wire-format-constant pattern (`EVENT_TYPE` / `AGGREGATE_TYPE` / `XxxStatuses`), the consistency case wins:
+
+- Find Usages on `CustomerNotFoundException.CODE` answers who produces / consumes / depends on the code — the same property the event-class constants give.
+- Tests that need to assert on the code reference the constant rather than a fresh string literal, so a rename becomes a one-place change.
+- The BFF (or any future cross-service Java consumer) gets a typed compile-time anchor instead of duplicating the literal.
+- The "one-use indirection" framing missed that *every* wire-format constant in the codebase is one-use at the producer site (`StockReserved.STATUS_RESERVED` is used exactly once inside the `StockReserved` class — the consumers carry the rest of the uses). The point of the constant is to give the *consumer* a typed import path, not to deduplicate within the producer file.
+
+There's no principled reason exceptions should be the lone wire-format opt-out from this pattern.
+
+### What changed
+
+- **22 concrete exception classes across 10 files** re-gain `public static final String CODE = "..."` declarations, placed above instance fields per the class-member-ordering rule. The `super(...)` call switches from `super("CODE_STRING", ...)` to `super(CODE, ...)`. Grep for `super\("[A-Z_]+"` returns zero matches.
+- **`docs/conventions.md` → "Every application-layer exception implements `DomainException`"** — step 2 + skeleton + tests-note flipped back. The text now references the `EVENT_TYPE` / `AGGREGATE_TYPE` parallel explicitly.
+- **`shared.application.exception.DomainException`** Javadoc — references `CustomerNotFoundException.CODE = "CUSTOMER_NOT_FOUND"` rather than the bare literal in both places it appears.
+
+### Deferred follow-up
+
+Build-time generated error-code catalog (TypeScript const for SPAs + Markdown doc) deferred to `dev-todo.md` §1H.1 — only earns its keep when the SPA needs typed dispatch on `code` (today it's a localisation lookup key).
+
+### Smoke
+
+`mvn clean install -DskipTests` SUCCESS across 19 modules in ~27s.
+
+## 2026-05-20 — §1H follow-up: collapse identical bases into `AbstractDomainException`; inline CODE constants
+
+Second tightening pass on §1H. The previous follow-up had pushed the `code` field + `code()` accessor into the three marker base classes (`NotFoundException`, `ConflictException`, `BadRequestException`) — but the three bases ended up identical except for the class name. And with `code()` already on the base, the `public static final String CODE` declaration on each concrete class was a one-use indirection.
+
+### What changed
+
+- **New `AbstractDomainException`** — holds the `code` field, the `(code, message)` / `(code, message, cause)` protected constructors, and the `final code()` accessor.
+- **`NotFoundException` / `ConflictException` / `BadRequestException`** — now empty-body subclasses of `AbstractDomainException` with just two passthrough constructors. They exist solely so the shared `DomainExceptionAdvice` can dispatch via `@ExceptionHandler(NotFoundException.class)` etc. for HTTP-status routing.
+- **~17 concrete exception classes** — `public static final String CODE = "..."` declarations removed; the string literal moves into the `super("CODE_STRING", message)` call directly.
+- **`docs/conventions.md`** — "Every application-layer exception implements `DomainException`" skeleton updated: no `CODE` constant; the wire-format string lives in the `super(...)` call. New note that tests should reference the string literal rather than a class-static constant — renaming a code is intentionally a touch-both-places change so wire-contract drift is visible.
+
+### Why
+
+The original §1H shape carried two redundant indirections: an `@Override public String code()` on every concrete class (consolidated in the previous follow-up), and a `public static final String CODE` constant that was passed once to `super(...)` and otherwise unused. The constant's notional value — letting callers reference `CustomerNotFoundException.CODE` — turned out to be theoretical (no callers do, and the wire format is what tests actually need to assert against). Dropping it puts the code right where it ships from.
+
+Collapsing the three identical bases is a separate cleanup that fell out naturally — with `code()` storage centralised, the markers had nothing left to do except be type-distinct for Spring's `@ExceptionHandler` routing.
+
+### Numbers
+
+15 files changed, +66 −123 lines. The simplification removes nearly half the exception-related code in the concrete classes.
+
+### Smoke
+
+`mvn clean test` SUCCESS across 19 modules.
+
+## 2026-05-20 — §1H follow-up: hoist `code()` to the marker base classes
+
+Direct follow-up to the §1H slice committed earlier today. The three marker bases (`NotFoundException`, `ConflictException`, `BadRequestException`) now take `code` as the first constructor argument, store it in a `private final String code` field, and expose it via a `final` `code()` accessor. Concrete subclasses pass their `CODE` via `super(CODE, message[, cause])` and drop the per-class `@Override public String code() { return CODE; }` boilerplate.
+
+### What changed
+
+- **Three base classes** — gained a `code` field + `final code()` accessor + new `(code, message)` / `(code, message, cause)` protected constructors.
+- **~17 concrete exception classes across 6 services** — `super(...)` calls now lead with `CODE`; `@Override public String code()` removed.
+- **`docs/conventions.md` skeleton** — "Every application-layer exception implements `DomainException`" rewritten with the new 5-step shape (added: declare CODE constant; pass CODE through super; the base handles code() once). A code skeleton was added so the pattern is copy-pasteable.
+
+### Why
+
+The original §1H shape had concrete classes both declare `CODE` and override `code()` to return it. The override could drift between subclasses, and every concrete class carried the same one-line method. Pushing the field down to the base eliminates both — the constructor signature visually carries the code, the base's `final code()` prevents accidental override, and the concrete class loses a line of boilerplate.
+
+### Smoke
+
+`mvn clean test` SUCCESS across 19 modules. Concrete exception classes are smaller (no override method); base classes carry the common storage.
+
+## 2026-05-20 — §1H Backend error-response shape for i18n-readiness
+
+Every 4xx HTTP response now ships a typed `{ code: "...", params: { ... } }` JSON body instead of the older `ResponseEntity<String>` carrying an English exception message. SPA clients dispatch off the stable `code` and substitute `params` for rendering — backend remains locale-free per the architecture decision (`docs/architecture.md` → *Localisation lives in the SPAs, not the backend*).
+
+### Shared infrastructure (foundation)
+
+Six new types under `shared`:
+
+- **`shared.application.exception.DomainException`** — interface carrying `code()` + `params()`. Every application-layer exception that surfaces to the wire implements this.
+- **`shared.application.exception.{NotFoundException, ConflictException, BadRequestException}`** — three abstract bases extending `RuntimeException` and implementing `DomainException`. Choice of base drives the HTTP status (404 / 409 / 400 respectively); application code stays free of Spring's `HttpStatus` type.
+- **`shared.api.exception.ErrorResponse`** — `record(String code, Map<String, Object> params)`. Single wire format for every 4xx response. Compact constructor validates `code` non-blank and coerces null `params` to `Map.of()`.
+- **`shared.api.exception.DomainExceptionAdvice`** — single `@RestControllerAdvice` with five handlers: one per marker base, plus untyped `IllegalArgumentException` → HTTP 400 + `code = "GENERIC_ARGUMENT_VIOLATION"` and `IllegalStateException` → HTTP 409 + `code = "GENERIC_STATE_VIOLATION"` fallbacks for `Assert.*` calls that reach the wire without being wrapped. Both fallbacks log a WARN suggesting promotion to a typed exception.
+- **`shared.infrastructure.exception.DomainExceptionAutoConfiguration`** — `@AutoConfiguration` registering the advice as a bean in every service that has Spring MVC on the classpath. Mirrors the `AuditAutoConfiguration` shape; added to `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`.
+
+### Exception classes migrated (~17 classes across 6 services)
+
+Each existing application-layer exception got: extends a marker base, adds `public static final String CODE`, promotes constructor args to typed fields with accessors, implements `code()` + `params()`. Coverage:
+
+- **sales-service** (10): `SalesOrderService.{CustomerNotFoundException, CustomerInactiveException, OrderNotFoundException, SagaNotFoundException, OrderNotCancellableException, UnknownPriceException, CurrencyMismatchException, ProductDiscontinuedException}`, `CustomerService.{CustomerNotFoundException, DuplicateCustomerCodeException}`.
+- **manufacturing-service** (7): `BomService.{BomNotFoundException, BomLineNotFoundException, BomNotEditableException, BomCycleException, BomComponentDiscontinuedException}`, `WorkOrderReleaseService.{BomNotFoundException, RoutingNotFoundException}`, `WorkOrderOperationService.WorkOrderNotFoundException`.
+- **purchasing-service** (2): `PurchaseRequisitionService.ProductDiscontinuedException`, `PurchaseOrderService.PoNotApprovableException`.
+- **inventory-service** (2): `ShipmentService.ShipmentLineProductMismatchException`, `GoodsReceiptService.GoodsReceiptLineProductMismatchException`. Both handle nullable `expectedProductId` / `actualProductId` by omitting the field from `params()` rather than inserting nulls (Map.of / copyOf reject nulls; SPA falls back on missing keys cleanly).
+- **finance-service** (1): `ExchangeRateService.RateNotFoundException`.
+- **product-service** (1): `ProductService.ProductNotFoundException`.
+
+Exception-wrapping flavours where the cause is a domain exception without typed accessors (e.g. `Bom.BomCycleException`, `PurchaseOrder.PoNotApprovableException`) fall back to `params = { detail: getMessage() }` until the underlying domain exception is promoted to typed accessors — flagged as a follow-up rather than blocking on it.
+
+### Per-controller `@ExceptionHandler` methods removed (~20 methods across 13 controllers)
+
+The shared advice handles every exception type that previously had a per-controller handler. The controllers now contain only their REST endpoint methods. Unused imports (`@ExceptionHandler`, `ResponseEntity` where only handlers used it, the exception class imports themselves) were cleaned up where the bulk script could reach.
+
+### Conventions doc updates
+
+- **`docs/conventions.md` → "Exception wrapping — three flavours"** gains a new "Every application-layer exception implements `DomainException`" subsection laying out the four required parts (extend a marker base, declare `CODE`, promote args to typed fields, implement `params()`).
+- **`docs/conventions.md` → new "Error response shape" section** documents the `ErrorResponse` wire format, the five advice handlers, and the "no per-controller `@ExceptionHandler`" rule.
+- The section also reasserts the i18n design choice: no `Locale` / `ResourceBundle` / Spring `MessageSource` on the backend; translation lives SPA-side per `docs/architecture.md`.
+
+### Smoke
+
+`mvn clean install -DskipTests` SUCCESS across 19 modules. `mvn clean test` SUCCESS across all modules — no test fixtures needed updating because tests either go through the service layer directly (don't touch the controller's response shape) or assert HTTP status codes that the new advice preserves.
+
+### What this enables
+
+- §3.5 SPA i18n becomes a straight "look up `code`, render with `params`" exercise — no parsing English error messages.
+- New domain exceptions ship with their typed accessors + `CODE` from day 1, by convention.
+- Test fixtures can assert on the `code` (stable identifier) rather than the English message text (which can change without warning).
+
+---
+
+## 2026-05-20 — `Assert` rule documented, applied codebase-wide, API settled
+
+Folds the earlier *Assert precondition helper in shared-kernel* foundation into the project's rule set, rolls out the migration across every `main/` file, and lands on the final API shape after multiple review rounds. All argument and state checks across `main/` go through `com.northwood.shared.domain.Assert` — never inline `throw new IllegalArgumentException/IllegalStateException`, never `Objects.requireNonNull`. Documented exceptions stay as inline throws.
+
+### Final API shape
+
+Two parallel families, mirror-symmetric so the caller never spells out a redundant negation:
+
+| Argument (throws `IllegalArgumentException`) | State mirror (throws `IllegalStateException`) |
+|---|---|
+| `Assert.notNull(x, msg) → T` | `Assert.stateNotNull(x, msg) → T` |
+| `Assert.notBlank(s, msg)` | `Assert.stateNotBlank(s, msg)` |
+| `Assert.notEmpty(coll/map, msg)` | `Assert.stateNotEmpty(coll/map, msg)` |
+| `Assert.argument(cond, msg)` | `Assert.state(cond, msg)` |
+
+Plus `throw Assert.unknownValue("field", value)` — returns an `IllegalArgumentException` for enum-parser fall-throughs with the literal "Unknown X: Y" message shape. Returning rather than throwing keeps the `throw` keyword visible at the call site so the compiler's control-flow analysis (unreachable-code, definite-assignment, missing-return) sees the terminating statement.
+
+`notNull` and `stateNotNull` return `T` so the chained `this.field = Assert.notNull(value, "value")` shape works as a drop-in replacement for `Objects.requireNonNull`. Both throw their respective exception types on null — NOT `NullPointerException`. One Assert call, one exception type, regardless of which specific check fired.
+
+The earlier API also carried `isTrue`, `isFalse`, and `stateFalse`; this slice renamed `isTrue → argument` and removed both `*False` variants. The `*False` mirrors had been added to avoid double-negatives when migrating `if (cond) throw new IAE/ISE(msg)`, but in practice they invited a worse anti-pattern: `stateFalse(X != Y, ...)` (structural double-negative). Forcing the caller to write the positive condition turns out to be cleaner — and the `state*` family above covers the most common forbidden-condition shapes without compound boolean expressions at the call site.
+
+### Rule, documented
+
+- **`CLAUDE.md` → "Argument + state checks via `Assert`"** (one paragraph) names the two families and the documented exceptions that stay inline.
+- **`docs/conventions.md` → "Argument and state checks via `Assert`"** carries the full mapping table, the "Prefer the positive form" guidance (incl. De Morgan flips for compound conditions and the `!=`/`>` shapes that stay because they have no positive opposite), the `unknownValue`-returns-rather-than-throws rationale, and the explicit not-covered cases.
+
+### Migration scope and counts
+
+- **125 `Objects.requireNonNull` calls** → `Assert.notNull`. Bulk PowerShell substitution covering two-arg `Objects.requireNonNull(x, "x")` and single-arg `Objects.requireNonNull(x)` shapes (the latter uses the variable name as the message). Behaviour change: NPE → IAE on null.
+- **~280 `throw new IAE/ISE(...)` sites across `main/`** → `Assert.*`. Three-phase script: (1) null-check + isBlank + isEmpty patterns; (2) single-line `if (cond) throw new IAE/ISE("msg");`; (3) balanced-paren matching for multi-line throws with concatenated-string messages.
+- **End-of-method / case `throw new IAE("Unknown X: " + v);` sites** → `throw Assert.unknownValue("X", v);`. Covers `fromDb` parser fall-throughs and switch `default` clauses with the literal "Unknown X: Y" message shape.
+- **13 test files updated** — `NullPointerException.class` → `IllegalArgumentException.class` in `assertThrows(...)` and AssertJ `.isInstanceOf(...)` calls. Covers shared-kernel + every service's domain tests.
+- **`Assert` import added** to every modified file (alphabetical position among `com.northwood.*` imports); **`java.util.Objects` import removed** where no other `Objects.*` reference remains.
+
+### Post-migration cleanup passes (per-review iterations)
+
+The mechanical script left several anti-patterns the bulk regex couldn't avoid; these landed as follow-up sweeps once the call-site noise became visible:
+
+- **Pair collapses to `notBlank`** — 7 sites of the form `Assert.notNull(x, …); Assert.isFalse(x.isBlank(), …);` (one for each compact-constructor field that needed both checks) collapsed to a single `Assert.notBlank(x, …)`. Same for the multi-line `if (X == null \|\| X.isBlank()) throw new IAE(...)` shape (`EventEnvelope`).
+- **Anti-pattern: `*False(X == null, …)` and `*False(X != null, …)`** — 4 sites where the script's regex matched `if (X == null) throw …` generically; collapsed to `Assert.notNull(x, …)` / `Assert.state(x != null, …)` depending on argument-vs-state.
+- **Anti-pattern: `*False(X != Y, …)` and `*False(!cond, …)`** — 18 sites of "negative in a negative." Flipped via De Morgan to the positive equivalent: `state(status == X)`, `argument(cond)`, etc. Compound cases with `&&`-of-`!=` flipped to `||`-of-`==`. A handful (e.g. `state(status != Status.DISCONTINUED, …)` for the seven Product-mutator paths, `state(rows > 0, …)`) stayed in the negative form because they had no positive opposite — the convention's "Prefer the positive form" section covers this.
+- **Anti-pattern: `*False(X == null \|\| cond, …)`** — 11 sites. De Morgan to positive `argument(X != null && !cond, …)` or — better — to the dedicated helper: `notNull` / `notBlank` / `notEmpty` / `notEmpty` (Map) / `stateNotEmpty` / `stateNotBlank` / `stateNotNull` as appropriate.
+- **State-side mirror collapses** — 4 sites of `Assert.state(X != null && cond, …)` collapsed to the new `stateNotNull` / `stateNotBlank` / `stateNotEmpty` helpers introduced in this slice.
+
+Net effect across the whole slice (foundation + migration + cleanup + API refactor): 76 files changed, +733 −708 lines. The migration deletes more boilerplate than it adds.
+
+### Documented exceptions that stay as inline throws
+
+Per the convention's "What stays as inline throw" section, ~60 throws across ~30 files are intentionally left as inline:
+
+- **Exception translation in catch blocks** — `catch (JacksonException e) { throw new IllegalStateException("Cannot serialise event " + ..., e); }`. `Assert` doesn't take a cause argument by design.
+- **`BffTargets` switch-default throws** in `demo-web-ui-bff` + `erp-web-ui-bff` — the BFF modules deliberately don't depend on `shared-kernel`, so `Assert` isn't on their classpath. Adding the dep just for one switch default is overkill; the inline `throw new IllegalArgumentException("Unknown BFF target: " + name)` stays.
+- **Multi-condition `else if (cond) { throw new IAE(...); }` chains** (e.g. `PaymentService.recordMultiSupplierPayment`'s currency/supplier consistency checks) — these are if/else-if selectors where converting each body to an `Assert.*` call would require restructuring the chain. Inline form reads cleanly in the existing shape.
+
+### Files with the largest churn
+
+- `shared-kernel/src/main/java/com/northwood/shared/domain/Assert.java` — the helper class itself, +175 lines (10 public methods + Javadoc).
+- `manufacturing-service/domain/{WorkOrder, Bom, WorkOrderOperation, WorkOrderMaterial}.java` — heavy aggregate-root validation.
+- `finance-service/domain/{Payment, JournalEntry, CustomerInvoice, SupplierInvoice}.java` + `application/PaymentService.java` — similar density.
+- `product-service/domain/Product.java` — 12 throws migrated.
+- The `*Id` value-object records (BomId, CustomerId, …) — minimal change, just `Objects.requireNonNull` → `Assert.notNull` in compact constructors.
+
+### Smoke
+
+`mvn clean test` = SUCCESS across 19 modules. 79 shared-kernel tests (was 56 at the start of the slice; +23 for the Assert helper tests including the new `stateNotNull` / `stateNotBlank` / `stateNotEmpty` mirrors).
+
+## 2026-05-20 — `Assert` precondition helper in shared-kernel
+
+Adds a project-local `com.northwood.shared.domain.Assert` utility — replaces the verbose `if (x == null) throw new IllegalArgumentException(...)` idiom with single-call equivalents (`Assert.notNull`, `Assert.isTrue`, `Assert.state`, `Assert.notBlank`, `Assert.notEmpty`, `Assert.unknownValue`). Sits in `shared-kernel` rather than reusing Spring's `org.springframework.util.Assert` because `shared-kernel`'s `pom.xml` carries an explicit framework-free guarantee ("*Deliberately Spring-free so it can be consumed by any layer without pulling in framework code.*"); pulling Spring in just for this utility would break that guarantee.
+
+### What shipped
+
+- **`Assert.java`** — seven methods plus a Javadoc-heavy class header that documents which patterns the class targets and which it deliberately leaves alone (exception translation, context-specific switch defaults).
+  - `notNull` / `isTrue` / `isFalse` / `notBlank` / `notEmpty(Collection)` / `notEmpty(Map)` throw `IllegalArgumentException` — argument violations
+  - `state` throws `IllegalStateException` — receiver invariant violations
+  - `isFalse` is the forbidden-condition mirror of `isTrue`: lets sites originally shaped as `if (cond) throw IAE(...)` migrate to `Assert.isFalse(cond, ...)` without forcing a double-negative (`Assert.isTrue(!cond, ...)`)
+  - `unknownValue(field, value)` **returns** an `IllegalArgumentException` (caller writes `throw Assert.unknownValue(...)`) — keeps the `throw` keyword visible at the call site for the compiler's control-flow analysis and matches the existing end-of-method fall-through shape in `fromDb` / `fromString` parsers
+- **`AssertTest.java`** — 21 tests covering each method's happy + throw paths (77 shared-kernel tests in total now, was 56).
+- **5 shared-kernel sites migrated** as demonstration — every `throw new IAE/ISE(...)` in `Sku`, `Quantity`, `Money` now goes through `Assert.isTrue(...)`. `Objects.requireNonNull` calls preserved so null-input behaviour stays NPE (the existing test suite asserts NPE.class for null args; flipping to IAE would have broken those tests, and the JDK-idiom `requireNonNull` is already concise enough).
+
+### Migration to the other ~184 main-code sites: see the following slice.
+
+## 2026-05-20 — Centralise the `currencyCode == null ? AUD : currencyCode` fallback
+
+Follow-up to the `Currencies` extraction. 18 inline ternaries of the shape `currencyCode == null ? Currencies.AUD : currencyCode` lived across 13 files (finance / sales / purchasing domain factories, the matching projection writers, and `JdbcSupplierProductPriceLookup`) — each one a null-coalescing-to-default silent fallback that the project's own rule (`CLAUDE.md` → *Document silent fallbacks*) requires to be Javadoc'd, log-line'd, and indexed in `docs/design-notes.md`. 18× the documentation surface wasn't going to happen; centralising made the rule observable in practice.
+
+### What shipped
+
+- **`Currencies.orBase(String currencyCode)`** — static helper returning `currencyCode` when non-null, else `AUD`. Javadoc carries the four required parts: trigger (nullable code reaches a sink needing non-null), substitution (AUD), the "no runtime log today" rationale (static helper has no entity-id context per `design-notes.md` operating notes), and two named tightening alternatives (throw NPE once upstream is audited; thread call-site context to enable DEBUG logging).
+- **13 files / 18 sites refactored** — every matching ternary swapped to `Currencies.orBase(currencyCode)` via a one-shot PowerShell substitution. No import additions needed; `Currencies` was already imported at every site by the previous slice.
+- **`Currencies.BASE_CURRENCY` alias added** — names the showcase base independent of which currency it points at (today `AUD`). `Currencies.AUD` keeps its meaning ("Australian dollar specifically" — used by tests asserting AUD behaviour and the cross-currency-rejection USD fixture); `Currencies.BASE_CURRENCY` is the right symbol when the intent is "whatever the company default is" (REST `defaultValue`, projection backfill defaults, domain factories with no per-row currency column). `orBase()` now returns `BASE_CURRENCY` — single source of truth for the base currency value.
+- **3 service-local `DEFAULT_CURRENCY = Currencies.AUD` constants deleted** — `PurchaseOrderService`, `SupplierProductPriceService`, `JdbcFinancialDashboardProjection`. Three pure-fallback usages (1 in `SupplierProductPriceService`, 2 in `JdbcFinancialDashboardProjection`) became `Currencies.orBase(currencyCode)`; non-fallback hardcoded-currency usages became `Currencies.BASE_CURRENCY`. The local constants were an aliasing layer that hid which calls were fallbacks vs hardcoded defaults — removing them makes the distinction visible at the call site.
+- **10 main-code `Currencies.AUD` literals → `Currencies.BASE_CURRENCY`** — same base-vs-AUD reasoning applied beyond the 3 ex-`DEFAULT_CURRENCY` sites: `JdbcProductRepository` (×2, reading product.product rows that lack a currency column), `GoodsReceivedHandler` + `ShipmentPostedCogsHandler` (handler-side hardcoded base where the inbound event lacks a `currencyCode` field), `FinancialDashboardController` (×3 `@RequestParam(defaultValue = ...)`), and `PurchaseOrderService` (×3 — new PO default + two price-list lookups). Test code stays on `Currencies.AUD` since tests assert AUD-specific behaviour or pass through USD/AUD fixtures.
+- **`docs/design-notes.md` row #8** — adds the fallback to the canonical *Documented silent fallbacks* table with emitter, trigger, substitution, log level (`none — deliberately silent`), downstream consumers (~all 13 files), and the two tightening alternatives.
+
+### What I deliberately did NOT change
+
+- **`InMemoryProductCardLookup.markDiscontinued` (test-harness)** — has `existing == null ? Currencies.AUD : existing.currencyCode()`. Different shape: the null check is on a wrapper object before accessing one of its methods, not on the currency code itself. Reshaping it to call `orBase` (e.g. `orBase(existing == null ? null : existing.currencyCode())`) is longer and less clear. Left inline.
+- **No runtime log added.** Per `design-notes.md` operating notes, fallback logs must carry entity-id context to be useful. `Currencies.orBase` has none — adding a context-less log line would violate the rule it's supposed to satisfy. Documented as a tightening alternative if the silent default ever stops being acceptable.
+
+### Smoke
+
+`mvn clean install -DskipTests` SUCCESS across 19 modules; `mvn test` SUCCESS across all modules.
+
+## 2026-05-20 — Extract `Currencies` constants in shared-kernel
+
+The codebase had 281 `"AUD"` / `"USD"` string literals across 54 files — `Money.of(...)` calls, projection writers defaulting null `currencyCode`, REST `@RequestParam(defaultValue = "AUD")`, and cross-currency rejection tests. Past the project's "N≥3 sites = extract" threshold by orders of magnitude.
+
+### What shipped
+
+- **`shared-kernel/src/main/java/com/northwood/shared/domain/Currencies.java`** (new) — constants-holder with `public static final String AUD = "AUD"`, `USD = "USD"`, `NZD = "NZD"`. NZD has zero Java references today; it's schema-prep alongside `finance.tax_code = 'GST_NZ_15'`. Javadoc explains why constants and not an enum — ISO 4217 is open-set (180+ codes), `java.util.Currency` exists for runtime lookup, and locking the domain to a closed set buys nothing while making inbound external strings (`Currency.valueOf`) awkward.
+- **54 files refactored** — every `"AUD"` → `Currencies.AUD`, every `"USD"` → `Currencies.USD`. Touches main code (10 files: `JdbcProductRepository`, `SalesOrder`, `PurchaseOrder`, the journal/payment/invoice aggregates, projection writers, `FinancialDashboardController`) and tests (44 files across all 7 services + test-harness). Done via a one-shot PowerShell script that handled both literal substitution and import insertion (alphabetical position among `com.northwood.*` imports).
+- **`CLAUDE.md` "Cross-service wire-format constants"** — added the `Currencies.AUD` example alongside `WorkOrderStatuses.RELEASED` so the pattern is discoverable.
+
+### Why constants, not enum
+
+Three options were on the table: enum, constants-holder, or do nothing. The enum gives compile-time switch coverage that the codebase doesn't actually use, and forces every external-source currency string through `Currency.valueOf(...)` with explicit catch. The constants-holder gives named references (replaces 280 magic strings, IDE-discoverable) without the closed-set commitment. The "do nothing" option was defensible since multi-currency is deprioritised, but the literal repetition was already past the project's documented extraction threshold.
+
+### Annotation defaults
+
+`@RequestParam(name = "currency", defaultValue = "AUD")` in `FinancialDashboardController` worked syntactically after the swap because `Currencies.AUD` is a constant expression (JLS §15.29 — `public static final String` initialized with a string literal). Worth flagging because annotation values are stricter than regular references.
+
+### Smoke
+
+`mvn clean install -DskipTests` SUCCESS across 19 modules. `mvn test` SUCCESS — every module green, including the cross-currency rejection tests in `MoneyTest` (still pass `Currencies.USD` vs `Currencies.AUD` for the same `IllegalArgumentException` assertion).
+
+## 2026-05-20 — Seed: relocate WC-ASSEMBLY UUID to break a cross-schema collision
+
+Cosmetic follow-up to the previous slice. The original baseline had `00000000-0000-7000-8000-000000000040` reused across two schemas — `purchasing.supplier` (SUP-001) and `manufacturing.work_center` (WC-ASSEMBLY). No UNIQUE conflict (different schemas) and no cross-schema FK (banned), so functionally harmless. But the §0 fixture-UUID registry expanded in the previous slice listed both at the same value, which read confusingly. Resolution: keep SUP-001 at `…040` (7 references) and relocate WC-ASSEMBLY to `…500` (14 references touched).
+
+Also corrected a mis-framing in the previous slice's dev-done.md entry: `purchasing.product_card` is *by design* empty at day-1, not an "unseeded projection gap." The table carries only `(product_id, discontinued_at)` and tracks discontinued products; zero rows = nothing discontinued, which is the truthful day-1 state. The 4 services that seed `product_card` carry price/cost columns purchasing's doesn't.
+
+## 2026-05-20 — Seed: expand `northwood_erp_seed.sql` for diversity + corner cases
+
+Follow-up to the schema/seed split shipped earlier today. The seed went from single-row-per-aggregate (1 customer, 1 supplier, 1 warehouse) to a multi-row showcase fixture set so demos can exercise regional / status / multi-source / multi-warehouse / volume-tier paths without manual data-loading after `docker compose up -d`. 30 INSERTs total (was 25); file grew 501 → 696 lines.
+
+### What shipped
+
+Aggregate row additions, with their projection ripples:
+
+- **Customers** → 5 (was 1). CUST-002 Melbourne, CUST-003 Brisbane, CUST-004 Perth (industrial hotel buyer), CUST-005 Adelaide with `status='blocked'` as a credit-hold corner case. `sales.customer` switched to multi-row INSERT with the `status` column explicit.
+- **Suppliers** → 5 (was 1). SUP-002 hardware (screws + drawer runners), SUP-003 finishing (varnish), SUP-004 alternative timber (multi-source against SUP-001 on board/leg), SUP-005 blocked. `purchasing.supplier` switched to multi-row with `status` explicit.
+- **Supplier prices** → 12 rows (was 6). Adds 5 new base-tier rows + 1 volume-tier row in a separate INSERT (SUP-002 charges 4.50 for screws at base, 3.80 at `min_quantity = 100`). The tier row lives in its own INSERT so the base rows don't have to spell out `min_quantity = 0` defensively.
+- **Warehouses** → 2 (was 1). `MELB Melbourne Dispatch` (active). Ripple in `inventory.stock_balance`: 9 new MELB rows mirroring the existing 9 stock-items, with realistic regional levels (table + assemble-locally raws pre-stocked, cabinet/chest families at 0). Cross-warehouse ATP now has obvious 0-on-hand cells to show.
+- **GL accounts** → 16 (was 12). 3000 Owner's Equity, 3100 Retained Earnings, 4100 Sales Discounts, 5300 Freight Expense — gives day-1 trial balance non-empty equity column + ops accounts for future demo scenarios.
+- **Tax codes** → 4 (was 3). Added `GST_NZ_15` as schema-prep for NZ-customer scenarios. No Java code path produces or consumes it today.
+- **Products** → 13 (was 12). FG-CHAIR-001 — simple FG that re-uses existing raws (4 legs + ½ board + 1 screw pack + ½ varnish pack). Projections rippled into all five product-card carrying schemas (sales / inventory.stock_item + 2× stock_balance / manufacturing / finance / reporting). BOM (`bom_header 410` + 4 lines) is the **first** in the seed with non-zero `scrap_factor_percent` — 2% on screws, 5% on varnish — exercising the requirement = `qty_per_unit × (1 + scrap/100)` planning path with realistic numbers. Routing (`routing_header 080` + 3 ops) shares WC-ASSEMBLY with the table/cabinet/drawer routings.
+
+### §0 fixture-UUID registry updated
+
+The §0 block at the top of the seed file is now an exhaustive registry rather than a partial one — every product, warehouse, customer, supplier, BOM, routing, and work-center fixture is listed with its UUID and a one-word category. Future seed additions should add their UUID here too.
+
+### `purchasing.product_card` empty by design (not a gap)
+
+Initially flagged this as an unseeded projection; it isn't. The table carries only `(product_id, discontinued_at)` and is the read-side for `DiscontinuedProductLookup`, which filters on `discontinued_at IS NOT NULL`. Rows are added by the runtime `ProductDiscontinuedHandler` when a product gets discontinued — zero rows at day-1 means "no products are discontinued," which is the truthful day-1 state. Sales / manufacturing / finance / reporting seed their `product_card` because those carry pricing or cost columns needed at day-1; purchasing's card carries no such columns.
+
+### Cross-schema UUID collision (fixed in follow-up slice)
+
+Original baseline had `00000000-0000-7000-8000-000000000040` reused by `purchasing.supplier` (SUP-001) and `manufacturing.work_center` (WC-ASSEMBLY). No UNIQUE conflict because they sit in different schemas, but the §0 registry listing both at the same UUID read oddly. Resolved in the slice entry above.
+
+## 2026-05-20 — Schema baseline split: `northwood_erp.sql` + `northwood_erp_seed.sql`
+
+Carved the demo seed rows out of the schema baseline so a fresh `docker compose up -d` can either come up with an empty schema (populate via events from zero) or with the showcase fixtures, without editing either file.
+
+### What shipped
+
+- **`db/northwood_erp.sql`** — now schema-only: extensions, schemas, roles, grants, partitions, PL/pgSQL functions, triggers. Every `INSERT` block is gone (393 lines stripped). Each per-service section keeps its `BEGIN/COMMIT` and gains a one-line `-- <SERVICE>: seed lives in db/northwood_erp_seed.sql §SEED: <SERVICE>` pointer where the seed used to be. The `§0 WELL-KNOWN FIXTURE UUIDs` comment block moved with the seeds (it's only meaningful when reading them). Header design-notes block updated to call out the split and reference the seed file as the demo-fixture source.
+- **`db/northwood_erp_seed.sql`** (new, 501 lines) — the data-side companion. Mirrors the §2..§8 layout of the schema file with `§SEED: <SERVICE>` sections, each wrapped in `BEGIN/COMMIT`. Holds the §0 UUID registry, the seven service seeds (products, BOMs, customers, suppliers, GL chart, etc.), and a header explaining both run paths. Every INSERT keeps its `ON CONFLICT DO NOTHING` so the file is safe to re-run.
+- **`docker-compose.seed.yml`** (new) — additive override. Mounts the seed file into `/docker-entrypoint-initdb.d/02-northwood_erp_seed.sql` alongside the base schema mount. Comments explain why an override (not a profile) and how compose list-append merges the volumes.
+- **`docker-compose.yml`** — the postgres `volumes:` comment block reworded: schema only by default, point at the override file for seeded.
+- **`.claude/commands/smoke.md`** — gained a Variant table (schema only vs. schema + seed), with the override-file `up` invocation. Default kept as schema + seed since most slice demos expect populated data.
+- **`docs/persistence.md` "Reference data and seed UUIDs"** — points at the seed file as the canonical fixture home; documents the two run modes and the re-seed-via-`psql` flow. Knock-on edits to two adjacent rules that named the schema file as the seed source.
+- **`docs/dev-todo.md` §2.15** — Liquibase re-enable criteria reworded to refer to the *baseline pair* (`northwood_erp.sql` + `northwood_erp_seed.sql`) rather than the single file.
+
+### Why this design
+
+The user wanted to be able to demo "from scratch as well as something already there." Schema-only-by-default makes the explicit `-f docker-compose.yml -f docker-compose.seed.yml` invocation the seeded path — discoverable from the commented mount block in the base compose file, and copy-pasteable from `smoke.md`. Using an override file (not a Compose profile and not a `psql exec` after-the-fact) was chosen because postgres only runs `/docker-entrypoint-initdb.d/` scripts once on first volume init: the seed has to be present at `up` time, so the right control point is "what's mounted in the init dir."
+
+### Liquibase remains disabled
+
+§2.15 still applies. The split changes which file the seed lives in but not the "every structural slice rebakes the baseline" workflow.
+
+## 2026-05-20 — §2.13 Saga lease TTL + retry backoff → @Value config
+
+Small refactor flagged during §2.0.j and parked in dev-todo as §2.13. Triple-duplication of `Duration.ofSeconds(30)` lease TTL + `Duration.ofSeconds(15)` retry backoff across `JdbcSalesOrderFulfilmentSagaManager`, `JdbcMakeToOrderSagaManager`, `JdbcPurchaseToPaySagaManager` is now a single property pair with the same defaults.
+
+### What shipped
+
+- Two new properties (defaults match the prior hardcoded values):
+  - `northwood.saga.lease-ttl-seconds` → 30
+  - `northwood.saga.retry-backoff-seconds` → 15
+- Each of the 3 `Jdbc*SagaManager` constructors gains `@Value`-annotated `long leaseTtlSeconds` + `long retryBackoffSeconds` params. Body passes `Duration.ofSeconds(...)` through to the `SagaManager` base. Javadoc on each constructor names the property keys.
+- 6 test call sites updated to pass `30L, 15L` (no fixed-arg overload added — the test-harness kits + per-service `Jdbc*SagaManagerTest` classes call the new constructor explicitly).
+
+### Why @Value over a constant
+
+The plan's own framing: matches the existing pattern for `northwood.saga.poll-interval` and `northwood.finance.match.priceTolerancePercent`. Operational policy values that a real ops user might want to tune per environment don't belong as compile-time constants. The §2.0.j hygiene sweep flagged this and explicitly excluded it from the constants pass for that reason.
+
+### Smoke
+
+- `mvn clean install -DskipTests` → BUILD SUCCESS across 19 modules.
+- `mvn -pl sales-service,manufacturing-service,purchasing-service,test-harness test` → all green (saga-manager unit tests in all three services + 8 end-to-end test-harness flows).
+
+### Follow-ups noted
+
+- The per-service override exists if a single saga family needs faster retry under load — the property key is global, not per-saga. If per-saga tuning becomes useful, splitting to `northwood.saga.<flow>.lease-ttl-seconds` is a localised follow-up; YAGNI for now.
+
 ---
 
 ## 2026-05-19 — Liquibase consolidation + temporary disable

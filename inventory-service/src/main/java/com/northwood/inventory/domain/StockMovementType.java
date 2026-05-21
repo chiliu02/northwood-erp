@@ -1,5 +1,6 @@
 package com.northwood.inventory.domain;
 
+import com.northwood.shared.domain.Assert;
 /**
  * Mirrors the schema CHECK on {@code inventory.stock_movement.movement_type}.
  * The string values must match the database literals exactly.
@@ -39,6 +40,6 @@ public enum StockMovementType {
         for (StockMovementType t : values()) {
             if (t.dbValue.equals(value)) return t;
         }
-        throw new IllegalArgumentException("Unknown stock_movement movement_type: " + value);
+        throw Assert.unknownValue("stock_movement movement_type", value);
     }
 }

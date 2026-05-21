@@ -3,6 +3,7 @@ package com.northwood.reporting.api;
 import com.northwood.reporting.application.dto.FinancialDashboardSnapshot;
 import com.northwood.reporting.application.dto.FinancialDashboardView;
 import com.northwood.reporting.application.FinancialDashboardQueryPort;
+import com.northwood.shared.domain.Currencies;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -26,7 +27,7 @@ public class FinancialDashboardController {
     /** All days for the currency (newest first). */
     @GetMapping
     public List<FinancialDashboardView> list(
-        @RequestParam(name = "currency", defaultValue = "AUD") String currencyCode
+        @RequestParam(name = "currency", defaultValue = Currencies.BASE_CURRENCY) String currencyCode
     ) {
         return port.findByCurrency(currencyCode);
     }
@@ -38,7 +39,7 @@ public class FinancialDashboardController {
      */
     @GetMapping("/snapshot")
     public FinancialDashboardSnapshot snapshot(
-        @RequestParam(name = "currency", defaultValue = "AUD") String currencyCode
+        @RequestParam(name = "currency", defaultValue = Currencies.BASE_CURRENCY) String currencyCode
     ) {
         return port.findSnapshot(currencyCode);
     }
@@ -46,7 +47,7 @@ public class FinancialDashboardController {
     @GetMapping("/{date}")
     public ResponseEntity<FinancialDashboardView> get(
         @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
-        @RequestParam(name = "currency", defaultValue = "AUD") String currencyCode
+        @RequestParam(name = "currency", defaultValue = Currencies.BASE_CURRENCY) String currencyCode
     ) {
         return port.findByDate(date, currencyCode)
             .map(ResponseEntity::ok)

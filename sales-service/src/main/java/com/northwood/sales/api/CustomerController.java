@@ -6,8 +6,6 @@ import com.northwood.sales.api.dto.ChangeCustomerNameRequest;
 import com.northwood.sales.api.dto.DeactivateCustomerRequest;
 import com.northwood.sales.api.dto.RegisterCustomerRequest;
 import com.northwood.sales.application.CustomerService;
-import com.northwood.sales.application.CustomerService.CustomerNotFoundException;
-import com.northwood.sales.application.CustomerService.DuplicateCustomerCodeException;
 import com.northwood.sales.application.dto.CustomerView;
 import com.northwood.shared.api.security.RequireSalesClerk;
 import jakarta.validation.Valid;
@@ -15,7 +13,6 @@ import java.net.URI;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -109,23 +106,4 @@ public class CustomerController {
         return ResponseEntity.noContent().build();
     }
 
-    @ExceptionHandler(CustomerNotFoundException.class)
-    public ResponseEntity<String> handleNotFound(CustomerNotFoundException e) {
-        return ResponseEntity.status(404).body(e.getMessage());
-    }
-
-    @ExceptionHandler(DuplicateCustomerCodeException.class)
-    public ResponseEntity<String> handleDuplicate(DuplicateCustomerCodeException e) {
-        return ResponseEntity.status(409).body(e.getMessage());
-    }
-
-    @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<String> handleConflict(IllegalStateException e) {
-        return ResponseEntity.status(409).body(e.getMessage());
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<String> handleBadRequest(IllegalArgumentException e) {
-        return ResponseEntity.badRequest().body(e.getMessage());
-    }
 }

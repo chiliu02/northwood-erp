@@ -12,9 +12,12 @@ import com.northwood.inventory.domain.StockMovementDirection;
 import com.northwood.inventory.domain.StockMovementSourceTypes;
 import com.northwood.inventory.domain.StockMovementType;
 import com.northwood.inventory.domain.WarehouseCodes;
+import com.northwood.shared.application.exception.BadRequestException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -48,12 +51,29 @@ public class GoodsReceiptService {
      * 400 by the controller. Defence-in-depth: catches a buggy / malicious
      * client that bypassed the SPA picker.
      */
-    public static class GoodsReceiptLineProductMismatchException extends RuntimeException {
+    public static class GoodsReceiptLineProductMismatchException extends BadRequestException {
+        public static final String CODE = "GOODS_RECEIPT_LINE_PRODUCT_MISMATCH";
+        private final UUID purchaseOrderLineId;
+        private final UUID expectedProductId;
+        private final UUID actualProductId;
         public GoodsReceiptLineProductMismatchException(UUID purchaseOrderLineId, UUID expectedProductId, UUID actualProductId) {
-            super(expectedProductId == null
+            super(CODE, expectedProductId == null
                 ? "Unknown purchase_order_line_id=%s (no matching projection row; line may not belong to a created purchase order)".formatted(purchaseOrderLineId)
                 : "Product mismatch on purchase_order_line_id=%s: expected product=%s, got=%s".formatted(purchaseOrderLineId, expectedProductId, actualProductId)
             );
+            this.purchaseOrderLineId = purchaseOrderLineId;
+            this.expectedProductId = expectedProductId;
+            this.actualProductId = actualProductId;
+        }
+        public UUID purchaseOrderLineId() { return purchaseOrderLineId; }
+        public UUID expectedProductId() { return expectedProductId; }
+        public UUID actualProductId() { return actualProductId; }
+        @Override public Map<String, Object> params() {
+            Map<String, Object> p = new HashMap<>();
+            p.put("purchaseOrderLineId", purchaseOrderLineId);
+            if (expectedProductId != null) p.put("expectedProductId", expectedProductId);
+            if (actualProductId != null) p.put("actualProductId", actualProductId);
+            return Map.copyOf(p);
         }
     }
 

@@ -14,6 +14,7 @@ import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaPort;
 import com.northwood.sales.domain.saga.FulfilmentSagaData;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.shared.application.saga.SagaManager;
+import com.northwood.shared.domain.Assert;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,12 +56,21 @@ public class JdbcSalesOrderFulfilmentSagaManager
 
     private final ObjectMapper json;
 
+    /**
+     * Lease + backoff durations are overridable via
+     * {@code northwood.saga.lease-ttl-seconds} (default 30s) and
+     * {@code northwood.saga.retry-backoff-seconds} (default 15s) — §2.13.
+     * Same defaults across all three saga managers; the per-service override
+     * exists so a single saga family can be tuned without touching siblings.
+     */
     public JdbcSalesOrderFulfilmentSagaManager(
         SalesOrderFulfilmentSagaPort sagaPort,
         ObjectMapper json,
-        PlatformTransactionManager transactionManager
+        PlatformTransactionManager transactionManager,
+        @org.springframework.beans.factory.annotation.Value("${northwood.saga.lease-ttl-seconds:30}") long leaseTtlSeconds,
+        @org.springframework.beans.factory.annotation.Value("${northwood.saga.retry-backoff-seconds:15}") long retryBackoffSeconds
     ) {
-        super(sagaPort, transactionManager, Duration.ofSeconds(30), Duration.ofSeconds(15));
+        super(sagaPort, transactionManager, Duration.ofSeconds(leaseTtlSeconds), Duration.ofSeconds(retryBackoffSeconds));
         this.json = json;
     }
 
@@ -113,13 +123,9 @@ public class JdbcSalesOrderFulfilmentSagaManager
             // map; the inventory side has nothing meaningful to say
             // otherwise. Fail loudly rather than stash an empty map and
             // let the worker discover the anomaly via its WARN guard.
-            if (shortageByLineNumber == null || shortageByLineNumber.isEmpty()) {
-                throw new IllegalStateException(
-                    StockReserved.EVENT_TYPE + " status=" + reservationStatus + " for sales_order="
+            Assert.stateNotEmpty(shortageByLineNumber, StockReserved.EVENT_TYPE + " status=" + reservationStatus + " for sales_order="
                     + salesOrderHeaderId + " arrived without a per-line shortage map. "
-                    + "Inventory must include shortageByLineNumber for partially_reserved / failed outcomes."
-                );
-            }
+                    + "Inventory must include shortageByLineNumber for partially_reserved / failed outcomes.");
             stashShortage(saga, shortageByLineNumber);
             saga.transitionTo(STOCK_RESERVED, "wait_for_next_step");
             saga.parkUntil(Instant.now());

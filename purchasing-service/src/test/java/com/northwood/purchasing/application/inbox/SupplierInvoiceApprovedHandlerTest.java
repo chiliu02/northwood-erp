@@ -12,6 +12,7 @@ import com.northwood.finance.domain.events.SupplierInvoiceApproved;
 import com.northwood.purchasing.application.saga.PurchaseToPaySagaManager;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
@@ -44,7 +45,7 @@ class SupplierInvoiceApprovedHandlerTest {
         SupplierInvoiceApproved payload = new SupplierInvoiceApproved(
             eventId, UUID.randomUUID(), "INV-001", "SUP-INV-X",
             PO, UUID.randomUUID(), "Acme",
-            "AUD", new BigDecimal("1000.00"), Instant.now()
+            Currencies.AUD, new BigDecimal("1000.00"), Instant.now()
         );
         return new EventEnvelope(
             eventId, FinanceAggregateTypes.SUPPLIER_INVOICE, UUID.randomUUID(),

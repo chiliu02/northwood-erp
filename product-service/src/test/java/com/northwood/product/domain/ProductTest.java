@@ -12,6 +12,7 @@ import com.northwood.product.domain.events.ReorderPolicyChanged;
 import com.northwood.product.domain.events.SalesPriceChanged;
 import com.northwood.product.domain.events.StandardCostChanged;
 import com.northwood.product.domain.events.ValuationClassChanged;
+import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import com.northwood.shared.domain.Money;
 import com.northwood.shared.domain.Sku;
@@ -32,8 +33,8 @@ class ProductTest {
             "Description",
             ProductType.FINISHED_GOOD,
             UOM_EACH,
-            Money.of(new BigDecimal("100.00"), "AUD"),
-            Money.of(new BigDecimal("60.00"), "AUD")
+            Money.of(new BigDecimal("100.00"), Currencies.AUD),
+            Money.of(new BigDecimal("60.00"), Currencies.AUD)
         );
     }
 
@@ -76,43 +77,43 @@ class ProductTest {
         @Test void rejects_null_sku() {
             assertThatThrownBy(() -> Product.register(
                 null, "n", "d", ProductType.FINISHED_GOOD, UOM_EACH,
-                Money.zero("AUD"), Money.zero("AUD")
-            )).isInstanceOf(NullPointerException.class);
+                Money.zero(Currencies.AUD), Money.zero(Currencies.AUD)
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_name() {
             assertThatThrownBy(() -> Product.register(
                 new Sku("FG-X"), null, "d", ProductType.FINISHED_GOOD, UOM_EACH,
-                Money.zero("AUD"), Money.zero("AUD")
-            )).isInstanceOf(NullPointerException.class);
+                Money.zero(Currencies.AUD), Money.zero(Currencies.AUD)
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_product_type() {
             assertThatThrownBy(() -> Product.register(
                 new Sku("FG-X"), "n", "d", null, UOM_EACH,
-                Money.zero("AUD"), Money.zero("AUD")
-            )).isInstanceOf(NullPointerException.class);
+                Money.zero(Currencies.AUD), Money.zero(Currencies.AUD)
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_base_uom_id() {
             assertThatThrownBy(() -> Product.register(
                 new Sku("FG-X"), "n", "d", ProductType.FINISHED_GOOD, null,
-                Money.zero("AUD"), Money.zero("AUD")
-            )).isInstanceOf(NullPointerException.class);
+                Money.zero(Currencies.AUD), Money.zero(Currencies.AUD)
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_sales_price() {
             assertThatThrownBy(() -> Product.register(
                 new Sku("FG-X"), "n", "d", ProductType.FINISHED_GOOD, UOM_EACH,
-                null, Money.zero("AUD")
-            )).isInstanceOf(NullPointerException.class);
+                null, Money.zero(Currencies.AUD)
+            )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_standard_cost() {
             assertThatThrownBy(() -> Product.register(
                 new Sku("FG-X"), "n", "d", ProductType.FINISHED_GOOD, UOM_EACH,
-                Money.zero("AUD"), null
-            )).isInstanceOf(NullPointerException.class);
+                Money.zero(Currencies.AUD), null
+            )).isInstanceOf(IllegalArgumentException.class);
         }
     }
 
@@ -121,40 +122,40 @@ class ProductTest {
         @Test void updates_price_and_emits_event() {
             Product p = newProduct();
             p.pullPendingEvents();   // drain ProductCreated
-            p.changeSalesPrice(Money.of(new BigDecimal("150.00"), "AUD"));
+            p.changeSalesPrice(Money.of(new BigDecimal("150.00"), Currencies.AUD));
             assertThat(p.salesPrice().amount()).isEqualByComparingTo(new BigDecimal("150.00"));
             List<DomainEvent> events = p.pullPendingEvents();
             assertThat(events).hasSize(1).first().isInstanceOf(SalesPriceChanged.class);
             SalesPriceChanged e = (SalesPriceChanged) events.get(0);
             assertThat(e.oldSalesPrice()).isEqualByComparingTo(new BigDecimal("100.00"));
             assertThat(e.newSalesPrice()).isEqualByComparingTo(new BigDecimal("150.00"));
-            assertThat(e.currencyCode()).isEqualTo("AUD");
+            assertThat(e.currencyCode()).isEqualTo(Currencies.AUD);
         }
 
         @Test void leaves_standard_cost_unchanged() {
             Product p = newProduct();
             p.pullPendingEvents();
-            p.changeSalesPrice(Money.of(new BigDecimal("150.00"), "AUD"));
+            p.changeSalesPrice(Money.of(new BigDecimal("150.00"), Currencies.AUD));
             assertThat(p.standardCost().amount()).isEqualByComparingTo(new BigDecimal("60.00"));
         }
 
         @Test void rejects_when_discontinued() {
             Product p = newProduct();
             p.discontinue();
-            assertThatThrownBy(() -> p.changeSalesPrice(Money.zero("AUD")))
+            assertThatThrownBy(() -> p.changeSalesPrice(Money.zero(Currencies.AUD)))
                 .isInstanceOf(IllegalStateException.class);
         }
 
         @Test void rejects_null() {
             Product p = newProduct();
             assertThatThrownBy(() -> p.changeSalesPrice(null))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void no_op_emits_nothing_when_value_matches() {
             Product p = newProduct();
             p.pullPendingEvents();
-            p.changeSalesPrice(Money.of(new BigDecimal("100.00"), "AUD"));
+            p.changeSalesPrice(Money.of(new BigDecimal("100.00"), Currencies.AUD));
             assertThat(p.pullPendingEvents()).isEmpty();
         }
 
@@ -162,7 +163,7 @@ class ProductTest {
             // current sales price is 100.00 AUD
             Product p = newProduct();
             p.pullPendingEvents();
-            p.changeSalesPrice(Money.of(new BigDecimal("100"), "AUD"));   // scale=0 vs scale=2
+            p.changeSalesPrice(Money.of(new BigDecimal("100"), Currencies.AUD));   // scale=0 vs scale=2
             assertThat(p.pullPendingEvents()).isEmpty();
         }
 
@@ -170,7 +171,7 @@ class ProductTest {
             // Discontinued + value-matches: still throws.
             Product p = newProduct();
             p.discontinue();
-            assertThatThrownBy(() -> p.changeSalesPrice(Money.of(new BigDecimal("100.00"), "AUD")))
+            assertThatThrownBy(() -> p.changeSalesPrice(Money.of(new BigDecimal("100.00"), Currencies.AUD)))
                 .isInstanceOf(IllegalStateException.class);
         }
     }
@@ -180,54 +181,54 @@ class ProductTest {
         @Test void updates_cost_and_emits_event() {
             Product p = newProduct();
             p.pullPendingEvents();
-            p.changeStandardCost(Money.of(new BigDecimal("80.00"), "AUD"));
+            p.changeStandardCost(Money.of(new BigDecimal("80.00"), Currencies.AUD));
             assertThat(p.standardCost().amount()).isEqualByComparingTo(new BigDecimal("80.00"));
             List<DomainEvent> events = p.pullPendingEvents();
             assertThat(events).hasSize(1).first().isInstanceOf(StandardCostChanged.class);
             StandardCostChanged e = (StandardCostChanged) events.get(0);
             assertThat(e.oldStandardCost()).isEqualByComparingTo(new BigDecimal("60.00"));
             assertThat(e.newStandardCost()).isEqualByComparingTo(new BigDecimal("80.00"));
-            assertThat(e.currencyCode()).isEqualTo("AUD");
+            assertThat(e.currencyCode()).isEqualTo(Currencies.AUD);
         }
 
         @Test void leaves_sales_price_unchanged() {
             Product p = newProduct();
             p.pullPendingEvents();
-            p.changeStandardCost(Money.of(new BigDecimal("80.00"), "AUD"));
+            p.changeStandardCost(Money.of(new BigDecimal("80.00"), Currencies.AUD));
             assertThat(p.salesPrice().amount()).isEqualByComparingTo(new BigDecimal("100.00"));
         }
 
         @Test void rejects_when_discontinued() {
             Product p = newProduct();
             p.discontinue();
-            assertThatThrownBy(() -> p.changeStandardCost(Money.zero("AUD")))
+            assertThatThrownBy(() -> p.changeStandardCost(Money.zero(Currencies.AUD)))
                 .isInstanceOf(IllegalStateException.class);
         }
 
         @Test void rejects_null() {
             Product p = newProduct();
             assertThatThrownBy(() -> p.changeStandardCost(null))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void no_op_emits_nothing_when_value_matches() {
             Product p = newProduct();
             p.pullPendingEvents();
-            p.changeStandardCost(Money.of(new BigDecimal("60.00"), "AUD"));
+            p.changeStandardCost(Money.of(new BigDecimal("60.00"), Currencies.AUD));
             assertThat(p.pullPendingEvents()).isEmpty();
         }
 
         @Test void no_op_ignores_BigDecimal_scale() {
             Product p = newProduct();
             p.pullPendingEvents();
-            p.changeStandardCost(Money.of(new BigDecimal("60"), "AUD"));   // scale=0 vs scale=2
+            p.changeStandardCost(Money.of(new BigDecimal("60"), Currencies.AUD));   // scale=0 vs scale=2
             assertThat(p.pullPendingEvents()).isEmpty();
         }
 
         @Test void rejection_runs_before_no_op_check() {
             Product p = newProduct();
             p.discontinue();
-            assertThatThrownBy(() -> p.changeStandardCost(Money.of(new BigDecimal("60.00"), "AUD")))
+            assertThatThrownBy(() -> p.changeStandardCost(Money.of(new BigDecimal("60.00"), Currencies.AUD)))
                 .isInstanceOf(IllegalStateException.class);
         }
     }
@@ -363,7 +364,7 @@ class ProductTest {
         @Test void rejects_null_class() {
             Product p = newProduct();
             assertThatThrownBy(() -> p.changeValuationClass(null))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void emits_event_with_old_null_on_first_set() {
@@ -476,7 +477,7 @@ class ProductTest {
                 ProductId.newId(), new Sku("FG-X-001"), "P", null,
                 ProductType.FINISHED_GOOD, UOM_EACH,
                 false, false, false, false,
-                Money.of(new BigDecimal("10"), "AUD"), Money.of(new BigDecimal("5"), "AUD"),
+                Money.of(new BigDecimal("10"), Currencies.AUD), Money.of(new BigDecimal("5"), Currencies.AUD),
                 BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null,
                 Product.Status.ACTIVE, 1L,
@@ -499,7 +500,7 @@ class ProductTest {
         @Test void rejects_null_list() {
             Product p = newProduct();
             assertThatThrownBy(() -> p.setApprovedVendors(null))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_when_discontinued() {
@@ -542,8 +543,8 @@ class ProductTest {
                 ProductType.FINISHED_GOOD,
                 UOM_EACH,
                 false, false, false, false,
-                Money.of(new BigDecimal("10"), "AUD"),
-                Money.of(new BigDecimal("5"), "AUD"),
+                Money.of(new BigDecimal("10"), Currencies.AUD),
+                Money.of(new BigDecimal("5"), Currencies.AUD),
                 BigDecimal.ZERO, BigDecimal.ZERO,
                 ValuationClass.RAW_MATERIALS, null,
                 Product.Status.ACTIVE, 5L,

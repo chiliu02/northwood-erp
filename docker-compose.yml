@@ -19,8 +19,12 @@ services:
       - northwood-pgdata:/var/lib/postgresql/data
       # Mounted into Postgres's init-script directory; the official image runs
       # any *.sql / *.sh placed here exactly once, on the first boot of a fresh
-      # data volume. This loads the full baseline schema, role grants, and
-      # seed data. To re-seed: `docker compose down -v` then `up -d`.
+      # data volume. This loads the baseline schema, roles, and grants only —
+      # NO data. To also pre-populate the showcase fixture rows (products,
+      # BOMs, customers, suppliers, etc.) layer in docker-compose.seed.yml:
+      #   docker compose down -v
+      #   docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d
+      # See db/northwood_erp_seed.sql + the override file for details.
       - ./db/northwood_erp.sql:/docker-entrypoint-initdb.d/01-northwood_erp.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]

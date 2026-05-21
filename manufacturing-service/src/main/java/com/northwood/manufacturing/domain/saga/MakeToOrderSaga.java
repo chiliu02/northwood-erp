@@ -2,6 +2,7 @@ package com.northwood.manufacturing.domain.saga;
 
 import com.northwood.manufacturing.domain.ManufacturingAggregateTypes;
 import com.northwood.shared.domain.saga.SagaInstance;
+import com.northwood.shared.domain.Assert;
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
@@ -153,11 +154,7 @@ public final class MakeToOrderSaga extends SagaInstance {
 
     /** Set once the saga has decided which work order it owns. */
     public void attachWorkOrder(UUID workOrderId) {
-        if (this.workOrderId != null && !this.workOrderId.equals(workOrderId)) {
-            throw new IllegalStateException(
-                "Saga " + sagaId() + " already attached to work_order=" + this.workOrderId
-            );
-        }
+        Assert.state(this.workOrderId == null || this.workOrderId.equals(workOrderId), "Saga " + sagaId() + " already attached to work_order=" + this.workOrderId);
         this.workOrderId = workOrderId;
     }
 

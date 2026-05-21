@@ -12,6 +12,7 @@ import com.northwood.manufacturing.domain.WorkOrderRepository;
 import com.northwood.manufacturing.domain.WorkOrderRepository.CompletedChild;
 import com.northwood.manufacturing.domain.events.SubAssembliesConsumed;
 import com.northwood.manufacturing.domain.events.SubAssembliesConsumed.ConsumedItem;
+import com.northwood.shared.application.exception.NotFoundException;
 import com.northwood.shared.application.outbox.OutboxPort;
 import com.northwood.shared.application.outbox.OutboxRow;
 import com.northwood.shared.application.security.CurrentUserAccessor;
@@ -19,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -55,10 +57,15 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class WorkOrderOperationService {
 
-    public static class WorkOrderNotFoundException extends RuntimeException {
+    public static class WorkOrderNotFoundException extends NotFoundException {
+        public static final String CODE = "WORK_ORDER_NOT_FOUND";
+        private final String workOrderId;
         public WorkOrderNotFoundException(String workOrderId) {
-            super("No work order with id=" + workOrderId);
+            super(CODE, "No work order with id=" + workOrderId);
+            this.workOrderId = workOrderId;
         }
+        public String workOrderId() { return workOrderId; }
+        @Override public Map<String, Object> params() { return Map.of("workOrderId", workOrderId); }
     }
 
     private static final Logger log = LoggerFactory.getLogger(WorkOrderOperationService.class);

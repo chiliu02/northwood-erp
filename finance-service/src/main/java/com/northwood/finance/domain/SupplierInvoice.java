@@ -2,13 +2,14 @@ package com.northwood.finance.domain;
 
 import com.northwood.finance.domain.events.SupplierInvoiceApproved;
 import com.northwood.finance.domain.events.SupplierInvoiceRejected;
+import com.northwood.shared.domain.Assert;
+import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -71,7 +72,7 @@ public final class SupplierInvoice {
             for (Status s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown supplier_invoice status: " + value);
+            throw Assert.unknownValue("supplier_invoice status", value);
         }
     }
 
@@ -103,7 +104,7 @@ public final class SupplierInvoice {
             for (MatchStatus s : values()) {
                 if (s.dbValue.equals(value)) return s;
             }
-            throw new IllegalArgumentException("Unknown supplier_invoice match_status: " + value);
+            throw Assert.unknownValue("supplier_invoice match_status", value);
         }
     }
 
@@ -145,11 +146,9 @@ public final class SupplierInvoice {
         List<SupplierInvoiceLine> lines,
         MatchStatus matchOutcome
     ) {
-        Objects.requireNonNull(purchaseOrderHeaderId, "purchaseOrderHeaderId");
-        Objects.requireNonNull(supplierId, "supplierId");
-        if (lines == null || lines.isEmpty()) {
-            throw new IllegalArgumentException("at least one line is required");
-        }
+        Assert.notNull(purchaseOrderHeaderId, "purchaseOrderHeaderId");
+        Assert.notNull(supplierId, "supplierId");
+        Assert.notEmpty(lines, "at least one line is required");
 
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal tax = BigDecimal.ZERO;
@@ -161,7 +160,7 @@ public final class SupplierInvoice {
         tax = tax.setScale(2, RoundingMode.HALF_UP);
         BigDecimal total = subtotal.add(tax);
 
-        Objects.requireNonNull(matchOutcome, "matchOutcome");
+        Assert.notNull(matchOutcome, "matchOutcome");
         boolean matched = matchOutcome == MatchStatus.MATCHED;
         Status status = matched ? Status.APPROVED : Status.THREE_WAY_MATCH_FAILED;
         MatchStatus matchStatus = matchOutcome;
@@ -170,10 +169,10 @@ public final class SupplierInvoice {
         SupplierInvoice si = new SupplierInvoice(
             id,
             internalInvoiceNumber,
-            Objects.requireNonNull(supplierInvoiceNumber),
+            Assert.notNull(supplierInvoiceNumber, "supplierInvoiceNumber"),
             purchaseOrderHeaderId, goodsReceiptHeaderId,
             supplierId, supplierCode, supplierName,
-            currencyCode == null ? "AUD" : currencyCode,
+            Currencies.orBase(currencyCode),
             subtotal, tax, total,
             status, matchStatus,
             new ArrayList<>(lines),
@@ -256,12 +255,8 @@ public final class SupplierInvoice {
      * (or paid, or cancelled) invoice is rejected.
      */
     public void manualApprove(String reason) {
-        if (status != Status.THREE_WAY_MATCH_FAILED) {
-            throw new IllegalStateException(
-                "Cannot manually approve invoice " + id.value()
-                    + " in status=" + status.dbValue() + " (must be " + Status.THREE_WAY_MATCH_FAILED.dbValue() + ")"
-            );
-        }
+        Assert.state(status == Status.THREE_WAY_MATCH_FAILED, "Cannot manually approve invoice " + id.value()
+                    + " in status=" + status.dbValue() + " (must be " + Status.THREE_WAY_MATCH_FAILED.dbValue() + ")");
         this.status = Status.APPROVED;
         this.matchStatus = MatchStatus.MATCHED;
         pendingEvents.add(new SupplierInvoiceApproved(
@@ -288,12 +283,8 @@ public final class SupplierInvoice {
      * would otherwise park at {@code goods_received} forever.
      */
     public void manualReject(String reason) {
-        if (status != Status.THREE_WAY_MATCH_FAILED) {
-            throw new IllegalStateException(
-                "Cannot manually reject invoice " + id.value()
-                    + " in status=" + status.dbValue() + " (must be " + Status.THREE_WAY_MATCH_FAILED.dbValue() + ")"
-            );
-        }
+        Assert.state(status == Status.THREE_WAY_MATCH_FAILED, "Cannot manually reject invoice " + id.value()
+                    + " in status=" + status.dbValue() + " (must be " + Status.THREE_WAY_MATCH_FAILED.dbValue() + ")");
         this.status = Status.CANCELLED;
         pendingEvents.add(new SupplierInvoiceRejected(
             UUID.randomUUID(),

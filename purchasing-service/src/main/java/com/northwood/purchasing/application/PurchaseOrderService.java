@@ -13,10 +13,14 @@ import com.northwood.purchasing.domain.PurchaseRequisitionLine;
 import com.northwood.purchasing.domain.PurchaseRequisitionRepository;
 import com.northwood.purchasing.domain.Supplier;
 import com.northwood.purchasing.domain.SupplierId;
+import com.northwood.shared.application.exception.ConflictException;
+import com.northwood.shared.domain.Assert;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -51,14 +55,20 @@ public class PurchaseOrderService {
      * {@link PurchaseOrder.PoNotApprovableException}. Controllers catch this
      * (HTTP 409) instead of importing the domain exception type directly.
      */
-    public static class PoNotApprovableException extends RuntimeException {
+    public static class PoNotApprovableException extends ConflictException {
+        public static final String CODE = "PO_NOT_APPROVABLE";
         public PoNotApprovableException(Throwable cause) {
-            super(cause.getMessage(), cause);
+            super(CODE, cause.getMessage(), cause);
+        }
+        @Override public Map<String, Object> params() {
+            // Domain exception's English message carries the receiver's state
+            // (PO status + which transition was rejected) — surfaced as 'detail'
+            // until a typed domain exception is introduced.
+            return Map.of("detail", getMessage());
         }
     }
 
     private static final Logger log = LoggerFactory.getLogger(PurchaseOrderService.class);
-    private static final String DEFAULT_CURRENCY = "AUD";
 
     private final PurchaseOrderRepository purchaseOrders;
     private final PurchaseRequisitionRepository purchaseRequisitions;
@@ -102,11 +112,7 @@ public class PurchaseOrderService {
             log.debug("requisition {} already converted; idempotent skip", prId.value());
             return null;
         }
-        if (pr.status() != PurchaseRequisition.Status.APPROVED) {
-            throw new IllegalStateException(
-                "Cannot convert requisition " + prId.value() + " from status=" + pr.status().dbValue()
-            );
-        }
+        Assert.state(pr.status() == PurchaseRequisition.Status.APPROVED, "Cannot convert requisition " + prId.value() + " from status=" + pr.status().dbValue());
 
         Supplier supplier = pickSupplier(pr);
         List<PurchaseOrderLine> lines = buildLines(supplier.id(), pr.lines());
@@ -116,7 +122,7 @@ public class PurchaseOrderService {
             supplier,
             pr.id().value(),
             pr.sourceWorkOrderId(),
-            DEFAULT_CURRENCY,
+            Currencies.BASE_CURRENCY,
             lines,
             autoApprove
         );
@@ -286,7 +292,7 @@ public class PurchaseOrderService {
         BigDecimal total = BigDecimal.ZERO;
         for (PurchaseRequisitionLine l : lines) {
             Optional<BigDecimal> price = priceList.findUnitPrice(
-                supplierId, l.productId(), DEFAULT_CURRENCY,
+                supplierId, l.productId(), Currencies.BASE_CURRENCY,
                 java.time.LocalDate.now(), l.requestedQuantity());
             if (price.isEmpty()) {
                 return null;
@@ -327,7 +333,7 @@ public class PurchaseOrderService {
             // Pass quantity so tiered pricing kicks in — a 100-unit request
             // gets the volume discount tier instead of the base price.
             BigDecimal unitPrice = priceList.findUnitPrice(
-                    supplierId, pl.productId(), DEFAULT_CURRENCY,
+                    supplierId, pl.productId(), Currencies.BASE_CURRENCY,
                     java.time.LocalDate.now(), pl.requestedQuantity())
                 .orElseGet(() -> {
                     log.warn("no price-list entry for supplier={} product={} ({}); falling back to 0",

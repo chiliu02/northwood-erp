@@ -1,7 +1,7 @@
 package com.northwood.manufacturing.domain;
 
+import com.northwood.shared.domain.Assert;
 import java.math.BigDecimal;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -28,13 +28,11 @@ public final class WorkOrderMaterial {
         BigDecimal unitCost,
         WorkOrder.MaterialLineStatus status
     ) {
-        if (requiredQuantity.signum() < 0) {
-            throw new IllegalArgumentException("requiredQuantity must be >= 0");
-        }
-        this.id = Objects.requireNonNull(id);
-        this.componentProductId = Objects.requireNonNull(componentProductId);
-        this.componentSku = Objects.requireNonNull(componentSku);
-        this.componentName = Objects.requireNonNull(componentName);
+        Assert.argument(requiredQuantity.signum() >= 0, "requiredQuantity must be >= 0");
+        this.id = Assert.notNull(id, "id");
+        this.componentProductId = Assert.notNull(componentProductId, "componentProductId");
+        this.componentSku = Assert.notNull(componentSku, "componentSku");
+        this.componentName = Assert.notNull(componentName, "componentName");
         this.requiredQuantity = requiredQuantity;
         this.unitCost = unitCost == null ? BigDecimal.ZERO : unitCost;
         this.status = status;

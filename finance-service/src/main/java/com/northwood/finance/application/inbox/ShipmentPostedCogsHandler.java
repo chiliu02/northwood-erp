@@ -6,6 +6,7 @@ import com.northwood.inventory.domain.events.ShipmentPosted;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
 import com.northwood.shared.application.messaging.EventEnvelope;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -90,7 +91,7 @@ public class ShipmentPostedCogsHandler extends AbstractInboxHandler<ShipmentPost
             payload.aggregateId(),
             payload.shipmentNumber(),
             lineCosts,
-            "AUD",
+            Currencies.BASE_CURRENCY,
             postingDate
         );
 

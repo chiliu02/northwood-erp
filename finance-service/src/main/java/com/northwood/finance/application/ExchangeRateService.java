@@ -3,7 +3,9 @@ package com.northwood.finance.application;
 import com.northwood.finance.application.dto.RateView;
 import com.northwood.finance.domain.CurrencyConverter;
 import com.northwood.finance.domain.CurrencyConverter.RateSnapshot;
+import com.northwood.shared.application.exception.NotFoundException;
 import java.time.LocalDate;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 
 /**
@@ -26,9 +28,16 @@ public class ExchangeRateService {
      * {@link CurrencyConverter.RateNotFoundException}. Controllers catch this
      * (HTTP 404) instead of importing the domain exception directly.
      */
-    public static class RateNotFoundException extends RuntimeException {
+    public static class RateNotFoundException extends NotFoundException {
+        public static final String CODE = "EXCHANGE_RATE_NOT_FOUND";
         public RateNotFoundException(Throwable cause) {
-            super(cause.getMessage(), cause);
+            super(CODE, cause.getMessage(), cause);
+        }
+        @Override public Map<String, Object> params() {
+            // Domain exception's English message carries the missing-rate
+            // tuple (from/to/date) — surfaced as 'detail' until the domain
+            // exception is promoted to typed accessors.
+            return Map.of("detail", getMessage());
         }
     }
 

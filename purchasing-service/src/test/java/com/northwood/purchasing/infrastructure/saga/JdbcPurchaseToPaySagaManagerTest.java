@@ -41,7 +41,7 @@ class JdbcPurchaseToPaySagaManagerTest {
 
     @BeforeEach
     void setUp() {
-        manager = new JdbcPurchaseToPaySagaManager(sagas, txManager);
+        manager = new JdbcPurchaseToPaySagaManager(sagas, txManager, 30L, 15L);
     }
 
     private PurchaseToPaySaga sagaInState(String state) {

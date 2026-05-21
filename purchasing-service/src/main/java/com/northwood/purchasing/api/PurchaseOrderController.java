@@ -8,7 +8,6 @@ import com.northwood.shared.api.security.RequirePurchasingManager;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -54,13 +53,5 @@ public class PurchaseOrderController {
         return ResponseEntity.ok(body);
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<String> handleNotFound(IllegalArgumentException e) {
-        return ResponseEntity.status(404).body(e.getMessage());
-    }
 
-    @ExceptionHandler(PoNotApprovableException.class)
-    public ResponseEntity<String> handleNotApprovable(PoNotApprovableException e) {
-        return ResponseEntity.status(409).body(e.getMessage());
-    }
 }

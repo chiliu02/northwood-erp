@@ -1,8 +1,8 @@
 package com.northwood.sales.domain;
 
+import com.northwood.shared.domain.Assert;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -38,17 +38,13 @@ public final class SalesOrderLine {
         BigDecimal manufacturingRequiredQuantity,
         SalesOrder.LineStatus lineStatus
     ) {
-        if (orderedQuantity.signum() <= 0) {
-            throw new IllegalArgumentException("orderedQuantity must be > 0");
-        }
-        if (unitPrice.signum() < 0) {
-            throw new IllegalArgumentException("unitPrice must be >= 0");
-        }
-        this.lineId = Objects.requireNonNull(lineId);
+        Assert.argument(orderedQuantity.signum() > 0, "orderedQuantity must be > 0");
+        Assert.argument(unitPrice.signum() >= 0, "unitPrice must be >= 0");
+        this.lineId = Assert.notNull(lineId, "lineId");
         this.lineNumber = lineNumber;
-        this.productId = Objects.requireNonNull(productId);
-        this.productSku = Objects.requireNonNull(productSku);
-        this.productName = Objects.requireNonNull(productName);
+        this.productId = Assert.notNull(productId, "productId");
+        this.productSku = Assert.notNull(productSku, "productSku");
+        this.productName = Assert.notNull(productName, "productName");
         this.orderedQuantity = orderedQuantity;
         this.unitPrice = unitPrice;
         this.taxRate = taxRate == null ? BigDecimal.ZERO : taxRate;

@@ -13,6 +13,7 @@ import com.northwood.finance.application.inbox.PurchaseOrderLineFactsProjection;
 import com.northwood.finance.application.inbox.PurchaseOrderLineFactsProjection.LineFacts;
 import com.northwood.finance.domain.SupplierInvoice;
 import com.northwood.finance.domain.SupplierInvoiceRepository;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
@@ -53,7 +54,7 @@ class SupplierInvoiceServiceMatchTest {
 
     private LineFacts factsWith(BigDecimal poUnitPrice, BigDecimal received, BigDecimal alreadyInvoiced) {
         return new LineFacts(
-            PO_LINE, PO_HEADER, SUPPLIER, "Acme", "AUD",
+            PO_LINE, PO_HEADER, SUPPLIER, "Acme", Currencies.AUD,
             PRODUCT, "RM-X", "Raw X",
             new BigDecimal("10"),  // ordered
             poUnitPrice,
@@ -67,7 +68,7 @@ class SupplierInvoiceServiceMatchTest {
             "INV-001", "SUPPLIER-001",
             PO_HEADER, GR_HEADER,
             SUPPLIER, "SUP-001", "Acme",
-            "AUD",
+            Currencies.AUD,
             List.of(new RecordSupplierInvoiceCommand.Line(
                 PO_LINE, GR_LINE,
                 PRODUCT, "RM-X", "Raw X",

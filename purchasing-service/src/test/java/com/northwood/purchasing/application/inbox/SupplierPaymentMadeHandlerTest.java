@@ -16,6 +16,7 @@ import com.northwood.finance.domain.events.SupplierPaymentMade;
 import com.northwood.purchasing.application.saga.PurchaseToPaySagaManager;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
@@ -48,7 +49,7 @@ class SupplierPaymentMadeHandlerTest {
         SupplierPaymentMade payload = new SupplierPaymentMade(
             eventId, UUID.randomUUID(), "PMT-001",
             UUID.randomUUID(), PO, UUID.randomUUID(), "Acme",
-            "EFT", "AUD",
+            "EFT", Currencies.AUD,
             new BigDecimal(allocatedAmount), new BigDecimal(allocatedAmount),
             invoiceStatusAfter, Instant.now()
         );

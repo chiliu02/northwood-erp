@@ -2,14 +2,6 @@ package com.northwood.sales.api;
 
 import com.northwood.sales.api.dto.CancelOrderRequest;
 import com.northwood.sales.application.SalesOrderService;
-import com.northwood.sales.application.SalesOrderService.CurrencyMismatchException;
-import com.northwood.sales.application.SalesOrderService.CustomerInactiveException;
-import com.northwood.sales.application.SalesOrderService.CustomerNotFoundException;
-import com.northwood.sales.application.SalesOrderService.OrderNotCancellableException;
-import com.northwood.sales.application.SalesOrderService.OrderNotFoundException;
-import com.northwood.sales.application.SalesOrderService.ProductDiscontinuedException;
-import com.northwood.sales.application.SalesOrderService.SagaNotFoundException;
-import com.northwood.sales.application.SalesOrderService.UnknownPriceException;
 import com.northwood.sales.application.dto.CancelOrderCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand;
 import com.northwood.sales.application.dto.SalesOrderView;
@@ -19,7 +11,6 @@ import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -64,23 +55,4 @@ public class SalesOrderController {
         return ResponseEntity.ok(body);
     }
 
-    @ExceptionHandler(CustomerNotFoundException.class)
-    public ResponseEntity<String> handleCustomerNotFound(CustomerNotFoundException e) {
-        return ResponseEntity.status(404).body(e.getMessage());
-    }
-
-    @ExceptionHandler({OrderNotFoundException.class, SagaNotFoundException.class})
-    public ResponseEntity<String> handleNotFound(RuntimeException e) {
-        return ResponseEntity.status(404).body(e.getMessage());
-    }
-
-    @ExceptionHandler({OrderNotCancellableException.class, CustomerInactiveException.class, ProductDiscontinuedException.class})
-    public ResponseEntity<String> handleConflict(RuntimeException e) {
-        return ResponseEntity.status(409).body(e.getMessage());
-    }
-
-    @ExceptionHandler({UnknownPriceException.class, CurrencyMismatchException.class})
-    public ResponseEntity<String> handleBadRequest(RuntimeException e) {
-        return ResponseEntity.badRequest().body(e.getMessage());
-    }
 }

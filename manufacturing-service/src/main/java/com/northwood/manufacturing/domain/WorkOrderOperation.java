@@ -1,8 +1,8 @@
 package com.northwood.manufacturing.domain;
 
+import com.northwood.shared.domain.Assert;
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -55,14 +55,12 @@ public final class WorkOrderOperation {
         Instant startedAt,
         Instant completedAt
     ) {
-        if (plannedRunMinutes.signum() <= 0) {
-            throw new IllegalArgumentException("plannedRunMinutes must be > 0");
-        }
-        this.id = Objects.requireNonNull(id);
+        Assert.argument(plannedRunMinutes.signum() > 0, "plannedRunMinutes must be > 0");
+        this.id = Assert.notNull(id, "id");
         this.operationSequence = operationSequence;
-        this.operationCode = Objects.requireNonNull(operationCode);
+        this.operationCode = Assert.notNull(operationCode, "operationCode");
         this.description = description;
-        this.workCenterId = Objects.requireNonNull(workCenterId);
+        this.workCenterId = Assert.notNull(workCenterId, "workCenterId");
         this.plannedSetupMinutes = plannedSetupMinutes == null ? BigDecimal.ZERO : plannedSetupMinutes;
         this.plannedRunMinutes = plannedRunMinutes;
         this.status = status;
@@ -79,16 +77,7 @@ public final class WorkOrderOperation {
      * private; routed through {@link WorkOrder#skipOperation}.
      */
     void markSkipped() {
-        if (status == WorkOrder.OperationStatus.COMPLETED || status == WorkOrder.OperationStatus.SKIPPED) {
-            throw new IllegalStateException(
-                "Operation " + operationSequence + " is already " + status.dbValue() + "; cannot skip"
-            );
-        }
-        if (status != WorkOrder.OperationStatus.PLANNED && status != WorkOrder.OperationStatus.IN_PROGRESS) {
-            throw new IllegalStateException(
-                "Operation " + operationSequence + " status is " + status.dbValue() + "; cannot skip"
-            );
-        }
+        Assert.state(status == WorkOrder.OperationStatus.PLANNED || status == WorkOrder.OperationStatus.IN_PROGRESS, "Operation " + operationSequence + " status is " + status.dbValue() + "; cannot skip");
         Instant now = Instant.now();
         if (this.startedAt == null) {
             this.startedAt = now;
@@ -104,19 +93,10 @@ public final class WorkOrderOperation {
      * event emission) stay encapsulated.
      */
     void markCompleted(BigDecimal actualMinutes) {
-        if (status == WorkOrder.OperationStatus.COMPLETED) {
-            throw new IllegalStateException(
-                "Operation " + operationSequence + " is already completed"
-            );
-        }
-        if (status != WorkOrder.OperationStatus.PLANNED && status != WorkOrder.OperationStatus.IN_PROGRESS) {
-            throw new IllegalStateException(
-                "Operation " + operationSequence + " status is " + status.dbValue() + "; cannot complete"
-            );
-        }
-        if (actualMinutes == null || actualMinutes.signum() < 0) {
-            throw new IllegalArgumentException("actualMinutes must be >= 0");
-        }
+        Assert.state(status != WorkOrder.OperationStatus.COMPLETED, "Operation " + operationSequence + " is already completed");
+        Assert.state(status == WorkOrder.OperationStatus.PLANNED || status == WorkOrder.OperationStatus.IN_PROGRESS, "Operation " + operationSequence + " status is " + status.dbValue() + "; cannot complete");
+        Assert.notNull(actualMinutes, "actualMinutes");
+        Assert.argument(actualMinutes.signum() >= 0, "actualMinutes must be >= 0");
         Instant now = Instant.now();
         if (this.startedAt == null) {
             this.startedAt = now;

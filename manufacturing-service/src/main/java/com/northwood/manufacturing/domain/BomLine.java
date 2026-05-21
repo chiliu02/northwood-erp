@@ -1,7 +1,7 @@
 package com.northwood.manufacturing.domain;
 
+import com.northwood.shared.domain.Assert;
 import java.math.BigDecimal;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -41,13 +41,13 @@ public final class BomLine {
         BigDecimal quantityPerFinishedUnit,
         BigDecimal scrapFactorPercent
     ) {
-        this.id = Objects.requireNonNull(id, "id");
+        this.id = Assert.notNull(id, "id");
         this.lineNumber = lineNumber;
-        this.componentProductId = Objects.requireNonNull(componentProductId, "componentProductId");
-        this.componentSku = Objects.requireNonNull(componentSku, "componentSku");
-        this.componentName = Objects.requireNonNull(componentName, "componentName");
-        this.componentKind = Objects.requireNonNull(componentKind, "componentKind");
-        this.quantityPerFinishedUnit = Objects.requireNonNull(quantityPerFinishedUnit, "quantityPerFinishedUnit");
+        this.componentProductId = Assert.notNull(componentProductId, "componentProductId");
+        this.componentSku = Assert.notNull(componentSku, "componentSku");
+        this.componentName = Assert.notNull(componentName, "componentName");
+        this.componentKind = Assert.notNull(componentKind, "componentKind");
+        this.quantityPerFinishedUnit = Assert.notNull(quantityPerFinishedUnit, "quantityPerFinishedUnit");
         this.scrapFactorPercent = scrapFactorPercent == null ? BigDecimal.ZERO : scrapFactorPercent;
     }
 

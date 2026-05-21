@@ -24,6 +24,7 @@ import com.northwood.product.domain.events.ReorderPolicyChanged;
 import com.northwood.product.domain.events.SalesPriceChanged;
 import com.northwood.product.domain.events.StandardCostChanged;
 import com.northwood.product.domain.events.ValuationClassChanged;
+import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import com.northwood.shared.domain.Money;
 import com.northwood.shared.domain.Sku;
@@ -67,8 +68,8 @@ class ProductServiceTest {
             new Sku("FG-001"), "Finished Good 1", "desc",
             ProductType.FINISHED_GOOD, UOM_EA,
             true, false, true, true,
-            Money.of(new BigDecimal("100.00"), "AUD"),
-            Money.of(new BigDecimal("60.00"), "AUD"),
+            Money.of(new BigDecimal("100.00"), Currencies.AUD),
+            Money.of(new BigDecimal("60.00"), Currencies.AUD),
             new BigDecimal("5"), new BigDecimal("20"),
             ValuationClass.FINISHED_GOODS, null,
             Product.Status.ACTIVE, 1L,
@@ -82,8 +83,8 @@ class ProductServiceTest {
             new Sku("FG-001"), "Finished Good 1", "desc",
             ProductType.FINISHED_GOOD, UOM_EA,
             true, false, true, true,
-            Money.of(new BigDecimal("100.00"), "AUD"),
-            Money.of(new BigDecimal("60.00"), "AUD"),
+            Money.of(new BigDecimal("100.00"), Currencies.AUD),
+            Money.of(new BigDecimal("60.00"), Currencies.AUD),
             new BigDecimal("5"), new BigDecimal("20"),
             ValuationClass.FINISHED_GOODS, null,
             Product.Status.ACTIVE, 1L,
@@ -104,7 +105,7 @@ class ProductServiceTest {
                 "FG-002", "New Product", "desc",
                 "finished_good", UOM_EA,
                 new BigDecimal("75.00"), new BigDecimal("40.00"),
-                "AUD"
+                Currencies.AUD
             );
             assertThat(created).isNotNull();
             assertThat(created.productId()).isNotNull();
@@ -121,7 +122,7 @@ class ProductServiceTest {
         @Test void rejects_unknown_product_type() {
             assertThatThrownBy(() -> service.createProduct(
                 "X", "n", null, "not_a_type", UOM_EA,
-                BigDecimal.ONE, BigDecimal.ONE, "AUD"
+                BigDecimal.ONE, BigDecimal.ONE, Currencies.AUD
             )).isInstanceOf(IllegalArgumentException.class);
             verify(repo, never()).save(org.mockito.ArgumentMatchers.any());
         }
@@ -133,7 +134,7 @@ class ProductServiceTest {
             Product p = activeFinishedGood();
             when(repo.findById(ProductId.of(PID))).thenReturn(Optional.of(p));
 
-            service.changeSalesPrice(PID, new BigDecimal("110.00"), "AUD");
+            service.changeSalesPrice(PID, new BigDecimal("110.00"), Currencies.AUD);
 
             assertThat(p.salesPrice().amount()).isEqualByComparingTo(new BigDecimal("110.00"));
             List<DomainEvent> events = savedEvents();
@@ -144,14 +145,14 @@ class ProductServiceTest {
             Product p = activeFinishedGood();
             when(repo.findById(ProductId.of(PID))).thenReturn(Optional.of(p));
 
-            service.changeSalesPrice(PID, new BigDecimal("100.00"), "AUD");
+            service.changeSalesPrice(PID, new BigDecimal("100.00"), Currencies.AUD);
 
             verify(repo, never()).save(org.mockito.ArgumentMatchers.any());
         }
 
         @Test void rejects_when_product_not_found() {
             when(repo.findById(ProductId.of(PID))).thenReturn(Optional.empty());
-            assertThatThrownBy(() -> service.changeSalesPrice(PID, BigDecimal.ONE, "AUD"))
+            assertThatThrownBy(() -> service.changeSalesPrice(PID, BigDecimal.ONE, Currencies.AUD))
                 .isInstanceOf(ProductService.ProductNotFoundException.class);
         }
     }
@@ -162,7 +163,7 @@ class ProductServiceTest {
             Product p = activeFinishedGood();
             when(repo.findById(ProductId.of(PID))).thenReturn(Optional.of(p));
 
-            service.changeStandardCost(PID, new BigDecimal("65.50"), "AUD");
+            service.changeStandardCost(PID, new BigDecimal("65.50"), Currencies.AUD);
 
             assertThat(p.standardCost().amount()).isEqualByComparingTo(new BigDecimal("65.50"));
             List<DomainEvent> events = savedEvents();
@@ -173,7 +174,7 @@ class ProductServiceTest {
             Product p = activeFinishedGood();
             when(repo.findById(ProductId.of(PID))).thenReturn(Optional.of(p));
 
-            service.changeStandardCost(PID, new BigDecimal("60.00"), "AUD");
+            service.changeStandardCost(PID, new BigDecimal("60.00"), Currencies.AUD);
 
             verify(repo, never()).save(org.mockito.ArgumentMatchers.any());
         }
@@ -281,7 +282,7 @@ class ProductServiceTest {
                 new Sku("FG-001"), "FG", null,
                 ProductType.FINISHED_GOOD, UOM_EA,
                 true, false, true, true,
-                Money.of(new BigDecimal("100"), "AUD"), Money.of(new BigDecimal("60"), "AUD"),
+                Money.of(new BigDecimal("100"), Currencies.AUD), Money.of(new BigDecimal("60"), Currencies.AUD),
                 BigDecimal.ZERO, BigDecimal.ZERO,
                 null, bomId,
                 Product.Status.ACTIVE, 1L,
@@ -338,7 +339,7 @@ class ProductServiceTest {
                 new Sku("FG-001"), "FG", null,
                 ProductType.FINISHED_GOOD, UOM_EA,
                 true, false, true, true,
-                Money.of(new BigDecimal("100"), "AUD"), Money.of(new BigDecimal("60"), "AUD"),
+                Money.of(new BigDecimal("100"), Currencies.AUD), Money.of(new BigDecimal("60"), Currencies.AUD),
                 BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null,
                 Product.Status.DISCONTINUED, 2L,

@@ -5,6 +5,7 @@ import com.northwood.finance.domain.JournalEntryId;
 import com.northwood.finance.domain.JournalEntryLine;
 import com.northwood.finance.domain.JournalEntryRepository;
 import com.northwood.shared.application.security.CurrentUserAccessor;
+import com.northwood.shared.domain.Assert;
 import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -92,9 +93,7 @@ public class JdbcJournalEntryRepository implements JournalEntryRepository {
 
     @Override
     public void save(JournalEntry entry) {
-        if (entry.version() != 0L) {
-            throw new IllegalStateException("JournalEntry update path not supported in phase 5b");
-        }
+        Assert.state(entry.version() == 0L, "JournalEntry update path not supported in phase 5b");
         String actor = currentUser.currentUsername().orElse(null);
         // The DB-level guard `guard_journal_line_immutability` rejects line
         // INSERTs when the parent header is already in status 'posted'. So we
@@ -179,12 +178,8 @@ public class JdbcJournalEntryRepository implements JournalEntryRepository {
             actor,
             originalId.value()
         );
-        if (rows == 0) {
-            throw new IllegalStateException(
-                "Cannot mark journal_entry " + originalId.value()
-                    + " as reversed (not posted, or already reversed)"
-            );
-        }
+        Assert.state(rows > 0, "Cannot mark journal_entry " + originalId.value()
+                    + " as reversed (not posted, or already reversed)");
     }
 
 }
