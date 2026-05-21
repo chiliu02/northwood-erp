@@ -139,7 +139,7 @@ bug.
 
 ### Cross-context aggregate-root stamping on events
 
-**From:** the 2026-05-14 `event-flow.html` audit, which surfaced two events stamped with an `aggregateType` from a context other than the emitting service: `manufacturing.ManufacturingDispatched` stamped `SalesOrder` and `manufacturing.ProductMaterialsCostComputed` stamped `Product`. Surface reading made these look like pragmatic compromises; a closer look established they're correct modeling.
+**From:** the 2026-05-14 event-flow audit, which surfaced two events stamped with an `aggregateType` from a context other than the emitting service: `manufacturing.ManufacturingDispatched` stamped `SalesOrder` and `manufacturing.ProductMaterialsCostComputed` stamped `Product`. Surface reading made these look like pragmatic compromises; a closer look established they're correct modeling.
 
 **The rule.** An event names the aggregate the fact is *about*, not the module that emits it. Logical ownership and physical emission are decoupled — any module that has the knowledge to assert the fact *and* the contract authority to publish under the aggregate's namespace can emit it. This is orthodox DDD properly read; the classical guidance has always been about which aggregate the event identifies, not where the emitting code physically lives.
 

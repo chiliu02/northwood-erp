@@ -1,6 +1,6 @@
 # Northwood ERP Web UI
 
-Operational ERP SPA for the business-user personas (Sarah / Mike / Linda / Tom / Olivia / Daniel / Emma). Sibling of `demo-web-ui/` — that one is the technical demo (Saga Console, event drawer, scenario runner); this one is the application. See `docs/erp-web-ui-design.md` for the design rationale.
+Operational ERP SPA for the business-user personas (Sarah / Mike / Linda / Tom / Olivia / Daniel / Emma). Sibling of `demo-web-ui/` — that one is the technical demo (Saga Console, event drawer, scenario runner); this one is the application.
 
 ## Running locally
 

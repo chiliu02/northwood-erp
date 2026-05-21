@@ -1,6 +1,6 @@
 # Northwood Demo Web UI
 
-Demo SPA for the Northwood ERP showcase — Saga Console, event drawer, scenario runner. The technical-storytelling SPA. Sibling: `erp-web-ui` is the operational ERP for business-user personas (see `docs/erp-web-ui-design.md`). See `docs/demo-web-ui-design.md` for this SPA's design rationale.
+Demo SPA for the Northwood ERP showcase — Saga Console, event drawer, scenario runner. The technical-storytelling SPA. Sibling: `erp-web-ui` is the operational ERP for business-user personas.
 
 **Phase 1** shipped the read-only shell:
 - App layout (top bar + persona-grouped sidebar + collapsible event drawer)

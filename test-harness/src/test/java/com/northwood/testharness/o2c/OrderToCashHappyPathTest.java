@@ -41,8 +41,7 @@ import tools.jackson.databind.ObjectMapper;
  * goods_shipped → invoice_created → completed}. With enough on-hand stock
  * to cover the order, {@code applyStockReserved} shortcuts directly from
  * {@code stock_reservation_requested} to {@code ready_to_ship}, skipping
- * the manufacturing leg entirely (see Side rail 2 in
- * {@code docs/SalesOrderFulfilmentSaga.md}).
+ * the manufacturing leg entirely.
  *
  * <p>Shipment + customer payment are driven through the real
  * {@code ShipmentService.post} and {@code PaymentService.recordCustomerPayment}

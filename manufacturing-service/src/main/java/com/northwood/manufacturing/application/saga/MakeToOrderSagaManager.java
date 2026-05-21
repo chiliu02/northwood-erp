@@ -19,8 +19,6 @@ import java.util.function.Consumer;
  * if the transition was a no-op). Callers gate post-saga side effects on the
  * return value — e.g. {@code "raw_material_shortage"} triggers a
  * {@code RawMaterialShortageDetected} emission on the handler side.
- *
- * <p>State machine documented in {@code MakeToOrderSaga.md} at the repo root.
  */
 public interface MakeToOrderSagaManager {
 

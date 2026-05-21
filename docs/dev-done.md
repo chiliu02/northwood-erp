@@ -6,6 +6,23 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-21 — docs/ declutter: keep only Claude-required docs under `docs/`
+
+Moved 11 human-facing / visual docs out of `docs/` (out of the repo entirely) so `docs/` holds only what Claude Code actually loads: the seven `CLAUDE.md`-wired guidance docs (`architecture`, `conventions`, `persistence`, `sagas`, `messaging-design`, `design-notes`, `build-status`) plus `demo-script.md`, `dev-todo.md`, `dev-done.md`, and `screenshots/`.
+
+Moved out (now untracked): `.claude-chrome-3.1-script.md`; the three saga state-diagrams (`SalesOrderFulfilmentSaga.md`, `MakeToOrderSaga.md`, `PurchaseToPaySaga.md`); `bugs-caught-by-tests.md`; `user-stories.md`; the two SPA design docs (`demo-web-ui-design.md`, `erp-web-ui-design.md`); and the three HTML visual references (`event-flow.html`, `domain-driven design.html`, `projections.html`).
+
+Stripped the now-dangling references from the docs that stay:
+- `README.md` "Where to read next" — dropped the demo/ERP design-rationale, user-stories, and bugs-caught-by-tests rows.
+- `docs/demo-script.md` — Companion-docs line, "out of scope" intro, and "Where to next" list trimmed to surviving docs (`CLAUDE.md`, `dev-todo.md`).
+- `docs/architecture.md` — dropped the `event-flow.html` pointer from the wire-format-suffix row.
+- `docs/design-notes.md` — "the 2026-05-14 `event-flow.html` audit" → "the 2026-05-14 event-flow audit".
+- `demo-web-ui/README.md`, `erp-web-ui/README.md` — dropped the `docs/*-design.md` "see design rationale" links.
+
+`dev-done.md` history left as-is (append-only; its references to the moved files were correct when written). Memory updated: the saga-diagram "keep in sync" rule is suspended while those files live outside the repo.
+
+Also stripped the dangling refs from source comments — `MakeToOrderSagaManager` / `PurchaseToPaySagaManager` Javadocs ("State machine documented in …Saga.md"), `OrderToCashHappyPathTest` (Side-rail pointer), `demo-web-ui/src/index.css` (×2), `demo-web-ui/src/personas.ts`. All comment-only — no build/test impact.
+
 ## 2026-05-21 — §1E.1: README public-facing rewrite + Saga Console screenshot
 
 Rewrote `README.md` from project-internal orientation to a public-audience front page, in the existing terse / link-heavy / Pacioli-framed voice (not a new marketing tone). Concrete changes:

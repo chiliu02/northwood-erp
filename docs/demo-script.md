@@ -4,7 +4,7 @@ Step-by-step for getting the full stack — Postgres, the seven Spring Boot serv
 
 The end-state: open `http://localhost:5173`, click **🎬 Scenarios → 7.1**, and watch all three sagas drive to completion across the saga console while saying "this is what we built" out loud.
 
-Every event name, saga state, endpoint, and request body below is verified against the codebase as of 2026-05-15. Companion docs: `CLAUDE.md` (architecture invariants), `demo-web-ui-design.md` (technical-demo SPA design), `erp-web-ui-design.md` (operational ERP SPA design), `user-stories.md` (forward-looking backlog), `dev-todo.md` (implementation backlog).
+Every event name, saga state, endpoint, and request body below is verified against the codebase as of 2026-05-15. Companion docs: `CLAUDE.md` (architecture invariants), `dev-todo.md` (implementation backlog).
 
 ---
 
@@ -653,7 +653,7 @@ cd erp-web-ui ; npm.cmd run build ; cd ..      # operational ERP SPA production 
 
 ## What's deliberately out of scope today
 
-These are tracked in `user-stories.md` with ⏳ flags and (where relevant) `dev-todo.md`:
+These are tracked in `dev-todo.md` (where relevant):
 
 - Multi-currency GL consolidation (low priority)
 - Customer credit notes / refunds (low priority)
@@ -666,9 +666,5 @@ These are tracked in `user-stories.md` with ⏳ flags and (where relevant) `dev-
 
 ## Where to next
 
-- `demo-web-ui-design.md` — design rationale for the technical-demo SPA.
-- `erp-web-ui-design.md` — design rationale for the operational ERP SPA.
-- `user-stories.md` — forward-looking backlog with status flags.
 - `dev-todo.md` — implementation backlog (slice-level).
-- `bugs-caught-by-tests.md` — defects surfaced by the test suite.
 - `CLAUDE.md` — architecture invariants (read first if you're modifying the backend).

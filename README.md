@@ -97,12 +97,8 @@ The operational SPA (`erp-web-ui`) authenticates real Keycloak users via OIDC co
 |---|---|
 | Run a demo end-to-end | `docs/demo-script.md` |
 | Understand the architecture before changing code | `CLAUDE.md` |
-| See the technical demo SPA's design rationale | `docs/demo-web-ui-design.md` |
-| See the operational ERP SPA's design rationale | `docs/erp-web-ui-design.md` |
-| Browse persona-driven stories with status flags | `docs/user-stories.md` |
 | Pick the next thing to build | `docs/dev-todo.md` (priority-ordered backlog) |
 | See what's been shipped | `docs/dev-done.md` (append-only changelog) |
-| Read defects surfaced by tests | `docs/bugs-caught-by-tests.md` |
 | Per-SPA running notes | `demo-web-ui/README.md`, `erp-web-ui/README.md` |
 
 ## Tests
