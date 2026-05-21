@@ -6,6 +6,19 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-21 — §1E.1: README public-facing rewrite + Saga Console screenshot
+
+Rewrote `README.md` from project-internal orientation to a public-audience front page, in the existing terse / link-heavy / Pacioli-framed voice (not a new marketing tone). Concrete changes:
+
+- **Elevator-pitch opening sentence** (no separate blockquote tagline — folded into the lead): *"Event-driven microservices architecture showcase for CQRS, Saga orchestration, and the transactional outbox/inbox pattern, structured around a small ERP domain (…)."* Leads by naming the patterns rather than counting modules; the concrete tech enumeration lives in Stack + the repo tree. Pacioli framing paragraph stays below it.
+- **`## Requirements` table** — JDK 21, Maven 3.9+, Docker + Compose (Postgres 17 / Kafka 4.1.2 / Keycloak 26), Node 20+ — plus an OS-neutral note (developed on Windows/PowerShell; macOS/Linux use the same commands).
+- **`## Demo credentials & secrets`** — the load-bearing addition. Table of all committed demo-grade secrets with default + env-var override + location: Keycloak BFF client secret (`KEYCLOAK_BFF_CLIENT_SECRET`), 13 demo users (password = username, in `db/keycloak/northwood-realm.json`), Keycloak bootstrap admin (`admin`/`admin`), 7 service DB passwords (`<SERVICE>_DB_PASSWORD`), demo-SPA bypass token (`NORTHWOOD_SECURITY_DEMOBYPASS_TOKEN`, empty = disabled). Prose distinguishes erp-web-ui's real OIDC login from demo-web-ui's synthetic all-roles bypass.
+- **`## Screenshots`** section added near the top, referencing `docs/screenshots/demo-saga-console.png` — the Saga Console + Event Log driving a place-order flow. The PNG is captured and committed alongside this entry, so the link resolves.
+- **`## License`** footer — Apache 2.0, Copyright 2026 Chi Liu.
+- Capitalised "Saga" in prose throughout (per-conversation style direction); code/table identifiers like `sales_order_fulfilment_saga` stay literal. Repo tree's docker-compose line now names Keycloak 26; Stack gained a Keycloak + Spring Security bullet; "a React demo UI" → "two React demo UIs". Existing repo tree + "Where to read next" + Tests + Tear down sections retained.
+
+No build/test impact (docs only). **Follow-up:** §1E.2 CI workflow and §1E.3 GitHub metadata still open.
+
 ## 2026-05-20 — §1H follow-up: re-introduce `public static final String CODE` on every concrete `DomainException`
 
 Reverses the "inline the CODE constants" half of the previous §1H tightening pass committed earlier today. The CODE constants are back on every concrete `DomainException` subclass; the `super(...)` call now goes through `CODE` instead of a string literal.

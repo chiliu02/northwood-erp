@@ -51,24 +51,13 @@ Logged 2026-05-13 but **not started** — capturing the design while it's fresh,
 
 ## 1E. GitHub publish prep — remaining items (PLANNED 2026-05-13, foundation shipped)
 
-Foundation pieces (LICENSE, .gitignore extension, secrets sweep) landed 2026-05-13 — see `dev-done.md`. Remaining items deferred so the user can decide tone/voice on the README themselves.
+Foundation pieces (LICENSE, .gitignore extension, secrets sweep) landed 2026-05-13; §1E.1 (README public-facing prose rewrite + Saga Console screenshot) landed 2026-05-21 — see `dev-done.md`. Remaining: CI workflow (§1E.2) and GitHub-side metadata (§1E.3).
 
 ### Decisions locked 2026-05-13
 
 - **License**: Apache 2.0 (Copyright 2026 Chi Liu).
 - **Repo name**: `northwood-erp`.
 - **Default branch**: `main` (already).
-
-### 1E.1 README polish for public audience
-
-Current `README.md` is project-internal — assumes the reader is already inside the codebase. Public-facing rewrite needs:
-
-- **One-line elevator pitch** at the top: something like *"Event-driven microservices ERP architecture showcase — Spring Boot 4, 7 services with sagas + outbox/inbox, BFFs, two React/Vite demo SPAs."*
-- **Requirements** stated explicitly: JDK 21, Docker (Postgres 17 + Kafka 4.1.2 + Keycloak), Node 20+, Maven 3.9+, Windows / macOS / Linux supported.
-- **Screenshot or short GIF** of the Saga Console + Event Log + a curated demo flow. Visual cue carries more than prose for an architecture demo. (Could be in `docs/screenshots/` referenced relatively, or hosted on a GitHub Pages branch.)
-- **"Demo credentials" disclosure section** listing the four items from the secrets sweep (Keycloak BFF secret, 13 user passwords, 7 service DB passwords, demo BFF bypass token) with the env-var override for each. Single most important addition for any consumer who might try to deploy this for real.
-- **"Where to read next" pointers** to `CLAUDE.md`, `docs/demo-script.md`, `docs/architecture.md`, `docs/conventions.md` — the existing internal docs are useful to outside readers too, just need a roadmap to them.
-- Keep the existing repository-structure tree (`README.md:10-30`-ish); it's already concise and useful for orientation.
 
 ### 1E.2 GitHub Actions CI workflow
 
