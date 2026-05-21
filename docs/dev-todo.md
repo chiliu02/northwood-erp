@@ -185,6 +185,34 @@ What stays English-keyed (not translated): `dbValue()` wire-format strings rende
 
 Pull forward when a second locale is actually planned for the demo. Doing it speculatively turns into dead-weight maintenance until a real second-locale beat exists.
 
+### 3.6 SQS + SNS as a Kafka alternative (AWS-native bus)
+
+Swap Kafka for AWS-managed messaging when/if deploying to AWS, to drop MSK's cost + ops in favour of serverless pub/sub. The outbox/inbox design makes this an **adapter swap, not a rewrite**: the bus sits behind the `EventPublisher` interface (`KafkaEventPublisher` is the `@Profile("kafka")` impl) + the inbox dispatcher. The outbox drain loop, inbox dedup (`AbstractInboxHandler`), `EventEnvelope`, sagas, and projections all stay unchanged.
+
+**Hard requirement — FIFO, not standard.** Per-aggregate ordering is load-bearing (Kafka partition key = `aggregateId`; sagas assume in-order per-aggregate delivery — see `docs/messaging-design.md`). Standard SNS/SQS gives *no* ordering and would corrupt saga state. Use **FIFO SNS → FIFO SQS** with **`MessageGroupId = aggregateId`** (the direct partition-key analog) and `MessageDeduplicationId = eventId` (the inbox table still dedups as a backstop).
+
+Mapping: one FIFO SNS topic per producer service (was `<service>.events`) → one FIFO SQS queue per consumer (SNS fan-out); `<topic>.dlt` + hand-rolled bounded retry → **native SQS DLQ + redrive policy** (simpler than the current scheme); `traceparent` header → SNS/SQS message attributes.
+
+Work: add an `SnsEventPublisher` (`EventPublisher` impl) + an `@SqsListener`-based dispatcher into the inbox handlers, both under a new `@Profile("sqs")` mirroring the kafka profile; add Spring Cloud AWS deps; provision topics / queues / subscriptions / filter-policies / DLQs (Terraform or auto-provisioning). Related: §2.14 — the partition pre-declaration work becomes moot under FIFO message groups.
+
+Trade-off to accept: SQS deletes on consume, so there is **no replayable log** — replay means re-draining the outbox (the durable source of truth), and rebuilding a projection from scratch is less turnkey than Kafka offset-rewind. FIFO throughput ceilings (300/s, 3,000/s batched) are fine at showcase scale. **Do not** use EventBridge for this — it has no ordering guarantee. Pull forward only if an AWS deployment is actually on the table.
+
+### 3.7 AWS deployment — per-service independent scaling + HA Postgres
+
+Run each service + BFF on its own independently-scaling compute unit, with a single HA / fault-tolerant Postgres. (OAuth2/Keycloak and the bus are out of scope here — see §3.6 for the bus.) Fits the design well: the request/command path is stateless, and both background loops are **already multi-instance-safe** — the outbox drainer uses `FOR UPDATE SKIP LOCKED` (`JdbcOutboxAdapter.findPending`) and the saga workers use claim-and-lease + per-instance `workerId` (`SagaManager`). Horizontal scaling needs **no new coordination code**.
+
+Compute (mostly infra, not code):
+- Containerize each deployable — none exist yet (compose only runs infra; services run as local JVMs). `mvn spring-boot:build-image` (Buildpacks) → one image per service.
+- One scaling unit per service + BFF (9 Spring Boot deployables): ASG + load balancer + target-tracking policy + health check (Actuator `/health` already exposed); a reusable Terraform module instantiated per service. **Raw per-service EC2 ASGs are the most laborious form — ECS Fargate (or ECS-on-EC2) gives the same independent per-service autoscaling with far less plumbing; prefer it unless EC2 is a hard requirement.**
+- Externalize service URLs (BFF + saga aggregator call `localhost:808x` today) → per-service LB DNS / Cloud Map. Config, not code.
+- The two SPAs are static → build → **S3 + CloudFront**, not EC2.
+
+Postgres (easy, ~no code):
+- **RDS Multi-AZ** or **Aurora PostgreSQL** — a single writer endpoint matches the schema-per-service-in-one-DB design (per-service roles + `search_path` unchanged). Code change ≈ datasource URL → cluster endpoint; failover handled by HikariCP + the JDBC driver.
+- **RDS Proxy** once replicas scale up: N instances × Hikari pools can exhaust `max_connections` — Proxy multiplexes. This is the one place the two goals interact.
+
+Caveat (parked with the bus): under multiple concurrent outbox drainers, strict per-aggregate *publish* ordering is the §2.14 "scaling past 1 partition" concern — not a blocker for request-path scaling. Pull forward only if an AWS deployment is actually on the table.
+
 <!-- Section numbers below kept at their original §2.x values per the preamble's
      "stable historical anchors" rule — dev-done.md + design-notes.md have ~13
      cross-refs to §2.8 alone that would break under renumbering. -->
