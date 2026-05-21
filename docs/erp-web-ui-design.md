@@ -359,7 +359,7 @@ Slice C — operational ERP UI — was split into six sub-slices. All shipped 20
 The fetch chain is `5174 → 8089 → backend service → postgres`. Bring up the layers from the bottom:
 
 ```powershell
-docker compose up -d postgres                    # 5432
+docker compose up -d postgres                    # 5432 (empty schema; add -f docker-compose.seed.yml for demo fixtures)
 mvn -pl reporting-service spring-boot:run        # 8087 — minimum for most pages
 mvn -pl erp-web-ui-bff spring-boot:run           # 8089 — easy to forget
 cd erp-web-ui ; npm install ; npm run dev        # 5174

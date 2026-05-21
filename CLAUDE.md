@@ -17,7 +17,8 @@ PowerShell on Windows. Run from repo root.
 
 ```powershell
 mvn clean install -DskipTests                       # build all modules
-docker compose up -d                                # postgres + kafka + keycloak
+docker compose up -d                                # postgres + kafka + keycloak (empty schema)
+docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d   # ...same infra + demo seed data
 mvn -pl product-service spring-boot:run             # run a single service
 mvn -pl product-service test                        # test a single service
 mvn -pl product-service test -Dtest=ProductApplicationTests#main_methodIsCallable

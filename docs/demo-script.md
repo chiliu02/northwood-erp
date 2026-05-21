@@ -26,14 +26,16 @@ Every event name, saga state, endpoint, and request body below is verified again
 ## One-time setup
 
 ```powershell
-# from repo root
-docker compose up -d                                # Postgres 17 (seeded) + Kafka 4.1.2 (KRaft) + Keycloak 26 — all infra in the compose file
+# from repo root — Postgres 17 + Kafka 4.1.2 (KRaft) + Keycloak 26.
+# The -f docker-compose.seed.yml override pre-loads the demo fixtures (products, customers,
+# BOMs, GL chart, …) this script relies on; the base file alone comes up with an empty schema.
+docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d
 mvn install -DskipTests                             # builds all 12 modules (incl. demo-web-ui-bff + erp-web-ui-bff)
 cd demo-web-ui ; npm.cmd install ; cd ..            # one-time SPA dep install
 cd erp-web-ui ; npm.cmd install ; cd ..             # one-time install for the operational ERP SPA
 ```
 
-Postgres seeds itself on first start from `db/northwood_erp.sql` (per-service schemas, seed data, the saga CHECK constraint already extended for `invoice_paid`). To start fresh later: `docker compose down -v ; docker compose up -d`.
+Postgres runs its init scripts once, on the first boot of a fresh data volume. The base `docker-compose.yml` mounts only the **schema baseline** (`db/northwood_erp.sql` — per-service schemas, roles, grants, the saga CHECK constraint already extended for `invoice_paid`); the `docker-compose.seed.yml` override additionally mounts the **demo fixtures** (`db/northwood_erp_seed.sql` — products, customers, suppliers, BOMs, GL chart, …). This walkthrough needs the fixtures (CUST-001, the SKUs, etc.), which is why the command above layers both files with `-f`. For an empty database you populate via events from zero, drop the override and run `docker compose up -d`. To start fresh later, repeat the seeded command after a wipe: `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d`.
 
 Keycloak loads the `northwood` realm from `db/keycloak/northwood-realm.json` on first boot — 13 roles + 13 demo users (one per role, `username == password`). Admin console at `http://localhost:8090/` (`admin` / `admin`).
 
@@ -610,19 +612,19 @@ Try the same as Olivia (accountant) — Reverse button is disabled, tooltip "Req
 | Saga console shows "bff offline" | The BFF (port 8080) isn't running. Start `mvn -pl demo-web-ui-bff spring-boot:run`. |
 | Saga console column empty even with BFF up | The owning saga service isn't running. The aggregator gracefully degrades and logs the upstream failure once per pump cycle at DEBUG. |
 | Event drawer is empty | Phase 1 stub kicks in after ~2 s — refresh if it stays blank. Real `/events` aggregator is in `dev-todo.md`. |
-| Place order returns 400 with `Customer not found` | `CUST-001` isn't seeded — verify Postgres came up clean. `docker compose logs postgres` should show `psql:db/northwood_erp.sql:... DONE`. |
+| Place order returns 400 with `Customer not found` | `CUST-001` lives in the **seed** file, so the stack came up without the seed override. Re-up with `docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d`; `docker compose logs postgres` should then show `02-northwood_erp_seed.sql ... DONE`. |
 | Goods receipt 400s | The PO id in the form must be a real PO header UUID. Either get it from the **PO tracking** view, or use the scenario runner which captures it for you. |
 | Goods receipt 400 with `Unknown purchase_order_line_id` | The receipt line names a `purchaseOrderLineId` that inventory hasn't projected yet — usually because the PO hasn't been created at all, or `PurchaseOrderCreated` hasn't reached inventory's inbox yet (cold start). Use the picker in `/goods-receipts` rather than hand-typed line ids. |
 | Goods receipt 400 with `Product mismatch on purchase_order_line_id` | The receipt line's `productId` doesn't match the `purchase_order_line.product_id`. Defence-in-depth check against client-side picker bypass. Re-pick the line from the picker. |
 | Shipment 400 with `Unknown sales_order_line_id` / `Product mismatch on sales_order_line_id` | Same shape on the SO side. Inventory projects `sales_order_line_facts` from `SalesOrderPlaced`; the validation runs in `ShipmentService.post`. Lines without a `salesOrderLineId` (unlinked manual shipments) skip the check. |
 | Make-to-order saga stuck on `started` (and `manufacturing.work_order_header` stays empty) | Manufacturing-service didn't receive the `sales.ManufacturingRequested` event. Either manufacturing-service isn't running, **or it was launched without `SPRING_PROFILES_ACTIVE=kafka`** so it's on the in-JVM bus and never sees cross-JVM events. Set the profile and restart. |
 | Sales saga stuck on `manufacturing_requested` | Same as above — make-to-order saga can't advance because manufacturing isn't getting the event. Check the kafka profile is set on every service. |
-| Service starts but logs `FIND_COORDINATOR` errors / consumer group never joins | Stale Kafka volume from before the single-broker replication-factor overrides were added. `docker compose down -v ; docker compose up -d`. The volume gets wiped, internal topics (`__consumer_offsets`, `__transaction_state`) get recreated with replication-factor=1. |
+| Service starts but logs `FIND_COORDINATOR` errors / consumer group never joins | Stale Kafka volume from before the single-broker replication-factor overrides were added. `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d`. The volume gets wiped, internal topics (`__consumer_offsets`, `__transaction_state`) get recreated with replication-factor=1. |
 | `kafka-console-consumer.sh --from-beginning` returns 0 messages even though publishes succeeded | Same root cause as above — the spawned consumer-group can't find its coordinator. Probe with `kafka-get-offsets.sh --topic <name>` first to confirm messages are actually there. |
-| Customer payment 400 with CHECK constraint error | Out-of-date Postgres volume from before the `2026-05-05-extend-fulfilment-saga-states.sql` migration. Either let Liquibase apply it on next sales-service boot, or wipe the volume: `docker compose down -v ; docker compose up -d`. |
+| Customer payment 400 with CHECK constraint error | Out-of-date Postgres volume from before the `2026-05-05-extend-fulfilment-saga-states.sql` migration. Either let Liquibase apply it on next sales-service boot, or wipe the volume: `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d`. |
 | Manufacturing-service fails to boot with `Unexpected formatting in formatted changelog ... line N` | A `--` comment line accidentally starts with a Liquibase keyword (`changeset`, `rollback`, etc.). See CLAUDE.md § Liquibase gotchas. |
 
-To reset and start fresh: `docker compose down -v ; docker compose up -d` then re-bring up the services (with `SPRING_PROFILES_ACTIVE=kafka` per terminal) + BFF + SPA.
+To reset and start fresh: `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d` then re-bring up the services (with `SPRING_PROFILES_ACTIVE=kafka` per terminal) + BFF + SPA.
 
 ---
 

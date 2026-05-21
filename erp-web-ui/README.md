@@ -7,7 +7,8 @@ Operational ERP SPA for the business-user personas (Sarah / Mike / Linda / Tom /
 The fetch chain is `5174 → 8089 → backend service → postgres`. Bring up the layers from the bottom:
 
 ```powershell
-# 1. Database
+# 1. Database (empty schema). For pre-loaded demo fixtures, layer in the seed override:
+#    docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d postgres
 docker compose up -d postgres
 
 # 2. Backend services — minimum is reporting (read projections) for most pages.

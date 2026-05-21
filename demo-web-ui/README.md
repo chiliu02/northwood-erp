@@ -52,7 +52,7 @@ To support Phase 2, reporting-service gained three list endpoints (`GET /api/sal
 ## Run
 
 Prereqs:
-- Postgres up: `docker compose up -d postgres`
+- Postgres up: `docker compose up -d postgres` (empty schema). For pre-loaded fixtures, layer in the seed override: `docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d postgres`.
 - Services: `mvn -pl reporting-service spring-boot:run` (must), plus product-service / inventory-service if you want those views populated.
 
 ```powershell
