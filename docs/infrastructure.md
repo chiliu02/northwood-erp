@@ -66,7 +66,7 @@ Assuming a genuine total mandate, here is what happens.
    event commit together or not at all" is a Postgres transaction. Cassandra has no cross-partition
    ACID. Every fix is a *design* change: co-locate aggregate + outbox in one partition behind a
    single-partition `BATCH` (constrains the data model), switch to Cassandra CDC instead of an
-   outbox, or accept dual-write risk. This is `docs/messaging-design.md`-level, not adapter-level.
+   outbox, or accept dual-write risk. This is `docs/messaging.md`-level, not adapter-level.
    And the polled drain itself — `SELECT … WHERE status='pending' ORDER BY sequence LIMIT 100 FOR
    UPDATE SKIP LOCKED` — is an `ALLOW FILTERING` full-cluster scan in Cassandra (the canonical
    anti-pattern), so `OutboxPublisher` / `OutboxPort` / `JdbcOutboxAdapter` are rewritten regardless
