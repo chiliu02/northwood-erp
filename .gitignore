@@ -59,6 +59,10 @@ Thumbs.db
 # Historical doc snapshots — repo-private working notes
 t3/
 
+# Backlog + changelog — repo-private working notes, kept local-only under docs/
+docs/dev-todo.md
+docs/dev-done.md
+
 # Temp file used to pass multiline commit messages to `git commit -F` from
 # the assistant (PowerShell heredocs are unreliable through the harness).
 .commit-msg.tmp
