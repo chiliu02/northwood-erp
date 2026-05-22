@@ -237,7 +237,7 @@ public class JdbcProductRepository implements ProductRepository {
             p.reorderPoint(), p.reorderQuantity(),
             p.valuationClass() == null ? null : p.valuationClass().dbValue(),
             p.activeBomId(),
-            p.status().name().toLowerCase(),
+            p.status().dbValue(),
             actor,
             p.id().value(), p.version()
         );
