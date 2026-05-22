@@ -594,9 +594,11 @@ Argument validation and receiver-state invariants go through `com.northwood.shar
 | Argument check (throws `IllegalArgumentException`) | State-check mirror (throws `IllegalStateException`) |
 |---|---|
 | `Assert.notNull(x, msg)` → `T` | `Assert.stateNotNull(x, msg)` → `T` |
-| `Assert.notBlank(str, msg)` | `Assert.stateNotBlank(str, msg)` |
-| `Assert.notEmpty(coll, msg)` (and `Map` overload) | `Assert.stateNotEmpty(coll, msg)` (and `Map` overload) |
+| `Assert.notBlank(str, msg)` → `String` | `Assert.stateNotBlank(str, msg)` → `String` |
+| `Assert.notEmpty(coll, msg)` → `C` (and `Map` overload → `M`) | `Assert.stateNotEmpty(coll, msg)` → `C` (and `Map` overload → `M`) |
 | `Assert.argument(cond, msg)` | `Assert.state(cond, msg)` |
+
+Every `not*` / `stateNot*` helper **returns its validated argument unchanged** so the check composes inline: `this.name = Assert.notBlank(name, "name")`, `this.lines = Assert.notEmpty(lines, "lines")`, or passed straight into a constructor-argument list. The collection/map overloads use a `<C extends Collection<?>>` / `<M extends Map<?,?>>` bound rather than returning the bare `Collection<?>` / `Map<?,?>`, so the concrete type (`List<X>`, `Set<X>`, …) survives the call. The `argument` / `state` boolean-predicate checks return `void` — there's no argument to thread through.
 
 Plus the standalone `throw Assert.unknownValue("field", value)` returning an `IllegalArgumentException` for enum-parser fall-throughs with the literal "Unknown X: Y" message shape.
 

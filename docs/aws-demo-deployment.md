@@ -18,10 +18,10 @@ DNS instead of `localhost`.
 **Specified (Part A — the core):** Postgres, Kafka, Keycloak, each on its own
 dedicated EC2 instance, all sharing a single subnet.
 
-**Added to make it a runnable demo (Part B — adjust if hosting elsewhere):** a **web
-tier** (the 2 BFFs) + an **app tier** (the 7 services), an optional **observability**
-EC2 (the LGTM stack, §5.4) in the infra subnet, the 2 SPAs on S3 + CloudFront, and an
-ALB for ingress.
+**Added to make it a runnable demo (Part B — adjust if hosting elsewhere):** the **web
+tier** (2 BFFs) + **app tier** (7 services) on **ECS Fargate** (§6), an optional
+**observability** EC2 (the LGTM stack, §5.4) in the infra subnet, the 2 SPAs on
+S3 + CloudFront, and an ALB for ingress.
 If you intend to run the services from your laptop against the AWS infra instead,
 skip Part B and instead expose the three infra ports to your IP via the security
 groups + a VPN/bastion (not recommended over the public internet).
@@ -43,17 +43,17 @@ from the repo — **override before any non-localhost exposure** (see §10).
  public 10.0.1.0/24   │     ALB     │  (+ NAT GW for image pulls)
                       └──┬───────┬──┘
         BFFs 8080/8089 ──┘       └── 8080 Keycloak (OIDC browser flow)
-   ┌───────────────────────────────┐
-   │  web subnet  10.0.2.0/24       │  BFFs — internet-facing tier
+   ┌────────────────────────────────┐
+   │  web subnet  10.0.2.0/24       │  BFFs (Fargate) — internet-facing
    │  demo-bff(8080) erp-bff(8089)  │
-   └───────────────┬───────────────┘
-                   │  REST 8081-8087   (+ erp-bff → Keycloak :8080)
-   ┌───────────────▼───────────────┐
-   │  app subnet  10.0.3.0/24       │  7 services — internal only
+   └───────────────┬────────────────┘
+                   │  Service Connect → 8081-8087  (+ erp-bff → Keycloak)
+   ┌───────────────▼────────────────┐
+   │  app subnet  10.0.3.0/24       │  7 services (Fargate) — internal
    │  services (8081-8087)          │
-   └───────────────┬───────────────┘
+   └───────────────┬────────────────┘
                    │  5432 · 9092   ·   traces/logs → tempo/loki
-   ┌───────────────▼─────────────────────────────────────────┐
+   ┌───────────────▼───────────────────────────────────────────┐
    │  infra subnet  10.0.11.0/24   — separate EC2s:            │
    │    • postgres:17 (:5432)   • kafka:4.1.2 (:9092)          │
    │    • keycloak:26 (:8080)                                  │
@@ -67,8 +67,8 @@ SPAs (erp-web-ui, demo-web-ui) → static build → S3 + CloudFront (outside the
 
 | Component | Subnet | Runs on | Reached by |
 |---|---|---|---|
-| 2 BFFs (`demo-bff`, `erp-bff`) | `10.0.2.0/24` (web) | EC2, containers | ALB |
-| 7 services | `10.0.3.0/24` (app) | EC2(s), containers | web tier only |
+| 2 BFFs (`demo-bff`, `erp-bff`) | `10.0.2.0/24` (web) | ECS Fargate tasks | ALB |
+| 7 services | `10.0.3.0/24` (app) | ECS Fargate tasks | web tier (Service Connect) |
 | PostgreSQL 17 | `10.0.11.0/24` (infra) | own EC2, container | app tier :5432 |
 | Kafka 4.1.2 (KRaft) | `10.0.11.0/24` (infra) | own EC2, container | app tier :9092 |
 | Keycloak 26 | `10.0.11.0/24` (infra) | own EC2, container | app + web tier + ALB :8080 |
@@ -80,11 +80,11 @@ SPAs (erp-web-ui, demo-web-ui) → static build → S3 + CloudFront (outside the
 
 ## 3. Prerequisites
 
-- AWS account; an IAM principal with VPC/EC2/ALB/S3/CloudFront/IAM permissions.
+- AWS account; an IAM principal with VPC/EC2/**ECS/ECR**/ALB/S3/CloudFront/Secrets-Manager/IAM permissions.
 - The repo checked out (for `db/northwood_erp.sql`, `db/northwood_erp_seed.sql`,
   `db/keycloak/northwood-realm.json`, and to build the apps/SPAs).
-- An S3 bucket to stage the `db/` files and built app artifacts (the private
-  instances pull from here via NAT or an S3 VPC endpoint).
+- An **ECR** repo per app (for the Fargate images) and an S3 bucket to stage the `db/`
+  files (the infra EC2s pull from there via NAT or an S3 VPC endpoint).
 - (Optional) a domain + ACM certificate for TLS on the ALB. Without one, use the
   ALB DNS name over HTTP for the demo.
 
@@ -97,8 +97,8 @@ SPAs (erp-web-ui, demo-web-ui) → static build → S3 + CloudFront (outside the
 | Subnet | CIDR | Type | Purpose |
 |---|---|---|---|
 | public | `10.0.1.0/24` | public | ALB, NAT GW |
-| web | `10.0.2.0/24` | private | 2 BFFs (`demo-bff`, `erp-bff`) — internet-facing tier |
-| app | `10.0.3.0/24` | private | 7 services (8081-8087) — internal only |
+| web | `10.0.2.0/24` | private | 2 BFF Fargate tasks (`demo-bff`, `erp-bff`) — internet-facing |
+| app | `10.0.3.0/24` | private | 7 service Fargate tasks (8081-8087) — internal only |
 | infra | `10.0.11.0/24` | private | Postgres, Kafka, Keycloak + observability — 4 separate EC2s |
 
 - **IGW** on the VPC; public subnet routes `0.0.0.0/0` → IGW.
@@ -128,7 +128,9 @@ reachable only from the web tier, never the internet. The BFFs reach the service
 Observability flips direction: **Prometheus scrapes** the web+app tiers (so they allow
 inbound from `obs-sg`), while the services **push** traces/logs *to* Tempo/Loki (`obs-sg`
 inbound from web+app). The four infra instances share one subnet but each keeps its own
-SG, so the per-port rules above isolate them at the instance level.)
+SG, so the per-port rules above isolate them at the instance level. The web/app tiers run
+on **Fargate** (`awsvpc` mode): each task gets its own ENI in its subnet, so `web-sg` /
+`app-sg` attach to the **tasks** — same rules, on task ENIs rather than EC2.)
 
 ---
 
@@ -247,27 +249,49 @@ without auth.
 
 ---
 
-## 6. Web & app tiers (Part B — to complete the demo)
+## 6. Web & app tiers on ECS Fargate (Part B — to complete the demo)
 
-Build the 9 Spring Boot apps into images (`mvn spring-boot:build-image`, no Dockerfiles
-needed) and run the **2 BFFs in the web subnet** (`10.0.2.0/24`) and the **7 services in
-the app subnet** (`10.0.3.0/24`) — each tier can be one EC2 with a `docker compose`, or
-several. Point each at the infra boxes by **private DNS**. The DB / Kafka / kafka-profile
-env below is for the **services**; the BFFs need only the downstream service URLs and
-(erp-bff) the Keycloak issuer + client secret:
+The stateless **app tier** (7 services) and **web tier** (2 BFFs) run as **ECS Fargate**
+services — no EC2 to manage, per-service scaling, and Service Connect for BFF→service
+load-balancing. (The stateful infra in §5 stays on EC2; the SPAs in §6.1 stay on
+S3 + CloudFront.)
 
-| Env | Value |
-|---|---|
-| `SPRING_PROFILES_ACTIVE` | `kafka` — **mandatory**; without it the outbox publisher + consumers don't register and cross-service flows silently never fire |
-| `<SERVICE>_DB_URL` | `jdbc:postgresql://<postgres-private-dns>:5432/northwood_erp` (per-service role + `search_path` set as today) |
-| `<SERVICE>_DB_PASSWORD` | from Secrets Manager, **not** the committed default |
-| Kafka bootstrap | `<kafka-private-dns>:9092` |
-| OTLP traces / Loki logs | `<obs-private-dns>:4317` (Tempo) · `http://<obs-private-dns>:3100/loki/api/v1/push` |
-| Keycloak issuer | `https://auth.<your-domain>/realms/northwood` (via ALB) |
-| `KEYCLOAK_BFF_CLIENT_SECRET`, `NORTHWOOD_SECURITY_DEMOBYPASS_TOKEN` | from Secrets Manager |
+**Cluster & images.** One ECS cluster (Fargate launch type). Build each app with
+`mvn spring-boot:build-image` (no Dockerfiles) and push to **ECR** — one repo per app.
 
-Only the two BFFs (`web-sg`, 8080 / 8089) are ALB targets; the 7 services (`app-sg`) are
-reachable only from the web tier, never the internet.
+**Task definitions** — one per app, `awsvpc` networking, ~`0.5 vCPU / 1 GB` (bump the
+memory-heavier ones):
+
+- **image** from ECR; container port = the app's port (8081-8087, or 8080 / 8089 for BFFs).
+- **environment** — services: `SPRING_PROFILES_ACTIVE=kafka` (**mandatory** — without it the
+  outbox publisher + consumers don't register and flows silently never fire);
+  `<SERVICE>_DB_URL=jdbc:postgresql://<postgres-private-dns>:5432/northwood_erp`; Kafka
+  bootstrap `<kafka-private-dns>:9092`; OTLP `<obs-dns>:4317`; Loki
+  `http://<obs-dns>:3100/loki/api/v1/push`. BFFs: the downstream service URLs (the Service
+  Connect names below) + (erp-bff) the Keycloak issuer `https://auth.<domain>/realms/northwood`.
+- **secrets** → `secrets[]` with `valueFrom` Secrets Manager ARNs: the 7 DB passwords,
+  `KEYCLOAK_BFF_CLIENT_SECRET`, `NORTHWOOD_SECURITY_DEMOBYPASS_TOKEN` (never the committed defaults).
+- **logging**: `awslogs` driver → CloudWatch (the app's Loki appender still ships to the obs box in parallel).
+- **roles**: a task **execution role** (pull ECR, read those secrets, write logs) + a task
+  role (minimal — the app makes no AWS API calls).
+
+**ECS services** — one per app:
+
+- **`desiredCount` per service, set independently** (e.g. `product=1`, `sales=2`); add
+  **Service Auto Scaling** (target-tracking on CPU) for elasticity.
+- **placement**: BFF services → **web** subnet + `web-sg`; the 7 services → **app** subnet +
+  `app-sg`; `assignPublicIp=DISABLED` (images pull via NAT or ECR VPC endpoints).
+- **Service Connect** (namespace e.g. `northwood.local`): each service advertises its port
+  (`product:8081`, `sales:8082`, …); the BFFs call `http://product:8081` and Service Connect
+  **auto-load-balances across that service's tasks** — this is the BFF→service LB, no internal
+  ALB needed.
+- **ALB**: only the 2 BFF services attach to the public ALB (target type **ip**, a target group
+  each, health check `/actuator/health`).
+
+**Reaching the EC2 infra**: Fargate task ENIs live in the web/app subnets, so they reach the
+§5 infra boxes by private DNS — `postgres-sg` / `kafka-sg` / `keycloak-sg` / `obs-sg` allow
+inbound from the `app-sg` / `web-sg` now attached to the tasks (§4). Deploy the service tasks
+before the BFF tasks.
 
 ### 6.1 SPAs — `erp-web-ui` and `demo-web-ui`
 
@@ -282,9 +306,9 @@ the web tier, but S3 + CloudFront is the recommended path.)
 ## 7. Ingress & TLS
 
 - **ALB** in the public subnet, listeners 80→redirect→443. Target groups:
-  `demo-bff` (8080), `erp-bff` (8089), `keycloak` (8080, browser OIDC flow), and
-  `grafana` (3000, the observability UI).
-  Health checks hit Actuator `/actuator/health` on the BFFs.
+  `demo-bff` (8080), `erp-bff` (8089) — **ip** target type (Fargate tasks); `keycloak`
+  (8080, browser OIDC flow) and `grafana` (3000, the observability UI) — **instance**
+  target type (the EC2s). Health checks hit Actuator `/actuator/health` on the BFFs.
 - **TLS:** an ACM certificate on the 443 listener (needs a domain in Route 53 or your
   registrar). No domain? Run the demo on the ALB DNS over HTTP (fine for a throwaway demo).
 
@@ -300,9 +324,9 @@ Dependencies matter — the services fail fast if Kafka/DB aren't ready:
 4. **Keycloak EC2** → realm imported, admin console reachable.
 5. **Observability EC2** (optional): start the LGTM stack — it tolerates the app/web tiers
    not being up yet (Prometheus just shows those targets down until they start).
-6. **App tier** (services): bring up the 7 services with `SPRING_PROFILES_ACTIVE=kafka`
-   and the infra private-DNS env above; each applies its (empty) Liquibase master
-   changelog against the loaded baseline. Then the **web tier**: the 2 BFFs.
+6. **App + web tiers** (ECS Fargate): deploy the ECS services — the 7 service tasks first
+   (each applies its empty Liquibase changelog against the loaded baseline), then the 2 BFF
+   tasks. Set `desiredCount` per service; Service Connect wires BFF→service.
 7. **SPAs** (`erp-web-ui`, `demo-web-ui`) → S3 / CloudFront, then the **ALB** target registrations.
 
 > Start Kafka *before* the services — the first publish fails if the broker isn't up yet.
@@ -346,18 +370,75 @@ When this graduates past a demo (tracked in `docs/dev-todo.md`):
   (managed **MSK**), or **§3.6** — swap the bus for **SNS+SQS FIFO** (AWS-native).
 - Keycloak in production mode (HTTPS, external DB, clustered) or migrate to Cognito.
 
+### 11.1 Scaling services independently + BFF load-balancing
+
+The flat demo above runs the 7 services co-located, with the BFFs calling fixed
+`host:port`s — so it can't run, say, 1× product-service and 2× sales-service, and there's
+no load balancer between the BFFs and the services. To get **per-service instance counts**
+plus **BFF auto-load-balancing**, add two things:
+
+1. **A per-service scaling unit** — each service gets its own independently-sized group
+   (product `1`, sales `2`, …).
+2. **A load-balanced stable endpoint per service** — the BFFs call "the service", not an
+   instance, and traffic spreads automatically.
+
+Two ways:
+
+- **ECS (easiest):** each service = an ECS Service with its own `desired count`;
+  **Service Connect / Cloud Map** gives a virtual endpoint that auto-balances across that
+  service's tasks. The BFF calls the service name; ECS spreads the load. Counts are set
+  per service independently.
+- **Raw EC2 (fits this doc):** a per-service **ASG** (desired N) + an **internal ALB**
+  (one ALB with a target group per service, host/path-routed — or one ALB per service).
+  The BFF calls `http://product.internal:8081`; the ALB round-robins across that service's
+  healthy instances.
+
+Either way the **BFF doesn't balance itself** — point its per-service base URLs (config,
+not code) at the LB / Service-Connect endpoint, and the LB routes only to instances
+passing Actuator `/health`. (`web-sg` then targets per-service target groups, not fixed
+instances.)
+
+**Why it's safe here:** the per-service background loops are already multi-instance-
+coordinated — the outbox publisher drains with `FOR UPDATE SKIP LOCKED`, and the saga
+workers use claim-and-lease + a per-instance `workerId` — so `2× sales-service` won't
+double-publish events or double-advance sagas. No new coordination code.
+
+**Caveats:**
+- **Kafka consumer parallelism is capped at the partition count (= 1 today).** A second
+  instance's *inbox consumer* idles on a single partition, though its REST handlers +
+  outbox drainer + saga worker are all active. Raise partitions (§2.14) for consumer
+  parallelism.
+- More instances × Hikari pools → watch Postgres `max_connections` (**RDS Proxy** in
+  production; tune pool sizes for the single demo Postgres).
+
+### 11.2 Orchestrator — ECS vs Kubernetes
+
+For ~9 services, **ECS Fargate** is the pragmatic default (and what the demo §6 uses):
+lowest ops — no nodes or cluster to manage — tight AWS integration (ALB, Service Connect,
+per-task IAM, Secrets Manager, CloudWatch), no control-plane fee, cheapest at this scale.
+
+Choose **EKS / Kubernetes** instead only for a specific driver: portability / multi-cloud
+(no AWS lock-in), an existing K8s investment + platform expertise, the CNCF ecosystem
+(service mesh, GitOps, **kube-prometheus-stack** for the LGTM observability), growth well
+past ~10 services, or to deliberately showcase Kubernetes.
+
+Either way the app is identical — stateless services, the multi-instance-safe outbox/saga
+loops, per-service scaling + BFF LB (**ECS Service Connect ≈ K8s Service + HPA**), and
+managed RDS / MSK / Keycloak underneath.
+
 ---
 
 ## 12. Rough cost (always-on, single-AZ, on-demand)
 
 | Item | ~Monthly |
 |---|---|
-| 3 infra EC2 (`t3.small`) + 1 obs EC2 (`t3.medium`, LGTM) + web/app EC2 (`t3.medium`) | ~$120–200 |
+| 3 infra EC2 (`t3.small`) + 1 obs EC2 (`t3.medium`, LGTM) | ~$70–110 |
+| 9 Fargate tasks (web + app, ~0.5 vCPU / 1 GB, 24/7) | ~$130–180 |
 | NAT Gateway | ~$32 + data |
 | ALB | ~$16 + LCUs |
 | S3 + CloudFront (SPAs) | a few $ |
 | EBS volumes | ~$8–15 |
-| **Total** | **~$180–280** |
+| **Total** | **~$260–350** |
 
 Stop the EC2 instances (and delete the NAT GW) when you're not demoing to cut this to
 near zero — the EBS volumes preserve state across stops.
@@ -366,7 +447,8 @@ near zero — the EBS volumes preserve state across stops.
 
 ## 13. Teardown
 
-Terminate the EC2 instances → delete the ALB + target groups → delete CloudFront +
-empty/delete the S3 bucket → delete the NAT GW (release its EIP) → delete subnets,
-route tables, IGW, security groups → delete the VPC. (Deleting the NAT GW promptly is
-the biggest cost saver.)
+Delete the ECS services + cluster (and ECR images) → terminate the infra EC2 instances →
+delete the ALB + target groups → delete CloudFront + empty/delete the S3 bucket → delete
+the NAT GW (release its EIP) → delete subnets, route tables, IGW, security groups → delete
+the VPC. (Scaling Fargate `desiredCount` to 0 + deleting the NAT GW are the biggest cost
+savers.)

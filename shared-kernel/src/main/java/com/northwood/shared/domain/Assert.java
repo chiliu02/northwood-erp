@@ -73,32 +73,38 @@ public final class Assert {
 
     /**
      * Throws {@link IllegalArgumentException} with {@code message} when
-     * {@code text} is null, empty, or whitespace-only. Matches the
-     * behaviour of {@link String#isBlank()}.
+     * {@code text} is null, empty, or whitespace-only; otherwise returns
+     * {@code text} unchanged. Matches the behaviour of {@link String#isBlank()}.
+     * Supports the chained {@code this.field = Assert.notBlank(value, "value")}
+     * shape, same as {@link #notNull}.
      */
-    public static void notBlank(String text, String message) {
+    public static String notBlank(String text, String message) {
         if (text == null || text.isBlank()) {
             throw new IllegalArgumentException(message);
         }
+        return text;
     }
 
     /**
      * Throws {@link IllegalArgumentException} with {@code message} when
-     * {@code collection} is null or empty. Use for "at least one ..."
-     * argument contracts (e.g. multi-line factories that need at least
-     * one line).
+     * {@code collection} is null or empty; otherwise returns {@code collection}
+     * unchanged. Use for "at least one ..." argument contracts (e.g. multi-line
+     * factories that need at least one line). The concrete collection type is
+     * preserved so {@code this.lines = Assert.notEmpty(lines, "lines")} chains.
      */
-    public static void notEmpty(Collection<?> collection, String message) {
+    public static <C extends Collection<?>> C notEmpty(C collection, String message) {
         if (collection == null || collection.isEmpty()) {
             throw new IllegalArgumentException(message);
         }
+        return collection;
     }
 
     /** Same as {@link #notEmpty(Collection, String)} for maps. */
-    public static void notEmpty(Map<?, ?> map, String message) {
+    public static <M extends Map<?, ?>> M notEmpty(M map, String message) {
         if (map == null || map.isEmpty()) {
             throw new IllegalArgumentException(message);
         }
+        return map;
     }
 
     /**
@@ -147,29 +153,33 @@ public final class Assert {
     /**
      * State-check mirror of {@link #notBlank}: throws
      * {@link IllegalStateException} when {@code text} is null, empty, or
-     * whitespace-only.
+     * whitespace-only; otherwise returns {@code text} for chaining.
      */
-    public static void stateNotBlank(String text, String message) {
+    public static String stateNotBlank(String text, String message) {
         if (text == null || text.isBlank()) {
             throw new IllegalStateException(message);
         }
+        return text;
     }
 
     /**
      * State-check mirror of {@link #notEmpty(Collection, String)}: throws
-     * {@link IllegalStateException} when {@code collection} is null or empty.
+     * {@link IllegalStateException} when {@code collection} is null or empty;
+     * otherwise returns {@code collection} for chaining.
      */
-    public static void stateNotEmpty(Collection<?> collection, String message) {
+    public static <C extends Collection<?>> C stateNotEmpty(C collection, String message) {
         if (collection == null || collection.isEmpty()) {
             throw new IllegalStateException(message);
         }
+        return collection;
     }
 
     /** Same as {@link #stateNotEmpty(Collection, String)} for maps. */
-    public static void stateNotEmpty(Map<?, ?> map, String message) {
+    public static <M extends Map<?, ?>> M stateNotEmpty(M map, String message) {
         if (map == null || map.isEmpty()) {
             throw new IllegalStateException(message);
         }
+        return map;
     }
 
     // ----------------------------------------------------------------------
