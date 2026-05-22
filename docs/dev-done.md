@@ -6,6 +6,22 @@ When a slice ships: move its block from `dev-todo.md` to here, drop transient co
 
 ---
 
+## 2026-05-22 — `Assert` `not*` helpers return their validated argument; `Product.register` name → `notBlank`
+
+The `Assert` helper family was internally inconsistent: only `notNull` / `stateNotNull` returned the validated value for chaining, while `notBlank` / `notEmpty` / `stateNotBlank` / `stateNotEmpty` returned `void`. That forced a guard-statement-above-the-call shape whenever a blank/empty check needed to live inside a constructor-argument list. Surfaced while tightening `Product.register`'s `name` argument from `notNull` to `notBlank` — a blank/whitespace product name passes `notNull` *and* the schema's `NOT NULL` (`product.name VARCHAR(200) NOT NULL`, no non-empty CHECK), so the aggregate is the only guard. `Customer.register` already validated the same field with `notBlank`, so `notNull` here was an inconsistency, not a deliberate choice.
+
+### Shipped
+
+- **`shared.domain.Assert`**: `notBlank` / `stateNotBlank` now return `String`; `notEmpty` / `stateNotEmpty` (both `Collection` + `Map` overloads) now return the argument, typed via a `<C extends Collection<?>>` / `<M extends Map<?,?>>` bound so the concrete type (`List<X>`, `Set<X>`, …) survives the call rather than widening to `Collection<?>`. `notNull` / `stateNotNull` unchanged (already returned `T`); the boolean-predicate `argument` / `state` stay `void` (no argument to thread). Javadocs updated to note the return on each.
+- **`product.domain.Product#register`**: `Assert.notNull(name, "name")` → `Assert.notBlank(name, "name")`, kept inline in the constructor-argument list now that `notBlank` returns. Rejects blank/whitespace names at the aggregate boundary.
+- **`docs/conventions.md` → *Two parallel families*** — return types added across the family table, plus a paragraph on the generic-bound rationale and why `argument`/`state` stay `void`.
+- **`CLAUDE.md` → *Argument + state checks via `Assert`*** — generalised the "returns `T` for the chained shape" note from just `notNull`/`stateNotNull` to the whole `not*`/`stateNot*` family.
+
+### Smoke
+
+- `mvn clean compile` (full reactor) — `EXIT=0`. Confirms the `void`→return signature change is source-compatible across all services (existing statement-style call sites unaffected; the generic `notEmpty` overloads don't introduce null-literal ambiguity beyond what the prior `Collection<?>`/`Map<?,?>` overloads already had).
+- `mvn -pl shared-kernel,product-service test -Dtest=AssertTest,ProductTest` — pass, `EXIT=0`.
+
 ## 2026-05-21 — docs/ declutter: keep only Claude-required docs under `docs/`
 
 Moved 11 human-facing / visual docs out of `docs/` (out of the repo entirely) so `docs/` holds only what Claude Code actually loads: the seven `CLAUDE.md`-wired guidance docs (`architecture`, `conventions`, `persistence`, `sagas`, `messaging-design`, `design-notes`, `build-status`) plus `demo-script.md`, `dev-todo.md`, `dev-done.md`, and `screenshots/`.

@@ -111,7 +111,7 @@ public class Product {
         Product p = new Product(
             ProductId.newId(),
             Assert.notNull(sku, "sku"),
-            Assert.notNull(name, "name"),
+            Assert.notBlank(name, "name"),
             description,
             Assert.notNull(productType, "productType"),
             Assert.notNull(baseUomId, "baseUomId"),
