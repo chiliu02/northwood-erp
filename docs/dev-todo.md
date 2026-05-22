@@ -236,6 +236,33 @@ Postgres (easy, ~no code):
 
 Caveat (parked with the bus): under multiple concurrent outbox drainers, strict per-aggregate *publish* ordering is the §2.14 "scaling past 1 partition" concern — not a blocker for request-path scaling. Pull forward only if an AWS deployment is actually on the table.
 
+### 3.8 Decouple consumers from broker delivery order (make a bus swap application-clean)
+
+Today two `application/inbox` consumers depend on per-`aggregateId` delivery order supplied by the Kafka partition key (`aggregateId`): `manufacturing/.../ProductReplenishmentProjection` ("partition keys preserve per-product order, so latest-* wins") and the sales fulfilment saga's cross-partition gate. That dependence is the one thing that leaks into `application/` when the bus is swapped to a broker without partition-key ordering (plain JMS, RabbitMQ classic queues, standard SNS/SQS). §3.6 closes the gap from the *infrastructure* side by demanding FIFO + `MessageGroupId = aggregateId`; this item closes it from the *application* side by removing the dependence, so any bus works regardless. Do one of the two — not both.
+
+Scope:
+- **Ordering — make order-dependent read models order-insensitive.** Surface the outbox's existing monotonic per-service `sequence_number` (today the `OutboxPublisher` polling cursor — *"never `created_at`"* — but not propagated) onto `EventEnvelope` as an ordering token. Change the order-dependent projections to apply conditionally (highest-sequence-wins, e.g. `UPDATE ... SET ..., source_sequence = :seq WHERE <key> AND source_sequence < :seq`), so a stale/out-of-order arrival is ignored rather than overwriting newer state. Converts "the broker must deliver in order" into "the consumer resolves order locally." Overlaps with §2.14 audit item 3 (read-modify-write projection patterns).
+- **Publish durability — formalize the `EventPublisher` contract.** Tighten the `EventPublisher.publish()` Javadoc to state the guarantee `OutboxPublisher.drain()` already relies on: *returns normally only after the broker has durably accepted the message; throws on any failure to do so.* Add one shared abstract conformance test (TCK) every adapter must extend (`KafkaEventPublisher` satisfies it via `.join()`; a RabbitMQ adapter via publisher confirms + persistent/durable; JMS via a transacted/synchronous send). No new interface, no application-logic change — contract text + test only; pins the "fire-and-forget reopens the dual-write gap" footgun before a second adapter exists.
+
+Why low priority: under Kafka today the partition key already supplies the ordering, so nothing is broken. This earns its keep only when a bus swap is actually on the table (relates to §3.6) — but it's the cheaper, more robust path than re-solving ordering per broker, because it removes a runtime-guarantee assumption once in the app rather than demanding that guarantee from every future broker.
+
+### 3.9 Elasticsearch read-side for reporting ad-hoc / full-text / faceted query
+
+Reporting is already textbook CQRS: every controller injects only a `*QueryPort` interface (`SalesOrder360Controller(SalesOrder360QueryPort)`, + 5 more), backed by `Jdbc*QueryPort` adapters; the read models are denormalised, event-derived via `application/inbox/*Projection`, rebuildable, and not the system of record. That is exactly the data that belongs in Elasticsearch. This adds ES as a read-side store **behind the existing ports** — Postgres stays the system of record for write-side aggregates + outbox + exact money; ES covers the one thing Postgres is weakest at (ad-hoc / full-text / faceted query + large-scale aggregation). No write-side change.
+
+Scope:
+- **ES as an alternative store behind the same `*QueryPort`.** Add `Elasticsearch<X>QueryPort implements <X>QueryPort` in `infrastructure/` (controllers untouched) + an ES indexer subscribing to the same inbox events as the `Jdbc*Projection` it parallels. Choose Postgres or ES **per read model** — start with the most query-flexible (e.g. `SalesOrder360`, `PurchaseOrderTracking`).
+- **A constrained ad-hoc search capability.** For genuinely free-form filter/full-text/aggregation, add a *criteria* DTO in `application/` (a typed filter record — **never** raw ES query DSL, which would leak ES into `api/`) + an `Elasticsearch<X>SearchPort` adapter that translates it. ES query DSL stays inside `infrastructure/`.
+
+Constraints to settle at implementation time:
+- **Eventual consistency** — ES indexing is async (inbox lag + ES ~1s refresh). Already true for the event-fed projections; just a slightly larger window. Fine for dashboards; any read-your-writes path stays on Postgres.
+- **Derived index, not source of truth** — rebuildable from events/outbox. A re-projection/rebuild path is a hard requirement, not optional (replay, or re-read the PG read model).
+- **Money exactness** — keep authoritative monetary totals (`FinancialDashboard`) in Postgres; use ES for filtering/search/counts, not authoritative sums (float-aggregation pitfalls; `scaled_float`/integer-cents only with care).
+- **No dual-write drift** — prefer ES as the *sole* store for the search/ad-hoc models; keep PG for models needing exactness or transactional consistency. Don't maintain both for the same model.
+- ES indices are reporting-owned — schema-per-service invariant preserved, no cross-service leak. One more stateful container in docker-compose for the showcase (backup, or accept rebuild-only).
+
+Why low priority: the predefined reporting dashboards are served fine by Postgres today. ES earns its keep only when a real ad-hoc / full-text / faceted-search / large-aggregation requirement lands in the demo narrative. It's the read-side counterpart to the Postgres→Cassandra discussion: the read side is interface-shaped (`*QueryPort`), so the store swaps freely without touching the write side. Pull forward when "let me search/slice the data however I want" becomes part of the showcase.
+
 <!-- Section numbers below kept at their original §2.x values per the preamble's
      "stable historical anchors" rule — dev-done.md + design-notes.md have ~13
      cross-refs to §2.8 alone that would break under renumbering. -->
