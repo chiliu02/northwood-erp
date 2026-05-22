@@ -21,6 +21,9 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class ProductTest {
 
@@ -81,9 +84,12 @@ class ProductTest {
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
-        @Test void rejects_null_name() {
+        @ParameterizedTest
+        @NullSource
+        @ValueSource(strings = {"", "   "})
+        void rejects_blank_name(String badName) {
             assertThatThrownBy(() -> Product.register(
-                new Sku("FG-X"), null, "d", ProductType.FINISHED_GOOD, UOM_EACH,
+                new Sku("FG-X"), badName, "d", ProductType.FINISHED_GOOD, UOM_EACH,
                 Money.zero(Currencies.AUD), Money.zero(Currencies.AUD)
             )).isInstanceOf(IllegalArgumentException.class);
         }
