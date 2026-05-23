@@ -1,0 +1,23 @@
+#!/bin/bash
+set -euxo pipefail
+
+# Docker + AWS CLI (AL2023 usually ships the CLI; guard + install if not).
+dnf install -y docker
+systemctl enable --now docker
+command -v aws >/dev/null 2>&1 || dnf install -y awscli-2 || dnf install -y awscli
+
+mkdir -p /opt/northwood/initdb /data/pg
+
+# Init scripts run once on a fresh volume, in filename order:
+#   01 baseline schema/roles/grants, 02 seed (optional), 03 generated role logins.
+aws s3 cp "s3://${bucket}/${init_key_prefix}" /opt/northwood/initdb/ \
+  --recursive --region "${region}" --exclude "*" --include "*.sql"
+aws s3 cp "s3://${bucket}/${env_key}" /opt/northwood/postgres.env --region "${region}"
+
+docker run -d --name northwood-postgres --restart unless-stopped \
+  --env-file /opt/northwood/postgres.env \
+  -e POSTGRES_USER=postgres -e POSTGRES_DB=northwood_erp \
+  -p 5432:5432 \
+  -v /data/pg:/var/lib/postgresql/data \
+  -v /opt/northwood/initdb:/docker-entrypoint-initdb.d:ro \
+  ${image}
