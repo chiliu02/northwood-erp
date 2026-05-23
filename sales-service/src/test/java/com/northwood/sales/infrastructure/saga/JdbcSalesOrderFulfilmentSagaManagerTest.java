@@ -275,6 +275,78 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
     }
 
     @Nested
+    class CrossPartitionRace {
+        // §2.6 — targeted regression for the cross-partition race fixed
+        // 2026-05-05. The race: with two top-level work orders, WO1's
+        // *Completed* reaches sales before WO2's *Created* (siblings on
+        // different Kafka partitions, no cross-partition ordering). For the
+        // instant after WO1 completes, `outstanding` is empty — and the
+        // legacy "outstanding empty AND completed non-empty" gate would read
+        // that as "all done" and advance to ready_to_ship while WO2 is still
+        // unbuilt. The fix stamps an expectedWorkOrderCount at dispatch time
+        // and gates on completed.size() >= expectedCount, which is
+        // order-independent: the empty-outstanding window can no longer trip
+        // the gate. This drives the adversarial ordering through the manager
+        // (not just the data object — see FulfilmentSagaDataTest for that)
+        // and asserts the saga holds, then advances only once both complete.
+        @Test void completion_before_sibling_creation_holds_then_advances() {
+            SalesOrderFulfilmentSaga saga = sagaInState(MANUFACTURING_REQUESTED);
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            // Dispatch: both lines accepted → expectedWorkOrderCount=2 stamped,
+            // saga stays in manufacturing_requested awaiting WO creation.
+            assertThat(manager.applyManufacturingDispatched(SO, 2, 2)).isEqualTo(MANUFACTURING_REQUESTED);
+
+            // WO1 created → first top-level WO advances to in_progress.
+            assertThat(manager.applyWorkOrderCreated(SO, WO_1, null)).isEqualTo(MANUFACTURING_IN_PROGRESS);
+
+            // THE RACE: WO1 completes before WO2 is created. With expectedCount
+            // set, the count gate (1 >= 2 == false) holds the saga; the legacy
+            // outstanding-set gate would have advanced here.
+            assertThat(manager.applyWorkOrderManufacturingCompleted(SO, WO_1, null))
+                .isEqualTo(MANUFACTURING_IN_PROGRESS);
+
+            // At the race moment outstanding is empty (WO1's completion cleared
+            // it) yet the saga has not advanced — the exact false-positive the
+            // legacy gate tripped on, now defused.
+            FulfilmentSagaData atRace = json.readValue(saga.dataJson(), FulfilmentSagaData.class);
+            assertThat(atRace.outstandingWorkOrderIds()).isEmpty();
+            assertThat(atRace.completedWorkOrderIds()).containsExactly(WO_1);
+
+            // WO2's late Created → registers without advancing.
+            assertThat(manager.applyWorkOrderCreated(SO, WO_2, null)).isEqualTo(MANUFACTURING_IN_PROGRESS);
+
+            // WO2 completes → completed.size() reaches expectedCount → advance.
+            assertThat(manager.applyWorkOrderManufacturingCompleted(SO, WO_2, null)).isEqualTo(READY_TO_SHIP);
+        }
+
+        @Test void completion_arriving_entirely_before_its_creation_does_not_advance() {
+            // Even more adversarial reordering: WO1's Completed arrives before
+            // its own Created. The count gate still holds (1 of 2), and the
+            // late Created is absorbed idempotently (WO already completed).
+            SalesOrderFulfilmentSaga saga = sagaInState(MANUFACTURING_REQUESTED);
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            assertThat(manager.applyManufacturingDispatched(SO, 2, 2)).isEqualTo(MANUFACTURING_REQUESTED);
+
+            // Completion before any Created — count gate (1 >= 2 == false) holds.
+            assertThat(manager.applyWorkOrderManufacturingCompleted(SO, WO_1, null))
+                .isEqualTo(MANUFACTURING_REQUESTED);
+
+            // Late Created for the already-completed WO1: idempotent no-op on
+            // the WO set, but it does advance requested → in_progress.
+            assertThat(manager.applyWorkOrderCreated(SO, WO_1, null)).isEqualTo(MANUFACTURING_IN_PROGRESS);
+            FulfilmentSagaData data = json.readValue(saga.dataJson(), FulfilmentSagaData.class);
+            assertThat(data.outstandingWorkOrderIds()).isEmpty();
+            assertThat(data.completedWorkOrderIds()).containsExactly(WO_1);
+
+            // Second WO runs its normal course → saga advances once count is met.
+            assertThat(manager.applyWorkOrderCreated(SO, WO_2, null)).isEqualTo(MANUFACTURING_IN_PROGRESS);
+            assertThat(manager.applyWorkOrderManufacturingCompleted(SO, WO_2, null)).isEqualTo(READY_TO_SHIP);
+        }
+    }
+
+    @Nested
     class ApplyShipmentPosted {
         @Test void ready_to_ship_advances_to_goods_shipped() {
             SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP);

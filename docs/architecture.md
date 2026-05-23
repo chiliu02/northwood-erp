@@ -205,6 +205,29 @@ When adding a new mutator to an aggregate, the same PR adds its null/blank/statu
 
 **Exception: pure read-model classes** with no guards and no mutating behavior (e.g. `purchasing.domain.Supplier` — an immutable holder with only getters and a status-equality helper) don't need a test file. The trigger for a test file is "the class has a guard, a state machine, or a mutation that emits an event," not just "it's in `domain/`."
 
+### `Jdbc*` persistence gets an integration test (`*IT`), never a mocked-`JdbcTemplate` unit test
+
+The domain unit test above stops at the aggregate. The `Jdbc*` classes under `infrastructure/persistence/` and `infrastructure/saga/` — aggregate repositories, saga-state adapters, and the shared `JdbcOutboxAdapter` / `JdbcInboxAdapter` / `JdbcAuditQueryAdapter` — are covered by a **Testcontainers integration test** (`<Name>IT.java`), *not* a unit test with a mocked `JdbcTemplate`. Mocking `JdbcTemplate` only asserts "the repo called `update(...)` with this SQL string" — a change-detector that restates the implementation and catches none of what actually breaks in a class whose entire job is talking to PostgreSQL.
+
+**An IT earns its keep on the branches a mock can't reach:** real SQL + column/type correctness, `search_path` resolution, optimistic-lock `WHERE version = ?` → `OptimisticLockingFailureException`, constraint-violation translation (`UNIQUE` → `Duplicate*Exception`), `?::jsonb` casts, enum `dbValue()` / `fromDb()` round-trips, child-collection delete+reinsert + load ordering, the outbox row drained on `save()`, `FOR UPDATE SKIP LOCKED` claim/lease, deferred DB triggers (e.g. `enforce_journal_balance`), and post-only / write-once guards. **Skip** the low-value cases: a happy path already exercised transitively, or a `*QueryPort` that's a single straight `SELECT` with no joins.
+
+**Naming + lifecycle.** `*IT.java`, run by **Failsafe** in the `integration-test` phase (`mvn verify`) — *not* `*Test` / Surefire, so `mvn test` stays fast and Docker-free. A service module gaining its first IT needs the `maven-failsafe-plugin` execution + `org.testcontainers:postgresql` + `:junit-jupiter` (test scope) in its POM.
+
+**The recipe.** A static `PostgreSQLContainer<>("postgres:17")` + `Startables.deepStart`; apply the `db/northwood_erp.sql` baseline through a raw `DriverManager` `Statement.execute` (Testcontainers' `withInitScript` is broken on 1.20.x — see `~/.claude/notes/testcontainers.md`); a `HikariDataSource` with `connection-init-sql = SET search_path = <service>, shared`; construct the adapter directly (`new Jdbc...(jdbc, new ObjectMapper(), new CurrentUserAccessor())`); `@BeforeEach TRUNCATE <touched tables> CASCADE`. Wrap every `save()` in a `TransactionTemplate` — multi-statement saves (header + lines + outbox) need atomicity, and deferred constraint triggers only fire at COMMIT.
+
+**Gotchas, each paid for in the §2.25 build-out:**
+- **Seed NOT NULL FK parents in `@BeforeAll`** (`supplier`, `warehouse`, `unit_of_measure`, `customer`…). Cross-context UUID columns are deliberately *not* FKs (schema-per-service), so they need no seed.
+- **Supply an explicit `outbox_message_id`** when hand-INSERTing outbox rows — the `shared.uuid_generate_v7()` column default needs `pgcrypto`, which a bare container doesn't install. Every real writer supplies the id, so that default is effectively dead at runtime.
+- **Assert outbox _deltas_, not absolute counts**, when an aggregate's factory may also emit (e.g. `register()` *and* `updatePrice()` both emit) — count before/after the mutation and assert the difference.
+- **Mint precise state with `reconstitute(<status>, version=0)`** instead of the public factory when the factory needs collaborators you don't want to build (e.g. PO's `fromRequisition(Supplier, …)`): `reconstitute(DRAFT, 0)` + `approve()` exercises insert + update + lock without the factory's args. `reconstitute` emits no events, so it goes through the insert path cleanly.
+
+**Per-shape variation:**
+- **Mutable aggregates** (Product, Customer, SalesOrder, PurchaseOrder, SupplierProductPrice…): insert→find round-trip; a status/data mutator via the update path; stale-version → `OptimisticLockingFailureException`; and (where it exists) duplicate-key → `Duplicate*Exception`.
+- **Write-once / post-only aggregates** (Payment, CustomerInvoice, JournalEntry; GoodsReceipt, Shipment): no optimistic-lock test — assert the post-only guard (`save` on `version > 0` → `IllegalStateException`) instead, plus any engine-enforced DB trigger (`JournalEntry`'s deferred balance check rejecting an unbalanced posting at COMMIT and rolling back).
+- **Saga adapters**: `claimDue` stamps a lease on active + due rows; a sibling worker's immediate re-claim returns empty (lease not expired); future-`next_retry_at` rows are skipped; `save` enforces the optimistic version. This is the `SKIP LOCKED` twin of the outbox drain.
+
+Files to model on: `JdbcProductRepositoryIT` (mutable repo, child collection), `JdbcJournalEntryRepositoryIT` (write-once + deferred trigger), `JdbcSalesOrderFulfilmentSagaAdapterIT` (saga claim/lease), `JdbcOutboxAdapterIT` (shared adapter + the original `SKIP LOCKED` test). The historical reference is `JdbcWorkOrderRepositoryMaterialStatusIT`.
+
 ## Outbox / Inbox shared module
 
 The `shared` module provides reusable pieces. The module is internally split — ports + DTOs + abstract bases under `com.northwood.shared.application.*`; concrete JDBC + Kafka adapters, Spring `@AutoConfiguration` classes, and the `@Scheduled` publisher under `com.northwood.shared.infrastructure.*`; one REST controller under `com.northwood.shared.api.audit`.
