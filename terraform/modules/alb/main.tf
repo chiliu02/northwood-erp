@@ -5,10 +5,10 @@
 # ===========================================================================
 
 locals {
-  default_target  = one([for k, t in var.targets : k if t.default])
-  rule_targets    = { for k, t in var.targets : k => t if !t.default }
-  https_enabled   = var.certificate_arn != ""
-  primary_port    = local.https_enabled ? 443 : 80
+  default_target = one([for k, t in var.targets : k if t.default])
+  rule_targets   = { for k, t in var.targets : k => t if !t.default }
+  https_enabled  = var.certificate_arn != ""
+  primary_port   = local.https_enabled ? 443 : 80
 }
 
 resource "aws_lb" "this" {
