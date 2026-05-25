@@ -57,6 +57,29 @@ This is genuine, not a facade. (Nuance: *non-blocking ≠ threadless* — event-
 threads still do protocol/decoding work; what's removed is the coupling between
 thread count and concurrent-query count.)
 
+**Different drivers from JDBC — not the same driver.** R2DBC and JDBC are
+separate, parallel driver ecosystems on separate SPIs (`io.r2dbc.spi.*` vs
+`java.sql.*`); a JDBC driver cannot serve R2DBC or vice versa. They can't be
+unified because the JDBC SPI is *blocking by specification* and the R2DBC SPI is
+*non-blocking by specification* — so an R2DBC driver re-implements the database
+wire protocol from scratch on Netty rather than wrapping the JDBC one. For
+PostgreSQL:
+
+| | JDBC | R2DBC |
+|---|---|---|
+| artifact | `org.postgresql:postgresql` (PgJDBC) | `org.postgresql:r2dbc-postgresql` (separate codebase, Netty-based) |
+| URL | `jdbc:postgresql://…` | `r2dbc:postgresql://…` |
+
+What they share is only the **database and its wire protocol** — the server can't
+tell the two clients apart. Consequences: the R2DBC driver ecosystem is
+**narrower** (Postgres/MySQL/MariaDB/MSSQL/Oracle/H2 have drivers; many databases
+have none or immature ones), and you typically **keep the JDBC driver too**
+because Liquibase/Flyway are JDBC-only — the "two connection stacks per service"
+item (§B2, row 3). (A community "R2DBC-over-JDBC" shim exists but runs blocking
+JDBC on a thread pool — *not* genuinely non-blocking, so it defeats the point.)
+The Loom carrier-pinning caveat above is a **PgJDBC** concern only;
+`r2dbc-postgresql` never blocks, so pinning is N/A for it.
+
 **The async / semantically-blocking / blocking triple.** Effect systems and
 reactive runtimes distinguish three modes, and segregating a non-blocking compute
 pool from a dedicated blocking pool is *the* canonical technique:
@@ -92,6 +115,25 @@ JDBC the cheap-waiter property on JDK 21; (3) ecosystem cost (no Liquibase/Flywa
 weaker Spring Data R2DBC, context-bound reactive transactions). R2DBC genuinely
 wins for **streaming large result sets with backpressure** and **extreme
 concurrent-connection counts with I/O-wait-dominated queries** — and little else.
+
+**End-to-end non-blocking is a whole-service property, not a request-path one.**
+Non-blocking is a weakest-link property — one blocking call on an event-loop
+thread stalls everything sharing it — so "the service is non-blocking" requires
+*every* I/O touchpoint to be non-blocking or offloaded, not just `api` +
+`application` + the DB driver. The request path (reactive HTTP runtime → controller
+→ service → R2DBC, **zero `.block()`**) is necessary but not sufficient; a service
+also does **messaging** (Kafka listeners are blocking — true non-blocking needs
+`reactor-kafka`), outbound HTTP, and auth/JWKS, and carries *incidental* blockers
+that silently park event-loop threads — **synchronous logging appenders,
+metrics/trace exporters, DNS lookups**. The workable definition is "**nothing
+parks an event-loop thread**": make what you can native non-blocking, and
+**offload the rest to a bounded blocking pool** (`boundedElastic`) — e.g.
+Liquibase, which is JDBC-only and runs at startup. Two limits remain: it still
+doesn't beat the **connection-pool ceiling** (non-blocking ≠ unbounded), and it
+doesn't help **CPU-bound work**, which must also be offloaded or it stalls the
+loop. For Northwood this means `api` + `application` + R2DBC is
+necessary-but-not-sufficient — the **outbox / inbox / saga + Kafka core** is the
+larger remaining surface, i.e. the full §B2 lift.
 
 ## A3. Axis 1 (composition) — models and their costs
 
