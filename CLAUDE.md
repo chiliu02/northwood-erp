@@ -150,6 +150,7 @@ Any `.orElse(SENTINEL)` / null-coalescing-to-default needs: method-level Javadoc
 - **`docs/messaging.md`** — Outbox → Kafka → inbox flow, partition-key choice (`aggregateId` — the load-bearing design decision), ordering guarantees, DLT pinning, audit items for scaling past 1 partition. Load this when touching `KafkaEventPublisher`, `OutboxPublisher`, `SagaManager` concurrency, or any topic-config change (§2.14).
 - **`docs/persistence.md`** — Schema conventions detail, money & exchange rates, reference data + seed UUIDs, Liquibase changeset idempotency rules + `northwood_erp.sql` baseline.
 - **`docs/build-status.md`** — Per-service progress matrix and what's currently shipped vs skeleton.
+- **`docs/reactive-and-alternatives.md`** — Options review (reactive / virtual threads / effect systems / R2DBC) for streaming-heavy / extreme-concurrency workloads, via the two-axes model (composition × I/O substrate); plus the Northwood-applied verdict (stay on blocking JDBC; virtual threads if needed), the reactive-migration blast radius, the `*Repository` domain-vs-application placement question, and the BFF WebClient fan-out fix. Load this for any "should we go reactive / adopt virtual threads / use an effect system" question.
 
 ## Spring Boot 4.0.5 project specifics
 
