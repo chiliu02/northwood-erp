@@ -243,6 +243,30 @@ the functional-effect options are a language-and-framework rewrite. The rest of
 Part B records *why* a reactive migration is invasive, in case the question
 returns.
 
+## B0. The most fundamental reason: Northwood is user-input-driven
+
+Before the migration mechanics, the deepest reason the reactive case collapses
+here: end-to-end, Northwood is **user-input-driven**, and that is categorically
+not a streaming workload.
+
+- Every interaction is a **discrete transaction** triggered by a human action
+  (place order, post shipment, record payment) — a bounded request → bounded unit
+  of work → bounded response, not a continuous data flow.
+- So load is **human-paced and bounded**: tens-to-hundreds of operators clicking,
+  never an autonomous firehose. A person cannot outpace the server.
+- Therefore there is **no producer-outpaces-consumer condition — and backpressure,
+  reactive streaming's signature feature, has nothing to act on.** That, more than
+  "connection-pool-bound," is the root reason the non-blocking stack buys nothing.
+- **Event-driven ≠ streaming.** The outbox/inbox/Kafka bus is choreography between
+  services, not a data stream; every event is a *consequence* of a user action, so
+  the whole topology — bus included — is human-paced. Trace any event back and you
+  hit a click.
+
+The only thing that would flip this is a *non-interactive* feature where a
+producer genuinely outpaces a consumer — a bulk CSV export of millions of rows, an
+analytics firehose, CDC ingestion. Northwood has none; its lone streaming surface
+is the low-scale BFF SSE drawers (§B5), which don't move the verdict.
+
 ## B1. Why it isn't a drop-in, and why it cascades
 
 The stack is **blocking top to bottom**: `spring-boot-starter-web` (servlet MVC)
