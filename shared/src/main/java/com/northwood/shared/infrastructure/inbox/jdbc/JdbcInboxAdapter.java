@@ -8,10 +8,17 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * JDBC adapter for {@link InboxPort}, backed by a service's
- * {@code inbox_message} table. The unique constraint on
- * {@code (message_id, consumer_name, processed_at)} plus the dedupe check in
- * {@link #alreadyProcessed} give exactly-once-effect semantics inside the
- * consumer's transaction.
+ * {@code inbox_message} table. The dedup check in {@link #alreadyProcessed} is
+ * delegated to a configurable {@link InboxDedupStrategy} (the "gate");
+ * {@link #recordProcessed} writes the audit/dedup row the gate later sees.
+ * Together they give exactly-once-effect semantics inside the consumer's
+ * transaction.
+ *
+ * <p>The gate is selected by {@code northwood.inbox.dedup-strategy} (default
+ * {@code advisory-lock}) and is purely an infrastructure concern: the
+ * application layer ({@code AbstractInboxHandler}) only calls
+ * {@code alreadyProcessed} / {@code recordProcessed} and never sees which
+ * mechanism is in force. Full design: {@code docs/messaging.md}.
  *
  * <p>Service-agnostic: SQL references {@code inbox_message} unqualified, and
  * each service's connection pool sets {@code search_path = <service>, shared}
@@ -22,19 +29,16 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public class JdbcInboxAdapter implements InboxPort {
 
     private final JdbcTemplate jdbc;
+    private final InboxDedupStrategy dedup;
 
-    public JdbcInboxAdapter(JdbcTemplate jdbc) {
+    public JdbcInboxAdapter(JdbcTemplate jdbc, InboxDedupStrategy dedup) {
         this.jdbc = jdbc;
+        this.dedup = dedup;
     }
 
     @Override
     public boolean alreadyProcessed(UUID messageId, String consumerName) {
-        Integer count = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM inbox_message WHERE message_id = ? AND consumer_name = ?",
-            Integer.class,
-            messageId, consumerName
-        );
-        return count != null && count > 0;
+        return dedup.alreadyProcessed(messageId, consumerName);
     }
 
     @Override
