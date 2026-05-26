@@ -12,6 +12,20 @@ import org.springframework.data.relational.core.mapping.Column;
  */
 public final class InboxRow {
 
+    // ------------------------------------------------------------
+    // Status constants — wire-format strings stored in
+    // <service>.inbox_message.status, mirroring its
+    // CHECK (status IN ('processed', 'failed')) set. A row is recorded
+    // straight as 'processed'; 'failed' is schema-prep for a future
+    // dead-letter / poison-message path. Internal messaging plumbing, so
+    // (like OutboxRow) no <service>-events constant — but Java-side use
+    // goes through these, never a bare literal.
+    // ------------------------------------------------------------
+    public static final String PROCESSED = "processed";
+
+    /** Schema-prep — not currently produced by Java. */
+    public static final String FAILED = "failed";
+
     @Id
     @Column("inbox_message_id")
     private UUID inboxMessageId;
@@ -57,7 +71,7 @@ public final class InboxRow {
         r.eventVersion = eventVersion;
         r.sourceSequenceNumber = sourceSequenceNumber;
         r.payload = payloadJson;
-        r.status = "processed";
+        r.status = PROCESSED;
         r.processedAt = Instant.now();
         return r;
     }
