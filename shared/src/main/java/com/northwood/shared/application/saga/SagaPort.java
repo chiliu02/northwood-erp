@@ -32,7 +32,7 @@ public interface SagaPort<S extends SagaInstance> {
      * optimistic-concurrency rule: UPDATE ... WHERE saga_id = ? AND version = ?
      * with {@code version = version + 1}; throw on zero rows affected.
      */
-    void save(S saga);
+    void update(S saga);
 
     /** Insert a new saga row. */
     void insert(S saga);

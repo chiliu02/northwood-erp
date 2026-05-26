@@ -112,7 +112,7 @@ class JdbcMakeToOrderSagaManagerTest {
             String state = manager.applyRawMaterialsReserved(WO, "reserved", Map.of());
 
             assertThat(state).isEqualTo(RAW_MATERIALS_RESERVED);  // unchanged
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
     }
 
@@ -168,7 +168,7 @@ class JdbcMakeToOrderSagaManagerTest {
                 Map.of(PRODUCT, new BigDecimal("1")));
 
             assertThat(state).isNull();
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
     }
 
@@ -181,7 +181,7 @@ class JdbcMakeToOrderSagaManagerTest {
             String state = manager.applyManufacturingCompleted(WO);
 
             assertThat(state).isEqualTo(COMPLETED);
-            verify(sagas).save(saga);
+            verify(sagas).update(saga);
         }
 
         @Test void already_terminal_saga_left_alone() {
@@ -191,7 +191,7 @@ class JdbcMakeToOrderSagaManagerTest {
             String state = manager.applyManufacturingCompleted(WO);
 
             assertThat(state).isEqualTo(COMPLETED);
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
 
         @Test void no_saga_returns_null() {
@@ -200,7 +200,7 @@ class JdbcMakeToOrderSagaManagerTest {
             String state = manager.applyManufacturingCompleted(WO);
 
             assertThat(state).isNull();
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
     }
 
@@ -213,7 +213,7 @@ class JdbcMakeToOrderSagaManagerTest {
             String state = manager.cancelForWorkOrder(WO);
 
             assertThat(state).isEqualTo(COMPENSATED);
-            verify(sagas).save(saga);
+            verify(sagas).update(saga);
         }
 
         @Test void already_terminal_saga_left_alone() {
@@ -223,7 +223,7 @@ class JdbcMakeToOrderSagaManagerTest {
             String state = manager.cancelForWorkOrder(WO);
 
             assertThat(state).isEqualTo(COMPLETED);
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
 
         @Test void no_saga_returns_null() {

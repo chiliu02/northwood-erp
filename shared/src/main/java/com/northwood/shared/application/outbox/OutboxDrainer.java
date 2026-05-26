@@ -80,12 +80,12 @@ public class OutboxDrainer {
                 );
                 bus.publish(envelope);
                 row.markPublished();
-                outbox.save(row);
+                outbox.update(row);
             } catch (Exception ex) {
                 log.warn("[{}] outbox row {} failed: {}",
                     serviceName, row.getOutboxMessageId(), ex.getMessage());
                 row.markFailed(ex.getClass().getSimpleName() + ": " + ex.getMessage());
-                outbox.save(row);
+                outbox.update(row);
                 // Continue draining other rows; failed rows pick up on the next
                 // tick if/when the bus recovers.
             }

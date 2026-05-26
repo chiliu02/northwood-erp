@@ -127,7 +127,7 @@ class SagaManagerProxyTest {
                                                         String leaseOwner, Duration leaseTtl) {
                     return List.of();
                 }
-                @Override public void save(TestSaga saga) {}
+                @Override public void update(TestSaga saga) {}
                 @Override public void insert(TestSaga saga) {}
                 @Override public Optional<TestSaga> findBySagaId(UUID sagaId) { return Optional.empty(); }
             };

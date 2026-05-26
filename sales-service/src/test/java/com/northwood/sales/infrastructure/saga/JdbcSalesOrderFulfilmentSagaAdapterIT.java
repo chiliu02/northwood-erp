@@ -39,7 +39,7 @@ import org.testcontainers.utility.DockerImageName;
  *       worker's immediate claim returning nothing (lease not expired);</li>
  *   <li>{@code claimDue} skipping rows whose {@code next_retry_at} is in the
  *       future (parked / backed-off sagas);</li>
- *   <li>{@code save} enforcing optimistic concurrency via {@code WHERE saga_id = ?
+ *   <li>{@code update} enforcing optimistic concurrency via {@code WHERE saga_id = ?
  *       AND version = ?} → {@link OptimisticLockingFailureException}.</li>
  * </ul>
  */
@@ -139,16 +139,16 @@ class JdbcSalesOrderFulfilmentSagaAdapterIT {
     }
 
     @Test
-    void save_enforces_optimistic_lock_via_version() {
+    void update_enforces_optimistic_lock_via_version() {
         UUID salesOrderId = UUID.randomUUID();
         ADAPTER.insert(SalesOrderFulfilmentSaga.started(salesOrderId, "{}"));
 
         SalesOrderFulfilmentSaga loadedA = ADAPTER.findBySalesOrderId(salesOrderId).orElseThrow();
         SalesOrderFulfilmentSaga loadedB = ADAPTER.findBySalesOrderId(salesOrderId).orElseThrow();
 
-        ADAPTER.save(loadedA); // version 1 → 2
+        ADAPTER.update(loadedA); // version 1 → 2
 
-        assertThatThrownBy(() -> ADAPTER.save(loadedB))
+        assertThatThrownBy(() -> ADAPTER.update(loadedB))
             .isInstanceOf(OptimisticLockingFailureException.class);
     }
 }

@@ -59,7 +59,7 @@ class OutboxDrainerTest {
         drainer.drain();
 
         verify(bus, never()).publish(any());
-        verify(outbox, never()).save(any());
+        verify(outbox, never()).update(any());
     }
 
     @Test void drain_publishes_each_row_marks_published_and_saves() {
@@ -80,7 +80,7 @@ class OutboxDrainerTest {
         // Both rows transitioned to published and saved.
         assertThat(r1.getStatus()).isEqualTo("published");
         assertThat(r2.getStatus()).isEqualTo("published");
-        verify(outbox, times(2)).save(any(OutboxRow.class));
+        verify(outbox, times(2)).update(any(OutboxRow.class));
     }
 
     @Test void drain_partial_failure_marks_failed_row_and_continues() {
@@ -108,9 +108,9 @@ class OutboxDrainerTest {
 
         // Each row's outcome saved.
         InOrder inOrder = Mockito.inOrder(outbox);
-        inOrder.verify(outbox).save(r1);
-        inOrder.verify(outbox).save(r2);
-        inOrder.verify(outbox).save(r3);
+        inOrder.verify(outbox).update(r1);
+        inOrder.verify(outbox).update(r2);
+        inOrder.verify(outbox).update(r3);
     }
 
     @Test void drain_uses_service_name_in_envelope_header() {

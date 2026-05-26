@@ -86,7 +86,7 @@ public class JdbcSalesOrderFulfilmentSagaAdapter implements SalesOrderFulfilment
     }
 
     @Override
-    public void save(SalesOrderFulfilmentSaga saga) {
+    public void update(SalesOrderFulfilmentSaga saga) {
         int rows = jdbc.update("""
             UPDATE sales.sales_order_fulfilment_saga SET
                 saga_state = ?, current_step = ?, last_error = ?,

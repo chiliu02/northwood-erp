@@ -81,7 +81,7 @@ public class JdbcMakeToOrderSagaAdapter implements MakeToOrderSagaPort {
     }
 
     @Override
-    public void save(MakeToOrderSaga saga) {
+    public void update(MakeToOrderSaga saga) {
         int rows = jdbc.update("""
             UPDATE manufacturing.make_to_order_saga SET
                 saga_state = ?, current_step = ?, last_error = ?,

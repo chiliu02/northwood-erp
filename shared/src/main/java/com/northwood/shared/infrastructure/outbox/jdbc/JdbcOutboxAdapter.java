@@ -51,7 +51,7 @@ public class JdbcOutboxAdapter implements OutboxPort {
     }
 
     @Override
-    public void save(OutboxRow row) {
+    public void update(OutboxRow row) {
         jdbc.update(
             """
             UPDATE outbox_message SET

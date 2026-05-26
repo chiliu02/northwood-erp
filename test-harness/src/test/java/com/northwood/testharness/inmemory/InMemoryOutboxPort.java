@@ -34,9 +34,9 @@ public final class InMemoryOutboxPort implements OutboxPort {
     }
 
     @Override
-    public synchronized void save(OutboxRow row) {
+    public synchronized void update(OutboxRow row) {
         // Treat as in-place update — the row reference came from findPending
-        // and the publisher mutated it via markPublished/markFailed.
+        // and the drainer mutated it via markPublished/markFailed.
     }
 
     @Override

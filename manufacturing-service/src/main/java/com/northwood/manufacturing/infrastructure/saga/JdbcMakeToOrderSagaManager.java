@@ -105,7 +105,7 @@ public class JdbcMakeToOrderSagaManager
             stashShortageOnSaga(saga, shortageByProductId);
         }
         saga.transitionTo(nextState, nextState);
-        sagaPort.save(saga);
+        sagaPort.update(saga);
         log.info("saga {} work_order={} status={} → {}",
             saga.sagaId(), workOrderId, status, nextState);
         return saga.state();
@@ -122,12 +122,12 @@ public class JdbcMakeToOrderSagaManager
         switch (decision) {
             case UNPARK -> {
                 saga.transitionTo(WORK_ORDER_CREATED, "retry_raw_material_reservation");
-                sagaPort.save(saga);
+                sagaPort.update(saga);
                 log.info("un-parked saga {} work_order={} (shortage fully covered)",
                     saga.sagaId(), saga.workOrderId());
             }
             case NARROW -> {
-                sagaPort.save(saga);
+                sagaPort.update(saga);
                 log.info("narrowed shortage on saga {} work_order={} (still partially short)",
                     saga.sagaId(), saga.workOrderId());
             }
@@ -151,7 +151,7 @@ public class JdbcMakeToOrderSagaManager
             return saga.state();
         }
         saga.transitionTo(COMPLETED, "production_completed");
-        sagaPort.save(saga);
+        sagaPort.update(saga);
         log.info("saga {} (work_order={}) → completed", saga.sagaId(), workOrderId);
         return saga.state();
     }
@@ -167,7 +167,7 @@ public class JdbcMakeToOrderSagaManager
             return saga.state();
         }
         saga.transitionTo(COMPENSATED, "cancelled_via_sales");
-        sagaPort.save(saga);
+        sagaPort.update(saga);
         log.info("saga {} (work_order={}) → compensated (cancelled via sales)",
             saga.sagaId(), workOrderId);
         return saga.state();

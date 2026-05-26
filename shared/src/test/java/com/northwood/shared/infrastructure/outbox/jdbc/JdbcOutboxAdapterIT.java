@@ -40,7 +40,7 @@ import tools.jackson.databind.ObjectMapper;
  *       and the explicit-column INSERT would otherwise trip the NOT NULL);</li>
  *   <li>{@code findPending} ordering by {@code sequence_number}, the {@code
  *       LIMIT}, and the {@code status IN ('pending','failed')} filter;</li>
- *   <li>{@code save} flipping status / retry / last_error / published_at via the
+ *   <li>{@code update} flipping status / retry / last_error / published_at via the
  *       {@code WHERE outbox_message_id = ? AND created_at = ?} clause;</li>
  *   <li><b>{@code FOR UPDATE SKIP LOCKED}</b> — the headline behaviour: a row
  *       locked by a concurrent transaction is skipped, not blocked on.</li>
@@ -177,11 +177,11 @@ class JdbcOutboxAdapterIT {
 
         OutboxRow published = findById(toPublish);
         published.markPublished();
-        ADAPTER.save(published);
+        ADAPTER.update(published);
 
         OutboxRow failed = findById(toFail);
         failed.markFailed("broker unavailable");
-        ADAPTER.save(failed);
+        ADAPTER.update(failed);
 
         List<OutboxRow> pending = ADAPTER.findPending(10);
 
@@ -198,16 +198,16 @@ class JdbcOutboxAdapterIT {
     }
 
     // ------------------------------------------------------------------
-    // save — status transition columns
+    // update — status transition columns
     // ------------------------------------------------------------------
 
     @Test
-    void save_marks_published_sets_published_at_and_drops_from_pending() {
+    void update_marks_published_sets_published_at_and_drops_from_pending() {
         UUID id = appendPending();
         OutboxRow row = findById(id);
 
         row.markPublished();
-        ADAPTER.save(row);
+        ADAPTER.update(row);
 
         assertThat(ADAPTER.findPending(10)).isEmpty();
         assertThat(dbStatus(id)).isEqualTo(OutboxRow.PUBLISHED);

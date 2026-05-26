@@ -54,7 +54,7 @@ public final class InMemorySalesOrderFulfilmentSagaPort implements SalesOrderFul
     }
 
     @Override
-    public void save(SalesOrderFulfilmentSaga saga) {
+    public void update(SalesOrderFulfilmentSaga saga) {
         saga.incrementVersion();
         bySagaId.put(saga.sagaId(), saga);
     }

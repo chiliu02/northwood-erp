@@ -21,7 +21,7 @@ public interface OutboxPort {
      * Update an existing outbox row's status / retry / publishedAt — used by
      * the publisher after a successful publish or to mark failure.
      */
-    void save(OutboxRow row);
+    void update(OutboxRow row);
 
     /**
      * Insert a new {@code 'pending'} outbox row in the same transaction as

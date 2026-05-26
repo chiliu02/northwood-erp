@@ -95,7 +95,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
         SalesOrderFulfilmentSaga saga = sagaPort.findBySalesOrderId(salesOrderHeaderId)
             .orElseThrow(() -> new SagaNotFoundException(salesOrderHeaderId));
         saga.transitionTo(COMPENSATING, "wait_for_compensation_acks");
-        sagaPort.save(saga);
+        sagaPort.update(saga);
     }
 
     // ============================================================
@@ -115,7 +115,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
             // stock_balance, so there is nothing to manufacture. Skip the
             // manufacturing leg entirely and wait for ShipmentPosted.
             saga.transitionTo(READY_TO_SHIP, "wait_for_shipment");
-            sagaPort.save(saga);
+            sagaPort.update(saga);
             log.info("saga {} sales_order={} status={} → ready_to_ship (full reservation, manufacturing skipped)",
                 saga.sagaId(), salesOrderHeaderId, reservationStatus);
         } else {
@@ -129,7 +129,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
             stashShortage(saga, shortageByLineNumber);
             saga.transitionTo(STOCK_RESERVED, "wait_for_next_step");
             saga.parkUntil(Instant.now());
-            sagaPort.save(saga);
+            sagaPort.update(saga);
             log.info("saga {} sales_order={} status={} → stock_reserved",
                 saga.sagaId(), salesOrderHeaderId, reservationStatus);
         }
@@ -158,7 +158,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
                 saga.sagaId(), salesOrderHeaderId, workOrderId,
                 saga.state(), updated.outstandingWorkOrderIds().size());
         }
-        sagaPort.save(saga);
+        sagaPort.update(saga);
         return saga.state();
     }
 
@@ -189,7 +189,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
             log.debug("saga {} sales_order={} already past manufacturing (state={}); recording only",
                 saga.sagaId(), salesOrderHeaderId, saga.state());
         }
-        sagaPort.save(saga);
+        sagaPort.update(saga);
         return saga.state();
     }
 
@@ -214,7 +214,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
                 ? "no_manufacturable_lines"
                 : "partial_dispatch_rejection";
             saga.transitionTo(STOCK_RESERVATION_FAILED, step);
-            sagaPort.save(saga);
+            sagaPort.update(saga);
             log.info("saga {} sales_order={} → stock_reservation_failed ({} accepted, {} rejected; step={})",
                 saga.sagaId(), salesOrderHeaderId, acceptedCount, totalLines - acceptedCount, step);
         } else if (anyRejected) {
@@ -223,7 +223,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
         } else {
             FulfilmentSagaData updated = readData(saga).withExpectedWorkOrderCount(acceptedCount);
             writeData(saga, updated);
-            sagaPort.save(saga);
+            sagaPort.update(saga);
             log.info("saga {} sales_order={} dispatched ({} accepted, 0 rejected); expected_wo_count={} stamped",
                 saga.sagaId(), salesOrderHeaderId, acceptedCount, acceptedCount);
         }
@@ -241,7 +241,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
             return saga.state();
         }
         saga.transitionTo(GOODS_SHIPPED, "wait_for_invoice");
-        sagaPort.save(saga);
+        sagaPort.update(saga);
         log.info("saga {} sales_order={} → goods_shipped",
             saga.sagaId(), salesOrderHeaderId);
         return saga.state();
@@ -253,7 +253,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
         SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, CustomerInvoiceCreated.EVENT_TYPE);
         if (GOODS_SHIPPED.equals(saga.state())) {
             saga.transitionTo(INVOICE_CREATED, "wait_for_payment");
-            sagaPort.save(saga);
+            sagaPort.update(saga);
             log.info("saga {} sales_order={} → invoice_created",
                 saga.sagaId(), salesOrderHeaderId);
         } else {
@@ -273,12 +273,12 @@ public class JdbcSalesOrderFulfilmentSagaManager
                 saga.sagaId(), salesOrderHeaderId, saga.state());
         } else if (fullySettled) {
             saga.transitionTo(COMPLETED, "o2c_completed");
-            sagaPort.save(saga);
+            sagaPort.update(saga);
             log.info("saga {} sales_order={} → completed (fully settled)",
                 saga.sagaId(), salesOrderHeaderId);
         } else {
             saga.transitionTo(INVOICE_PAID, "wait_for_remaining_payments");
-            sagaPort.save(saga);
+            sagaPort.update(saga);
             log.info("saga {} sales_order={} → invoice_paid (partial)",
                 saga.sagaId(), salesOrderHeaderId);
         }
@@ -305,11 +305,11 @@ public class JdbcSalesOrderFulfilmentSagaManager
             ? readData(saga).withInventoryCancellationAcked()
             : readData(saga).withManufacturingCancellationAcked();
         writeData(saga, data);
-        sagaPort.save(saga);
+        sagaPort.update(saga);
 
         if (data.bothCancellationAcksReceived() && COMPENSATING.equals(saga.state())) {
             saga.transitionTo(COMPENSATED, "cancelled");
-            sagaPort.save(saga);
+            sagaPort.update(saga);
             log.info("saga {} sales_order={} → compensated ({} ack triggered completion)",
                 saga.sagaId(), salesOrderHeaderId, eventName);
         }

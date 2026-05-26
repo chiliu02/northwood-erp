@@ -29,7 +29,7 @@ import org.testcontainers.utility.DockerImageName;
 /**
  * §2.25 Tier 3: real-Postgres test for {@link JdbcMakeToOrderSagaAdapter} —
  * same {@code claimDue} (FOR UPDATE SKIP LOCKED + lease) + optimistic-locked
- * {@code save} surface as the other two saga adapters. Its domain key
+ * {@code update} surface as the other two saga adapters. Its domain key
  * ({@code work_order_id}) is nullable until a work order is attached, so the
  * round-trip is asserted via {@code findBySagaId} and the keyed finder via a
  * work-order-attached row.
@@ -124,15 +124,15 @@ class JdbcMakeToOrderSagaAdapterIT {
     }
 
     @Test
-    void save_enforces_optimistic_lock_via_version() {
+    void update_enforces_optimistic_lock_via_version() {
         MakeToOrderSaga saga = MakeToOrderSaga.started(UUID.randomUUID(), UUID.randomUUID(), "{}");
         ADAPTER.insert(saga);
 
         MakeToOrderSaga loadedA = ADAPTER.findBySagaId(saga.sagaId()).orElseThrow();
         MakeToOrderSaga loadedB = ADAPTER.findBySagaId(saga.sagaId()).orElseThrow();
 
-        ADAPTER.save(loadedA); // 1 → 2
-        assertThatThrownBy(() -> ADAPTER.save(loadedB))
+        ADAPTER.update(loadedA); // 1 → 2
+        assertThatThrownBy(() -> ADAPTER.update(loadedB))
             .isInstanceOf(OptimisticLockingFailureException.class);
     }
 

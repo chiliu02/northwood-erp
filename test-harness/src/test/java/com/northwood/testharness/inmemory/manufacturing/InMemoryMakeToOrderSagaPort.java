@@ -49,7 +49,7 @@ public final class InMemoryMakeToOrderSagaPort implements MakeToOrderSagaPort {
     }
 
     @Override
-    public void save(MakeToOrderSaga saga) {
+    public void update(MakeToOrderSaga saga) {
         saga.incrementVersion();
         bySagaId.put(saga.sagaId(), saga);
     }

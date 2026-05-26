@@ -43,7 +43,7 @@ public final class InMemoryPurchaseToPaySagaPort implements PurchaseToPaySagaPor
     }
 
     @Override
-    public void save(PurchaseToPaySaga saga) {
+    public void update(PurchaseToPaySaga saga) {
         saga.incrementVersion();
         bySagaId.put(saga.sagaId(), saga);
     }

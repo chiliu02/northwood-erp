@@ -87,7 +87,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             manager.requestCompensation(SO);
 
             assertThat(saga.state()).isEqualTo(COMPENSATING);
-            verify(sagas).save(saga);
+            verify(sagas).update(saga);
         }
 
         @Test void throws_when_no_saga() {
@@ -95,7 +95,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
 
             assertThatThrownBy(() -> manager.requestCompensation(SO))
                 .isInstanceOf(SagaNotFoundException.class);
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
     }
 
@@ -144,7 +144,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
                 .hasMessageContaining("Inventory must include shortageByLineNumber");
 
             assertThat(saga.state()).isEqualTo(STOCK_RESERVATION_REQUESTED);
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
 
         @Test void failed_reservation_with_empty_shortage_map_throws() {
@@ -158,7 +158,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
                 .hasMessageContaining("Inventory must include shortageByLineNumber");
 
             assertThat(saga.state()).isEqualTo(STOCK_RESERVATION_REQUESTED);
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
 
         @Test void throws_when_no_saga() {
@@ -364,7 +364,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             String state = manager.applyShipmentPosted(SO);
 
             assertThat(state).isEqualTo(INVOICE_CREATED);
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
     }
 
@@ -386,7 +386,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             String state = manager.applyCustomerInvoiceCreated(SO);
 
             assertThat(state).isEqualTo(READY_TO_SHIP);
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
     }
 
@@ -426,7 +426,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             String state = manager.applyCustomerPaymentReceived(SO, true);
 
             assertThat(state).isEqualTo(READY_TO_SHIP);
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
     }
 
@@ -462,7 +462,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             )
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("inventory.SalesOrderCancellationApplied");
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
     }
 
