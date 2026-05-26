@@ -1,13 +1,15 @@
 package com.northwood.sales.application.inbox;
 
-import com.northwood.sales.application.SalesOrderCompensationEmitter;
 import com.northwood.sales.domain.SalesOrder;
+import com.northwood.sales.domain.SalesOrderRepository;
+import com.northwood.sales.domain.events.SalesOrderCancellationRequested;
 
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.MANUFACTURING_REQUESTED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_FAILED;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -18,12 +20,15 @@ import com.northwood.manufacturing.domain.events.ManufacturingDispatched;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.ObjectMapper;
@@ -36,14 +41,15 @@ class ManufacturingDispatchedHandlerTest {
     @Mock InboxPort inbox;
     @Mock SalesOrderFulfilmentSagaManager sagaManager;
     @Mock SalesOrderHeaderStatusProjection statusProjection;
-    @Mock SalesOrderCompensationEmitter compensationEmitter;
+    @Mock SalesOrderRepository salesOrders;
+    @Mock OutboxAppender outbox;
 
     private final ObjectMapper json = new ObjectMapper();
     private ManufacturingDispatchedHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new ManufacturingDispatchedHandler(inbox, sagaManager, statusProjection, compensationEmitter, json);
+        handler = new ManufacturingDispatchedHandler(inbox, sagaManager, statusProjection, salesOrders, outbox, json);
     }
 
     private EventEnvelope event(String... outcomes) {
@@ -67,6 +73,14 @@ class ManufacturingDispatchedHandlerTest {
         );
     }
 
+    /** Stub the order load that the inlined cancellation-request emission performs. */
+    private void stubOrderExists() {
+        SalesOrder order = mock(SalesOrder.class);
+        when(order.orderNumber()).thenReturn("SO-001");
+        when(order.customerId()).thenReturn(UUID.randomUUID());
+        when(salesOrders.findById(any())).thenReturn(Optional.of(order));
+    }
+
     @Test void happy_path_all_accepted_no_rejection_side_effects() {
         when(sagaManager.applyManufacturingDispatched(eq(SO), eq(3), eq(3))).thenReturn(MANUFACTURING_REQUESTED);
 
@@ -74,18 +88,22 @@ class ManufacturingDispatchedHandlerTest {
 
         verify(sagaManager).applyManufacturingDispatched(SO, 3, 3);
         verify(statusProjection, never()).markStatus(any(), any());
-        verify(compensationEmitter, never()).emitCancellationRequest(any(), any());
+        verify(outbox, never()).append(any(), any());
         verify(inbox).recordProcessed(any());
     }
 
     @Test void all_rejected_marks_status_and_emits_cancellation() {
         when(sagaManager.applyManufacturingDispatched(eq(SO), eq(0), eq(2)))
             .thenReturn(STOCK_RESERVATION_FAILED);
+        stubOrderExists();
 
         handler.handle(event("rejected_no_bom", "rejected_no_bom"));
 
         verify(statusProjection).markStatus(SO, SalesOrder.Status.REJECTED);
-        verify(compensationEmitter).emitCancellationRequest(eq(SO), contains("All 2 line(s) rejected"));
+        ArgumentCaptor<SalesOrderCancellationRequested> cap =
+            ArgumentCaptor.forClass(SalesOrderCancellationRequested.class);
+        verify(outbox).append(cap.capture(), eq(SalesOrder.AGGREGATE_TYPE));
+        assertThat(cap.getValue().reason()).contains("All 2 line(s) rejected");
     }
 
     @Test void partial_rejection_marks_status_and_emits_cancellation() {
@@ -94,11 +112,15 @@ class ManufacturingDispatchedHandlerTest {
         // sagas get cleaned up.
         when(sagaManager.applyManufacturingDispatched(eq(SO), eq(2), eq(3)))
             .thenReturn(STOCK_RESERVATION_FAILED);
+        stubOrderExists();
 
         handler.handle(event("accepted", "rejected_no_bom", "accepted"));
 
         verify(statusProjection).markStatus(SO, SalesOrder.Status.REJECTED);
-        verify(compensationEmitter).emitCancellationRequest(eq(SO), contains("1 of 3 line(s) rejected"));
+        ArgumentCaptor<SalesOrderCancellationRequested> cap =
+            ArgumentCaptor.forClass(SalesOrderCancellationRequested.class);
+        verify(outbox).append(cap.capture(), eq(SalesOrder.AGGREGATE_TYPE));
+        assertThat(cap.getValue().reason()).contains("1 of 3 line(s) rejected");
     }
 
     @Test void already_processed_short_circuits() {
@@ -110,6 +132,6 @@ class ManufacturingDispatchedHandlerTest {
 
         verify(sagaManager, never()).applyManufacturingDispatched(any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt());
         verifyNoInteractions(statusProjection);
-        verifyNoInteractions(compensationEmitter);
+        verifyNoInteractions(outbox);
     }
 }

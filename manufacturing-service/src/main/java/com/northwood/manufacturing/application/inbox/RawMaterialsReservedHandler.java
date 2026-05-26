@@ -12,12 +12,10 @@ import com.northwood.inventory.domain.events.RawMaterialsReserved;
 import com.northwood.manufacturing.domain.events.RawMaterialShortageDetected;
 import com.northwood.manufacturing.domain.events.RawMaterialShortageDetected.ShortageComponent;
 import com.northwood.shared.domain.Assert;
-import com.northwood.shared.domain.DomainEvent;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
 import com.northwood.shared.application.messaging.EventEnvelope;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -27,7 +25,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
-import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -55,13 +52,13 @@ public class RawMaterialsReservedHandler extends AbstractInboxHandler<RawMateria
 
     private final MakeToOrderSagaManager sagaManager;
     private final WorkOrderRepository workOrders;
-    private final OutboxPort outbox;
+    private final OutboxAppender outbox;
 
     public RawMaterialsReservedHandler(
         InboxPort inbox,
         MakeToOrderSagaManager sagaManager,
         WorkOrderRepository workOrders,
-        OutboxPort outbox,
+        OutboxAppender outbox,
         ObjectMapper json
     ) {
         super(inbox, json, RawMaterialsReserved.class, RawMaterialsReserved.EVENT_TYPE, CONSUMER_NAME);
@@ -141,7 +138,7 @@ public class RawMaterialsReservedHandler extends AbstractInboxHandler<RawMateria
             return;
         }
 
-        appendOutbox(new RawMaterialShortageDetected(
+        outbox.append(new RawMaterialShortageDetected(
             UUID.randomUUID(),
             workOrder.id().value(),
             workOrder.id().value(),
@@ -151,22 +148,5 @@ public class RawMaterialsReservedHandler extends AbstractInboxHandler<RawMateria
             shortage,
             Instant.now()
         ), WorkOrder.AGGREGATE_TYPE, actorUserId);
-    }
-
-    private void appendOutbox(DomainEvent event, String aggregateType, String actorUserId) {
-        try {
-            outbox.appendPending(OutboxRow.pending(
-                event.eventId(),
-                aggregateType,
-                event.aggregateId(),
-                event.eventType(),
-                event.eventVersion(),
-                json.writeValueAsString(event),
-                null, null, null,
-                actorUserId
-            ));
-        } catch (JacksonException e) {
-            throw new IllegalStateException("Cannot serialise " + event.eventType(), e);
-        }
     }
 }

@@ -1,15 +1,11 @@
 package com.northwood.manufacturing.application;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 import com.northwood.manufacturing.application.WorkOrderOperationService.WorkOrderNotFoundException;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderRepository;
 import com.northwood.manufacturing.domain.events.WorkOrderPriorityChanged;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
-import com.northwood.shared.application.security.CurrentUserAccessor;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import com.northwood.shared.domain.Assert;
 import java.time.Instant;
 import java.util.Set;
@@ -41,20 +37,11 @@ public class WorkOrderPrioritisationService {
         Set.of("low", "normal", "high", "urgent");
 
     private final WorkOrderRepository workOrders;
-    private final OutboxPort outbox;
-    private final ObjectMapper json;
-    private final CurrentUserAccessor currentUser;
+    private final OutboxAppender outbox;
 
-    public WorkOrderPrioritisationService(
-        WorkOrderRepository workOrders,
-        OutboxPort outbox,
-        ObjectMapper json,
-        CurrentUserAccessor currentUser
-    ) {
+    public WorkOrderPrioritisationService(WorkOrderRepository workOrders, OutboxAppender outbox) {
         this.workOrders = workOrders;
         this.outbox = outbox;
-        this.json = json;
-        this.currentUser = currentUser;
     }
 
     @Transactional
@@ -72,20 +59,7 @@ public class WorkOrderPrioritisationService {
             reason,
             Instant.now()
         );
-        try {
-            outbox.appendPending(OutboxRow.pending(
-                event.eventId(),
-                WorkOrder.AGGREGATE_TYPE,
-                event.aggregateId(),
-                event.eventType(),
-                event.eventVersion(),
-                json.writeValueAsString(event),
-                null, null, null,
-                currentUser.currentUsername().orElse(null)
-            ));
-        } catch (JacksonException e) {
-            throw new IllegalStateException("Failed to serialise " + WorkOrderPriorityChanged.EVENT_TYPE, e);
-        }
+        outbox.append(event, WorkOrder.AGGREGATE_TYPE);
 
         log.info("set priority of work_order={} to {} (reason={})", workOrderId, priority, reason);
     }

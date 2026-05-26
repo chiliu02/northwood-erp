@@ -15,9 +15,7 @@ import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STARTED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_REQUESTED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVED;
 import com.northwood.shared.domain.Assert;
-import com.northwood.shared.domain.DomainEvent;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.lang.management.ManagementFactory;
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -61,13 +59,13 @@ public class SalesOrderFulfilmentSagaWorker {
 
     private final SalesOrderFulfilmentSagaManager manager;
     private final SalesOrderLineSnapshotPort lineSnapshots;
-    private final OutboxPort outbox;
+    private final OutboxAppender outbox;
     private final ObjectMapper json;
 
     public SalesOrderFulfilmentSagaWorker(
         SalesOrderFulfilmentSagaManager manager,
         SalesOrderLineSnapshotPort lineSnapshots,
-        OutboxPort outbox,
+        OutboxAppender outbox,
         ObjectMapper json
     ) {
         this.manager = manager;
@@ -118,7 +116,7 @@ public class SalesOrderFulfilmentSagaWorker {
             lines,
             Instant.now()
         );
-        appendOutbox(event, SalesOrderFulfilmentSaga.AGGREGATE_TYPE, event.aggregateId());
+        outbox.append(event, SalesOrderFulfilmentSaga.AGGREGATE_TYPE);
 
         saga.transitionTo(STOCK_RESERVATION_REQUESTED, "wait_for_stock_reserved");
         saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
@@ -177,7 +175,7 @@ public class SalesOrderFulfilmentSagaWorker {
             lines,
             Instant.now()
         );
-        appendOutbox(event, SalesOrderFulfilmentSaga.AGGREGATE_TYPE, event.aggregateId());
+        outbox.append(event, SalesOrderFulfilmentSaga.AGGREGATE_TYPE);
 
         saga.transitionTo(MANUFACTURING_REQUESTED, "wait_for_work_order_created");
         saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
@@ -201,20 +199,4 @@ public class SalesOrderFulfilmentSagaWorker {
         }
     }
 
-    private void appendOutbox(DomainEvent event, String aggregateType, UUID aggregateId) {
-        try {
-            outbox.appendPending(OutboxRow.pending(
-                event.eventId(),
-                aggregateType,
-                aggregateId,
-                event.eventType(),
-                event.eventVersion(),
-                json.writeValueAsString(event),
-                null, null, null,
-                null
-            ));
-        } catch (JacksonException e) {
-            throw new IllegalStateException("Failed to serialise " + event.eventType(), e);
-        }
-    }
 }

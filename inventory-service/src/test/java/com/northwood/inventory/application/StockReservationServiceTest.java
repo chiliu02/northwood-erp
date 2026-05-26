@@ -16,8 +16,8 @@ import com.northwood.inventory.domain.StockReservation;
 import com.northwood.inventory.domain.StockReservationRepository;
 import com.northwood.inventory.domain.StockReservationRepository.ReservedLineSnapshot;
 import com.northwood.inventory.domain.WarehouseCodes;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
+import com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -30,7 +30,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 class StockReservationServiceTest {
@@ -47,15 +46,14 @@ class StockReservationServiceTest {
     @Mock StockBalanceWriter stockBalances;
     @Mock StockBalanceLookup balanceLookup;
     @Mock WarehouseLookup warehouses;
-    @Mock OutboxPort outbox;
+    @Mock OutboxAppender outbox;
 
-    private final ObjectMapper json = new ObjectMapper();
     private StockReservationService service;
 
     @BeforeEach
     void setUp() {
         service = new StockReservationService(
-            reservations, stockBalances, balanceLookup, warehouses, outbox, json
+            reservations, stockBalances, balanceLookup, warehouses, outbox
         );
     }
 
@@ -261,7 +259,7 @@ class StockReservationServiceTest {
     @Nested
     class ReleaseForSalesOrder {
 
-        @Test void live_reservation_unwinds_and_emits_ack_with_count_one() throws Exception {
+        @Test void live_reservation_unwinds_and_emits_ack_with_count_one() {
             when(reservations.findActiveHeaderIdForSalesOrder(SO)).thenReturn(Optional.of(PRIOR_RES_ID));
             when(reservations.findWarehouseIdForHeader(PRIOR_RES_ID)).thenReturn(Optional.of(WAREHOUSE));
             when(reservations.findReservedLines(PRIOR_RES_ID)).thenReturn(List.of(
@@ -275,16 +273,16 @@ class StockReservationServiceTest {
             verify(stockBalances).releaseReserved(WAREHOUSE, PRODUCT_2, new BigDecimal("2"));
             verify(reservations).markReleased(PRIOR_RES_ID);
 
-            ArgumentCaptor<OutboxRow> cap = ArgumentCaptor.forClass(OutboxRow.class);
-            verify(outbox).appendPending(cap.capture());
-            OutboxRow row = cap.getValue();
-            assertThat(row.getEventType()).isEqualTo(com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied.EVENT_TYPE);
-            assertThat(row.getAggregateId()).isEqualTo(SO);
-            assertThat(row.getAggregateType()).isEqualTo("StockReservation");
-            assertThat(json.readTree(row.getPayload()).get("reservationsReleased").asInt()).isEqualTo(1);
+            ArgumentCaptor<InventorySalesOrderCancellationApplied> cap =
+                ArgumentCaptor.forClass(InventorySalesOrderCancellationApplied.class);
+            verify(outbox).append(cap.capture(), eq(StockReservation.AGGREGATE_TYPE));
+            InventorySalesOrderCancellationApplied event = cap.getValue();
+            assertThat(event.eventType()).isEqualTo(InventorySalesOrderCancellationApplied.EVENT_TYPE);
+            assertThat(event.aggregateId()).isEqualTo(SO);
+            assertThat(event.reservationsReleased()).isEqualTo(1);
         }
 
-        @Test void no_live_reservation_still_emits_ack_with_count_zero() throws Exception {
+        @Test void no_live_reservation_still_emits_ack_with_count_zero() {
             when(reservations.findActiveHeaderIdForSalesOrder(SO)).thenReturn(Optional.empty());
 
             service.releaseForSalesOrder(SO);
@@ -292,9 +290,10 @@ class StockReservationServiceTest {
             verify(reservations, never()).markReleased(any());
             verifyNoInteractions(stockBalances);
 
-            ArgumentCaptor<OutboxRow> cap = ArgumentCaptor.forClass(OutboxRow.class);
-            verify(outbox).appendPending(cap.capture());
-            assertThat(json.readTree(cap.getValue().getPayload()).get("reservationsReleased").asInt()).isEqualTo(0);
+            ArgumentCaptor<InventorySalesOrderCancellationApplied> cap =
+                ArgumentCaptor.forClass(InventorySalesOrderCancellationApplied.class);
+            verify(outbox).append(cap.capture(), eq(StockReservation.AGGREGATE_TYPE));
+            assertThat(cap.getValue().reservationsReleased()).isEqualTo(0);
         }
 
         @Test void unwind_throws_when_warehouse_id_missing_for_header() {
@@ -304,7 +303,7 @@ class StockReservationServiceTest {
             assertThatThrownBy(() -> service.releaseForSalesOrder(SO))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("disappeared mid-release");
-            verify(outbox, never()).appendPending(any());
+            verify(outbox, never()).append(any(), any());
         }
     }
 

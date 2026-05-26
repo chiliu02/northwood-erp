@@ -1,7 +1,5 @@
 package com.northwood.manufacturing.application;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 import com.northwood.manufacturing.application.dto.CompleteOperationCommand;
 import com.northwood.manufacturing.application.dto.WorkOrderView;
 import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
@@ -13,9 +11,7 @@ import com.northwood.manufacturing.domain.WorkOrderRepository.CompletedChild;
 import com.northwood.manufacturing.domain.events.SubAssembliesConsumed;
 import com.northwood.manufacturing.domain.events.SubAssembliesConsumed.ConsumedItem;
 import com.northwood.shared.application.exception.NotFoundException;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
-import com.northwood.shared.application.security.CurrentUserAccessor;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -72,22 +68,16 @@ public class WorkOrderOperationService {
 
     private final WorkOrderRepository workOrders;
     private final MakeToOrderSagaManager sagaManager;
-    private final OutboxPort outbox;
-    private final ObjectMapper json;
-    private final CurrentUserAccessor currentUser;
+    private final OutboxAppender outbox;
 
     public WorkOrderOperationService(
         WorkOrderRepository workOrders,
         MakeToOrderSagaManager sagaManager,
-        OutboxPort outbox,
-        ObjectMapper json,
-        CurrentUserAccessor currentUser
+        OutboxAppender outbox
     ) {
         this.workOrders = workOrders;
         this.sagaManager = sagaManager;
         this.outbox = outbox;
-        this.json = json;
-        this.currentUser = currentUser;
     }
 
     /**
@@ -239,20 +229,7 @@ public class WorkOrderOperationService {
             items,
             Instant.now()
         );
-        try {
-            outbox.appendPending(OutboxRow.pending(
-                event.eventId(),
-                WorkOrder.AGGREGATE_TYPE,
-                event.aggregateId(),
-                event.eventType(),
-                event.eventVersion(),
-                json.writeValueAsString(event),
-                null, null, null,
-                currentUser.currentUsername().orElse(null)
-            ));
-        } catch (JacksonException e) {
-            throw new IllegalStateException("Failed to serialise " + SubAssembliesConsumed.EVENT_TYPE, e);
-        }
+        outbox.append(event, WorkOrder.AGGREGATE_TYPE);
         log.info("emitted {} for parent work_order={} ({} child WO(s))",
             SubAssembliesConsumed.EVENT_TYPE, workOrder.id().value(), items.size());
     }

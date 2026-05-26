@@ -1,7 +1,5 @@
 package com.northwood.inventory.application;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 import com.northwood.manufacturing.domain.events.RawMaterialReservationRequested;
 import com.northwood.sales.domain.events.StockReservationRequested;
 import com.northwood.inventory.domain.StockReservation;
@@ -10,8 +8,7 @@ import com.northwood.inventory.domain.StockReservationRepository;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.StockReservationRepository.ReservedLineSnapshot;
 import com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -52,23 +49,20 @@ public class StockReservationService {
     private final StockBalanceWriter stockBalances;
     private final StockBalanceLookup balanceLookup;
     private final WarehouseLookup warehouses;
-    private final OutboxPort outbox;
-    private final ObjectMapper json;
+    private final OutboxAppender outbox;
 
     public StockReservationService(
         StockReservationRepository stockReservations,
         StockBalanceWriter stockBalances,
         StockBalanceLookup balanceLookup,
         WarehouseLookup warehouses,
-        OutboxPort outbox,
-        ObjectMapper json
+        OutboxAppender outbox
     ) {
         this.stockReservations = stockReservations;
         this.stockBalances = stockBalances;
         this.balanceLookup = balanceLookup;
         this.warehouses = warehouses;
         this.outbox = outbox;
-        this.json = json;
     }
 
     @Transactional
@@ -156,20 +150,9 @@ public class StockReservationService {
         InventorySalesOrderCancellationApplied ack = new InventorySalesOrderCancellationApplied(
             UUID.randomUUID(), salesOrderHeaderId, released, Instant.now()
         );
-        try {
-            outbox.appendPending(OutboxRow.pending(
-                ack.eventId(),
-                StockReservation.AGGREGATE_TYPE,
-                ack.aggregateId(),
-                ack.eventType(),
-                ack.eventVersion(),
-                json.writeValueAsString(ack),
-                null, null, null,
-                null  // actor: saga-driven; propagation from inbound envelope is a B2 follow-up
-            ));
-        } catch (JacksonException e) {
-            throw new IllegalStateException("Failed to serialise " + InventorySalesOrderCancellationApplied.EVENT_TYPE, e);
-        }
+        // actor: saga-driven (inbox thread → no SecurityContext); propagation
+        // from the inbound envelope is a B2 follow-up.
+        outbox.append(ack, StockReservation.AGGREGATE_TYPE);
     }
 
     /**

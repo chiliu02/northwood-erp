@@ -10,6 +10,8 @@ import com.northwood.inventory.application.inbox.StockReservationRequestedHandle
 import com.northwood.inventory.application.inbox.SubAssembliesConsumedHandler;
 import com.northwood.inventory.application.inbox.WorkOrderCancelledHandler;
 import com.northwood.inventory.application.inbox.WorkOrderManufacturingCompletedHandler;
+import com.northwood.shared.application.outbox.OutboxAppender;
+import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.SynchronousBus;
@@ -55,8 +57,9 @@ public final class InventoryTestKit {
         this.reservations = new InMemoryStockReservationRepository(outbox, json);
         this.shipments = new InMemoryShipmentRepository(outbox, json);
         this.warehouses.put(WarehouseCodes.MAIN, DEFAULT_WAREHOUSE_ID);
+        OutboxAppender appender = new OutboxAppender(outbox, json, new CurrentUserAccessor());
         this.service = new StockReservationService(
-            reservations, stockBalances, stockBalances, warehouses, outbox, json
+            reservations, stockBalances, stockBalances, warehouses, appender
         );
         this.shipmentService = new ShipmentService(
             shipments, stockBalances, stockMovements, warehouses, salesOrderLineFacts

@@ -17,6 +17,8 @@ import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.sales.infrastructure.saga.JdbcSalesOrderFulfilmentSagaManager;
 import com.northwood.sales.infrastructure.saga.SalesOrderFulfilmentSagaWorker;
+import com.northwood.shared.application.outbox.OutboxAppender;
+import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.NoopPlatformTransactionManager;
@@ -66,15 +68,16 @@ public final class SalesTestKit {
         this.lineSnapshots = new InMemorySalesOrderLineSnapshotPort(orders);
         PlatformTransactionManager txm = new NoopPlatformTransactionManager();
         this.sagaManager = new JdbcSalesOrderFulfilmentSagaManager(sagas, json, txm, 30L, 15L);
-        this.sagaWorker = new SalesOrderFulfilmentSagaWorker(sagaManager, lineSnapshots, outbox, json);
-        this.compensationEmitter = new SalesOrderCompensationEmitter(orders, outbox, json);
+        OutboxAppender appender = new OutboxAppender(outbox, json, new CurrentUserAccessor());
+        this.sagaWorker = new SalesOrderFulfilmentSagaWorker(sagaManager, lineSnapshots, appender, json);
+        this.compensationEmitter = new SalesOrderCompensationEmitter(orders, appender);
         this.service = new SalesOrderService(orders, sagaManager, customers, productCards);
 
         bus.register(outbox);
         bus.register(new StockReservedHandler(inbox, sagaManager, statusProjection, json));
         bus.register(new WorkOrderCreatedHandler(inbox, sagaManager, json));
         bus.register(new WorkOrderManufacturingCompletedHandler(inbox, sagaManager, json));
-        bus.register(new ManufacturingDispatchedHandler(inbox, sagaManager, statusProjection, compensationEmitter, json));
+        bus.register(new ManufacturingDispatchedHandler(inbox, sagaManager, statusProjection, orders, appender, json));
         bus.register(new ShipmentPostedHandler(inbox, sagaManager, service, json));
         bus.register(new CustomerInvoiceCreatedHandler(inbox, sagaManager, json));
         bus.register(new CustomerPaymentReceivedHandler(inbox, sagaManager, statusProjection, json));

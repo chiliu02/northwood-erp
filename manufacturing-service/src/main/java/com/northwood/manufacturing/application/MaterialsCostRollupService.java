@@ -1,14 +1,10 @@
 package com.northwood.manufacturing.application;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 import com.northwood.manufacturing.application.inbox.ProductApprovedVendorProjection;
 import com.northwood.manufacturing.application.inbox.ProductMaterialsCostProjection;
 import com.northwood.manufacturing.application.inbox.ProductReplenishmentProjection;
 import com.northwood.manufacturing.domain.events.ProductMaterialsCostComputed;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
-import com.northwood.shared.application.security.CurrentUserAccessor;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
@@ -88,26 +84,20 @@ public class MaterialsCostRollupService {
     private final ProductApprovedVendorProjection approvedVendors;
     private final ProductMaterialsCostProjection materialsCosts;
     private final BomLookup boms;
-    private final OutboxPort outbox;
-    private final ObjectMapper json;
-    private final CurrentUserAccessor currentUser;
+    private final OutboxAppender outbox;
 
     public MaterialsCostRollupService(
         ProductReplenishmentProjection replenishment,
         ProductApprovedVendorProjection approvedVendors,
         ProductMaterialsCostProjection materialsCosts,
         BomLookup boms,
-        OutboxPort outbox,
-        ObjectMapper json,
-        CurrentUserAccessor currentUser
+        OutboxAppender outbox
     ) {
         this.replenishment = replenishment;
         this.approvedVendors = approvedVendors;
         this.materialsCosts = materialsCosts;
         this.boms = boms;
         this.outbox = outbox;
-        this.json = json;
-        this.currentUser = currentUser;
     }
 
     /**
@@ -284,20 +274,7 @@ public class MaterialsCostRollupService {
             reason,
             now
         );
-        try {
-            outbox.appendPending(OutboxRow.pending(
-                event.eventId(),
-                ProductMaterialsCostComputed.AGGREGATE_TYPE,
-                event.aggregateId(),
-                event.eventType(),
-                event.eventVersion(),
-                json.writeValueAsString(event),
-                null, null, null,
-                currentUser.currentUsername().orElse(null)
-            ));
-        } catch (JacksonException e) {
-            throw new IllegalStateException("Failed to serialise " + ProductMaterialsCostComputed.EVENT_TYPE, e);
-        }
+        outbox.append(event, ProductMaterialsCostComputed.AGGREGATE_TYPE);
         log.info("emitted {} product={} cost={} currency={} reason={}",
             ProductMaterialsCostComputed.EVENT_TYPE, productId, cost, currencyCode, reason);
 

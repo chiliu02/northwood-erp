@@ -1,14 +1,11 @@
 package com.northwood.manufacturing.application;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderRepository;
 import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
 import com.northwood.manufacturing.domain.events.ManufacturingSalesOrderCancellationApplied;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -39,19 +36,16 @@ public class WorkOrderCancellationService {
 
     private final WorkOrderRepository workOrders;
     private final MakeToOrderSagaManager sagaManager;
-    private final OutboxPort outbox;
-    private final ObjectMapper json;
+    private final OutboxAppender outbox;
 
     public WorkOrderCancellationService(
         WorkOrderRepository workOrders,
         MakeToOrderSagaManager sagaManager,
-        OutboxPort outbox,
-        ObjectMapper json
+        OutboxAppender outbox
     ) {
         this.workOrders = workOrders;
         this.sagaManager = sagaManager;
         this.outbox = outbox;
-        this.json = json;
     }
 
     /**
@@ -99,20 +93,9 @@ public class WorkOrderCancellationService {
         ManufacturingSalesOrderCancellationApplied ack = new ManufacturingSalesOrderCancellationApplied(
             UUID.randomUUID(), salesOrderHeaderId, cancelled, Instant.now()
         );
-        try {
-            outbox.appendPending(OutboxRow.pending(
-                ack.eventId(),
-                WorkOrder.AGGREGATE_TYPE,
-                ack.aggregateId(),
-                ack.eventType(),
-                ack.eventVersion(),
-                json.writeValueAsString(ack),
-                null, null, null,
-                null  // actor: saga-driven; propagation from inbound envelope is a B2 follow-up
-            ));
-        } catch (JacksonException e) {
-            throw new IllegalStateException("Failed to serialise " + ManufacturingSalesOrderCancellationApplied.EVENT_TYPE, e);
-        }
+        // actor: saga-driven (inbox thread → no SecurityContext); propagation
+        // from the inbound envelope is a B2 follow-up.
+        outbox.append(ack, WorkOrder.AGGREGATE_TYPE);
 
         log.info("cancelled {} work order(s) for sales_order={} (reason={})",
             cancelled, salesOrderHeaderId, reason);

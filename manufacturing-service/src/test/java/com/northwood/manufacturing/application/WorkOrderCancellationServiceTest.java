@@ -2,6 +2,7 @@ package com.northwood.manufacturing.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -15,8 +16,7 @@ import com.northwood.manufacturing.domain.WorkOrderMaterial;
 import com.northwood.manufacturing.domain.WorkOrderOperation;
 import com.northwood.manufacturing.domain.WorkOrderRepository;
 import com.northwood.manufacturing.domain.events.ManufacturingSalesOrderCancellationApplied;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -27,7 +27,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 class WorkOrderCancellationServiceTest {
@@ -40,14 +39,13 @@ class WorkOrderCancellationServiceTest {
 
     @Mock WorkOrderRepository workOrders;
     @Mock MakeToOrderSagaManager sagaManager;
-    @Mock OutboxPort outbox;
+    @Mock OutboxAppender outbox;
 
-    private final ObjectMapper json = new ObjectMapper();
     private WorkOrderCancellationService service;
 
     @BeforeEach
     void setUp() {
-        service = new WorkOrderCancellationService(workOrders, sagaManager, outbox, json);
+        service = new WorkOrderCancellationService(workOrders, sagaManager, outbox);
     }
 
     private WorkOrder activeWo() {
@@ -70,12 +68,13 @@ class WorkOrderCancellationServiceTest {
     }
 
     private ManufacturingSalesOrderCancellationApplied capturedAck() {
-        ArgumentCaptor<OutboxRow> cap = ArgumentCaptor.forClass(OutboxRow.class);
-        verify(outbox).appendPending(cap.capture());
-        OutboxRow row = cap.getValue();
-        assertThat(row.getEventType()).isEqualTo(ManufacturingSalesOrderCancellationApplied.EVENT_TYPE);
-        assertThat(row.getAggregateId()).isEqualTo(SO);
-        return json.readValue(row.getPayload(), ManufacturingSalesOrderCancellationApplied.class);
+        ArgumentCaptor<ManufacturingSalesOrderCancellationApplied> cap =
+            ArgumentCaptor.forClass(ManufacturingSalesOrderCancellationApplied.class);
+        verify(outbox).append(cap.capture(), eq(WorkOrder.AGGREGATE_TYPE));
+        ManufacturingSalesOrderCancellationApplied event = cap.getValue();
+        assertThat(event.eventType()).isEqualTo(ManufacturingSalesOrderCancellationApplied.EVENT_TYPE);
+        assertThat(event.aggregateId()).isEqualTo(SO);
+        return event;
     }
 
     @Test void no_active_work_orders_still_emits_ack_with_zero_count() {

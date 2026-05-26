@@ -18,6 +18,7 @@ import com.northwood.manufacturing.application.inbox.SalesOrderCancellationReque
 import com.northwood.manufacturing.application.inbox.SupplierProductPriceChangedHandler;
 import com.northwood.manufacturing.infrastructure.saga.JdbcMakeToOrderSagaManager;
 import com.northwood.manufacturing.infrastructure.saga.MakeToOrderSagaWorker;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
@@ -84,29 +85,29 @@ public final class ManufacturingTestKit {
         this.releaseService = new WorkOrderReleaseService(workOrders, routings, bomLookup, sagaManager);
 
         CurrentUserAccessor currentUser = new CurrentUserAccessor();
+        OutboxAppender appender = new OutboxAppender(outbox, json, currentUser);
         this.operationService = new WorkOrderOperationService(
-            workOrders, sagaManager, outbox, json, currentUser
+            workOrders, sagaManager, appender
         );
         this.cancellationService = new WorkOrderCancellationService(
-            workOrders, sagaManager, outbox, json
+            workOrders, sagaManager, appender
         );
         this.prioritisationService = new WorkOrderPrioritisationService(
-            workOrders, outbox, json, currentUser
+            workOrders, appender
         );
         this.rollupService = new MaterialsCostRollupService(
-            replenishment, approvedVendors, materialsCosts, bomLookup,
-            outbox, json, currentUser
+            replenishment, approvedVendors, materialsCosts, bomLookup, appender
         );
         this.bomService = new BomService(boms, bomCycleDetector, rollupService, replenishment);
 
         this.sagaWorker = new MakeToOrderSagaWorker(
-            sagaManager, releaseService, workOrders, outbox, json
+            sagaManager, releaseService, workOrders, appender, json
         );
         this.workerId = "manufacturing.mto-test-worker";
 
         bus.register(outbox);
-        bus.register(new ManufacturingRequestedHandler(inbox, sagaManager, bomLookup, replenishment, outbox, json));
-        bus.register(new RawMaterialsReservedHandler(inbox, sagaManager, workOrders, outbox, json));
+        bus.register(new ManufacturingRequestedHandler(inbox, sagaManager, bomLookup, replenishment, appender, json));
+        bus.register(new RawMaterialsReservedHandler(inbox, sagaManager, workOrders, appender, json));
         bus.register(new GoodsReceivedHandler(inbox, sagaManager, shortageRecovery, json));
         bus.register(new ActiveBomChangedHandler(inbox, activeBoms, rollupService, json));
         bus.register(new MakeVsBuyChangedHandler(inbox, replenishment, json));

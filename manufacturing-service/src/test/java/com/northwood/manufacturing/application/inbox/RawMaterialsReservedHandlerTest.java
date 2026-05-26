@@ -15,7 +15,6 @@ import static org.mockito.Mockito.when;
 import com.northwood.inventory.domain.InventoryAggregateTypes;
 import com.northwood.inventory.domain.events.RawMaterialsReserved;
 import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
-import com.northwood.manufacturing.domain.ManufacturingAggregateTypes;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderMaterial;
@@ -23,8 +22,7 @@ import com.northwood.manufacturing.domain.WorkOrderOperation;
 import com.northwood.manufacturing.domain.WorkOrderRepository;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -47,7 +45,7 @@ class RawMaterialsReservedHandlerTest {
     @Mock InboxPort inbox;
     @Mock MakeToOrderSagaManager sagaManager;
     @Mock WorkOrderRepository workOrders;
-    @Mock OutboxPort outbox;
+    @Mock OutboxAppender outbox;
 
     private final ObjectMapper json = new ObjectMapper();
     private RawMaterialsReservedHandler handler;
@@ -136,11 +134,12 @@ class RawMaterialsReservedHandlerTest {
 
         verify(workOrders).save(loaded);
         assertThat(loaded.materialStatus()).isEqualTo(WorkOrder.MaterialStatus.PARTIALLY_RESERVED);
-        ArgumentCaptor<OutboxRow> captor = ArgumentCaptor.forClass(OutboxRow.class);
-        verify(outbox).appendPending(captor.capture());
-        assertThat(captor.getValue().getEventType())
-            .isEqualTo(RawMaterialShortageDetected.EVENT_TYPE);
-        assertThat(captor.getValue().getAggregateType()).isEqualTo(ManufacturingAggregateTypes.WORK_ORDER);
+        ArgumentCaptor<RawMaterialShortageDetected> captor =
+            ArgumentCaptor.forClass(RawMaterialShortageDetected.class);
+        ArgumentCaptor<String> actorCaptor = ArgumentCaptor.forClass(String.class);
+        verify(outbox).append(captor.capture(), eq(WorkOrder.AGGREGATE_TYPE), actorCaptor.capture());
+        assertThat(captor.getValue().eventType()).isEqualTo(RawMaterialShortageDetected.EVENT_TYPE);
+        assertThat(actorCaptor.getValue()).isNull();
     }
 
     @Test void failed_reservation_projects_material_status_shortage() {

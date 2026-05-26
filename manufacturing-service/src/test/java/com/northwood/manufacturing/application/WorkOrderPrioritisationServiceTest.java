@@ -3,7 +3,9 @@ package com.northwood.manufacturing.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -14,9 +16,7 @@ import com.northwood.manufacturing.domain.WorkOrderMaterial;
 import com.northwood.manufacturing.domain.WorkOrderOperation;
 import com.northwood.manufacturing.domain.WorkOrderRepository;
 import com.northwood.manufacturing.domain.events.WorkOrderPriorityChanged;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
-import com.northwood.shared.application.security.CurrentUserAccessor;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -27,21 +27,18 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 class WorkOrderPrioritisationServiceTest {
 
     @Mock WorkOrderRepository workOrders;
-    @Mock OutboxPort outbox;
-    @Mock CurrentUserAccessor currentUser;
+    @Mock OutboxAppender outbox;
 
-    private final ObjectMapper json = new ObjectMapper();
     private WorkOrderPrioritisationService service;
 
     @BeforeEach
     void setUp() {
-        service = new WorkOrderPrioritisationService(workOrders, outbox, json, currentUser);
+        service = new WorkOrderPrioritisationService(workOrders, outbox);
     }
 
     private WorkOrder existingWo() {
@@ -63,16 +60,13 @@ class WorkOrderPrioritisationServiceTest {
     @Test void happy_path_emits_priority_changed_event() {
         WorkOrder wo = existingWo();
         when(workOrders.findById(wo.id())).thenReturn(Optional.of(wo));
-        when(currentUser.currentUsername()).thenReturn(Optional.of("linda"));
 
         service.setPriority(wo.id().value(), "urgent", "VIP customer");
 
-        ArgumentCaptor<OutboxRow> cap = ArgumentCaptor.forClass(OutboxRow.class);
-        verify(outbox).appendPending(cap.capture());
-        OutboxRow row = cap.getValue();
-        assertThat(row.getEventType()).isEqualTo(WorkOrderPriorityChanged.EVENT_TYPE);
-        assertThat(row.getActorUserId()).isEqualTo("linda");
-        WorkOrderPriorityChanged event = json.readValue(row.getPayload(), WorkOrderPriorityChanged.class);
+        ArgumentCaptor<WorkOrderPriorityChanged> cap = ArgumentCaptor.forClass(WorkOrderPriorityChanged.class);
+        verify(outbox).append(cap.capture(), eq(WorkOrder.AGGREGATE_TYPE));
+        WorkOrderPriorityChanged event = cap.getValue();
+        assertThat(event.eventType()).isEqualTo(WorkOrderPriorityChanged.EVENT_TYPE);
         assertThat(event.priority()).isEqualTo("urgent");
         assertThat(event.reason()).isEqualTo("VIP customer");
     }
@@ -83,7 +77,7 @@ class WorkOrderPrioritisationServiceTest {
         assertThatThrownBy(() -> service.setPriority(id, "extreme", "test"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("priority must be one of");
-        verify(outbox, never()).appendPending(any());
+        verify(outbox, never()).append(any(), any());
     }
 
     @Test void rejects_unknown_work_order() {
@@ -92,18 +86,17 @@ class WorkOrderPrioritisationServiceTest {
 
         assertThatThrownBy(() -> service.setPriority(id, "high", "test"))
             .isInstanceOf(WorkOrderNotFoundException.class);
-        verify(outbox, never()).appendPending(any());
+        verify(outbox, never()).append(any(), any());
     }
 
     @Test void all_four_allowed_priorities_accepted() {
         WorkOrder wo = existingWo();
         when(workOrders.findById(wo.id())).thenReturn(Optional.of(wo));
-        when(currentUser.currentUsername()).thenReturn(Optional.empty());
 
         for (String p : List.of("low", "normal", "high", "urgent")) {
             service.setPriority(wo.id().value(), p, "rotation");
         }
 
-        verify(outbox, org.mockito.Mockito.times(4)).appendPending(any());
+        verify(outbox, times(4)).append(any(), any());
     }
 }

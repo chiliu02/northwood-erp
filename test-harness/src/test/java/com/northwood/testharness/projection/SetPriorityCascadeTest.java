@@ -8,6 +8,7 @@ import com.northwood.manufacturing.application.WorkOrderPrioritisationService;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.reporting.application.inbox.BoardWorkOrderPriorityChangedHandler;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
@@ -42,8 +43,9 @@ class SetPriorityCascadeTest {
         InMemoryWorkOrderRepository workOrders = new InMemoryWorkOrderRepository(mfgOutbox, json);
         CurrentUserAccessor currentUser = mock(CurrentUserAccessor.class);
         when(currentUser.currentUsername()).thenReturn(Optional.empty());
+        OutboxAppender appender = new OutboxAppender(mfgOutbox, json, currentUser);
         WorkOrderPrioritisationService prioritisationService =
-            new WorkOrderPrioritisationService(workOrders, mfgOutbox, json, currentUser);
+            new WorkOrderPrioritisationService(workOrders, appender);
 
         // Reporting-side
         InMemoryInboxPort reportingInbox = new InMemoryInboxPort();

@@ -6,12 +6,10 @@ import com.northwood.manufacturing.application.BomLookup;
 import com.northwood.manufacturing.domain.events.ManufacturingDispatched;
 import com.northwood.manufacturing.domain.events.ManufacturingDispatched.LineOutcome;
 import com.northwood.sales.domain.events.ManufacturingRequested;
-import com.northwood.shared.domain.DomainEvent;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
 import com.northwood.shared.application.messaging.EventEnvelope;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,14 +42,14 @@ public class ManufacturingRequestedHandler extends AbstractInboxHandler<Manufact
     private final MakeToOrderSagaManager sagaManager;
     private final BomLookup boms;
     private final ProductReplenishmentProjection replenishment;
-    private final OutboxPort outbox;
+    private final OutboxAppender outbox;
 
     public ManufacturingRequestedHandler(
         InboxPort inbox,
         MakeToOrderSagaManager sagaManager,
         BomLookup boms,
         ProductReplenishmentProjection replenishment,
-        OutboxPort outbox,
+        OutboxAppender outbox,
         ObjectMapper json
     ) {
         super(inbox, json, ManufacturingRequested.class, ManufacturingRequested.EVENT_TYPE, CONSUMER_NAME);
@@ -111,7 +109,7 @@ public class ManufacturingRequestedHandler extends AbstractInboxHandler<Manufact
             ));
         }
 
-        appendOutbox(new ManufacturingDispatched(
+        outbox.append(new ManufacturingDispatched(
             UUID.randomUUID(),
             payload.salesOrderHeaderId(),
             payload.salesOrderHeaderId(),
@@ -122,22 +120,5 @@ public class ManufacturingRequestedHandler extends AbstractInboxHandler<Manufact
         log.info("[{}] processed {} ({}) for sales_order_header={} → {}/{} accepted",
             CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
             payload.salesOrderHeaderId(), sagasCreated, payload.lines().size());
-    }
-
-    private void appendOutbox(DomainEvent event, String aggregateType, String actorUserId) {
-        try {
-            outbox.appendPending(OutboxRow.pending(
-                event.eventId(),
-                aggregateType,
-                event.aggregateId(),
-                event.eventType(),
-                event.eventVersion(),
-                json.writeValueAsString(event),
-                null, null, null,
-                actorUserId
-            ));
-        } catch (JacksonException e) {
-            throw new IllegalStateException("Cannot serialise " + event.eventType(), e);
-        }
     }
 }

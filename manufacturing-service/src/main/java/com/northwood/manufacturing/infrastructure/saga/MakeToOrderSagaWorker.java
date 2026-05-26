@@ -18,9 +18,7 @@ import static com.northwood.manufacturing.domain.saga.MakeToOrderSaga.RAW_MATERI
 import static com.northwood.manufacturing.domain.saga.MakeToOrderSaga.STARTED;
 import static com.northwood.manufacturing.domain.saga.MakeToOrderSaga.WORK_ORDER_CREATED;
 import com.northwood.shared.domain.Assert;
-import com.northwood.shared.domain.DomainEvent;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.lang.management.ManagementFactory;
 import java.time.Duration;
 import java.time.Instant;
@@ -62,14 +60,14 @@ public class MakeToOrderSagaWorker {
     private final MakeToOrderSagaManager manager;
     private final WorkOrderReleaseService release;
     private final WorkOrderRepository workOrders;
-    private final OutboxPort outbox;
+    private final OutboxAppender outbox;
     private final ObjectMapper json;
 
     public MakeToOrderSagaWorker(
         MakeToOrderSagaManager manager,
         WorkOrderReleaseService release,
         WorkOrderRepository workOrders,
-        OutboxPort outbox,
+        OutboxAppender outbox,
         ObjectMapper json
     ) {
         this.manager = manager;
@@ -154,7 +152,7 @@ public class MakeToOrderSagaWorker {
             components,
             Instant.now()
         );
-        appendOutbox(event, WorkOrder.AGGREGATE_TYPE);
+        outbox.append(event, WorkOrder.AGGREGATE_TYPE);
 
         saga.transitionTo(RAW_MATERIAL_RESERVATION_REQUESTED, "wait_for_raw_materials_reserved");
         saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
@@ -163,20 +161,4 @@ public class MakeToOrderSagaWorker {
             workerId, saga.sagaId(), workOrderId, components.size());
     }
 
-    private void appendOutbox(DomainEvent event, String aggregateType) {
-        try {
-            outbox.appendPending(OutboxRow.pending(
-                event.eventId(),
-                aggregateType,
-                event.aggregateId(),
-                event.eventType(),
-                event.eventVersion(),
-                json.writeValueAsString(event),
-                null, null, null,
-                null
-            ));
-        } catch (JacksonException e) {
-            throw new IllegalStateException("Cannot serialise " + event.eventType(), e);
-        }
-    }
 }
