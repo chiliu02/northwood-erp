@@ -14,6 +14,14 @@ import java.util.UUID;
  * its {@code alreadyProcessed} / {@code recordProcessed} <em>intent</em>, not
  * which strategy is in force.
  *
+ * <p>It stays in the {@code jdbc} package on purpose: it is an internal seam of
+ * the JDBC inbox, not a tech-agnostic port. Every strategy operates on the SQL
+ * inbox (advisory lock + existence check, or a unique-constraint claim), so a
+ * non-SQL dedup would replace {@link JdbcInboxAdapter} wholesale rather than
+ * just this gate — and it is not an application port either (no application
+ * code references it). Promote it to {@code infrastructure.inbox} only if a
+ * genuinely non-JDBC implementation ever appears.
+ *
  * <p>An implementation does two things in one call, inside the consumer's
  * {@code @Transactional} boundary: report whether
  * {@code (messageId, consumerName)} was already processed, AND guard the
