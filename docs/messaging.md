@@ -84,7 +84,7 @@ Reliable delivery + idempotent consumption are the cornerstone of this architect
 | Backed-off saga not re-claimed before `next_retry_at` | due-time filter in `claimDue` | the same ITs' `claimDue_skips_rows_with_future_next_retry_at` |
 | Out-of-order prerequisite (cross-partition) → park + retry | handler parks when the saga row is absent | §2.6 sales cross-partition regression (un-exercisable until partitions > 1) |
 
-> **Coverage status (2026-05-26):** the rows pointing at `KafkaInboxDispatcherDeliveryIT` are written but their `mvn verify` run is deferred, and the two **planned** consumer rows are not built yet — all tracked in `dev-todo.md` §2.27. Everything else is verified today.
+> **Coverage status (2026-05-27):** the rows pointing at `KafkaInboxDispatcherDeliveryIT` are now **verified** (3/3 against Testcontainers Kafka). The two **planned** consumer rows (duplicate-delivery → applied-once; `apply`-throws → rollback-atomicity) are still being built — tracked in `dev-todo.md` §2.27. Everything else is verified today.
 
 ## Producer side
 
