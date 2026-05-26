@@ -86,6 +86,72 @@ Reliable delivery + idempotent consumption are the cornerstone of this architect
 
 > **Coverage status (2026-05-27):** every row above is now **verified** — the three formerly-deferred rows landed as `KafkaInboxDispatcherDeliveryIT` (3/3), `DuplicateDeliveryAppliedOnceIT`, and `InboxApplyRollbackAtomicityIT` against Testcontainers Kafka + Postgres (`dev-todo.md` §2.27 closed). The only un-asserted entries are the two **doc-only** process-crash rows, each absorbed by a mechanism that is itself tested.
 
+## Disaster recovery — total auto-recovery vs. manual vs. unrecoverable
+
+Runbook companion to the guarantees matrix — audited 2026-05-27 against the code. Every failure sorts into exactly one of three classes:
+
+- ✅ **Auto-recovered fully** — no operator action, no data loss.
+- 🛠 **Manual step required** — the durable record survives, so a human can recover it.
+- ❌ **Full recovery impossible** — the durable record itself is gone; data is permanently lost.
+
+**The single rule that decides the class:** *is the PostgreSQL-resident source of truth (the `outbox_message` / `inbox_message` / `*_saga` tables + aggregates) intact?* The outbox is the system of record, not Kafka — so **losing Kafka is recoverable** (re-drive from the outbox) while **losing PostgreSQL without a backup is the one unrecoverable disaster**. Everything else self-heals.
+
+### At a glance
+
+| Failure / disaster | Class | Why |
+|---|---|---|
+| Service / container / host **restart** (crash, OOM, deploy, reschedule) | ✅ auto | state is in Postgres; in-flight consumer messages redeliver (offset uncommitted), saga steps re-claim after lease expiry. Loops are restart- **and** multi-instance-safe (`outbox` `FOR UPDATE SKIP LOCKED`; saga lease + per-instance `workerId`). |
+| **Kafka broker** down → back (volume kept) | ✅ auto | producers' rows go `failed` → retried next tick (`findPending` selects `pending`+`failed`); consumers pause then resume; fixed `CLUSTER_ID` reattaches the volume with data + offsets. |
+| **PostgreSQL** down → back (volume kept) | ✅ auto* | request path errors; the `@Scheduled` outbox/saga loops throw but Spring's scheduler logs-and-suppresses → next tick retries (HikariCP reconnects). *Caveat: consumer messages in flight *during* the outage can be dead-lettered (→ 🛠) — see finding 1. |
+| **Network partition** between two services | ✅ auto | no synchronous service-to-service calls exist (only the outbox/Kafka), so events queue and flow on reconnect. No corruption. (A partition to a BFF just fails the *read*.) |
+| Consumer handler **transient** failure (clears within the retry budget) | ✅ auto | `DefaultErrorHandler` re-seeks (no offset commit) → redelivered → inbox dedup makes the re-apply safe. |
+| Duplicate delivery / rebalance / replay-from-`earliest` | ✅ auto | inbox dedup gate skips it (exactly-once effect). |
+| Saga worker crash mid-step | ✅ auto | `claimDue` reclaims any row where `lease_owner IS NULL OR lease_expires_at < now()`. |
+| Saga step **transient** failure | ✅ auto | `scheduleRetry(now + backoff)` releases the lease; re-claimed once `next_retry_at <= now()`. |
+| Cross-partition out-of-order prerequisite | ✅ auto | handler **parks and retries** until the prerequisite row exists. |
+| Process crash between DB commit and offset commit | ✅ auto | redelivery on restart → inbox dedup skips the already-applied effect. |
+| **Dead-lettered** message (`<topic>.dlt`) | 🛠 manual | nothing consumes `.dlt`; detect → fix → replay onto the source topic (no in-repo tooling). |
+| Consumer messages dead-lettered during a **dependency outage** | 🛠 manual | the immediate-retry budget gives up in ms (finding 1) → same DLT-replay as above. |
+| **Poison outbox row** (publish always fails) | 🛠 manual | retried every tick forever (no `retry_count` cap, no terminal status); fix the cause or correct/remove the row. |
+| **Stuck saga** (advance always fails) | 🛠 manual | retried forever (no terminal `failed` state); fix forward or force-resolve via SQL — there is no cancel/force-complete control. |
+| **Malformed envelope** on a topic | 🛠 manual | skipped + offset committed (dropped at the consumer); re-emit from the producer's outbox. |
+| **Kafka** volume **lost** (RF=1, no replica) | 🛠 manual | published-but-unconsumed events + offsets gone — **but re-drivable from the outbox** (the durable record): reset `outbox_message.status` `published`→`pending`. |
+| **PostgreSQL** volume **lost**, no backup | ❌ impossible | the source of truth (outbox/inbox/saga/aggregates/projections/audit) is gone — nothing to recover from. |
+
+### ✅ Auto-recovered fully
+
+These need no operator action and lose nothing — the outbox is the durable producer-side record and the inbox makes every consumer redelivery idempotent, so transient broker/DB/network/process failures and clean restarts all converge on their own. The one asterisk is the "Postgres down → back" row: the *system* recovers, but specific consumer messages that arrived **during** the outage may have been dead-lettered (finding 1), which is a 🛠 case.
+
+### 🛠 Manual step required (recoverable — the durable record survives)
+
+1. **Dead-lettered messages (`<topic>.dlt`).** After the retry budget (`FixedBackOff(0,3)` — 3 immediate retries) a persistently-failing message is published to `<source-topic>.dlt` by the `DeadLetterPublishingRecoverer`, and the source offset commits so the consumer is never blocked (`KafkaMessagingAutoConfiguration.java:84`). **Nothing consumes any `.dlt` topic** — no listener, no redrive job. Recover by: *detect* (DLT depth via `kafka-consumer-groups`/`kafka-console-consumer`; the recoverer also logs `WARN "publishing to DLT …"`), *diagnose* from the payload + logged exception and ship a fix, *replay* by re-publishing the DLT records onto the source topic (console producer or a small script — inbox dedup makes a racing replay safe). **No in-repo tooling for this yet.**
+
+2. **Poison outbox row (publish always fails).** A row whose publish never succeeds (payload the broker rejects, serialization defect) is retried on **every** drain tick — **no `retry_count` cap, no terminal `dead` status** (`outbox_message.status` CHECK is only `pending | published | failed`). It doesn't head-of-line-block siblings (the loop continues past it), but never clears itself, and a *later* row for the **same aggregate** can publish ahead of it (order break). Recover: `… WHERE status = 'failed'` (read `retry_count` + `last_error`), fix the cause and let it drain, or correct/remove the row.
+
+3. **Stuck saga (advance always fails).** `SagaInstance.scheduleRetry` only bumps `retry_count` and pushes `next_retry_at` — **no max-retry → terminal `failed` state** (the only terminal states are the *success* states in `terminalStates()`). So it retries forever with backoff, trail in `last_error`/`retry_count`. Recover: diagnose from `last_error`, fix forward (it resumes on the next due tick). **No operator control to cancel/abandon/force-complete** — the BFF `/api/sagas` feed + `SagaAggregatorController.pump()` are **read-only** (the Saga Console SSE projection); a force-resolve means direct SQL on the `*_saga` row.
+
+4. **Malformed envelope on a topic.** The dispatcher catches `JacksonException`, logs `ERROR "Skipping malformed envelope …"`, and **commits the offset** (poison-pill avoidance — the one failure that neither redelivers nor dead-letters; `KafkaInboxDispatcher.onMessage`). The event is dropped at the consumer; since the producer's outbox row is already `published`, nothing re-emits it. Recover: spot the ERROR line, re-emit/replay from the outbox. Only fires on a producer serialization defect or a hand-mangled message.
+
+5. **Kafka volume lost (RF=1, no replica).** Single broker, `KAFKA_DEFAULT_REPLICATION_FACTOR=1` — no replica, so a lost volume loses every message *published-but-not-yet-consumed* plus all consumer offsets (topics auto-recreate on next publish). **Recoverable because the outbox in Postgres is the source of truth, not Kafka:** re-drive by resetting the relevant `outbox_message.status` from `published` back to `pending` (the inbox dedup makes an over-broad re-drive safe — already-applied events are skipped). This is the concrete payoff of "the outbox, not the broker, is the system of record."
+
+### ❌ Full recovery impossible (permanent data loss)
+
+**PostgreSQL volume lost with no backup** is the *only* unrecoverable disaster — and it is unrecoverable **only because no backup exists**. There is no `pg_dump`/PITR/replica anywhere in the repo; durability rests entirely on the `northwood-pgdata` docker volume. Lose it and the outbox, inbox, saga state, aggregates, projections and audit all go with it — there is no surviving record to re-drive from (unlike Kafka loss, which the outbox covers). The only "recovery" today is `docker compose down -v` + reseed from `db/northwood_erp.sql` (+ `northwood_erp_seed.sql`) — i.e. **start clean, accept total loss of business data**. Acceptable for a local showcase; not for production.
+
+> A backup/replica would demote this straight into 🛠. The fix is the deferred HA work: RDS Multi-AZ / Aurora + a real backup/PITR policy (§3.7). Until then, a single PostgreSQL is a single point of failure for **all seven services** (schema-per-service in one DB).
+
+### Two sharp findings the audit surfaced
+
+1. **A dependency outage longer than *milliseconds* dead-letters live traffic — it doesn't wait it out.** The consumer error handler is `FixedBackOff(0,3)` — **3 *immediate* (zero-delay) retries**, with **no pause-container / circuit-breaker / backoff**. If PostgreSQL (or any handler dependency) is briefly down while Kafka keeps *delivering*, each arriving record fails its DB write, burns all 3 retries in a few ms, and is routed to the DLT — then the next record repeats, so a multi-second blip can dump a burst of live traffic into the DLT (turning a ✅ infra hiccup into a 🛠 DLT-replay). The producer side is the opposite — the outbox retries a down broker *forever*. Mitigation if it bites: a longer/backoff `FixedBackOff`, or a `DefaultErrorHandler` that pauses the container on infra exceptions — neither wired today.
+
+2. **No backup/restore exists for PostgreSQL or Kafka** (only the docker volumes) — which is exactly why the two storage-loss rows split across 🛠 (Kafka, covered by the outbox) and ❌ (Postgres, the source of truth itself). Add a Postgres backup and the ❌ row disappears.
+
+### Caveats that shape the runbook
+
+- **Detection is manual today.** Automated alerting on stuck outbox / stuck saga / error-rate (§2.1 Alertmanager) is Phase-2-deferred (`dev-todo.md` §1D / §2.1). Until it lands, discovery relies on logs, Grafana, and direct table queries — the data is all there (`outbox_message.status = 'failed'` + `last_error`; `*_saga` rows with climbing `retry_count` + `last_error`; DLT topic depth).
+- **BFF restart (non-messaging).** `erp-web-ui-bff` holds OIDC session/token state in-JVM, so a restart logs every user out (re-login; Redis-backed sessions are §3.9). `demo-web-ui-bff` is stateless (shared-secret bypass) and unaffected. The synchronous *command* path is also not durable — a POST in flight when a service dies is lost and the client must resubmit; only state that already committed (and so its outbox row) survives.
+- **Replaying/rebuilding a projection.** Kafka retains the log, so offset-rewind replay is possible; to *re-apply* (not merely re-skip) the target consumer's `inbox_message` rows for those messages must be cleared first. Under a future SQS swap this would not be replayable — replay would mean re-draining the outbox (§3.6 trade-off).
+
 ## Producer side
 
 - **One outbox table per service** (`product.outbox_message`, `inventory.outbox_message`, etc.) — atomic with the aggregate write in the same DB transaction.
