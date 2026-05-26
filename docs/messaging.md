@@ -47,6 +47,45 @@ A saga isn't an aggregate — it's a cross-aggregate coordinator. Events the sag
 
 What an inbox handler does when it can't find the saga yet (because `SalesOrderPlaced` from one partition hasn't been processed before `StockReserved` from another partition arrives): **park and retry**. The §2.6 dev-todo entry references a 2026-05-05 cross-partition race fix that landed this pattern. Multi-partition makes the parking path the common case rather than the exception — re-test the parking + replay timing thoroughly before bumping partition counts. See §2.14 audit items.
 
+## Reliability & idempotency: guarantees and where they're tested
+
+Reliable delivery + idempotent consumption are the cornerstone of this architecture, so this matrix is the index for the detailed sections that follow: every guarantee, the mechanism that provides it, and the test that covers it. The **doc-only** rows are inherently not unit-testable (you can't deterministically crash a process mid-commit) — each is absorbed by a mechanism that *is* tested, noted in the row.
+
+### Producer — reliable emission (the outbox)
+
+| Guarantee | Mechanism | Covered by |
+|---|---|---|
+| Event row written atomically with the aggregate change (no event without the state change, and vice-versa) | one local `@Transactional`; `repository.save()` drains `pendingEvents` → `OutboxPort.appendPending` in the same tx | aggregate `Jdbc*RepositoryIT`s (the outbox-row-delta assertions on save) |
+| Published in `sequence_number` order; row marked `published` only after broker ack | `OutboxDrainer.drain()` `.join()`s each send before `OutboxPort.update(…published)` | `OutboxDrainerTest.drain_publishes_each_row_marks_published_and_saves`; `JdbcOutboxAdapterIT.findPending_returns_rows_in_sequence_number_order…` + `…update_marks_published…` |
+| Broker failure → row left `failed` → retried next tick | per-row try/catch marks `failed`, continues the batch | `OutboxDrainerTest.drain_partial_failure_marks_failed_row_and_continues` |
+| Concurrent drainers never double-claim a row | `findPending` `FOR UPDATE SKIP LOCKED` held inside the drain `@Transactional` | `JdbcOutboxAdapterIT.findPending_skips_rows_locked_by_another_transaction` |
+| Crash after broker ack, before the `published` mark → row re-published next tick (duplicate on the topic) | at-least-once publish; duplicate carries the same `eventId` → collapsed by the consumer inbox | **doc-only** (process crash); the absorbing dedup is covered by `JdbcInboxAdapterIT` + the duplicate-delivery e2e (§2.27) |
+
+### Consumer — idempotent consumption (the inbox; exactly-once effect)
+
+| Guarantee | Mechanism | Covered by |
+|---|---|---|
+| Dedup keyed `(message_id, consumer_name)`, independent per consumer | inbox row + `alreadyProcessed` check | `JdbcInboxAdapterIT.recordProcessed_then_alreadyProcessed_is_true`, `…dedup_is_keyed_per_consumer` |
+| Concurrent duplicate of the same message serialized (TOCTOU race closed) | advisory-lock gate (default), held across `handle()`'s tx | `JdbcInboxAdapterIT.advisory_lock_serializes_a_concurrent_duplicate` |
+| `apply` + `recordProcessed` atomic; `apply` throws → both roll back → reprocessable | `handle()` `@Transactional` boundary | **planned** rollback-atomicity e2e (§2.27) |
+| Offset committed only after the listener returns successfully | container-managed commit, default `BATCH` ack mode | `KafkaInboxDispatcherDeliveryIT.offset_commits_only_after_the_listener_returns_successfully` |
+| Handler exception → offset not committed → record redelivered | error-handler re-seek (no commit) | same test (the failure half) |
+| Duplicate delivery (e.g. producer re-publish) applied exactly once | redelivery hits `alreadyProcessed=true` → skip | **planned** duplicate-delivery e2e (§2.27) |
+| Malformed envelope → skipped + offset committed (the one failure that does NOT redeliver — poison-pill avoidance) | dispatcher catches `JacksonException`, returns normally | `KafkaInboxDispatcherDeliveryIT.malformed_envelope_is_skipped_and_offset_still_commits` |
+| Persistent handler failure → DLT after the retry budget, then offset commits (no infinite loop) | `DefaultErrorHandler(FixedBackOff(0,3))` + `DeadLetterPublishingRecoverer` | `KafkaInboxDispatcherDeliveryIT.persistent_failure_is_dead_lettered_then_offset_commits` |
+| Crash between the DB commit and the offset commit → redelivery → dedup skips | inbox dedup absorbs the redelivery | **doc-only** (process crash); absorbed by the dedup covered above |
+
+### Saga — cross-aggregate coordination
+
+| Guarantee | Mechanism | Covered by |
+|---|---|---|
+| At most one worker advances a saga at a time | `claimDue` `FOR UPDATE SKIP LOCKED` + lease | `Jdbc{SalesOrderFulfilment,MakeToOrder,PurchaseToPay}SagaAdapterIT.claimDue_leases_active_due_rows_and_blocks_immediate_reclaim` |
+| Concurrent transition → optimistic-lock failure → manager retries | `update … WHERE saga_id = ? AND version = ?` | the same ITs' `update_enforces_optimistic_lock_via_version` |
+| Backed-off saga not re-claimed before `next_retry_at` | due-time filter in `claimDue` | the same ITs' `claimDue_skips_rows_with_future_next_retry_at` |
+| Out-of-order prerequisite (cross-partition) → park + retry | handler parks when the saga row is absent | §2.6 sales cross-partition regression (un-exercisable until partitions > 1) |
+
+> **Coverage status (2026-05-26):** the rows pointing at `KafkaInboxDispatcherDeliveryIT` are written but their `mvn verify` run is deferred, and the two **planned** consumer rows are not built yet — all tracked in `dev-todo.md` §2.27. Everything else is verified today.
+
 ## Producer side
 
 - **One outbox table per service** (`product.outbox_message`, `inventory.outbox_message`, etc.) — atomic with the aggregate write in the same DB transaction.
@@ -227,6 +266,8 @@ CREATE TABLE <service>.inbox_dedup (
 
 `JdbcInboxAdapterIT.advisory_lock_serializes_a_concurrent_duplicate` (in `shared`, real Postgres via Testcontainers) is the proof the in-process `SynchronousBus` harness can't give: two real transactions race the same `(message_id, consumer_name)`; the first holds the lock with an *uncommitted* inbox row; the second's `alreadyProcessed` must block on the lock and, once released, read a fresh snapshot showing the row → returns `true`. Without the lock its `EXISTS` would run against the uncommitted insert and return `false` (double-apply). Asserting the second sees `true` is the distinguishing observation. This partially closes the multi-partition race-verification gap flagged in the §2.14 audit items (2, 7) below.
 
+The consumer-container contracts — offset-commit-only-after-success (with redelivery-on-failure), malformed-envelope skip, and DLT-after-retries — are pinned by `KafkaInboxDispatcherDeliveryIT` (in `shared`, real Kafka via Testcontainers). The complete guarantee → test map is the *Reliability & idempotency* matrix near the top of this doc.
+
 ## DLT (dead-letter topics)
 
 `KafkaMessagingAutoConfiguration.kafkaErrorHandler` (line 84) wires a `DeadLetterPublishingRecoverer` that routes failed messages to `<sourceTopic>.dlt` *preserving the original partition* (`new TopicPartition(dlt, record.partition())`, line 93). This is the critical detail: **DLT topic partition count must match the source topic's partition count.** If `product.events` has 6 partitions but `product.events.dlt` is auto-created with 1, the recoverer publishes to partition 5 of a 1-partition topic → `UnknownTopicOrPartitionException` → DLT publish fails → poison-pill event isn't quarantined → consumer is stuck in the retry loop.
@@ -255,6 +296,7 @@ This is the audit list for the §2.14 slice. Items 1-2 are concrete bugs in wait
 - `shared/.../application/inbox/InboxPort.java` — the intent-level dedup port (mechanism-free).
 - `shared/.../infrastructure/inbox/jdbc/InboxDedupStrategy.java` + `AdvisoryLockInboxDedupStrategy.java` + `JdbcInboxAutoConfiguration.java` — the dedup gate SPI, Option B (default), and `northwood.inbox.dedup-strategy` selection.
 - `shared/.../infrastructure/inbox/jdbc/JdbcInboxAdapterIT.java` — dedup semantics + the advisory-lock concurrency proof.
+- `shared/.../infrastructure/messaging/kafka/KafkaInboxDispatcherDeliveryIT.java` — offset-commit / redelivery / malformed-skip / DLT contracts against a real broker.
 - `docker-compose.yml:38-79` — Kafka KRaft single-broker setup, replication-factor-1 overrides.
 - `dev-todo.md` §2.14 — pre-declare topics with configurable partition counts (with this doc's audit items as scope).
 - `dev-todo.md` §2.13 — saga lease TTL + retry backoff → `@Value` config (related but independent).

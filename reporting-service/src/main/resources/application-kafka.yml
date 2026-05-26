@@ -9,6 +9,10 @@ spring:
       group-id: reporting-service
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # No commit settings here → Spring Kafka defaults: enable.auto.commit=false
+      # + AckMode.BATCH, so an offset commits only after the listener returns
+      # successfully (handler exception → no commit → redelivery; the inbox dedup
+      # makes that safe). Full contract: docs/messaging.md → Consumer-side idempotency.
       auto-offset-reset: earliest
 
 northwood:
