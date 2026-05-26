@@ -29,6 +29,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
  *   <li>full batch → each row published, marked published, saved.</li>
  *   <li>partial failure → failed row marked failed (with error), siblings
  *       still drain successfully.</li>
+ *   <li>broker down → back: a row marked {@code failed} on one tick is
+ *       re-offered (findPending selects {@code pending}+{@code failed}) and
+ *       published on a later tick once the bus recovers — the producer-side
+ *       auto-recovery from a transient broker outage ({@code docs/messaging.md}
+ *       → Disaster recovery).</li>
  *   <li>{@code source-service} header stamped on the envelope from the
  *       drainer's {@code serviceName}.</li>
  * </ul>
@@ -111,6 +116,30 @@ class OutboxDrainerTest {
         inOrder.verify(outbox).update(r1);
         inOrder.verify(outbox).update(r2);
         inOrder.verify(outbox).update(r3);
+    }
+
+    @Test void drain_failed_row_recovers_on_a_later_tick_once_the_bus_returns() {
+        OutboxRow row = pendingRow("sales.SalesOrderPlaced");
+        // findPending re-offers the same row on both ticks: it selects
+        // pending AND failed rows, so a row that failed on tick 1 comes back.
+        when(outbox.findPending(Mockito.anyInt())).thenReturn(List.of(row));
+        // Bus is down for the first publish, healthy for the second.
+        Mockito.doThrow(new RuntimeException("broker down"))
+            .doNothing()
+            .when(bus).publish(any());
+
+        // Tick 1 — broker down → row marked failed, error recorded.
+        drainer.drain();
+        assertThat(row.getStatus()).isEqualTo("failed");
+        assertThat(row.getLastError()).contains("broker down");
+
+        // Tick 2 — broker back → the same row publishes and flips to published,
+        // with no operator action. This is the auto-recovery the DR doc claims.
+        drainer.drain();
+        assertThat(row.getStatus()).isEqualTo("published");
+
+        verify(bus, times(2)).publish(any());
+        verify(outbox, times(2)).update(row);
     }
 
     @Test void drain_uses_service_name_in_envelope_header() {
