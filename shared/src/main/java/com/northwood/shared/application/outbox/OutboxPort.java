@@ -3,7 +3,7 @@ package com.northwood.shared.application.outbox;
 import java.util.List;
 
 /**
- * Port through which {@link OutboxPublisher} reads and updates a service's
+ * Port through which the outbox publisher reads and updates a service's
  * outbox table. Each service provides its own implementation backed by
  * Spring Data JDBC, JdbcTemplate, or whatever it likes — just always against
  * its OWN schema's outbox_message table.
@@ -19,7 +19,7 @@ public interface OutboxPort {
 
     /**
      * Update an existing outbox row's status / retry / publishedAt — used by
-     * {@link OutboxPublisher} after a successful publish or to mark failure.
+     * the publisher after a successful publish or to mark failure.
      */
     void save(OutboxRow row);
 

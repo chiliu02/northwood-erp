@@ -1,8 +1,8 @@
 package com.northwood.shared.application.messaging;
 
 /**
- * Bus port. The {@link com.northwood.shared.infrastructure.outbox.OutboxPublisher}
- * writes envelopes here; what's on the other side is configurable.
+ * Bus port. The outbox publisher writes envelopes here; what's on the other
+ * side is configurable.
  *
  * <p>Showcase mode: an in-process dispatcher that routes envelopes directly to
  * each service's inbox handler in the same JVM. No external bus required.
