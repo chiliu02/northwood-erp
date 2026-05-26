@@ -25,7 +25,7 @@ public final class InMemoryRoutingQueryPort implements RoutingQueryPort {
             RoutingId.of(UUID.randomUUID()),
             finishedProductId,
             "1",
-            "active",
+            Routing.ACTIVE,
             List.of(operations)
         );
         byProductId.put(finishedProductId, r);

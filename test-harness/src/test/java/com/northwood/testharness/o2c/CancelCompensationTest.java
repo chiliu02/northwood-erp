@@ -5,6 +5,7 @@ import com.northwood.sales.domain.events.SalesOrderCompensated;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.sales.application.dto.PlaceOrderCommand;
 import com.northwood.sales.domain.Customer;
 import com.northwood.sales.application.dto.PlaceOrderCommand.OrderLine;
@@ -91,7 +92,7 @@ class CancelCompensationTest {
         );
         sales.outbox.appendPending(OutboxRow.pending(
             mfgAckId,
-            "WorkOrder",
+            WorkOrder.AGGREGATE_TYPE,
             orderId,
             com.northwood.manufacturing.domain.events.ManufacturingSalesOrderCancellationApplied.EVENT_TYPE,
             1,

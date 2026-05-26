@@ -1,5 +1,6 @@
 package com.northwood.testharness.inmemory.reporting;
 
+import com.northwood.manufacturing.domain.events.WorkOrderStatuses;
 import com.northwood.reporting.application.inbox.ProductionPlanningProjection;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -61,14 +62,14 @@ public final class InMemoryProductionPlanningProjection implements ProductionPla
     public void recordWorkOrderCompleted(UUID workOrderId, BigDecimal completedQuantity, Instant occurredAt) {
         Row r = row(workOrderId);
         r.completedQuantity = completedQuantity;
-        r.status = "completed";
+        r.status = WorkOrderStatuses.COMPLETED;
         r.lastEventAt = occurredAt;
     }
 
     @Override
     public void recordWorkOrderCancelled(UUID workOrderId, Instant occurredAt) {
         Row r = row(workOrderId);
-        r.status = "cancelled";
+        r.status = WorkOrderStatuses.CANCELLED;
         r.lastEventAt = occurredAt;
     }
 

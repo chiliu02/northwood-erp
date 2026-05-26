@@ -13,6 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.northwood.finance.application.dto.RecordSupplierInvoiceCommand;
 import com.northwood.finance.application.dto.RecordSupplierPaymentCommand;
+import com.northwood.finance.domain.Payment;
 import com.northwood.finance.domain.SupplierInvoice;
 import com.northwood.purchasing.application.dto.CreateRequisitionCommand;
 import com.northwood.purchasing.application.dto.RequisitionLineRequest;
@@ -161,7 +162,7 @@ class PurchaseToPayHappyPathTest {
             "PAY-SUP-001",
             supplierInvoiceId,
             new BigDecimal("250.00"),
-            "bank_transfer",
+            Payment.Method.BANK_TRANSFER.dbValue(),
             LocalDate.of(2026, 5, 20)
         ));
 

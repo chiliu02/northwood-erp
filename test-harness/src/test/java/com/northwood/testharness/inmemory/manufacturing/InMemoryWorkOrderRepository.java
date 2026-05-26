@@ -48,7 +48,7 @@ public final class InMemoryWorkOrderRepository implements WorkOrderRepository {
             try {
                 outbox.appendPending(OutboxRow.pending(
                     event.eventId(),
-                    "WorkOrder",
+                    WorkOrder.AGGREGATE_TYPE,
                     event.aggregateId(),
                     event.eventType(),
                     event.eventVersion(),

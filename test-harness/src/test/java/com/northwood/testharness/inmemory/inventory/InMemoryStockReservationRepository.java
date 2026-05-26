@@ -53,7 +53,7 @@ public final class InMemoryStockReservationRepository implements StockReservatio
             try {
                 outbox.appendPending(OutboxRow.pending(
                     event.eventId(),
-                    "StockReservation",
+                    StockReservation.AGGREGATE_TYPE,
                     event.aggregateId(),
                     event.eventType(),
                     event.eventVersion(),

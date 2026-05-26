@@ -9,6 +9,7 @@ import com.northwood.sales.domain.events.StockReservationRequested;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.northwood.finance.application.dto.RecordCustomerPaymentCommand;
+import com.northwood.finance.domain.Payment;
 import com.northwood.finance.domain.events.CustomerInvoiceCreated;
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
 import com.northwood.inventory.application.dto.PostShipmentCommand;
@@ -129,7 +130,7 @@ class OrderToCashHappyPathTest {
             "PAY-001",
             invoiceHeaderId,
             new BigDecimal("300.00"),
-            "bank_transfer",
+            Payment.Method.BANK_TRANSFER.dbValue(),
             LocalDate.of(2026, 5, 20)
         ));
         bus.drain();
