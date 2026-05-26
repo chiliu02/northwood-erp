@@ -59,7 +59,7 @@ Reliable delivery + idempotent consumption are the cornerstone of this architect
 | Published in `sequence_number` order; row marked `published` only after broker ack | `OutboxDrainer.drain()` `.join()`s each send before `OutboxPort.update(…published)` | `OutboxDrainerTest.drain_publishes_each_row_marks_published_and_saves`; `JdbcOutboxAdapterIT.findPending_returns_rows_in_sequence_number_order…` + `…update_marks_published…` |
 | Broker failure → row left `failed` → retried next tick | per-row try/catch marks `failed`, continues the batch | `OutboxDrainerTest.drain_partial_failure_marks_failed_row_and_continues` |
 | Concurrent drainers never double-claim a row | `findPending` `FOR UPDATE SKIP LOCKED` held inside the drain `@Transactional` | `JdbcOutboxAdapterIT.findPending_skips_rows_locked_by_another_transaction` |
-| Crash after broker ack, before the `published` mark → row re-published next tick (duplicate on the topic) | at-least-once publish; duplicate carries the same `eventId` → collapsed by the consumer inbox | **doc-only** (process crash); the absorbing dedup is covered by `JdbcInboxAdapterIT` + the duplicate-delivery e2e (§2.27) |
+| Crash after broker ack, before the `published` mark → row re-published next tick (duplicate on the topic) | at-least-once publish; duplicate carries the same `eventId` → collapsed by the consumer inbox | **doc-only** (process crash); the absorbing dedup is covered by `JdbcInboxAdapterIT` + `DuplicateDeliveryAppliedOnceIT` |
 
 ### Consumer — idempotent consumption (the inbox; exactly-once effect)
 
@@ -70,7 +70,7 @@ Reliable delivery + idempotent consumption are the cornerstone of this architect
 | `apply` + `recordProcessed` atomic; `apply` throws → both roll back → reprocessable | `handle()` `@Transactional` boundary | **planned** rollback-atomicity e2e (§2.27) |
 | Offset committed only after the listener returns successfully | container-managed commit, default `BATCH` ack mode | `KafkaInboxDispatcherDeliveryIT.offset_commits_only_after_the_listener_returns_successfully` |
 | Handler exception → offset not committed → record redelivered | error-handler re-seek (no commit) | same test (the failure half) |
-| Duplicate delivery (e.g. producer re-publish) applied exactly once | redelivery hits `alreadyProcessed=true` → skip | **planned** duplicate-delivery e2e (§2.27) |
+| Duplicate delivery (e.g. producer re-publish) applied exactly once | redelivery hits `alreadyProcessed=true` → skip | `DuplicateDeliveryAppliedOnceIT.duplicateDelivery_isAppliedExactlyOnce` (inventory, Testcontainers Kafka + Postgres) |
 | Malformed envelope → skipped + offset committed (the one failure that does NOT redeliver — poison-pill avoidance) | dispatcher catches `JacksonException`, returns normally | `KafkaInboxDispatcherDeliveryIT.malformed_envelope_is_skipped_and_offset_still_commits` |
 | Persistent handler failure → DLT after the retry budget, then offset commits (no infinite loop) | `DefaultErrorHandler(FixedBackOff(0,3))` + `DeadLetterPublishingRecoverer` | `KafkaInboxDispatcherDeliveryIT.persistent_failure_is_dead_lettered_then_offset_commits` |
 | Crash between the DB commit and the offset commit → redelivery → dedup skips | inbox dedup absorbs the redelivery | **doc-only** (process crash); absorbed by the dedup covered above |
@@ -84,7 +84,7 @@ Reliable delivery + idempotent consumption are the cornerstone of this architect
 | Backed-off saga not re-claimed before `next_retry_at` | due-time filter in `claimDue` | the same ITs' `claimDue_skips_rows_with_future_next_retry_at` |
 | Out-of-order prerequisite (cross-partition) → park + retry | handler parks when the saga row is absent | §2.6 sales cross-partition regression (un-exercisable until partitions > 1) |
 
-> **Coverage status (2026-05-27):** the rows pointing at `KafkaInboxDispatcherDeliveryIT` are now **verified** (3/3 against Testcontainers Kafka). The two **planned** consumer rows (duplicate-delivery → applied-once; `apply`-throws → rollback-atomicity) are still being built — tracked in `dev-todo.md` §2.27. Everything else is verified today.
+> **Coverage status (2026-05-27):** `KafkaInboxDispatcherDeliveryIT` (3/3) and the duplicate-delivery → applied-once row (`DuplicateDeliveryAppliedOnceIT`) are **verified** against Testcontainers Kafka + Postgres. The one remaining **planned** row is `apply`-throws → rollback-atomicity — tracked in `dev-todo.md` §2.27. Everything else is verified today.
 
 ## Producer side
 
