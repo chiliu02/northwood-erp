@@ -604,6 +604,77 @@ Try the same as Olivia (accountant) — Reverse button is disabled, tooltip "Req
 
 ---
 
+## Demo 9 — Resilience: broker outage (auto-recovery, zero data loss)
+
+The reliability claim made visible: **kill Kafka mid-flow and nothing is lost** — the outbox holds every event durably and replays it when the broker returns, with no operator action. This is the producer-side "broker down → back" row from `docs/messaging.md` → *Disaster recovery* (✅ auto-recovered fully).
+
+**Setup:** full stack up, Saga Console open at `/saga-console`, and a psql session on a side screen:
+
+```bash
+docker exec -it northwood-postgres psql -U postgres -d northwood_erp
+```
+
+### 9.1 — Kill the broker, then place an order
+
+```bash
+docker stop northwood-kafka
+```
+
+Place a normal order (same shape as Demo 3.1). Note it **still returns 200**: the command path writes the aggregate + its outbox row in one local PostgreSQL transaction and never touches Kafka.
+
+```bash
+curl -X POST http://localhost:8082/api/sales-orders \
+  -H 'content-type: application/json' \
+  -d '{"orderNumber":"SO-DEMO-9-1","customerCode":"CUST-001","currencyCode":"AUD",
+       "lines":[{"productId":"00000000-0000-7000-8000-000000000001",
+                 "productSku":"FG-TABLE-001","productName":"Wooden Dining Table",
+                 "orderedQuantity":1,"unitPrice":320}]}'
+```
+
+### 9.2 — Watch the outbox absorb the backlog
+
+The sales drainer tries to publish every ~1s, fails (broker down), and marks each row `failed` — visible both in the service log (`WARN [sales] outbox row … failed`) and in the table:
+
+```sql
+SELECT event_type, status, retry_count, left(last_error, 40) AS err
+  FROM sales.outbox_message
+ WHERE status IN ('pending','failed')
+ ORDER BY sequence_number;
+```
+
+On the **Saga Console** the sales-order saga is stuck at `started` / `stock_reservation_requested` — its events can't reach inventory, so it can't advance. Nothing is lost; it's *parked in the outbox*.
+
+### 9.3 — Bring the broker back, watch it self-heal
+
+```bash
+docker start northwood-kafka
+```
+
+Within a tick or two — no service restart, no manual replay:
+
+- the `sales.outbox_message` rows flip `failed → published` (re-run the query above; the `pending`/`failed` set drains to empty);
+- the backlog flows to inventory / manufacturing / finance, each draining *its* outbox in turn;
+- the **Saga Console** marches the order through to `completed`, exactly as in the happy path — just delayed by the outage.
+
+### 9.4 — What this proves
+
+| Claim | What the audience saw |
+|---|---|
+| The command path doesn't depend on the broker | order placement returned 200 with Kafka down |
+| No event is lost on broker failure | rows sat durably in `outbox_message` as `failed`, never dropped |
+| Recovery is automatic | `docker start` alone drained the backlog and completed the saga — no operator action |
+| Idempotent replay is safe | re-published events that were already partially consumed are deduped by the inbox |
+
+The outbox pattern's whole point: **Kafka is the transport, not the system of record** — so a broker outage is a *delay*, not a *loss*. (Contrast: losing the PostgreSQL volume *without a backup* is the one unrecoverable case — `docs/messaging.md` → *Disaster recovery*.)
+
+> **Variant (advanced):** instead of stopping Kafka, `Ctrl-C` a mid-flow service (e.g. manufacturing) and restart it — the saga's lease expires and a sibling/restarted worker reclaims it (`claimDue`, `lease_expires_at < now()`), resuming the flow. Same self-heals-on-restart story, pinned by `JdbcSalesOrderFulfilmentSagaAdapterIT.claimDue_reclaims_a_row_whose_lease_has_expired`.
+
+### 9.5 — Not demoed (and why)
+
+A *consumer-dependency* outage (e.g. PostgreSQL briefly down while Kafka keeps delivering) behaves differently: the consumer's 3 immediate retries are exhausted in milliseconds and the in-flight message is dead-lettered rather than waited out (`docs/messaging.md` → *Disaster recovery* → finding 1). That is a manual-replay case, not auto-recovery, so it's deliberately out of this demo.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Cause / fix |
