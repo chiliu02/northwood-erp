@@ -16,8 +16,11 @@ spring:
       auto-offset-reset: earliest
 
 northwood:
+  service-name: finance            # stamps source-service header / Kafka topic
   outbox:
     poll-interval: 1000
+    drain:
+      enabled: true                # activates OutboxDrainAutoConfiguration (drainer + scheduler)
   kafka:
     # Finance subscribes to:
     # - purchasing.events for PurchaseOrderCreated (seeds the PO line facts).

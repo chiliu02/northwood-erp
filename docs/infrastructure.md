@@ -174,8 +174,9 @@ Mirror `shared/.../infrastructure/messaging/kafka/`:
   producer-side Kafka dependency; topic + key are derived from the envelope).
 - A `JmsInboxDispatcher` with `@JmsListener` — replaces `KafkaInboxDispatcher`; `Message` →
   `EventEnvelope` → fan out to handlers.
-- A `JmsMessagingAutoConfiguration` + per-service `*OutboxConfig` / subscribe-destination config
-  (those `*OutboxConfig` files already live in `infrastructure/messaging/`).
+- A `JmsMessagingAutoConfiguration` for the bus/dispatcher. The outbox-drain wiring is already
+  shared in `OutboxDrainAutoConfiguration` (parameterized by `northwood.service-name`), so there's
+  no per-service config to touch.
 
 ### The one real leak: per-aggregate ordering
 

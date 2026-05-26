@@ -15,8 +15,11 @@ spring:
       auto-offset-reset: earliest
 
 northwood:
+  service-name: sales              # stamps source-service header / Kafka topic
   outbox:
     poll-interval: 1000
+    drain:
+      enabled: true                # activates OutboxDrainAutoConfiguration (drainer + scheduler)
   saga:
     poll-interval: 1000
     # §2.13: claim-lease TTL + retry backoff for the @Scheduled saga worker.

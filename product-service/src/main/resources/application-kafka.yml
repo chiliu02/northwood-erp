@@ -17,3 +17,9 @@ spring:
       group-id: product-service
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+northwood:
+  service-name: product            # stamps source-service header / Kafka topic
+  outbox:
+    drain:
+      enabled: true                # activates OutboxDrainAutoConfiguration (drainer + scheduler)

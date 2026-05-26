@@ -11,9 +11,10 @@ import org.springframework.scheduling.annotation.Scheduled;
  * {@code @KafkaListener} trigger (both messaging triggers live under
  * {@code shared.infrastructure.messaging}).
  *
- * <p>Registered per service in the {@code <Service>OutboxConfig} under
- * {@code @Profile("kafka")}: under the default {@code dev} profile no scheduler
- * bean exists, so the outbox accumulates undrained (the correct single-JVM
+ * <p>Registered by {@link OutboxDrainAutoConfiguration} when a producer sets
+ * {@code northwood.outbox.drain.enabled=true} in {@code application-kafka.yml};
+ * under the default {@code dev} profile that property is absent, so no scheduler
+ * bean exists and the outbox accumulates undrained (the correct single-JVM
  * showcase behaviour). Cadence is {@code northwood.outbox.poll-interval}
  * (default 1s); requires {@code @EnableScheduling} on the service application.
  *
@@ -27,9 +28,9 @@ import org.springframework.scheduling.annotation.Scheduled;
  * double-publishing. See {@link OutboxDrainer#drain()}.
  *
  * <p><b>Risk 2 — why this is a standalone class, not a {@code @Scheduled} method
- * on the {@code <Service>OutboxConfig}.</b> Folding the trigger into the
- * {@code @Configuration} would require field-self-injecting the drainer bean the
- * config itself defines, plus a {@code @Scheduled} method on a CGLIB-proxied
+ * on {@link OutboxDrainAutoConfiguration}.</b> Folding the trigger into that
+ * {@code @Configuration} would require field-self-injecting the drainer bean it
+ * defines, plus a {@code @Scheduled} method on a CGLIB-proxied
  * {@code @Configuration} under {@code @Profile} — stacking the project's
  * documented CGLIB / {@code @Configuration} / {@code @Profile} gotchas, and
  * failing (if it does) only at runtime under the {@code kafka} profile, which no

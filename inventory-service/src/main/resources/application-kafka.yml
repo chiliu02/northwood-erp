@@ -16,6 +16,10 @@ spring:
       auto-offset-reset: earliest
 
 northwood:
+  service-name: inventory          # stamps source-service header / Kafka topic
+  outbox:
+    drain:
+      enabled: true                # activates OutboxDrainAutoConfiguration (drainer + scheduler)
   kafka:
     # Topics this service subscribes to. KafkaInboxDispatcher fans incoming
     # records out to all matching InboxEnvelopeHandler beans.

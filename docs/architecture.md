@@ -171,7 +171,7 @@ When an event is appended to the outbox, the `aggregate_type` column (and the ma
 ├── application/                     @Service @Transactional use cases — no business logic
 ├── infrastructure/
 │   ├── persistence/                 JdbcXxxRepository — domain aggregate CRUD
-│   ├── messaging/                   <Service>OutboxConfig — wires OutboxDrainer + OutboxDrainScheduler under @Profile("kafka")
+│   ├── messaging/                   (outbox drain wired by shared OutboxDrainAutoConfiguration via application-kafka.yml — no per-service config)
 │   └── saga/                        Jdbc<Flow>SagaAdapter, <Flow>SagaWorker
 └── api/                             @RestController + dto/ records
 ```
@@ -234,7 +234,7 @@ The `shared` module provides reusable pieces. The module is internally split —
 
 - `OutboxRow` / `OutboxPort`, `InboxRow` / `InboxPort` (`shared.application.outbox/inbox`) — row types and read/write ports.
 - `JdbcOutboxAdapter` / `JdbcInboxAdapter` (`shared.infrastructure.outbox.jdbc` / `inbox.jdbc`) — single shared implementations. SQL references `outbox_message` / `inbox_message` unqualified; per-service `search_path = <service>, shared` resolves to `<service>.<table>`. Auto-registered via `JdbcOutboxAutoConfiguration` / `JdbcInboxAutoConfiguration`.
-- `OutboxDrainer` (`shared.application.outbox`) — drains pending rows and publishes via `EventPublisher`; pure orchestration over ports, no concrete tech. The `@Scheduled(fixedDelayString = "${northwood.outbox.poll-interval:1000}")` trigger lives on `OutboxDrainScheduler` (`shared.infrastructure.messaging`, beside `KafkaInboxDispatcher`), wired per service under `@Profile("kafka")`; services need `@EnableScheduling`. They stay **two beans** — `drain()`'s `@Transactional` (which holds the `FOR UPDATE SKIP LOCKED` batch lock) only fires when the scheduler calls it cross-bean through the proxy, so merging them silently drops the transaction. Polling cursor is `sequence_number`, not `created_at`.
+- `OutboxDrainer` (`shared.application.outbox`) — drains pending rows and publishes via `EventPublisher`; pure orchestration over ports, no concrete tech. The `@Scheduled(fixedDelayString = "${northwood.outbox.poll-interval:1000}")` trigger lives on `OutboxDrainScheduler` (`shared.infrastructure.messaging`, beside `KafkaInboxDispatcher`), wired by `OutboxDrainAutoConfiguration` when a producer sets `northwood.outbox.drain.enabled=true` in `application-kafka.yml`; services need `@EnableScheduling`. They stay **two beans** — `drain()`'s `@Transactional` (which holds the `FOR UPDATE SKIP LOCKED` batch lock) only fires when the scheduler calls it cross-bean through the proxy, so merging them silently drops the transaction. Polling cursor is `sequence_number`, not `created_at`.
 - `EventEnvelope` (`shared.application.messaging`) — wire format; maps 1:1 to outbox columns including `correlation_id` / `causation_id`.
 - `EventPublisher` (port, `shared.application.messaging`) + `KafkaEventPublisher` (`shared.infrastructure.messaging.kafka`). Registered by `KafkaMessagingAutoConfiguration` under `@Profile("kafka")`.
 
