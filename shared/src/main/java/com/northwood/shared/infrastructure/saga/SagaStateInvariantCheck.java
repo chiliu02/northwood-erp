@@ -8,7 +8,7 @@ import java.util.Set;
  * registration on startup against the actual schema CHECK constraint and
  * fails fast if any code state is missing from the DB list — the failure
  * mode that bit us on 2026-05-05 (`invoice_paid` saga state written by code
- * was not in the v3 baseline CHECK; mocked unit tests passed; a real partial
+ * was not in the baseline CHECK; mocked unit tests passed; a real partial
  * customer payment would have failed at INSERT).
  *
  * <p>Each service registers one of these per saga it owns, e.g. via a

@@ -25,7 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
  * class is one second.
  *
  * <p>The publisher uses the service's own {@code sequence_number} as the
- * polling cursor — never {@code created_at}. See v3 schema commentary for why.
+ * polling cursor — never {@code created_at}. See {@code db/northwood_erp.sql}
+ * schema commentary for why.
  */
 public class OutboxPublisher {
 

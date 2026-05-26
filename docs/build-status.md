@@ -7,7 +7,7 @@ Detail companion to `CLAUDE.md`. Read when planning work on a specific service t
 | Domain / app / infra / api | ✓ | partial | partial | partial | partial | partial | partial |
 | Saga | n/a | ✓ | n/a | partial (✓ to `completed`) | ✓ | n/a | n/a |
 
-All seven services have empty Liquibase changelogs (V3 baseline) and an Application class. `partial` means the service has working code in production paths but doesn't cover every aggregate or status it ultimately should. Specifics:
+All seven services have empty Liquibase changelogs (the `db/northwood_erp.sql` baseline) and an Application class. `partial` means the service has working code in production paths but doesn't cover every aggregate or status it ultimately should. Specifics:
 
 - **sales** — `SalesOrder` aggregate, `placeOrder` / `cancel` use cases, fulfilment saga through `ready_to_ship`, compensation flow through `compensated`. Cancel rejects past `goods_shipped` (409).
 - **inventory** — `StockItem` projection, `StockReservation` aggregate (sales + manufacturing-driven, with retry-cancel-then-recreate so a make-to-order saga in `raw_material_shortage` can re-emit reservation without tripping schema UNIQUE), `GoodsReceipt` + `Shipment` aggregates (post-only). `WorkOrderManufacturingCompletedHandler`: top-level WOs bump FG `stock_balance.on_hand_quantity`; sub-assembly children bump `inventory.wip_balance`. `SubAssembliesConsumedHandler` decrements WIP when a parent consumes its children. `StockMovementWriter` writes immutable audit rows from each on-hand mutation site (receipt, shipment, top-level WO completion). No `StockBalance`/`StockMovement` aggregates yet — `JdbcTemplate` directly. `wip_balance.average_cost` is 0 (parked; needs costing decision).

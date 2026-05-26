@@ -11,7 +11,7 @@ import java.util.UUID;
  * {@code sales_order_id} domain key on top of the lease/version columns
  * inherited from {@link SagaInstance}.
  *
- * <p>State machine (per v3 schema CHECK constraint):
+ * <p>State machine (per the schema CHECK constraint):
  * {@code started → stock_reservation_requested → stock_reserved →
  *  manufacturing_requested → manufacturing_in_progress → manufacturing_completed →
  *  ready_to_ship → goods_shipped → invoice_requested → invoice_created → completed}.
