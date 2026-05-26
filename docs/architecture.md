@@ -121,7 +121,7 @@ public class CustomerInvoiceCreatedHandler extends AbstractInboxHandler<Customer
 
 Handlers keep `CONSUMER_NAME` as their own constant (per-handler, used as the inbox dedupe key). They do **not** redeclare `EVENT_TYPE` — that creates a duplicated literal that drifts on rename. The literal lives on the event record exactly once. Rule-of-thumb test for any new event-type usage: would a refactor IDE rename of the event class find this site? If not (i.e. it's a string literal), replace with `<Event>.EVENT_TYPE` and add the import.
 
-Exception: `shared` module tests (e.g. `OutboxPublisherTest`) deliberately use string literals because that module has no compile dep on the events jars — the tests exercise the publisher mechanism with arbitrary throwaway event-type values, not specific business events. Don't introduce events-jar deps into `shared` to "fix" that.
+Exception: `shared` module tests (e.g. `OutboxDrainerTest`) deliberately use string literals because that module has no compile dep on the events jars — the tests exercise the publisher mechanism with arbitrary throwaway event-type values, not specific business events. Don't introduce events-jar deps into `shared` to "fix" that.
 
 **Status/state constants follow the same hosting rule as `EVENT_TYPE`.** Aggregate / VO / read-model statuses are wire-format strings stored in the DB and carried on events. Where each constant lives depends on its blast radius:
 
@@ -171,7 +171,7 @@ When an event is appended to the outbox, the `aggregate_type` column (and the ma
 ├── application/                     @Service @Transactional use cases — no business logic
 ├── infrastructure/
 │   ├── persistence/                 JdbcXxxRepository — domain aggregate CRUD
-│   ├── messaging/                   <Service>OutboxConfig — wires OutboxPublisher under @Profile("kafka")
+│   ├── messaging/                   <Service>OutboxConfig — wires OutboxDrainer + OutboxDrainScheduler under @Profile("kafka")
 │   └── saga/                        Jdbc<Flow>SagaAdapter, <Flow>SagaWorker
 └── api/                             @RestController + dto/ records
 ```
@@ -230,11 +230,11 @@ Files to model on: `JdbcProductRepositoryIT` (mutable repo, child collection), `
 
 ## Outbox / Inbox shared module
 
-The `shared` module provides reusable pieces. The module is internally split — ports + DTOs + abstract bases under `com.northwood.shared.application.*`; concrete JDBC + Kafka adapters, Spring `@AutoConfiguration` classes, and the `@Scheduled` publisher under `com.northwood.shared.infrastructure.*`; one REST controller under `com.northwood.shared.api.audit`.
+The `shared` module provides reusable pieces. The module is internally split — ports + DTOs + abstract bases under `com.northwood.shared.application.*`; concrete JDBC + Kafka adapters, Spring `@AutoConfiguration` classes, and the `@Scheduled` outbox-drain trigger under `com.northwood.shared.infrastructure.*`; one REST controller under `com.northwood.shared.api.audit`.
 
 - `OutboxRow` / `OutboxPort`, `InboxRow` / `InboxPort` (`shared.application.outbox/inbox`) — row types and read/write ports.
 - `JdbcOutboxAdapter` / `JdbcInboxAdapter` (`shared.infrastructure.outbox.jdbc` / `inbox.jdbc`) — single shared implementations. SQL references `outbox_message` / `inbox_message` unqualified; per-service `search_path = <service>, shared` resolves to `<service>.<table>`. Auto-registered via `JdbcOutboxAutoConfiguration` / `JdbcInboxAutoConfiguration`.
-- `OutboxPublisher` (`shared.infrastructure.outbox`) — `@Scheduled(fixedDelayString = "${northwood.outbox.poll-interval:1000}")` drainer. Application classes need `@EnableScheduling`. Polling cursor is `sequence_number`, not `created_at`.
+- `OutboxDrainer` (`shared.application.outbox`) — drains pending rows and publishes via `EventPublisher`; pure orchestration over ports, no concrete tech. The `@Scheduled(fixedDelayString = "${northwood.outbox.poll-interval:1000}")` trigger lives on `OutboxDrainScheduler` (`shared.infrastructure.messaging`, beside `KafkaInboxDispatcher`), wired per service under `@Profile("kafka")`; services need `@EnableScheduling`. They stay **two beans** — `drain()`'s `@Transactional` (which holds the `FOR UPDATE SKIP LOCKED` batch lock) only fires when the scheduler calls it cross-bean through the proxy, so merging them silently drops the transaction. Polling cursor is `sequence_number`, not `created_at`.
 - `EventEnvelope` (`shared.application.messaging`) — wire format; maps 1:1 to outbox columns including `correlation_id` / `causation_id`.
 - `EventPublisher` (port, `shared.application.messaging`) + `KafkaEventPublisher` (`shared.infrastructure.messaging.kafka`). Registered by `KafkaMessagingAutoConfiguration` under `@Profile("kafka")`.
 

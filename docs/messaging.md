@@ -50,7 +50,8 @@ What an inbox handler does when it can't find the saga yet (because `SalesOrderP
 ## Producer side
 
 - **One outbox table per service** (`product.outbox_message`, `inventory.outbox_message`, etc.) — atomic with the aggregate write in the same DB transaction.
-- **`OutboxPublisher.drain()`** (`shared.infrastructure.outbox.OutboxPublisher`) — `@Scheduled(fixedDelayString = "${northwood.outbox.poll-interval:1000}")`, single-threaded per service, batch size 100, polls by service-local `sequence_number` (not `created_at` — see schema commentary for why). Synchronous publish per row (`.join()` on each send) — the outbox row only gets marked `published` after Kafka acknowledges. A broker-side failure marks the row `failed`; the next tick retries.
+- **`OutboxDrainer.drain()`** (`shared.application.outbox.OutboxDrainer`; fired by `OutboxDrainScheduler`'s `@Scheduled(fixedDelayString = "${northwood.outbox.poll-interval:1000}")` in `shared.infrastructure.messaging`) — single-threaded per service, batch size 100, polls by service-local `sequence_number` (not `created_at` — see schema commentary for why). Synchronous publish per row (`.join()` on each send) — the outbox row only gets marked `published` after Kafka acknowledges. A broker-side failure marks the row `failed`; the next tick retries.
+- **The drain transaction is load-bearing (and forces the two-bean split).** `OutboxDrainer.drain()` is `@Transactional` so `findPending`'s `FOR UPDATE SKIP LOCKED` locks are held for the whole batch — that's what makes multiple drainer workers safe. The transaction only fires through the Spring proxy, so `OutboxDrainer` must stay a **separate bean** from `OutboxDrainScheduler` (the scheduler's `tick()` → `drain()` is the external proxied call). Merging the two into one bean — or `new`-ing the drainer outside Spring — silently drops the transaction *and* the lock, after which concurrent drains can double-publish. Don't "simplify" the two `@Bean` methods in `<Service>OutboxConfig` into one.
 - **One in-flight publish at a time per service.** Sequence-number cursor strictly increasing. No risk of out-of-order publish from a single service even at high event rates — the bottleneck is the broker, not the outbox.
 
 ### Consequence: cross-aggregate publish order matches outbox cursor order
@@ -97,7 +98,7 @@ This is the audit list for the §2.14 slice. Items 1-2 are concrete bugs in wait
 
 - `shared/.../kafka/KafkaEventPublisher.java` — partition key choice (line 49).
 - `shared/.../kafka/KafkaMessagingAutoConfiguration.java` — error handler + DLT recoverer (line 84).
-- `shared/.../outbox/OutboxPublisher.java` — drain loop, single-threaded, batch 100.
+- `shared/.../application/outbox/OutboxDrainer.java` — drain loop (the `@Scheduled` trigger is `OutboxDrainScheduler` in `shared.infrastructure.messaging`), single-threaded, batch 100.
 - `shared/.../saga/SagaManager.java` + `SagaPort.java` — claim-and-lease + optimistic concurrency.
 - `docker-compose.yml:38-79` — Kafka KRaft single-broker setup, replication-factor-1 overrides.
 - `dev-todo.md` §2.14 — pre-declare topics with configurable partition counts (with this doc's audit items as scope).

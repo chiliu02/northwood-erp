@@ -1,8 +1,7 @@
-package com.northwood.shared.infrastructure.outbox;
+package com.northwood.shared.application.outbox;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -10,8 +9,6 @@ import static org.mockito.Mockito.when;
 
 import com.northwood.shared.application.messaging.EventEnvelope;
 import com.northwood.shared.application.messaging.EventPublisher;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,7 +21,7 @@ import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * Unit tests for {@link OutboxPublisher}. The drain method is the only
+ * Unit tests for {@link OutboxDrainer}. The drain method is the only
  * @Transactional method; coverage exercises:
  *
  * <ul>
@@ -33,20 +30,20 @@ import org.mockito.junit.jupiter.MockitoExtension;
  *   <li>partial failure → failed row marked failed (with error), siblings
  *       still drain successfully.</li>
  *   <li>{@code source-service} header stamped on the envelope from the
- *       publisher's {@code serviceName}.</li>
+ *       drainer's {@code serviceName}.</li>
  * </ul>
  */
 @ExtendWith(MockitoExtension.class)
-class OutboxPublisherTest {
+class OutboxDrainerTest {
 
     @Mock OutboxPort outbox;
     @Mock EventPublisher bus;
 
-    private OutboxPublisher publisher;
+    private OutboxDrainer drainer;
 
     @BeforeEach
     void setUp() {
-        publisher = new OutboxPublisher(outbox, bus, "sales");
+        drainer = new OutboxDrainer(outbox, bus, "sales");
     }
 
     private static OutboxRow pendingRow(String eventType) {
@@ -59,7 +56,7 @@ class OutboxPublisherTest {
     @Test void drain_no_pending_rows_publishes_nothing() {
         when(outbox.findPending(Mockito.anyInt())).thenReturn(List.of());
 
-        publisher.drain();
+        drainer.drain();
 
         verify(bus, never()).publish(any());
         verify(outbox, never()).save(any());
@@ -70,7 +67,7 @@ class OutboxPublisherTest {
         OutboxRow r2 = pendingRow("sales.StockReservationRequested");
         when(outbox.findPending(Mockito.anyInt())).thenReturn(List.of(r1, r2));
 
-        publisher.drain();
+        drainer.drain();
 
         ArgumentCaptor<EventEnvelope> envCap = ArgumentCaptor.forClass(EventEnvelope.class);
         verify(bus, times(2)).publish(envCap.capture());
@@ -102,7 +99,7 @@ class OutboxPublisherTest {
             return null;
         }).when(bus).publish(any());
 
-        publisher.drain();
+        drainer.drain();
 
         assertThat(r1.getStatus()).isEqualTo("published");
         assertThat(r2.getStatus()).isEqualTo("failed");
@@ -117,11 +114,11 @@ class OutboxPublisherTest {
     }
 
     @Test void drain_uses_service_name_in_envelope_header() {
-        publisher = new OutboxPublisher(outbox, bus, "purchasing");
+        drainer = new OutboxDrainer(outbox, bus, "purchasing");
         OutboxRow row = pendingRow("purchasing.PurchaseOrderCreated");
         when(outbox.findPending(Mockito.anyInt())).thenReturn(List.of(row));
 
-        publisher.drain();
+        drainer.drain();
 
         ArgumentCaptor<EventEnvelope> cap = ArgumentCaptor.forClass(EventEnvelope.class);
         verify(bus).publish(cap.capture());

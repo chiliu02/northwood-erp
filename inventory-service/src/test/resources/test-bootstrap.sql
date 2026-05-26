@@ -95,7 +95,7 @@ CREATE TABLE inventory.stock_balance (
 );
 
 -- Outbox table is empty in this test (the seam exercises the inbox path), but
--- the @KafkaProfile-gated OutboxPublisher's @Scheduled drainer fires every
+-- the @KafkaProfile-gated OutboxDrainScheduler's @Scheduled drainer fires every
 -- second once Spring starts and queries this table. Without the table the
 -- drainer logs an alarming "relation inventory.outbox_message does not exist"
 -- stack trace each tick — test still passes because Spring's scheduler

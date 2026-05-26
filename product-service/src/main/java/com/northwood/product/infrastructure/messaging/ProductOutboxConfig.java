@@ -1,14 +1,15 @@
 package com.northwood.product.infrastructure.messaging;
 
 import com.northwood.shared.application.messaging.EventPublisher;
-import com.northwood.shared.infrastructure.outbox.OutboxPublisher;
+import com.northwood.shared.application.outbox.OutboxDrainer;
+import com.northwood.shared.infrastructure.messaging.OutboxDrainScheduler;
 import com.northwood.shared.application.outbox.OutboxPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
 /**
- * Wires the per-service {@link OutboxPublisher} for product-service. Active
+ * Wires the per-service {@link OutboxDrainer} for product-service. Active
  * only under {@code @Profile("kafka")}: under the default {@code dev} profile
  * we deliberately do not drain the outbox — there is no consumer side, so
  * letting events accumulate in {@code product.outbox_message} is the correct
@@ -21,11 +22,18 @@ public class ProductOutboxConfig {
 
     private static final String SERVICE_NAME = "product";
 
+    // Two beans, not one: merging silently drops drain()'s @Transactional + the
+    // FOR UPDATE SKIP LOCKED batch lock. See OutboxDrainScheduler.
     @Bean
-    public OutboxPublisher productOutboxPublisher(
+    public OutboxDrainer productOutboxDrainer(
         OutboxPort outboxPort,
         EventPublisher eventPublisher
     ) {
-        return new OutboxPublisher(outboxPort, eventPublisher, SERVICE_NAME);
+        return new OutboxDrainer(outboxPort, eventPublisher, SERVICE_NAME);
+    }
+
+    @Bean
+    public OutboxDrainScheduler productOutboxDrainScheduler(OutboxDrainer drainer) {
+        return new OutboxDrainScheduler(drainer);
     }
 }

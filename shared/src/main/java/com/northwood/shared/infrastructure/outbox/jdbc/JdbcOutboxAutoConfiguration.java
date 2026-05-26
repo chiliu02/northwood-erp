@@ -21,7 +21,7 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Inbox-only services (reporting-service today) get the bean too but never
  * use it — there is no {@code <Service>OutboxConfig} registering an
- * {@link OutboxPublisher}, so the adapter is never polled.
+ * {@code OutboxDrainer} + scheduler, so the adapter is never polled.
  */
 @AutoConfiguration
 public class JdbcOutboxAutoConfiguration {

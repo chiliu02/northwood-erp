@@ -69,7 +69,7 @@ Assuming a genuine total mandate, here is what happens.
    outbox, or accept dual-write risk. This is `docs/messaging.md`-level, not adapter-level.
    And the polled drain itself — `SELECT … WHERE status='pending' ORDER BY sequence LIMIT 100 FOR
    UPDATE SKIP LOCKED` — is an `ALLOW FILTERING` full-cluster scan in Cassandra (the canonical
-   anti-pattern), so `OutboxPublisher` / `OutboxPort` / `JdbcOutboxAdapter` are rewritten regardless
+   anti-pattern), so `OutboxDrainer` / `OutboxPort` / `JdbcOutboxAdapter` are rewritten regardless
    of which dual-write fix you pick.
 
 2. **Pessimistic claim via `FOR UPDATE SKIP LOCKED`.** Used in `JdbcOutboxAdapter` and all three
@@ -241,12 +241,12 @@ does make the outbox redundant.
 
 ### Why it's a bad trade here — what the outbox buys that XA destroys
 
-1. **Temporal decoupling / availability — the big one.** `OutboxPublisher.drain()` runs on a
+1. **Temporal decoupling / availability — the big one.** `OutboxDrainer.drain()` runs on a
    `@Scheduled` poll in a transaction *entirely separate* from the business write. The business
    transaction (`JdbcSalesOrderRepository.save()` → insert header + lines + outbox row, one local
    commit) succeeds **regardless of broker health**. If the bus is down, `bus.publish()` throws, the
    row is marked `failed`, and *"failed rows pick up on the next tick if/when the publisher
-   recovers"* (`OutboxPublisher` lines 72-79). XA inverts this: both resources must be live at commit
+   recovers"* (`OutboxDrainer` lines 72-79). XA inverts this: both resources must be live at commit
    time, so **broker down = your business write rolls back**. Order placement becomes hostage to
    message-broker uptime.
 
@@ -341,7 +341,7 @@ application-layer code.
 
 ### The RabbitMQ-specific gotcha sharper than JMS: publisher confirms
 
-Outbox correctness depends on `OutboxPublisher.drain()` marking a row `published` **only after**
+Outbox correctness depends on `OutboxDrainer.drain()` marking a row `published` **only after**
 `bus.publish()` returns successfully (lines 69-71). `KafkaEventPublisher` earns that with a
 synchronous `kafkaTemplate.send(...).join()`. RabbitMQ's default publish is **fire-and-forget** —
 `rabbitTemplate.convertAndSend(...)` returns before the broker has durably accepted anything. Ported
@@ -380,7 +380,7 @@ shape, not runtime guarantees.**
 
 ### Publish durability — yes, and it barely needs a refactor
 
-Not actually an application leak. `OutboxPublisher.drain()` already depends only on the existing
+Not actually an application leak. `OutboxDrainer.drain()` already depends only on the existing
 `EventPublisher` port: it calls `bus.publish(envelope)` and treats a thrown exception as "mark
 failed, retry next tick." The durability requirement is a **contract on a port that already exists**,
 not a missing interface. The fix:
@@ -409,7 +409,7 @@ honor it*. The obligation moved; it didn't disappear. Brittle for "swap to anyth
 
 **Route B — delete the assumption (recommended).** Make the order-dependent read models
 order-*insensitive*, so the application depends on no delivery guarantee and every broker becomes a
-truly infrastructure-only swap. The codebase already has the ingredient: `OutboxPublisher` maintains a
+truly infrastructure-only swap. The codebase already has the ingredient: `OutboxDrainer` maintains a
 monotonic per-service `sequence_number` (its polling cursor — *"never `created_at`"*). It just isn't
 propagated — `EventEnvelope` carries `occurredAt` but no sequence. So:
 

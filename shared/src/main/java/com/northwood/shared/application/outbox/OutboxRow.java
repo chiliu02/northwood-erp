@@ -20,7 +20,7 @@ public final class OutboxRow {
     // ------------------------------------------------------------
     // Status constants — wire-format strings stored in
     // <service>.outbox_message.status. Lifecycle: pending → published
-    // (drained by OutboxPublisher) or pending → failed (publisher error
+    // (drained by OutboxDrainer) or pending → failed (publisher error
     // with retry metadata; failed rows are picked up again next tick).
     // ------------------------------------------------------------
     public static final String PENDING = "pending";
