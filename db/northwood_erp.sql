@@ -828,6 +828,37 @@ CREATE TABLE inventory.goods_receipt_line (
 
 CREATE INDEX idx_goods_receipt_header_po_id ON inventory.goods_receipt_header(purchase_order_header_id);
 
+-- Stock adjustments: a warehouse operator's manual inventory gain/loss
+-- (cycle-count correction, damage, shrinkage, demo setup). Post-only header,
+-- single product per adjustment. The signed change is recorded as a positive
+-- magnitude + a direction; on_hand is derived from the resulting stock_movement
+-- (never set directly), and the adjustment emits inventory.StockAdjusted so
+-- finance posts the corresponding GL entry. §2.29.
+CREATE TABLE inventory.stock_adjustment (
+    stock_adjustment_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
+    adjustment_number VARCHAR(50) NOT NULL UNIQUE,
+    warehouse_id UUID NOT NULL REFERENCES inventory.warehouse(warehouse_id),
+    product_id UUID NOT NULL,
+    product_sku VARCHAR(50) NOT NULL,
+    product_name VARCHAR(200) NOT NULL,
+    direction VARCHAR(10) NOT NULL CHECK (direction IN ('in', 'out')),
+    quantity NUMERIC(18, 4) NOT NULL CHECK (quantity > 0),
+    reason VARCHAR(500) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'posted' CHECK (status IN ('draft', 'posted', 'reversed')),
+    version BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    posted_at TIMESTAMPTZ,
+    created_by VARCHAR(64),
+    last_modified_by VARCHAR(64)
+);
+
+CREATE INDEX idx_stock_adjustment_product_id ON inventory.stock_adjustment(product_id);
+
+CREATE TRIGGER trg_stock_adjustment_updated_at
+    BEFORE UPDATE ON inventory.stock_adjustment
+    FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
+
 CREATE TABLE inventory.shipment_header (
     shipment_header_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     shipment_number VARCHAR(50) NOT NULL UNIQUE,

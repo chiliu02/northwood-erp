@@ -19,9 +19,7 @@ public enum StockMovementType {
     /** Schema-prep — not currently produced by Java. */
     MATERIAL_ISSUE("material_issue"),
     FINISHED_GOODS_RECEIPT("finished_goods_receipt"),
-    /** Schema-prep — not currently produced by Java. */
     STOCK_ADJUSTMENT_IN("stock_adjustment_in"),
-    /** Schema-prep — not currently produced by Java. */
     STOCK_ADJUSTMENT_OUT("stock_adjustment_out"),
     /** Schema-prep — not currently produced by Java. */
     RESERVATION_RELEASE("reservation_release");

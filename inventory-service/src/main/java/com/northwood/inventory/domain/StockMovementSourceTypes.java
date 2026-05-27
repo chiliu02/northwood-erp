@@ -15,21 +15,21 @@ package com.northwood.inventory.domain;
  * conventions, two different domains.
  *
  * <p>No schema CHECK — the column is free-form text. The producer side is
- * the three call sites: {@code GoodsReceiptService},
- * {@code ShipmentService}, and {@code WorkOrderManufacturingCompletedHandler}.
- * Constants here pin those values so Find Usages on each name surfaces every
- * write site.
+ * the four call sites: {@code GoodsReceiptService}, {@code ShipmentService},
+ * {@code WorkOrderManufacturingCompletedHandler}, and
+ * {@code StockAdjustmentService}. Constants here pin those values so Find
+ * Usages on each name surfaces every write site.
  *
  * <p>Constants holder (not an enum) because the {@code source_type} domain
- * is open: a future stock-adjustment slice may add {@code "manual"} or a
- * specific approver-identity flavour, and the audit list tolerates that
- * without a producer-side enum migration.
+ * is open: a future flavour (e.g. a specific approver-identity source) can be
+ * added without a producer-side enum migration.
  */
 public final class StockMovementSourceTypes {
 
     public static final String GOODS_RECEIPT = "goods_receipt";
     public static final String SHIPMENT = "shipment";
     public static final String WORK_ORDER = "work_order";
+    public static final String STOCK_ADJUSTMENT = "stock_adjustment";
 
     private StockMovementSourceTypes() {}
 }

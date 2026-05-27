@@ -19,6 +19,17 @@ public interface StockBalanceWriter {
     void bump(UUID warehouseId, UUID productId, BigDecimal quantity);
 
     /**
+     * Subtract {@code quantity} from {@code on_hand_quantity} <em>only</em> if
+     * the result stays at or above the currently-reserved amount (which also
+     * keeps it non-negative). Unlike {@link #decrementOnHandAndReleaseReserved},
+     * this leaves {@code reserved_quantity} untouched — a stock adjustment is
+     * not a shipment and must not release reservations. Returns {@code true}
+     * when applied, {@code false} when the row is missing or the decrement
+     * would breach {@code on_hand >= reserved} (caller maps that to a 400/409).
+     */
+    boolean decrementOnHand(UUID warehouseId, UUID productId, BigDecimal quantity);
+
+    /**
      * Apply a shipment-side decrement: drop {@code on_hand_quantity} by
      * {@code shippedQty} AND release {@code reserved_quantity} up to the
      * same amount (capped at the current reserved). Both deltas land in

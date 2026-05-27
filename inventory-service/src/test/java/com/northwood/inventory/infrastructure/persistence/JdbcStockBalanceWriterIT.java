@@ -3,9 +3,11 @@ package com.northwood.inventory.infrastructure.persistence;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.northwood.inventory.application.dto.StockBalanceView;
 import com.zaxxer.hikari.HikariDataSource;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.util.Optional;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,6 +60,7 @@ class JdbcStockBalanceWriterIT {
     private static JdbcTemplate JDBC;
     private static TransactionTemplate TX;
     private static JdbcStockBalanceWriter WRITER;
+    private static JdbcStockBalanceLookup LOOKUP;
 
     @BeforeAll
     static void bootContainerAndSchema() {
@@ -72,6 +75,7 @@ class JdbcStockBalanceWriterIT {
         PlatformTransactionManager txm = new DataSourceTransactionManager(DATA_SOURCE);
         TX = new TransactionTemplate(txm);
         WRITER = new JdbcStockBalanceWriter(JDBC);
+        LOOKUP = new JdbcStockBalanceLookup(JDBC);
     }
 
     private static void loadBaseline() {
@@ -226,5 +230,59 @@ class JdbcStockBalanceWriterIT {
         long v2 = read().version();
 
         assertThat(v2).isEqualTo(v1 + 1);
+    }
+
+    // ------------------------------------------------------------------
+    // §2.29 stock-adjustment additions: decrementOnHand + findBalance
+    // ------------------------------------------------------------------
+
+    @Test
+    void decrementOnHand_subtracts_on_hand_and_leaves_reserved_untouched() {
+        TX.executeWithoutResult(s -> WRITER.bump(SEED_WAREHOUSE_ID, productId, new BigDecimal("10")));
+        TX.executeWithoutResult(s -> WRITER.tryReserveOnHand(SEED_WAREHOUSE_ID, productId, new BigDecimal("4")));
+
+        Boolean ok = TX.execute(s -> WRITER.decrementOnHand(SEED_WAREHOUSE_ID, productId, new BigDecimal("3")));
+
+        assertThat(ok).isTrue();
+        Balance b = read();
+        assertThat(b.onHand()).isEqualByComparingTo("7");
+        assertThat(b.reserved()).isEqualByComparingTo("4"); // reserved NOT released by an adjustment
+    }
+
+    @Test
+    void decrementOnHand_returns_false_when_it_would_breach_reserved() {
+        TX.executeWithoutResult(s -> WRITER.bump(SEED_WAREHOUSE_ID, productId, new BigDecimal("10")));
+        TX.executeWithoutResult(s -> WRITER.tryReserveOnHand(SEED_WAREHOUSE_ID, productId, new BigDecimal("4")));
+
+        // 10 - 7 = 3 < reserved 4 → guard fails, no row updated, no CHECK violation.
+        Boolean ok = TX.execute(s -> WRITER.decrementOnHand(SEED_WAREHOUSE_ID, productId, new BigDecimal("7")));
+
+        assertThat(ok).isFalse();
+        Balance b = read();
+        assertThat(b.onHand()).isEqualByComparingTo("10"); // unchanged
+        assertThat(b.reserved()).isEqualByComparingTo("4");
+    }
+
+    @Test
+    void decrementOnHand_returns_false_when_row_missing() {
+        Boolean ok = TX.execute(s -> WRITER.decrementOnHand(SEED_WAREHOUSE_ID, productId, new BigDecimal("1")));
+        assertThat(ok).isFalse();
+    }
+
+    @Test
+    void findBalance_returns_on_hand_reserved_available_triple() {
+        TX.executeWithoutResult(s -> WRITER.bump(SEED_WAREHOUSE_ID, productId, new BigDecimal("10")));
+        TX.executeWithoutResult(s -> WRITER.tryReserveOnHand(SEED_WAREHOUSE_ID, productId, new BigDecimal("3")));
+
+        StockBalanceView v = LOOKUP.findBalance(SEED_WAREHOUSE_ID, productId).orElseThrow();
+        assertThat(v.onHand()).isEqualByComparingTo("10");
+        assertThat(v.reserved()).isEqualByComparingTo("3");
+        assertThat(v.available()).isEqualByComparingTo("7");
+    }
+
+    @Test
+    void findBalance_is_empty_when_no_row() {
+        Optional<StockBalanceView> v = LOOKUP.findBalance(SEED_WAREHOUSE_ID, productId);
+        assertThat(v).isEmpty();
     }
 }

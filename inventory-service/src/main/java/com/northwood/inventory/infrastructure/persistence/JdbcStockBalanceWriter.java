@@ -57,6 +57,28 @@ public class JdbcStockBalanceWriter implements StockBalanceWriter {
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
+    public boolean decrementOnHand(UUID warehouseId, UUID productId, BigDecimal quantity) {
+        if (quantity == null || quantity.signum() <= 0) {
+            return false;
+        }
+        // Guard: on_hand - q must stay >= reserved (which, since reserved >= 0,
+        // also keeps on_hand >= 0). Both stock_balance CHECKs are respected, so
+        // the UPDATE can never raise a constraint violation — a would-be breach
+        // simply affects zero rows and we return false. reserved is left alone.
+        int rows = jdbc.update("""
+            UPDATE inventory.stock_balance
+               SET on_hand_quantity = on_hand_quantity - ?,
+                   version = version + 1
+             WHERE warehouse_id = ? AND product_id = ?
+               AND on_hand_quantity - ? >= reserved_quantity
+            """,
+            quantity, warehouseId, productId, quantity
+        );
+        return rows > 0;
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
     public boolean tryReserveOnHand(UUID warehouseId, UUID productId, BigDecimal quantity) {
         if (quantity == null || quantity.signum() <= 0) {
             return false;
