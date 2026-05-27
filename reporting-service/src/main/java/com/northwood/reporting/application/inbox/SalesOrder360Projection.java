@@ -33,10 +33,20 @@ public interface SalesOrder360Projection {
     void recordManufacturingCompleted(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
 
     /**
+     * Record the inventory reservation outcome for the order: set
+     * {@code stock_status} to {@code stockStatus} ({@code reserved} /
+     * {@code partially_reserved} / {@code failed}). A full {@code 'reserved'}
+     * is sticky — never rolled back by a later partial/stale event. Idempotent.
+     */
+    void recordStockReserved(UUID salesOrderHeaderId, String stockStatus, Instant occurredAt, String actorUserId);
+
+    /**
      * Record that the sales fulfilment saga has reached {@code ready_to_ship}
      * (every line reserved from stock or produced): advance {@code order_status}
      * to {@code 'ready_to_ship'} so the shipment UI's order picker surfaces it.
-     * Never downgrades a terminal {@code 'cancelled'}. Idempotent.
+     * Also marks {@code manufacturing_status='not_required'} when it is still
+     * {@code 'pending'} (a stock-covered order skipped manufacturing). Never
+     * downgrades a terminal {@code 'cancelled'}. Idempotent.
      */
     void recordReadyToShip(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
 

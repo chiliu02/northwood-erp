@@ -22,7 +22,8 @@ northwood:
     #   SalesOrderReadyToShip (sales 360 order_status → ready_to_ship; the
     #   shipment picker's filter) and SalesOrderCompensated (order_status →
     #   cancelled).
-    # - inventory.events     for ShipmentPosted (sales 360 shipment_status) +
+    # - inventory.events     for ShipmentPosted (sales 360 shipment_status),
+    #   StockReserved (sales 360 stock_status + ATP reserved-for-sales) and
     #   GoodsReceived (po_tracking received_amount + receipt_status).
     # - manufacturing.events for WorkOrderManufacturingCompleted
     #   (sales 360 manufacturing_status).

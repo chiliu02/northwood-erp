@@ -3,6 +3,7 @@ package com.northwood.reporting.infrastructure.persistence;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
+import com.northwood.inventory.domain.events.StockReserved;
 import com.zaxxer.hikari.HikariDataSource;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -138,6 +139,42 @@ class JdbcSalesOrder360ProjectionIT {
         assertThat(orderStatus(id)).isEqualTo("cancelled");
     }
 
+    @Test
+    void stock_status_records_outcome_and_full_reservation_is_sticky() {
+        UUID id = UUID.randomUUID();
+        createOrder(id);
+        assertThat(stockStatus(id)).isEqualTo("pending");
+
+        PROJECTION.recordStockReserved(id, StockReserved.STATUS_PARTIALLY_RESERVED, Instant.now(), "system");
+        assertThat(stockStatus(id)).isEqualTo("partially_reserved");
+
+        // A later full reservation advances it; then a stale partial must not roll it back.
+        PROJECTION.recordStockReserved(id, StockReserved.STATUS_RESERVED, Instant.now(), "system");
+        assertThat(stockStatus(id)).isEqualTo("reserved");
+        PROJECTION.recordStockReserved(id, StockReserved.STATUS_PARTIALLY_RESERVED, Instant.now(), "system");
+        assertThat(stockStatus(id)).isEqualTo("reserved");
+    }
+
+    @Test
+    void stock_only_order_marks_manufacturing_not_required() {
+        UUID id = UUID.randomUUID();
+        createOrder(id);
+        // No manufacturing event; reaching ready_to_ship implies stock-only.
+        PROJECTION.recordReadyToShip(id, Instant.now(), "system");
+        assertThat(manufacturingStatus(id)).isEqualTo("not_required");
+    }
+
+    @Test
+    void make_to_order_keeps_manufacturing_completed_through_ready_to_ship() {
+        UUID id = UUID.randomUUID();
+        createOrder(id);
+        PROJECTION.recordManufacturingCompleted(id, Instant.now(), "linda");
+        assertThat(manufacturingStatus(id)).isEqualTo("completed");
+
+        PROJECTION.recordReadyToShip(id, Instant.now(), "system");
+        assertThat(manufacturingStatus(id)).isEqualTo("completed");
+    }
+
     private void createOrder(UUID id) {
         PROJECTION.createFromOrder(
             id, "SO-360-LIFECYCLE", UUID.randomUUID(), "Sydney Home Living",
@@ -148,6 +185,18 @@ class JdbcSalesOrder360ProjectionIT {
     private String orderStatus(UUID id) {
         return JDBC.queryForObject(
             "SELECT order_status FROM reporting.sales_order_360_view WHERE sales_order_header_id = ?",
+            String.class, id);
+    }
+
+    private String stockStatus(UUID id) {
+        return JDBC.queryForObject(
+            "SELECT stock_status FROM reporting.sales_order_360_view WHERE sales_order_header_id = ?",
+            String.class, id);
+    }
+
+    private String manufacturingStatus(UUID id) {
+        return JDBC.queryForObject(
+            "SELECT manufacturing_status FROM reporting.sales_order_360_view WHERE sales_order_header_id = ?",
             String.class, id);
     }
 }
