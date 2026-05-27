@@ -14,6 +14,7 @@ import type {
   PurchaseRequisitionView,
   SalesOrder360,
   SalesOrderView,
+  StockBalanceRow,
   StockItemRow,
   SupplierInvoiceView,
   SupplierPriceView,
@@ -63,6 +64,8 @@ export const fetchMaterialShortages = (includeResolved = false): Promise<Materia
 // Owning-service catalogs
 export const fetchProducts   = (): Promise<ProductRow[]>   => getJson("/api/products");
 export const fetchStockItems = (): Promise<StockItemRow[]> => getJson("/api/stock-items");
+export const fetchStockBalance = (productId: string, warehouseCode: string): Promise<StockBalanceRow> =>
+  getJson(`/api/stock-adjustments/balance?productId=${productId}&warehouseCode=${encodeURIComponent(warehouseCode)}`);
 export const fetchSuppliers  = (): Promise<SupplierView[]> => getJson("/api/suppliers");
 export const fetchBomTree    = (productId: string): Promise<BomTree> =>
   getJson(`/api/boms/by-product/${productId}`);

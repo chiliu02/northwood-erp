@@ -1,6 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { SlidersHorizontal } from "lucide-react";
 import { apiGet } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { ActionButton } from "@/components/ui/ActionButton";
 import { DataGrid, type Column } from "@/components/ui/DataGrid";
 
 interface StockItem {
@@ -22,6 +25,7 @@ interface StockItem {
  * are edited via Product Detail.
  */
 export function StockItems() {
+  const navigate = useNavigate();
   const { data, isLoading, error } = useQuery({
     queryKey: ["stock-items"],
     queryFn: () => apiGet<StockItem[]>("/api/stock-items"),
@@ -79,6 +83,16 @@ export function StockItems() {
           { label: "Inventory" },
           { label: "Stock Balances" },
         ]}
+        actions={
+          <ActionButton
+            variant="primary"
+            icon={<SlidersHorizontal className="h-4 w-4" />}
+            requiresRole="warehouse_manager"
+            onClick={() => navigate("/stock-adjustments/new")}
+          >
+            Adjust stock
+          </ActionButton>
+        }
       />
 
       <div className="px-8 py-6">

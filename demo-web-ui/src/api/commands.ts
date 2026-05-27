@@ -6,6 +6,7 @@
 
 import type {
   PlaceOrderRequest,
+  AdjustStockRequest,
   PostGoodsReceiptRequest,
   PostShipmentRequest,
   RecordSupplierInvoiceRequest,
@@ -67,6 +68,9 @@ export const placeSalesOrder = (req: PlaceOrderRequest) =>
 
 export const postGoodsReceipt = (req: PostGoodsReceiptRequest) =>
   postJson<{ id: string }>("/api/goods-receipts", req);
+
+export const adjustStock = (req: AdjustStockRequest) =>
+  postJson<{ id: string }>("/api/stock-adjustments", req);
 
 export const postShipment = (req: PostShipmentRequest) =>
   postJson<{ id: string }>("/api/shipments", req);

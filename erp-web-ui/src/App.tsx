@@ -27,6 +27,7 @@ import { SupplierPrices } from "./routes/purchasing/SupplierPrices";
 import { Suppliers } from "./routes/purchasing/Suppliers";
 import { PurchaseRequisitionNew } from "./routes/purchasing/PurchaseRequisitionNew";
 import { StockItems } from "./routes/inventory/StockItems";
+import { StockAdjustmentNew } from "./routes/inventory/StockAdjustmentNew";
 import { StockReservations } from "./routes/inventory/StockReservations";
 import { GoodsReceipts } from "./routes/inventory/GoodsReceipts";
 import { GoodsReceiptNew } from "./routes/inventory/GoodsReceiptNew";
@@ -81,6 +82,7 @@ export function App() {
 
         {/* ---- Inventory ---- */}
         <Route path="/stock-items"          element={<StockItems />} />
+        <Route path="/stock-adjustments/new" element={<StockAdjustmentNew />} />
         <Route path="/stock-reservations"   element={<StockReservations />} />
         <Route path="/goods-receipts"       element={<GoodsReceipts />} />
         <Route path="/goods-receipts/new"   element={<GoodsReceiptNew />} />

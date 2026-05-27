@@ -51,6 +51,7 @@ public class RouteTable {
         // Inventory writes
         new Route("/api/goods-receipts",      "inventory",     null),
         new Route("/api/shipments",           "inventory",     null),
+        new Route("/api/stock-adjustments",   "inventory",     null),
 
         // Finance writes + reads
         new Route("/api/customer-invoices",   "finance",       null),

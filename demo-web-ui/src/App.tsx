@@ -11,6 +11,7 @@ import { Products } from "./routes/Products";
 import { SagaConsole } from "./routes/SagaConsole";
 import { PlaceOrder } from "./routes/PlaceOrder";
 import { GoodsReceipts } from "./routes/GoodsReceipts";
+import { StockAdjustments } from "./routes/StockAdjustments";
 import { Shipments } from "./routes/Shipments";
 import { SupplierInvoices } from "./routes/SupplierInvoices";
 import { Payments } from "./routes/Payments";
@@ -44,6 +45,7 @@ export function App() {
         {/* Phase 4 — write paths */}
         <Route path="/sales-orders/new"   element={<PlaceOrder />} />
         <Route path="/goods-receipts"     element={<GoodsReceipts />} />
+        <Route path="/stock-adjustments"  element={<StockAdjustments />} />
         <Route path="/shipments"          element={<Shipments />} />
         <Route path="/supplier-invoices"  element={<SupplierInvoices />} />
         <Route path="/payments"           element={<Payments />} />

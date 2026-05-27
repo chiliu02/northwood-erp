@@ -18,6 +18,17 @@ export interface PlaceOrderLine {
   taxRate?: string;
 }
 
+export interface AdjustStockRequest {
+  adjustmentNumber: string;
+  productId: string;
+  productSku: string;
+  productName: string;
+  warehouseCode: string;
+  mode: "DELTA" | "SET";
+  value: string;
+  reason: string;
+}
+
 export interface PostGoodsReceiptRequest {
   goodsReceiptNumber: string;
   purchaseOrderHeaderId: string;

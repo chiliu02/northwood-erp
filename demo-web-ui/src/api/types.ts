@@ -160,6 +160,14 @@ export interface StockItemRow {
   version: number;
 }
 
+export interface StockBalanceRow {
+  warehouseId: string;
+  productId: string;
+  onHand: string;
+  reserved: string;
+  available: string;
+}
+
 // Purchasing — purchase-order detail (header + lines), from purchasing-service GET /{id}.
 
 export interface PurchaseOrderLineView {
