@@ -312,4 +312,53 @@ class JournalEntryServicePostingsTest {
             verify(journals, never()).save(any());
         }
     }
+
+    @Nested
+    class StockAdjustmentPosting {
+
+        @Test void gain_posts_dr_inventory_cr_inventory_adjustment() {
+            when(productCards.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of(ValuationClass.RAW_MATERIALS));
+
+            service.postStockAdjustment(
+                UUID.randomUUID(), "ADJ-001", PRODUCT_RM,
+                new BigDecimal("50.00"), true, Currencies.AUD, POSTING_DATE);
+
+            JournalEntry entry = capturedSave();
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.STOCK_ADJUSTMENT);
+            assertThat(debitFor(entry, "1210")).isEqualByComparingTo("50.00");   // gain Dr's RM inventory
+            assertThat(creditFor(entry, "5400")).isEqualByComparingTo("50.00");  // Cr Inventory Adjustment
+        }
+
+        @Test void loss_posts_dr_inventory_adjustment_cr_inventory() {
+            when(productCards.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of(ValuationClass.FINISHED_GOODS));
+
+            service.postStockAdjustment(
+                UUID.randomUUID(), "ADJ-002", PRODUCT_FG,
+                new BigDecimal("30.00"), false, Currencies.AUD, POSTING_DATE);
+
+            JournalEntry entry = capturedSave();
+            assertThat(debitFor(entry, "5400")).isEqualByComparingTo("30.00");   // loss Dr's Inventory Adjustment
+            assertThat(creditFor(entry, "1220")).isEqualByComparingTo("30.00");  // Cr FG inventory
+        }
+
+        @Test void unclassified_product_falls_back_to_generic_inventory_1200() {
+            when(productCards.findValuationClass(PRODUCT_UNCLASSIFIED)).thenReturn(Optional.empty());
+
+            service.postStockAdjustment(
+                UUID.randomUUID(), "ADJ-003", PRODUCT_UNCLASSIFIED,
+                new BigDecimal("20.00"), true, Currencies.AUD, POSTING_DATE);
+
+            JournalEntry entry = capturedSave();
+            assertThat(debitFor(entry, "1200")).isEqualByComparingTo("20.00");
+            assertThat(creditFor(entry, "5400")).isEqualByComparingTo("20.00");
+        }
+
+        @Test void zero_amount_skips_save_entirely() {
+            service.postStockAdjustment(
+                UUID.randomUUID(), "ADJ-ZERO", PRODUCT_RM,
+                BigDecimal.ZERO, true, Currencies.AUD, POSTING_DATE);
+
+            verify(journals, never()).save(any());
+        }
+    }
 }

@@ -54,5 +54,8 @@ final class FinanceAccountCodes {
     /** 5200 — Raw Materials COGS; per-class breakdown of {@link #COGS}. */
     static final String MATERIALS_COGS = "5200";
 
+    /** 5400 — Inventory Adjustment; the gain/loss offset for manual stock adjustments (§2.29). */
+    static final String INVENTORY_ADJUSTMENT = "5400";
+
     private FinanceAccountCodes() {}
 }

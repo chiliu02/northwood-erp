@@ -102,6 +102,7 @@ public final class JournalEntry {
         CUSTOMER_PAYMENT("customer_payment"),
         GOODS_RECEIPT("goods_receipt"),
         SHIPMENT_COST("shipment_cost"),
+        STOCK_ADJUSTMENT("stock_adjustment"),
         JOURNAL_REVERSAL("journal_reversal");
 
         private final String dbValue;

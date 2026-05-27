@@ -285,6 +285,50 @@ public class JournalEntryService {
         );
     }
 
+    /**
+     * Stock adjustment → an inventory gain or loss against 5400 Inventory
+     * Adjustment, valued at the product's standard cost ({@code amount} is the
+     * positive valued magnitude, computed by the caller). A {@code gain}
+     * (on-hand increased) Dr's the product's inventory account (1210/1220 via
+     * valuation class) / Cr's 5400; a loss Dr's 5400 / Cr's the inventory
+     * account. Mirrors the perpetual-inventory goods-receipt / shipment
+     * postings — an inventory value change is never off-book (§2.29).
+     */
+    @Transactional
+    public void postStockAdjustment(
+        UUID stockAdjustmentId,
+        String adjustmentNumber,
+        UUID productId,
+        BigDecimal amount,
+        boolean gain,
+        String currencyCode,
+        LocalDate postingDate
+    ) {
+        if (amount == null || amount.signum() <= 0) {
+            log.debug("skip GL post for stock adjustment {} — amount {} is zero/negative",
+                adjustmentNumber, amount);
+            return;
+        }
+        String inventoryAccount = inventoryAccountForProduct(productId);
+        String debitAccount = gain ? inventoryAccount : FinanceAccountCodes.INVENTORY_ADJUSTMENT;
+        String creditAccount = gain ? FinanceAccountCodes.INVENTORY_ADJUSTMENT : inventoryAccount;
+        post(
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
+            postingDate,
+            JournalEntry.SourceModule.FINANCE,
+            JournalEntry.SourceDocumentType.STOCK_ADJUSTMENT,
+            stockAdjustmentId,
+            "Stock adjustment " + adjustmentNumber + (gain ? " — inventory gain" : " — inventory loss/shrinkage"),
+            currencyCode,
+            debitAccount,
+            gain ? "Inventory gain via " + adjustmentNumber : "Inventory write-down via " + adjustmentNumber,
+            creditAccount,
+            gain ? "Adjustment offset for " + adjustmentNumber : "Stock removed via " + adjustmentNumber,
+            amount,
+            postingDate
+        );
+    }
+
     @Transactional
     public void postSupplierPayment(
         UUID paymentId,
