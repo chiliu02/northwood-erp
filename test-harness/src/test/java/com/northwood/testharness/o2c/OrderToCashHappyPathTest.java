@@ -3,6 +3,7 @@ package com.northwood.testharness.o2c;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.events.StockReserved;
 import com.northwood.sales.domain.events.SalesOrderPlaced;
+import com.northwood.sales.domain.events.SalesOrderReadyToShip;
 import com.northwood.sales.domain.events.SalesOrderShipped;
 import com.northwood.sales.domain.events.StockReservationRequested;
 
@@ -144,7 +145,8 @@ class OrderToCashHappyPathTest {
         // Cross-service event audit:
         assertThat(sales.outbox.all())
             .extracting(OutboxRow::getEventType)
-            .contains(SalesOrderPlaced.EVENT_TYPE, StockReservationRequested.EVENT_TYPE, SalesOrderShipped.EVENT_TYPE);
+            .contains(SalesOrderPlaced.EVENT_TYPE, StockReservationRequested.EVENT_TYPE,
+                SalesOrderReadyToShip.EVENT_TYPE, SalesOrderShipped.EVENT_TYPE);
         assertThat(inventory.outbox.all())
             .extracting(OutboxRow::getEventType)
             .contains(StockReserved.EVENT_TYPE, ShipmentPosted.EVENT_TYPE);

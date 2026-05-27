@@ -3,6 +3,7 @@ package com.northwood.testharness.kits;
 import com.northwood.sales.application.dto.CancelOrderCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand;
 import com.northwood.sales.application.SalesOrderCompensationEmitter;
+import com.northwood.sales.application.SalesOrderReadyToShipEmitter;
 import com.northwood.sales.application.SalesOrderService;
 import com.northwood.sales.application.inbox.CustomerInvoiceCreatedHandler;
 import com.northwood.sales.application.inbox.CustomerPaymentReceivedHandler;
@@ -59,6 +60,7 @@ public final class SalesTestKit {
     public final JdbcSalesOrderFulfilmentSagaManager sagaManager;
     public final SalesOrderFulfilmentSagaWorker sagaWorker;
     public final SalesOrderCompensationEmitter compensationEmitter;
+    public final SalesOrderReadyToShipEmitter readyToShipEmitter;
     public final SalesOrderService service;
 
     private final String workerId = "sales.fulfilment-test-worker";
@@ -71,12 +73,13 @@ public final class SalesTestKit {
         OutboxAppender appender = new OutboxAppender(outbox, json, new CurrentUserAccessor());
         this.sagaWorker = new SalesOrderFulfilmentSagaWorker(sagaManager, lineSnapshots, appender, json);
         this.compensationEmitter = new SalesOrderCompensationEmitter(orders, appender);
+        this.readyToShipEmitter = new SalesOrderReadyToShipEmitter(appender);
         this.service = new SalesOrderService(orders, sagaManager, customers, productCards);
 
         bus.register(outbox);
-        bus.register(new StockReservedHandler(inbox, sagaManager, statusProjection, json));
+        bus.register(new StockReservedHandler(inbox, sagaManager, statusProjection, readyToShipEmitter, json));
         bus.register(new WorkOrderCreatedHandler(inbox, sagaManager, json));
-        bus.register(new WorkOrderManufacturingCompletedHandler(inbox, sagaManager, json));
+        bus.register(new WorkOrderManufacturingCompletedHandler(inbox, sagaManager, readyToShipEmitter, json));
         bus.register(new ManufacturingDispatchedHandler(inbox, sagaManager, statusProjection, orders, appender, json));
         bus.register(new ShipmentPostedHandler(inbox, sagaManager, service, json));
         bus.register(new CustomerInvoiceCreatedHandler(inbox, sagaManager, json));

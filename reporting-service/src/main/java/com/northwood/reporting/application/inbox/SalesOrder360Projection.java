@@ -33,6 +33,14 @@ public interface SalesOrder360Projection {
     void recordManufacturingCompleted(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
 
     /**
+     * Record that the sales fulfilment saga has reached {@code ready_to_ship}
+     * (every line reserved from stock or produced): advance {@code order_status}
+     * to {@code 'ready_to_ship'} so the shipment UI's order picker surfaces it.
+     * Never downgrades a terminal {@code 'cancelled'}. Idempotent.
+     */
+    void recordReadyToShip(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
+
+    /**
      * Record that the sales fulfilment saga has finished compensation: flip
      * {@code order_status} to {@code 'cancelled'}.
      */

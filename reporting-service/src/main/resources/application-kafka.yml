@@ -18,7 +18,10 @@ spring:
 northwood:
   kafka:
     # Reporting subscribes to:
-    # - sales.events         for SalesOrderPlaced (creates 360 row).
+    # - sales.events         for SalesOrderPlaced (creates 360 row),
+    #   SalesOrderReadyToShip (sales 360 order_status → ready_to_ship; the
+    #   shipment picker's filter) and SalesOrderCompensated (order_status →
+    #   cancelled).
     # - inventory.events     for ShipmentPosted (sales 360 shipment_status) +
     #   GoodsReceived (po_tracking received_amount + receipt_status).
     # - manufacturing.events for WorkOrderManufacturingCompleted

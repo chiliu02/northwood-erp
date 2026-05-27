@@ -2,6 +2,8 @@ package com.northwood.sales.application.inbox;
 
 import com.northwood.sales.domain.SalesOrder;
 
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.READY_TO_SHIP;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVED;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -11,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import com.northwood.inventory.domain.InventoryAggregateTypes;
 import com.northwood.inventory.domain.events.StockReserved;
+import com.northwood.sales.application.SalesOrderReadyToShipEmitter;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
@@ -33,13 +36,14 @@ class StockReservedHandlerTest {
     @Mock InboxPort inbox;
     @Mock SalesOrderFulfilmentSagaManager sagaManager;
     @Mock SalesOrderHeaderStatusProjection statusProjection;
+    @Mock SalesOrderReadyToShipEmitter readyToShipEmitter;
 
     private final ObjectMapper json = new ObjectMapper();
     private StockReservedHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new StockReservedHandler(inbox, sagaManager, statusProjection, json);
+        handler = new StockReservedHandler(inbox, sagaManager, statusProjection, readyToShipEmitter, json);
     }
 
     private EventEnvelope event(String status, BigDecimal shortage) {
@@ -62,18 +66,24 @@ class StockReservedHandlerTest {
         );
     }
 
-    @Test void happy_path_calls_manager_and_projects_in_fulfilment() {
+    @Test void full_reservation_projects_in_fulfilment_and_emits_ready_to_ship() {
+        when(sagaManager.applyStockReserved(eq(SO), eq("reserved"), any())).thenReturn(READY_TO_SHIP);
+
         handler.handle(event("reserved", BigDecimal.ZERO));
 
         verify(sagaManager).applyStockReserved(eq(SO), eq("reserved"), any());
         verify(statusProjection).markStatus(SO, SalesOrder.Status.IN_FULFILMENT);
+        verify(readyToShipEmitter).emitReadyToShip(SO);
         verify(inbox).recordProcessed(any());
     }
 
-    @Test void partial_passes_extracted_shortage_map() {
+    @Test void partial_passes_shortage_map_and_does_not_emit_ready_to_ship() {
+        when(sagaManager.applyStockReserved(eq(SO), eq("partially_reserved"), any())).thenReturn(STOCK_RESERVED);
+
         handler.handle(event("partially_reserved", new BigDecimal("2")));
 
         verify(sagaManager).applyStockReserved(eq(SO), eq("partially_reserved"), any());
+        verify(readyToShipEmitter, never()).emitReadyToShip(any());
     }
 
     @Test void already_processed_short_circuits() {
@@ -85,6 +95,7 @@ class StockReservedHandlerTest {
 
         verify(sagaManager, never()).applyStockReserved(any(), any(), any());
         verifyNoInteractions(statusProjection);
+        verifyNoInteractions(readyToShipEmitter);
         verify(inbox, never()).recordProcessed(any());
     }
 
