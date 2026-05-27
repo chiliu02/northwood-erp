@@ -1,0 +1,153 @@
+package com.northwood.reporting.infrastructure.persistence;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.northwood.finance.domain.events.CustomerPaymentReceived;
+import com.zaxxer.hikari.HikariDataSource;
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.lifecycle.Startables;
+import org.testcontainers.utility.DockerImageName;
+
+/**
+ * Real-Postgres test for {@link JdbcSalesOrder360Projection}'s
+ * {@code order_status} lifecycle: the column advances
+ * {@code submitted → ready_to_ship → shipped → completed} as the driving
+ * events land, and — because reporting consumes several topics and so can see
+ * events out of order — each advance is <b>forward-only</b>: a late event never
+ * downgrades a later state, and a terminal {@code 'cancelled'} is preserved.
+ */
+class JdbcSalesOrder360ProjectionIT {
+
+    private static final PostgreSQLContainer<?> POSTGRES =
+        new PostgreSQLContainer<>(DockerImageName.parse("postgres:17"))
+            .withDatabaseName("northwood_erp")
+            .withUsername("postgres")
+            .withPassword("postgres");
+
+    private static HikariDataSource DATA_SOURCE;
+    private static JdbcTemplate JDBC;
+    private static JdbcSalesOrder360Projection PROJECTION;
+
+    @BeforeAll
+    static void bootContainerAndSchema() {
+        Startables.deepStart(POSTGRES).join();
+        applySqlFile(Path.of("..", "db", "northwood_erp.sql"));
+        DATA_SOURCE = new HikariDataSource();
+        DATA_SOURCE.setJdbcUrl(POSTGRES.getJdbcUrl());
+        DATA_SOURCE.setUsername(POSTGRES.getUsername());
+        DATA_SOURCE.setPassword(POSTGRES.getPassword());
+        DATA_SOURCE.setConnectionInitSql("SET search_path = reporting, shared");
+        JDBC = new JdbcTemplate(DATA_SOURCE);
+        PROJECTION = new JdbcSalesOrder360Projection(JDBC);
+    }
+
+    private static void applySqlFile(Path file) {
+        String sql;
+        try {
+            sql = Files.readString(file, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new IllegalStateException("Cannot read " + file.toAbsolutePath(), e);
+        }
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             Statement s = c.createStatement()) {
+            s.execute(sql);
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to apply " + file.getFileName(), e);
+        }
+    }
+
+    @BeforeEach
+    void clearTable() {
+        JDBC.execute("TRUNCATE reporting.sales_order_360_view CASCADE");
+    }
+
+    @Test
+    void order_status_progresses_submitted_to_completed() {
+        UUID id = UUID.randomUUID();
+        createOrder(id);
+        assertThat(orderStatus(id)).isEqualTo("submitted");
+
+        PROJECTION.recordReadyToShip(id, Instant.now(), "system");
+        assertThat(orderStatus(id)).isEqualTo("ready_to_ship");
+
+        PROJECTION.recordShipment(id, Instant.now(), "mike");
+        assertThat(orderStatus(id)).isEqualTo("shipped");
+
+        PROJECTION.recordPayment(id, new BigDecimal("650.00"),
+            CustomerPaymentReceived.INVOICE_STATUS_PAID, Instant.now(), "olivia");
+        assertThat(orderStatus(id)).isEqualTo("completed");
+    }
+
+    @Test
+    void late_ready_to_ship_does_not_downgrade_shipped() {
+        UUID id = UUID.randomUUID();
+        createOrder(id);
+        PROJECTION.recordShipment(id, Instant.now(), "mike");
+        assertThat(orderStatus(id)).isEqualTo("shipped");
+
+        // A ready_to_ship event that arrives after the shipment (cross-topic
+        // reordering) must not roll the status back.
+        PROJECTION.recordReadyToShip(id, Instant.now(), "system");
+        assertThat(orderStatus(id)).isEqualTo("shipped");
+    }
+
+    @Test
+    void partial_payment_does_not_complete() {
+        UUID id = UUID.randomUUID();
+        createOrder(id);
+        PROJECTION.recordShipment(id, Instant.now(), "mike");
+
+        PROJECTION.recordPayment(id, new BigDecimal("300.00"),
+            CustomerPaymentReceived.INVOICE_STATUS_PARTIALLY_PAID, Instant.now(), "olivia");
+
+        assertThat(orderStatus(id)).isEqualTo("shipped");
+        assertThat(JDBC.queryForObject(
+            "SELECT payment_status FROM reporting.sales_order_360_view WHERE sales_order_header_id = ?",
+            String.class, id)).isEqualTo("partially_paid");
+    }
+
+    @Test
+    void cancellation_is_preserved_against_later_advances() {
+        UUID id = UUID.randomUUID();
+        createOrder(id);
+        PROJECTION.recordCancellation(id, Instant.now(), "sales-mgr");
+        assertThat(orderStatus(id)).isEqualTo("cancelled");
+
+        // Forward-advance attempts after cancellation are no-ops on order_status.
+        PROJECTION.recordReadyToShip(id, Instant.now(), "system");
+        PROJECTION.recordShipment(id, Instant.now(), "mike");
+        PROJECTION.recordPayment(id, new BigDecimal("650.00"),
+            CustomerPaymentReceived.INVOICE_STATUS_PAID, Instant.now(), "olivia");
+        assertThat(orderStatus(id)).isEqualTo("cancelled");
+    }
+
+    private void createOrder(UUID id) {
+        PROJECTION.createFromOrder(
+            id, "SO-360-LIFECYCLE", UUID.randomUUID(), "Sydney Home Living",
+            LocalDate.now(), null, "AUD", new BigDecimal("650.00"),
+            Instant.now(), "sales.SalesOrderPlaced", "sarah");
+    }
+
+    private String orderStatus(UUID id) {
+        return JDBC.queryForObject(
+            "SELECT order_status FROM reporting.sales_order_360_view WHERE sales_order_header_id = ?",
+            String.class, id);
+    }
+}

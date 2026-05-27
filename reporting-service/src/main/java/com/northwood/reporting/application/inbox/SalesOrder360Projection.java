@@ -46,10 +46,21 @@ public interface SalesOrder360Projection {
      */
     void recordCancellation(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
 
+    /**
+     * Record a posted shipment: set {@code shipment_status='shipped'} and
+     * advance {@code order_status} to {@code 'shipped'} (forward-only; never
+     * downgrades a later state, preserves {@code 'cancelled'}).
+     */
     void recordShipment(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
 
     void recordInvoice(UUID salesOrderHeaderId, BigDecimal invoiced, Instant occurredAt, String actorUserId);
 
+    /**
+     * Record a customer payment: bump {@code paid_amount}/{@code outstanding}
+     * and set {@code payment_status}. On full settlement
+     * ({@code invoiceStatusAfter == paid}) advance {@code order_status} to
+     * {@code 'completed'} (forward-only; preserves {@code 'cancelled'}).
+     */
     void recordPayment(
         UUID salesOrderHeaderId,
         BigDecimal allocated,

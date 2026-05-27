@@ -164,10 +164,14 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                       'AUD', 0, 0,
                       'sales.SalesOrderReadyToShip', ?, ?)
             ON CONFLICT (sales_order_header_id) DO UPDATE SET
+                -- Forward-only: advance to ready_to_ship only from an earlier
+                -- lifecycle state. Reporting consumes several topics, so a late
+                -- event must never downgrade shipped/completed; 'cancelled'
+                -- (terminal) is preserved by falling through to ELSE.
                 order_status = CASE
-                    WHEN sales_order_360_view.order_status = 'cancelled'
-                        THEN 'cancelled'
-                    ELSE 'ready_to_ship'
+                    WHEN sales_order_360_view.order_status IN ('pending', 'submitted')
+                        THEN 'ready_to_ship'
+                    ELSE sales_order_360_view.order_status
                 END,
                 last_event_type = CASE
                     WHEN sales_order_360_view.last_event_at IS NULL
@@ -246,13 +250,19 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                 last_event_type, last_event_at,
                 last_modified_by
             ) VALUES (?, '(pending)', ?, '(pending)',
-                      CURRENT_DATE, 'pending', 'pending',
+                      CURRENT_DATE, 'shipped', 'pending',
                       'pending', 'shipped',
                       'pending', 'pending',
                       'AUD', 0, 0,
                       'inventory.ShipmentPosted', ?, ?)
             ON CONFLICT (sales_order_header_id) DO UPDATE SET
                 shipment_status = 'shipped',
+                -- Forward-only advance to 'shipped'; preserves completed/cancelled.
+                order_status = CASE
+                    WHEN sales_order_360_view.order_status IN ('pending', 'submitted', 'ready_to_ship')
+                        THEN 'shipped'
+                    ELSE sales_order_360_view.order_status
+                END,
                 last_event_type = CASE
                     WHEN sales_order_360_view.last_event_at IS NULL
                       OR EXCLUDED.last_event_at > sales_order_360_view.last_event_at
@@ -350,6 +360,14 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                       'finance.CustomerPaymentReceived', ?, ?)
             ON CONFLICT (sales_order_header_id) DO UPDATE SET
                 payment_status = EXCLUDED.payment_status,
+                -- Full settlement completes the order. Forward-only and
+                -- cancelled-preserving (only advances from pre-completed states).
+                order_status = CASE
+                    WHEN EXCLUDED.payment_status = 'paid'
+                      AND sales_order_360_view.order_status IN ('pending', 'submitted', 'ready_to_ship', 'shipped')
+                        THEN 'completed'
+                    ELSE sales_order_360_view.order_status
+                END,
                 paid_amount = sales_order_360_view.paid_amount + EXCLUDED.paid_amount,
                 outstanding_amount = sales_order_360_view.total_amount - (sales_order_360_view.paid_amount + EXCLUDED.paid_amount),
                 last_event_type = CASE
