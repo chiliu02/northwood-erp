@@ -171,17 +171,21 @@ export function StockAdjustmentNew() {
               </select>
             </Field>
             <Field label="Mode" required hint={mode === "DELTA" ? "signed change (+/-)" : "target on-hand quantity"}>
-              <div className="flex gap-2">
+              <div role="radiogroup" aria-label="Adjustment mode"
+                   className="inline-flex rounded-md border border-border-default bg-bg-surface p-0.5">
                 {(["DELTA", "SET"] as Mode[]).map((m) => (
                   <button
                     key={m}
                     type="button"
+                    role="radio"
+                    aria-checked={mode === m}
                     onClick={() => setMode(m)}
-                    className={`h-9 flex-1 rounded-md border px-3 text-sm ${
-                      mode === m
-                        ? "border-border-focus bg-bg-surface font-medium"
-                        : "border-border-default bg-bg-surface text-text-muted"
-                    }`}
+                    className={
+                      "flex items-center gap-1.5 whitespace-nowrap rounded px-3 py-1.5 text-xs font-medium transition-colors " +
+                      (mode === m
+                        ? "bg-bg-elevated text-text-primary shadow-sm"
+                        : "text-text-muted hover:text-text-primary")
+                    }
                   >
                     {m === "DELTA" ? "Adjust by ±N" : "Set to N"}
                   </button>

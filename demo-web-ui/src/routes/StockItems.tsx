@@ -42,6 +42,9 @@ export function StockItems() {
               <th className="px-4 py-2 font-semibold">Name</th>
               <th className="px-4 py-2 font-semibold">Type</th>
               <th className="px-4 py-2 font-semibold">UoM</th>
+              <th className="px-4 py-2 text-right font-semibold">On hand</th>
+              <th className="px-4 py-2 text-right font-semibold">Reserved</th>
+              <th className="px-4 py-2 text-right font-semibold">Available</th>
               <th className="px-4 py-2 text-right font-semibold">Reorder pt</th>
               <th className="px-4 py-2 text-right font-semibold">Reorder qty</th>
               <th className="px-4 py-2 font-semibold">Tracking</th>
@@ -57,6 +60,9 @@ export function StockItems() {
                   <StatusBadge kind="neutral">{s.productType}</StatusBadge>
                 </td>
                 <td className="px-4 py-2 text-text-muted">{s.baseUomCode}</td>
+                <td className="px-4 py-2 text-right tabular-nums">{Number(s.onHand)}</td>
+                <td className="px-4 py-2 text-right tabular-nums text-text-muted">{Number(s.reserved)}</td>
+                <td className="px-4 py-2 text-right tabular-nums font-medium">{Number(s.available)}</td>
                 <td className="px-4 py-2 text-right tabular-nums">{s.reorderPoint}</td>
                 <td className="px-4 py-2 text-right tabular-nums">{s.reorderQuantity}</td>
                 <td className="px-4 py-2">

@@ -10,6 +10,11 @@ import java.util.UUID;
  * column is exposed for wire compatibility but no inventory-side writer
  * bumps it today; it survives as defensive optimistic-concurrency capacity
  * for a future inventory-originated stock-fact slice.
+ *
+ * <p>{@code onHand} / {@code reserved} / {@code available} are joined from
+ * {@code inventory.stock_balance}, summed across warehouses per product
+ * (zero when no balance row exists). Read-side only — the join lives in the
+ * query, not in any projection write.
  */
 public record StockItemView(
     UUID stockItemId,
@@ -21,5 +26,8 @@ public record StockItemView(
     String trackingMode,
     BigDecimal reorderPoint,
     BigDecimal reorderQuantity,
+    BigDecimal onHand,
+    BigDecimal reserved,
+    BigDecimal available,
     long version
 ) {}

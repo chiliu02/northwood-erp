@@ -157,6 +157,9 @@ export interface StockItemRow {
   trackingMode: string;
   reorderPoint: string;
   reorderQuantity: string;
+  onHand: string;
+  reserved: string;
+  available: string;
   version: number;
 }
 

@@ -16,6 +16,9 @@ interface StockItem {
   trackingMode: string;
   reorderPoint: string | null;
   reorderQuantity: string | null;
+  onHand: string;
+  reserved: string;
+  available: string;
   version: number;
 }
 
@@ -56,6 +59,27 @@ export function StockItems() {
       header: "Tracking",
       width: "120px",
       render: (s) => <span className="text-text-muted">{s.trackingMode}</span>,
+    },
+    {
+      key: "onHand",
+      header: "On Hand",
+      width: "110px",
+      numeric: true,
+      render: (s) => <span className="tabular-nums">{formatQty(s.onHand)}</span>,
+    },
+    {
+      key: "reserved",
+      header: "Reserved",
+      width: "110px",
+      numeric: true,
+      render: (s) => <span className="tabular-nums text-text-muted">{formatQty(s.reserved)}</span>,
+    },
+    {
+      key: "available",
+      header: "Available",
+      width: "110px",
+      numeric: true,
+      render: (s) => <span className="tabular-nums font-medium">{formatQty(s.available)}</span>,
     },
     {
       key: "reorderPoint",

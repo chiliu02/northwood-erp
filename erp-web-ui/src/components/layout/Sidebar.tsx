@@ -29,10 +29,10 @@ interface NavModule {
 }
 
 /**
- * Module-grouped left navigation. Each module collapses/expands; the
- * active route's module is auto-expanded. Mirrors the SAP Fiori / Oracle
- * Redwood "module rail" pattern — operators in real ERPs think "I'm
- * working in Sales" not "I am persona X."
+ * Module-grouped left navigation. Each module collapses/expands; all groups
+ * start collapsed on load. Mirrors the SAP Fiori / Oracle Redwood "module
+ * rail" pattern — operators in real ERPs think "I'm working in Sales" not
+ * "I am persona X."
  */
 const MODULES: NavModule[] = [
   { label: "Home", icon: Home, to: "/" },
@@ -116,11 +116,9 @@ const MODULES: NavModule[] = [
 ];
 
 export function Sidebar() {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({
-    Sales: true,
-    Manufacturing: true,
-    Finance: true,
-  });
+  // All module groups start collapsed on load; the operator expands the one
+  // they're working in. (Home is a direct link, not a group.)
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   function toggle(label: string) {
     setExpanded((e) => ({ ...e, [label]: !e[label] }));
