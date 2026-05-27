@@ -33,6 +33,7 @@ import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.listener.KafkaMessageListenerContainer;
 import org.springframework.kafka.listener.MessageListener;
+import org.springframework.util.backoff.ExponentialBackOff;
 import org.springframework.util.backoff.FixedBackOff;
 import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.lifecycle.Startables;
@@ -52,9 +53,15 @@ import tools.jackson.databind.ObjectMapper;
  *   <li><b>malformed envelope is skipped</b> — a value that can't be parsed into
  *       an {@link EventEnvelope} is logged and acked (poison-pill avoidance),
  *       not redelivered (the one path where a failure does NOT redeliver);</li>
- *   <li><b>persistent failure is dead-lettered</b> — after the retry budget is
- *       exhausted the record is routed to {@code <topic>.dlt} and the original
- *       offset commits, so the consumer is not stuck looping forever.</li>
+ *   <li><b>retryable failure is dead-lettered after the backoff budget</b> — a
+ *       transient (retryable) exception is retried under the
+ *       {@link org.springframework.util.backoff.ExponentialBackOff} and, once the
+ *       budget is exhausted, routed to {@code <topic>.dlt} with the original
+ *       offset committed, so the consumer is not stuck looping forever;</li>
+ *   <li><b>non-retryable failure is dead-lettered without retry</b> — a poison
+ *       exception in {@link KafkaMessagingAutoConfiguration#NOT_RETRYABLE} skips
+ *       the backoff entirely and dead-letters on the first failure (§2.28 Tier
+ *       1.A classification).</li>
  * </ul>
  *
  * <p><strong>Fidelity.</strong> Production uses Spring Boot's auto-configured
@@ -62,11 +69,14 @@ import tools.jackson.databind.ObjectMapper;
  * {@link KafkaMessagingAutoConfiguration}). Here the container is wired by hand
  * so the tests need only a broker — no Spring/datasource context — but they
  * reproduce the settings that govern offset commits: {@code enable.auto.commit=
- * false} (container-managed commits; Spring's default), the default
- * {@link ContainerProperties.AckMode#BATCH}, and a {@link DefaultErrorHandler}
- * with {@code FixedBackOff(0L, 3)} — the same retry budget as the production
- * error-handler bean (and, for the DLT test, the same
- * {@link DeadLetterPublishingRecoverer} {@code <topic> → <topic>.dlt} mapping).
+ * false} (container-managed commits; Spring's default) and the default
+ * {@link ContainerProperties.AckMode#BATCH}. The offset/malformed tests use a
+ * plain {@link DefaultErrorHandler} with {@code FixedBackOff(0L, 3)} (they're
+ * orthogonal to error-handler tuning); the two dead-letter tests build the
+ * <em>production</em> handler via
+ * {@link KafkaMessagingAutoConfiguration#inboxErrorHandler(KafkaTemplate, org.springframework.util.backoff.BackOff)}
+ * — same classification + {@code <topic> → <topic>.dlt} recoverer — passing a
+ * fast backoff so the retry path dead-letters in well under a second.
  *
  * <p>Each test uses its own topic + consumer group so committed-offset
  * assertions are isolated. Image {@code apache/kafka:4.1.2} (KRaft single-broker
@@ -150,17 +160,46 @@ class KafkaInboxDispatcherDeliveryIT {
     }
 
     /**
-     * A handler that always throws is retried (re-seek) up to the error
-     * handler's budget, then routed to {@code <topic>.dlt} by the
+     * A handler that always throws a <em>retryable</em> exception is retried
+     * (re-seek) under the {@link ExponentialBackOff} until the budget is
+     * exhausted, then routed to {@code <topic>.dlt} by the production handler's
      * {@link DeadLetterPublishingRecoverer}; the original offset then commits so
      * the consumer moves on. Asserts the DLT record lands, the record was
-     * retried (>1 attempt), and the source offset advances.
+     * retried (>1 attempt), and the source offset advances. Uses the
+     * {@link KafkaMessagingAutoConfiguration#inboxErrorHandler} factory with a
+     * fast backoff so the budget runs out in well under a second.
      */
     @Test
-    void persistent_failure_is_dead_lettered_then_offset_commits() throws Exception {
-        String topic = "shared.delivery-it.dlt";
+    void retryable_failure_is_dead_lettered_after_backoff_then_offset_commits() throws Exception {
+        assertDeadLettered("shared.delivery-it.dlt-retryable", "dlt-retryable-" + UUID.randomUUID(),
+            new RuntimeException("transient failure"), /*expectRetries*/ true);
+    }
+
+    /**
+     * A handler that throws a <em>non-retryable</em> exception
+     * ({@link IllegalStateException}, listed in
+     * {@link KafkaMessagingAutoConfiguration#NOT_RETRYABLE}) skips the backoff
+     * entirely: the production handler dead-letters it on the first failure. So
+     * a poison record reaches {@code <topic>.dlt} after exactly one handler
+     * invocation, the source offset commits, and no retry budget is burned.
+     */
+    @Test
+    void non_retryable_failure_is_dead_lettered_without_retry() throws Exception {
+        assertDeadLettered("shared.delivery-it.dlt-poison", "dlt-poison-" + UUID.randomUUID(),
+            new IllegalStateException("poison payload"), /*expectRetries*/ false);
+    }
+
+    /**
+     * Publishes one probe onto {@code topic}, runs it through a container wired
+     * with the production error handler (fast backoff) and a handler that always
+     * throws {@code toThrow}, and asserts it lands on {@code <topic>.dlt} with the
+     * source offset committed. When {@code expectRetries} the handler must have
+     * been invoked more than once (the backoff retry path); otherwise exactly
+     * once (classified non-retryable → straight to DLT).
+     */
+    private void assertDeadLettered(
+            String topic, String groupId, RuntimeException toThrow, boolean expectRetries) throws Exception {
         String dltTopic = topic + ".dlt";
-        String groupId = "dlt-" + UUID.randomUUID();
         createTopic(topic);
 
         AtomicInteger attempts = new AtomicInteger();
@@ -169,17 +208,11 @@ class KafkaInboxDispatcherDeliveryIT {
             @Override public String consumerName() { return "test.AlwaysFailsHandler"; }
             @Override public void handle(EventEnvelope envelope) {
                 attempts.incrementAndGet();
-                throw new RuntimeException("permanent failure");
+                throw toThrow;
             }
         };
         var dispatcher = new KafkaInboxDispatcher(List.of(handler), json);
-
-        // Mirror KafkaMessagingAutoConfiguration.kafkaErrorHandler: <topic> → <topic>.dlt, same partition.
-        var template = new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(
-            producerProps(), new StringSerializer(), new StringSerializer()));
-        var recoverer = new DeadLetterPublishingRecoverer(template,
-            (record, ex) -> new TopicPartition(record.topic() + ".dlt", record.partition()));
-        var errorHandler = new DefaultErrorHandler(recoverer, new FixedBackOff(0L, 3));
+        var errorHandler = KafkaMessagingAutoConfiguration.inboxErrorHandler(dltTemplate(), fastBackOff());
 
         var container = startContainer(groupId, topic, dispatcher, errorHandler);
         try (KafkaConsumer<String, String> dltConsumer = consumer("dlt-verify-" + UUID.randomUUID())) {
@@ -188,9 +221,15 @@ class KafkaInboxDispatcherDeliveryIT {
 
             await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(500))
                 .until(() -> dltConsumer.poll(Duration.ofMillis(500)).count() > 0);
-            assertThat(attempts.get())
-                .withFailMessage("record should have been retried before dead-lettering")
-                .isGreaterThanOrEqualTo(2);
+            if (expectRetries) {
+                assertThat(attempts.get())
+                    .withFailMessage("retryable record should have been retried before dead-lettering")
+                    .isGreaterThanOrEqualTo(2);
+            } else {
+                assertThat(attempts.get())
+                    .withFailMessage("non-retryable record should dead-letter on the first failure, no retry")
+                    .isEqualTo(1);
+            }
             awaitCommittedOffset(groupId, topic, 1L);
         } finally {
             container.stop();
@@ -255,6 +294,26 @@ class KafkaInboxDispatcherDeliveryIT {
                 producerProps(), new StringSerializer(), new StringSerializer())) {
             producer.send(new ProducerRecord<>(topic, UUID.randomUUID().toString(), value)).get();
         }
+    }
+
+    /** Template the production {@code inboxErrorHandler} recoverer publishes the DLT copy through. */
+    private KafkaTemplate<String, String> dltTemplate() {
+        return new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(
+            producerProps(), new StringSerializer(), new StringSerializer()));
+    }
+
+    /**
+     * Same {@link ExponentialBackOff} shape as the production bean, compressed to
+     * sub-second so the retryable dead-letter path exhausts its budget quickly:
+     * ~50ms, 100ms, 200ms (capped) retries, giving up after ~500ms total → DLT.
+     */
+    private ExponentialBackOff fastBackOff() {
+        ExponentialBackOff backOff = new ExponentialBackOff();
+        backOff.setInitialInterval(50L);
+        backOff.setMultiplier(2.0);
+        backOff.setMaxInterval(200L);
+        backOff.setMaxElapsedTime(500L);
+        return backOff;
     }
 
     private void awaitCommittedOffset(String groupId, String topic, long expected) {
