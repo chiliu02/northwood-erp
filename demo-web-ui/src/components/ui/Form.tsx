@@ -60,7 +60,7 @@ export function Button({ variant = "primary", className, ...rest }: ButtonProps)
     <button
       type="button"
       className={cn(
-        "rounded-md border px-3 py-1.5 text-sm font-medium transition-colors",
+        "inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors",
         "disabled:cursor-not-allowed disabled:opacity-50",
         styles,
         className
