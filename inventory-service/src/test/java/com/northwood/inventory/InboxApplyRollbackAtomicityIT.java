@@ -55,9 +55,14 @@ import tools.jackson.databind.ObjectMapper;
  * the success value ({@code 222}) and returns normally so
  * {@code AbstractInboxHandler.handle} records the inbox row.
  *
+ * <p>The probe's first-attempt failure throws a <em>retryable</em>
+ * {@code RuntimeException} so the §2.28 Tier 1.A classify-and-backoff error
+ * handler re-seeks (redelivers) it — a non-retryable (poison) exception would
+ * correctly dead-letter instead, and this test is about reprocess-on-redelivery.
+ *
  * <p>Two {@link CountDownLatch}es make the rollback observable deterministically
- * (the {@code FixedBackOff(0,3)} error handler redelivers immediately, so
- * without gating the success commit would race the assertion):
+ * (the error handler redelivers after its backoff, so without gating the
+ * success commit would race the assertion):
  * <ul>
  *   <li>{@code firstAttemptFailed} — counted down just before the first throw,
  *       so the test knows the failing attempt has happened;</li>
@@ -251,7 +256,11 @@ class InboxApplyRollbackAtomicityIT {
                     SENTINEL_VALUE, payload.aggregateId()
                 );
                 state.firstAttemptFailed.countDown();
-                throw new IllegalStateException("simulated mid-apply failure after a partial write");
+                // Must be a RETRYABLE exception so the §2.28 Tier 1.A error handler
+                // re-seeks (redelivers) rather than dead-letters it — a non-retryable
+                // (poison) exception like IllegalStateException would correctly go
+                // straight to the DLT, and this test is about reprocess-on-redelivery.
+                throw new RuntimeException("simulated transient mid-apply failure after a partial write");
             }
             // Redelivery: block until the test has asserted the post-rollback state.
             try {

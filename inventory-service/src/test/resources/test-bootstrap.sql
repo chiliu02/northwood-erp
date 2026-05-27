@@ -113,6 +113,7 @@ CREATE TABLE inventory.outbox_message (
     headers JSONB NOT NULL DEFAULT '{}'::jsonb,
     correlation_id UUID,
     causation_id UUID,
+    actor_user_id VARCHAR(64),
     status VARCHAR(30) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'published', 'failed')),
     retry_count INT NOT NULL DEFAULT 0,
     last_error TEXT,
