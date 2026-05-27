@@ -57,7 +57,7 @@ Keycloak loads the `northwood` realm from `db/keycloak/northwood-realm.json` on 
 | auditor | auditor | Read-only on every endpoint |
 | sysadmin | sysadmin | Keycloak admin only; no business data |
 
-The **persona switcher** in the ERP Web UI (top-right dropdown next to the user chip) lets a presenter switch between personas without leaving the screen — pick a persona, the BFF logs out, and Keycloak's login form loads with the username pre-filled. Type the password (== username) and continue. The 403-tooltip behaviour on action buttons reacts to the new role automatically.
+**Switching personas** in the ERP Web UI: there is no in-app persona dropdown — the user chip (top-right) is a static name + avatar with a separate **Sign out** icon (simplified in commit `c409d66`). To switch persona mid-demo, click **Sign out**, then sign in on Keycloak's login form as the desired persona (password == username). The 403-tooltip behaviour on action buttons reacts to the new role automatically once you land back in the SPA.
 
 ### Why Kafka is required
 
@@ -348,7 +348,7 @@ Partial customer payment lands on `invoice_paid` instead, parking until the next
 
 Place an order **as Sarah (sales_clerk)**, advance it to `manufacturing_in_progress` (e.g. follow Demo 3 partway: place order → wait for `stock_reserved` → wait for first `WorkOrderCreated`).
 
-**Security demo moment.** With Sarah still logged in, hover over the **Cancel order** button on the sales-order detail page — it's disabled with a tooltip "Requires role: sales_manager". Sarah doesn't have authority to cancel; only sales-mgr does. Open the persona switcher → pick **sales-mgr** → re-login. Now the Cancel button is enabled. Click it, supply a reason, confirm. Behind the scenes Spring Security's `@PreAuthorize("hasRole('sales_manager')")` accepts the call.
+**Security demo moment.** With Sarah still logged in, hover over the **Cancel order** button on the sales-order detail page — it's disabled with a tooltip "Requires role: sales_manager". Sarah doesn't have authority to cancel; only sales-mgr does. Click **Sign out** (top-right), then sign back in as **sales-mgr**. Now the Cancel button is enabled. Click it, supply a reason, confirm. Behind the scenes Spring Security's `@PreAuthorize("hasRole('sales_manager')")` accepts the call.
 
 ```bash
 # Equivalent curl (with Bearer token from sales-mgr's session):
@@ -577,7 +577,7 @@ Open `http://localhost:5174` cold (or click the logout button). The SPA redirect
 
 On a sales-order detail page (any order before `goods_shipped`), hover the **Cancel order** button. Sarah's `sales_clerk` doesn't include `sales_manager`, so the button is disabled with tooltip "Requires role: sales_manager".
 
-Open the **persona switcher** (top-right, next to the user chip) → **Sales Manager** → confirm. Browser logs out, lands on Keycloak with username pre-filled, type the password (== `sales-mgr`), continue. The Cancel button is now enabled. Click it. Saga walks `compensating → compensated`. Audit row stamps `actor_user_id = "sales-mgr"`.
+Click **Sign out** (top-right), then sign back in on Keycloak as **sales-mgr** (password == `sales-mgr`). The Cancel button is now enabled. Click it. Saga walks `compensating → compensated`. Audit row stamps `actor_user_id = "sales-mgr"`.
 
 If you want the loud version: switch to **Auditor** first, try to click anything mutating — every mutation button is disabled with a tooltip. Read-only persona; reading works.
 

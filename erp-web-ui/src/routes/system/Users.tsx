@@ -24,7 +24,7 @@ const PERSONAS: Persona[] = [
   { username: "olivia",         fullName: "Olivia Accountant",   role: "accountant",            description: "Records supplier invoices; processes AP and AR payments." },
   { username: "daniel",         fullName: "Daniel Finance",      role: "finance_manager",       description: "Approves manual-review invoices; reverses journal entries." },
   { username: "auditor",        fullName: "Auditor",             role: "auditor",               description: "Read-only access to audit logs and journals." },
-  { username: "sysadmin",       fullName: "Sysadmin",            role: "sysadmin",              description: "System administration; persona switcher access." },
+  { username: "sysadmin",       fullName: "Sysadmin",            role: "sysadmin",              description: "Keycloak realm administration only; no business data access." },
 ];
 
 /**
@@ -73,7 +73,7 @@ export function Users() {
     <>
       <PageHeader
         title="Users"
-        description="The 13 seeded demo personas. Each maps to a single Keycloak realm role; the persona switcher (top-right) flips between them. To add a real user, edit db/keycloak/northwood-realm.json and reload the realm."
+        description="The 13 seeded demo personas. Each maps to a single Keycloak realm role; sign out (top-right) and sign back in as another persona to switch roles. To add a real user, edit db/keycloak/northwood-realm.json and reload the realm."
         trail={[
           { label: "Home", to: "/" },
           { label: "System" },
