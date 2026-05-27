@@ -671,7 +671,7 @@ The outbox pattern's whole point: **Kafka is the transport, not the system of re
 
 ### 9.5 — Not demoed (and why)
 
-A *consumer-dependency* outage (e.g. PostgreSQL briefly down while Kafka keeps delivering) behaves differently: the consumer's 3 immediate retries are exhausted in milliseconds and the in-flight message is dead-lettered rather than waited out (`docs/messaging.md` → *Disaster recovery* → finding 1). That is a manual-replay case, not auto-recovery, so it's deliberately out of this demo.
+A *consumer-dependency* outage (e.g. PostgreSQL briefly down while Kafka keeps delivering) is now **also auto-recovering** (§2.28 Tier 1): the consumer error handler rides out the blip with an `ExponentialBackOff` (default 5-min budget) instead of dead-lettering in milliseconds — the old `FixedBackOff(0,3)` (finding 1) is fixed — and anything that *does* reach a `<topic>.dlt` is auto-redriven by each service's `DltRedriver` (re-applied once the dependency is back, or parked in `<topic>.dlt.parked` after the cap if genuinely unrecoverable). It isn't staged as a separate live beat because the timing (a sub-5-minute outage) is awkward to demo by hand — it's pinned by `KafkaInboxDispatcherDeliveryIT` + `DltRedriverIT` and the live end-to-end redrive recorded in `dev-done.md` (§2.28 Tier 1). See `docs/messaging.md` → *Disaster recovery*.
 
 ---
 
