@@ -122,11 +122,35 @@ public class KafkaMessagingAutoConfiguration {
     }
 
     /**
+     * Per-service DLT auto-redriver (§2.28 Tier 1.B). Registered only when
+     * {@code northwood.kafka.dlt.redrive.enabled=true} (set by consuming services
+     * in {@code application-kafka.yml}); re-applies the records <em>this</em>
+     * service dead-lettered (filtered by the {@code kafka_dlt-original-consumer-group}
+     * header), bounded by {@code max-attempts}, then parks the rest. Depends on
+     * {@link KafkaInboxDispatcher} for the re-apply fan-out, so it is only ever
+     * enabled in services that consume (and therefore have that bean). See
+     * {@link DltRedriver} for the header-routing / partition-concurrency rationale.
+     */
+    @Bean
+    @Profile("kafka")
+    @ConditionalOnProperty(prefix = "northwood.kafka.dlt.redrive", name = "enabled", havingValue = "true")
+    public DltRedriver dltRedriver(
+        KafkaInboxDispatcher dispatcher,
+        KafkaTemplate<String, String> kafkaTemplate,
+        @Value("${spring.kafka.consumer.group-id}") String ownGroup,
+        @Value("${northwood.kafka.dlt.redrive.max-attempts:5}") int maxAttempts,
+        @Value("${northwood.kafka.dlt.redrive.delay:10000}") long delayMs
+    ) {
+        return new DltRedriver(dispatcher, kafkaTemplate, ownGroup, maxAttempts, delayMs);
+    }
+
+    /**
      * Classify-and-backoff dead-letter error handler for the consumer side.
      * Spring Boot's auto-configured {@code ConcurrentKafkaListenerContainerFactory}
      * picks up the single {@link DefaultErrorHandler} bean from the context and
-     * applies it to every {@code @KafkaListener} (the inbox dispatcher is the
-     * only one today).
+     * applies it to every {@code @KafkaListener} — the inbox dispatcher, and the
+     * {@link DltRedriver} (on which it never fires, since that listener catches
+     * its own failures and always returns normally).
      *
      * <p>The backoff is an {@link ExponentialBackOff} tuned from properties (all
      * with showcase-sane defaults), so a transient dependency outage is ridden
