@@ -1,4 +1,4 @@
-import { Bell, ChevronDown, LogOut, Search } from "lucide-react";
+import { Bell, LogOut, Search } from "lucide-react";
 import { useCurrentUser } from "../../lib/UserContext";
 
 /**
@@ -12,8 +12,9 @@ export function AppBar() {
   const { me } = useCurrentUser();
 
   const initials = me?.username ? me.username.slice(0, 2).toUpperCase() : "—";
-  const display = me?.fullName ?? me?.username ?? "Loading…";
-  const primaryRole = me?.roles?.find((r) => !r.startsWith("default-roles")) ?? "";
+  // First name only — the persona "surname" is just the department (Tom
+  // Purchasing, Mike Warehouse, …), which we don't need in the chip.
+  const display = (me?.fullName ?? me?.username ?? "Loading…").split(" ")[0];
 
   return (
     <header className="flex h-14 shrink-0 items-center border-b border-border-default bg-bg-surface px-4">
@@ -47,19 +48,12 @@ export function AppBar() {
 
         <div className="ml-2 h-6 w-px bg-border-default" />
 
-        <button
-          type="button"
-          className="ml-2 flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-bg-subtle"
-        >
+        <div className="ml-2 flex items-center gap-2 px-2 py-1.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-primary-soft text-xs font-semibold text-brand-primary">
             {initials}
           </div>
-          <div className="text-left">
-            <div className="text-xs font-medium text-text-primary">{display}</div>
-            <div className="text-[11px] text-text-muted">{primaryRole}</div>
-          </div>
-          <ChevronDown className="h-4 w-4 text-text-muted" />
-        </button>
+          <div className="text-sm font-medium text-text-primary">{display}</div>
+        </div>
 
         <form method="post" action="/logout" className="ml-1">
           <button
