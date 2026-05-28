@@ -683,6 +683,27 @@ CREATE TRIGGER trg_stock_item_updated_at
     BEFORE UPDATE ON inventory.stock_item
     FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
 
+-- §2.35 Slice A: inventory-side projection of product.MakeVsBuyChanged.
+-- Mirrors manufacturing.product_card's replenishment columns — duplicate
+-- projection across services is the accepted cost of cross-schema isolation.
+-- Read by the §2.35 reorder-point detection service (Slice B) to decide
+-- whether to route a replenishment to manufacturing or purchasing.
+-- Seed defaults: ProductCreated derives (is_purchased, is_manufactured) from
+-- product_type (RAW_MATERIAL/SERVICE → buy-only, FINISHED_GOOD/SEMI_FINISHED
+-- → make-only) so the table is non-empty for day-zero SKUs before any
+-- MakeVsBuyChanged event arrives.
+CREATE TABLE inventory.product_replenishment (
+    product_id        UUID PRIMARY KEY,
+    is_purchased      BOOLEAN NOT NULL DEFAULT false,
+    is_manufactured   BOOLEAN NOT NULL DEFAULT false,
+    discontinued_at   TIMESTAMPTZ,
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER trg_product_replenishment_updated_at
+    BEFORE UPDATE ON inventory.product_replenishment
+    FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
+
 CREATE TABLE inventory.stock_balance (
     stock_balance_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     warehouse_id UUID NOT NULL REFERENCES inventory.warehouse(warehouse_id),

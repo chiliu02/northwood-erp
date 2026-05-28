@@ -7,7 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.northwood.product.domain.ProductAggregateTypes;
-import com.northwood.product.domain.events.ProductCreated;
+import com.northwood.product.domain.events.MakeVsBuyChanged;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
 import java.time.Instant;
@@ -20,53 +20,58 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
-class ProductCreatedHandlerTest {
+class MakeVsBuyChangedHandlerTest {
 
     private static final UUID PRODUCT = UUID.randomUUID();
-    private static final String SKU = "FG-NEW-001";
-    private static final String NAME = "Newly Registered Product";
-    private static final String TYPE = "finished_good";
 
     @Mock InboxPort inbox;
-    @Mock ProductCreatedProjection stockItem;
-    @Mock ProductReplenishmentProjection replenishment;
+    @Mock ProductReplenishmentProjection projection;
 
     private final ObjectMapper json = new ObjectMapper();
-    private ProductCreatedHandler handler;
+    private MakeVsBuyChangedHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new ProductCreatedHandler(inbox, stockItem, replenishment, json);
+        handler = new MakeVsBuyChangedHandler(inbox, projection, json);
     }
 
-    private EventEnvelope event() {
+    private EventEnvelope event(boolean newPurchased, boolean newManufactured) {
         UUID eventId = UUID.randomUUID();
-        ProductCreated payload = new ProductCreated(eventId, PRODUCT, SKU, NAME, TYPE, Instant.now());
+        MakeVsBuyChanged payload = new MakeVsBuyChanged(
+            eventId, PRODUCT,
+            !newPurchased, newPurchased,
+            !newManufactured, newManufactured,
+            Instant.now()
+        );
         return new EventEnvelope(
             eventId, ProductAggregateTypes.PRODUCT, PRODUCT,
-            ProductCreated.EVENT_TYPE, 1,
+            MakeVsBuyChanged.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
             null, null, null, null, Instant.now()
         );
     }
 
-    @Test void happy_path_seeds_stock_item_and_replenishment_stubs() {
-        handler.handle(event());
+    @Test void happy_path_propagates_flags_to_projection() {
+        handler.handle(event(true, false));
 
-        verify(stockItem).apply(eq(PRODUCT), eq(SKU), eq(NAME), eq(TYPE));
-        verify(replenishment).seedDefaultsFromProductType(eq(PRODUCT), eq(TYPE));
+        verify(projection).applyMakeVsBuy(eq(PRODUCT), eq(true), eq(false));
         verify(inbox).recordProcessed(any());
     }
 
+    @Test void both_flags_true_is_valid_vertically_integrated_case() {
+        handler.handle(event(true, true));
+
+        verify(projection).applyMakeVsBuy(eq(PRODUCT), eq(true), eq(true));
+    }
+
     @Test void already_processed_short_circuits() {
-        EventEnvelope envelope = event();
-        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(ProductCreatedHandler.CONSUMER_NAME)))
+        EventEnvelope envelope = event(false, true);
+        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(MakeVsBuyChangedHandler.CONSUMER_NAME)))
             .thenReturn(true);
 
         handler.handle(envelope);
 
-        verify(stockItem, never()).apply(any(), any(), any(), any());
-        verify(replenishment, never()).seedDefaultsFromProductType(any(), any());
+        verify(projection, never()).applyMakeVsBuy(any(), any(Boolean.class), any(Boolean.class));
         verify(inbox, never()).recordProcessed(any());
     }
 }

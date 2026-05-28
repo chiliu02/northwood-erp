@@ -78,6 +78,15 @@ CREATE TABLE inventory.stock_item (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- §2.35 Slice A: inventory-side projection of product.MakeVsBuyChanged.
+CREATE TABLE inventory.product_replenishment (
+    product_id        UUID PRIMARY KEY,
+    is_purchased      BOOLEAN NOT NULL DEFAULT false,
+    is_manufactured   BOOLEAN NOT NULL DEFAULT false,
+    discontinued_at   TIMESTAMPTZ,
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE inventory.stock_balance (
     stock_balance_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     warehouse_id UUID NOT NULL REFERENCES inventory.warehouse(warehouse_id),

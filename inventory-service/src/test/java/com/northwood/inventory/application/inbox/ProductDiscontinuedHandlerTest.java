@@ -26,14 +26,15 @@ class ProductDiscontinuedHandlerTest {
     private static final Instant DISCONTINUED_AT = Instant.parse("2026-05-14T03:15:00Z");
 
     @Mock InboxPort inbox;
-    @Mock ProductDiscontinuedProjection projection;
+    @Mock ProductDiscontinuedProjection stockItem;
+    @Mock ProductReplenishmentProjection replenishment;
 
     private final ObjectMapper json = new ObjectMapper();
     private ProductDiscontinuedHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new ProductDiscontinuedHandler(inbox, projection, json);
+        handler = new ProductDiscontinuedHandler(inbox, stockItem, replenishment, json);
     }
 
     private EventEnvelope event() {
@@ -47,10 +48,11 @@ class ProductDiscontinuedHandlerTest {
         );
     }
 
-    @Test void happy_path_stamps_stock_item() {
+    @Test void happy_path_stamps_stock_item_and_retires_replenishment() {
         handler.handle(event());
 
-        verify(projection).applyDiscontinued(eq(PRODUCT), eq(DISCONTINUED_AT));
+        verify(stockItem).applyDiscontinued(eq(PRODUCT), eq(DISCONTINUED_AT));
+        verify(replenishment).applyDiscontinued(eq(PRODUCT));
         verify(inbox).recordProcessed(any());
     }
 
@@ -61,7 +63,8 @@ class ProductDiscontinuedHandlerTest {
 
         handler.handle(envelope);
 
-        verify(projection, never()).applyDiscontinued(any(), any());
+        verify(stockItem, never()).applyDiscontinued(any(), any());
+        verify(replenishment, never()).applyDiscontinued(any());
         verify(inbox, never()).recordProcessed(any());
     }
 }

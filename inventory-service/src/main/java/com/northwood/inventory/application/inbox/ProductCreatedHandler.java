@@ -13,29 +13,42 @@ import tools.jackson.databind.ObjectMapper;
  * for the SKU (notably {@code ReorderPolicyChanged}) have a row to project
  * onto. §1F.2: closes the gap previously documented inline on
  * {@link StockItemProjection#applyReorderPolicy}.
+ *
+ * <p>§2.35 Slice A extension: also seeds a default row in
+ * {@code inventory.product_replenishment} via
+ * {@link ProductReplenishmentProjection#seedDefaultsFromProductType} so the
+ * §2.35 detection service has non-empty make-vs-buy flags for day-zero SKUs
+ * before any {@code MakeVsBuyChanged} event arrives.
  */
 @Component
 public class ProductCreatedHandler extends AbstractInboxHandler<ProductCreated> {
 
     public static final String CONSUMER_NAME = "inventory.product-created";
 
-    private final ProductCreatedProjection projection;
+    private final ProductCreatedProjection stockItem;
+    private final ProductReplenishmentProjection replenishment;
 
     public ProductCreatedHandler(
         InboxPort inbox,
-        ProductCreatedProjection projection,
+        ProductCreatedProjection stockItem,
+        ProductReplenishmentProjection replenishment,
         ObjectMapper json
     ) {
         super(inbox, json, ProductCreated.class, ProductCreated.EVENT_TYPE, CONSUMER_NAME);
-        this.projection = projection;
+        this.stockItem = stockItem;
+        this.replenishment = replenishment;
     }
 
     @Override
     protected void apply(ProductCreated payload, EventEnvelope envelope) {
-        projection.apply(
+        stockItem.apply(
             payload.aggregateId(),
             payload.sku(),
             payload.name(),
+            payload.productType()
+        );
+        replenishment.seedDefaultsFromProductType(
+            payload.aggregateId(),
             payload.productType()
         );
 
