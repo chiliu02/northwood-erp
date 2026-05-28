@@ -11,7 +11,7 @@ import java.util.UUID;
  * {@code ManufacturingRequestedHandler} after deciding which lines it can
  * actually fulfil. One outcome per line; sales' handler reacts to the
  * "everything was rejected" case by flipping the fulfilment saga to
- * {@code stock_reservation_failed} (otherwise the saga would sit at
+ * {@code rejected} (otherwise the saga would sit at
  * {@code manufacturing_requested} forever waiting for a {@code WorkOrderCreated}
  * that will never arrive).
  *

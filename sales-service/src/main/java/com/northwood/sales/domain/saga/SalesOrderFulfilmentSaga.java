@@ -12,12 +12,12 @@ import java.util.UUID;
  * inherited from {@link SagaInstance}.
  *
  * <p>State machine (per the schema CHECK constraint):
- * {@code started → stock_reservation_requested → stock_reserved →
+ * {@code started → stock_reservation_requested → stock_reservation_incomplete →
  *  manufacturing_requested → manufacturing_in_progress → manufacturing_completed →
  *  ready_to_ship → goods_shipped → invoice_requested → invoice_created → completed}.
  * Fully-reserved orders shortcut directly from
  * {@code stock_reservation_requested → ready_to_ship}, skipping the
- * manufacturing leg. Side rails: {@code stock_reservation_failed},
+ * manufacturing leg. Side rails: {@code rejected},
  * {@code compensating}, {@code compensated}, {@code failed}.
  *
  * <p>This slice implements the first two transitions only; later transitions
@@ -42,8 +42,8 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
     // ------------------------------------------------------------
     public static final String STARTED = "started";
     public static final String STOCK_RESERVATION_REQUESTED = "stock_reservation_requested";
-    public static final String STOCK_RESERVED = "stock_reserved";
-    public static final String STOCK_RESERVATION_FAILED = "stock_reservation_failed";
+    public static final String STOCK_RESERVATION_INCOMPLETE = "stock_reservation_incomplete";
+    public static final String REJECTED = "rejected";
     public static final String MANUFACTURING_REQUESTED = "manufacturing_requested";
     public static final String MANUFACTURING_IN_PROGRESS = "manufacturing_in_progress";
     public static final String MANUFACTURING_COMPLETED = "manufacturing_completed";
@@ -51,14 +51,14 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
     public static final String GOODS_SHIPPED = "goods_shipped";
     public static final String INVOICE_REQUESTED = "invoice_requested";
     public static final String INVOICE_CREATED = "invoice_created";
-    public static final String INVOICE_PAID = "invoice_paid";
+    public static final String INVOICE_PARTIALLY_PAID = "invoice_partially_paid";
     public static final String COMPLETED = "completed";
     public static final String COMPENSATING = "compensating";
     public static final String COMPENSATED = "compensated";
     public static final String FAILED = "failed";
 
     private static final Set<String> TERMINAL_STATES = Set.of(
-        COMPLETED, COMPENSATED, FAILED, STOCK_RESERVATION_FAILED
+        COMPLETED, COMPENSATED, FAILED, REJECTED
     );
 
     /**
@@ -70,10 +70,10 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
      */
     public static final Set<String> ALL_STATES = Set.of(
         STARTED,
-        STOCK_RESERVATION_REQUESTED, STOCK_RESERVED, STOCK_RESERVATION_FAILED,
+        STOCK_RESERVATION_REQUESTED, STOCK_RESERVATION_INCOMPLETE, REJECTED,
         MANUFACTURING_REQUESTED, MANUFACTURING_IN_PROGRESS, MANUFACTURING_COMPLETED,
         READY_TO_SHIP, GOODS_SHIPPED,
-        INVOICE_REQUESTED, INVOICE_CREATED, INVOICE_PAID,
+        INVOICE_REQUESTED, INVOICE_CREATED, INVOICE_PARTIALLY_PAID,
         COMPLETED,
         COMPENSATING, COMPENSATED,
         FAILED

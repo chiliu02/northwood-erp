@@ -35,7 +35,7 @@ cd demo-web-ui ; npm.cmd install ; cd ..            # one-time SPA dep install
 cd erp-web-ui ; npm.cmd install ; cd ..             # one-time install for the operational ERP SPA
 ```
 
-Postgres runs its init scripts once, on the first boot of a fresh data volume. The base `docker-compose.yml` mounts only the **schema baseline** (`db/northwood_erp.sql` — per-service schemas, roles, grants, the saga CHECK constraint already extended for `invoice_paid`); the `docker-compose.seed.yml` override additionally mounts the **demo fixtures** (`db/northwood_erp_seed.sql` — products, customers, suppliers, BOMs, GL chart, …). This walkthrough needs the fixtures (CUST-001, the SKUs, etc.), which is why the command above layers both files with `-f`. For an empty database you populate via events from zero, drop the override and run `docker compose up -d`. To start fresh later, repeat the seeded command after a wipe: `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d`.
+Postgres runs its init scripts once, on the first boot of a fresh data volume. The base `docker-compose.yml` mounts only the **schema baseline** (`db/northwood_erp.sql` — per-service schemas, roles, grants, the saga CHECK constraint already extended for `invoice_partially_paid`); the `docker-compose.seed.yml` override additionally mounts the **demo fixtures** (`db/northwood_erp_seed.sql` — products, customers, suppliers, BOMs, GL chart, …). This walkthrough needs the fixtures (CUST-001, the SKUs, etc.), which is why the command above layers both files with `-f`. For an empty database you populate via events from zero, drop the override and run `docker compose up -d`. To start fresh later, repeat the seeded command after a wipe: `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d`.
 
 Keycloak loads the `northwood` realm from `db/keycloak/northwood-realm.json` on first boot — 13 roles + 13 demo users (one per role, `username == password`). Admin console at `http://localhost:8090/` (`admin` / `admin`).
 
@@ -293,7 +293,7 @@ curl -X POST http://localhost:8082/api/sales-orders \
 |---|---|
 | `started` | worker emits `sales.StockReservationRequested` |
 | `stock_reservation_requested` | inbound `inventory.StockReserved` |
-| `stock_reserved` | worker emits `sales.ManufacturingRequested` |
+| `stock_reservation_incomplete` | worker emits `sales.ManufacturingRequested` |
 | `manufacturing_requested` | inbound `manufacturing.WorkOrderCreated` |
 | `manufacturing_in_progress` | inbound `manufacturing.WorkOrderManufacturingCompleted` |
 | `ready_to_ship` | post a shipment via `POST /api/shipments` (inventory) |
@@ -301,7 +301,7 @@ curl -X POST http://localhost:8082/api/sales-orders \
 | `invoice_created` | inbound `finance.CustomerPaymentReceived` (full settlement) |
 | `completed` | terminal |
 
-Partial customer payment lands on `invoice_paid` instead, parking until the next allocation.
+Partial customer payment lands on `invoice_partially_paid` instead, parking until the next allocation.
 
 **To drive the saga to completion (UI: Scenario 3.1 does all of this):**
 
@@ -346,7 +346,7 @@ Partial customer payment lands on `invoice_paid` instead, parking until the next
 
 ### 4.1 — Cancel an order mid-fulfilment
 
-Place an order **as Sarah (sales_clerk)**, advance it to `manufacturing_in_progress` (e.g. follow Demo 3 partway: place order → wait for `stock_reserved` → wait for first `WorkOrderCreated`).
+Place an order **as Sarah (sales_clerk)**, advance it to `manufacturing_in_progress` (e.g. follow Demo 3 partway: place order → wait for `stock_reservation_incomplete` → wait for first `WorkOrderCreated`).
 
 **Security demo moment.** With Sarah still logged in, hover over the **Cancel order** button on the sales-order detail page — it's disabled with a tooltip "Requires role: sales_manager". Sarah doesn't have authority to cancel; only sales-mgr does. Click **Sign out** (top-right), then sign back in as **sales-mgr**. Now the Cancel button is enabled. Click it, supply a reason, confirm. Behind the scenes Spring Security's `@PreAuthorize("hasRole('sales_manager')")` accepts the call.
 
@@ -377,9 +377,9 @@ After `goods_shipped` the cancel is rejected with HTTP 409 — that path require
 
 Pre-state: 0 × FG-TABLE-001 on hand. Place an order for 2 of them.
 
-The `StockReservedHandler` stashes the shortage on saga.data and **still advances to `stock_reserved`**. The worker then emits `ManufacturingRequested` carrying the shortage map; manufacturing fills the gap by releasing work orders. End-state is the same as 3.1, just longer.
+The `StockReservedHandler` stashes the shortage on saga.data and **still advances to `stock_reservation_incomplete`**. The worker then emits `ManufacturingRequested` carrying the shortage map; manufacturing fills the gap by releasing work orders. End-state is the same as 3.1, just longer.
 
-If manufacturing has **no active BOM** for the product, `ManufacturingDispatchedHandler` flips the saga to `stock_reservation_failed` and the order header to `rejected`. To force this branch in a demo, deactivate the BOM via `POST /api/boms/{id}/activate` with a different BOM, or use a finished-good seeded without a BOM.
+If manufacturing has **no active BOM** for the product, `ManufacturingDispatchedHandler` flips both the saga and the order header to `rejected`. To force this branch in a demo, deactivate the BOM via `POST /api/boms/{id}/activate` with a different BOM, or use a finished-good seeded without a BOM.
 
 ---
 
@@ -484,7 +484,7 @@ Pre-state: only 2 × RM-LEG-001 on hand; ordered quantity needs 4.
           "amount":1000,
           "paymentMethod":"bank_transfer"}'
    ```
-   On full settlement: `supplier_invoice_approved` → `completed`; PO header flips to `paid`. On partial: → `supplier_payment_made`, parks.
+   On full settlement: `supplier_invoice_approved` → `completed`; PO header flips to `paid`. On partial: → `supplier_partially_paid`, parks.
 
    Multi-invoice supplier payment (one cheque settles multiple approved invoices):
    ```bash
@@ -518,7 +518,7 @@ curl -X POST http://localhost:8082/api/sales-orders \
 
 **Watch this unfold:**
 
-1. Sales fulfilment saga: `started` → `stock_reservation_requested` → `stock_reserved` (with shortage stash) → `manufacturing_requested`.
+1. Sales fulfilment saga: `started` → `stock_reservation_requested` → `stock_reservation_incomplete` (with shortage stash) → `manufacturing_requested`.
 2. Make-to-order saga starts; advances to `raw_material_shortage` because RM-LEG-001 is short by 35 units.
 3. `manufacturing.RawMaterialShortageDetected` fires → purchasing creates a PR + PO → P2P saga starts at `started` → `waiting_for_goods`.
 4. **Time-skip:** Tom posts a goods receipt for 35 × RM-LEG-001 (Demo 6 step 2 with `receivedQuantity:35`).

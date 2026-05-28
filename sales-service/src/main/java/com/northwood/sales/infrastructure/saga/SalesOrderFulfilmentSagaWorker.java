@@ -13,7 +13,7 @@ import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.MANUFACTURING_REQUESTED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STARTED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_REQUESTED;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVED;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_INCOMPLETE;
 import com.northwood.shared.domain.Assert;
 import com.northwood.shared.application.outbox.OutboxAppender;
 import java.lang.management.ManagementFactory;
@@ -39,7 +39,7 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>{@code started → stock_reservation_requested}: read sales-order
  *       lines, emit {@code StockReservationRequested}, transition saga.</li>
- *   <li>{@code stock_reserved → manufacturing_requested}: read sales-order
+ *   <li>{@code stock_reservation_incomplete → manufacturing_requested}: read sales-order
  *       lines, filter by shortage (when present), emit
  *       {@code ManufacturingRequested}, transition saga.</li>
  * </ul>
@@ -87,7 +87,7 @@ public class SalesOrderFulfilmentSagaWorker {
     private void advance(SalesOrderFulfilmentSaga saga) {
         switch (saga.state()) {
             case STARTED -> requestStockReservation(saga);
-            case STOCK_RESERVED -> requestManufacturing(saga);
+            case STOCK_RESERVATION_INCOMPLETE -> requestManufacturing(saga);
             default -> log.debug("[{}] no transition implemented for state {}", workerId, saga.state());
         }
     }
@@ -129,7 +129,7 @@ public class SalesOrderFulfilmentSagaWorker {
         UUID salesOrderId = saga.salesOrderId();
         // hasShortage preserves the empty-means-no-shortage semantic from
         // StockReservedHandler.extractShortage. applyStockReserved routes
-        // RESERVED outcomes straight to READY_TO_SHIP, so STOCK_RESERVED is
+        // RESERVED outcomes straight to READY_TO_SHIP, so STOCK_RESERVATION_INCOMPLETE is
         // only reachable for partial / failed reservations — which always
         // carry a non-empty shortage map. An empty map here is therefore a
         // "shouldn't happen" defensive case: skip + WARN to surface the
@@ -139,7 +139,7 @@ public class SalesOrderFulfilmentSagaWorker {
         boolean hasShortage = !shortageByLineNumber.isEmpty();
 
         if (!hasShortage) {
-            log.warn("[{}] saga {} sales_order={} reached STOCK_RESERVED with no shortage stashed; skipping {} emission. applyStockReserved should have routed full-reservation outcomes to READY_TO_SHIP.",
+            log.warn("[{}] saga {} sales_order={} reached STOCK_RESERVATION_INCOMPLETE with no shortage stashed; skipping {} emission. applyStockReserved should have routed full-reservation outcomes to READY_TO_SHIP.",
                 workerId, saga.sagaId(), salesOrderId, ManufacturingRequested.EVENT_TYPE);
             return;
         }

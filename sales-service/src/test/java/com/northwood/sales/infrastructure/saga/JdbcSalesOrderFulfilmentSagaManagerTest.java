@@ -119,7 +119,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
 
             manager.applyStockReserved(SO, "partially_reserved", Map.of(10, new BigDecimal("2")));
 
-            assertThat(saga.state()).isEqualTo(STOCK_RESERVED);
+            assertThat(saga.state()).isEqualTo(STOCK_RESERVATION_INCOMPLETE);
             FulfilmentSagaData data = json.readValue(saga.dataJson(), FulfilmentSagaData.class);
             assertThat(data.shortageByLineNumber()).containsEntry(10, new BigDecimal("2"));
         }
@@ -130,7 +130,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
 
             manager.applyStockReserved(SO, "failed", Map.of(10, new BigDecimal("3")));
 
-            assertThat(saga.state()).isEqualTo(STOCK_RESERVED);
+            assertThat(saga.state()).isEqualTo(STOCK_RESERVATION_INCOMPLETE);
         }
 
         @Test void partial_reservation_without_shortage_map_throws() {
@@ -239,17 +239,17 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
 
     @Nested
     class ApplyManufacturingDispatched {
-        @Test void all_rejected_flips_to_stock_reservation_failed() {
+        @Test void all_rejected_flips_to_rejected() {
             SalesOrderFulfilmentSaga saga = sagaInState(MANUFACTURING_REQUESTED);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
             String state = manager.applyManufacturingDispatched(SO, 0, 2);
 
-            assertThat(state).isEqualTo(STOCK_RESERVATION_FAILED);
+            assertThat(state).isEqualTo(REJECTED);
             assertThat(saga.currentStep()).isEqualTo("no_manufacturable_lines");
         }
 
-        @Test void partial_rejection_flips_to_stock_reservation_failed() {
+        @Test void partial_rejection_flips_to_rejected() {
             // §4.2 closure: any rejection rejects the whole order (was: silently
             // stamp expectedWorkOrderCount=acceptedCount and proceed with the
             // accepted lines, dropping the rejected one).
@@ -258,7 +258,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
 
             String state = manager.applyManufacturingDispatched(SO, 2, 3);
 
-            assertThat(state).isEqualTo(STOCK_RESERVATION_FAILED);
+            assertThat(state).isEqualTo(REJECTED);
             assertThat(saga.currentStep()).isEqualTo("partial_dispatch_rejection");
         }
 
@@ -401,17 +401,17 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             assertThat(state).isEqualTo(COMPLETED);
         }
 
-        @Test void partial_settlement_transitions_to_invoice_paid() {
+        @Test void partial_settlement_transitions_to_invoice_partially_paid() {
             SalesOrderFulfilmentSaga saga = sagaInState(INVOICE_CREATED);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
             String state = manager.applyCustomerPaymentReceived(SO, false);
 
-            assertThat(state).isEqualTo(INVOICE_PAID);
+            assertThat(state).isEqualTo(INVOICE_PARTIALLY_PAID);
         }
 
-        @Test void from_invoice_paid_full_completes() {
-            SalesOrderFulfilmentSaga saga = sagaInState(INVOICE_PAID);
+        @Test void from_invoice_partially_paid_full_completes() {
+            SalesOrderFulfilmentSaga saga = sagaInState(INVOICE_PARTIALLY_PAID);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
             String state = manager.applyCustomerPaymentReceived(SO, true);
@@ -468,14 +468,14 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
 
     @Nested
     class ActiveStates {
-        @Test void worker_polls_started_and_stock_reserved() {
+        @Test void worker_polls_started_and_stock_reservation_incomplete() {
             // Indirect verification: claim only those two states.
-            Set<String> active = Set.of(STARTED, STOCK_RESERVED);
+            Set<String> active = Set.of(STARTED, STOCK_RESERVATION_INCOMPLETE);
             // We can't directly call the protected method, but we can assert the
             // contract holds by checking the manager respects the set when
             // worker drains. Skipping explicit test here — contract verified
             // by SalesApplicationTests integration smoke.
-            assertThat(active).containsExactlyInAnyOrder(STARTED, STOCK_RESERVED);
+            assertThat(active).containsExactlyInAnyOrder(STARTED, STOCK_RESERVATION_INCOMPLETE);
         }
     }
 }

@@ -19,7 +19,7 @@ import java.util.function.Consumer;
  * <p>Each {@code applyXxx} returns the saga's new state (or its current state
  * if the transition was a no-op). Callers use the return value to gate
  * post-saga side effects: a {@code "compensated"} return triggers
- * {@code SalesOrderCompensated} emission; a {@code "stock_reservation_failed"}
+ * {@code SalesOrderCompensated} emission; a {@code "rejected"}
  * return triggers a {@code rejected} status projection; etc.
  *
  * <p>Apply methods take saga-relevant primitives (UUID + small fields), not
@@ -76,7 +76,7 @@ public interface SalesOrderFulfilmentSagaManager {
      *       (throws {@link IllegalStateException} otherwise — inventory
      *       has nothing meaningful to say about a non-success outcome
      *       without per-line shortages). Stashes the map onto
-     *       {@code saga.data}, transitions {@code → stock_reserved}, and
+     *       {@code saga.data}, transitions {@code → stock_reservation_incomplete}, and
      *       parks the saga for immediate worker pickup so the worker
      *       forwards the shortage as a {@code ManufacturingRequested}
      *       on the next tick.</li>
@@ -109,7 +109,7 @@ public interface SalesOrderFulfilmentSagaManager {
     /**
      * Apply {@code manufacturing.ManufacturingDispatched}. On all-rejected
      * (zero accepted lines) and saga still in {@code manufacturing_requested},
-     * transitions {@code → stock_reservation_failed}. Otherwise stamps
+     * transitions {@code → rejected}. Otherwise stamps
      * {@code expectedWorkOrderCount} on saga data so the cross-partition
      * completion gate is monotonic.
      */
@@ -124,7 +124,7 @@ public interface SalesOrderFulfilmentSagaManager {
     /**
      * Apply {@code finance.CustomerPaymentReceived}. On full settlement,
      * transitions to {@code completed}. On partial, transitions to
-     * {@code invoice_paid} and parks for further payments.
+     * {@code invoice_partially_paid} and parks for further payments.
      */
     String applyCustomerPaymentReceived(UUID salesOrderHeaderId, boolean fullySettled);
 

@@ -190,17 +190,17 @@ class JdbcPurchaseToPaySagaManagerTest {
             assertThat(state).isEqualTo(COMPLETED);
         }
 
-        @Test void partial_settlement_transitions_to_supplier_payment_made() {
+        @Test void partial_settlement_transitions_to_supplier_partially_paid() {
             PurchaseToPaySaga saga = sagaInState(SUPPLIER_INVOICE_APPROVED);
             when(sagas.findByPurchaseOrderId(PO)).thenReturn(Optional.of(saga));
 
             String state = manager.applySupplierPaymentMade(PO, false);
 
-            assertThat(state).isEqualTo(SUPPLIER_PAYMENT_MADE);
+            assertThat(state).isEqualTo(SUPPLIER_PARTIALLY_PAID);
         }
 
-        @Test void from_supplier_payment_made_full_completes() {
-            PurchaseToPaySaga saga = sagaInState(SUPPLIER_PAYMENT_MADE);
+        @Test void from_supplier_partially_paid_full_completes() {
+            PurchaseToPaySaga saga = sagaInState(SUPPLIER_PARTIALLY_PAID);
             when(sagas.findByPurchaseOrderId(PO)).thenReturn(Optional.of(saga));
 
             String state = manager.applySupplierPaymentMade(PO, true);

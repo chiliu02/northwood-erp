@@ -1,7 +1,7 @@
 package com.northwood.purchasing.application.inbox;
 
 import static com.northwood.purchasing.domain.saga.PurchaseToPaySaga.COMPLETED;
-import static com.northwood.purchasing.domain.saga.PurchaseToPaySaga.SUPPLIER_PAYMENT_MADE;
+import static com.northwood.purchasing.domain.saga.PurchaseToPaySaga.SUPPLIER_PARTIALLY_PAID;
 
 import com.northwood.finance.domain.events.SupplierPaymentMade;
 import com.northwood.purchasing.application.saga.PurchaseToPaySagaManager;
@@ -45,7 +45,7 @@ public class SupplierPaymentMadeHandler extends AbstractInboxHandler<SupplierPay
         );
         if (COMPLETED.equals(newState)) {
             paymentProjection.markFullyPaid(payload.purchaseOrderHeaderId());
-        } else if (SUPPLIER_PAYMENT_MADE.equals(newState)) {
+        } else if (SUPPLIER_PARTIALLY_PAID.equals(newState)) {
             paymentProjection.addPartialPayment(payload.purchaseOrderHeaderId(), payload.allocatedAmount());
         }
     }

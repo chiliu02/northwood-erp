@@ -40,7 +40,7 @@ northwood:
     # - finance.events for SupplierInvoiceApproved (advances P2P saga to
     #   supplier_invoice_approved, parking for payment), SupplierInvoiceRejected
     #   (lands P2P saga in terminal failed), SupplierPaymentMade (completes
-    #   the saga on full settlement; parks at supplier_payment_made on partial).
+    #   the saga on full settlement; parks at supplier_partially_paid on partial).
     # - product.events for ApprovedVendorListChanged (Shape A consumer
     #   projection in purchasing.product_approved_vendor).
     subscribe-topics: manufacturing.events,inventory.events,finance.events,product.events

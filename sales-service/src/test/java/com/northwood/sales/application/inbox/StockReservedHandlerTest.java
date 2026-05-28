@@ -3,7 +3,7 @@ package com.northwood.sales.application.inbox;
 import com.northwood.sales.domain.SalesOrder;
 
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.READY_TO_SHIP;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVED;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_INCOMPLETE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -78,7 +78,7 @@ class StockReservedHandlerTest {
     }
 
     @Test void partial_passes_shortage_map_and_does_not_emit_ready_to_ship() {
-        when(sagaManager.applyStockReserved(eq(SO), eq("partially_reserved"), any())).thenReturn(STOCK_RESERVED);
+        when(sagaManager.applyStockReserved(eq(SO), eq("partially_reserved"), any())).thenReturn(STOCK_RESERVATION_INCOMPLETE);
 
         handler.handle(event("partially_reserved", new BigDecimal("2")));
 

@@ -55,7 +55,7 @@ public class StockReservedHandler extends AbstractInboxHandler<StockReserved> {
         // Full reservation shortcuts the saga straight to ready_to_ship (no
         // manufacturing leg). Emit so reporting can advance order_status — the
         // value the shipment picker filters on. Partial/failed return
-        // stock_reserved and forward to manufacturing instead.
+        // stock_reservation_incomplete and forward to manufacturing instead.
         if (READY_TO_SHIP.equals(newState)) {
             readyToShipEmitter.emitReadyToShip(payload.salesOrderId());
         }

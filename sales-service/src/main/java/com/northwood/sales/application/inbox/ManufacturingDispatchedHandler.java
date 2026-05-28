@@ -1,6 +1,6 @@
 package com.northwood.sales.application.inbox;
 
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_FAILED;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.REJECTED;
 
 import com.northwood.manufacturing.domain.events.ManufacturingDispatched;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
@@ -28,7 +28,7 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Pre-§4.2 closure: this handler only flipped the order to
  * {@code 'rejected'} when ALL lines were rejected (the saga manager
- * returned {@code stock_reservation_failed} only on {@code !anyAccepted}).
+ * returned {@code rejected} only on {@code !anyAccepted}).
  * Partial rejection silently dropped the rejected lines and proceeded
  * with the accepted ones — order ended up with {@code total_amount}
  * reflecting the originally-ordered total while only the accepted lines
@@ -69,7 +69,7 @@ public class ManufacturingDispatchedHandler extends AbstractInboxHandler<Manufac
         String newState = sagaManager.applyManufacturingDispatched(
             payload.salesOrderHeaderId(), acceptedCount, totalLines
         );
-        if (STOCK_RESERVATION_FAILED.equals(newState)) {
+        if (REJECTED.equals(newState)) {
             statusProjection.markStatus(payload.salesOrderHeaderId(), SalesOrder.Status.REJECTED);
             String reason = buildRejectionReason(payload, acceptedCount, totalLines);
             emitCancellationRequest(payload.salesOrderHeaderId(), reason);
@@ -92,7 +92,7 @@ public class ManufacturingDispatchedHandler extends AbstractInboxHandler<Manufac
      * transaction that just observed {@code ManufacturingDispatched} for an
      * existing order — we log WARN and skip the emission rather than throw;
      * the sales saga has already transitioned to
-     * {@code stock_reservation_failed} (terminal), so even without downstream
+     * {@code rejected} (terminal), so even without downstream
      * compensation the saga itself is in a sensible state. (Inlined from the
      * former {@code SalesOrderCompensationEmitter.emitCancellationRequest},
      * which had a single caller.)

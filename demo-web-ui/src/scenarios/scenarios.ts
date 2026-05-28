@@ -55,7 +55,7 @@ const SCENARIO_3_1: Scenario = {
       "Open /shipments → fill SO id (already in URL clipboard from step 1) → Post.",
       shipmentPostedForSalesOrder
     ),
-    waitForSalesSaga(["invoice_created", "invoice_paid", "completed"], {
+    waitForSalesSaga(["invoice_created", "invoice_partially_paid", "completed"], {
       stepId: "wait-invoice",
       title: "Wait for sales saga → invoice_created (auto via finance)",
     }),
@@ -135,7 +135,7 @@ const SCENARIO_7_1: Scenario = {
       "Open /shipments → fill SO id → Post for the full ordered quantity.",
       shipmentPostedForSalesOrder
     ),
-    waitForSalesSaga(["invoice_created", "invoice_paid", "completed"], {
+    waitForSalesSaga(["invoice_created", "invoice_partially_paid", "completed"], {
       stepId: "wait-invoice",
       title: "Wait for sales saga → invoice_created",
     }),

@@ -135,7 +135,7 @@ public class JdbcPurchaseToPaySagaManager
         PurchaseToPaySaga saga = requireSaga(purchaseOrderHeaderId, SupplierPaymentMade.EVENT_TYPE);
 
         if (!SUPPLIER_INVOICE_APPROVED.equals(saga.state())
-            && !SUPPLIER_PAYMENT_MADE.equals(saga.state())) {
+            && !SUPPLIER_PARTIALLY_PAID.equals(saga.state())) {
             log.debug("saga {} purchase_order={} not in payment-receivable state (state={}); ignoring",
                 saga.sagaId(), purchaseOrderHeaderId, saga.state());
         } else if (fullySettled) {
@@ -144,9 +144,9 @@ public class JdbcPurchaseToPaySagaManager
             log.info("saga {} purchase_order={} → completed (fully settled)",
                 saga.sagaId(), purchaseOrderHeaderId);
         } else {
-            saga.transitionTo(SUPPLIER_PAYMENT_MADE, "wait_for_remaining_payments");
+            saga.transitionTo(SUPPLIER_PARTIALLY_PAID, "wait_for_remaining_payments");
             sagaPort.update(saga);
-            log.info("saga {} purchase_order={} → supplier_payment_made (partial)",
+            log.info("saga {} purchase_order={} → supplier_partially_paid (partial)",
                 saga.sagaId(), purchaseOrderHeaderId);
         }
         return saga.state();

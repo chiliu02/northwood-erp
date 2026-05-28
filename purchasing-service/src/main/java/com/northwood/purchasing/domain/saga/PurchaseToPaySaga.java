@@ -11,7 +11,7 @@ import java.util.UUID;
  *
  * <p>Walks {@code started → purchase_order_approved → waiting_for_goods →
  * goods_received → supplier_invoice_approved → completed} on the happy
- * path. Branches: partial supplier payments park at {@code supplier_payment_made}
+ * path. Branches: partial supplier payments park at {@code supplier_partially_paid}
  * (resume on the next allocation); manual rejection of a parked-at-3WM-failed
  * invoice lands the saga in terminal {@code failed} via
  * {@code applySupplierInvoiceRejected}.
@@ -39,7 +39,7 @@ public final class PurchaseToPaySaga extends SagaInstance {
     public static final String WAITING_FOR_GOODS = "waiting_for_goods";
     public static final String GOODS_RECEIVED = "goods_received";
     public static final String SUPPLIER_INVOICE_APPROVED = "supplier_invoice_approved";
-    public static final String SUPPLIER_PAYMENT_MADE = "supplier_payment_made";
+    public static final String SUPPLIER_PARTIALLY_PAID = "supplier_partially_paid";
     public static final String COMPLETED = "completed";
     public static final String FAILED = "failed";
 
@@ -63,7 +63,7 @@ public final class PurchaseToPaySaga extends SagaInstance {
         STARTED,
         PURCHASE_ORDER_APPROVED,
         WAITING_FOR_GOODS, GOODS_RECEIVED,
-        SUPPLIER_INVOICE_APPROVED, SUPPLIER_PAYMENT_MADE,
+        SUPPLIER_INVOICE_APPROVED, SUPPLIER_PARTIALLY_PAID,
         COMPLETED,
         FAILED
     );

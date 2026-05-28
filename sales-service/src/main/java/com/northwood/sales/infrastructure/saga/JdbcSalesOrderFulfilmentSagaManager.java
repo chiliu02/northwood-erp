@@ -42,7 +42,7 @@ import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.*;
  * <p>Apply methods take saga-relevant primitives (UUIDs, ints, strings,
  * maps), return the saga's new state. Callers gate post-saga side effects
  * on the returned state — e.g. {@code "compensated"} triggers
- * {@code SalesOrderCompensated} emission; {@code "stock_reservation_failed"}
+ * {@code SalesOrderCompensated} emission; {@code "rejected"}
  * triggers a {@code rejected} status projection.
  */
 @Service
@@ -76,7 +76,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
 
     @Override
     protected Set<String> activeStates() {
-        return Set.of(STARTED, STOCK_RESERVED);
+        return Set.of(STARTED, STOCK_RESERVATION_INCOMPLETE);
     }
 
     // ============================================================
@@ -127,10 +127,10 @@ public class JdbcSalesOrderFulfilmentSagaManager
                     + salesOrderHeaderId + " arrived without a per-line shortage map. "
                     + "Inventory must include shortageByLineNumber for partially_reserved / failed outcomes.");
             stashShortage(saga, shortageByLineNumber);
-            saga.transitionTo(STOCK_RESERVED, "wait_for_next_step");
+            saga.transitionTo(STOCK_RESERVATION_INCOMPLETE, "wait_for_next_step");
             saga.parkUntil(Instant.now());
             sagaPort.update(saga);
-            log.info("saga {} sales_order={} status={} → stock_reserved",
+            log.info("saga {} sales_order={} status={} → stock_reservation_incomplete",
                 saga.sagaId(), salesOrderHeaderId, reservationStatus);
         }
         return saga.state();
@@ -213,9 +213,9 @@ public class JdbcSalesOrderFulfilmentSagaManager
             String step = acceptedCount == 0
                 ? "no_manufacturable_lines"
                 : "partial_dispatch_rejection";
-            saga.transitionTo(STOCK_RESERVATION_FAILED, step);
+            saga.transitionTo(REJECTED, step);
             sagaPort.update(saga);
-            log.info("saga {} sales_order={} → stock_reservation_failed ({} accepted, {} rejected; step={})",
+            log.info("saga {} sales_order={} → rejected ({} accepted, {} rejected; step={})",
                 saga.sagaId(), salesOrderHeaderId, acceptedCount, totalLines - acceptedCount, step);
         } else if (anyRejected) {
             log.warn("saga {} sales_order={} dispatched with rejections but state={} — informational only",
@@ -268,7 +268,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
     public String applyCustomerPaymentReceived(UUID salesOrderHeaderId, boolean fullySettled) {
         SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, CustomerPaymentReceived.EVENT_TYPE);
 
-        if (!INVOICE_CREATED.equals(saga.state()) && !INVOICE_PAID.equals(saga.state())) {
+        if (!INVOICE_CREATED.equals(saga.state()) && !INVOICE_PARTIALLY_PAID.equals(saga.state())) {
             log.debug("saga {} sales_order={} not in payment-receivable state (state={}); ignoring",
                 saga.sagaId(), salesOrderHeaderId, saga.state());
         } else if (fullySettled) {
@@ -277,9 +277,9 @@ public class JdbcSalesOrderFulfilmentSagaManager
             log.info("saga {} sales_order={} → completed (fully settled)",
                 saga.sagaId(), salesOrderHeaderId);
         } else {
-            saga.transitionTo(INVOICE_PAID, "wait_for_remaining_payments");
+            saga.transitionTo(INVOICE_PARTIALLY_PAID, "wait_for_remaining_payments");
             sagaPort.update(saga);
-            log.info("saga {} sales_order={} → invoice_paid (partial)",
+            log.info("saga {} sales_order={} → invoice_partially_paid (partial)",
                 saga.sagaId(), salesOrderHeaderId);
         }
         return saga.state();

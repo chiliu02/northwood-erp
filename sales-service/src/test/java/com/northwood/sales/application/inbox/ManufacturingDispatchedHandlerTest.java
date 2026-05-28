@@ -5,7 +5,7 @@ import com.northwood.sales.domain.SalesOrderRepository;
 import com.northwood.sales.domain.events.SalesOrderCancellationRequested;
 
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.MANUFACTURING_REQUESTED;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_FAILED;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.REJECTED;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -94,7 +94,7 @@ class ManufacturingDispatchedHandlerTest {
 
     @Test void all_rejected_marks_status_and_emits_cancellation() {
         when(sagaManager.applyManufacturingDispatched(eq(SO), eq(0), eq(2)))
-            .thenReturn(STOCK_RESERVATION_FAILED);
+            .thenReturn(REJECTED);
         stubOrderExists();
 
         handler.handle(event("rejected_no_bom", "rejected_no_bom"));
@@ -111,7 +111,7 @@ class ManufacturingDispatchedHandlerTest {
         // cancellation request emitted so partial reservation + accepted-line WO
         // sagas get cleaned up.
         when(sagaManager.applyManufacturingDispatched(eq(SO), eq(2), eq(3)))
-            .thenReturn(STOCK_RESERVATION_FAILED);
+            .thenReturn(REJECTED);
         stubOrderExists();
 
         handler.handle(event("accepted", "rejected_no_bom", "accepted"));

@@ -106,7 +106,7 @@ public final class SalesTestKit {
 
     /**
      * Drive the sales fulfilment saga worker through one drain pass. Picks
-     * up sagas in {@code started} or {@code stock_reserved} and advances
+     * up sagas in {@code started} or {@code stock_reservation_incomplete} and advances
      * each by one transition (emitting StockReservationRequested or
      * ManufacturingRequested respectively).
      */

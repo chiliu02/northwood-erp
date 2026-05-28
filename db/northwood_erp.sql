@@ -502,10 +502,10 @@ CREATE TABLE sales.sales_order_fulfilment_saga (
     sales_order_header_id UUID NOT NULL UNIQUE,
     saga_state VARCHAR(50) NOT NULL CHECK (
         saga_state IN (
-            'started', 'stock_reservation_requested', 'stock_reserved', 'stock_reservation_failed',
+            'started', 'stock_reservation_requested', 'stock_reservation_incomplete', 'rejected',
             'manufacturing_requested', 'manufacturing_in_progress', 'manufacturing_completed',
             'ready_to_ship', 'goods_shipped', 'invoice_requested', 'invoice_created',
-            'invoice_paid',
+            'invoice_partially_paid',
             'completed', 'compensating', 'compensated', 'failed'
         )
     ),
@@ -1654,7 +1654,7 @@ CREATE TABLE purchasing.purchase_to_pay_saga (
     saga_state VARCHAR(50) NOT NULL CHECK (
         saga_state IN (
             'started', 'purchase_order_approved', 'waiting_for_goods', 'goods_received',
-            'supplier_invoice_approved', 'supplier_payment_made', 'completed', 'failed'
+            'supplier_invoice_approved', 'supplier_partially_paid', 'completed', 'failed'
         )
     ),
     current_step VARCHAR(100),

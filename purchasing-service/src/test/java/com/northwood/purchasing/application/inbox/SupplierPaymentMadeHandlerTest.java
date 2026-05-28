@@ -1,7 +1,7 @@
 package com.northwood.purchasing.application.inbox;
 
 import static com.northwood.purchasing.domain.saga.PurchaseToPaySaga.COMPLETED;
-import static com.northwood.purchasing.domain.saga.PurchaseToPaySaga.SUPPLIER_PAYMENT_MADE;
+import static com.northwood.purchasing.domain.saga.PurchaseToPaySaga.SUPPLIER_PARTIALLY_PAID;
 import static com.northwood.purchasing.domain.saga.PurchaseToPaySaga.WAITING_FOR_GOODS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -72,7 +72,7 @@ class SupplierPaymentMadeHandlerTest {
     }
 
     @Test void partial_settlement_calls_manager_with_false_and_marks_partial() {
-        when(sagaManager.applySupplierPaymentMade(eq(PO), eq(false))).thenReturn(SUPPLIER_PAYMENT_MADE);
+        when(sagaManager.applySupplierPaymentMade(eq(PO), eq(false))).thenReturn(SUPPLIER_PARTIALLY_PAID);
 
         handler.handle(event("partially_paid", "300.00"));
 
