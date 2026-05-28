@@ -281,7 +281,16 @@ public class SalesOrderService {
 
         salesOrders.save(order);
 
-        sagaManager.insertStarted(order.id().value(), "{}");
+        // §2.31 Slice B: stash payment_terms onto saga.data so the worker can
+        // branch at started (on_shipment → existing StockReservationRequested
+        // path; prepayment → PrepaymentInvoiceRequested) and so
+        // applyCustomerPaymentReceived can route full settlement to the right
+        // terminal (completed vs prepaid). Inline JSON to keep ObjectMapper
+        // out of this service for a single field; matches FulfilmentSagaData's
+        // wire shape. dbValue() is "on_shipment" / "prepayment" — no quoting
+        // concerns.
+        String dataJson = "{\"paymentTerms\":\"" + paymentTerms.dbValue() + "\"}";
+        sagaManager.insertStarted(order.id().value(), dataJson);
 
         return SalesOrderView.from(order);
     }

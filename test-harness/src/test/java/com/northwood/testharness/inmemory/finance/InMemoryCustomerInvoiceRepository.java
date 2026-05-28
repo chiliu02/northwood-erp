@@ -67,7 +67,8 @@ public final class InMemoryCustomerInvoiceRepository implements CustomerInvoiceR
             : (paid.compareTo(inv.totalAmount()) >= 0 ? CustomerInvoice.Status.PAID : CustomerInvoice.Status.PARTIALLY_PAID);
         return Optional.of(new PaymentSnapshot(
             inv.customerId(), inv.customerName(), inv.salesOrderHeaderId(),
-            inv.currencyCode(), inv.totalAmount(), paid, status
+            inv.currencyCode(), inv.totalAmount(), paid, status,
+            inv.invoiceType()
         ));
     }
 

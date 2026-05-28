@@ -33,6 +33,7 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
         rs.getBigDecimal("tax_amount"),
         rs.getBigDecimal("total_amount"),
         CustomerInvoice.Status.fromDb(rs.getString("status")),
+        CustomerInvoice.InvoiceType.fromDb(rs.getString("invoice_type")),
         List.of(),
         rs.getLong("version")
     );
@@ -67,7 +68,7 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
             SELECT customer_invoice_header_id, invoice_number, sales_order_header_id,
                    customer_id, customer_code, customer_name,
                    currency_code, subtotal_amount, tax_amount, total_amount,
-                   status, version
+                   status, invoice_type, version
             FROM finance.customer_invoice_header
             WHERE customer_invoice_header_id = ?
             """, HEADER_MAPPER, id.value());
@@ -89,6 +90,7 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
             stub.currencyCode(),
             stub.subtotalAmount(), stub.taxAmount(), stub.totalAmount(),
             stub.status(),
+            stub.invoiceType(),
             lines, stub.version()
         ));
     }
@@ -101,7 +103,7 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
             SELECT customer_invoice_header_id, invoice_number, sales_order_header_id,
                    customer_id, customer_code, customer_name,
                    currency_code, subtotal_amount, tax_amount, total_amount,
-                   status, version
+                   status, invoice_type, version
             FROM finance.customer_invoice_header
             ORDER BY posted_at DESC NULLS LAST, customer_invoice_header_id DESC
             """, HEADER_MAPPER);
@@ -113,7 +115,7 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
             return java.util.Optional.ofNullable(jdbc.queryForObject(
                 """
                 SELECT customer_id, customer_name, sales_order_header_id,
-                       currency_code, total_amount, paid_amount, status
+                       currency_code, total_amount, paid_amount, status, invoice_type
                 FROM finance.customer_invoice_header
                 WHERE customer_invoice_header_id = ?
                 """,
@@ -124,7 +126,8 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
                     rs.getString("currency_code"),
                     rs.getBigDecimal("total_amount"),
                     rs.getBigDecimal("paid_amount"),
-                    CustomerInvoice.Status.fromDb(rs.getString("status"))
+                    CustomerInvoice.Status.fromDb(rs.getString("status")),
+                    CustomerInvoice.InvoiceType.fromDb(rs.getString("invoice_type"))
                 ),
                 customerInvoiceHeaderId
             ));
@@ -153,15 +156,15 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
                 customer_invoice_header_id, invoice_number, sales_order_header_id,
                 customer_id, customer_code, customer_name,
                 currency_code, subtotal_amount, tax_amount, total_amount,
-                status, version, posted_at,
+                status, invoice_type, version, posted_at,
                 created_by, last_modified_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             ci.id().value(), ci.invoiceNumber(), ci.salesOrderHeaderId(),
             ci.customerId(), ci.customerCode(), ci.customerName(),
             ci.currencyCode(),
             ci.subtotalAmount(), ci.taxAmount(), ci.totalAmount(),
-            ci.status().dbValue(), 1L, postedAt,
+            ci.status().dbValue(), ci.invoiceType().dbValue(), 1L, postedAt,
             actor, actor
         );
         for (CustomerInvoiceLine l : ci.lines()) {

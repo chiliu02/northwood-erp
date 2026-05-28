@@ -156,14 +156,17 @@ public class PaymentService {
         );
         payments.save(payment);
 
-        // Phase 5b: GL pair (Dr Bank, Cr AR) in the same txn.
+        // Phase 5b: GL pair in the same txn. §2.31 Slice B routes the credit
+        // side by invoice_type — commercial → Cr AR (existing); prepayment →
+        // Cr 2110 Customer Deposits.
         journalEntries.postCustomerPayment(
             payment.id().value(),
             inv.customerName(),
             payment.paymentNumber(),
             command.amount(),
             inv.currencyCode(),
-            payment.paymentDate()
+            payment.paymentDate(),
+            inv.invoiceType()
         );
 
         log.info(
@@ -267,6 +270,7 @@ public class PaymentService {
         UUID expectedCustomerId = null;
         String expectedCustomerName = null;
         String expectedCurrency = null;
+        CustomerInvoice.InvoiceType expectedInvoiceType = null;
         BigDecimal totalAmount = BigDecimal.ZERO;
         List<CustomerAllocationLine> lines = new ArrayList<>();
         for (RecordCustomerPaymentMultiCommand.InvoiceLine il : command.invoices()) {
@@ -277,6 +281,7 @@ public class PaymentService {
                 expectedCustomerId = inv.customerId();
                 expectedCustomerName = inv.customerName();
                 expectedCurrency = inv.currencyCode();
+                expectedInvoiceType = inv.invoiceType();
             } else if (!expectedCustomerId.equals(inv.customerId())) {
                 throw new IllegalArgumentException(
                     "All invoices in a multi-allocation must be from the same customer "
@@ -286,6 +291,15 @@ public class PaymentService {
                 throw new IllegalArgumentException(
                     "All invoices in a multi-allocation must share the same currency "
                         + "(found " + inv.currencyCode() + " vs expected " + expectedCurrency + ")"
+                );
+            } else if (expectedInvoiceType != inv.invoiceType()) {
+                // §2.31 Slice B. One physical receipt is one balanced
+                // journal-entry pair; mixing commercial + prepayment invoices
+                // would force two different credit accounts in the same
+                // journal. Reject — caller must split into two payments.
+                throw new IllegalArgumentException(
+                    "All invoices in a multi-allocation must share the same invoice_type "
+                        + "(found " + inv.invoiceType().dbValue() + " vs expected " + expectedInvoiceType.dbValue() + ")"
                 );
             }
             BigDecimal outstandingBefore = inv.totalAmount().subtract(inv.paidAmount());
@@ -320,7 +334,8 @@ public class PaymentService {
             payment.paymentNumber(),
             totalAmount,
             expectedCurrency,
-            payment.paymentDate()
+            payment.paymentDate(),
+            expectedInvoiceType
         );
 
         log.info(

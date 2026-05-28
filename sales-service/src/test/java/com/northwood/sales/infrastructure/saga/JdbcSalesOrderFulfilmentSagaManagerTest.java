@@ -468,14 +468,69 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
 
     @Nested
     class ActiveStates {
-        @Test void worker_polls_started_and_stock_reservation_incomplete() {
-            // Indirect verification: claim only those two states.
-            Set<String> active = Set.of(STARTED, STOCK_RESERVATION_INCOMPLETE);
-            // We can't directly call the protected method, but we can assert the
-            // contract holds by checking the manager respects the set when
-            // worker drains. Skipping explicit test here — contract verified
-            // by SalesApplicationTests integration smoke.
-            assertThat(active).containsExactlyInAnyOrder(STARTED, STOCK_RESERVATION_INCOMPLETE);
+        @Test void worker_polls_started_stock_reservation_incomplete_and_prepaid() {
+            // §2.31 Slice B: PREPAID joins the active-states set as the
+            // worker-pickup checkpoint between full payment receipt for a
+            // prepayment invoice and the StockReservationRequested emission.
+            Set<String> active = Set.of(STARTED, STOCK_RESERVATION_INCOMPLETE, PREPAID);
+            assertThat(active).containsExactlyInAnyOrder(STARTED, STOCK_RESERVATION_INCOMPLETE, PREPAID);
+        }
+    }
+
+    @Nested
+    class ApplyCustomerInvoiceCreatedPrepaymentBranch {
+        @Test void awaiting_prepayment_invoice_advances_to_invoice_created() {
+            // §2.31 Slice B: the prepayment path also lands on invoice_created
+            // through finance's CustomerInvoiceCreated, but its source state
+            // is awaiting_prepayment_invoice (vs goods_shipped on-shipment).
+            SalesOrderFulfilmentSaga saga = sagaInState(AWAITING_PREPAYMENT_INVOICE,
+                FulfilmentSagaData.none().withPaymentTerms("prepayment"));
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyCustomerInvoiceCreated(SO);
+
+            assertThat(state).isEqualTo(INVOICE_CREATED);
+        }
+    }
+
+    @Nested
+    class ApplyCustomerPaymentReceivedPrepaymentBranch {
+        @Test void full_settlement_of_prepayment_invoice_advances_to_prepaid() {
+            // §2.31 Slice B: full payment for a prepayment-terms order routes
+            // to prepaid (an ACTIVE worker-pickup state), not completed —
+            // the saga still has to walk stock reservation → manufacturing →
+            // shipment from there.
+            SalesOrderFulfilmentSaga saga = sagaInState(INVOICE_CREATED,
+                FulfilmentSagaData.none().withPaymentTerms("prepayment"));
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyCustomerPaymentReceived(SO, true);
+
+            assertThat(state).isEqualTo(PREPAID);
+        }
+
+        @Test void full_settlement_on_shipment_still_completes() {
+            // §2.31 Slice B: regression check for the existing on-shipment
+            // path — paymentTerms="on_shipment" must still route to completed.
+            SalesOrderFulfilmentSaga saga = sagaInState(INVOICE_CREATED,
+                FulfilmentSagaData.none().withPaymentTerms("on_shipment"));
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyCustomerPaymentReceived(SO, true);
+
+            assertThat(state).isEqualTo(COMPLETED);
+        }
+
+        @Test void legacy_saga_without_payment_terms_still_completes() {
+            // Pre-§2.31-Slice-B sagas have no paymentTerms field on
+            // saga.data; the manager must treat that as on_shipment so
+            // already-in-flight orders complete cleanly across the upgrade.
+            SalesOrderFulfilmentSaga saga = sagaInState(INVOICE_CREATED, FulfilmentSagaData.none());
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyCustomerPaymentReceived(SO, true);
+
+            assertThat(state).isEqualTo(COMPLETED);
         }
     }
 }

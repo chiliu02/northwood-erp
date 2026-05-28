@@ -2,6 +2,7 @@ package com.northwood.finance.application;
 
 import com.northwood.finance.application.GlAccountLookup.GlAccount;
 import com.northwood.finance.application.dto.JournalEntryView;
+import com.northwood.finance.domain.CustomerInvoice;
 import com.northwood.finance.domain.JournalEntry;
 import com.northwood.finance.domain.JournalEntryId;
 import com.northwood.finance.domain.JournalEntryLine;
@@ -381,6 +382,15 @@ public class JournalEntryService {
         );
     }
 
+    /**
+     * §2.31 Slice B: branches the credit side on {@code invoiceType}.
+     * {@link CustomerInvoice.InvoiceType#COMMERCIAL} → Cr 1100 AR (the
+     * existing on-shipment flow, balancing the Dr AR posted at invoice
+     * creation). {@link CustomerInvoice.InvoiceType#PREPAYMENT} →
+     * Cr 2110 Customer Deposits (the liability we owe the customer until
+     * shipment; reclassified to revenue at shipment in Slice C). The debit
+     * side (Dr Cash) is the same regardless.
+     */
     @Transactional
     public void postCustomerPayment(
         UUID paymentId,
@@ -388,8 +398,17 @@ public class JournalEntryService {
         String paymentNumber,
         BigDecimal amount,
         String currencyCode,
-        LocalDate postingDate
+        LocalDate postingDate,
+        CustomerInvoice.InvoiceType invoiceType
     ) {
+        Assert.notNull(invoiceType, "invoiceType");
+        boolean prepayment = invoiceType == CustomerInvoice.InvoiceType.PREPAYMENT;
+        String creditAccount = prepayment
+            ? FinanceAccountCodes.CUSTOMER_DEPOSITS
+            : FinanceAccountCodes.AR;
+        String creditMemo = prepayment
+            ? "Hold deposit from " + customerName + " (prepayment invoice)"
+            : "Settle receivable from " + customerName;
         post(
             JournalEntry.NUMBER_PREFIX + journalSuffix(),
             postingDate,
@@ -400,8 +419,8 @@ public class JournalEntryService {
             currencyCode,
             FinanceAccountCodes.BANK,
             "Bank receipt from " + customerName,
-            FinanceAccountCodes.AR,
-            "Settle receivable from " + customerName,
+            creditAccount,
+            creditMemo,
             amount,
             postingDate
         );

@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.northwood.finance.application.JournalEntryService.LineCost;
+import com.northwood.finance.domain.CustomerInvoice;
 import com.northwood.finance.domain.JournalEntry;
 import com.northwood.finance.domain.JournalEntryId;
 import com.northwood.finance.domain.JournalEntryLine;
@@ -123,17 +124,32 @@ class JournalEntryServicePostingsTest {
             assertThat(creditFor(entry, "4000")).isEqualByComparingTo("550.00");
         }
 
-        @Test void customer_payment_posts_dr_bank_cr_ar() {
+        @Test void customer_payment_commercial_posts_dr_bank_cr_ar() {
             UUID paymentId = UUID.randomUUID();
             service.postCustomerPayment(
                 paymentId, "Globex Ltd", "PMT-002",
-                new BigDecimal("550.00"), Currencies.AUD, POSTING_DATE
+                new BigDecimal("550.00"), Currencies.AUD, POSTING_DATE,
+                CustomerInvoice.InvoiceType.COMMERCIAL
             );
 
             JournalEntry entry = capturedSave();
             assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.CUSTOMER_PAYMENT);
             assertThat(debitFor(entry, "1000")).isEqualByComparingTo("550.00");
             assertThat(creditFor(entry, "1100")).isEqualByComparingTo("550.00");
+        }
+
+        @Test void customer_payment_prepayment_posts_dr_bank_cr_customer_deposits() {
+            UUID paymentId = UUID.randomUUID();
+            service.postCustomerPayment(
+                paymentId, "Globex Ltd", "PMT-003",
+                new BigDecimal("550.00"), Currencies.AUD, POSTING_DATE,
+                CustomerInvoice.InvoiceType.PREPAYMENT
+            );
+
+            JournalEntry entry = capturedSave();
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.CUSTOMER_PAYMENT);
+            assertThat(debitFor(entry, "1000")).isEqualByComparingTo("550.00");
+            assertThat(creditFor(entry, "2110")).isEqualByComparingTo("550.00");
         }
 
         @Test void posting_defaults_currency_to_AUD_when_null() {

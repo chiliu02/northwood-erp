@@ -5,6 +5,7 @@ import com.northwood.finance.domain.CustomerInvoice;
 import com.northwood.finance.domain.CustomerInvoiceId;
 import com.northwood.finance.domain.CustomerInvoiceLine;
 import com.northwood.finance.domain.CustomerInvoiceRepository;
+import com.northwood.sales.domain.events.PrepaymentInvoiceRequested;
 import com.northwood.sales.domain.events.SalesOrderShipped;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -126,6 +127,50 @@ public class CustomerInvoiceService {
         );
 
         log.info("auto-created customer_invoice {} for sales_order={} (total={} {}, {} line(s))",
+            invoiceNumber, payload.aggregateId(),
+            invoice.totalAmount(), invoice.currencyCode(), lines.size());
+        return invoice.id();
+    }
+
+    /**
+     * §2.31 Slice B. Auto-create a <b>prepayment</b> customer invoice from a
+     * {@code sales.PrepaymentInvoiceRequested} event. Same line-construction
+     * logic as {@link #createFromShippedOrder} (qty × unitPrice × taxRate from
+     * the event payload verbatim) but stamps {@code invoice_type='prepayment'}
+     * on the header and does <b>not</b> post a journal entry — Treatment A:
+     * revenue is deferred until shipment (Slice C), and the payment receipt
+     * (Cr {@code 2110 Customer Deposits}) is what touches the GL.
+     */
+    @Transactional
+    public CustomerInvoiceId createFromPrepaymentRequest(PrepaymentInvoiceRequested payload) {
+        List<CustomerInvoiceLine> lines = new ArrayList<>();
+        for (PrepaymentInvoiceRequested.RequestedLine rl : payload.lines()) {
+            BigDecimal qty = rl.quantity();
+            BigDecimal unit = rl.unitPrice() == null ? BigDecimal.ZERO : rl.unitPrice();
+            BigDecimal taxRate = rl.taxRate() == null ? BigDecimal.ZERO : rl.taxRate();
+            BigDecimal lineSubtotal = qty.multiply(unit).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal lineTax = lineSubtotal.multiply(taxRate).setScale(2, RoundingMode.HALF_UP);
+            lines.add(new CustomerInvoiceLine(
+                UUID.randomUUID(), rl.lineNumber(),
+                rl.salesOrderLineId(),
+                rl.productId(), rl.productSku(), rl.productName(),
+                qty, unit, taxRate, lineTax, lineSubtotal
+            ));
+        }
+
+        String invoiceNumber = CustomerInvoice.NUMBER_PREFIX + UUID.randomUUID().toString().substring(0, CustomerInvoice.NUMBER_SUFFIX_LENGTH).toUpperCase();
+        CustomerInvoice invoice = CustomerInvoice.createPrepayment(
+            invoiceNumber,
+            payload.aggregateId(),
+            payload.customerId(),
+            payload.customerCode(),
+            payload.customerName(),
+            payload.currencyCode(),
+            lines
+        );
+        customerInvoices.save(invoice);
+
+        log.info("auto-created prepayment customer_invoice {} for sales_order={} (total={} {}, {} line(s); no GL until payment)",
             invoiceNumber, payload.aggregateId(),
             invoice.totalAmount(), invoice.currencyCode(), lines.size());
         return invoice.id();

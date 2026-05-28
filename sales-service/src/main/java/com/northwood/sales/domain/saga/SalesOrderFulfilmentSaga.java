@@ -52,6 +52,14 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
     public static final String INVOICE_REQUESTED = "invoice_requested";
     public static final String INVOICE_CREATED = "invoice_created";
     public static final String INVOICE_PARTIALLY_PAID = "invoice_partially_paid";
+    // §2.31 Slice B: prepayment branch states. AWAITING_PREPAYMENT_INVOICE
+    // parks the saga after PrepaymentInvoiceRequested until finance acks with
+    // CustomerInvoiceCreated. PREPAID is the active worker-pickup checkpoint
+    // between full payment receipt and stock reservation request (the saga
+    // continues from PREPAID into the same stock-reservation path as the
+    // on-shipment flow).
+    public static final String AWAITING_PREPAYMENT_INVOICE = "awaiting_prepayment_invoice";
+    public static final String PREPAID = "prepaid";
     public static final String COMPLETED = "completed";
     public static final String COMPENSATING = "compensating";
     public static final String COMPENSATED = "compensated";
@@ -71,6 +79,7 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
     public static final Set<String> ALL_STATES = Set.of(
         STARTED,
         STOCK_RESERVATION_REQUESTED, STOCK_RESERVATION_INCOMPLETE, REJECTED,
+        AWAITING_PREPAYMENT_INVOICE, PREPAID,
         MANUFACTURING_REQUESTED, MANUFACTURING_IN_PROGRESS, MANUFACTURING_COMPLETED,
         READY_TO_SHIP, GOODS_SHIPPED,
         INVOICE_REQUESTED, INVOICE_CREATED, INVOICE_PARTIALLY_PAID,

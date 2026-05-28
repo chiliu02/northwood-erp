@@ -72,10 +72,18 @@ class PaymentServiceTest {
     private CustomerInvoiceRepository.PaymentSnapshot customerSnap(
         UUID customerId, String currency, String status, String total, String paid
     ) {
+        return customerSnap(customerId, currency, status, total, paid, CustomerInvoice.InvoiceType.COMMERCIAL);
+    }
+
+    private CustomerInvoiceRepository.PaymentSnapshot customerSnap(
+        UUID customerId, String currency, String status, String total, String paid,
+        CustomerInvoice.InvoiceType invoiceType
+    ) {
         return new CustomerInvoiceRepository.PaymentSnapshot(
             customerId, "Customer-" + customerId.toString().substring(0, 4),
             SO, currency, new BigDecimal(total), new BigDecimal(paid),
-            CustomerInvoice.Status.fromDb(status)
+            CustomerInvoice.Status.fromDb(status),
+            invoiceType
         );
     }
 
@@ -197,7 +205,8 @@ class PaymentServiceTest {
             CustomerPaymentReceived event = firstCustomerEvent(capturedPayment());
             assertThat(event.invoiceStatusAfter()).isEqualTo("paid");
             verify(journals).postCustomerPayment(
-                any(), any(), eq("PMT-C-001"), eq(new BigDecimal("550.00")), eq(Currencies.AUD), eq(PAY_DATE)
+                any(), any(), eq("PMT-C-001"), eq(new BigDecimal("550.00")), eq(Currencies.AUD), eq(PAY_DATE),
+                eq(CustomerInvoice.InvoiceType.COMMERCIAL)
             );
         }
 

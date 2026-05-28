@@ -15,11 +15,12 @@ class FulfilmentSagaDataTest {
     @Nested
     class CompactConstructor {
         @Test void defaults_null_collections_to_empty() {
-            FulfilmentSagaData d = new FulfilmentSagaData(null, null, null, null, false, false);
+            FulfilmentSagaData d = new FulfilmentSagaData(null, null, null, null, false, false, null);
             assertThat(d.shortageByLineNumber()).isEmpty();
             assertThat(d.outstandingWorkOrderIds()).isEmpty();
             assertThat(d.completedWorkOrderIds()).isEmpty();
             assertThat(d.expectedWorkOrderCount()).isNull();   // null is the legacy sentinel
+            assertThat(d.paymentTerms()).isNull();             // null = legacy fallback (on_shipment)
         }
 
         @Test void none_factory_yields_empty_data() {
@@ -33,7 +34,7 @@ class FulfilmentSagaDataTest {
     class HasShortage {
         @Test void true_when_shortage_map_non_empty() {
             FulfilmentSagaData d = new FulfilmentSagaData(
-                Map.of(10, BigDecimal.ONE), null, null, null, false, false);
+                Map.of(10, BigDecimal.ONE), null, null, null, false, false, null);
             assertThat(d.hasShortage()).isTrue();
         }
 

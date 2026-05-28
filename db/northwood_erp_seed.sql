@@ -668,6 +668,12 @@ INSERT INTO finance.gl_account (account_code, account_name, account_type) VALUES
     ('1220', 'Finished Goods Inventory',      'asset'),
     ('1300', 'Work In Progress',              'asset'),
     ('2100', 'Accounts Payable',              'liability'),
+    -- §2.31 Slice B: liability for cash received on prepayment orders before
+    -- goods are delivered. Credited at payment receipt for prepayment
+    -- invoices; debited at shipment (Slice C) to reclassify the deposit
+    -- against Sales Revenue once the goods-delivered performance obligation
+    -- is met.
+    ('2110', 'Customer Deposits',             'liability'),
     ('2200', 'Goods Received Not Invoiced',   'liability'),
     ('3000', 'Owner''s Equity',               'equity'),
     ('3100', 'Retained Earnings',             'equity'),

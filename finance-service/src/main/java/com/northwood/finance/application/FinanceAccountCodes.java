@@ -30,6 +30,14 @@ final class FinanceAccountCodes {
     /** 2100 — Accounts Payable. */
     static final String AP = "2100";
 
+    /**
+     * 2110 — Customer Deposits (liability). §2.31 Slice B. Credited on
+     * customer-payment receipt for a {@code prepayment} invoice (Dr Cash);
+     * debited at shipment (Slice C) to reclassify the deposit against Sales
+     * Revenue once the goods-delivered performance obligation is met.
+     */
+    static final String CUSTOMER_DEPOSITS = "2110";
+
     /** 1000 — operating bank account. */
     static final String BANK = "1000";
 

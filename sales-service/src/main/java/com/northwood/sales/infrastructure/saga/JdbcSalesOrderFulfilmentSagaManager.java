@@ -11,6 +11,7 @@ import com.northwood.manufacturing.domain.events.WorkOrderCreated;
 import com.northwood.manufacturing.domain.events.WorkOrderManufacturingCompleted;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaPort;
+import com.northwood.sales.domain.events.SalesOrderPlaced;
 import com.northwood.sales.domain.saga.FulfilmentSagaData;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.shared.application.saga.SagaManager;
@@ -76,7 +77,12 @@ public class JdbcSalesOrderFulfilmentSagaManager
 
     @Override
     protected Set<String> activeStates() {
-        return Set.of(STARTED, STOCK_RESERVATION_INCOMPLETE);
+        // §2.31 Slice B: PREPAID is the worker-pickup checkpoint between
+        // full payment receipt (CustomerPaymentReceived for a prepayment
+        // invoice) and the stock-reservation request. Symmetric with STARTED
+        // and STOCK_RESERVATION_INCOMPLETE — each state requires the worker
+        // to emit an event and transition forward.
+        return Set.of(STARTED, STOCK_RESERVATION_INCOMPLETE, PREPAID);
     }
 
     // ============================================================
@@ -251,13 +257,19 @@ public class JdbcSalesOrderFulfilmentSagaManager
     @Transactional
     public String applyCustomerInvoiceCreated(UUID salesOrderHeaderId) {
         SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, CustomerInvoiceCreated.EVENT_TYPE);
-        if (GOODS_SHIPPED.equals(saga.state())) {
+        // §2.31 Slice B: two source states converge on invoice_created.
+        // On-shipment path: goods_shipped → invoice_created (finance auto-
+        // created the invoice from SalesOrderShipped). Prepayment path:
+        // awaiting_prepayment_invoice → invoice_created (finance built the
+        // invoice from PrepaymentInvoiceRequested before any stock movement).
+        if (GOODS_SHIPPED.equals(saga.state()) || AWAITING_PREPAYMENT_INVOICE.equals(saga.state())) {
+            String fromState = saga.state();
             saga.transitionTo(INVOICE_CREATED, "wait_for_payment");
             sagaPort.update(saga);
-            log.info("saga {} sales_order={} → invoice_created",
-                saga.sagaId(), salesOrderHeaderId);
+            log.info("saga {} sales_order={} {} → invoice_created",
+                saga.sagaId(), salesOrderHeaderId, fromState);
         } else {
-            log.debug("saga {} sales_order={} not in goods_shipped (state={}); ignoring",
+            log.debug("saga {} sales_order={} not in goods_shipped / awaiting_prepayment_invoice (state={}); ignoring",
                 saga.sagaId(), salesOrderHeaderId, saga.state());
         }
         return saga.state();
@@ -272,10 +284,27 @@ public class JdbcSalesOrderFulfilmentSagaManager
             log.debug("saga {} sales_order={} not in payment-receivable state (state={}); ignoring",
                 saga.sagaId(), salesOrderHeaderId, saga.state());
         } else if (fullySettled) {
-            saga.transitionTo(COMPLETED, "o2c_completed");
-            sagaPort.update(saga);
-            log.info("saga {} sales_order={} → completed (fully settled)",
-                saga.sagaId(), salesOrderHeaderId);
+            // §2.31 Slice B: full settlement routes by payment_terms.
+            // on_shipment → completed (the existing happy-path terminal — the
+            //   invoice was created after shipment, so payment closes O2C).
+            // prepayment → prepaid (an ACTIVE checkpoint; the worker picks
+            //   the saga up from prepaid to emit StockReservationRequested
+            //   and walk the rest of the fulfilment path).
+            // Legacy sagas (paymentTerms null) fall back to on_shipment.
+            String pt = readData(saga).paymentTerms();
+            boolean isPrepayment = SalesOrderPlaced.PAYMENT_TERMS_PREPAYMENT.equals(pt);
+            if (isPrepayment) {
+                saga.transitionTo(PREPAID, "wait_for_worker_pickup");
+                saga.parkUntil(Instant.now());
+                sagaPort.update(saga);
+                log.info("saga {} sales_order={} → prepaid (prepayment invoice fully paid; worker continues forward)",
+                    saga.sagaId(), salesOrderHeaderId);
+            } else {
+                saga.transitionTo(COMPLETED, "o2c_completed");
+                sagaPort.update(saga);
+                log.info("saga {} sales_order={} → completed (fully settled)",
+                    saga.sagaId(), salesOrderHeaderId);
+            }
         } else {
             saga.transitionTo(INVOICE_PARTIALLY_PAID, "wait_for_remaining_payments");
             sagaPort.update(saga);
@@ -351,7 +380,8 @@ public class JdbcSalesOrderFulfilmentSagaManager
             existing.outstandingWorkOrderIds(),
             existing.completedWorkOrderIds(),
             existing.inventoryCancellationAcked(),
-            existing.manufacturingCancellationAcked()
+            existing.manufacturingCancellationAcked(),
+            existing.paymentTerms()
         ));
     }
 }

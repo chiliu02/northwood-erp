@@ -5,12 +5,18 @@ import tools.jackson.databind.ObjectMapper;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.sales.application.saga.SalesOrderLineSnapshotPort;
 import com.northwood.sales.application.saga.SalesOrderLineSnapshotPort.LineSnapshot;
+import com.northwood.sales.application.saga.SalesOrderInvoiceSnapshotPort;
+import com.northwood.sales.application.saga.SalesOrderInvoiceSnapshotPort.OrderForPrepayment;
 import com.northwood.sales.domain.events.ManufacturingRequested;
+import com.northwood.sales.domain.events.PrepaymentInvoiceRequested;
+import com.northwood.sales.domain.events.SalesOrderPlaced;
 import com.northwood.sales.domain.events.StockReservationRequested;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.sales.domain.saga.FulfilmentSagaData;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.AWAITING_PREPAYMENT_INVOICE;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.MANUFACTURING_REQUESTED;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.PREPAID;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STARTED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_REQUESTED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_INCOMPLETE;
@@ -59,17 +65,20 @@ public class SalesOrderFulfilmentSagaWorker {
 
     private final SalesOrderFulfilmentSagaManager manager;
     private final SalesOrderLineSnapshotPort lineSnapshots;
+    private final SalesOrderInvoiceSnapshotPort invoiceSnapshots;
     private final OutboxAppender outbox;
     private final ObjectMapper json;
 
     public SalesOrderFulfilmentSagaWorker(
         SalesOrderFulfilmentSagaManager manager,
         SalesOrderLineSnapshotPort lineSnapshots,
+        SalesOrderInvoiceSnapshotPort invoiceSnapshots,
         OutboxAppender outbox,
         ObjectMapper json
     ) {
         this.manager = manager;
         this.lineSnapshots = lineSnapshots;
+        this.invoiceSnapshots = invoiceSnapshots;
         this.outbox = outbox;
         this.json = json;
     }
@@ -86,10 +95,76 @@ public class SalesOrderFulfilmentSagaWorker {
 
     private void advance(SalesOrderFulfilmentSaga saga) {
         switch (saga.state()) {
-            case STARTED -> requestStockReservation(saga);
+            case STARTED -> advanceFromStarted(saga);
             case STOCK_RESERVATION_INCOMPLETE -> requestManufacturing(saga);
+            case PREPAID -> requestStockReservation(saga);
             default -> log.debug("[{}] no transition implemented for state {}", workerId, saga.state());
         }
+    }
+
+    /**
+     * §2.31 Slice B. Branch at {@code started} on the order's payment terms
+     * (snapshotted onto saga.data at saga creation). {@code on_shipment} →
+     * existing stock-reservation request. {@code prepayment} → emit
+     * {@code PrepaymentInvoiceRequested}, park at
+     * {@code awaiting_prepayment_invoice} until finance acks with
+     * {@code CustomerInvoiceCreated}; the worker picks the saga back up after
+     * payment receipt flips it to {@code prepaid}, at which point we walk
+     * the same {@link #requestStockReservation} path as the on-shipment flow.
+     *
+     * <p>Legacy sagas (paymentTerms unset) take the on-shipment path — the
+     * only flow that existed pre-§2.31 Slice B.
+     */
+    private void advanceFromStarted(SalesOrderFulfilmentSaga saga) {
+        String pt = readData(saga).paymentTerms();
+        if (SalesOrderPlaced.PAYMENT_TERMS_PREPAYMENT.equals(pt)) {
+            requestPrepaymentInvoice(saga);
+        } else {
+            requestStockReservation(saga);
+        }
+    }
+
+    private void requestPrepaymentInvoice(SalesOrderFulfilmentSaga saga) {
+        UUID salesOrderId = saga.salesOrderId();
+        OrderForPrepayment order = invoiceSnapshots.findOrderForPrepayment(salesOrderId)
+            .orElseThrow(() -> new IllegalStateException(
+                "No sales-order header found for sales_order_header_id=" + salesOrderId
+                    + " — cannot request prepayment invoice"));
+        Assert.stateNotEmpty(order.lines(), "No lines found for sales_order_header_id=" + salesOrderId
+            + " — cannot request prepayment invoice");
+
+        List<PrepaymentInvoiceRequested.RequestedLine> lines = new ArrayList<>();
+        for (SalesOrderInvoiceSnapshotPort.PricedLine l : order.lines()) {
+            lines.add(new PrepaymentInvoiceRequested.RequestedLine(
+                l.salesOrderLineId(),
+                l.lineNumber(),
+                l.productId(),
+                l.productSku(),
+                l.productName(),
+                l.orderedQuantity(),
+                l.unitPrice(),
+                l.taxRate() == null ? BigDecimal.ZERO : l.taxRate()
+            ));
+        }
+
+        PrepaymentInvoiceRequested event = new PrepaymentInvoiceRequested(
+            UUID.randomUUID(),
+            salesOrderId,
+            order.orderNumber(),
+            order.customerId(),
+            order.customerCode(),
+            order.customerName(),
+            order.currencyCode(),
+            lines,
+            Instant.now()
+        );
+        outbox.append(event, SalesOrderFulfilmentSaga.AGGREGATE_TYPE);
+
+        saga.transitionTo(AWAITING_PREPAYMENT_INVOICE, "wait_for_prepayment_invoice");
+        saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
+
+        log.info("[{}] saga {} sales_order={} → awaiting_prepayment_invoice ({} line(s); prepayment flow)",
+            workerId, saga.sagaId(), salesOrderId, lines.size());
     }
 
     private void requestStockReservation(SalesOrderFulfilmentSaga saga) {
@@ -185,15 +260,20 @@ public class SalesOrderFulfilmentSagaWorker {
     }
 
     private Map<Integer, BigDecimal> readShortage(SalesOrderFulfilmentSaga saga) {
+        FulfilmentSagaData data = readData(saga);
+        return data == null || data.shortageByLineNumber() == null
+            ? Map.of()
+            : data.shortageByLineNumber();
+    }
+
+    private FulfilmentSagaData readData(SalesOrderFulfilmentSaga saga) {
         String raw = saga.dataJson();
         if (raw == null || raw.isBlank() || "{}".equals(raw.trim())) {
-            return Map.of();
+            return FulfilmentSagaData.none();
         }
         try {
             FulfilmentSagaData data = json.readValue(raw, FulfilmentSagaData.class);
-            return data == null || data.shortageByLineNumber() == null
-                ? Map.of()
-                : data.shortageByLineNumber();
+            return data == null ? FulfilmentSagaData.none() : data;
         } catch (JacksonException e) {
             throw new IllegalStateException("Cannot parse saga.data: " + raw, e);
         }

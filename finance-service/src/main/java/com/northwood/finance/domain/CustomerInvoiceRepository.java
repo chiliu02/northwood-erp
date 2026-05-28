@@ -30,6 +30,8 @@ public interface CustomerInvoiceRepository {
         String currencyCode,
         BigDecimal totalAmount,
         BigDecimal paidAmount,
-        CustomerInvoice.Status status
+        CustomerInvoice.Status status,
+        /** §2.31 Slice B — drives the Cr-side branch at payment posting. */
+        CustomerInvoice.InvoiceType invoiceType
     ) {}
 }

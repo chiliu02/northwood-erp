@@ -28,6 +28,7 @@ import com.northwood.testharness.inmemory.sales.InMemoryCustomerLookup;
 import com.northwood.testharness.inmemory.sales.InMemoryProductCardLookup;
 import com.northwood.testharness.inmemory.sales.InMemorySalesOrderFulfilmentSagaPort;
 import com.northwood.testharness.inmemory.sales.InMemorySalesOrderHeaderStatusProjection;
+import com.northwood.testharness.inmemory.sales.InMemorySalesOrderInvoiceSnapshotPort;
 import com.northwood.testharness.inmemory.sales.InMemorySalesOrderLineSnapshotPort;
 import com.northwood.testharness.inmemory.sales.InMemorySalesOrderRepository;
 import java.util.Optional;
@@ -56,6 +57,7 @@ public final class SalesTestKit {
     public final InMemoryProductCardLookup productCards = new InMemoryProductCardLookup();
     public final InMemorySalesOrderHeaderStatusProjection statusProjection = new InMemorySalesOrderHeaderStatusProjection();
     public final InMemorySalesOrderLineSnapshotPort lineSnapshots;
+    public final InMemorySalesOrderInvoiceSnapshotPort invoiceSnapshots;
 
     public final JdbcSalesOrderFulfilmentSagaManager sagaManager;
     public final SalesOrderFulfilmentSagaWorker sagaWorker;
@@ -68,10 +70,11 @@ public final class SalesTestKit {
     public SalesTestKit(SynchronousBus bus, ObjectMapper json) {
         this.orders = new InMemorySalesOrderRepository(outbox, json);
         this.lineSnapshots = new InMemorySalesOrderLineSnapshotPort(orders);
+        this.invoiceSnapshots = new InMemorySalesOrderInvoiceSnapshotPort(orders);
         PlatformTransactionManager txm = new NoopPlatformTransactionManager();
         this.sagaManager = new JdbcSalesOrderFulfilmentSagaManager(sagas, json, txm, 30L, 15L);
         OutboxAppender appender = new OutboxAppender(outbox, json, new CurrentUserAccessor());
-        this.sagaWorker = new SalesOrderFulfilmentSagaWorker(sagaManager, lineSnapshots, appender, json);
+        this.sagaWorker = new SalesOrderFulfilmentSagaWorker(sagaManager, lineSnapshots, invoiceSnapshots, appender, json);
         this.compensationEmitter = new SalesOrderCompensationEmitter(orders, appender);
         this.readyToShipEmitter = new SalesOrderReadyToShipEmitter(appender);
         this.service = new SalesOrderService(orders, sagaManager, customers, productCards);

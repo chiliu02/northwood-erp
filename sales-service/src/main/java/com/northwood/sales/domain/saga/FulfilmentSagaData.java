@@ -48,7 +48,20 @@ public record FulfilmentSagaData(
     Set<UUID> outstandingWorkOrderIds,
     Set<UUID> completedWorkOrderIds,
     Boolean inventoryCancellationAcked,
-    Boolean manufacturingCancellationAcked
+    Boolean manufacturingCancellationAcked,
+    /**
+     * §2.31 Slice B: the order's snapshotted commercial payment terms,
+     * stashed at saga creation by {@code SalesOrderService.placeOrder} so the
+     * worker can branch at {@code started} ({@code on_shipment} → existing
+     * stock-reservation request; {@code prepayment} → emit
+     * {@code PrepaymentInvoiceRequested}) and so
+     * {@code applyCustomerPaymentReceived} can route full settlement to
+     * {@code completed} (on-shipment) or {@code prepaid} (prepayment).
+     * One of {@code "on_shipment"} / {@code "prepayment"}; null on saga rows
+     * written before this field existed (legacy fallback: treat as
+     * {@code on_shipment} — the only flow that existed pre-§2.31).
+     */
+    String paymentTerms
 ) {
 
     public FulfilmentSagaData {
@@ -63,10 +76,25 @@ public record FulfilmentSagaData(
         // unboxes to false.
         inventoryCancellationAcked = inventoryCancellationAcked != null && inventoryCancellationAcked;
         manufacturingCancellationAcked = manufacturingCancellationAcked != null && manufacturingCancellationAcked;
+        // paymentTerms stays null on legacy rows; consumers fall back to the
+        // on-shipment path (the only path that existed pre-§2.31 Slice B).
     }
 
     public static FulfilmentSagaData none() {
-        return new FulfilmentSagaData(Map.of(), null, Set.of(), Set.of(), false, false);
+        return new FulfilmentSagaData(Map.of(), null, Set.of(), Set.of(), false, false, null);
+    }
+
+    /** Stamp the order's commercial payment terms at saga creation. */
+    public FulfilmentSagaData withPaymentTerms(String paymentTerms) {
+        return new FulfilmentSagaData(
+            new LinkedHashMap<>(shortageByLineNumber),
+            expectedWorkOrderCount,
+            new LinkedHashSet<>(outstandingWorkOrderIds),
+            new LinkedHashSet<>(completedWorkOrderIds),
+            inventoryCancellationAcked,
+            manufacturingCancellationAcked,
+            paymentTerms
+        );
     }
 
     public boolean hasShortage() {
@@ -81,7 +109,8 @@ public record FulfilmentSagaData(
             new LinkedHashSet<>(outstandingWorkOrderIds),
             new LinkedHashSet<>(completedWorkOrderIds),
             inventoryCancellationAcked,
-            manufacturingCancellationAcked
+            manufacturingCancellationAcked,
+            paymentTerms
         );
     }
 
@@ -98,7 +127,8 @@ public record FulfilmentSagaData(
             outstanding,
             new LinkedHashSet<>(completedWorkOrderIds),
             inventoryCancellationAcked,
-            manufacturingCancellationAcked
+            manufacturingCancellationAcked,
+            paymentTerms
         );
     }
 
@@ -117,7 +147,8 @@ public record FulfilmentSagaData(
             outstanding,
             completed,
             inventoryCancellationAcked,
-            manufacturingCancellationAcked
+            manufacturingCancellationAcked,
+            paymentTerms
         );
     }
 
@@ -129,7 +160,8 @@ public record FulfilmentSagaData(
             new LinkedHashSet<>(outstandingWorkOrderIds),
             new LinkedHashSet<>(completedWorkOrderIds),
             true,
-            manufacturingCancellationAcked
+            manufacturingCancellationAcked,
+            paymentTerms
         );
     }
 
@@ -141,7 +173,8 @@ public record FulfilmentSagaData(
             new LinkedHashSet<>(outstandingWorkOrderIds),
             new LinkedHashSet<>(completedWorkOrderIds),
             inventoryCancellationAcked,
-            true
+            true,
+            paymentTerms
         );
     }
 

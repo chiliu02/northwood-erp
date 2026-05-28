@@ -519,6 +519,13 @@ CREATE TABLE sales.sales_order_fulfilment_saga (
     saga_state VARCHAR(50) NOT NULL CHECK (
         saga_state IN (
             'started', 'stock_reservation_requested', 'stock_reservation_incomplete', 'rejected',
+            -- §2.31 Slice B: prepayment branch states. awaiting_prepayment_invoice
+            -- parks the saga after PrepaymentInvoiceRequested until finance acks
+            -- with CustomerInvoiceCreated. prepaid is the active checkpoint
+            -- between full payment receipt and stock reservation request
+            -- (the worker picks the row up from prepaid the same way it does
+            -- from started / stock_reservation_incomplete).
+            'awaiting_prepayment_invoice', 'prepaid',
             'manufacturing_requested', 'manufacturing_in_progress', 'manufacturing_completed',
             'ready_to_ship', 'goods_shipped', 'invoice_requested', 'invoice_created',
             'invoice_partially_paid',
@@ -1892,6 +1899,17 @@ CREATE TABLE finance.customer_invoice_header (
     due_date DATE,
     status VARCHAR(30) NOT NULL DEFAULT 'draft' CHECK (
         status IN ('draft', 'posted', 'partially_paid', 'paid', 'cancelled')
+    ),
+    -- §2.31 Slice B: discriminator between the two AR commercial patterns.
+    -- 'commercial' = invoice created at shipment, posts Dr AR / Cr Revenue at
+    -- creation, payment posts Dr Cash / Cr AR (Northwood's existing flow).
+    -- 'prepayment' = invoice created at order placement, NO GL at creation,
+    -- payment posts Dr Cash / Cr 2110 Customer Deposits; shipment reclassifies
+    -- Dr 2110 / Cr Revenue (Treatment A — revenue recognised at shipment, the
+    -- goods-delivered performance obligation). Default keeps legacy rows on
+    -- the commercial path.
+    invoice_type VARCHAR(20) NOT NULL DEFAULT 'commercial' CHECK (
+        invoice_type IN ('commercial', 'prepayment')
     ),
     currency_code CHAR(3) NOT NULL DEFAULT 'AUD',
     exchange_rate NUMERIC(18, 8) NOT NULL DEFAULT 1.0 CHECK (exchange_rate > 0),
