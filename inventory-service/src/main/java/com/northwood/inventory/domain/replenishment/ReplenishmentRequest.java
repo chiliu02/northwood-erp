@@ -1,6 +1,7 @@
 package com.northwood.inventory.domain.replenishment;
 
 import com.northwood.inventory.domain.InventoryAggregateTypes;
+import com.northwood.inventory.domain.events.ReplenishmentFulfilled;
 import com.northwood.inventory.domain.events.ReplenishmentRequested;
 import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.DomainEvent;
@@ -128,13 +129,46 @@ public final class ReplenishmentRequest {
         }
     }
 
+    /**
+     * Which kind of downstream aggregate is fulfilling this replenishment.
+     * Populated by {@link #markDispatched(DispatchedAggregateKind, UUID)} when
+     * Slice E's close-the-loop handler receives the corresponding
+     * {@code ReplenishmentDispatched} event.
+     */
+    public enum DispatchedAggregateKind {
+        WORK_ORDER("work_order"),
+        PURCHASE_REQUISITION("purchase_requisition");
+
+        private final String dbValue;
+
+        DispatchedAggregateKind(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static DispatchedAggregateKind fromDb(String value) {
+            for (DispatchedAggregateKind k : values()) {
+                if (k.dbValue.equals(value)) return k;
+            }
+            throw Assert.unknownValue("replenishment dispatched_aggregate_kind", value);
+        }
+    }
+
     private final ReplenishmentRequestId id;
     private final UUID productId;
     private final UUID warehouseId;
     private final BigDecimal requestedQuantity;
     private final TargetService targetService;
     private final Reason reason;
-    private final Status status;
+    private Status status;
+    private DispatchedAggregateKind dispatchedAggregateKind;
+    private UUID dispatchedAggregateId;
+    private UUID linkedPurchaseOrderId;
+    private Instant dispatchedAt;
+    private Instant fulfilledAt;
     private final long version;
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
 
@@ -157,7 +191,9 @@ public final class ReplenishmentRequest {
         ReplenishmentRequestId id = ReplenishmentRequestId.newId();
         ReplenishmentRequest r = new ReplenishmentRequest(
             id, productId, warehouseId, requestedQuantity,
-            targetService, reason, Status.REQUESTED, 0L
+            targetService, reason, Status.REQUESTED,
+            null, null, null, null, null,
+            0L
         );
         r.pendingEvents.add(new ReplenishmentRequested(
             UUID.randomUUID(),
@@ -181,11 +217,19 @@ public final class ReplenishmentRequest {
         TargetService targetService,
         Reason reason,
         Status status,
+        DispatchedAggregateKind dispatchedAggregateKind,
+        UUID dispatchedAggregateId,
+        UUID linkedPurchaseOrderId,
+        Instant dispatchedAt,
+        Instant fulfilledAt,
         long version
     ) {
         return new ReplenishmentRequest(
             id, productId, warehouseId, requestedQuantity,
-            targetService, reason, status, version
+            targetService, reason, status,
+            dispatchedAggregateKind, dispatchedAggregateId, linkedPurchaseOrderId,
+            dispatchedAt, fulfilledAt,
+            version
         );
     }
 
@@ -197,6 +241,11 @@ public final class ReplenishmentRequest {
         TargetService targetService,
         Reason reason,
         Status status,
+        DispatchedAggregateKind dispatchedAggregateKind,
+        UUID dispatchedAggregateId,
+        UUID linkedPurchaseOrderId,
+        Instant dispatchedAt,
+        Instant fulfilledAt,
         long version
     ) {
         this.id = id;
@@ -206,7 +255,92 @@ public final class ReplenishmentRequest {
         this.targetService = targetService;
         this.reason = reason;
         this.status = status;
+        this.dispatchedAggregateKind = dispatchedAggregateKind;
+        this.dispatchedAggregateId = dispatchedAggregateId;
+        this.linkedPurchaseOrderId = linkedPurchaseOrderId;
+        this.dispatchedAt = dispatchedAt;
+        this.fulfilledAt = fulfilledAt;
         this.version = version;
+    }
+
+    /**
+     * Mark this request as dispatched to the named downstream aggregate.
+     * Idempotent when the same kind+id pair re-arrives (a redelivered
+     * {@code ReplenishmentDispatched} → no-op). Rejects transitions from any
+     * non-{@code REQUESTED} state — fulfilled / cancelled aggregates can't
+     * be re-dispatched.
+     */
+    public void markDispatched(DispatchedAggregateKind kind, UUID dispatchedAggregateId) {
+        Assert.notNull(kind, "kind");
+        Assert.notNull(dispatchedAggregateId, "dispatchedAggregateId");
+        if (status == Status.DISPATCHED
+            && kind == this.dispatchedAggregateKind
+            && dispatchedAggregateId.equals(this.dispatchedAggregateId)) {
+            return;
+        }
+        Assert.state(status == Status.REQUESTED,
+            "Cannot mark dispatched: replenishment " + id.value() + " is " + status.dbValue());
+        Assert.state(matchesTargetService(kind),
+            "Dispatched kind " + kind.dbValue() + " does not match target_service "
+                + targetService.dbValue() + " on replenishment " + id.value());
+        this.status = Status.DISPATCHED;
+        this.dispatchedAggregateKind = kind;
+        this.dispatchedAggregateId = dispatchedAggregateId;
+        this.dispatchedAt = Instant.now();
+    }
+
+    /**
+     * Stamp the PO that fulfils a purchasing-routed replenishment so the
+     * eventual {@code GoodsReceived} can resolve back to this request via
+     * {@code linked_purchase_order_id}. Only valid when the request is
+     * dispatched to a {@link DispatchedAggregateKind#PURCHASE_REQUISITION};
+     * the manufacturing path resolves directly off
+     * {@code dispatched_aggregate_id = workOrderId} and doesn't need this link.
+     *
+     * <p>Idempotent when the same PO arrives twice (e.g. redelivery, or both
+     * the {@code PurchaseOrderCreated} race-resolution path + the dispatch
+     * race-resolution path stamping it).
+     */
+    public void linkPurchaseOrder(UUID purchaseOrderId) {
+        Assert.notNull(purchaseOrderId, "purchaseOrderId");
+        if (purchaseOrderId.equals(this.linkedPurchaseOrderId)) {
+            return;
+        }
+        Assert.state(this.linkedPurchaseOrderId == null,
+            "Replenishment " + id.value() + " is already linked to purchase_order="
+                + this.linkedPurchaseOrderId);
+        Assert.state(dispatchedAggregateKind == DispatchedAggregateKind.PURCHASE_REQUISITION,
+            "linkPurchaseOrder is only valid for purchase-requisition-dispatched replenishments; "
+                + "this one is " + (dispatchedAggregateKind == null ? "not dispatched" : dispatchedAggregateKind.dbValue()));
+        this.linkedPurchaseOrderId = purchaseOrderId;
+    }
+
+    /**
+     * Mark this request as fulfilled. Emits {@link ReplenishmentFulfilled}.
+     * Idempotent against the already-fulfilled state (a redelivered completion
+     * event no-ops). Rejects transitions from any non-{@code DISPATCHED} state.
+     */
+    public void markFulfilled() {
+        if (status == Status.FULFILLED) {
+            return;
+        }
+        Assert.state(status == Status.DISPATCHED,
+            "Cannot mark fulfilled: replenishment " + id.value() + " is " + status.dbValue()
+                + " — only DISPATCHED requests can fulfil");
+        this.status = Status.FULFILLED;
+        this.fulfilledAt = Instant.now();
+        pendingEvents.add(new ReplenishmentFulfilled(
+            UUID.randomUUID(),
+            id.value(),
+            Instant.now()
+        ));
+    }
+
+    private boolean matchesTargetService(DispatchedAggregateKind kind) {
+        return switch (kind) {
+            case WORK_ORDER -> targetService == TargetService.MANUFACTURING;
+            case PURCHASE_REQUISITION -> targetService == TargetService.PURCHASING;
+        };
     }
 
     public List<DomainEvent> pullPendingEvents() {
@@ -215,12 +349,17 @@ public final class ReplenishmentRequest {
         return out;
     }
 
-    public ReplenishmentRequestId id()       { return id; }
-    public UUID productId()                  { return productId; }
-    public UUID warehouseId()                { return warehouseId; }
-    public BigDecimal requestedQuantity()    { return requestedQuantity; }
-    public TargetService targetService()     { return targetService; }
-    public Reason reason()                   { return reason; }
-    public Status status()                   { return status; }
-    public long version()                    { return version; }
+    public ReplenishmentRequestId id()                  { return id; }
+    public UUID productId()                             { return productId; }
+    public UUID warehouseId()                           { return warehouseId; }
+    public BigDecimal requestedQuantity()               { return requestedQuantity; }
+    public TargetService targetService()                { return targetService; }
+    public Reason reason()                              { return reason; }
+    public Status status()                              { return status; }
+    public DispatchedAggregateKind dispatchedAggregateKind() { return dispatchedAggregateKind; }
+    public UUID dispatchedAggregateId()                 { return dispatchedAggregateId; }
+    public UUID linkedPurchaseOrderId()                 { return linkedPurchaseOrderId; }
+    public Instant dispatchedAt()                       { return dispatchedAt; }
+    public Instant fulfilledAt()                        { return fulfilledAt; }
+    public long version()                               { return version; }
 }

@@ -12,6 +12,8 @@ import com.northwood.inventory.domain.StockMovementDirection;
 import com.northwood.inventory.domain.StockMovementSourceTypes;
 import com.northwood.inventory.domain.StockMovementType;
 import com.northwood.inventory.domain.WarehouseCodes;
+import com.northwood.inventory.domain.replenishment.ReplenishmentRequest;
+import com.northwood.inventory.domain.replenishment.ReplenishmentRequestRepository;
 import com.northwood.shared.application.exception.BadRequestException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -84,19 +86,22 @@ public class GoodsReceiptService {
     private final StockMovementWriter movements;
     private final WarehouseLookup warehouses;
     private final PurchaseOrderLineFactsProjection purchaseOrderLineFacts;
+    private final ReplenishmentRequestRepository replenishmentRequests;
 
     public GoodsReceiptService(
         GoodsReceiptRepository goodsReceipts,
         StockBalanceWriter stockBalances,
         StockMovementWriter movements,
         WarehouseLookup warehouses,
-        PurchaseOrderLineFactsProjection purchaseOrderLineFacts
+        PurchaseOrderLineFactsProjection purchaseOrderLineFacts,
+        ReplenishmentRequestRepository replenishmentRequests
     ) {
         this.goodsReceipts = goodsReceipts;
         this.stockBalances = stockBalances;
         this.movements = movements;
         this.warehouses = warehouses;
         this.purchaseOrderLineFacts = purchaseOrderLineFacts;
+        this.replenishmentRequests = replenishmentRequests;
     }
 
     @Transactional(readOnly = true)
@@ -165,6 +170,20 @@ public class GoodsReceiptService {
                 l.receivedQuantity(), l.unitCost(),
                 StockMovementSourceTypes.GOODS_RECEIPT, receipt.id().value(), l.id()
             );
+        }
+
+        // §2.35 Slice E: if this receipt is for a PO linked to a replenishment,
+        // fulfil the replenishment (emits inventory.ReplenishmentFulfilled).
+        // Linked at PurchaseOrderCreated time by PurchaseOrderCreatedHandler.
+        if (command.purchaseOrderHeaderId() != null) {
+            replenishmentRequests.findByLinkedPurchaseOrderId(command.purchaseOrderHeaderId())
+                .filter(r -> r.status() == ReplenishmentRequest.Status.DISPATCHED)
+                .ifPresent(r -> {
+                    r.markFulfilled();
+                    replenishmentRequests.save(r);
+                    log.info("fulfilled replenishment_request={} via goods_receipt for purchase_order={}",
+                        r.id().value(), command.purchaseOrderHeaderId());
+                });
         }
 
         log.info("posted goods_receipt {} for purchase_order={} ({} line(s)) at warehouse={}",

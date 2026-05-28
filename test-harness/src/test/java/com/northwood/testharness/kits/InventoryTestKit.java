@@ -89,7 +89,7 @@ public final class InventoryTestKit {
         bus.register(new SalesOrderCancellationRequestedHandler(inbox, service, json));
         bus.register(new WorkOrderCancelledHandler(inbox, service, json));
         bus.register(new WorkOrderManufacturingCompletedHandler(
-            inbox, json, stockBalances, wipBalances, warehouses, stockMovements
+            inbox, json, stockBalances, wipBalances, warehouses, stockMovements, replenishmentRequests
         ));
         bus.register(new SubAssembliesConsumedHandler(inbox, wipBalances, json));
         bus.register(new SalesOrderPlacedHandler(inbox, salesOrderLineFacts, json));

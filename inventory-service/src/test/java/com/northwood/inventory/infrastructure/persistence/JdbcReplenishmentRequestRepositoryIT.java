@@ -148,15 +148,63 @@ class JdbcReplenishmentRequestRepositoryIT {
     }
 
     @Test
-    void update_path_is_rejected_until_slice_E() {
-        ReplenishmentRequest persisted = ReplenishmentRequest.reconstitute(
-            com.northwood.inventory.domain.replenishment.ReplenishmentRequestId.newId(),
-            UUID.randomUUID(), WAREHOUSE_ID, new BigDecimal("10"),
-            TargetService.PURCHASING, Reason.REORDER_POINT_BREACH,
-            Status.REQUESTED, 1L
+    void slice_E_mark_dispatched_and_fulfilled_round_trip() {
+        UUID productId = UUID.randomUUID();
+        UUID workOrderId = UUID.randomUUID();
+        ReplenishmentRequest r = ReplenishmentRequest.request(
+            productId, WAREHOUSE_ID, new BigDecimal("10"),
+            TargetService.MANUFACTURING, Reason.REORDER_POINT_BREACH
         );
-        assertThatThrownBy(() -> save(persisted))
-            .isInstanceOf(IllegalStateException.class);
+        save(r);
+
+        ReplenishmentRequest loadedForDispatch = REPO.findById(r.id()).orElseThrow();
+        loadedForDispatch.markDispatched(
+            com.northwood.inventory.domain.replenishment.ReplenishmentRequest.DispatchedAggregateKind.WORK_ORDER,
+            workOrderId
+        );
+        save(loadedForDispatch);
+
+        ReplenishmentRequest afterDispatch = REPO.findByDispatchedAggregateId(workOrderId).orElseThrow();
+        assertThat(afterDispatch.status()).isEqualTo(Status.DISPATCHED);
+        assertThat(afterDispatch.dispatchedAggregateId()).isEqualTo(workOrderId);
+        assertThat(afterDispatch.dispatchedAt()).isNotNull();
+        assertThat(afterDispatch.version()).isEqualTo(2L);
+
+        afterDispatch.markFulfilled();
+        save(afterDispatch);
+
+        ReplenishmentRequest afterFulfil = REPO.findById(r.id()).orElseThrow();
+        assertThat(afterFulfil.status()).isEqualTo(Status.FULFILLED);
+        assertThat(afterFulfil.fulfilledAt()).isNotNull();
+        assertThat(afterFulfil.version()).isEqualTo(3L);
+        // ReplenishmentRequested at insert + ReplenishmentFulfilled at mark-fulfilled.
+        assertThat(countOutbox(r.id().value())).isEqualTo(2L);
+    }
+
+    @Test
+    void slice_E_linkPurchaseOrder_then_findByLinkedPurchaseOrderId() {
+        UUID productId = UUID.randomUUID();
+        UUID prId = UUID.randomUUID();
+        UUID poId = UUID.randomUUID();
+        ReplenishmentRequest r = ReplenishmentRequest.request(
+            productId, WAREHOUSE_ID, new BigDecimal("5"),
+            TargetService.PURCHASING, Reason.REORDER_POINT_BREACH
+        );
+        save(r);
+
+        ReplenishmentRequest dispatched = REPO.findById(r.id()).orElseThrow();
+        dispatched.markDispatched(
+            com.northwood.inventory.domain.replenishment.ReplenishmentRequest.DispatchedAggregateKind.PURCHASE_REQUISITION,
+            prId
+        );
+        save(dispatched);
+
+        ReplenishmentRequest linkable = REPO.findById(r.id()).orElseThrow();
+        linkable.linkPurchaseOrder(poId);
+        save(linkable);
+
+        assertThat(REPO.findByLinkedPurchaseOrderId(poId)).isPresent();
+        assertThat(REPO.findByLinkedPurchaseOrderId(UUID.randomUUID())).isEmpty();
     }
 
     private void save(ReplenishmentRequest r) {

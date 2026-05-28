@@ -1,13 +1,17 @@
 package com.northwood.inventory.infrastructure.persistence;
 
 import com.northwood.inventory.domain.replenishment.ReplenishmentRequest;
+import com.northwood.inventory.domain.replenishment.ReplenishmentRequest.DispatchedAggregateKind;
 import com.northwood.inventory.domain.replenishment.ReplenishmentRequestId;
 import com.northwood.inventory.domain.replenishment.ReplenishmentRequestRepository;
 import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.shared.domain.DomainEvent;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -17,8 +21,11 @@ import tools.jackson.databind.ObjectMapper;
 @Repository
 public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestRepository {
 
-    private static final RowMapper<ReplenishmentRequest> ROW_MAPPER = (rs, n) ->
-        ReplenishmentRequest.reconstitute(
+    private static final RowMapper<ReplenishmentRequest> ROW_MAPPER = (rs, n) -> {
+        Timestamp dispatchedAt = rs.getTimestamp("dispatched_at");
+        Timestamp fulfilledAt = rs.getTimestamp("fulfilled_at");
+        String kind = rs.getString("dispatched_aggregate_kind");
+        return ReplenishmentRequest.reconstitute(
             ReplenishmentRequestId.of(rs.getObject("replenishment_request_id", UUID.class)),
             rs.getObject("product_id", UUID.class),
             rs.getObject("warehouse_id", UUID.class),
@@ -26,8 +33,23 @@ public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestR
             ReplenishmentRequest.TargetService.fromDb(rs.getString("target_service")),
             ReplenishmentRequest.Reason.fromDb(rs.getString("reason")),
             ReplenishmentRequest.Status.fromDb(rs.getString("status")),
+            kind == null ? null : DispatchedAggregateKind.fromDb(kind),
+            rs.getObject("dispatched_aggregate_id", UUID.class),
+            rs.getObject("linked_purchase_order_id", UUID.class),
+            dispatchedAt == null ? null : dispatchedAt.toInstant(),
+            fulfilledAt == null ? null : fulfilledAt.toInstant(),
             rs.getLong("version")
         );
+    };
+
+    private static final String SELECT_COLUMNS = """
+        SELECT replenishment_request_id, product_id, warehouse_id,
+               requested_quantity, target_service, reason, status,
+               dispatched_aggregate_kind, dispatched_aggregate_id,
+               linked_purchase_order_id,
+               dispatched_at, fulfilled_at, version
+        FROM inventory.replenishment_request
+        """;
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
@@ -45,12 +67,28 @@ public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestR
 
     @Override
     public Optional<ReplenishmentRequest> findById(ReplenishmentRequestId id) {
-        List<ReplenishmentRequest> matches = jdbc.query("""
-            SELECT replenishment_request_id, product_id, warehouse_id,
-                   requested_quantity, target_service, reason, status, version
-            FROM inventory.replenishment_request
-            WHERE replenishment_request_id = ?
-            """, ROW_MAPPER, id.value());
+        List<ReplenishmentRequest> matches = jdbc.query(
+            SELECT_COLUMNS + " WHERE replenishment_request_id = ?",
+            ROW_MAPPER, id.value()
+        );
+        return matches.isEmpty() ? Optional.empty() : Optional.of(matches.get(0));
+    }
+
+    @Override
+    public Optional<ReplenishmentRequest> findByDispatchedAggregateId(UUID dispatchedAggregateId) {
+        List<ReplenishmentRequest> matches = jdbc.query(
+            SELECT_COLUMNS + " WHERE dispatched_aggregate_id = ?",
+            ROW_MAPPER, dispatchedAggregateId
+        );
+        return matches.isEmpty() ? Optional.empty() : Optional.of(matches.get(0));
+    }
+
+    @Override
+    public Optional<ReplenishmentRequest> findByLinkedPurchaseOrderId(UUID purchaseOrderId) {
+        List<ReplenishmentRequest> matches = jdbc.query(
+            SELECT_COLUMNS + " WHERE linked_purchase_order_id = ?",
+            ROW_MAPPER, purchaseOrderId
+        );
         return matches.isEmpty() ? Optional.empty() : Optional.of(matches.get(0));
     }
 
@@ -60,10 +98,7 @@ public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestR
         if (r.version() == 0L) {
             insert(r);
         } else {
-            throw new IllegalStateException(
-                "ReplenishmentRequest updates are not yet supported in Slice B; "
-                + "the mark-dispatched / mark-fulfilled mutators land in Slice E"
-            );
+            update(r);
         }
         for (DomainEvent event : r.pullPendingEvents()) {
             writeOutbox(event, actor);
@@ -88,6 +123,33 @@ public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestR
             r.reason().dbValue(),
             r.status().dbValue()
         );
+    }
+
+    private void update(ReplenishmentRequest r) {
+        int rows = jdbc.update("""
+            UPDATE inventory.replenishment_request SET
+                status = ?,
+                dispatched_aggregate_kind = ?,
+                dispatched_aggregate_id = ?,
+                linked_purchase_order_id = ?,
+                dispatched_at = ?,
+                fulfilled_at = ?,
+                version = version + 1
+            WHERE replenishment_request_id = ? AND version = ?
+            """,
+            r.status().dbValue(),
+            r.dispatchedAggregateKind() == null ? null : r.dispatchedAggregateKind().dbValue(),
+            r.dispatchedAggregateId(),
+            r.linkedPurchaseOrderId(),
+            r.dispatchedAt() == null ? null : Timestamp.from(r.dispatchedAt()),
+            r.fulfilledAt() == null ? null : Timestamp.from(r.fulfilledAt()),
+            r.id().value(), r.version()
+        );
+        if (rows == 0) {
+            throw new OptimisticLockingFailureException(
+                "ReplenishmentRequest " + r.id().value() + " was modified by another transaction"
+            );
+        }
     }
 
     private void writeOutbox(DomainEvent event, String actor) {

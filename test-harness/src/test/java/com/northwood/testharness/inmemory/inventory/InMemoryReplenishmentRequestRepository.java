@@ -41,20 +41,40 @@ public final class InMemoryReplenishmentRequestRepository implements Replenishme
     }
 
     @Override
+    public Optional<ReplenishmentRequest> findByDispatchedAggregateId(UUID dispatchedAggregateId) {
+        for (ReplenishmentRequest r : byId.values()) {
+            if (dispatchedAggregateId.equals(r.dispatchedAggregateId())) {
+                return Optional.of(r);
+            }
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<ReplenishmentRequest> findByLinkedPurchaseOrderId(UUID purchaseOrderId) {
+        for (ReplenishmentRequest r : byId.values()) {
+            if (purchaseOrderId.equals(r.linkedPurchaseOrderId())) {
+                return Optional.of(r);
+            }
+        }
+        return Optional.empty();
+    }
+
+    @Override
     public void save(ReplenishmentRequest r) {
-        if (r.version() == 0L) {
+        if (r.version() == 0L && !byId.containsKey(r.id().value())) {
             if (hasOpenFor(r.productId(), r.warehouseId())) {
                 throw new DuplicateKeyException(
                     "in-memory uq_replenishment_request_open violation for product=" + r.productId()
                         + " warehouse=" + r.warehouseId()
                 );
             }
-            byId.put(r.id().value(), r);
-        } else {
-            throw new IllegalStateException(
-                "ReplenishmentRequest updates not supported in Slice B's in-memory double"
-            );
         }
+        // Slice E: updates land via mutator → save (mark dispatched / link PO /
+        // mark fulfilled). The in-memory double trusts the aggregate's state
+        // machine; the JdbcReplenishmentRequestRepository does an OCC version
+        // check (modelled here as last-writer-wins for simplicity).
+        byId.put(r.id().value(), r);
         for (DomainEvent event : r.pullPendingEvents()) {
             outbox.append(event, ReplenishmentRequest.AGGREGATE_TYPE);
         }

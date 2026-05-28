@@ -37,6 +37,7 @@ class WorkOrderManufacturingCompletedHandlerTest {
     @Mock WipBalanceWriter wipBalances;
     @Mock WarehouseLookup warehouses;
     @Mock StockMovementWriter movements;
+    @Mock com.northwood.inventory.domain.replenishment.ReplenishmentRequestRepository replenishmentRequests;
 
     private final ObjectMapper json = new ObjectMapper();
     private WorkOrderManufacturingCompletedHandler handler;
@@ -48,7 +49,7 @@ class WorkOrderManufacturingCompletedHandlerTest {
     @BeforeEach
     void setUp() {
         handler = new WorkOrderManufacturingCompletedHandler(
-            inbox, json, stockBalances, wipBalances, warehouses, movements
+            inbox, json, stockBalances, wipBalances, warehouses, movements, replenishmentRequests
         );
     }
 

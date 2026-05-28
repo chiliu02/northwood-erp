@@ -3,10 +3,14 @@ package com.northwood.inventory.domain.replenishment;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.northwood.inventory.domain.events.ReplenishmentFulfilled;
 import com.northwood.inventory.domain.events.ReplenishmentRequested;
+import com.northwood.inventory.domain.replenishment.ReplenishmentRequest.DispatchedAggregateKind;
 import com.northwood.inventory.domain.replenishment.ReplenishmentRequest.Reason;
 import com.northwood.inventory.domain.replenishment.ReplenishmentRequest.Status;
 import com.northwood.inventory.domain.replenishment.ReplenishmentRequest.TargetService;
+import com.northwood.shared.domain.DomainEvent;
+import java.util.List;
 import java.math.BigDecimal;
 import java.util.UUID;
 import org.junit.jupiter.api.Nested;
@@ -103,6 +107,160 @@ class ReplenishmentRequestTest {
             assertThatThrownBy(() -> ReplenishmentRequest.request(
                 PRODUCT, WAREHOUSE, QTY, TargetService.MANUFACTURING, null
             )).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Nested
+    class MarkDispatched {
+
+        @Test void manufacturing_target_dispatched_to_work_order() {
+            ReplenishmentRequest r = ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.MANUFACTURING, Reason.REORDER_POINT_BREACH
+            );
+            r.pullPendingEvents();
+
+            UUID workOrderId = UUID.randomUUID();
+            r.markDispatched(DispatchedAggregateKind.WORK_ORDER, workOrderId);
+
+            assertThat(r.status()).isEqualTo(Status.DISPATCHED);
+            assertThat(r.dispatchedAggregateKind()).isEqualTo(DispatchedAggregateKind.WORK_ORDER);
+            assertThat(r.dispatchedAggregateId()).isEqualTo(workOrderId);
+            assertThat(r.dispatchedAt()).isNotNull();
+            assertThat(r.pullPendingEvents()).isEmpty();
+        }
+
+        @Test void purchasing_target_dispatched_to_purchase_requisition() {
+            ReplenishmentRequest r = ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.PURCHASING, Reason.WORK_ORDER_SHORTAGE
+            );
+            r.pullPendingEvents();
+
+            r.markDispatched(DispatchedAggregateKind.PURCHASE_REQUISITION, UUID.randomUUID());
+            assertThat(r.status()).isEqualTo(Status.DISPATCHED);
+        }
+
+        @Test void same_kind_and_id_is_idempotent() {
+            ReplenishmentRequest r = ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.MANUFACTURING, Reason.REORDER_POINT_BREACH
+            );
+            r.pullPendingEvents();
+            UUID wo = UUID.randomUUID();
+
+            r.markDispatched(DispatchedAggregateKind.WORK_ORDER, wo);
+            r.markDispatched(DispatchedAggregateKind.WORK_ORDER, wo);  // no-op
+            assertThat(r.status()).isEqualTo(Status.DISPATCHED);
+        }
+
+        @Test void rejects_dispatch_kind_that_doesnt_match_target_service() {
+            ReplenishmentRequest r = ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.MANUFACTURING, Reason.REORDER_POINT_BREACH
+            );
+            r.pullPendingEvents();
+            assertThatThrownBy(() -> r.markDispatched(
+                DispatchedAggregateKind.PURCHASE_REQUISITION, UUID.randomUUID()
+            )).isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test void cannot_dispatch_from_fulfilled() {
+            ReplenishmentRequest r = ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.MANUFACTURING, Reason.REORDER_POINT_BREACH
+            );
+            r.pullPendingEvents();
+            r.markDispatched(DispatchedAggregateKind.WORK_ORDER, UUID.randomUUID());
+            r.markFulfilled();
+
+            assertThatThrownBy(() -> r.markDispatched(
+                DispatchedAggregateKind.WORK_ORDER, UUID.randomUUID()
+            )).isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    @Nested
+    class LinkPurchaseOrder {
+
+        @Test void stamps_linked_po_for_purchasing_dispatched_request() {
+            ReplenishmentRequest r = ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.PURCHASING, Reason.REORDER_POINT_BREACH
+            );
+            r.pullPendingEvents();
+            r.markDispatched(DispatchedAggregateKind.PURCHASE_REQUISITION, UUID.randomUUID());
+
+            UUID poId = UUID.randomUUID();
+            r.linkPurchaseOrder(poId);
+            assertThat(r.linkedPurchaseOrderId()).isEqualTo(poId);
+        }
+
+        @Test void rejects_link_before_dispatch() {
+            ReplenishmentRequest r = ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.PURCHASING, Reason.REORDER_POINT_BREACH
+            );
+            r.pullPendingEvents();
+            assertThatThrownBy(() -> r.linkPurchaseOrder(UUID.randomUUID()))
+                .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test void rejects_link_for_manufacturing_dispatched_request() {
+            ReplenishmentRequest r = ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.MANUFACTURING, Reason.REORDER_POINT_BREACH
+            );
+            r.pullPendingEvents();
+            r.markDispatched(DispatchedAggregateKind.WORK_ORDER, UUID.randomUUID());
+
+            assertThatThrownBy(() -> r.linkPurchaseOrder(UUID.randomUUID()))
+                .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test void rejects_relink_to_different_po() {
+            ReplenishmentRequest r = ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.PURCHASING, Reason.REORDER_POINT_BREACH
+            );
+            r.pullPendingEvents();
+            r.markDispatched(DispatchedAggregateKind.PURCHASE_REQUISITION, UUID.randomUUID());
+            r.linkPurchaseOrder(UUID.randomUUID());
+            assertThatThrownBy(() -> r.linkPurchaseOrder(UUID.randomUUID()))
+                .isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    @Nested
+    class MarkFulfilled {
+
+        @Test void emits_ReplenishmentFulfilled_and_stamps_fulfilled_at() {
+            ReplenishmentRequest r = ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.MANUFACTURING, Reason.REORDER_POINT_BREACH
+            );
+            r.pullPendingEvents();
+            r.markDispatched(DispatchedAggregateKind.WORK_ORDER, UUID.randomUUID());
+
+            r.markFulfilled();
+
+            assertThat(r.status()).isEqualTo(Status.FULFILLED);
+            assertThat(r.fulfilledAt()).isNotNull();
+            List<DomainEvent> events = r.pullPendingEvents();
+            assertThat(events).hasSize(1).first().isInstanceOf(ReplenishmentFulfilled.class);
+            ReplenishmentFulfilled e = (ReplenishmentFulfilled) events.get(0);
+            assertThat(e.aggregateId()).isEqualTo(r.id().value());
+        }
+
+        @Test void is_idempotent_when_already_fulfilled() {
+            ReplenishmentRequest r = ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.MANUFACTURING, Reason.REORDER_POINT_BREACH
+            );
+            r.pullPendingEvents();
+            r.markDispatched(DispatchedAggregateKind.WORK_ORDER, UUID.randomUUID());
+            r.markFulfilled();
+            r.pullPendingEvents();
+
+            r.markFulfilled();  // second call: no-op, no events
+            assertThat(r.pullPendingEvents()).isEmpty();
+        }
+
+        @Test void rejects_fulfil_before_dispatch() {
+            ReplenishmentRequest r = ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.MANUFACTURING, Reason.REORDER_POINT_BREACH
+            );
+            r.pullPendingEvents();
+            assertThatThrownBy(r::markFulfilled).isInstanceOf(IllegalStateException.class);
         }
     }
 

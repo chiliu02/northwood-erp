@@ -30,13 +30,14 @@ class PurchaseOrderCreatedHandlerTest {
 
     @Mock InboxPort inbox;
     @Mock PurchaseOrderLineFactsProjection projection;
+    @Mock com.northwood.inventory.domain.replenishment.ReplenishmentRequestRepository replenishmentRequests;
 
     private final ObjectMapper json = new ObjectMapper();
     private PurchaseOrderCreatedHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new PurchaseOrderCreatedHandler(inbox, projection, json);
+        handler = new PurchaseOrderCreatedHandler(inbox, projection, replenishmentRequests, json);
     }
 
     private EventEnvelope event(List<PurchaseOrderCreated.OrderLine> lines) {
