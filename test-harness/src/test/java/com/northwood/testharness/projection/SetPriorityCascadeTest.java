@@ -59,7 +59,7 @@ class SetPriorityCascadeTest {
         // Seed a WO so the prioritisation service's existence check passes.
         WorkOrder wo = WorkOrder.reconstitute(
             WorkOrderId.newId(), "WO-PRIO-001",
-            UUID.randomUUID(), UUID.randomUUID(), null,
+            UUID.randomUUID(), UUID.randomUUID(), null, null,
             UUID.randomUUID(), "FG-001", "Finished Good 1",
             UUID.randomUUID(), new BigDecimal("10"),
             WorkOrder.Status.RELEASED, WorkOrder.MaterialStatus.RESERVATION_PENDING,

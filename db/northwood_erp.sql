@@ -1243,10 +1243,17 @@ CREATE INDEX idx_bom_line_component_product_id ON manufacturing.bom_line(compone
 CREATE TABLE manufacturing.work_order (
     work_order_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     work_order_number VARCHAR(50) NOT NULL UNIQUE,
-    -- Source disambiguation: a work order is either standalone ("manual") or
-    -- traced to a sales order line. Replaces the polymorphic source_type/source_id.
+    -- Source disambiguation: a work order is either standalone ("manual"),
+    -- traced to a sales-order line (make-to-order), or traced to a
+    -- §2.35 inventory.replenishment_request (stock replenishment).
     sales_order_header_id UUID,
     sales_order_line_id UUID,
+    -- §2.35 Slice C: populated when a stock-replenishment WO is released by
+    -- manufacturing.ReplenishmentRequestedHandler. Mutually exclusive with
+    -- the sales-order columns (see CHECK below). Slice E's close-the-loop
+    -- handler reads this when the WO completes to flip the replenishment
+    -- status → 'fulfilled'.
+    replenishment_request_id UUID,
     parent_work_order_id UUID REFERENCES manufacturing.work_order(work_order_id) ON DELETE RESTRICT,
     finished_product_id UUID NOT NULL,
     finished_product_sku VARCHAR(50) NOT NULL,
@@ -1279,10 +1286,17 @@ CREATE TABLE manufacturing.work_order (
     CHECK (completed_quantity >= 0),
     CHECK (scrapped_quantity >= 0),
     CHECK (completed_quantity + scrapped_quantity <= planned_quantity),
-    -- Either both sales_order references are set or neither is.
+    -- §2.35 Slice C: origin is one of three mutually-exclusive shapes:
+    --   1) manual          — all three origin columns NULL
+    --   2) make-to-order   — sales_order_header_id + sales_order_line_id both set,
+    --                        replenishment_request_id NULL
+    --   3) stock replenish — replenishment_request_id set, sales-order cols NULL
+    -- (parent_work_order_id is independent — sub-assembly children inherit the
+    -- parent's origin and copy the parent's identifiers on the existing release path.)
     CHECK (
-        (sales_order_header_id IS NULL AND sales_order_line_id IS NULL) OR
-        (sales_order_header_id IS NOT NULL AND sales_order_line_id IS NOT NULL)
+        (sales_order_header_id IS NULL AND sales_order_line_id IS NULL AND replenishment_request_id IS NULL)
+        OR (sales_order_header_id IS NOT NULL AND sales_order_line_id IS NOT NULL AND replenishment_request_id IS NULL)
+        OR (sales_order_header_id IS NULL AND sales_order_line_id IS NULL AND replenishment_request_id IS NOT NULL)
     )
 );
 
@@ -1293,6 +1307,11 @@ CREATE INDEX idx_work_order_finished_product_id
     ON manufacturing.work_order(finished_product_id);
 CREATE INDEX idx_work_order_parent
     ON manufacturing.work_order(parent_work_order_id) WHERE parent_work_order_id IS NOT NULL;
+
+-- §2.35 Slice E: lets the close-the-loop handler find the WO that fulfils
+-- a given replenishment_request without scanning the whole table.
+CREATE INDEX idx_work_order_replenishment_request
+    ON manufacturing.work_order(replenishment_request_id) WHERE replenishment_request_id IS NOT NULL;
 
 CREATE TRIGGER trg_work_order_updated_at
     BEFORE UPDATE ON manufacturing.work_order

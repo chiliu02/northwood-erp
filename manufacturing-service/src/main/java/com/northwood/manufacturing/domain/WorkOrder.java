@@ -1,6 +1,7 @@
 package com.northwood.manufacturing.domain;
 
 import com.northwood.manufacturing.domain.events.OperationCompleted;
+import com.northwood.manufacturing.domain.events.ReplenishmentDispatched;
 import com.northwood.manufacturing.domain.events.WorkOrderCancelled;
 import com.northwood.manufacturing.domain.events.WorkOrderCreated;
 import com.northwood.manufacturing.domain.events.WorkOrderCreated.MaterialLine;
@@ -189,6 +190,7 @@ public final class WorkOrder {
     private final String workOrderNumber;
     private final UUID salesOrderHeaderId;
     private final UUID salesOrderLineId;
+    private final UUID replenishmentRequestId;
     private final UUID parentWorkOrderId;
     private final UUID finishedProductId;
     private final String finishedProductSku;
@@ -219,6 +221,67 @@ public final class WorkOrder {
         List<WorkOrderMaterial> materials,
         List<WorkOrderOperation> operations
     ) {
+        return releaseInternal(
+            workOrderNumber, salesOrderHeaderId, salesOrderLineId,
+            /* replenishmentRequestId */ null,
+            parentWorkOrderId, finishedProductId, finishedProductSku, finishedProductName,
+            bomHeaderId, plannedQuantity, materials, operations
+        );
+    }
+
+    /**
+     * §2.35 Slice C: release a new work order against an
+     * {@link com.northwood.inventory.domain.replenishment.ReplenishmentRequest}
+     * (a stock-replenishment WO; no sales-order line). Emits BOTH
+     * {@link WorkOrderCreated} (with {@code replenishmentRequestId} populated)
+     * AND {@link ReplenishmentDispatched} in the same pending-events list so
+     * inventory's close-the-loop handler sees the dispatch atomically with
+     * the WO creation.
+     */
+    public static WorkOrder releaseForReplenishment(
+        String workOrderNumber,
+        UUID replenishmentRequestId,
+        UUID finishedProductId,
+        String finishedProductSku,
+        String finishedProductName,
+        UUID bomHeaderId,
+        BigDecimal plannedQuantity,
+        List<WorkOrderMaterial> materials,
+        List<WorkOrderOperation> operations
+    ) {
+        Assert.notNull(replenishmentRequestId, "replenishmentRequestId");
+        WorkOrder wo = releaseInternal(
+            workOrderNumber,
+            /* salesOrderHeaderId */ null,
+            /* salesOrderLineId   */ null,
+            replenishmentRequestId,
+            /* parentWorkOrderId  */ null,
+            finishedProductId, finishedProductSku, finishedProductName,
+            bomHeaderId, plannedQuantity, materials, operations
+        );
+        wo.pendingEvents.add(new ReplenishmentDispatched(
+            UUID.randomUUID(),
+            wo.id.value(),
+            replenishmentRequestId,
+            Instant.now()
+        ));
+        return wo;
+    }
+
+    private static WorkOrder releaseInternal(
+        String workOrderNumber,
+        UUID salesOrderHeaderId,
+        UUID salesOrderLineId,
+        UUID replenishmentRequestId,
+        UUID parentWorkOrderId,
+        UUID finishedProductId,
+        String finishedProductSku,
+        String finishedProductName,
+        UUID bomHeaderId,
+        BigDecimal plannedQuantity,
+        List<WorkOrderMaterial> materials,
+        List<WorkOrderOperation> operations
+    ) {
         Assert.argument(plannedQuantity != null && plannedQuantity.signum() > 0, "plannedQuantity must be > 0");
         Assert.notEmpty(operations, "at least one operation is required to release a work order");
         WorkOrderId id = WorkOrderId.newId();
@@ -227,6 +290,7 @@ public final class WorkOrder {
             Assert.notNull(workOrderNumber, "workOrderNumber"),
             salesOrderHeaderId,
             salesOrderLineId,
+            replenishmentRequestId,
             parentWorkOrderId,
             Assert.notNull(finishedProductId, "finishedProductId"),
             Assert.notNull(finishedProductSku, "finishedProductSku"),
@@ -270,6 +334,7 @@ public final class WorkOrder {
             plannedQuantity,
             materialLines,
             operationLines,
+            replenishmentRequestId,
             Instant.now()
         ));
         return wo;
@@ -278,7 +343,8 @@ public final class WorkOrder {
     /** Factory: hydrate from the DB; emits no events. */
     public static WorkOrder reconstitute(
         WorkOrderId id, String workOrderNumber,
-        UUID salesOrderHeaderId, UUID salesOrderLineId, UUID parentWorkOrderId,
+        UUID salesOrderHeaderId, UUID salesOrderLineId,
+        UUID replenishmentRequestId, UUID parentWorkOrderId,
         UUID finishedProductId, String finishedProductSku, String finishedProductName,
         UUID bomHeaderId, BigDecimal plannedQuantity,
         Status status, MaterialStatus materialStatus,
@@ -288,7 +354,8 @@ public final class WorkOrder {
     ) {
         return new WorkOrder(
             id, workOrderNumber,
-            salesOrderHeaderId, salesOrderLineId, parentWorkOrderId,
+            salesOrderHeaderId, salesOrderLineId,
+            replenishmentRequestId, parentWorkOrderId,
             finishedProductId, finishedProductSku, finishedProductName,
             bomHeaderId, plannedQuantity,
             status, materialStatus,
@@ -301,7 +368,8 @@ public final class WorkOrder {
 
     private WorkOrder(
         WorkOrderId id, String workOrderNumber,
-        UUID salesOrderHeaderId, UUID salesOrderLineId, UUID parentWorkOrderId,
+        UUID salesOrderHeaderId, UUID salesOrderLineId,
+        UUID replenishmentRequestId, UUID parentWorkOrderId,
         UUID finishedProductId, String finishedProductSku, String finishedProductName,
         UUID bomHeaderId, BigDecimal plannedQuantity,
         Status status, MaterialStatus materialStatus,
@@ -313,6 +381,7 @@ public final class WorkOrder {
         this.workOrderNumber = workOrderNumber;
         this.salesOrderHeaderId = salesOrderHeaderId;
         this.salesOrderLineId = salesOrderLineId;
+        this.replenishmentRequestId = replenishmentRequestId;
         this.parentWorkOrderId = parentWorkOrderId;
         this.finishedProductId = finishedProductId;
         this.finishedProductSku = finishedProductSku;
@@ -531,6 +600,7 @@ public final class WorkOrder {
     public String workOrderNumber()               { return workOrderNumber; }
     public UUID salesOrderHeaderId()              { return salesOrderHeaderId; }
     public UUID salesOrderLineId()                { return salesOrderLineId; }
+    public UUID replenishmentRequestId()          { return replenishmentRequestId; }
     public UUID parentWorkOrderId()               { return parentWorkOrderId; }
     public UUID finishedProductId()               { return finishedProductId; }
     public String finishedProductSku()            { return finishedProductSku; }

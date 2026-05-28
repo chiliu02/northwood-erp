@@ -3,6 +3,7 @@ package com.northwood.manufacturing.application;
 import com.northwood.manufacturing.application.BomLookup.ActiveBom;
 import com.northwood.manufacturing.application.BomLookup.Component;
 import com.northwood.manufacturing.application.dto.ReleaseCommand;
+import com.northwood.manufacturing.application.dto.ReleaseForReplenishmentCommand;
 import com.northwood.manufacturing.domain.Bom;
 import com.northwood.manufacturing.domain.Routing;
 import com.northwood.manufacturing.domain.RoutingOperation;
@@ -86,6 +87,72 @@ public class WorkOrderReleaseService {
         return releaseInternal(command);
     }
 
+    /**
+     * §2.35 Slice C: release a stock-replenishment WO. Identical BOM walk +
+     * routing snapshot + operations build to the make-to-order path, but
+     * the aggregate uses the {@code releaseForReplenishment} factory so the
+     * sales-order columns stay null and a sibling
+     * {@code manufacturing.ReplenishmentDispatched} event lands alongside
+     * {@code WorkOrderCreated} in the same outbox drain.
+     *
+     * <p>Sub-assembly components are NOT recursed for replenishment WOs
+     * today — stock-replenishment is intended for buyable / leaf-makeable
+     * SKUs; if a sub-assembly is encountered we log a warning and skip it
+     * rather than spawning a make-to-order saga (no sales-order line to
+     * attach a child saga to). If/when stock-replenishment needs multi-level
+     * BOM support the recursion machinery can be extracted into a separate
+     * helper and shared.
+     */
+    @Transactional
+    public WorkOrder releaseForReplenishment(ReleaseForReplenishmentCommand command) {
+        ActiveBom bom = boms.findActiveByFinishedProductId(command.finishedProductId())
+            .orElseThrow(() -> new BomNotFoundException(command.finishedProductId()));
+
+        Routing routing = routings.findActiveByFinishedProductId(command.finishedProductId())
+            .orElseThrow(() -> new RoutingNotFoundException(command.finishedProductId()));
+
+        BigDecimal planned = command.plannedQuantity();
+
+        List<WorkOrderMaterial> materials = new ArrayList<>();
+        int subAssemblyCount = 0;
+        for (Component c : bom.components()) {
+            if (c.componentKind() == Bom.ComponentKind.SUB_ASSEMBLY) {
+                subAssemblyCount++;
+                continue;
+            }
+            materials.add(buildMaterial(c, planned));
+        }
+        if (subAssemblyCount > 0) {
+            log.warn(
+                "stock-replenishment WO for product={} (replenishment_request={}) has {} sub-assembly component(s) — "
+                    + "skipped; multi-level BOM expansion is not yet supported on the replenishment path",
+                command.finishedProductId(), command.replenishmentRequestId(), subAssemblyCount
+            );
+        }
+
+        List<WorkOrderOperation> operations = buildOperations(routing);
+
+        WorkOrder workOrder = WorkOrder.releaseForReplenishment(
+            command.workOrderNumber(),
+            command.replenishmentRequestId(),
+            command.finishedProductId(),
+            command.finishedProductSku(),
+            command.finishedProductName(),
+            bom.bomHeaderId(),
+            planned,
+            materials,
+            operations
+        );
+
+        workOrders.save(workOrder);
+        log.info(
+            "released stock-replenishment work_order {} for replenishment_request={} product={} (planned_qty={}, materials={}, ops={})",
+            workOrder.id().value(), command.replenishmentRequestId(), command.finishedProductId(),
+            planned, materials.size(), operations.size()
+        );
+        return workOrder;
+    }
+
     private WorkOrder releaseInternal(ReleaseCommand command) {
         ActiveBom bom = boms.findActiveByFinishedProductId(command.finishedProductId())
             .orElseThrow(() -> new BomNotFoundException(command.finishedProductId()));
@@ -105,19 +172,7 @@ public class WorkOrderReleaseService {
             materials.add(buildMaterial(c, planned));
         }
 
-        List<WorkOrderOperation> operations = new ArrayList<>();
-        for (RoutingOperation op : routing.operations()) {
-            operations.add(new WorkOrderOperation(
-                UUID.randomUUID(),
-                op.operationSequence(),
-                op.operationCode(),
-                op.description(),
-                op.workCenterId(),
-                op.plannedSetupMinutes(),
-                op.plannedRunMinutes(),
-                WorkOrder.OperationStatus.PLANNED
-            ));
-        }
+        List<WorkOrderOperation> operations = buildOperations(routing);
 
         WorkOrder workOrder = WorkOrder.release(
             command.workOrderNumber(),
@@ -166,6 +221,23 @@ public class WorkOrderReleaseService {
         }
 
         return workOrder;
+    }
+
+    private List<WorkOrderOperation> buildOperations(Routing routing) {
+        List<WorkOrderOperation> operations = new ArrayList<>();
+        for (RoutingOperation op : routing.operations()) {
+            operations.add(new WorkOrderOperation(
+                UUID.randomUUID(),
+                op.operationSequence(),
+                op.operationCode(),
+                op.description(),
+                op.workCenterId(),
+                op.plannedSetupMinutes(),
+                op.plannedRunMinutes(),
+                WorkOrder.OperationStatus.PLANNED
+            ));
+        }
+        return operations;
     }
 
     private WorkOrderMaterial buildMaterial(Component c, BigDecimal planned) {

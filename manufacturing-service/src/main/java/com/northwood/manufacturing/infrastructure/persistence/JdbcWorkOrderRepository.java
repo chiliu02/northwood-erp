@@ -40,7 +40,8 @@ public class JdbcWorkOrderRepository implements WorkOrderRepository {
         try {
             HeaderRow header = jdbc.queryForObject("""
                 SELECT work_order_id, work_order_number,
-                       sales_order_header_id, sales_order_line_id, parent_work_order_id,
+                       sales_order_header_id, sales_order_line_id,
+                       replenishment_request_id, parent_work_order_id,
                        finished_product_id, finished_product_sku, finished_product_name,
                        bom_header_id, planned_quantity, completed_quantity,
                        status, material_status,
@@ -66,7 +67,8 @@ public class JdbcWorkOrderRepository implements WorkOrderRepository {
             return Optional.of(WorkOrder.reconstitute(
                 WorkOrderId.of(header.id),
                 header.workOrderNumber,
-                header.salesOrderHeaderId, header.salesOrderLineId, header.parentWorkOrderId,
+                header.salesOrderHeaderId, header.salesOrderLineId,
+                header.replenishmentRequestId, header.parentWorkOrderId,
                 header.finishedProductId, header.finishedProductSku, header.finishedProductName,
                 header.bomHeaderId, header.plannedQuantity,
                 WorkOrder.Status.fromDb(header.status), WorkOrder.MaterialStatus.fromDb(header.materialStatus),
@@ -145,14 +147,16 @@ public class JdbcWorkOrderRepository implements WorkOrderRepository {
         jdbc.update("""
             INSERT INTO manufacturing.work_order (
                 work_order_id, work_order_number,
-                sales_order_header_id, sales_order_line_id, parent_work_order_id,
+                sales_order_header_id, sales_order_line_id,
+                replenishment_request_id, parent_work_order_id,
                 finished_product_id, finished_product_sku, finished_product_name,
                 bom_header_id, planned_quantity, status, material_status, version,
                 created_by, last_modified_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             workOrder.id().value(), workOrder.workOrderNumber(),
-            workOrder.salesOrderHeaderId(), workOrder.salesOrderLineId(), workOrder.parentWorkOrderId(),
+            workOrder.salesOrderHeaderId(), workOrder.salesOrderLineId(),
+            workOrder.replenishmentRequestId(), workOrder.parentWorkOrderId(),
             workOrder.finishedProductId(), workOrder.finishedProductSku(), workOrder.finishedProductName(),
             workOrder.bomHeaderId(), workOrder.plannedQuantity(),
             workOrder.status().dbValue(), workOrder.materialStatus().dbValue(),
@@ -247,7 +251,8 @@ public class JdbcWorkOrderRepository implements WorkOrderRepository {
 
     private record HeaderRow(
         UUID id, String workOrderNumber,
-        UUID salesOrderHeaderId, UUID salesOrderLineId, UUID parentWorkOrderId,
+        UUID salesOrderHeaderId, UUID salesOrderLineId,
+        UUID replenishmentRequestId, UUID parentWorkOrderId,
         UUID finishedProductId, String finishedProductSku, String finishedProductName,
         UUID bomHeaderId, BigDecimal plannedQuantity, BigDecimal completedQuantity,
         String status, String materialStatus,
@@ -262,6 +267,7 @@ public class JdbcWorkOrderRepository implements WorkOrderRepository {
             rs.getString("work_order_number"),
             rs.getObject("sales_order_header_id", UUID.class),
             rs.getObject("sales_order_line_id", UUID.class),
+            rs.getObject("replenishment_request_id", UUID.class),
             rs.getObject("parent_work_order_id", UUID.class),
             rs.getObject("finished_product_id", UUID.class),
             rs.getString("finished_product_sku"),

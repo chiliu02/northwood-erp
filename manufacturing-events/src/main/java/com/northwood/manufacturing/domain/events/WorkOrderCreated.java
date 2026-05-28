@@ -7,16 +7,29 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * A work order has been released against a sales-order line. Carries the
- * snapshotted material and operation lists so downstream consumers (the sales
- * fulfilment saga, the production planning board projection) don't need to
- * query the manufacturing schema.
+ * A work order has been released. Carries the snapshotted material and
+ * operation lists so downstream consumers (the sales fulfilment saga, the
+ * production planning board projection) don't need to query the
+ * manufacturing schema.
+ *
+ * <p>Origin is one of three shapes (enforced by the {@code work_order} CHECK):
+ * <ul>
+ *   <li><b>Manual</b> — all three of {@code salesOrderHeaderId},
+ *       {@code salesOrderLineId}, {@code replenishmentRequestId} are
+ *       {@code null}.</li>
+ *   <li><b>Make-to-order</b> — {@code salesOrderHeaderId} +
+ *       {@code salesOrderLineId} populated, {@code replenishmentRequestId}
+ *       null. Sales' fulfilment saga consumes this shape.</li>
+ *   <li><b>Stock replenishment (§2.35)</b> — {@code replenishmentRequestId}
+ *       populated, sales-order ids null. Inventory's close-the-loop handler
+ *       consumes this shape (alongside the sibling
+ *       {@code manufacturing.ReplenishmentDispatched}).</li>
+ * </ul>
  *
  * <p>{@code parentWorkOrderId} is {@code null} for top-level work orders
- * (released directly against a sales-order line) and non-null for sub-assembly
- * children spawned by recursion in the release service. Sales' fulfilment saga
- * filters out non-null entries — it only tracks one work order per
- * sales-order-line, the parent.
+ * and non-null for sub-assembly children spawned by recursion in the release
+ * service. Sales' fulfilment saga filters out non-null entries — it only
+ * tracks one work order per sales-order-line, the parent.
  */
 public record WorkOrderCreated(
     UUID eventId,
@@ -32,6 +45,7 @@ public record WorkOrderCreated(
     BigDecimal plannedQuantity,
     List<MaterialLine> materials,
     List<OperationLine> operations,
+    UUID replenishmentRequestId,
     Instant occurredAt
 ) implements DomainEvent {
 
