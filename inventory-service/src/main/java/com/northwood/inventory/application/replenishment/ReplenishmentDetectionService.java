@@ -151,4 +151,58 @@ public class ReplenishmentDetectionService {
                 productId, warehouseId, reason.dbValue());
         }
     }
+
+    /**
+     * §2.36 Trigger C — sales-order partial-reservation shortage. Called by
+     * {@code SalesOrderPurchasingRequestedHandler} per shortage line.
+     * Routes via make-vs-buy (same classifier as
+     * {@link #raiseIfNoneOpen(UUID, UUID, BigDecimal, Reason)}) but always
+     * uses {@code reason = SALES_ORDER_SHORTAGE} and stamps the sales-order
+     * line as a back-reference so the eventual {@code ReplenishmentFulfilled}
+     * can un-park the originating fulfilment saga.
+     *
+     * <p>Crucially, SO-shortage requests are EXCLUDED from the one-open-per-
+     * (product, warehouse) partial unique index (§2.36 Slice A schema-prep) —
+     * multiple sales orders short on the same SKU each get their own request,
+     * each back-referenced to a distinct line. No {@code DuplicateKeyException}
+     * swallow needed: the schema permits the multiplicity.
+     *
+     * <p>Unsourceable SKUs (is_purchased=false AND is_manufactured=false) skip
+     * with a WARN — the order line is dead-end, the saga will eventually time
+     * out at {@code purchasing_requested} until operator intervention.
+     */
+    @Transactional(propagation = Propagation.REQUIRED)
+    public void raiseForSalesOrderShortage(
+        UUID productId,
+        UUID warehouseId,
+        BigDecimal quantity,
+        UUID sourceSalesOrderLineId
+    ) {
+        Optional<Replenishment> flags = productReplenishment.findByProductId(productId);
+        if (flags.isEmpty()) {
+            log.warn("no inventory.product_replenishment row for product_id={} — cannot classify make-vs-buy, "
+                + "skipping sales-order-shortage replenishment (qty={}, warehouse_id={}, sales_order_line={})",
+                productId, quantity, warehouseId, sourceSalesOrderLineId);
+            return;
+        }
+        boolean purchased = flags.get().isPurchased();
+        boolean manufactured = flags.get().isManufactured();
+        if (!purchased && !manufactured) {
+            log.warn("unsourceable SKU product_id={} (is_purchased=false, is_manufactured=false) — "
+                + "skipping sales-order-shortage replenishment (qty={}, warehouse_id={}, sales_order_line={})",
+                productId, quantity, warehouseId, sourceSalesOrderLineId);
+            return;
+        }
+
+        // Same make-vs-buy preference as the proactive paths: vertically-
+        // integrated SKUs default to manufacturing.
+        TargetService target = manufactured ? TargetService.MANUFACTURING : TargetService.PURCHASING;
+
+        ReplenishmentRequest r = ReplenishmentRequest.requestForSalesOrderShortage(
+            productId, warehouseId, quantity, target, sourceSalesOrderLineId
+        );
+        replenishmentRequests.save(r);
+        log.info("raised sales-order-shortage replenishment_request {} for product_id={} warehouse_id={} qty={} → {} (sales_order_line={})",
+            r.id().value(), productId, warehouseId, quantity, target.dbValue(), sourceSalesOrderLineId);
+    }
 }

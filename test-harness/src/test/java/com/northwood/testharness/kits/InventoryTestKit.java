@@ -11,6 +11,7 @@ import com.northwood.inventory.application.inbox.RawMaterialReservationRequested
 import com.northwood.inventory.application.inbox.SalesOrderCancellationRequestedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderPlacedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderPrepaymentSettledHandler;
+import com.northwood.inventory.application.inbox.SalesOrderPurchasingRequestedHandler;
 import com.northwood.inventory.application.inbox.StockReservationRequestedHandler;
 import com.northwood.inventory.application.inbox.SubAssembliesConsumedHandler;
 import com.northwood.inventory.application.inbox.WorkOrderCancelledHandler;
@@ -105,6 +106,9 @@ public final class InventoryTestKit {
         bus.register(new ManufacturingReplenishmentDispatchedHandler(inbox, replenishmentRequests, json));
         bus.register(new PurchasingReplenishmentDispatchedHandler(inbox, replenishmentRequests, json));
         bus.register(new PurchaseOrderCreatedHandler(inbox, purchaseOrderLineFacts, replenishmentRequests, json));
+
+        // §2.36 Slice D: sales-order partial-reservation bridge.
+        bus.register(new SalesOrderPurchasingRequestedHandler(inbox, replenishmentDetection, warehouses, json));
     }
 
     /** Seed enough stock so a reservation will succeed. */
