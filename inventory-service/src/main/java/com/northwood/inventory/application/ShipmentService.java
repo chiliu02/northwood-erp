@@ -4,6 +4,7 @@ import com.northwood.inventory.application.dto.PostShipmentCommand;
 import com.northwood.inventory.application.dto.ShipmentLineRequest;
 import com.northwood.inventory.application.dto.ShipmentView;
 import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection;
+import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection.PrepaymentGate;
 import com.northwood.inventory.domain.Shipment;
 import com.northwood.inventory.domain.ShipmentId;
 import com.northwood.inventory.domain.ShipmentLine;
@@ -13,6 +14,7 @@ import com.northwood.inventory.domain.StockMovementSourceTypes;
 import com.northwood.inventory.domain.StockMovementType;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.shared.application.exception.BadRequestException;
+import com.northwood.shared.application.exception.ConflictException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -83,6 +85,28 @@ public class ShipmentService {
         }
     }
 
+    /**
+     * §2.31 Slice C. Thrown when {@code ShipmentService.post} is asked to
+     * dispatch a prepayment-terms sales order whose prepayment invoice
+     * hasn't been fully paid yet. Mapped to HTTP 409. Inventory reads
+     * {@code inventory.sales_order_line_facts.prepayment_settled} (flipped
+     * true by {@code sales.SalesOrderPrepaymentSettled}) — no cross-context
+     * read into sales' saga.
+     */
+    public static class UnpaidPrepaymentOrderException extends ConflictException {
+        public static final String CODE = "UNPAID_PREPAYMENT_ORDER";
+        private final UUID salesOrderHeaderId;
+        public UnpaidPrepaymentOrderException(UUID salesOrderHeaderId) {
+            super(CODE, "Cannot ship sales_order=%s — payment_terms='prepayment' and prepayment invoice is not yet fully paid"
+                .formatted(salesOrderHeaderId));
+            this.salesOrderHeaderId = salesOrderHeaderId;
+        }
+        public UUID salesOrderHeaderId() { return salesOrderHeaderId; }
+        @Override public Map<String, Object> params() {
+            return Map.of("salesOrderHeaderId", salesOrderHeaderId);
+        }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(ShipmentService.class);
 
     private final ShipmentRepository shipments;
@@ -119,6 +143,20 @@ public class ShipmentService {
     public ShipmentView post(PostShipmentCommand command) {
         String warehouseCode = command.warehouseCode() == null ? WarehouseCodes.MAIN : command.warehouseCode();
         UUID warehouseId = warehouses.findIdByCode(warehouseCode);
+
+        // §2.31 Slice C: gate prepayment orders on prepayment_settled. The
+        // header-level facts are denormalised onto each line of
+        // sales_order_line_facts (one query for both validations). Skip when
+        // no sales_order_header_id is supplied — unlinked manual shipments
+        // are an existing affordance.
+        if (command.salesOrderHeaderId() != null) {
+            Optional<PrepaymentGate> gate = salesOrderLineFacts.findPrepaymentGate(command.salesOrderHeaderId());
+            if (gate.isPresent()
+                && "prepayment".equals(gate.get().paymentTerms())
+                && !gate.get().prepaymentSettled()) {
+                throw new UnpaidPrepaymentOrderException(command.salesOrderHeaderId());
+            }
+        }
 
         // Defence-in-depth: reject if any line's productId doesn't match the
         // projected sales_order_line_facts for the named sales_order_line_id.

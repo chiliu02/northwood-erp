@@ -137,6 +137,44 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
     }
 
     @Override
+    public java.util.Optional<ShipmentTimeInvoice> findInvoiceForShipment(java.util.UUID salesOrderHeaderId) {
+        java.util.List<ShipmentTimeInvoice> rows = jdbc.query(
+            """
+            SELECT customer_invoice_header_id, invoice_number, invoice_type,
+                   customer_name, currency_code, total_amount, revenue_recognized_at
+              FROM finance.customer_invoice_header
+             WHERE sales_order_header_id = ?
+             ORDER BY created_at ASC
+             LIMIT 1
+            """,
+            (rs, n) -> new ShipmentTimeInvoice(
+                rs.getObject("customer_invoice_header_id", java.util.UUID.class),
+                rs.getString("invoice_number"),
+                CustomerInvoice.InvoiceType.fromDb(rs.getString("invoice_type")),
+                rs.getString("customer_name"),
+                rs.getString("currency_code"),
+                rs.getBigDecimal("total_amount"),
+                rs.getTimestamp("revenue_recognized_at") != null
+            ),
+            salesOrderHeaderId
+        );
+        return rows.isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(rows.get(0));
+    }
+
+    @Override
+    public boolean markRevenueRecognized(java.util.UUID customerInvoiceHeaderId) {
+        int updated = jdbc.update("""
+            UPDATE finance.customer_invoice_header
+               SET revenue_recognized_at = now()
+             WHERE customer_invoice_header_id = ?
+               AND revenue_recognized_at IS NULL
+            """,
+            customerInvoiceHeaderId
+        );
+        return updated > 0;
+    }
+
+    @Override
     public void save(CustomerInvoice ci) {
         String actor = currentUser.currentUsername().orElse(null);
         if (ci.version() == 0L) {

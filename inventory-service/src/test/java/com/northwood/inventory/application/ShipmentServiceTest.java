@@ -9,9 +9,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.northwood.inventory.application.ShipmentService.ShipmentLineProductMismatchException;
+import com.northwood.inventory.application.ShipmentService.UnpaidPrepaymentOrderException;
 import com.northwood.inventory.application.dto.PostShipmentCommand;
 import com.northwood.inventory.application.dto.ShipmentLineRequest;
 import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection;
+import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection.PrepaymentGate;
 import com.northwood.inventory.domain.ShipmentRepository;
 import com.northwood.inventory.domain.StockMovementDirection;
 import com.northwood.inventory.domain.StockMovementSourceTypes;
@@ -160,6 +162,50 @@ class ShipmentServiceTest {
 
         verify(shipments, never()).save(any());
         verify(stockBalances, never()).decrementOnHandAndReleaseReserved(any(), any(), any());
+    }
+
+    // §2.31 Slice C: prepayment shipment gate.
+
+    @Test void prepayment_order_not_yet_settled_rejects_with_409_exception() {
+        when(salesOrderLineFacts.findPrepaymentGate(SO))
+            .thenReturn(Optional.of(new PrepaymentGate("prepayment", false)));
+
+        assertThatThrownBy(() -> service.post(cmd(WarehouseCodes.MAIN, List.of(
+            new ShipmentLineRequest(null, PRODUCT_1, "SKU", "P",
+                new BigDecimal("1"), new BigDecimal("10.00"))
+        ))))
+            .isInstanceOf(UnpaidPrepaymentOrderException.class)
+            .hasMessageContaining(SO.toString());
+
+        verify(shipments, never()).save(any());
+        verify(stockBalances, never()).decrementOnHandAndReleaseReserved(any(), any(), any());
+    }
+
+    @Test void prepayment_order_settled_proceeds_normally() {
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
+        when(salesOrderLineFacts.findPrepaymentGate(SO))
+            .thenReturn(Optional.of(new PrepaymentGate("prepayment", true)));
+
+        service.post(cmd(WarehouseCodes.MAIN, List.of(
+            new ShipmentLineRequest(null, PRODUCT_1, "SKU", "P",
+                new BigDecimal("1"), new BigDecimal("10.00"))
+        )));
+
+        verify(shipments).save(any());
+        verify(stockBalances).decrementOnHandAndReleaseReserved(WAREHOUSE, PRODUCT_1, new BigDecimal("1"));
+    }
+
+    @Test void on_shipment_order_passes_gate_regardless_of_settled_flag() {
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
+        when(salesOrderLineFacts.findPrepaymentGate(SO))
+            .thenReturn(Optional.of(new PrepaymentGate("on_shipment", false)));
+
+        service.post(cmd(WarehouseCodes.MAIN, List.of(
+            new ShipmentLineRequest(null, PRODUCT_1, "SKU", "P",
+                new BigDecimal("1"), new BigDecimal("10.00"))
+        )));
+
+        verify(shipments).save(any());
     }
 
     @Test void mixed_lines_first_invalid_rejects_entire_command() {

@@ -68,8 +68,8 @@ class SalesOrderPlacedHandlerTest {
                 new BigDecimal("3"), new BigDecimal("20"))
         )));
 
-        verify(projection).applySalesOrderPlaced(SO, line1, prodA);
-        verify(projection).applySalesOrderPlaced(SO, line2, prodB);
+        verify(projection).applySalesOrderPlaced(SO, line1, prodA, SalesOrderPlaced.PAYMENT_TERMS_ON_SHIPMENT);
+        verify(projection).applySalesOrderPlaced(SO, line2, prodB, SalesOrderPlaced.PAYMENT_TERMS_ON_SHIPMENT);
         verify(inbox).recordProcessed(any());
     }
 

@@ -383,6 +383,43 @@ public class JournalEntryService {
     }
 
     /**
+     * §2.31 Slice C. Deferred-revenue recognition at shipment for a
+     * prepayment invoice: Dr 2110 Customer Deposits / Cr 4000 Sales Revenue
+     * at the invoice's total amount. Posted in addition to the existing
+     * Dr COGS / Cr Inventory pair (which fires for every shipment). The
+     * caller — {@code ShipmentPostedCogsHandler} — gates this method on
+     * {@code customer_invoice_header.revenue_recognized_at} so a redelivered
+     * shipment can't post twice. Tax-inclusive — the GST split (§3.3) is
+     * deferred indefinitely; revenue absorbs tax just like the on-shipment
+     * Cr Revenue pair does today.
+     */
+    @Transactional
+    public void postPrepaymentRevenueRecognition(
+        UUID customerInvoiceHeaderId,
+        String customerName,
+        String invoiceNumber,
+        BigDecimal totalAmount,
+        String currencyCode,
+        LocalDate postingDate
+    ) {
+        post(
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
+            postingDate,
+            JournalEntry.SourceModule.FINANCE,
+            JournalEntry.SourceDocumentType.CUSTOMER_INVOICE,
+            customerInvoiceHeaderId,
+            "Recognise revenue at shipment for prepayment invoice " + invoiceNumber + " " + customerName,
+            currencyCode,
+            FinanceAccountCodes.CUSTOMER_DEPOSITS,
+            "Reclassify deposit at shipment for " + customerName,
+            FinanceAccountCodes.REVENUE,
+            "Recognise revenue for " + customerName,
+            totalAmount,
+            postingDate
+        );
+    }
+
+    /**
      * §2.31 Slice B: branches the credit side on {@code invoiceType}.
      * {@link CustomerInvoice.InvoiceType#COMMERCIAL} → Cr 1100 AR (the
      * existing on-shipment flow, balancing the Dr AR posted at invoice

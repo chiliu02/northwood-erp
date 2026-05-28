@@ -35,11 +35,12 @@ public class SalesOrderPlacedHandler extends AbstractInboxHandler<SalesOrderPlac
             projection.applySalesOrderPlaced(
                 payload.aggregateId(),
                 line.lineId(),
-                line.productId()
+                line.productId(),
+                payload.paymentTerms()
             );
         }
 
-        log.info("[{}] seeded sales_order_line_facts for sales_order={} ({} line(s))",
-            CONSUMER_NAME, payload.aggregateId(), payload.lines().size());
+        log.info("[{}] seeded sales_order_line_facts for sales_order={} ({} line(s), payment_terms={})",
+            CONSUMER_NAME, payload.aggregateId(), payload.lines().size(), payload.paymentTerms());
     }
 }

@@ -75,6 +75,20 @@ public class CustomerInvoiceService {
      */
     @Transactional
     public CustomerInvoiceId createFromShippedOrder(SalesOrderShipped payload) {
+        // §2.31 Slice C: prepayment orders already have an invoice (created
+        // from PrepaymentInvoiceRequested at order placement) — finance must
+        // not create a second one when the shipment lands. The deferred-
+        // revenue Dr 2110 / Cr Revenue pair is posted by the shipment-time
+        // handler (ShipmentPostedCogsHandler) against the existing invoice.
+        java.util.Optional<CustomerInvoiceRepository.ShipmentTimeInvoice> existing =
+            customerInvoices.findInvoiceForShipment(payload.aggregateId());
+        if (existing.isPresent()
+            && existing.get().invoiceType() == CustomerInvoice.InvoiceType.PREPAYMENT) {
+            log.info("skipping createFromShippedOrder for sales_order={} — prepayment invoice {} already exists",
+                payload.aggregateId(), existing.get().invoiceNumber());
+            return CustomerInvoiceId.of(existing.get().customerInvoiceHeaderId());
+        }
+
         List<CustomerInvoiceLine> lines = new ArrayList<>();
         int sentinelZeroLines = 0;
         for (SalesOrderShipped.ShippedLine sl : payload.lines()) {

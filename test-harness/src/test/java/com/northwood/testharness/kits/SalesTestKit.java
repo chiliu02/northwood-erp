@@ -3,6 +3,7 @@ package com.northwood.testharness.kits;
 import com.northwood.sales.application.dto.CancelOrderCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand;
 import com.northwood.sales.application.SalesOrderCompensationEmitter;
+import com.northwood.sales.application.SalesOrderPrepaymentSettledEmitter;
 import com.northwood.sales.application.SalesOrderReadyToShipEmitter;
 import com.northwood.sales.application.SalesOrderService;
 import com.northwood.sales.application.inbox.CustomerInvoiceCreatedHandler;
@@ -63,6 +64,7 @@ public final class SalesTestKit {
     public final SalesOrderFulfilmentSagaWorker sagaWorker;
     public final SalesOrderCompensationEmitter compensationEmitter;
     public final SalesOrderReadyToShipEmitter readyToShipEmitter;
+    public final SalesOrderPrepaymentSettledEmitter prepaymentSettledEmitter;
     public final SalesOrderService service;
 
     private final String workerId = "sales.fulfilment-test-worker";
@@ -77,6 +79,7 @@ public final class SalesTestKit {
         this.sagaWorker = new SalesOrderFulfilmentSagaWorker(sagaManager, lineSnapshots, invoiceSnapshots, appender, json);
         this.compensationEmitter = new SalesOrderCompensationEmitter(orders, appender);
         this.readyToShipEmitter = new SalesOrderReadyToShipEmitter(appender);
+        this.prepaymentSettledEmitter = new SalesOrderPrepaymentSettledEmitter(appender);
         this.service = new SalesOrderService(orders, sagaManager, customers, productCards);
 
         bus.register(outbox);
@@ -86,7 +89,7 @@ public final class SalesTestKit {
         bus.register(new ManufacturingDispatchedHandler(inbox, sagaManager, statusProjection, orders, appender, json));
         bus.register(new ShipmentPostedHandler(inbox, sagaManager, service, json));
         bus.register(new CustomerInvoiceCreatedHandler(inbox, sagaManager, json));
-        bus.register(new CustomerPaymentReceivedHandler(inbox, sagaManager, statusProjection, json));
+        bus.register(new CustomerPaymentReceivedHandler(inbox, sagaManager, statusProjection, prepaymentSettledEmitter, json));
         bus.register(new InventoryCancellationAppliedHandler(inbox, sagaManager, compensationEmitter, json));
         bus.register(new ManufacturingCancellationAppliedHandler(inbox, sagaManager, compensationEmitter, json));
     }

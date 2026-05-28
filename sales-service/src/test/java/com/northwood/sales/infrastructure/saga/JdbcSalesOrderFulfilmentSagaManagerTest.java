@@ -494,6 +494,43 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
     }
 
     @Nested
+    class ApplyShipmentPostedPrepaymentBranch {
+        @Test void prepayment_ready_to_ship_advances_through_goods_shipped_to_completed() {
+            // §2.31 Slice C: invoice + payment already done for prepayment;
+            // shipment is the final settlement event, no need to wait for
+            // CustomerInvoiceCreated or CustomerPaymentReceived afterwards.
+            SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP,
+                FulfilmentSagaData.none().withPaymentTerms("prepayment"));
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyShipmentPosted(SO);
+
+            assertThat(state).isEqualTo(COMPLETED);
+        }
+
+        @Test void on_shipment_ready_to_ship_stops_at_goods_shipped() {
+            // Regression: on-shipment path still waits for invoice / payment.
+            SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP,
+                FulfilmentSagaData.none().withPaymentTerms("on_shipment"));
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyShipmentPosted(SO);
+
+            assertThat(state).isEqualTo(GOODS_SHIPPED);
+        }
+
+        @Test void legacy_no_payment_terms_stops_at_goods_shipped() {
+            // Pre-§2.31 sagas had no paymentTerms — treat as on_shipment.
+            SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP, FulfilmentSagaData.none());
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyShipmentPosted(SO);
+
+            assertThat(state).isEqualTo(GOODS_SHIPPED);
+        }
+    }
+
+    @Nested
     class ApplyCustomerPaymentReceivedPrepaymentBranch {
         @Test void full_settlement_of_prepayment_invoice_advances_to_prepaid() {
             // §2.31 Slice B: full payment for a prepayment-terms order routes

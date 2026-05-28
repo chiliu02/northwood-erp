@@ -926,6 +926,16 @@ CREATE TABLE inventory.sales_order_line_facts (
     sales_order_line_id UUID PRIMARY KEY,
     sales_order_header_id UUID NOT NULL,
     product_id UUID NOT NULL,
+    -- §2.31 Slice C: payment_terms snapshotted from sales.SalesOrderPlaced;
+    -- prepayment_settled flipped true by sales.SalesOrderPrepaymentSettled.
+    -- ShipmentService.post refuses prepayment orders with prepayment_settled=false
+    -- (HTTP 409). Both columns repeat on every line (denormalised against the
+    -- header-level fact in sales) — the facts row is the only inventory-side
+    -- read for shipment gating, so one query covers both validations.
+    payment_terms VARCHAR(20) NOT NULL DEFAULT 'on_shipment' CHECK (
+        payment_terms IN ('on_shipment', 'prepayment')
+    ),
+    prepayment_settled BOOLEAN NOT NULL DEFAULT false,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_sales_order_line_facts_header ON inventory.sales_order_line_facts(sales_order_header_id);
@@ -1928,6 +1938,12 @@ CREATE TABLE finance.customer_invoice_header (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     posted_at TIMESTAMPTZ,
+    -- §2.31 Slice C: stamped when the deferred-revenue Dr 2110 / Cr Revenue
+    -- pair is posted at shipment (prepayment invoices only). Null means
+    -- revenue is still deferred (commercial invoice; or prepayment invoice
+    -- whose shipment hasn't posted yet). Non-null gates the redelivery of
+    -- ShipmentPosted at finance — the journal pair is posted at most once.
+    revenue_recognized_at TIMESTAMPTZ,
     created_by VARCHAR(64),
     last_modified_by VARCHAR(64),
     CHECK (paid_amount >= 0 AND paid_amount <= total_amount)

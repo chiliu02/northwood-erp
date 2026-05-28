@@ -6,6 +6,7 @@ import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.application.inbox.RawMaterialReservationRequestedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderCancellationRequestedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderPlacedHandler;
+import com.northwood.inventory.application.inbox.SalesOrderPrepaymentSettledHandler;
 import com.northwood.inventory.application.inbox.StockReservationRequestedHandler;
 import com.northwood.inventory.application.inbox.SubAssembliesConsumedHandler;
 import com.northwood.inventory.application.inbox.WorkOrderCancelledHandler;
@@ -75,6 +76,7 @@ public final class InventoryTestKit {
         ));
         bus.register(new SubAssembliesConsumedHandler(inbox, wipBalances, json));
         bus.register(new SalesOrderPlacedHandler(inbox, salesOrderLineFacts, json));
+        bus.register(new SalesOrderPrepaymentSettledHandler(inbox, salesOrderLineFacts, json));
     }
 
     /** Seed enough stock so a reservation will succeed. */

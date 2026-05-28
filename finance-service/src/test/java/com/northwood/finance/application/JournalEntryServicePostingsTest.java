@@ -152,6 +152,22 @@ class JournalEntryServicePostingsTest {
             assertThat(creditFor(entry, "2110")).isEqualByComparingTo("550.00");
         }
 
+        // §2.31 Slice C: deferred-revenue recognition at shipment for a
+        // prepayment invoice. The journal is Dr 2110 Customer Deposits / Cr
+        // 4000 Sales Revenue at total amount (tax-inclusive).
+        @Test void prepayment_revenue_recognition_posts_dr_customer_deposits_cr_revenue() {
+            UUID invoiceId = UUID.randomUUID();
+            service.postPrepaymentRevenueRecognition(
+                invoiceId, "Globex Ltd", "INV-PREPAY-001",
+                new BigDecimal("550.00"), Currencies.AUD, POSTING_DATE
+            );
+
+            JournalEntry entry = capturedSave();
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.CUSTOMER_INVOICE);
+            assertThat(debitFor(entry, "2110")).isEqualByComparingTo("550.00");
+            assertThat(creditFor(entry, "4000")).isEqualByComparingTo("550.00");
+        }
+
         @Test void posting_defaults_currency_to_AUD_when_null() {
             service.postSupplierPayment(
                 UUID.randomUUID(), "Acme", "PMT-X",

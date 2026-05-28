@@ -246,10 +246,25 @@ public class JdbcSalesOrderFulfilmentSagaManager
                 saga.sagaId(), salesOrderHeaderId, saga.state());
             return saga.state();
         }
-        saga.transitionTo(GOODS_SHIPPED, "wait_for_invoice");
-        sagaPort.update(saga);
-        log.info("saga {} sales_order={} → goods_shipped",
-            saga.sagaId(), salesOrderHeaderId);
+        // §2.31 Slice C: for prepayment orders, the invoice was created at
+        // placement and paid before shipment — there's no invoice / payment
+        // event still to wait for. Walk goods_shipped → completed in this same
+        // transaction so the saga lands on the right terminal without an
+        // active state hop the worker would otherwise pick up.
+        String pt = readData(saga).paymentTerms();
+        boolean isPrepayment = SalesOrderPlaced.PAYMENT_TERMS_PREPAYMENT.equals(pt);
+        if (isPrepayment) {
+            saga.transitionTo(GOODS_SHIPPED, "prepayment_shipment_landed");
+            saga.transitionTo(COMPLETED, "o2c_completed");
+            sagaPort.update(saga);
+            log.info("saga {} sales_order={} → goods_shipped → completed (prepayment; invoice + payment already settled)",
+                saga.sagaId(), salesOrderHeaderId);
+        } else {
+            saga.transitionTo(GOODS_SHIPPED, "wait_for_invoice");
+            sagaPort.update(saga);
+            log.info("saga {} sales_order={} → goods_shipped",
+                saga.sagaId(), salesOrderHeaderId);
+        }
         return saga.state();
     }
 

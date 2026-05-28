@@ -1,5 +1,6 @@
 package com.northwood.sales.application.inbox;
 
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.COMPLETED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.GOODS_SHIPPED;
 
 import com.northwood.sales.application.SalesOrderService;
@@ -12,6 +13,7 @@ import com.northwood.shared.application.messaging.EventEnvelope;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -41,10 +43,16 @@ public class ShipmentPostedHandler extends AbstractInboxHandler<ShipmentPosted> 
         this.salesOrders = salesOrders;
     }
 
+    // §2.31 Slice C: prepayment orders walk ready_to_ship → goods_shipped →
+    // completed inside applyShipmentPosted (invoice + payment already settled).
+    // recordShipped must still run for those — both states indicate a real
+    // shipment transition this call (inbox dedup catches redelivery upstream).
+    private static final Set<String> POST_SHIPMENT_STATES = Set.of(GOODS_SHIPPED, COMPLETED);
+
     @Override
     protected void apply(ShipmentPosted payload, EventEnvelope envelope) {
         String newState = sagaManager.applyShipmentPosted(payload.salesOrderHeaderId());
-        if (GOODS_SHIPPED.equals(newState)) {
+        if (POST_SHIPMENT_STATES.contains(newState)) {
             List<ShippedLineInput> shippedLines = new ArrayList<>();
             for (ShipmentPosted.ShippedLine sl : payload.lines()) {
                 shippedLines.add(new ShippedLineInput(
@@ -58,8 +66,8 @@ public class ShipmentPostedHandler extends AbstractInboxHandler<ShipmentPosted> 
                 LocalDate.now(),
                 shippedLines
             );
-            log.info("[{}] sales_order={} → goods_shipped (shipment={})",
-                CONSUMER_NAME, payload.salesOrderHeaderId(), payload.shipmentNumber());
+            log.info("[{}] sales_order={} → {} (shipment={})",
+                CONSUMER_NAME, payload.salesOrderHeaderId(), newState, payload.shipmentNumber());
         }
     }
 }
