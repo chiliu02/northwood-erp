@@ -340,6 +340,74 @@ Partial customer payment lands on `invoice_partially_paid` instead, parking unti
 
 **What the audience sees:** all three saga rows progress in lock-step in the saga console; the Sales Order 360 view at `/sales-orders/{id}` updates after every event.
 
+### 3.2 — Prepayment / cash-with-order (the second AR pattern) ✅ §2.31
+
+The same saga, the same outbox/inbox plumbing, the same `sales_order_fulfilment_saga` table — but the order's `payment_terms` flips a single branch at `started`. Money moves *before* goods. The point of the demo is to show the architecture isn't hardcoded to one trigger order: a per-order flag (snapshotted from the customer at placement, overridable per order) branches the saga and the GL chain rearranges itself accordingly.
+
+Pre-state: 1 × FG-TABLE-001 on hand (a stock-only path keeps the demo crisp — no manufacturing detour). Pick any customer; the order's `paymentTerms` override is what matters.
+
+```bash
+curl -X POST http://localhost:8082/api/sales-orders \
+  -H 'content-type: application/json' \
+  -d '{"orderNumber":"SO-DEMO-3-2",
+       "customerCode":"CUST-001",
+       "currencyCode":"AUD",
+       "paymentTerms":"prepayment",
+       "lines":[{"productId":"00000000-0000-7000-8000-000000000001",
+                 "productSku":"FG-TABLE-001",
+                 "productName":"Wooden Dining Table",
+                 "orderedQuantity":1,
+                 "unitPrice":320}]}'
+```
+
+The order lands in the SO-360 view with an **"awaiting prepayment"** lozenge — saga is `awaiting_prepayment_invoice`. Within a tick finance creates a prepayment invoice (`invoice_type='prepayment'`) — **no GL post at creation** (Treatment A). Try posting a shipment now and the inventory service rejects with **HTTP 409 `UNPAID_PREPAYMENT_ORDER`** — the gate reads `inventory.sales_order_line_facts.prepayment_settled` (which is `false`), not sales' saga.
+
+Pay the prepayment invoice (UI: `/payments` → Customer tab, or curl below). The customer payment must come from the same customer; full amount required for the saga to leave `invoice_created`:
+
+```bash
+curl -X POST http://localhost:8086/api/payments/customer \
+  -H 'content-type: application/json' \
+  -d '{"paymentNumber":"PMT-DEMO-3-2",
+       "customerInvoiceHeaderId":"...",
+       "amount":320,
+       "paymentMethod":"bank_transfer"}'
+```
+
+What happens next, in one tick:
+1. Finance posts **Dr 1000 Bank / Cr 2110 Customer Deposits** for $320 — the deposit is a liability until the goods land with the customer.
+2. Sales saga: `invoice_created → prepaid` and emits `sales.SalesOrderPrepaymentSettled`.
+3. Inventory consumes the settled event and flips `sales_order_line_facts.prepayment_settled = true` — the 409 gate is now unlocked.
+4. Sales saga worker picks the row up from `prepaid` and emits `sales.StockReservationRequested`; the rest of the fulfilment flow walks the same path as Demo 3.1.
+
+Post the shipment when the saga reaches `ready_to_ship` (single-line stock-cover order: the make-to-order detour is skipped). Finance reacts to `inventory.ShipmentPosted` and posts **two** journal entries in the same tx:
+- **Dr 2110 Customer Deposits / Cr 4000 Sales Revenue** for $320 — reclassify the deposit to revenue (the goods-delivered performance obligation).
+- **Dr 5000 COGS / Cr 1220 Finished Goods Inventory** at standard cost (the existing on-shipment pair).
+
+The saga walks `ready_to_ship → goods_shipped → completed` in one transaction (no invoice / payment events left to wait for).
+
+**The point of the GL trail.** End-state ledger ties out identically to Demo 3.1's on-shipment flow:
+
+| Account | Demo 3.1 (on_shipment) | Demo 3.2 (prepayment) |
+|---|---|---|
+| 1000 Bank | Dr $320 | Dr $320 |
+| 1100 Accounts Receivable | Dr $320 → Cr $320 (net 0) | (untouched) |
+| 2110 Customer Deposits | (untouched) | Cr $320 → Dr $320 (net 0) |
+| 4000 Sales Revenue | Cr $320 | Cr $320 |
+| 5000 COGS | Dr $150 | Dr $150 |
+| 1220 Finished Goods Inventory | Cr $150 | Cr $150 |
+
+What differs is the **path** through the chart of accounts — AR for credit terms, Customer Deposits for prepayment — and the **timing** of revenue recognition (at invoice creation vs at shipment). The audience point: the saga absorbs the two patterns without the rest of the system (inventory, manufacturing, reporting) caring which path was taken.
+
+**What the audience sees:** SO-360 lozenge transitions from "awaiting prepayment" → (paid; lozenge clears) → fulfilment progresses → completed. The saga console shows the new states (`awaiting_prepayment_invoice`, `prepaid`) light up. The journal-entries view shows the deposit→revenue reclassification at shipment with a single click into the journal lines.
+
+**Try the 409 gate:**
+```bash
+# attempt shipment before payment lands → HTTP 409 UNPAID_PREPAYMENT_ORDER
+curl -i -X POST http://localhost:8083/api/shipments \
+  -H 'content-type: application/json' \
+  -d '{"shipmentNumber":"SH-PREMATURE","salesOrderHeaderId":"...","warehouseCode":"MAIN","lines":[...]}'
+```
+
 ---
 
 ## Demo 4 — Saga: failure paths

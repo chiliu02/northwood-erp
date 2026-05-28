@@ -13,6 +13,14 @@ import { formatMoney, truncateUuid } from "@/lib/utils";
 
 const NON_CANCELLABLE = new Set(["shipped", "completed", "cancelled", "rejected"]);
 
+// §2.31 Slice D: derive the awaiting-prepayment lozenge from the saga's
+// observable state on SO-360 — payment_terms='prepayment' AND the prepayment
+// invoice hasn't been fully paid yet (payment_status != 'paid'). Goes away
+// once the customer pays.
+function isAwaitingPrepayment(o: SalesOrder360): boolean {
+  return o.paymentTerms === "prepayment" && o.paymentStatus !== "paid";
+}
+
 export function SalesOrders() {
   const navigate = useNavigate();
   const { data, isLoading, error } = useQuery({
@@ -37,19 +45,15 @@ export function SalesOrders() {
       rowKey={(o) => o.salesOrderHeaderId}
       renderRow={(o) => (
         <div className="space-y-1">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <span className="font-mono text-text-primary">{o.orderNumber}</span>
-            <StatusBadge kind={inferStatusKind(o.orderStatus)}>{o.orderStatus}</StatusBadge>
+            <div className="flex items-center gap-1.5">
+              {isAwaitingPrepayment(o) && <StatusBadge kind="warn">awaiting prepayment</StatusBadge>}
+              <StatusBadge kind={inferStatusKind(o.orderStatus)}>{o.orderStatus}</StatusBadge>
+            </div>
           </div>
           <div className="flex items-center justify-between text-xs text-text-muted">
-            <span>
-              {o.customerName ?? "—"}
-              {o.paymentTerms === "prepayment" && (
-                <span className="ml-1.5 rounded-sm border border-border-subtle px-1 py-px text-[10px] uppercase tracking-wider">
-                  prepayment
-                </span>
-              )}
-            </span>
+            <span>{o.customerName ?? "—"}</span>
             <span className="tabular-nums">{formatMoney(o.totalAmount, o.currencyCode)}</span>
           </div>
         </div>
@@ -67,6 +71,7 @@ function SalesOrderDetail({ order }: { order: SalesOrder360 }) {
         <div className="flex items-center gap-3">
           <h2 className="font-mono text-xl font-semibold">{order.orderNumber}</h2>
           <StatusBadge kind={inferStatusKind(order.orderStatus)}>{order.orderStatus}</StatusBadge>
+          {isAwaitingPrepayment(order) && <StatusBadge kind="warn">awaiting prepayment</StatusBadge>}
           {order.hasShortage && <StatusBadge kind="warn">shortage</StatusBadge>}
           <span className="ml-auto">
             {cancellable && <CancelOrderButton order={order} />}

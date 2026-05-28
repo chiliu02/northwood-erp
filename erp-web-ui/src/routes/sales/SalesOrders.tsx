@@ -54,10 +54,15 @@ export function SalesOrders() {
     {
       key: "status",
       header: "Status",
-      width: "140px",
+      width: "180px",
       render: (r) => {
         const s = statusForOrder(r.orderStatus);
-        return <StatusPill label={s.label} tone={s.tone} />;
+        return (
+          <div className="flex items-center gap-1.5">
+            <StatusPill label={s.label} tone={s.tone} />
+            {isAwaitingPrepayment(r) && <StatusPill label="awaiting prepayment" tone="warn" />}
+          </div>
+        );
       },
     },
     {
@@ -184,6 +189,12 @@ function FulfilmentSummary({ row }: { row: SalesOrderRow }) {
       </span>
     </div>
   );
+}
+
+// §2.31 Slice D: lozenge for prepayment orders that haven't been paid yet.
+// Goes away once the customer pays — same observable as the demo SPA.
+function isAwaitingPrepayment(r: SalesOrderRow): boolean {
+  return r.paymentTerms === "prepayment" && r.paymentStatus !== "paid";
 }
 
 function isPast(row: SalesOrderRow, after: string): boolean {

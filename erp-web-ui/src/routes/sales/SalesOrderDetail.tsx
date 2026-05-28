@@ -143,7 +143,14 @@ export function SalesOrderDetail() {
                   <ReadOnlyField label="Currency" value={data.currencyCode} />
                   <ReadOnlyField label="Order date" value={data.orderDate} />
                   <ReadOnlyField label="Requested delivery" value={data.requestedDeliveryDate || "—"} />
-                  <ReadOnlyField label="Payment terms" value={<span className="font-mono text-xs">{data.paymentTerms}</span>} />
+                  <ReadOnlyField label="Payment terms" value={
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs">{data.paymentTerms}</span>
+                      {data.paymentTerms === "prepayment" && data.paymentStatus !== "paid" && (
+                        <StatusPill label="awaiting prepayment" tone="warn" />
+                      )}
+                    </div>
+                  } />
                 </FormSection>
                 <FormSection title="Fulfilment progress">
                   <ReadOnlyField label="Stock" value={<StatusPill label={data.stockStatus || "pending"} tone={toneFor(data.stockStatus)} />} />
