@@ -18,6 +18,7 @@ public record SalesOrder360View(
     String shipmentStatus,
     String invoiceStatus,
     String paymentStatus,
+    String paymentTerms,
     String currencyCode,
     BigDecimal totalAmount,
     BigDecimal invoicedAmount,

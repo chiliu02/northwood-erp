@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Save, X, Plus, Trash2 } from "lucide-react";
@@ -13,6 +13,7 @@ interface Customer {
   customerCode: string;
   name: string;
   status: string;
+  defaultPaymentTerms: string;
 }
 
 interface Product {
@@ -57,7 +58,25 @@ export function SalesOrderNew() {
   const [customerCode, setCustomerCode] = useState("");
   const [requestedDeliveryDate, setRequestedDeliveryDate] = useState("");
   const [currencyCode, setCurrencyCode] = useState("AUD");
+  const [paymentTerms, setPaymentTerms] = useState<"on_shipment" | "prepayment">("on_shipment");
+  // Tracks whether the user has manually overridden paymentTerms; once true,
+  // changing the customer no longer resets it to the customer's default.
+  const [paymentTermsOverridden, setPaymentTermsOverridden] = useState(false);
   const [lines, setLines] = useState<DraftLine[]>([]);
+
+  // Snapshot the selected customer's defaultPaymentTerms onto the form so the
+  // wire payload posted to /api/sales-cmd matches Slice A.1's server-side
+  // "inherit from customer" semantic visually. The user can still override
+  // before posting; an explicit override sticks across subsequent customer
+  // changes.
+  useEffect(() => {
+    if (paymentTermsOverridden) return;
+    const c = activeCustomers.find((x) => x.customerCode === customerCode);
+    if (!c) return;
+    if (c.defaultPaymentTerms === "on_shipment" || c.defaultPaymentTerms === "prepayment") {
+      setPaymentTerms(c.defaultPaymentTerms);
+    }
+  }, [customerCode, activeCustomers, paymentTermsOverridden]);
 
   function addLine() {
     if (sellableProducts.length === 0) return;
@@ -93,6 +112,7 @@ export function SalesOrderNew() {
       customerCode,
       requestedDeliveryDate: requestedDeliveryDate || null,
       currencyCode: currencyCode.trim().toUpperCase(),
+      paymentTerms,
       lines: lines.map((l) => ({
         productId: l.productId,
         productSku: l.productSku,
@@ -196,6 +216,27 @@ export function SalesOrderNew() {
                   maxLength={3}
                   className="h-9 w-full rounded-md border border-border-default bg-bg-surface px-3 text-sm uppercase focus:border-border-focus focus:outline-none"
                 />
+              </Field>
+              <Field
+                label="Payment terms"
+                required
+                hint={
+                  paymentTermsOverridden
+                    ? "Overridden — no longer follows the customer's default."
+                    : "Defaulted from the selected customer. Override per order if needed."
+                }
+              >
+                <select
+                  value={paymentTerms}
+                  onChange={(e) => {
+                    setPaymentTerms(e.target.value as "on_shipment" | "prepayment");
+                    setPaymentTermsOverridden(true);
+                  }}
+                  className="h-9 w-full rounded-md border border-border-default bg-bg-surface px-3 text-sm focus:border-border-focus focus:outline-none"
+                >
+                  <option value="on_shipment">on_shipment</option>
+                  <option value="prepayment">prepayment</option>
+                </select>
               </Field>
             </FormSection>
           </div>

@@ -42,7 +42,14 @@ export function SalesOrders() {
             <StatusBadge kind={inferStatusKind(o.orderStatus)}>{o.orderStatus}</StatusBadge>
           </div>
           <div className="flex items-center justify-between text-xs text-text-muted">
-            <span>{o.customerName ?? "—"}</span>
+            <span>
+              {o.customerName ?? "—"}
+              {o.paymentTerms === "prepayment" && (
+                <span className="ml-1.5 rounded-sm border border-border-subtle px-1 py-px text-[10px] uppercase tracking-wider">
+                  prepayment
+                </span>
+              )}
+            </span>
             <span className="tabular-nums">{formatMoney(o.totalAmount, o.currencyCode)}</span>
           </div>
         </div>
@@ -68,6 +75,7 @@ function SalesOrderDetail({ order }: { order: SalesOrder360 }) {
         <p className="text-sm text-text-muted">
           {order.customerName ?? "—"} · ordered {order.orderDate ?? "—"}
           {order.requestedDeliveryDate && <> · requested {order.requestedDeliveryDate}</>}
+          {" · terms "}<span className="font-mono">{order.paymentTerms}</span>
         </p>
       </header>
 

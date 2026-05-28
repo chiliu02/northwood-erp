@@ -20,6 +20,7 @@ interface SalesOrderRow {
   shipmentStatus: string;
   invoiceStatus: string;
   paymentStatus: string;
+  paymentTerms: string;
   currencyCode: string;
   totalAmount: string;
   outstandingAmount: string;
@@ -58,6 +59,12 @@ export function SalesOrders() {
         const s = statusForOrder(r.orderStatus);
         return <StatusPill label={s.label} tone={s.tone} />;
       },
+    },
+    {
+      key: "paymentTerms",
+      header: "Terms",
+      width: "120px",
+      render: (r) => <span className="font-mono text-xs text-text-muted">{r.paymentTerms}</span>,
     },
     {
       key: "fulfilment",

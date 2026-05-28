@@ -15,6 +15,7 @@ export interface SalesOrder360 {
   shipmentStatus: string | null;
   invoiceStatus: string | null;
   paymentStatus: string | null;
+  paymentTerms: string;                // 'on_shipment' | 'prepayment'
   currencyCode: string;
   totalAmount: string;
   invoicedAmount: string;
@@ -226,6 +227,7 @@ export interface SalesOrderView {
   orderDate: string | null;
   requestedDeliveryDate: string | null;
   status: string;
+  paymentTerms: string;                // 'on_shipment' | 'prepayment'
   currencyCode: string;
   subtotalAmount: string;
   taxAmount: string;

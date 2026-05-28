@@ -29,6 +29,7 @@ export function PlaceOrder() {
   const [customerCode, setCustomerCode] = useState(SEED_CUSTOMER_CODE);
   const [requestedDeliveryDate, setRequestedDeliveryDate] = useState("");
   const [currencyCode, setCurrencyCode] = useState("AUD");
+  const [paymentTerms, setPaymentTerms] = useState<"on_shipment" | "prepayment">("on_shipment");
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [submit, setSubmit] = useState<SubmitState>({ status: "idle" });
 
@@ -82,6 +83,7 @@ export function PlaceOrder() {
         customerCode,
         requestedDeliveryDate: requestedDeliveryDate || null,
         currencyCode,
+        paymentTerms,
         lines: apiLines,
       });
       setSubmit({ status: "success", message: `placed ${result.orderNumber ?? orderNumber}` });
@@ -112,6 +114,15 @@ export function PlaceOrder() {
             <option value="AUD">AUD</option>
             <option value="USD">USD</option>
             <option value="EUR">EUR</option>
+          </Select>
+        </FieldRow>
+        <FieldRow label="Payment terms" required hint="On shipment = bill on dispatch (Northwood's credit-AR default). Prepayment = cash with order (lands in Slice B).">
+          <Select
+            value={paymentTerms}
+            onChange={(e) => setPaymentTerms(e.target.value as "on_shipment" | "prepayment")}
+          >
+            <option value="on_shipment">on_shipment</option>
+            <option value="prepayment">prepayment</option>
           </Select>
         </FieldRow>
       </div>

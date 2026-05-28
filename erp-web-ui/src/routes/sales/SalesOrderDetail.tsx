@@ -25,6 +25,7 @@ interface SalesOrder360 {
   shipmentStatus: string;
   invoiceStatus: string;
   paymentStatus: string;
+  paymentTerms: string;
   currencyCode: string;
   totalAmount: string;
   invoicedAmount: string;
@@ -142,6 +143,7 @@ export function SalesOrderDetail() {
                   <ReadOnlyField label="Currency" value={data.currencyCode} />
                   <ReadOnlyField label="Order date" value={data.orderDate} />
                   <ReadOnlyField label="Requested delivery" value={data.requestedDeliveryDate || "—"} />
+                  <ReadOnlyField label="Payment terms" value={<span className="font-mono text-xs">{data.paymentTerms}</span>} />
                 </FormSection>
                 <FormSection title="Fulfilment progress">
                   <ReadOnlyField label="Stock" value={<StatusPill label={data.stockStatus || "pending"} tone={toneFor(data.stockStatus)} />} />
