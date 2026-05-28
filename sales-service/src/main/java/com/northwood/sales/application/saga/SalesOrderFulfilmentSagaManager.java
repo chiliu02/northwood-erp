@@ -115,6 +115,33 @@ public interface SalesOrderFulfilmentSagaManager {
      */
     String applyManufacturingDispatched(UUID salesOrderHeaderId, int acceptedCount, int totalLines);
 
+    /**
+     * §2.36: reroute an all-rejected-as-purchased-only {@code ManufacturingDispatched}
+     * to the new {@code purchasing_requested} branch instead of terminal
+     * {@code rejected}. Only valid when the saga is in
+     * {@code manufacturing_requested}; no-op otherwise. Returns the per-line
+     * shortage map (read from {@code saga.data} where {@link #applyStockReserved}
+     * stashed it) so the caller can build a
+     * {@code sales.SalesOrderPurchasingRequested} event with the right
+     * quantities. Returns {@code Optional.empty()} if the transition was
+     * declined — caller falls back to the existing rejection path.
+     *
+     * <p>Used by {@code ManufacturingDispatchedHandler} when every rejected
+     * line carries outcome {@code rejected_not_manufactured} (i.e., the
+     * SKU has no active BOM by design — purchased-only). Mixed cases (some
+     * accepted, some {@code rejected_not_manufactured}, or any
+     * {@code rejected_no_bom}) take the existing §4.2-closure full-rejection
+     * path — restoring symmetry for those is tracked as a §2.36 follow-up.
+     */
+    java.util.Optional<PurchasingDivergence> applyManufacturingDispatchedReroutingToPurchasing(
+        UUID salesOrderHeaderId
+    );
+
+    /** §2.36 result for {@link #applyManufacturingDispatchedReroutingToPurchasing}. */
+    record PurchasingDivergence(
+        Map<Integer, java.math.BigDecimal> shortageByLineNumber
+    ) {}
+
     /** Apply {@code inventory.ShipmentPosted}. Transitions {@code ready_to_ship → goods_shipped}. */
     String applyShipmentPosted(UUID salesOrderHeaderId);
 

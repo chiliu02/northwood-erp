@@ -25,7 +25,9 @@ import tools.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -234,6 +236,45 @@ public class JdbcSalesOrderFulfilmentSagaManager
                 saga.sagaId(), salesOrderHeaderId, acceptedCount, acceptedCount);
         }
         return saga.state();
+    }
+
+    @Override
+    @Transactional
+    public Optional<PurchasingDivergence> applyManufacturingDispatchedReroutingToPurchasing(
+        UUID salesOrderHeaderId
+    ) {
+        SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, ManufacturingDispatched.EVENT_TYPE);
+
+        // Only valid from MANUFACTURING_REQUESTED. A late redelivery (saga
+        // already advanced or terminal) is a no-op — return empty so the
+        // caller doesn't emit the follow-on event a second time.
+        if (!MANUFACTURING_REQUESTED.equals(saga.state())) {
+            log.debug("saga {} sales_order={} not in manufacturing_requested (state={}); skipping purchasing-reroute",
+                saga.sagaId(), salesOrderHeaderId, saga.state());
+            return Optional.empty();
+        }
+
+        // The shortage was stashed onto saga.data by applyStockReserved when
+        // the saga first hit stock_reservation_incomplete. Empty here is a
+        // "shouldn't happen" — we got to MANUFACTURING_REQUESTED via the
+        // worker's requestManufacturing path which only fires when shortage
+        // is non-empty. Defensive: skip the transition + log WARN.
+        FulfilmentSagaData data = readData(saga);
+        Map<Integer, BigDecimal> shortage = data.shortageByLineNumber();
+        if (shortage == null || shortage.isEmpty()) {
+            log.warn("saga {} sales_order={} reached MANUFACTURING_REQUESTED with no shortage on saga.data; cannot reroute to purchasing",
+                saga.sagaId(), salesOrderHeaderId);
+            return Optional.empty();
+        }
+
+        saga.transitionTo(PURCHASING_REQUESTED, "wait_for_purchasing_replenishment");
+        saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
+        sagaPort.update(saga);
+
+        log.info("saga {} sales_order={} → purchasing_requested ({} line(s) rerouted; mfg dispatched all rejected_not_manufactured)",
+            saga.sagaId(), salesOrderHeaderId, shortage.size());
+
+        return Optional.of(new PurchasingDivergence(new LinkedHashMap<>(shortage)));
     }
 
     @Override

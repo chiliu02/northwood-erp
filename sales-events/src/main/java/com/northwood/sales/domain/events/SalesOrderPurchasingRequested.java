@@ -40,7 +40,7 @@ public record SalesOrderPurchasingRequested(
     UUID eventId,
     UUID aggregateId,
     UUID salesOrderHeaderId,
-    UUID warehouseId,
+    String warehouseCode,
     List<RequestedLine> lines,
     Instant occurredAt
 ) implements DomainEvent {

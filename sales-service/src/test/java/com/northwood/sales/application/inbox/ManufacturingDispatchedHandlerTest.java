@@ -18,11 +18,18 @@ import static org.mockito.Mockito.when;
 import com.northwood.manufacturing.domain.ManufacturingAggregateTypes;
 import com.northwood.manufacturing.domain.events.ManufacturingDispatched;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
+import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager.PurchasingDivergence;
+import com.northwood.sales.application.saga.SalesOrderLineSnapshotPort;
+import com.northwood.sales.application.saga.SalesOrderLineSnapshotPort.LineSnapshot;
+import com.northwood.sales.domain.events.SalesOrderPurchasingRequested;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
 import com.northwood.shared.application.outbox.OutboxAppender;
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +49,7 @@ class ManufacturingDispatchedHandlerTest {
     @Mock SalesOrderFulfilmentSagaManager sagaManager;
     @Mock SalesOrderHeaderStatusProjection statusProjection;
     @Mock SalesOrderRepository salesOrders;
+    @Mock SalesOrderLineSnapshotPort lineSnapshots;
     @Mock OutboxAppender outbox;
 
     private final ObjectMapper json = new ObjectMapper();
@@ -49,7 +57,7 @@ class ManufacturingDispatchedHandlerTest {
 
     @BeforeEach
     void setUp() {
-        handler = new ManufacturingDispatchedHandler(inbox, sagaManager, statusProjection, salesOrders, outbox, json);
+        handler = new ManufacturingDispatchedHandler(inbox, sagaManager, statusProjection, salesOrders, lineSnapshots, outbox, json);
     }
 
     private EventEnvelope event(String... outcomes) {
@@ -121,6 +129,68 @@ class ManufacturingDispatchedHandlerTest {
             ArgumentCaptor.forClass(SalesOrderCancellationRequested.class);
         verify(outbox).append(cap.capture(), eq(SalesOrder.AGGREGATE_TYPE));
         assertThat(cap.getValue().reason()).contains("1 of 3 line(s) rejected");
+    }
+
+    @Test void all_rejected_not_manufactured_reroutes_to_purchasing_emits_event() {
+        // §2.36: every line came back rejected_not_manufactured (purchased-only).
+        // Handler should consult the manager's reroute method (returns the
+        // stashed shortage map), emit sales.SalesOrderPurchasingRequested,
+        // and SKIP the legacy applyManufacturingDispatched/REJECTED path.
+        Map<Integer, BigDecimal> shortage = new LinkedHashMap<>();
+        shortage.put(10, new BigDecimal("3"));
+        shortage.put(20, new BigDecimal("5"));
+        when(sagaManager.applyManufacturingDispatchedReroutingToPurchasing(eq(SO)))
+            .thenReturn(Optional.of(new PurchasingDivergence(shortage)));
+        when(lineSnapshots.findLines(eq(SO))).thenReturn(List.of());  // fall back to payload sku/name
+
+        handler.handle(event("rejected_not_manufactured", "rejected_not_manufactured"));
+
+        // Legacy applyManufacturingDispatched NOT invoked when reroute fires.
+        verify(sagaManager, never()).applyManufacturingDispatched(any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt());
+        verify(statusProjection, never()).markStatus(any(), any());
+
+        ArgumentCaptor<SalesOrderPurchasingRequested> cap =
+            ArgumentCaptor.forClass(SalesOrderPurchasingRequested.class);
+        verify(outbox).append(cap.capture(), any());
+        SalesOrderPurchasingRequested emitted = cap.getValue();
+        assertThat(emitted.salesOrderHeaderId()).isEqualTo(SO);
+        assertThat(emitted.lines()).hasSize(2);
+        assertThat(emitted.lines())
+            .extracting(SalesOrderPurchasingRequested.RequestedLine::shortageQuantity)
+            .containsExactlyInAnyOrder(new BigDecimal("3"), new BigDecimal("5"));
+    }
+
+    @Test void reroute_declined_falls_back_to_legacy_path() {
+        // Manager returns Optional.empty() — e.g. saga not in MANUFACTURING_REQUESTED
+        // (a late redelivery). Handler must fall through to the legacy
+        // applyManufacturingDispatched path so the existing semantics still apply.
+        when(sagaManager.applyManufacturingDispatchedReroutingToPurchasing(eq(SO)))
+            .thenReturn(Optional.empty());
+        when(sagaManager.applyManufacturingDispatched(eq(SO), eq(0), eq(2)))
+            .thenReturn(REJECTED);
+        stubOrderExists();
+
+        handler.handle(event("rejected_not_manufactured", "rejected_not_manufactured"));
+
+        verify(sagaManager).applyManufacturingDispatched(SO, 0, 2);
+        verify(statusProjection).markStatus(SO, SalesOrder.Status.REJECTED);
+    }
+
+    @Test void mixed_rejection_outcomes_take_legacy_rejection_path() {
+        // §2.36 scope-limit: only ALL-rejected_not_manufactured reroutes.
+        // A mix of rejected_no_bom + rejected_not_manufactured falls through
+        // to the existing §4.2 full-rejection (the rejected_no_bom line
+        // genuinely can't be made). Restoring symmetry for mixed cases is
+        // a follow-up.
+        when(sagaManager.applyManufacturingDispatched(eq(SO), eq(0), eq(2)))
+            .thenReturn(REJECTED);
+        stubOrderExists();
+
+        handler.handle(event("rejected_no_bom", "rejected_not_manufactured"));
+
+        verify(sagaManager, never()).applyManufacturingDispatchedReroutingToPurchasing(any());
+        verify(sagaManager).applyManufacturingDispatched(SO, 0, 2);
+        verify(statusProjection).markStatus(SO, SalesOrder.Status.REJECTED);
     }
 
     @Test void already_processed_short_circuits() {
