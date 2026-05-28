@@ -6,7 +6,7 @@ import com.northwood.purchasing.application.SupplierProductPriceService;
 import com.northwood.purchasing.application.inbox.ApprovedVendorListChangedHandler;
 import com.northwood.purchasing.application.inbox.GoodsReceivedHandler;
 import com.northwood.purchasing.application.inbox.ProductDiscontinuedHandler;
-import com.northwood.purchasing.application.inbox.RawMaterialShortageDetectedHandler;
+import com.northwood.purchasing.application.inbox.ReplenishmentRequestedHandler;
 import com.northwood.purchasing.application.inbox.SupplierInvoiceApprovedHandler;
 import com.northwood.purchasing.application.inbox.SupplierInvoiceRejectedHandler;
 import com.northwood.purchasing.application.inbox.SupplierPaymentMadeHandler;
@@ -40,7 +40,7 @@ import tools.jackson.databind.ObjectMapper;
  * {@code purchase_order_approved} and parks them at {@code waiting_for_goods}.
  *
  * <p>The kit pre-seeds one active default supplier (SUP-001) so
- * {@code PurchaseRequisitionService.createForWorkOrderShortage} works out of
+ * {@code PurchaseRequisitionService.createForStockReplenishment} works out of
  * the box. Tests that need richer supplier setup add via
  * {@link InMemorySupplierQueryPort#putActive}.
  */
@@ -93,7 +93,7 @@ public final class PurchasingTestKit {
         this.sagaWorker = new PurchaseToPaySagaWorker(sagaManager);
 
         bus.register(outbox);
-        bus.register(new RawMaterialShortageDetectedHandler(inbox, requisitionService, json));
+        bus.register(new ReplenishmentRequestedHandler(inbox, requisitionService, json));
         bus.register(new GoodsReceivedHandler(inbox, sagaManager, receiptProjection, json));
         bus.register(new SupplierInvoiceApprovedHandler(inbox, sagaManager, paymentProjection, json));
         bus.register(new SupplierInvoiceRejectedHandler(inbox, sagaManager, json));

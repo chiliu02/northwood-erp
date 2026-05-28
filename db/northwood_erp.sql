@@ -1653,13 +1653,21 @@ CREATE TABLE purchasing.purchase_requisition_header (
     purchase_requisition_header_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     requisition_number VARCHAR(50) NOT NULL UNIQUE,
     -- Source columns: a requisition either originates manually, from low-stock
-    -- (project/product reorder), or from a work-order shortage. We split the
-    -- polymorphic ref into named nullable columns + check.
+    -- (legacy/schema-prep), from a work-order shortage (legacy/historical
+    -- only — §2.35 retired the producer), or from a §2.35
+    -- inventory.replenishment_request (the new automatic-replenishment loop —
+    -- covers both reorder-point breaches AND ex-WO-shortage triggers, which
+    -- now route through inventory's ReplenishmentRequest).
+    --
+    -- 'work_order_shortage' is kept in the CHECK because historical rows may
+    -- still reference it; new rows from Java code use 'stock_replenishment'
+    -- instead (see purchasing.PurchaseRequisitionService.createForStockReplenishment).
     source_type VARCHAR(40) NOT NULL DEFAULT 'manual' CHECK (
-        source_type IN ('manual', 'low_stock', 'work_order_shortage')
+        source_type IN ('manual', 'low_stock', 'work_order_shortage', 'stock_replenishment')
     ),
-    source_product_id UUID,         -- set when source_type = 'low_stock'
-    source_work_order_id UUID,      -- set when source_type = 'work_order_shortage'
+    source_product_id UUID,                      -- set when source_type = 'low_stock'
+    source_work_order_id UUID,                   -- set when source_type = 'work_order_shortage' (historical)
+    source_replenishment_request_id UUID,        -- §2.35: set when source_type = 'stock_replenishment'
     status VARCHAR(30) NOT NULL DEFAULT 'draft' CHECK (
         status IN ('draft', 'pending_approval', 'approved', 'rejected', 'converted', 'cancelled')
     ),
@@ -1673,11 +1681,18 @@ CREATE TABLE purchasing.purchase_requisition_header (
     created_by VARCHAR(64),
     last_modified_by VARCHAR(64),
     CHECK (
-        (source_type = 'manual' AND source_product_id IS NULL AND source_work_order_id IS NULL) OR
-        (source_type = 'low_stock' AND source_product_id IS NOT NULL AND source_work_order_id IS NULL) OR
-        (source_type = 'work_order_shortage' AND source_product_id IS NULL AND source_work_order_id IS NOT NULL)
+        (source_type = 'manual' AND source_product_id IS NULL AND source_work_order_id IS NULL AND source_replenishment_request_id IS NULL) OR
+        (source_type = 'low_stock' AND source_product_id IS NOT NULL AND source_work_order_id IS NULL AND source_replenishment_request_id IS NULL) OR
+        (source_type = 'work_order_shortage' AND source_product_id IS NULL AND source_work_order_id IS NOT NULL AND source_replenishment_request_id IS NULL) OR
+        (source_type = 'stock_replenishment' AND source_product_id IS NULL AND source_work_order_id IS NULL AND source_replenishment_request_id IS NOT NULL)
     )
 );
+
+-- §2.35 Slice E lookup: lets the close-the-loop handler find the PR that
+-- fulfils a given replenishment_request without scanning the whole table.
+CREATE INDEX idx_purchase_requisition_header_replenishment_request
+    ON purchasing.purchase_requisition_header(source_replenishment_request_id)
+    WHERE source_replenishment_request_id IS NOT NULL;
 
 CREATE TRIGGER trg_purchase_requisition_header_updated_at
     BEFORE UPDATE ON purchasing.purchase_requisition_header

@@ -3,7 +3,7 @@ package com.northwood.purchasing.application;
 import com.northwood.purchasing.application.dto.CreateRequisitionCommand;
 import com.northwood.purchasing.application.dto.PurchaseRequisitionView;
 import com.northwood.purchasing.application.dto.RequisitionLineRequest;
-import com.northwood.purchasing.application.dto.WorkOrderShortageCommand;
+import com.northwood.purchasing.application.dto.StockReplenishmentCommand;
 import com.northwood.purchasing.domain.PurchaseRequisition;
 import com.northwood.purchasing.domain.PurchaseRequisitionId;
 import com.northwood.purchasing.domain.PurchaseRequisitionLine;
@@ -28,11 +28,23 @@ import org.springframework.transaction.annotation.Transactional;
  * <ul>
  *   <li>{@link #createManual} — REST entry point for buyers (phase 1
  *       sanity-check).</li>
- *   <li>{@link #createForWorkOrderShortage} — called by the inbox handler
- *       when manufacturing reports a raw-material shortage. Auto-attaches
- *       the default supplier and emits {@code PurchaseRequisitionCreated}
- *       to the outbox in the same transaction.</li>
+ *   <li>{@link #createForStockReplenishment} — §2.35 Slice D. Called by
+ *       purchasing's {@code ReplenishmentRequestedHandler} when inventory
+ *       emits an {@code inventory.ReplenishmentRequested} with
+ *       {@code targetService = "purchasing"}. Auto-attaches the default
+ *       supplier and emits BOTH {@code PurchaseRequisitionCreated} (with
+ *       {@code sourceType='stock_replenishment'} + the
+ *       {@code sourceReplenishmentRequestId} field populated) AND
+ *       {@code purchasing.ReplenishmentDispatched} to the outbox in the
+ *       same transaction so inventory's Slice E close-the-loop handler
+ *       picks up the dispatch atomically.</li>
  * </ul>
+ *
+ * <p>The retired {@code createForWorkOrderShortage} path (removed in §2.35
+ * Slice D) is now subsumed by the stock-replenishment path: manufacturing's
+ * {@code RawMaterialShortageDetected} flows through inventory's bridge
+ * (Slice C) which raises a {@code ReplenishmentRequest} that arrives here
+ * the same way as a reorder-point breach.
  *
  * <p>Both paths persist via {@link PurchaseRequisitionRepository#save},
  * which writes pending domain events to the outbox alongside the row insert.
@@ -110,26 +122,32 @@ public class PurchaseRequisitionService {
             .orElseThrow();
     }
 
+    /**
+     * §2.35 Slice D: create a purchase requisition in response to inventory's
+     * {@code ReplenishmentRequested} (targetService=purchasing). Auto-attaches
+     * the default supplier, emits PurchaseRequisitionCreated +
+     * purchasing.ReplenishmentDispatched, and auto-converts to a PO using
+     * the same {@code shortagePoAutoApprove} policy that applied to the
+     * retired WO-shortage path.
+     */
     @Transactional
-    public UUID createForWorkOrderShortage(WorkOrderShortageCommand command) {
+    public UUID createForStockReplenishment(StockReplenishmentCommand command) {
         Supplier defaultSupplier = suppliers.defaultSupplier();
         List<PurchaseRequisitionLine> lines = buildLines(command.lines(), defaultSupplier);
 
-        PurchaseRequisition pr = PurchaseRequisition.create(
+        PurchaseRequisition pr = PurchaseRequisition.createForStockReplenishment(
             command.requisitionNumber(),
-            PurchaseRequisition.SourceType.WORK_ORDER_SHORTAGE,
-            command.workOrderId(),
-            null,
-            "manufacturing.shortage-detector",
+            command.replenishmentRequestId(),
+            "inventory.replenishment-dispatcher",
             lines
         );
         purchaseRequisitions.save(pr);
-        log.info("auto-created shortage requisition {} for work_order={} ({} line(s))",
-            pr.requisitionNumber(), command.workOrderId(), lines.size());
+        log.info("auto-created stock-replenishment requisition {} for replenishment_request={} ({} line(s))",
+            pr.requisitionNumber(), command.replenishmentRequestId(), lines.size());
 
-        // Shortage flow respects northwood.purchasing.shortagePoAutoApprove
-        // (default true) — the make-to-order saga can flow without a human.
-        // Set false to force human approval even for shortage-driven POs.
+        // Same auto-approve policy as the retired WO-shortage path
+        // (northwood.purchasing.shortagePoAutoApprove, default true) — the
+        // §2.35 loop flows without a human in the demo path.
         purchaseOrders.convertFromRequisition(pr.id(), shortagePoAutoApprove);
         return pr.id().value();
     }
