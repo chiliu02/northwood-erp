@@ -15,6 +15,13 @@ public record PlaceOrderCommand(
     @NotBlank @Size(max = 50) String customerCode,
     LocalDate requestedDeliveryDate,
     @NotBlank @Size(min = 3, max = 3) String currencyCode,
+    /**
+     * Optional per-order override of the customer's
+     * {@code defaultPaymentTerms}. Null = inherit from customer. One of
+     * {@code "on_shipment"} / {@code "prepayment"}; validated against
+     * {@code PaymentTerms.fromDb} in {@code SalesOrderService.placeOrder}.
+     */
+    String paymentTerms,
     @NotEmpty @Valid List<OrderLine> lines
 ) {
     public record OrderLine(

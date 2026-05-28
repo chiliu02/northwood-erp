@@ -1,6 +1,7 @@
 package com.northwood.sales.application;
 
 import com.northwood.sales.domain.Customer;
+import com.northwood.sales.domain.PaymentTerms;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -19,5 +20,8 @@ public interface CustomerLookup {
 
     Optional<CustomerSummary> findByCode(String customerCode);
 
-    record CustomerSummary(UUID customerId, String customerCode, String customerName, Customer.Status status) {}
+    record CustomerSummary(
+        UUID customerId, String customerCode, String customerName,
+        Customer.Status status, PaymentTerms defaultPaymentTerms
+    ) {}
 }

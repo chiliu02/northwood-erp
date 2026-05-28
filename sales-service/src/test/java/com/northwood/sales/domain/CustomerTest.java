@@ -19,7 +19,8 @@ class CustomerTest {
         Customer c = Customer.register(
             "CUST-001", "Acme Co",
             "ap@acme.example", "+61-2-1234-5678",
-            "1 Acme St, Sydney", "1 Acme St, Sydney"
+            "1 Acme St, Sydney", "1 Acme St, Sydney",
+            PaymentTerms.ON_SHIPMENT
         );
         c.pullPendingEvents();   // drain CustomerRegistered
         return c;
@@ -29,7 +30,7 @@ class CustomerTest {
         return Customer.reconstitute(
             CustomerId.newId(), "CUST-002", "Blocked Co",
             null, null, null, null,
-            Customer.Status.BLOCKED, 1L
+            Customer.Status.BLOCKED, PaymentTerms.ON_SHIPMENT, 1L
         );
     }
 
@@ -37,34 +38,34 @@ class CustomerTest {
         return Customer.reconstitute(
             CustomerId.newId(), "CUST-003", "Inactive Co",
             null, null, null, null,
-            Customer.Status.INACTIVE, 1L
+            Customer.Status.INACTIVE, PaymentTerms.ON_SHIPMENT, 1L
         );
     }
 
     @Nested
     class Register {
         @Test void rejects_null_customer_code() {
-            assertThatThrownBy(() -> Customer.register(null, "n", null, null, null, null))
+            assertThatThrownBy(() -> Customer.register(null, "n", null, null, null, null, PaymentTerms.ON_SHIPMENT))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_blank_customer_code() {
-            assertThatThrownBy(() -> Customer.register("", "n", null, null, null, null))
+            assertThatThrownBy(() -> Customer.register("", "n", null, null, null, null, PaymentTerms.ON_SHIPMENT))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_name() {
-            assertThatThrownBy(() -> Customer.register("CUST-X", null, null, null, null, null))
+            assertThatThrownBy(() -> Customer.register("CUST-X", null, null, null, null, null, PaymentTerms.ON_SHIPMENT))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_blank_name() {
-            assertThatThrownBy(() -> Customer.register("CUST-X", "  ", null, null, null, null))
+            assertThatThrownBy(() -> Customer.register("CUST-X", "  ", null, null, null, null, PaymentTerms.ON_SHIPMENT))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void allows_null_optional_fields() {
-            Customer c = Customer.register("CUST-X", "X", null, null, null, null);
+            Customer c = Customer.register("CUST-X", "X", null, null, null, null, PaymentTerms.ON_SHIPMENT);
             assertThat(c.email()).isNull();
             assertThat(c.phone()).isNull();
             assertThat(c.billingAddress()).isNull();
@@ -72,12 +73,12 @@ class CustomerTest {
         }
 
         @Test void starts_active() {
-            Customer c = Customer.register("CUST-X", "X", null, null, null, null);
+            Customer c = Customer.register("CUST-X", "X", null, null, null, null, PaymentTerms.ON_SHIPMENT);
             assertThat(c.status()).isEqualTo(Customer.Status.ACTIVE);
         }
 
         @Test void emits_CustomerRegistered_with_aggregate_identity() {
-            Customer c = Customer.register("CUST-X", "Alpha", "a@x", "p", "b", "s");
+            Customer c = Customer.register("CUST-X", "Alpha", "a@x", "p", "b", "s", PaymentTerms.ON_SHIPMENT);
             List<DomainEvent> events = c.pullPendingEvents();
             assertThat(events).hasSize(1).first().isInstanceOf(CustomerRegistered.class);
             CustomerRegistered e = (CustomerRegistered) events.get(0);

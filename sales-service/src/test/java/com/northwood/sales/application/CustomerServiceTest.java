@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.northwood.sales.application.dto.CustomerView;
 import com.northwood.sales.domain.Customer;
 import com.northwood.sales.domain.CustomerId;
+import com.northwood.sales.domain.PaymentTerms;
 import com.northwood.sales.domain.CustomerRepository;
 import com.northwood.sales.domain.events.CustomerAddressChanged;
 import com.northwood.sales.domain.events.CustomerContactChanged;
@@ -53,7 +54,7 @@ class CustomerServiceTest {
             CustomerId.of(CID), "CUST-001", "Acme Corp",
             "ops@acme.example", "+61-2-9000-0000",
             "1 Acme St, Sydney", "1 Acme St, Sydney",
-            Customer.Status.ACTIVE, 1L
+            Customer.Status.ACTIVE, PaymentTerms.ON_SHIPMENT, 1L
         );
     }
 
@@ -69,7 +70,8 @@ class CustomerServiceTest {
             CustomerView registered = service.registerCustomer(
                 "CUST-002", "Beta Industries",
                 "ap@beta.example", "+61-3-8000-0000",
-                "10 Beta Ave, Melbourne", "10 Beta Ave, Melbourne"
+                "10 Beta Ave, Melbourne", "10 Beta Ave, Melbourne",
+                PaymentTerms.ON_SHIPMENT
             );
             assertThat(registered).isNotNull();
             assertThat(registered.customerId()).isNotNull();
@@ -83,7 +85,7 @@ class CustomerServiceTest {
 
         @Test void rejects_blank_customer_code() {
             assertThatThrownBy(() -> service.registerCustomer(
-                "", "name", null, null, null, null
+                "", "name", null, null, null, null, PaymentTerms.ON_SHIPMENT
             )).isInstanceOf(IllegalArgumentException.class);
 
             verify(repo, never()).save(org.mockito.ArgumentMatchers.any());
@@ -199,7 +201,7 @@ class CustomerServiceTest {
             Customer c = Customer.reconstitute(
                 CustomerId.of(CID), "CUST-001", "Acme Corp",
                 null, null, null, null,
-                Customer.Status.INACTIVE, 2L
+                Customer.Status.INACTIVE, PaymentTerms.ON_SHIPMENT, 2L
             );
             when(repo.findById(CustomerId.of(CID))).thenReturn(Optional.of(c));
 

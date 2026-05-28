@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.northwood.sales.application.CustomerService.DuplicateCustomerCodeException;
 import com.northwood.sales.domain.Customer;
+import com.northwood.sales.domain.PaymentTerms;
 import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.zaxxer.hikari.HikariDataSource;
 import java.io.IOException;
@@ -156,7 +157,8 @@ class JdbcCustomerRepositoryIT {
         return Customer.register(
             code, "Acme Pty Ltd",
             "ap@acme.example", "+61 2 0000 0000",
-            "1 Bill St", "2 Ship Rd"
+            "1 Bill St", "2 Ship Rd",
+            PaymentTerms.ON_SHIPMENT
         );
     }
 

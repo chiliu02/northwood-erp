@@ -38,6 +38,7 @@ public class SalesOrderPlacedHandler extends AbstractInboxHandler<SalesOrderPlac
             null,  // requested_delivery_date not carried on the event
             payload.currencyCode(),
             payload.totalAmount(),
+            payload.paymentTerms(),
             payload.occurredAt(),
             SalesOrderPlaced.EVENT_TYPE,
             envelope.actorUserId()

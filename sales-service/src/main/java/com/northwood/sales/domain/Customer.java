@@ -76,6 +76,16 @@ public class Customer {
     private String billingAddress;
     private String shippingAddress;
     private Status status;
+    /**
+     * Default commercial {@link PaymentTerms} for this customer. Snapshotted
+     * onto each sales order at placement time (overridable per order). §2.31
+     * Slice A — currently inert beyond the snapshot; the saga doesn't branch
+     * on it yet (that lands in §2.31 Slice B). No mutator on Slice A:
+     * customer's terms are set at registration. If post-registration changes
+     * become a real demand, add {@code changeDefaultPaymentTerms} + a
+     * {@code CustomerDefaultPaymentTermsChanged} event in a later slice.
+     */
+    private final PaymentTerms defaultPaymentTerms;
     private final long version;
 
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
@@ -84,7 +94,7 @@ public class Customer {
         CustomerId id, String customerCode, String name,
         String email, String phone,
         String billingAddress, String shippingAddress,
-        Status status, long version
+        Status status, PaymentTerms defaultPaymentTerms, long version
     ) {
         this.id = id;
         this.customerCode = customerCode;
@@ -94,6 +104,7 @@ public class Customer {
         this.billingAddress = billingAddress;
         this.shippingAddress = shippingAddress;
         this.status = status;
+        this.defaultPaymentTerms = defaultPaymentTerms;
         this.version = version;
     }
 
@@ -101,16 +112,18 @@ public class Customer {
     public static Customer register(
         String customerCode, String name,
         String email, String phone,
-        String billingAddress, String shippingAddress
+        String billingAddress, String shippingAddress,
+        PaymentTerms defaultPaymentTerms
     ) {
         Assert.notBlank(customerCode, "customerCode required");
         Assert.notBlank(name, "name required");
+        Assert.notNull(defaultPaymentTerms, "defaultPaymentTerms required");
 
         CustomerId id = CustomerId.newId();
         Customer c = new Customer(
             id, customerCode, name,
             email, phone, billingAddress, shippingAddress,
-            Status.ACTIVE, 0L
+            Status.ACTIVE, defaultPaymentTerms, 0L
         );
         c.pendingEvents.add(new CustomerRegistered(
             UUID.randomUUID(), id.value(),
@@ -126,11 +139,11 @@ public class Customer {
         CustomerId id, String customerCode, String name,
         String email, String phone,
         String billingAddress, String shippingAddress,
-        Status status, long version
+        Status status, PaymentTerms defaultPaymentTerms, long version
     ) {
         return new Customer(
             id, customerCode, name, email, phone,
-            billingAddress, shippingAddress, status, version
+            billingAddress, shippingAddress, status, defaultPaymentTerms, version
         );
     }
 
@@ -206,5 +219,6 @@ public class Customer {
     public String billingAddress()     { return billingAddress; }
     public String shippingAddress()    { return shippingAddress; }
     public Status status()             { return status; }
+    public PaymentTerms defaultPaymentTerms() { return defaultPaymentTerms; }
     public long version()              { return version; }
 }

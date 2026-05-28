@@ -26,6 +26,8 @@ public interface SalesOrder360Projection {
         LocalDate requestedDeliveryDate,
         String currencyCode,
         BigDecimal totalAmount,
+        /** §2.31 Slice A — commercial terms wire value ({@code on_shipment} / {@code prepayment}); nullable for backward compat. */
+        String paymentTerms,
         Instant occurredAt,
         String eventType,
         String actorUserId);

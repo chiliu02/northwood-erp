@@ -73,7 +73,7 @@ class OrderToCashHappyPathTest {
         UUID orderId = sales.placeOrder(new PlaceOrderCommand(
             "SO-9001", "CUST-001",
             LocalDate.of(2026, 5, 20),
-            Currencies.AUD,
+            Currencies.AUD, null,
             List.of(new OrderLine(productId, "FG-001", "Finished Good 1",
                 new BigDecimal("3"), null, BigDecimal.ZERO))
         ));

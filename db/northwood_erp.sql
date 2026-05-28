@@ -359,6 +359,15 @@ CREATE TABLE sales.customer (
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (
         status IN ('active', 'inactive', 'blocked')
     ),
+    -- §2.31 Slice A: default commercial payment terms for this customer.
+    -- Snapshotted onto sales.sales_order_header.payment_terms at order
+    -- placement (overridable per-order). 'on_shipment' = credit terms,
+    -- invoice on shipment (Northwood's existing AR flow). 'prepayment' =
+    -- cash with order, invoice at placement, shipment gated on payment
+    -- (§2.31 Slice B+).
+    default_payment_terms VARCHAR(20) NOT NULL DEFAULT 'on_shipment' CHECK (
+        default_payment_terms IN ('on_shipment', 'prepayment')
+    ),
     version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -415,6 +424,13 @@ CREATE TABLE sales.sales_order_header (
             'draft', 'submitted', 'confirmed', 'in_fulfilment',
             'shipped', 'completed', 'cancelled', 'rejected'
         )
+    ),
+    -- §2.31 Slice A: commercial payment terms snapshotted from
+    -- sales.customer.default_payment_terms at placement (overridable per-order
+    -- on the place-order command). 'on_shipment' = current credit-terms flow;
+    -- 'prepayment' = cash-with-order (§2.31 Slice B+ branches the saga on it).
+    payment_terms VARCHAR(20) NOT NULL DEFAULT 'on_shipment' CHECK (
+        payment_terms IN ('on_shipment', 'prepayment')
     ),
     currency_code CHAR(3) NOT NULL DEFAULT 'AUD',
     -- exchange_rate against company base currency at the time of order.
@@ -2623,6 +2639,10 @@ CREATE TABLE reporting.sales_order_360_view (
     shipment_status VARCHAR(40) NOT NULL,
     invoice_status VARCHAR(40) NOT NULL,
     payment_status VARCHAR(40) NOT NULL,
+    -- §2.31 Slice A: commercial terms surfaced on the SO-360 view; projected
+    -- from sales.SalesOrderPlaced.paymentTerms. UI uses this to render a
+    -- "Prepayment" lozenge (and later, an "awaiting prepayment" state).
+    payment_terms VARCHAR(20) NOT NULL DEFAULT 'on_shipment',
     currency_code CHAR(3) NOT NULL DEFAULT 'AUD',
     total_amount NUMERIC(18, 2) NOT NULL DEFAULT 0,
     invoiced_amount NUMERIC(18, 2) NOT NULL DEFAULT 0,

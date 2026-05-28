@@ -6,6 +6,7 @@ import com.northwood.sales.application.CustomerService.DuplicateCustomerCodeExce
 import com.northwood.sales.domain.Customer;
 import com.northwood.sales.domain.CustomerId;
 import com.northwood.sales.domain.CustomerRepository;
+import com.northwood.sales.domain.PaymentTerms;
 import com.northwood.shared.domain.DomainEvent;
 import com.northwood.shared.application.security.CurrentUserAccessor;
 import java.util.List;
@@ -29,6 +30,7 @@ public class JdbcCustomerRepository implements CustomerRepository {
         rs.getString("billing_address"),
         rs.getString("shipping_address"),
         Customer.Status.fromDb(rs.getString("status")),
+        PaymentTerms.fromDb(rs.getString("default_payment_terms")),
         rs.getLong("version")
     );
 
@@ -47,7 +49,7 @@ public class JdbcCustomerRepository implements CustomerRepository {
         return jdbc.query(
             """
             SELECT customer_id, customer_code, name, email, phone,
-                   billing_address, shipping_address, status, version
+                   billing_address, shipping_address, status, default_payment_terms, version
             FROM sales.customer WHERE customer_id = ?
             """,
             ROW_MAPPER, id.value()
@@ -59,7 +61,7 @@ public class JdbcCustomerRepository implements CustomerRepository {
         return jdbc.query(
             """
             SELECT customer_id, customer_code, name, email, phone,
-                   billing_address, shipping_address, status, version
+                   billing_address, shipping_address, status, default_payment_terms, version
             FROM sales.customer WHERE customer_code = ?
             """,
             ROW_MAPPER, customerCode
@@ -71,7 +73,7 @@ public class JdbcCustomerRepository implements CustomerRepository {
         return jdbc.query(
             """
             SELECT customer_id, customer_code, name, email, phone,
-                   billing_address, shipping_address, status, version
+                   billing_address, shipping_address, status, default_payment_terms, version
             FROM sales.customer
             ORDER BY customer_code
             """,
@@ -98,13 +100,13 @@ public class JdbcCustomerRepository implements CustomerRepository {
                 INSERT INTO sales.customer (
                     customer_id, customer_code, name,
                     email, phone, billing_address, shipping_address,
-                    status, version,
+                    status, default_payment_terms, version,
                     created_by, last_modified_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 c.id().value(), c.customerCode(), c.name(),
                 c.email(), c.phone(), c.billingAddress(), c.shippingAddress(),
-                c.status().dbValue(),
+                c.status().dbValue(), c.defaultPaymentTerms().dbValue(),
                 1L,
                 actor, actor
             );

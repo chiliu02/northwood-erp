@@ -8,6 +8,7 @@ import com.northwood.sales.application.dto.PlaceOrderCommand.OrderLine;
 import com.northwood.sales.application.dto.SalesOrderView;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.sales.domain.Customer;
+import com.northwood.sales.domain.PaymentTerms;
 import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.SalesOrder.ShippedLineInput;
 import com.northwood.sales.domain.SalesOrderId;
@@ -259,6 +260,13 @@ public class SalesOrderService {
             lineNumber += LineNumbering.STEP;
         }
 
+        // §2.31 Slice A: per-order override falls back to customer's default
+        // when omitted (the common case). Validated against the enum so a typo
+        // on the API surfaces as 400, not a CHECK violation at INSERT time.
+        PaymentTerms paymentTerms = command.paymentTerms() == null
+            ? customer.defaultPaymentTerms()
+            : PaymentTerms.fromDb(command.paymentTerms());
+
         SalesOrder order = SalesOrder.place(
             command.orderNumber(),
             customer.customerId(),
@@ -267,6 +275,7 @@ public class SalesOrderService {
             command.requestedDeliveryDate(),
             command.currencyCode(),
             BigDecimal.ONE,
+            paymentTerms,
             lines
         );
 

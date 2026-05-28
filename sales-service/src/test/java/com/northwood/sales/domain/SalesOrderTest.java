@@ -42,6 +42,7 @@ class SalesOrderTest {
             LocalDate.of(2026, 6, 1),
             Currencies.AUD,
             BigDecimal.ONE,
+            PaymentTerms.ON_SHIPMENT,
             lines
         );
     }
@@ -50,47 +51,47 @@ class SalesOrderTest {
     class Place {
         @Test void rejects_empty_lines() {
             assertThatThrownBy(() -> SalesOrder.place(
-                "SO-X", CUSTOMER, "C", "Customer", null, Currencies.AUD, BigDecimal.ONE, List.of()
+                "SO-X", CUSTOMER, "C", "Customer", null, Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT, List.of()
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_lines() {
             assertThatThrownBy(() -> SalesOrder.place(
-                "SO-X", CUSTOMER, "C", "Customer", null, Currencies.AUD, BigDecimal.ONE, null
+                "SO-X", CUSTOMER, "C", "Customer", null, Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT, null
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_order_number() {
             assertThatThrownBy(() -> SalesOrder.place(
-                null, CUSTOMER, "C", "Customer", null, Currencies.AUD, BigDecimal.ONE,
+                null, CUSTOMER, "C", "Customer", null, Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_customer_id() {
             assertThatThrownBy(() -> SalesOrder.place(
-                "SO-X", null, "C", "Customer", null, Currencies.AUD, BigDecimal.ONE,
+                "SO-X", null, "C", "Customer", null, Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_customer_code() {
             assertThatThrownBy(() -> SalesOrder.place(
-                "SO-X", CUSTOMER, null, "Customer", null, Currencies.AUD, BigDecimal.ONE,
+                "SO-X", CUSTOMER, null, "Customer", null, Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_customer_name() {
             assertThatThrownBy(() -> SalesOrder.place(
-                "SO-X", CUSTOMER, "C", null, null, Currencies.AUD, BigDecimal.ONE,
+                "SO-X", CUSTOMER, "C", null, null, Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_currency_code() {
             assertThatThrownBy(() -> SalesOrder.place(
-                "SO-X", CUSTOMER, "C", "Customer", null, null, BigDecimal.ONE,
+                "SO-X", CUSTOMER, "C", "Customer", null, null, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             )).isInstanceOf(IllegalArgumentException.class);
         }
@@ -168,7 +169,7 @@ class SalesOrderTest {
                 CUSTOMER, "CUST-001", "Test Customer",
                 LocalDate.now(), null,
                 status,
-                Currencies.AUD, BigDecimal.ONE,
+                Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT,
                 new BigDecimal("100"), BigDecimal.ZERO, new BigDecimal("100"),
                 null,
                 1L,
@@ -237,7 +238,7 @@ class SalesOrderTest {
                 CUSTOMER, "C", "Cust",
                 LocalDate.now(), null,
                 SalesOrder.Status.IN_FULFILMENT,
-                Currencies.AUD, BigDecimal.ONE,
+                Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT,
                 new BigDecimal("100"), BigDecimal.ZERO, new BigDecimal("100"),
                 null,
                 3L,

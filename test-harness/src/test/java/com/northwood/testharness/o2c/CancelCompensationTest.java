@@ -56,7 +56,7 @@ class CancelCompensationTest {
         // Step 1: place + cancel.
         UUID orderId = sales.placeOrder(new PlaceOrderCommand(
             "SO-CXL-001", "CUST-001",
-            LocalDate.of(2026, 5, 15), Currencies.AUD,
+            LocalDate.of(2026, 5, 15), Currencies.AUD, null,
             List.of(new OrderLine(productId, "WIDGET-001", "Widget",
                 new BigDecimal("3"), null, BigDecimal.ZERO))
         ));

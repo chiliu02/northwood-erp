@@ -179,6 +179,7 @@ class JdbcSalesOrder360ProjectionIT {
         PROJECTION.createFromOrder(
             id, "SO-360-LIFECYCLE", UUID.randomUUID(), "Sydney Home Living",
             LocalDate.now(), null, "AUD", new BigDecimal("650.00"),
+            "on_shipment",
             Instant.now(), "sales.SalesOrderPlaced", "sarah");
     }
 

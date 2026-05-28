@@ -143,6 +143,14 @@ public final class SalesOrder {
     private final LocalDate orderDate;
     private final LocalDate requestedDeliveryDate;
     private Status status;
+    /**
+     * Commercial {@link PaymentTerms} snapshotted from the customer at
+     * placement (overridable per-order). §2.31 Slice A — currently inert
+     * beyond the snapshot; the saga doesn't branch on it yet (that lands in
+     * Slice B). Immutable on the order — change it via cancel + replace, not
+     * a mutator.
+     */
+    private final PaymentTerms paymentTerms;
     private final String currencyCode;
     private final BigDecimal exchangeRate;
     private BigDecimal subtotalAmount;
@@ -165,6 +173,7 @@ public final class SalesOrder {
         LocalDate requestedDeliveryDate,
         String currencyCode,
         BigDecimal exchangeRate,
+        PaymentTerms paymentTerms,
         List<SalesOrderLine> lines
     ) {
         Assert.notEmpty(lines, "at least one line is required");
@@ -180,6 +189,7 @@ public final class SalesOrder {
             Status.SUBMITTED,
             Assert.notNull(currencyCode, "currencyCode"),
             exchangeRate == null ? BigDecimal.ONE : exchangeRate,
+            Assert.notNull(paymentTerms, "paymentTerms"),
             BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
             null,
             0L,
@@ -208,6 +218,7 @@ public final class SalesOrder {
             customerName,
             currencyCode,
             order.totalAmount,
+            paymentTerms.dbValue(),
             placedLines,
             Instant.now()
         ));
@@ -225,6 +236,7 @@ public final class SalesOrder {
         Status status,
         String currencyCode,
         BigDecimal exchangeRate,
+        PaymentTerms paymentTerms,
         BigDecimal subtotalAmount,
         BigDecimal taxAmount,
         BigDecimal totalAmount,
@@ -234,7 +246,7 @@ public final class SalesOrder {
     ) {
         return new SalesOrder(
             id, orderNumber, customerId, customerCode, customerName,
-            orderDate, requestedDeliveryDate, status, currencyCode, exchangeRate,
+            orderDate, requestedDeliveryDate, status, currencyCode, exchangeRate, paymentTerms,
             subtotalAmount, taxAmount, totalAmount, cancelledAt, version, new ArrayList<>(lines)
         );
     }
@@ -242,6 +254,7 @@ public final class SalesOrder {
     private SalesOrder(
         SalesOrderId id, String orderNumber, UUID customerId, String customerCode, String customerName,
         LocalDate orderDate, LocalDate requestedDeliveryDate, Status status, String currencyCode, BigDecimal exchangeRate,
+        PaymentTerms paymentTerms,
         BigDecimal subtotalAmount, BigDecimal taxAmount, BigDecimal totalAmount, Instant cancelledAt, long version,
         List<SalesOrderLine> lines
     ) {
@@ -255,6 +268,7 @@ public final class SalesOrder {
         this.status = status;
         this.currencyCode = currencyCode;
         this.exchangeRate = exchangeRate;
+        this.paymentTerms = paymentTerms;
         this.subtotalAmount = subtotalAmount;
         this.taxAmount = taxAmount;
         this.totalAmount = totalAmount;
@@ -389,6 +403,7 @@ public final class SalesOrder {
     public Status status()                    { return status; }
     public String currencyCode()              { return currencyCode; }
     public BigDecimal exchangeRate()          { return exchangeRate; }
+    public PaymentTerms paymentTerms()        { return paymentTerms; }
     public BigDecimal subtotalAmount()        { return subtotalAmount; }
     public BigDecimal taxAmount()             { return taxAmount; }
     public BigDecimal totalAmount()           { return totalAmount; }

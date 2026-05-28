@@ -43,7 +43,9 @@ class SalesOrderPlacedHandlerTest {
         UUID eventId = UUID.randomUUID();
         SalesOrderPlaced payload = new SalesOrderPlaced(
             eventId, SO, "SO-001", UUID.randomUUID(), "CUST-001", "Acme",
-            Currencies.AUD, new BigDecimal("100.00"), lines, Instant.now()
+            Currencies.AUD, new BigDecimal("100.00"),
+            SalesOrderPlaced.PAYMENT_TERMS_ON_SHIPMENT,
+            lines, Instant.now()
         );
         return new EventEnvelope(
             eventId, SalesAggregateTypes.SALES_ORDER, SO,

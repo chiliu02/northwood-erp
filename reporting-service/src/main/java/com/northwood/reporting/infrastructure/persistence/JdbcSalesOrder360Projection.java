@@ -41,10 +41,15 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
         LocalDate requestedDeliveryDate,
         String currencyCode,
         BigDecimal totalAmount,
+        String paymentTerms,
         Instant occurredAt,
         String eventType,
         String actorUserId
     ) {
+        // §2.31 Slice A: SalesOrderPlaced events produced before this slice
+        // shipped won't carry paymentTerms — default to 'on_shipment' so the
+        // CHECK on the read-side column (and the view's NOT NULL) holds.
+        String pt = paymentTerms == null ? "on_shipment" : paymentTerms;
         jdbc.update("""
             INSERT INTO reporting.sales_order_360_view (
                 sales_order_header_id, order_number,
@@ -52,11 +57,13 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                 order_date, requested_delivery_date,
                 order_status, stock_status, manufacturing_status,
                 shipment_status, invoice_status, payment_status,
+                payment_terms,
                 currency_code, total_amount, outstanding_amount,
                 last_event_type, last_event_at,
                 last_modified_by
             ) VALUES (?, ?, ?, ?, ?, ?, 'submitted', 'pending', 'pending',
                       'pending', 'pending', 'pending',
+                      ?,
                       ?, ?, ?, ?, ?, ?)
             ON CONFLICT (sales_order_header_id) DO UPDATE SET
                 order_number = EXCLUDED.order_number,
@@ -91,6 +98,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
             customerId, customerName,
             orderDate == null ? null : Date.valueOf(orderDate),
             requestedDeliveryDate == null ? null : Date.valueOf(requestedDeliveryDate),
+            pt,
             Currencies.orBase(currencyCode),
             totalAmount == null ? BigDecimal.ZERO : totalAmount,
             totalAmount == null ? BigDecimal.ZERO : totalAmount,
@@ -98,8 +106,8 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
             Timestamp.from(occurredAt == null ? Instant.now() : occurredAt),
             actorUserId
         );
-        log.info("seeded sales_order_360 for {} ({}) total={}",
-            orderNumber, salesOrderHeaderId, totalAmount);
+        log.info("seeded sales_order_360 for {} ({}) total={} payment_terms={}",
+            orderNumber, salesOrderHeaderId, totalAmount, pt);
     }
 
     @Override

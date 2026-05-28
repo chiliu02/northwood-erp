@@ -57,7 +57,7 @@ class OrderToCashFirstLegTest {
         UUID orderId = sales.placeOrder(new PlaceOrderCommand(
             "SO-0001", "CUST-001",
             LocalDate.of(2026, 5, 15),
-            Currencies.AUD,
+            Currencies.AUD, null,
             List.of(new OrderLine(
                 productId, "WIDGET-001", "Widget",
                 new BigDecimal("3"), null, BigDecimal.ZERO

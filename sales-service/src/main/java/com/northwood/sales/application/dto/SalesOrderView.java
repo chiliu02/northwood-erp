@@ -20,6 +20,7 @@ public record SalesOrderView(
     BigDecimal subtotalAmount,
     BigDecimal taxAmount,
     BigDecimal totalAmount,
+    String paymentTerms,
     long version,
     List<SalesOrderLineView> lines
 ) {
@@ -37,6 +38,7 @@ public record SalesOrderView(
             order.subtotalAmount(),
             order.taxAmount(),
             order.totalAmount(),
+            order.paymentTerms().dbValue(),
             order.version(),
             order.lines().stream().map(SalesOrderLineView::from).toList()
         );
