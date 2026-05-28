@@ -1,8 +1,8 @@
 package com.northwood.testharness.inmemory.inventory;
 
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequestId;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequestRepository;
+import com.northwood.inventory.domain.ReplenishmentRequest;
+import com.northwood.inventory.domain.ReplenishmentRequestId;
+import com.northwood.inventory.domain.ReplenishmentRequestRepository;
 import com.northwood.shared.application.outbox.OutboxAppender;
 import com.northwood.shared.domain.DomainEvent;
 import java.util.ArrayList;

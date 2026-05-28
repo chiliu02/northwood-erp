@@ -2,7 +2,7 @@ package com.northwood.inventory.application.inbox;
 
 import com.northwood.inventory.application.WarehouseLookup;
 import com.northwood.inventory.application.replenishment.ReplenishmentDetectionService;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest.Reason;
+import com.northwood.inventory.domain.ReplenishmentRequest.Reason;
 import com.northwood.manufacturing.domain.events.RawMaterialShortageDetected;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
@@ -21,7 +21,7 @@ import tools.jackson.databind.ObjectMapper;
  * operational edge between manufacturing and purchasing in the codebase.
  *
  * <p>§2.35 reroutes it through inventory: this handler converts each shortage
- * component into an {@link com.northwood.inventory.domain.replenishment.ReplenishmentRequest}
+ * component into an {@link com.northwood.inventory.domain.ReplenishmentRequest}
  * with {@code reason='work_order_shortage'} via
  * {@link ReplenishmentDetectionService#raiseIfNoneOpen(UUID, UUID, java.math.BigDecimal, Reason)}.
  * The downstream routing (manufacturing or purchasing, by make-vs-buy) is

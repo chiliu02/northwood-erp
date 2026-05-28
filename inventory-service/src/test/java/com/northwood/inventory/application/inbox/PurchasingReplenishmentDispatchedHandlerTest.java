@@ -4,11 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest.Reason;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest.TargetService;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequestId;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequestRepository;
+import com.northwood.inventory.domain.ReplenishmentRequest;
+import com.northwood.inventory.domain.ReplenishmentRequest.Reason;
+import com.northwood.inventory.domain.ReplenishmentRequest.TargetService;
+import com.northwood.inventory.domain.ReplenishmentRequestId;
+import com.northwood.inventory.domain.ReplenishmentRequestRepository;
 import com.northwood.purchasing.domain.PurchasingAggregateTypes;
 import com.northwood.purchasing.domain.events.ReplenishmentDispatched;
 import com.northwood.shared.application.inbox.InboxPort;

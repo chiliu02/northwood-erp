@@ -1,7 +1,7 @@
 package com.northwood.inventory.application.inbox;
 
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequestRepository;
+import com.northwood.inventory.domain.ReplenishmentRequest;
+import com.northwood.inventory.domain.ReplenishmentRequestRepository;
 import com.northwood.purchasing.domain.events.PurchaseOrderCreated;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;

@@ -3,10 +3,10 @@ package com.northwood.inventory.infrastructure.persistence;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest.Reason;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest.Status;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest.TargetService;
+import com.northwood.inventory.domain.ReplenishmentRequest;
+import com.northwood.inventory.domain.ReplenishmentRequest.Reason;
+import com.northwood.inventory.domain.ReplenishmentRequest.Status;
+import com.northwood.inventory.domain.ReplenishmentRequest.TargetService;
 import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.zaxxer.hikari.HikariDataSource;
 import java.io.IOException;
@@ -159,7 +159,7 @@ class JdbcReplenishmentRequestRepositoryIT {
 
         ReplenishmentRequest loadedForDispatch = REPO.findById(r.id()).orElseThrow();
         loadedForDispatch.markDispatched(
-            com.northwood.inventory.domain.replenishment.ReplenishmentRequest.DispatchedAggregateKind.WORK_ORDER,
+            com.northwood.inventory.domain.ReplenishmentRequest.DispatchedAggregateKind.WORK_ORDER,
             workOrderId
         );
         save(loadedForDispatch);
@@ -194,7 +194,7 @@ class JdbcReplenishmentRequestRepositoryIT {
 
         ReplenishmentRequest dispatched = REPO.findById(r.id()).orElseThrow();
         dispatched.markDispatched(
-            com.northwood.inventory.domain.replenishment.ReplenishmentRequest.DispatchedAggregateKind.PURCHASE_REQUISITION,
+            com.northwood.inventory.domain.ReplenishmentRequest.DispatchedAggregateKind.PURCHASE_REQUISITION,
             prId
         );
         save(dispatched);

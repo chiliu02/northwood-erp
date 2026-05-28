@@ -1,6 +1,5 @@
-package com.northwood.inventory.domain.replenishment;
+package com.northwood.inventory.domain;
 
-import com.northwood.inventory.domain.InventoryAggregateTypes;
 import com.northwood.inventory.domain.events.ReplenishmentFulfilled;
 import com.northwood.inventory.domain.events.ReplenishmentRequested;
 import com.northwood.shared.domain.Assert;

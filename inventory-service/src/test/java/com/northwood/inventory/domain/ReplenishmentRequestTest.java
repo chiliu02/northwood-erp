@@ -1,14 +1,14 @@
-package com.northwood.inventory.domain.replenishment;
+package com.northwood.inventory.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.northwood.inventory.domain.ReplenishmentRequest.DispatchedAggregateKind;
+import com.northwood.inventory.domain.ReplenishmentRequest.Reason;
+import com.northwood.inventory.domain.ReplenishmentRequest.Status;
+import com.northwood.inventory.domain.ReplenishmentRequest.TargetService;
 import com.northwood.inventory.domain.events.ReplenishmentFulfilled;
 import com.northwood.inventory.domain.events.ReplenishmentRequested;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest.DispatchedAggregateKind;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest.Reason;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest.Status;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest.TargetService;
 import com.northwood.shared.domain.DomainEvent;
 import java.util.List;
 import java.math.BigDecimal;

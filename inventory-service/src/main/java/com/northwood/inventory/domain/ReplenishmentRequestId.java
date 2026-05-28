@@ -1,4 +1,4 @@
-package com.northwood.inventory.domain.replenishment;
+package com.northwood.inventory.domain;
 
 import java.util.UUID;
 

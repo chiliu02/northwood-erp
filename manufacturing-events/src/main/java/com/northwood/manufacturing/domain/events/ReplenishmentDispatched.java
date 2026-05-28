@@ -11,7 +11,7 @@ import java.util.UUID;
  *
  * <p>Carries the {@code replenishmentRequestId} so inventory's
  * close-the-loop handler (Slice E) can flip the originating
- * {@link com.northwood.inventory.domain.replenishment.ReplenishmentRequest}
+ * {@link com.northwood.inventory.domain.ReplenishmentRequest}
  * to {@code dispatched} and remember which WO will fulfil it.
  *
  * <p>{@code aggregateId} is the work-order id — same partition key as the

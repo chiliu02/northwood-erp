@@ -35,7 +35,7 @@ class GoodsReceiptServiceTest {
     @Mock StockMovementWriter movements;
     @Mock WarehouseLookup warehouses;
     @Mock PurchaseOrderLineFactsProjection purchaseOrderLineFacts;
-    @Mock com.northwood.inventory.domain.replenishment.ReplenishmentRequestRepository replenishmentRequests;
+    @Mock com.northwood.inventory.domain.ReplenishmentRequestRepository replenishmentRequests;
 
     private GoodsReceiptService service;
 

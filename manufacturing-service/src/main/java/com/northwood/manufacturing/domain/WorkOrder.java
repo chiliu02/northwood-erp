@@ -231,7 +231,7 @@ public final class WorkOrder {
 
     /**
      * §2.35 Slice C: release a new work order against an
-     * {@link com.northwood.inventory.domain.replenishment.ReplenishmentRequest}
+     * {@link com.northwood.inventory.domain.ReplenishmentRequest}
      * (a stock-replenishment WO; no sales-order line). Emits BOTH
      * {@link WorkOrderCreated} (with {@code replenishmentRequestId} populated)
      * AND {@link ReplenishmentDispatched} in the same pending-events list so

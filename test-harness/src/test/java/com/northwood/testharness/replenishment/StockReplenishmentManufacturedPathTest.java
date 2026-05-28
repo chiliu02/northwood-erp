@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.northwood.inventory.domain.events.ReplenishmentFulfilled;
 import com.northwood.inventory.domain.events.ReplenishmentRequested;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest;
+import com.northwood.inventory.domain.ReplenishmentRequest;
 import com.northwood.manufacturing.domain.events.ReplenishmentDispatched;
 import com.northwood.manufacturing.domain.events.WorkOrderCreated;
 import com.northwood.manufacturing.domain.events.WorkOrderManufacturingCompleted;

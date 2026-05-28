@@ -1,9 +1,9 @@
 package com.northwood.inventory.infrastructure.persistence;
 
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest.DispatchedAggregateKind;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequestId;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequestRepository;
+import com.northwood.inventory.domain.ReplenishmentRequest;
+import com.northwood.inventory.domain.ReplenishmentRequest.DispatchedAggregateKind;
+import com.northwood.inventory.domain.ReplenishmentRequestId;
+import com.northwood.inventory.domain.ReplenishmentRequestRepository;
 import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.shared.domain.DomainEvent;
 import java.sql.Timestamp;

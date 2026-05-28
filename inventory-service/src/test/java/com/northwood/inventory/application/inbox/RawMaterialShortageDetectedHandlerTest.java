@@ -9,7 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.northwood.inventory.application.WarehouseLookup;
 import com.northwood.inventory.application.replenishment.ReplenishmentDetectionService;
-import com.northwood.inventory.domain.replenishment.ReplenishmentRequest.Reason;
+import com.northwood.inventory.domain.ReplenishmentRequest.Reason;
 import com.northwood.manufacturing.domain.ManufacturingAggregateTypes;
 import com.northwood.manufacturing.domain.events.RawMaterialShortageDetected;
 import com.northwood.manufacturing.domain.events.RawMaterialShortageDetected.ShortageComponent;

@@ -247,6 +247,45 @@ When two collaborators in a single class would naturally take the same name (e.g
 
 This applies to application-service-to-application-service composition too: `PaymentService.journalEntries` of type `JournalEntryService` follows the same rule (field name = the data the collaborator operates on, plural).
 
+## Aggregate roots live at `domain/` root, not in per-aggregate sub-packages
+
+Every aggregate root, its `*Id` value object, and its `*Repository` interface live directly under `<service>-service/.../domain/` — never inside a per-aggregate sub-package like `domain/<aggregate>/`. Sub-packages under `domain/` are reserved for cross-cutting concerns the service already uses (`domain/events/` for the locally-produced event payloads, `domain/audit/` in the shared module, etc.), not for one-aggregate-per-folder organisation.
+
+```
+inventory-service/src/main/java/com/northwood/inventory/domain/
+├── events/                          ← OK: cross-cutting (event payloads)
+├── Shipment.java                    ← aggregate root, at root
+├── ShipmentId.java
+├── ShipmentRepository.java
+├── StockAdjustment.java             ← another aggregate, at root
+├── StockAdjustmentId.java
+├── StockAdjustmentRepository.java
+├── ReplenishmentRequest.java        ← §2.35 aggregate, at root (not in domain/replenishment/)
+├── ReplenishmentRequestId.java
+├── ReplenishmentRequestRepository.java
+└── InventoryAggregateTypes.java     ← cross-cutting constants holder
+```
+
+**Why this convention exists.** Each `<service>-events/` jar shares the *same Java package path* as the corresponding `<service>-service/` (both publish into `com.northwood.<service>.domain` and `com.northwood.<service>.domain.events`). Java treats those across-jar files as one logical package at compile time: a service-side class at `com.northwood.<service>.domain` references the events-jar's `<Service>AggregateTypes` constant, event-class `EVENT_TYPE` strings, status-constant holders, and the `domain.events.*` event records *without an explicit import* — they're already in the same package.
+
+Promote an aggregate into `domain/<aggregate>/` and every one of those previously-implicit cross-jar references becomes a fresh `import` line, e.g.:
+
+```java
+// before move — aggregate in com.northwood.inventory.domain (events-jar shares package):
+public static final String AGGREGATE_TYPE = InventoryAggregateTypes.REPLENISHMENT_REQUEST;
+// ... ReplenishmentRequested below is also in inventory.domain.events:
+r.pendingEvents.add(new ReplenishmentRequested(...));
+
+// after moving the aggregate to com.northwood.inventory.domain.replenishment:
+import com.northwood.inventory.domain.InventoryAggregateTypes;     // newly required
+import com.northwood.inventory.domain.events.ReplenishmentRequested; // unchanged, still cross-package
+// ...
+```
+
+The new imports aren't a bug per se, but they multiply across the aggregate, its sibling `*Id` / `*Repository`, every test that uses them, and every Jdbc adapter that references the aggregate type — a project-wide refactor in the dozens of file touches for what is meant to be a pure-organisational change. A single-aggregate worked example (the §2.35 `ReplenishmentRequest`, briefly promoted into `domain/replenishment/` and then moved back) exposed ~140–180 file touches when extrapolated codebase-wide. The convention is therefore: **aggregate roots live at `domain/` root; sub-packages exist only for cross-cutting concerns that already span aggregates**.
+
+This is a Northwood-specific rule driven by the events-jar topology — codebases that don't publish a sibling jar at the same package coordinate face no equivalent friction and may legitimately prefer per-aggregate sub-packages.
+
 ## Hexagonal 4-way rule — full why-each-direction-is-forbidden
 
 (The table + greps live in `CLAUDE.md` for fast reference. Rationale below.)
