@@ -126,6 +126,10 @@ public interface SalesOrderFulfilmentSagaManager {
      * quantities. Returns {@code Optional.empty()} if the transition was
      * declined — caller falls back to the existing rejection path.
      *
+     * <p>Stashes the {@code outstandingPurchasingLineIds} set on saga.data
+     * (from {@code outstandingLineIds}) so the §2.36 fan-in handler knows
+     * which {@code ReplenishmentFulfilled} events are addressed to this saga.
+     *
      * <p>Used by {@code ManufacturingDispatchedHandler} when every rejected
      * line carries outcome {@code rejected_not_manufactured} (i.e., the
      * SKU has no active BOM by design — purchased-only). Mixed cases (some
@@ -134,13 +138,34 @@ public interface SalesOrderFulfilmentSagaManager {
      * path — restoring symmetry for those is tracked as a §2.36 follow-up.
      */
     java.util.Optional<PurchasingDivergence> applyManufacturingDispatchedReroutingToPurchasing(
-        UUID salesOrderHeaderId
+        UUID salesOrderHeaderId,
+        java.util.Set<UUID> outstandingLineIds
     );
 
     /** §2.36 result for {@link #applyManufacturingDispatchedReroutingToPurchasing}. */
     record PurchasingDivergence(
         Map<Integer, java.math.BigDecimal> shortageByLineNumber
     ) {}
+
+    /**
+     * §2.36 Slice E: apply {@code inventory.ReplenishmentFulfilled} addressed
+     * to a specific sales-order line. Removes the line id from the saga's
+     * {@code outstandingPurchasingLineIds} set. When the set empties and the
+     * saga is still in {@code purchasing_requested}, transitions back to
+     * {@code stock_reservation_requested} so the worker re-tries reservation
+     * against the now-restocked inventory.
+     *
+     * <p>Returns the saga's new state (or current state for a no-op). Callers
+     * gate on {@code "stock_reservation_requested"} to know that re-reservation
+     * is required — typically the handler emits no follow-on event and lets
+     * the existing worker tick pick the saga back up.
+     *
+     * <p>Idempotent against duplicate fulfilment events (line already absent
+     * from the set) and against late deliveries (saga no longer in
+     * {@code purchasing_requested} — e.g. operator cancelled, or the saga
+     * already advanced via some other path).
+     */
+    String applyReplenishmentFulfilled(UUID salesOrderHeaderId, UUID salesOrderLineId);
 
     /** Apply {@code inventory.ShipmentPosted}. Transitions {@code ready_to_ship → goods_shipped}. */
     String applyShipmentPosted(UUID salesOrderHeaderId);

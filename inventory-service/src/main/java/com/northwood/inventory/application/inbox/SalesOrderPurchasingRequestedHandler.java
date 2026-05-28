@@ -79,6 +79,7 @@ public class SalesOrderPurchasingRequestedHandler
                 line.productId(),
                 warehouseId,
                 line.shortageQuantity(),
+                payload.salesOrderHeaderId(),
                 line.salesOrderLineId()
             );
             raised++;

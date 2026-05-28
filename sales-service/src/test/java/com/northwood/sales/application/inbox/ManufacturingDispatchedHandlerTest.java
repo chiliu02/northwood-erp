@@ -139,7 +139,7 @@ class ManufacturingDispatchedHandlerTest {
         Map<Integer, BigDecimal> shortage = new LinkedHashMap<>();
         shortage.put(10, new BigDecimal("3"));
         shortage.put(20, new BigDecimal("5"));
-        when(sagaManager.applyManufacturingDispatchedReroutingToPurchasing(eq(SO)))
+        when(sagaManager.applyManufacturingDispatchedReroutingToPurchasing(eq(SO), any()))
             .thenReturn(Optional.of(new PurchasingDivergence(shortage)));
         when(lineSnapshots.findLines(eq(SO))).thenReturn(List.of());  // fall back to payload sku/name
 
@@ -164,7 +164,7 @@ class ManufacturingDispatchedHandlerTest {
         // Manager returns Optional.empty() — e.g. saga not in MANUFACTURING_REQUESTED
         // (a late redelivery). Handler must fall through to the legacy
         // applyManufacturingDispatched path so the existing semantics still apply.
-        when(sagaManager.applyManufacturingDispatchedReroutingToPurchasing(eq(SO)))
+        when(sagaManager.applyManufacturingDispatchedReroutingToPurchasing(eq(SO), any()))
             .thenReturn(Optional.empty());
         when(sagaManager.applyManufacturingDispatched(eq(SO), eq(0), eq(2)))
             .thenReturn(REJECTED);
@@ -188,7 +188,7 @@ class ManufacturingDispatchedHandlerTest {
 
         handler.handle(event("rejected_no_bom", "rejected_not_manufactured"));
 
-        verify(sagaManager, never()).applyManufacturingDispatchedReroutingToPurchasing(any());
+        verify(sagaManager, never()).applyManufacturingDispatchedReroutingToPurchasing(any(), any());
         verify(sagaManager).applyManufacturingDispatched(SO, 0, 2);
         verify(statusProjection).markStatus(SO, SalesOrder.Status.REJECTED);
     }

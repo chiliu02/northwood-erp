@@ -101,8 +101,15 @@ public class ManufacturingDispatchedHandler extends AbstractInboxHandler<Manufac
         // rejected_no_bom) fall through to the existing §4.2 full-rejection
         // path — restoring symmetry for those is a §2.36 follow-up.
         if (acceptedCount == 0 && totalLines > 0 && allRejectedNotManufactured(payload.lines())) {
+            // §2.36 Slice E: pass the outstanding line-ids so the saga can
+            // stash them on saga.data — the fan-in handler looks them up to
+            // know which ReplenishmentFulfilled events are "addressed to us".
+            java.util.Set<UUID> outstandingLineIds = new java.util.LinkedHashSet<>();
+            for (LineOutcome rejected : payload.lines()) {
+                outstandingLineIds.add(rejected.salesOrderLineId());
+            }
             Optional<PurchasingDivergence> divergence = sagaManager
-                .applyManufacturingDispatchedReroutingToPurchasing(payload.salesOrderHeaderId());
+                .applyManufacturingDispatchedReroutingToPurchasing(payload.salesOrderHeaderId(), outstandingLineIds);
             if (divergence.isPresent()) {
                 emitPurchasingRequested(payload, divergence.get());
                 log.info("[{}] sales_order={} rerouted to purchasing_requested ({} purchased-only line(s) for replenishment)",

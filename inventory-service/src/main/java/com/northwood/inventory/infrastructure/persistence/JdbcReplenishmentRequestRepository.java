@@ -32,6 +32,7 @@ public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestR
             rs.getBigDecimal("requested_quantity"),
             ReplenishmentRequest.TargetService.fromDb(rs.getString("target_service")),
             ReplenishmentRequest.Reason.fromDb(rs.getString("reason")),
+            rs.getObject("source_sales_order_header_id", UUID.class),
             rs.getObject("source_sales_order_line_id", UUID.class),
             ReplenishmentRequest.Status.fromDb(rs.getString("status")),
             kind == null ? null : DispatchedAggregateKind.fromDb(kind),
@@ -46,7 +47,7 @@ public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestR
     private static final String SELECT_COLUMNS = """
         SELECT replenishment_request_id, product_id, warehouse_id,
                requested_quantity, target_service, reason,
-               source_sales_order_line_id, status,
+               source_sales_order_header_id, source_sales_order_line_id, status,
                dispatched_aggregate_kind, dispatched_aggregate_id,
                linked_purchase_order_id,
                dispatched_at, fulfilled_at, version
@@ -117,13 +118,15 @@ public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestR
             INSERT INTO inventory.replenishment_request (
                 replenishment_request_id, product_id, warehouse_id,
                 requested_quantity, target_service, reason,
-                source_sales_order_line_id, status, version
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+                source_sales_order_header_id, source_sales_order_line_id,
+                status, version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             """,
             r.id().value(), r.productId(), r.warehouseId(),
             r.requestedQuantity(),
             r.targetService().dbValue(),
             r.reason().dbValue(),
+            r.sourceSalesOrderHeaderId(),
             r.sourceSalesOrderLineId(),
             r.status().dbValue()
         );

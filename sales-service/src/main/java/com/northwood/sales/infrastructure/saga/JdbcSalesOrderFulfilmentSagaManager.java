@@ -241,7 +241,8 @@ public class JdbcSalesOrderFulfilmentSagaManager
     @Override
     @Transactional
     public Optional<PurchasingDivergence> applyManufacturingDispatchedReroutingToPurchasing(
-        UUID salesOrderHeaderId
+        UUID salesOrderHeaderId,
+        java.util.Set<UUID> outstandingLineIds
     ) {
         SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, ManufacturingDispatched.EVENT_TYPE);
 
@@ -267,14 +268,65 @@ public class JdbcSalesOrderFulfilmentSagaManager
             return Optional.empty();
         }
 
+        // §2.36 Slice E: stash the outstanding line-ids so the fan-in handler
+        // knows which ReplenishmentFulfilled events are addressed to this saga.
+        FulfilmentSagaData updated = data.withOutstandingPurchasingLineIds(outstandingLineIds);
+        writeData(saga, updated);
+
         saga.transitionTo(PURCHASING_REQUESTED, "wait_for_purchasing_replenishment");
         saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
         sagaPort.update(saga);
 
-        log.info("saga {} sales_order={} → purchasing_requested ({} line(s) rerouted; mfg dispatched all rejected_not_manufactured)",
-            saga.sagaId(), salesOrderHeaderId, shortage.size());
+        log.info("saga {} sales_order={} → purchasing_requested ({} line(s) rerouted, {} awaiting fulfilment; mfg dispatched all rejected_not_manufactured)",
+            saga.sagaId(), salesOrderHeaderId, shortage.size(), outstandingLineIds.size());
 
         return Optional.of(new PurchasingDivergence(new LinkedHashMap<>(shortage)));
+    }
+
+    @Override
+    @Transactional
+    public String applyReplenishmentFulfilled(UUID salesOrderHeaderId, UUID salesOrderLineId) {
+        SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId,
+            com.northwood.inventory.domain.events.ReplenishmentFulfilled.EVENT_TYPE);
+
+        // Only meaningful in purchasing_requested. Late deliveries (cancelled
+        // saga, or saga already advanced) are no-ops.
+        if (!PURCHASING_REQUESTED.equals(saga.state())) {
+            log.debug("saga {} sales_order={} ignoring replenishment-fulfilled (state={}, line={})",
+                saga.sagaId(), salesOrderHeaderId, saga.state(), salesOrderLineId);
+            return saga.state();
+        }
+
+        FulfilmentSagaData data = readData(saga);
+        if (!data.outstandingPurchasingLineIds().contains(salesOrderLineId)) {
+            // Idempotent: line already removed (duplicate event delivery).
+            log.debug("saga {} sales_order={} replenishment-fulfilled for already-fulfilled line={}; idempotent no-op",
+                saga.sagaId(), salesOrderHeaderId, salesOrderLineId);
+            return saga.state();
+        }
+
+        FulfilmentSagaData updated = data.withPurchasingLineFulfilled(salesOrderLineId);
+        if (updated.allPurchasingLinesFulfilled()) {
+            // Every outstanding line has been replenished — re-enter the
+            // reservation cycle. The worker's stock-reservation-requested
+            // path will pick the saga back up on its next tick.
+            writeData(saga, updated);
+            saga.transitionTo(STOCK_RESERVATION_REQUESTED, "retry_reservation_after_replenishment");
+            saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
+            sagaPort.update(saga);
+            log.info("saga {} sales_order={} → stock_reservation_requested (all {} purchasing line(s) fulfilled; retrying reservation)",
+                saga.sagaId(), salesOrderHeaderId, data.outstandingPurchasingLineIds().size());
+            return STOCK_RESERVATION_REQUESTED;
+        }
+
+        // Partial fulfilment — stay parked, decrement the outstanding set.
+        writeData(saga, updated);
+        sagaPort.update(saga);
+        log.info("saga {} sales_order={} purchasing line={} fulfilled; {} of {} remaining",
+            saga.sagaId(), salesOrderHeaderId, salesOrderLineId,
+            updated.outstandingPurchasingLineIds().size(),
+            data.outstandingPurchasingLineIds().size());
+        return saga.state();
     }
 
     @Override
@@ -437,7 +489,8 @@ public class JdbcSalesOrderFulfilmentSagaManager
             existing.completedWorkOrderIds(),
             existing.inventoryCancellationAcked(),
             existing.manufacturingCancellationAcked(),
-            existing.paymentTerms()
+            existing.paymentTerms(),
+            existing.outstandingPurchasingLineIds()
         ));
     }
 }

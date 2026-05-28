@@ -70,12 +70,12 @@ class SalesOrderPurchasingRequestedHandlerTest {
         )));
 
         verify(detection).raiseForSalesOrderShortage(
-            eq(PRODUCT_A), eq(WAREHOUSE_ID), eq(new BigDecimal("5")), eq(LINE_A)
+            eq(PRODUCT_A), eq(WAREHOUSE_ID), eq(new BigDecimal("5")), eq(SALES_ORDER), eq(LINE_A)
         );
         verify(detection).raiseForSalesOrderShortage(
-            eq(PRODUCT_B), eq(WAREHOUSE_ID), eq(new BigDecimal("3")), eq(LINE_B)
+            eq(PRODUCT_B), eq(WAREHOUSE_ID), eq(new BigDecimal("3")), eq(SALES_ORDER), eq(LINE_B)
         );
-        verify(detection, times(2)).raiseForSalesOrderShortage(any(), any(), any(), any());
+        verify(detection, times(2)).raiseForSalesOrderShortage(any(), any(), any(), any(), any());
     }
 
     @Test void non_positive_shortage_quantity_is_skipped() {
@@ -87,10 +87,10 @@ class SalesOrderPurchasingRequestedHandlerTest {
         )));
 
         verify(detection, never()).raiseForSalesOrderShortage(
-            eq(PRODUCT_A), any(), any(), any()
+            eq(PRODUCT_A), any(), any(), any(), any()
         );
         verify(detection).raiseForSalesOrderShortage(
-            eq(PRODUCT_B), eq(WAREHOUSE_ID), eq(new BigDecimal("3")), eq(LINE_B)
+            eq(PRODUCT_B), eq(WAREHOUSE_ID), eq(new BigDecimal("3")), eq(SALES_ORDER), eq(LINE_B)
         );
     }
 
@@ -99,7 +99,7 @@ class SalesOrderPurchasingRequestedHandlerTest {
 
         handler.handle(event(List.of()));
 
-        verify(detection, never()).raiseForSalesOrderShortage(any(), any(), any(), any());
+        verify(detection, never()).raiseForSalesOrderShortage(any(), any(), any(), any(), any());
         verify(inbox).recordProcessed(any());
     }
 }

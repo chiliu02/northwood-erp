@@ -130,6 +130,18 @@ public class JdbcStockReservationRepository implements StockReservationRepositor
     }
 
     @Override
+    public Optional<UUID> findAnyHeaderIdForSalesOrder(UUID salesOrderHeaderId) {
+        try {
+            return Optional.ofNullable(jdbc.queryForObject(
+                "SELECT stock_reservation_header_id FROM inventory.stock_reservation_header WHERE sales_order_header_id = ?",
+                UUID.class, salesOrderHeaderId
+            ));
+        } catch (EmptyResultDataAccessException e) {
+            return Optional.empty();
+        }
+    }
+
+    @Override
     public Optional<UUID> findWarehouseIdForHeader(UUID stockReservationHeaderId) {
         try {
             return Optional.ofNullable(jdbc.queryForObject(

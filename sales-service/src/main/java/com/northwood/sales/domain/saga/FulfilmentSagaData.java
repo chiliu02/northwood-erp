@@ -61,7 +61,18 @@ public record FulfilmentSagaData(
      * written before this field existed (legacy fallback: treat as
      * {@code on_shipment} — the only flow that existed pre-§2.31).
      */
-    String paymentTerms
+    String paymentTerms,
+    /**
+     * §2.36 Slice E: outstanding sales-order-line back-references for
+     * purchased-only short lines that are awaiting replenishment fulfilment.
+     * Populated when the saga reroutes to {@code purchasing_requested}; each
+     * arriving {@code inventory.ReplenishmentFulfilled} with a matching
+     * {@code sourceSalesOrderLineId} removes its entry. When the set empties,
+     * the worker advances the saga back into {@code stock_reservation_requested}
+     * to retry reservation against the now-restocked inventory.
+     * Null on legacy saga rows; the compact constructor maps that to an empty set.
+     */
+    Set<UUID> outstandingPurchasingLineIds
 ) {
 
     public FulfilmentSagaData {
@@ -78,10 +89,13 @@ public record FulfilmentSagaData(
         manufacturingCancellationAcked = manufacturingCancellationAcked != null && manufacturingCancellationAcked;
         // paymentTerms stays null on legacy rows; consumers fall back to the
         // on-shipment path (the only path that existed pre-§2.31 Slice B).
+        outstandingPurchasingLineIds = outstandingPurchasingLineIds == null
+            ? Set.of()
+            : outstandingPurchasingLineIds;
     }
 
     public static FulfilmentSagaData none() {
-        return new FulfilmentSagaData(Map.of(), null, Set.of(), Set.of(), false, false, null);
+        return new FulfilmentSagaData(Map.of(), null, Set.of(), Set.of(), false, false, null, Set.of());
     }
 
     /** Stamp the order's commercial payment terms at saga creation. */
@@ -93,7 +107,8 @@ public record FulfilmentSagaData(
             new LinkedHashSet<>(completedWorkOrderIds),
             inventoryCancellationAcked,
             manufacturingCancellationAcked,
-            paymentTerms
+            paymentTerms,
+            new LinkedHashSet<>(outstandingPurchasingLineIds)
         );
     }
 
@@ -110,7 +125,8 @@ public record FulfilmentSagaData(
             new LinkedHashSet<>(completedWorkOrderIds),
             inventoryCancellationAcked,
             manufacturingCancellationAcked,
-            paymentTerms
+            paymentTerms,
+            new LinkedHashSet<>(outstandingPurchasingLineIds)
         );
     }
 
@@ -128,7 +144,8 @@ public record FulfilmentSagaData(
             new LinkedHashSet<>(completedWorkOrderIds),
             inventoryCancellationAcked,
             manufacturingCancellationAcked,
-            paymentTerms
+            paymentTerms,
+            new LinkedHashSet<>(outstandingPurchasingLineIds)
         );
     }
 
@@ -148,7 +165,8 @@ public record FulfilmentSagaData(
             completed,
             inventoryCancellationAcked,
             manufacturingCancellationAcked,
-            paymentTerms
+            paymentTerms,
+            new LinkedHashSet<>(outstandingPurchasingLineIds)
         );
     }
 
@@ -161,7 +179,8 @@ public record FulfilmentSagaData(
             new LinkedHashSet<>(completedWorkOrderIds),
             true,
             manufacturingCancellationAcked,
-            paymentTerms
+            paymentTerms,
+            new LinkedHashSet<>(outstandingPurchasingLineIds)
         );
     }
 
@@ -174,8 +193,57 @@ public record FulfilmentSagaData(
             new LinkedHashSet<>(completedWorkOrderIds),
             inventoryCancellationAcked,
             true,
-            paymentTerms
+            paymentTerms,
+            new LinkedHashSet<>(outstandingPurchasingLineIds)
         );
+    }
+
+    /**
+     * §2.36 Slice E: stamp the set of sales-order-line ids that the saga is
+     * waiting on a {@code ReplenishmentFulfilled} for. Called by
+     * {@link com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager#applyManufacturingDispatchedReroutingToPurchasing}
+     * at reroute time so the fan-in handler knows which line-ids are
+     * "addressed to us".
+     */
+    public FulfilmentSagaData withOutstandingPurchasingLineIds(Set<UUID> lineIds) {
+        return new FulfilmentSagaData(
+            new LinkedHashMap<>(shortageByLineNumber),
+            expectedWorkOrderCount,
+            new LinkedHashSet<>(outstandingWorkOrderIds),
+            new LinkedHashSet<>(completedWorkOrderIds),
+            inventoryCancellationAcked,
+            manufacturingCancellationAcked,
+            paymentTerms,
+            lineIds == null ? Set.of() : new LinkedHashSet<>(lineIds)
+        );
+    }
+
+    /**
+     * §2.36 Slice E: remove a single line id from the outstanding-purchasing
+     * set when its {@code ReplenishmentFulfilled} arrives. Idempotent on a
+     * line id that's already absent (redelivery).
+     */
+    public FulfilmentSagaData withPurchasingLineFulfilled(UUID salesOrderLineId) {
+        if (!outstandingPurchasingLineIds.contains(salesOrderLineId)) {
+            return this;
+        }
+        Set<UUID> next = new LinkedHashSet<>(outstandingPurchasingLineIds);
+        next.remove(salesOrderLineId);
+        return new FulfilmentSagaData(
+            new LinkedHashMap<>(shortageByLineNumber),
+            expectedWorkOrderCount,
+            new LinkedHashSet<>(outstandingWorkOrderIds),
+            new LinkedHashSet<>(completedWorkOrderIds),
+            inventoryCancellationAcked,
+            manufacturingCancellationAcked,
+            paymentTerms,
+            next
+        );
+    }
+
+    /** §2.36 Slice E: true when every purchasing-line replenishment has arrived. */
+    public boolean allPurchasingLinesFulfilled() {
+        return outstandingPurchasingLineIds.isEmpty();
     }
 
     /** Both downstream services have acked the cancel — saga can advance to {@code compensated}. */

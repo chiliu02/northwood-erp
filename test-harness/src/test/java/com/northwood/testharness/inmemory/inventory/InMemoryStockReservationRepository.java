@@ -100,6 +100,14 @@ public final class InMemoryStockReservationRepository implements StockReservatio
     }
 
     @Override
+    public Optional<UUID> findAnyHeaderIdForSalesOrder(UUID salesOrderHeaderId) {
+        return byHeaderId.values().stream()
+            .filter(r -> salesOrderHeaderId.equals(r.salesOrderId()))
+            .map(r -> r.id().value())
+            .findFirst();
+    }
+
+    @Override
     public Optional<UUID> findWarehouseIdForHeader(UUID stockReservationHeaderId) {
         return Optional.ofNullable(warehouseByHeaderId.get(stockReservationHeaderId));
     }

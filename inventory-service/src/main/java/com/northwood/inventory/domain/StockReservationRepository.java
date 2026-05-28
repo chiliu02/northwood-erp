@@ -37,6 +37,17 @@ public interface StockReservationRepository {
      */
     Optional<UUID> findAnyHeaderIdForWorkOrder(UUID workOrderId);
 
+    /**
+     * §2.36 Slice E: sibling of {@link #findAnyHeaderIdForWorkOrder} for the
+     * sales-order retry case. When a SO saga un-parks from
+     * {@code purchasing_requested} and re-emits {@code StockReservationRequested},
+     * inventory needs to drop the prior partial reservation before creating
+     * the new one — the schema's UNIQUE on
+     * {@code stock_reservation_header.sales_order_header_id} would otherwise
+     * reject the second INSERT.
+     */
+    Optional<UUID> findAnyHeaderIdForSalesOrder(UUID salesOrderHeaderId);
+
     /** {@code warehouse_id} for an existing reservation header. */
     Optional<UUID> findWarehouseIdForHeader(UUID stockReservationHeaderId);
 

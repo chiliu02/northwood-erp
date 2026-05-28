@@ -118,19 +118,27 @@ class ReplenishmentRequestTest {
         }
 
         @Test void requestForSalesOrderShortage_stamps_back_reference() {
+            UUID salesOrderHeaderId = UUID.randomUUID();
             UUID salesOrderLineId = UUID.randomUUID();
             ReplenishmentRequest r = ReplenishmentRequest.requestForSalesOrderShortage(
-                PRODUCT, WAREHOUSE, QTY, TargetService.PURCHASING, salesOrderLineId
+                PRODUCT, WAREHOUSE, QTY, TargetService.PURCHASING, salesOrderHeaderId, salesOrderLineId
             );
             assertThat(r.status()).isEqualTo(Status.REQUESTED);
             assertThat(r.reason()).isEqualTo(Reason.SALES_ORDER_SHORTAGE);
+            assertThat(r.sourceSalesOrderHeaderId()).isEqualTo(salesOrderHeaderId);
             assertThat(r.sourceSalesOrderLineId()).isEqualTo(salesOrderLineId);
             assertThat(r.targetService()).isEqualTo(TargetService.PURCHASING);
         }
 
+        @Test void requestForSalesOrderShortage_rejects_null_header_id() {
+            assertThatThrownBy(() -> ReplenishmentRequest.requestForSalesOrderShortage(
+                PRODUCT, WAREHOUSE, QTY, TargetService.PURCHASING, null, UUID.randomUUID()
+            )).isInstanceOf(IllegalArgumentException.class);
+        }
+
         @Test void requestForSalesOrderShortage_rejects_null_line_id() {
             assertThatThrownBy(() -> ReplenishmentRequest.requestForSalesOrderShortage(
-                PRODUCT, WAREHOUSE, QTY, TargetService.PURCHASING, null
+                PRODUCT, WAREHOUSE, QTY, TargetService.PURCHASING, UUID.randomUUID(), null
             )).isInstanceOf(IllegalArgumentException.class);
         }
     }

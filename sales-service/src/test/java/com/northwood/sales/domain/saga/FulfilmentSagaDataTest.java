@@ -15,7 +15,7 @@ class FulfilmentSagaDataTest {
     @Nested
     class CompactConstructor {
         @Test void defaults_null_collections_to_empty() {
-            FulfilmentSagaData d = new FulfilmentSagaData(null, null, null, null, false, false, null);
+            FulfilmentSagaData d = new FulfilmentSagaData(null, null, null, null, false, false, null, null);
             assertThat(d.shortageByLineNumber()).isEmpty();
             assertThat(d.outstandingWorkOrderIds()).isEmpty();
             assertThat(d.completedWorkOrderIds()).isEmpty();
@@ -34,7 +34,7 @@ class FulfilmentSagaDataTest {
     class HasShortage {
         @Test void true_when_shortage_map_non_empty() {
             FulfilmentSagaData d = new FulfilmentSagaData(
-                Map.of(10, BigDecimal.ONE), null, null, null, false, false, null);
+                Map.of(10, BigDecimal.ONE), null, null, null, false, false, null, null);
             assertThat(d.hasShortage()).isTrue();
         }
 

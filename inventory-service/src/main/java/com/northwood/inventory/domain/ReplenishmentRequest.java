@@ -172,11 +172,20 @@ public final class ReplenishmentRequest {
     private final TargetService targetService;
     private final Reason reason;
     /**
-     * §2.36 back-reference. Non-null iff {@code reason == SALES_ORDER_SHORTAGE} —
-     * identifies the sales-order line whose partial reservation triggered this
-     * request, so the eventual {@code ReplenishmentFulfilled} can un-park
-     * the corresponding sales-fulfilment saga via
-     * {@code sales.sales-fulfilment-saga.replenishment-fulfilled} handler.
+     * §2.36 back-reference (saga key). Non-null iff
+     * {@code reason == SALES_ORDER_SHORTAGE} — identifies the sales-order
+     * header whose fulfilment saga is awaiting this replenishment. Sales is
+     * keyed by header id, not line id, so this is what the fan-in handler
+     * uses to find the saga. Sibling of {@link #sourceSalesOrderLineId}
+     * (same nullable semantic).
+     */
+    private final UUID sourceSalesOrderHeaderId;
+    /**
+     * §2.36 back-reference (line within the saga). Non-null iff
+     * {@code reason == SALES_ORDER_SHORTAGE} — identifies the specific
+     * sales-order line on the addressed saga so the fan-in handler can
+     * remove just that line's entry from the saga's
+     * {@code outstandingPurchasingLineIds} set.
      */
     private final UUID sourceSalesOrderLineId;
     private Status status;
@@ -202,25 +211,28 @@ public final class ReplenishmentRequest {
     ) {
         Assert.argument(reason != Reason.SALES_ORDER_SHORTAGE,
             "use requestForSalesOrderShortage(...) for SALES_ORDER_SHORTAGE reason");
-        return doRequest(productId, warehouseId, requestedQuantity, targetService, reason, null);
+        return doRequest(productId, warehouseId, requestedQuantity, targetService, reason, null, null);
     }
 
     /**
      * §2.36 factory: raise a new replenishment for a sales-order partial-
-     * reservation shortfall. Stamps {@code sourceSalesOrderLineId} as the back-
-     * reference so the eventual {@code ReplenishmentFulfilled} can un-park
-     * the originating fulfilment saga. Emits {@link ReplenishmentRequested}.
+     * reservation shortfall. Stamps both {@code sourceSalesOrderHeaderId}
+     * (saga key) and {@code sourceSalesOrderLineId} (line within saga) so
+     * the eventual {@code ReplenishmentFulfilled} carries the full address
+     * needed by sales' fan-in handler. Emits {@link ReplenishmentRequested}.
      */
     public static ReplenishmentRequest requestForSalesOrderShortage(
         UUID productId,
         UUID warehouseId,
         BigDecimal requestedQuantity,
         TargetService targetService,
+        UUID sourceSalesOrderHeaderId,
         UUID sourceSalesOrderLineId
     ) {
+        Assert.notNull(sourceSalesOrderHeaderId, "sourceSalesOrderHeaderId");
         Assert.notNull(sourceSalesOrderLineId, "sourceSalesOrderLineId");
         return doRequest(productId, warehouseId, requestedQuantity, targetService,
-            Reason.SALES_ORDER_SHORTAGE, sourceSalesOrderLineId);
+            Reason.SALES_ORDER_SHORTAGE, sourceSalesOrderHeaderId, sourceSalesOrderLineId);
     }
 
     private static ReplenishmentRequest doRequest(
@@ -229,6 +241,7 @@ public final class ReplenishmentRequest {
         BigDecimal requestedQuantity,
         TargetService targetService,
         Reason reason,
+        UUID sourceSalesOrderHeaderId,
         UUID sourceSalesOrderLineId
     ) {
         Assert.notNull(productId, "productId");
@@ -242,7 +255,8 @@ public final class ReplenishmentRequest {
         ReplenishmentRequestId id = ReplenishmentRequestId.newId();
         ReplenishmentRequest r = new ReplenishmentRequest(
             id, productId, warehouseId, requestedQuantity,
-            targetService, reason, sourceSalesOrderLineId, Status.REQUESTED,
+            targetService, reason, sourceSalesOrderHeaderId, sourceSalesOrderLineId,
+            Status.REQUESTED,
             null, null, null, null, null,
             0L
         );
@@ -267,6 +281,7 @@ public final class ReplenishmentRequest {
         BigDecimal requestedQuantity,
         TargetService targetService,
         Reason reason,
+        UUID sourceSalesOrderHeaderId,
         UUID sourceSalesOrderLineId,
         Status status,
         DispatchedAggregateKind dispatchedAggregateKind,
@@ -278,7 +293,7 @@ public final class ReplenishmentRequest {
     ) {
         return new ReplenishmentRequest(
             id, productId, warehouseId, requestedQuantity,
-            targetService, reason, sourceSalesOrderLineId, status,
+            targetService, reason, sourceSalesOrderHeaderId, sourceSalesOrderLineId, status,
             dispatchedAggregateKind, dispatchedAggregateId, linkedPurchaseOrderId,
             dispatchedAt, fulfilledAt,
             version
@@ -292,6 +307,7 @@ public final class ReplenishmentRequest {
         BigDecimal requestedQuantity,
         TargetService targetService,
         Reason reason,
+        UUID sourceSalesOrderHeaderId,
         UUID sourceSalesOrderLineId,
         Status status,
         DispatchedAggregateKind dispatchedAggregateKind,
@@ -307,6 +323,7 @@ public final class ReplenishmentRequest {
         this.requestedQuantity = requestedQuantity;
         this.targetService = targetService;
         this.reason = reason;
+        this.sourceSalesOrderHeaderId = sourceSalesOrderHeaderId;
         this.sourceSalesOrderLineId = sourceSalesOrderLineId;
         this.status = status;
         this.dispatchedAggregateKind = dispatchedAggregateKind;
@@ -383,9 +400,16 @@ public final class ReplenishmentRequest {
                 + " — only DISPATCHED requests can fulfil");
         this.status = Status.FULFILLED;
         this.fulfilledAt = Instant.now();
+        // §2.36 Slice E: payload denormalises productId + propagates the
+        // sales-order back-reference (header + line) so consumers (notably
+        // sales' new fulfilment-saga fan-in handler) can route the event
+        // without a join back to inventory.replenishment_request.
         pendingEvents.add(new ReplenishmentFulfilled(
             UUID.randomUUID(),
             id.value(),
+            productId,
+            sourceSalesOrderHeaderId,
+            sourceSalesOrderLineId,
             Instant.now()
         ));
     }
@@ -409,6 +433,7 @@ public final class ReplenishmentRequest {
     public BigDecimal requestedQuantity()               { return requestedQuantity; }
     public TargetService targetService()                { return targetService; }
     public Reason reason()                              { return reason; }
+    public UUID sourceSalesOrderHeaderId()              { return sourceSalesOrderHeaderId; }
     public UUID sourceSalesOrderLineId()                { return sourceSalesOrderLineId; }
     public Status status()                              { return status; }
     public DispatchedAggregateKind dispatchedAggregateKind() { return dispatchedAggregateKind; }

@@ -753,7 +753,11 @@ CREATE TABLE inventory.replenishment_request (
     -- single source line to attribute to). Stamped onto
     -- ReplenishmentFulfilled payload at markFulfilled time so sales
     -- can un-park the corresponding fulfilment saga.
-    source_sales_order_line_id  UUID,
+    -- source_sales_order_header_id sits alongside (same nullable
+    -- semantic) so the fan-in handler can route to the saga without
+    -- a cross-schema join — sales is keyed by header_id, not line_id.
+    source_sales_order_header_id UUID,
+    source_sales_order_line_id   UUID,
     created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
     dispatched_at               TIMESTAMPTZ,
     fulfilled_at                TIMESTAMPTZ,
