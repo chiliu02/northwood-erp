@@ -47,6 +47,19 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
     public static final String MANUFACTURING_REQUESTED = "manufacturing_requested";
     public static final String MANUFACTURING_IN_PROGRESS = "manufacturing_in_progress";
     public static final String MANUFACTURING_COMPLETED = "manufacturing_completed";
+    /**
+     * §2.36: symmetric branch off {@link #STOCK_RESERVATION_INCOMPLETE} for
+     * short lines whose SKU is purchased-only (failed the
+     * {@code !isManufactured()} guard upstream). The worker emits
+     * {@code sales.SalesOrderPurchasingRequested} (routed through inventory's
+     * {@code ReplenishmentRequest} aggregate with
+     * {@code reason='sales_order_shortage'}), and the saga parks here until
+     * every outstanding {@code inventory.ReplenishmentFulfilled} for the
+     * order's pending lines has fired — at which point it re-enters
+     * {@link #STOCK_RESERVATION_REQUESTED} to retry reservation against the
+     * now-restocked inventory.
+     */
+    public static final String PURCHASING_REQUESTED = "purchasing_requested";
     public static final String READY_TO_SHIP = "ready_to_ship";
     public static final String GOODS_SHIPPED = "goods_shipped";
     public static final String INVOICE_REQUESTED = "invoice_requested";
@@ -81,6 +94,7 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
         STOCK_RESERVATION_REQUESTED, STOCK_RESERVATION_INCOMPLETE, REJECTED,
         AWAITING_PREPAYMENT_INVOICE, PREPAID,
         MANUFACTURING_REQUESTED, MANUFACTURING_IN_PROGRESS, MANUFACTURING_COMPLETED,
+        PURCHASING_REQUESTED,
         READY_TO_SHIP, GOODS_SHIPPED,
         INVOICE_REQUESTED, INVOICE_CREATED, INVOICE_PARTIALLY_PAID,
         COMPLETED,

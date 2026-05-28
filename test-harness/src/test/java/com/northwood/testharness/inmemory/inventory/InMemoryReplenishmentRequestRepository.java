@@ -63,7 +63,12 @@ public final class InMemoryReplenishmentRequestRepository implements Replenishme
     @Override
     public void save(ReplenishmentRequest r) {
         if (r.version() == 0L && !byId.containsKey(r.id().value())) {
-            if (hasOpenFor(r.productId(), r.warehouseId())) {
+            // §2.36: the partial unique index excludes sales_order_shortage
+            // rows, so multiple SO-driven requests for the same SKU can co-
+            // exist (each back-referenced to its own sales-order line). Only
+            // reorder-point and WO-shortage requests collide on the index.
+            if (r.reason() != ReplenishmentRequest.Reason.SALES_ORDER_SHORTAGE
+                && hasOpenFor(r.productId(), r.warehouseId())) {
                 throw new DuplicateKeyException(
                     "in-memory uq_replenishment_request_open violation for product=" + r.productId()
                         + " warehouse=" + r.warehouseId()
@@ -82,6 +87,11 @@ public final class InMemoryReplenishmentRequestRepository implements Replenishme
 
     private boolean hasOpenFor(UUID productId, UUID warehouseId) {
         for (ReplenishmentRequest existing : byId.values()) {
+            // §2.36: SO-shortage rows don't participate in the one-open
+            // invariant (mirrors the partial-index WHERE clause).
+            if (existing.reason() == ReplenishmentRequest.Reason.SALES_ORDER_SHORTAGE) {
+                continue;
+            }
             if (existing.productId().equals(productId)
                 && existing.warehouseId().equals(warehouseId)
                 && (existing.status() == ReplenishmentRequest.Status.REQUESTED

@@ -108,6 +108,31 @@ class ReplenishmentRequestTest {
                 PRODUCT, WAREHOUSE, QTY, TargetService.MANUFACTURING, null
             )).isInstanceOf(IllegalArgumentException.class);
         }
+
+        @Test void request_rejects_sales_order_shortage_reason() {
+            assertThatThrownBy(() -> ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.PURCHASING, Reason.SALES_ORDER_SHORTAGE
+            ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requestForSalesOrderShortage");
+        }
+
+        @Test void requestForSalesOrderShortage_stamps_back_reference() {
+            UUID salesOrderLineId = UUID.randomUUID();
+            ReplenishmentRequest r = ReplenishmentRequest.requestForSalesOrderShortage(
+                PRODUCT, WAREHOUSE, QTY, TargetService.PURCHASING, salesOrderLineId
+            );
+            assertThat(r.status()).isEqualTo(Status.REQUESTED);
+            assertThat(r.reason()).isEqualTo(Reason.SALES_ORDER_SHORTAGE);
+            assertThat(r.sourceSalesOrderLineId()).isEqualTo(salesOrderLineId);
+            assertThat(r.targetService()).isEqualTo(TargetService.PURCHASING);
+        }
+
+        @Test void requestForSalesOrderShortage_rejects_null_line_id() {
+            assertThatThrownBy(() -> ReplenishmentRequest.requestForSalesOrderShortage(
+                PRODUCT, WAREHOUSE, QTY, TargetService.PURCHASING, null
+            )).isInstanceOf(IllegalArgumentException.class);
+        }
     }
 
     @Nested

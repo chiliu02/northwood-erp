@@ -107,8 +107,17 @@ public final class ReplenishmentRequest {
     public enum Reason {
         /** On-hand crossed below the reorder point at a balance-decrement site. */
         REORDER_POINT_BREACH("reorder_point_breach"),
-        /** Slice C bridge — WO release found short raw materials, routed via inventory. */
-        WORK_ORDER_SHORTAGE("work_order_shortage");
+        /** §2.35 Slice C bridge — WO release found short raw materials, routed via inventory. */
+        WORK_ORDER_SHORTAGE("work_order_shortage"),
+        /**
+         * §2.36: a sales order line is short on stock — the saga's
+         * partial-reservation path now routes purchased-only shortages through
+         * inventory (symmetric to the manufacturing branch). The
+         * {@code source_sales_order_line_id} column carries the back-reference
+         * so the eventual {@code ReplenishmentFulfilled} can un-park the
+         * fulfilment saga.
+         */
+        SALES_ORDER_SHORTAGE("sales_order_shortage");
 
         private final String dbValue;
 
@@ -162,6 +171,14 @@ public final class ReplenishmentRequest {
     private final BigDecimal requestedQuantity;
     private final TargetService targetService;
     private final Reason reason;
+    /**
+     * §2.36 back-reference. Non-null iff {@code reason == SALES_ORDER_SHORTAGE} —
+     * identifies the sales-order line whose partial reservation triggered this
+     * request, so the eventual {@code ReplenishmentFulfilled} can un-park
+     * the corresponding sales-fulfilment saga via
+     * {@code sales.sales-fulfilment-saga.replenishment-fulfilled} handler.
+     */
+    private final UUID sourceSalesOrderLineId;
     private Status status;
     private DispatchedAggregateKind dispatchedAggregateKind;
     private UUID dispatchedAggregateId;
@@ -171,13 +188,48 @@ public final class ReplenishmentRequest {
     private final long version;
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
 
-    /** Factory: raise a new request. Emits {@link ReplenishmentRequested}. */
+    /**
+     * Factory: raise a new replenishment for a {@code reorder_point_breach} or
+     * {@code work_order_shortage} reason — no sales-order back-reference.
+     * Emits {@link ReplenishmentRequested}.
+     */
     public static ReplenishmentRequest request(
         UUID productId,
         UUID warehouseId,
         BigDecimal requestedQuantity,
         TargetService targetService,
         Reason reason
+    ) {
+        Assert.argument(reason != Reason.SALES_ORDER_SHORTAGE,
+            "use requestForSalesOrderShortage(...) for SALES_ORDER_SHORTAGE reason");
+        return doRequest(productId, warehouseId, requestedQuantity, targetService, reason, null);
+    }
+
+    /**
+     * §2.36 factory: raise a new replenishment for a sales-order partial-
+     * reservation shortfall. Stamps {@code sourceSalesOrderLineId} as the back-
+     * reference so the eventual {@code ReplenishmentFulfilled} can un-park
+     * the originating fulfilment saga. Emits {@link ReplenishmentRequested}.
+     */
+    public static ReplenishmentRequest requestForSalesOrderShortage(
+        UUID productId,
+        UUID warehouseId,
+        BigDecimal requestedQuantity,
+        TargetService targetService,
+        UUID sourceSalesOrderLineId
+    ) {
+        Assert.notNull(sourceSalesOrderLineId, "sourceSalesOrderLineId");
+        return doRequest(productId, warehouseId, requestedQuantity, targetService,
+            Reason.SALES_ORDER_SHORTAGE, sourceSalesOrderLineId);
+    }
+
+    private static ReplenishmentRequest doRequest(
+        UUID productId,
+        UUID warehouseId,
+        BigDecimal requestedQuantity,
+        TargetService targetService,
+        Reason reason,
+        UUID sourceSalesOrderLineId
     ) {
         Assert.notNull(productId, "productId");
         Assert.notNull(warehouseId, "warehouseId");
@@ -190,7 +242,7 @@ public final class ReplenishmentRequest {
         ReplenishmentRequestId id = ReplenishmentRequestId.newId();
         ReplenishmentRequest r = new ReplenishmentRequest(
             id, productId, warehouseId, requestedQuantity,
-            targetService, reason, Status.REQUESTED,
+            targetService, reason, sourceSalesOrderLineId, Status.REQUESTED,
             null, null, null, null, null,
             0L
         );
@@ -215,6 +267,7 @@ public final class ReplenishmentRequest {
         BigDecimal requestedQuantity,
         TargetService targetService,
         Reason reason,
+        UUID sourceSalesOrderLineId,
         Status status,
         DispatchedAggregateKind dispatchedAggregateKind,
         UUID dispatchedAggregateId,
@@ -225,7 +278,7 @@ public final class ReplenishmentRequest {
     ) {
         return new ReplenishmentRequest(
             id, productId, warehouseId, requestedQuantity,
-            targetService, reason, status,
+            targetService, reason, sourceSalesOrderLineId, status,
             dispatchedAggregateKind, dispatchedAggregateId, linkedPurchaseOrderId,
             dispatchedAt, fulfilledAt,
             version
@@ -239,6 +292,7 @@ public final class ReplenishmentRequest {
         BigDecimal requestedQuantity,
         TargetService targetService,
         Reason reason,
+        UUID sourceSalesOrderLineId,
         Status status,
         DispatchedAggregateKind dispatchedAggregateKind,
         UUID dispatchedAggregateId,
@@ -253,6 +307,7 @@ public final class ReplenishmentRequest {
         this.requestedQuantity = requestedQuantity;
         this.targetService = targetService;
         this.reason = reason;
+        this.sourceSalesOrderLineId = sourceSalesOrderLineId;
         this.status = status;
         this.dispatchedAggregateKind = dispatchedAggregateKind;
         this.dispatchedAggregateId = dispatchedAggregateId;
@@ -354,6 +409,7 @@ public final class ReplenishmentRequest {
     public BigDecimal requestedQuantity()               { return requestedQuantity; }
     public TargetService targetService()                { return targetService; }
     public Reason reason()                              { return reason; }
+    public UUID sourceSalesOrderLineId()                { return sourceSalesOrderLineId; }
     public Status status()                              { return status; }
     public DispatchedAggregateKind dispatchedAggregateKind() { return dispatchedAggregateKind; }
     public UUID dispatchedAggregateId()                 { return dispatchedAggregateId; }

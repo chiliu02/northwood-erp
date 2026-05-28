@@ -527,6 +527,15 @@ CREATE TABLE sales.sales_order_fulfilment_saga (
             -- from started / stock_reservation_incomplete).
             'awaiting_prepayment_invoice', 'prepaid',
             'manufacturing_requested', 'manufacturing_in_progress', 'manufacturing_completed',
+            -- §2.36: purchasing_requested is the symmetric branch off
+            -- stock_reservation_incomplete for purchased-only short lines.
+            -- The worker emits sales.SalesOrderPurchasingRequested (per-line
+            -- shortages routed through inventory's ReplenishmentRequest), and
+            -- the saga parks here until every outstanding ReplenishmentFulfilled
+            -- for the order's products has fired — then it re-enters
+            -- stock_reservation_requested to retry reservation with the now-
+            -- restocked inventory.
+            'purchasing_requested',
             'ready_to_ship', 'goods_shipped', 'invoice_requested', 'invoice_created',
             'invoice_partially_paid',
             'completed', 'compensating', 'compensated', 'failed'
@@ -726,11 +735,25 @@ CREATE TABLE inventory.replenishment_request (
     warehouse_id                UUID NOT NULL REFERENCES inventory.warehouse(warehouse_id),
     requested_quantity          NUMERIC(18, 4) NOT NULL CHECK (requested_quantity > 0),
     target_service              VARCHAR(20) NOT NULL CHECK (target_service IN ('manufacturing', 'purchasing')),
-    reason                      VARCHAR(40) NOT NULL CHECK (reason IN ('reorder_point_breach', 'work_order_shortage')),
+    -- §2.36: sales_order_shortage is the third reason — a sales order
+    -- line short on stock for a purchased-only SKU. Distinct from
+    -- reorder_point_breach (proactive policy-driven) and
+    -- work_order_shortage (manufacturing's raw-material bridge); these
+    -- are reactive demand-driven requests carrying a source-line back-
+    -- reference so the sales saga can un-park on fulfilment.
+    reason                      VARCHAR(40) NOT NULL CHECK (reason IN ('reorder_point_breach', 'work_order_shortage', 'sales_order_shortage')),
     status                      VARCHAR(20) NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'dispatched', 'fulfilled', 'cancelled')),
     dispatched_aggregate_kind   VARCHAR(30) CHECK (dispatched_aggregate_kind IN ('work_order', 'purchase_requisition')),
     dispatched_aggregate_id     UUID,
     linked_purchase_order_id    UUID,
+    -- §2.36: back-reference to the sales-order line that triggered a
+    -- sales_order_shortage replenishment. Populated only when
+    -- reason='sales_order_shortage'; null for the other two reasons
+    -- (proactive reorder-point + WO-raw-material-shortage have no
+    -- single source line to attribute to). Stamped onto
+    -- ReplenishmentFulfilled payload at markFulfilled time so sales
+    -- can un-park the corresponding fulfilment saga.
+    source_sales_order_line_id  UUID,
     created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
     dispatched_at               TIMESTAMPTZ,
     fulfilled_at                TIMESTAMPTZ,
@@ -739,9 +762,17 @@ CREATE TABLE inventory.replenishment_request (
     updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- One-open invariant: at most one open (requested / dispatched) request
+-- per (product, warehouse) for the proactive policy-driven and WO-shortage
+-- paths — re-triggering while a request is pending is a no-op. Sales-
+-- order-shortage requests are EXCLUDED from this constraint: every short
+-- SO line raises its own request (back-referenced to the line) so the
+-- sales saga can wait for ITS specific replenishment to land, even when
+-- multiple sales orders are short on the same SKU.
 CREATE UNIQUE INDEX uq_replenishment_request_open
     ON inventory.replenishment_request (product_id, warehouse_id)
-    WHERE status IN ('requested', 'dispatched');
+    WHERE status IN ('requested', 'dispatched')
+      AND reason <> 'sales_order_shortage';
 
 CREATE INDEX idx_replenishment_request_dispatched_aggregate
     ON inventory.replenishment_request (dispatched_aggregate_id)
@@ -750,6 +781,10 @@ CREATE INDEX idx_replenishment_request_dispatched_aggregate
 CREATE INDEX idx_replenishment_request_linked_purchase_order
     ON inventory.replenishment_request (linked_purchase_order_id)
     WHERE linked_purchase_order_id IS NOT NULL;
+
+CREATE INDEX idx_replenishment_request_source_sales_order_line
+    ON inventory.replenishment_request (source_sales_order_line_id)
+    WHERE source_sales_order_line_id IS NOT NULL;
 
 CREATE TRIGGER trg_replenishment_request_updated_at
     BEFORE UPDATE ON inventory.replenishment_request
