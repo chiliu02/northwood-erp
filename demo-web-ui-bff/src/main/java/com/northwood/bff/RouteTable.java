@@ -41,6 +41,7 @@ public class RouteTable {
         new Route("/api/work-orders",         "reporting",     null),
         new Route("/api/material-shortages",  "reporting",     null),
         new Route("/api/atp",                 "reporting",     null),
+        new Route("/api/replenishment-history","reporting",     null),
 
         // Owning-service catalogs
         new Route("/api/products",            "product",       null),

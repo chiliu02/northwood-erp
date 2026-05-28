@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchStockItems } from "@/api/fetchers";
+import { fetchReplenishmentHistory, fetchStockItems } from "@/api/fetchers";
+import type { ReplenishmentHistoryRow } from "@/api/types";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { truncateUuid } from "@/lib/utils";
 import { PERSONAS } from "@/personas";
@@ -79,8 +80,103 @@ export function StockItems() {
           <p className="px-4 py-6 text-center text-sm text-text-faint">No stock items projected yet.</p>
         )}
       </div>
+
+      <ReplenishmentActivity />
     </div>
   );
+}
+
+/**
+ * §2.35 Slice F: "Replenishment activity" widget. Lists the most recent
+ * auto-replenishment requests system-wide with their state. Driven by the
+ * reporting.replenishment_history_view projection.
+ */
+function ReplenishmentActivity() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["replenishment-history"],
+    queryFn: () => fetchReplenishmentHistory(20),
+    refetchInterval: 5_000,
+  });
+
+  return (
+    <section className="space-y-2">
+      <div className="flex items-baseline gap-3">
+        <h2 className="text-[18px] font-semibold tracking-tight">Replenishment activity</h2>
+        <span className="text-xs text-text-faint">
+          {isLoading ? "loading…" : `${data?.length ?? 0} recent`}
+        </span>
+        <span className="ml-auto text-xs text-text-muted">
+          §2.35 — auto-raised when on-hand drops below the reorder point or a WO finds short raw materials.
+        </span>
+      </div>
+
+      {error && <ErrorBanner context="reporting-service on :8087" message={String(error)} />}
+
+      <div className="overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated">
+        <table className="w-full text-sm">
+          <thead className="border-b border-border-subtle bg-bg-base/50 text-left text-[11px] uppercase tracking-wider text-text-muted">
+            <tr>
+              <th className="px-4 py-2 font-semibold">Request id</th>
+              <th className="px-4 py-2 font-semibold">SKU</th>
+              <th className="px-4 py-2 text-right font-semibold">Qty</th>
+              <th className="px-4 py-2 font-semibold">Reason</th>
+              <th className="px-4 py-2 font-semibold">Target</th>
+              <th className="px-4 py-2 font-semibold">Status</th>
+              <th className="px-4 py-2 font-semibold">Dispatched to</th>
+              <th className="px-4 py-2 font-semibold">Requested</th>
+              <th className="px-4 py-2 font-semibold">Dispatched</th>
+              <th className="px-4 py-2 font-semibold">Fulfilled</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border-subtle">
+            {(data ?? []).map((r) => (
+              <ReplenishmentRow key={r.replenishmentRequestId} r={r} />
+            ))}
+          </tbody>
+        </table>
+        {!isLoading && (data?.length ?? 0) === 0 && !error && (
+          <p className="px-4 py-6 text-center text-sm text-text-faint">
+            No replenishments yet. Ship goods past a SKU's reorder point to see one appear here.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ReplenishmentRow({ r }: { r: ReplenishmentHistoryRow }) {
+  return (
+    <tr className="hover:bg-bg-hover">
+      <td className="px-4 py-2 font-mono text-xs text-text-faint">{truncateUuid(r.replenishmentRequestId)}</td>
+      <td className="px-4 py-2 font-mono">{r.productSku ?? truncateUuid(r.productId)}</td>
+      <td className="px-4 py-2 text-right tabular-nums">{Number(r.requestedQuantity)}</td>
+      <td className="px-4 py-2 text-text-muted">{r.reason.replace(/_/g, " ")}</td>
+      <td className="px-4 py-2">
+        <StatusBadge kind="neutral">{r.targetService}</StatusBadge>
+      </td>
+      <td className="px-4 py-2">
+        <StatusBadge kind={statusKind(r.status)}>{r.status}</StatusBadge>
+      </td>
+      <td className="px-4 py-2 font-mono text-xs text-text-faint">
+        {r.dispatchedAggregateId ? truncateUuid(r.dispatchedAggregateId) : "—"}
+      </td>
+      <td className="px-4 py-2 text-xs text-text-muted">{formatTs(r.requestedAt)}</td>
+      <td className="px-4 py-2 text-xs text-text-muted">{formatTs(r.dispatchedAt)}</td>
+      <td className="px-4 py-2 text-xs text-text-muted">{formatTs(r.fulfilledAt)}</td>
+    </tr>
+  );
+}
+
+function statusKind(s: string): "neutral" | "success" | "warn" {
+  if (s === "fulfilled") return "success";
+  if (s === "dispatched") return "warn";
+  return "neutral";
+}
+
+function formatTs(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 
 function ErrorBanner({ context, message }: { context: string; message: string }) {

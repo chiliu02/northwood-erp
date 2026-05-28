@@ -172,6 +172,25 @@ export interface StockBalanceRow {
   available: string;
 }
 
+// §2.35 Slice F: reporting.replenishment_history_view rows powering the
+// "Replenishment activity" widget on the stock-items page.
+export interface ReplenishmentHistoryRow {
+  replenishmentRequestId: string;
+  productId: string;
+  productSku: string | null;
+  productName: string | null;
+  warehouseId: string;
+  requestedQuantity: string;
+  targetService: string;
+  reason: string;
+  status: string;
+  dispatchedAggregateKind: string | null;
+  dispatchedAggregateId: string | null;
+  requestedAt: string;
+  dispatchedAt: string | null;
+  fulfilledAt: string | null;
+}
+
 // Purchasing — purchase-order detail (header + lines), from purchasing-service GET /{id}.
 
 export interface PurchaseOrderLineView {

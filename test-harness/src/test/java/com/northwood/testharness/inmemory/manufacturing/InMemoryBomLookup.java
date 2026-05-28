@@ -19,6 +19,7 @@ import java.util.UUID;
 public final class InMemoryBomLookup implements BomLookup {
 
     private final Map<UUID, ActiveBom> byProductId = new LinkedHashMap<>();
+    private final Map<UUID, BomHeaderIdentity> identityByProductId = new HashMap<>();
 
     /**
      * Seed an active BoM. {@code finishedProductId} is the BoM's owning product;
@@ -32,6 +33,18 @@ public final class InMemoryBomLookup implements BomLookup {
     /** Convenience: build an ActiveBom with a list of components. */
     public InMemoryBomLookup put(UUID finishedProductId, UUID bomHeaderId, Component... components) {
         return put(finishedProductId, new ActiveBom(bomHeaderId, List.of(components)));
+    }
+
+    /**
+     * §2.35 Slice F support: seed the SKU + name of a finished product so the
+     * {@code findActiveBomIdentity} read used by manufacturing's
+     * {@code ReplenishmentRequestedHandler} returns a value. The harness
+     * scenarios call this alongside {@link #put(UUID, ActiveBom)} when they
+     * exercise the §2.35 stock-replenishment path.
+     */
+    public InMemoryBomLookup putIdentity(UUID finishedProductId, String productSku, String productName) {
+        identityByProductId.put(finishedProductId, new BomHeaderIdentity(productSku, productName));
+        return this;
     }
 
     public static Component rawLine(
@@ -51,6 +64,11 @@ public final class InMemoryBomLookup implements BomLookup {
     @Override
     public Optional<ActiveBom> findActiveByFinishedProductId(UUID finishedProductId) {
         return Optional.ofNullable(byProductId.get(finishedProductId));
+    }
+
+    @Override
+    public Optional<BomHeaderIdentity> findActiveBomIdentity(UUID finishedProductId) {
+        return Optional.ofNullable(identityByProductId.get(finishedProductId));
     }
 
     @Override

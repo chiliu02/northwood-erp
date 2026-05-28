@@ -22,6 +22,24 @@ interface StockItem {
   version: number;
 }
 
+// §2.35 Slice F: reporting.replenishment_history_view row.
+interface ReplenishmentHistoryRow {
+  replenishmentRequestId: string;
+  productId: string;
+  productSku: string | null;
+  productName: string | null;
+  warehouseId: string;
+  requestedQuantity: string;
+  targetService: string;
+  reason: string;
+  status: string;
+  dispatchedAggregateKind: string | null;
+  dispatchedAggregateId: string | null;
+  requestedAt: string;
+  dispatchedAt: string | null;
+  fulfilledAt: string | null;
+}
+
 /**
  * Stock item master — Mike's catalogue. Reorder policy lives on Product
  * (Shape A); inventory projects it. The list is read-only here; thresholds
@@ -138,9 +156,116 @@ export function StockItems() {
             {data.length} item{data.length === 1 ? "" : "s"}.
           </div>
         )}
+
+        <ReplenishmentActivity />
       </div>
     </>
   );
+}
+
+/**
+ * §2.35 Slice F: "Replenishment activity" widget. Lists the most recent
+ * auto-replenishment requests system-wide with their state. Driven by the
+ * reporting.replenishment_history_view projection.
+ */
+function ReplenishmentActivity() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["replenishment-history"],
+    queryFn: () => apiGet<ReplenishmentHistoryRow[]>("/api/replenishment-history?limit=20"),
+    refetchInterval: 5_000,
+  });
+
+  const columns: Column<ReplenishmentHistoryRow>[] = [
+    {
+      key: "sku",
+      header: "SKU",
+      width: "180px",
+      render: (r) => <span className="font-mono">{r.productSku ?? r.productId.slice(0, 8)}</span>,
+    },
+    {
+      key: "qty",
+      header: "Qty",
+      width: "90px",
+      numeric: true,
+      render: (r) => <span className="tabular-nums">{Number(r.requestedQuantity)}</span>,
+    },
+    {
+      key: "reason",
+      header: "Reason",
+      width: "180px",
+      render: (r) => <span className="text-text-muted">{r.reason.replace(/_/g, " ")}</span>,
+    },
+    {
+      key: "target",
+      header: "Target",
+      width: "140px",
+      render: (r) => <span className="text-text-muted">{r.targetService}</span>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      width: "120px",
+      render: (r) => <span className={statusClass(r.status)}>{r.status}</span>,
+    },
+    {
+      key: "dispatched-to",
+      header: "Dispatched to",
+      width: "160px",
+      render: (r) => (
+        <span className="font-mono text-xs text-text-muted">
+          {r.dispatchedAggregateId ? r.dispatchedAggregateId.slice(0, 8) : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "requested",
+      header: "Requested",
+      width: "180px",
+      render: (r) => <span className="text-xs text-text-muted">{formatTs(r.requestedAt)}</span>,
+    },
+    {
+      key: "fulfilled",
+      header: "Fulfilled",
+      width: "180px",
+      render: (r) => <span className="text-xs text-text-muted">{formatTs(r.fulfilledAt)}</span>,
+    },
+  ];
+
+  return (
+    <section className="mt-8 space-y-2">
+      <div className="flex items-baseline gap-3">
+        <h2 className="text-base font-semibold">Replenishment activity</h2>
+        <span className="text-xs text-text-muted">
+          §2.35 — auto-raised on reorder-point breach or WO raw-material shortage. Routed by make-vs-buy.
+        </span>
+      </div>
+      {error ? (
+        <div className="rounded-md border border-status-error/30 bg-status-error-soft px-4 py-3 text-sm text-status-error">
+          Failed to load replenishment history: {(error as Error).message}
+        </div>
+      ) : (
+        <DataGrid
+          columns={columns}
+          rows={data ?? []}
+          rowKey={(r) => r.replenishmentRequestId}
+          loading={isLoading}
+          emptyState="No replenishments yet. Ship goods past a SKU's reorder point to see one appear here."
+        />
+      )}
+    </section>
+  );
+}
+
+function statusClass(s: string): string {
+  if (s === "fulfilled") return "font-medium text-status-success";
+  if (s === "dispatched") return "font-medium text-status-warn";
+  return "text-text-muted";
+}
+
+function formatTs(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 
 function formatQty(v: string | null | undefined): string {

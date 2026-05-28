@@ -4,6 +4,9 @@ import com.northwood.inventory.application.ShipmentService;
 import com.northwood.inventory.application.StockReservationService;
 import com.northwood.inventory.application.replenishment.ReplenishmentDetectionService;
 import com.northwood.inventory.domain.WarehouseCodes;
+import com.northwood.inventory.application.inbox.ManufacturingReplenishmentDispatchedHandler;
+import com.northwood.inventory.application.inbox.PurchaseOrderCreatedHandler;
+import com.northwood.inventory.application.inbox.PurchasingReplenishmentDispatchedHandler;
 import com.northwood.inventory.application.inbox.RawMaterialReservationRequestedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderCancellationRequestedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderPlacedHandler;
@@ -18,6 +21,7 @@ import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.SynchronousBus;
 import com.northwood.testharness.inmemory.inventory.InMemoryInventoryProductReplenishmentProjection;
+import com.northwood.testharness.inmemory.inventory.InMemoryInventoryPurchaseOrderLineFactsProjection;
 import com.northwood.testharness.inmemory.inventory.InMemoryReorderPolicyLookup;
 import com.northwood.testharness.inmemory.inventory.InMemoryReplenishmentRequestRepository;
 import com.northwood.testharness.inmemory.inventory.InMemorySalesOrderLineFactsProjection;
@@ -62,6 +66,8 @@ public final class InventoryTestKit {
     public final InMemoryInventoryProductReplenishmentProjection productReplenishment =
         new InMemoryInventoryProductReplenishmentProjection();
     public final InMemoryReplenishmentRequestRepository replenishmentRequests;
+    public final InMemoryInventoryPurchaseOrderLineFactsProjection purchaseOrderLineFacts =
+        new InMemoryInventoryPurchaseOrderLineFactsProjection();
     public final StockReservationService service;
     public final ShipmentService shipmentService;
     public final ReplenishmentDetectionService replenishmentDetection;
@@ -94,6 +100,11 @@ public final class InventoryTestKit {
         bus.register(new SubAssembliesConsumedHandler(inbox, wipBalances, json));
         bus.register(new SalesOrderPlacedHandler(inbox, salesOrderLineFacts, json));
         bus.register(new SalesOrderPrepaymentSettledHandler(inbox, salesOrderLineFacts, json));
+
+        // §2.35 Slice E close-the-loop dispatch handlers.
+        bus.register(new ManufacturingReplenishmentDispatchedHandler(inbox, replenishmentRequests, json));
+        bus.register(new PurchasingReplenishmentDispatchedHandler(inbox, replenishmentRequests, json));
+        bus.register(new PurchaseOrderCreatedHandler(inbox, purchaseOrderLineFacts, replenishmentRequests, json));
     }
 
     /** Seed enough stock so a reservation will succeed. */

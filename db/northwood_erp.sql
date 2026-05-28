@@ -2917,6 +2917,51 @@ CREATE TABLE reporting.purchase_order_tracking_view (
 CREATE INDEX idx_po_tracking_supplier_id ON reporting.purchase_order_tracking_view(supplier_id);
 CREATE INDEX idx_po_tracking_status ON reporting.purchase_order_tracking_view(po_status);
 
+-- §2.35 Slice F: replenishment history view. One row per ReplenishmentRequest,
+-- driven by the four §2.35 events:
+--   inventory.ReplenishmentRequested            → INSERT row in 'requested'
+--   manufacturing.ReplenishmentDispatched       → UPDATE status → 'dispatched',
+--                                                 dispatched_aggregate_kind='work_order'
+--   purchasing.ReplenishmentDispatched          → UPDATE status → 'dispatched',
+--                                                 dispatched_aggregate_kind='purchase_requisition'
+--   inventory.ReplenishmentFulfilled            → UPDATE status → 'fulfilled'
+--
+-- Product SKU/name are joined at query time from
+-- reporting.available_to_promise_view (which carries them keyed by product_id).
+-- Warehouse code is denormalised at request time from… actually warehouse
+-- identity isn't projected into reporting today; the controller exposes
+-- warehouse_id only. UI can resolve via the existing
+-- inventory.warehouse endpoint if it needs to display the code.
+-- No CHECK constraints on enumerated columns: this is a downstream
+-- projection that must tolerate out-of-order arrival with placeholder
+-- values ('(pending)' / zero quantities) until the request event catches
+-- up. The producer (inventory.replenishment_request) already enforces the
+-- wire-format invariants. Same pattern as other reporting views.
+CREATE TABLE reporting.replenishment_history_view (
+    replenishment_request_id    UUID PRIMARY KEY,
+    product_id                  UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+    warehouse_id                UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+    requested_quantity          NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    target_service              VARCHAR(20) NOT NULL DEFAULT '(pending)',
+    reason                      VARCHAR(40) NOT NULL DEFAULT '(pending)',
+    status                      VARCHAR(20) NOT NULL DEFAULT 'requested',
+    dispatched_aggregate_kind   VARCHAR(30),
+    dispatched_aggregate_id     UUID,
+    requested_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
+    dispatched_at               TIMESTAMPTZ,
+    fulfilled_at                TIMESTAMPTZ,
+    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_replenishment_history_product
+    ON reporting.replenishment_history_view(product_id);
+CREATE INDEX idx_replenishment_history_status
+    ON reporting.replenishment_history_view(status);
+
+CREATE TRIGGER trg_replenishment_history_view_updated_at
+    BEFORE UPDATE ON reporting.replenishment_history_view
+    FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
+
 -- Financial dashboard now keyed by (date, currency_code) to support multi-currency.
 CREATE TABLE reporting.financial_dashboard_daily (
     dashboard_date DATE NOT NULL,

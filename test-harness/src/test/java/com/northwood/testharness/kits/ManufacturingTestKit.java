@@ -14,6 +14,7 @@ import com.northwood.manufacturing.application.inbox.ManufacturingRequestedHandl
 import com.northwood.manufacturing.application.inbox.ProductCreatedHandler;
 import com.northwood.manufacturing.application.inbox.ProductDiscontinuedHandler;
 import com.northwood.manufacturing.application.inbox.RawMaterialsReservedHandler;
+import com.northwood.manufacturing.application.inbox.ReplenishmentRequestedHandler;
 import com.northwood.manufacturing.application.inbox.SalesOrderCancellationRequestedHandler;
 import com.northwood.manufacturing.application.inbox.SupplierProductPriceChangedHandler;
 import com.northwood.manufacturing.infrastructure.saga.JdbcMakeToOrderSagaManager;
@@ -116,6 +117,10 @@ public final class ManufacturingTestKit {
         bus.register(new SalesOrderCancellationRequestedHandler(inbox, cancellationService, json));
         bus.register(new SupplierProductPriceChangedHandler(inbox, rollupService, json));
         bus.register(new ApprovedVendorListChangedHandler(inbox, approvedVendors, json));
+
+        // §2.35 Slice C: manufacturing's dispatcher for stock-replenishment
+        // requests routed by inventory's detection-trigger.
+        bus.register(new ReplenishmentRequestedHandler(inbox, releaseService, bomLookup, json));
     }
 
     /**
