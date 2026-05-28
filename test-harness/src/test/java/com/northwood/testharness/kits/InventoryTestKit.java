@@ -2,6 +2,7 @@ package com.northwood.testharness.kits;
 
 import com.northwood.inventory.application.ShipmentService;
 import com.northwood.inventory.application.StockReservationService;
+import com.northwood.inventory.application.replenishment.ReplenishmentDetectionService;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.application.inbox.RawMaterialReservationRequestedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderCancellationRequestedHandler;
@@ -16,6 +17,9 @@ import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.SynchronousBus;
+import com.northwood.testharness.inmemory.inventory.InMemoryInventoryProductReplenishmentProjection;
+import com.northwood.testharness.inmemory.inventory.InMemoryReorderPolicyLookup;
+import com.northwood.testharness.inmemory.inventory.InMemoryReplenishmentRequestRepository;
 import com.northwood.testharness.inmemory.inventory.InMemorySalesOrderLineFactsProjection;
 import com.northwood.testharness.inmemory.inventory.InMemoryShipmentRepository;
 import com.northwood.testharness.inmemory.inventory.InMemoryStockBalances;
@@ -51,19 +55,32 @@ public final class InventoryTestKit {
     public final InMemoryWipBalanceWriter wipBalances = new InMemoryWipBalanceWriter();
     public final InMemoryStockMovementWriter stockMovements = new InMemoryStockMovementWriter();
     public final InMemorySalesOrderLineFactsProjection salesOrderLineFacts = new InMemorySalesOrderLineFactsProjection();
+    // §2.35 Slice B doubles. Defaults to "no policy / no flags" so the
+    // detection service early-returns and existing scenarios stay green.
+    // Tests for the §2.35 path opt in via reorderPolicies.put + productReplenishment.put.
+    public final InMemoryReorderPolicyLookup reorderPolicies = new InMemoryReorderPolicyLookup();
+    public final InMemoryInventoryProductReplenishmentProjection productReplenishment =
+        new InMemoryInventoryProductReplenishmentProjection();
+    public final InMemoryReplenishmentRequestRepository replenishmentRequests;
     public final StockReservationService service;
     public final ShipmentService shipmentService;
+    public final ReplenishmentDetectionService replenishmentDetection;
 
     public InventoryTestKit(SynchronousBus bus, ObjectMapper json) {
         this.reservations = new InMemoryStockReservationRepository(outbox, json);
         this.shipments = new InMemoryShipmentRepository(outbox, json);
         this.warehouses.put(WarehouseCodes.MAIN, DEFAULT_WAREHOUSE_ID);
         OutboxAppender appender = new OutboxAppender(outbox, json, new CurrentUserAccessor());
+        this.replenishmentRequests = new InMemoryReplenishmentRequestRepository(appender, json);
+        this.replenishmentDetection = new ReplenishmentDetectionService(
+            reorderPolicies, stockBalances, productReplenishment, replenishmentRequests
+        );
         this.service = new StockReservationService(
             reservations, stockBalances, stockBalances, warehouses, appender
         );
         this.shipmentService = new ShipmentService(
-            shipments, stockBalances, stockMovements, warehouses, salesOrderLineFacts
+            shipments, stockBalances, stockMovements, warehouses, salesOrderLineFacts,
+            replenishmentDetection
         );
 
         bus.register(outbox);

@@ -14,6 +14,7 @@ import com.northwood.inventory.application.dto.PostShipmentCommand;
 import com.northwood.inventory.application.dto.ShipmentLineRequest;
 import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection;
 import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection.PrepaymentGate;
+import com.northwood.inventory.application.replenishment.ReplenishmentDetectionService;
 import com.northwood.inventory.domain.ShipmentRepository;
 import com.northwood.inventory.domain.StockMovementDirection;
 import com.northwood.inventory.domain.StockMovementSourceTypes;
@@ -37,6 +38,7 @@ class ShipmentServiceTest {
     @Mock StockMovementWriter movements;
     @Mock WarehouseLookup warehouses;
     @Mock SalesOrderLineFactsProjection salesOrderLineFacts;
+    @Mock ReplenishmentDetectionService replenishmentDetection;
 
     private ShipmentService service;
 
@@ -48,7 +50,7 @@ class ShipmentServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ShipmentService(shipments, stockBalances, movements, warehouses, salesOrderLineFacts);
+        service = new ShipmentService(shipments, stockBalances, movements, warehouses, salesOrderLineFacts, replenishmentDetection);
     }
 
     private PostShipmentCommand cmd(String warehouseCode, List<ShipmentLineRequest> lines) {
@@ -87,6 +89,20 @@ class ShipmentServiceTest {
         verify(stockBalances).decrementOnHandAndReleaseReserved(WAREHOUSE, PRODUCT_1, new BigDecimal("3"));
         verify(stockBalances).decrementOnHandAndReleaseReserved(WAREHOUSE, PRODUCT_2, new BigDecimal("5"));
         verify(movements, times(2)).record(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test void slice_2_35_replenishment_detection_fires_once_per_shipped_line() {
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
+
+        service.post(cmd(WarehouseCodes.MAIN, List.of(
+            new ShipmentLineRequest(null, PRODUCT_1, "SKU-1", "P1",
+                new BigDecimal("3"), new BigDecimal("10.00")),
+            new ShipmentLineRequest(null, PRODUCT_2, "SKU-2", "P2",
+                new BigDecimal("5"), new BigDecimal("20.00"))
+        )));
+
+        verify(replenishmentDetection).checkAfterOnHandDecrement(WAREHOUSE, PRODUCT_1);
+        verify(replenishmentDetection).checkAfterOnHandDecrement(WAREHOUSE, PRODUCT_2);
     }
 
     @Test void null_warehouse_code_defaults_to_MAIN() {

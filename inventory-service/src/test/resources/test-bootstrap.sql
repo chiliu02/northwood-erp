@@ -87,6 +87,30 @@ CREATE TABLE inventory.product_replenishment (
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- §2.35 Slice B: inventory-orchestrated replenishment requests.
+CREATE TABLE inventory.replenishment_request (
+    replenishment_request_id    UUID PRIMARY KEY,
+    product_id                  UUID NOT NULL,
+    warehouse_id                UUID NOT NULL REFERENCES inventory.warehouse(warehouse_id),
+    requested_quantity          NUMERIC(18, 4) NOT NULL CHECK (requested_quantity > 0),
+    target_service              VARCHAR(20) NOT NULL CHECK (target_service IN ('manufacturing', 'purchasing')),
+    reason                      VARCHAR(40) NOT NULL CHECK (reason IN ('reorder_point_breach', 'work_order_shortage')),
+    status                      VARCHAR(20) NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'dispatched', 'fulfilled', 'cancelled')),
+    dispatched_aggregate_kind   VARCHAR(30) CHECK (dispatched_aggregate_kind IN ('work_order', 'purchase_requisition')),
+    dispatched_aggregate_id     UUID,
+    linked_purchase_order_id    UUID,
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    dispatched_at               TIMESTAMPTZ,
+    fulfilled_at                TIMESTAMPTZ,
+    cancelled_at                TIMESTAMPTZ,
+    version                     BIGINT NOT NULL DEFAULT 0,
+    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX uq_replenishment_request_open
+    ON inventory.replenishment_request (product_id, warehouse_id)
+    WHERE status IN ('requested', 'dispatched');
+
 CREATE TABLE inventory.stock_balance (
     stock_balance_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     warehouse_id UUID NOT NULL REFERENCES inventory.warehouse(warehouse_id),

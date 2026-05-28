@@ -18,6 +18,7 @@ public final class InventoryAggregateTypes {
     public static final String GOODS_RECEIPT = "GoodsReceipt";
     public static final String SHIPMENT = "Shipment";
     public static final String STOCK_ADJUSTMENT = "StockAdjustment";
+    public static final String REPLENISHMENT_REQUEST = "ReplenishmentRequest";
 
     private InventoryAggregateTypes() {}
 }

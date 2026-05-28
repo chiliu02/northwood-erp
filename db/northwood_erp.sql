@@ -704,6 +704,57 @@ CREATE TRIGGER trg_product_replenishment_updated_at
     BEFORE UPDATE ON inventory.product_replenishment
     FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
 
+-- §2.35 Slice B: inventory-orchestrated replenishment requests.
+-- Raised by ReplenishmentDetectionService on the two on-hand-decrement paths
+-- (shipment, stock adjustment) when on_hand < reorder_point and no open
+-- request exists for the (product, warehouse) pair. Also raised by the §2.35
+-- shortage-to-replenishment bridge (Slice C, manufacturing.RawMaterialShortageDetected)
+-- with reason='work_order_shortage' — the same aggregate handles both triggers.
+--
+-- The one-open-per-(product,warehouse) invariant is enforced by the partial
+-- unique index below, NOT by an in-Java check, because that's the only
+-- race-safe way under concurrent decrements. The detection service catches
+-- the PG unique-violation and converts it to a debug-logged no-op.
+--
+-- dispatched_aggregate_kind / dispatched_aggregate_id are populated by
+-- Slice E's close-the-loop handlers when the downstream WO or PR receives
+-- the request. linked_purchase_order_id is stamped when the PR converts to
+-- a PO (so GoodsReceived can resolve to this request).
+CREATE TABLE inventory.replenishment_request (
+    replenishment_request_id    UUID PRIMARY KEY,
+    product_id                  UUID NOT NULL,
+    warehouse_id                UUID NOT NULL REFERENCES inventory.warehouse(warehouse_id),
+    requested_quantity          NUMERIC(18, 4) NOT NULL CHECK (requested_quantity > 0),
+    target_service              VARCHAR(20) NOT NULL CHECK (target_service IN ('manufacturing', 'purchasing')),
+    reason                      VARCHAR(40) NOT NULL CHECK (reason IN ('reorder_point_breach', 'work_order_shortage')),
+    status                      VARCHAR(20) NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'dispatched', 'fulfilled', 'cancelled')),
+    dispatched_aggregate_kind   VARCHAR(30) CHECK (dispatched_aggregate_kind IN ('work_order', 'purchase_requisition')),
+    dispatched_aggregate_id     UUID,
+    linked_purchase_order_id    UUID,
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    dispatched_at               TIMESTAMPTZ,
+    fulfilled_at                TIMESTAMPTZ,
+    cancelled_at                TIMESTAMPTZ,
+    version                     BIGINT NOT NULL DEFAULT 0,
+    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX uq_replenishment_request_open
+    ON inventory.replenishment_request (product_id, warehouse_id)
+    WHERE status IN ('requested', 'dispatched');
+
+CREATE INDEX idx_replenishment_request_dispatched_aggregate
+    ON inventory.replenishment_request (dispatched_aggregate_id)
+    WHERE dispatched_aggregate_id IS NOT NULL;
+
+CREATE INDEX idx_replenishment_request_linked_purchase_order
+    ON inventory.replenishment_request (linked_purchase_order_id)
+    WHERE linked_purchase_order_id IS NOT NULL;
+
+CREATE TRIGGER trg_replenishment_request_updated_at
+    BEFORE UPDATE ON inventory.replenishment_request
+    FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
+
 CREATE TABLE inventory.stock_balance (
     stock_balance_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     warehouse_id UUID NOT NULL REFERENCES inventory.warehouse(warehouse_id),

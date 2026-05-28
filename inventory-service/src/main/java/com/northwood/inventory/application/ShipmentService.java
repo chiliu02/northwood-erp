@@ -5,6 +5,7 @@ import com.northwood.inventory.application.dto.ShipmentLineRequest;
 import com.northwood.inventory.application.dto.ShipmentView;
 import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection;
 import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection.PrepaymentGate;
+import com.northwood.inventory.application.replenishment.ReplenishmentDetectionService;
 import com.northwood.inventory.domain.Shipment;
 import com.northwood.inventory.domain.ShipmentId;
 import com.northwood.inventory.domain.ShipmentLine;
@@ -114,19 +115,22 @@ public class ShipmentService {
     private final StockMovementWriter movements;
     private final WarehouseLookup warehouses;
     private final SalesOrderLineFactsProjection salesOrderLineFacts;
+    private final ReplenishmentDetectionService replenishmentDetection;
 
     public ShipmentService(
         ShipmentRepository shipments,
         StockBalanceWriter stockBalances,
         StockMovementWriter movements,
         WarehouseLookup warehouses,
-        SalesOrderLineFactsProjection salesOrderLineFacts
+        SalesOrderLineFactsProjection salesOrderLineFacts,
+        ReplenishmentDetectionService replenishmentDetection
     ) {
         this.shipments = shipments;
         this.stockBalances = stockBalances;
         this.movements = movements;
         this.warehouses = warehouses;
         this.salesOrderLineFacts = salesOrderLineFacts;
+        this.replenishmentDetection = replenishmentDetection;
     }
 
     @Transactional(readOnly = true)
@@ -209,6 +213,11 @@ public class ShipmentService {
                 l.shippedQuantity(), l.unitCost(),
                 StockMovementSourceTypes.SHIPMENT, shipment.id().value(), l.id()
             );
+            // §2.35 Slice B: if this decrement brings on_hand below reorder_point,
+            // raise an inventory.ReplenishmentRequest (routed by make-vs-buy).
+            // Same @Transactional boundary → outbox event lands atomically with
+            // the balance write.
+            replenishmentDetection.checkAfterOnHandDecrement(warehouseId, l.productId());
         }
 
         log.info("posted shipment {} for sales_order={} ({} line(s)) at warehouse={}",
