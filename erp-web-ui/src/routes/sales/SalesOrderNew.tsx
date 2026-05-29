@@ -58,7 +58,7 @@ export function SalesOrderNew() {
   const [customerCode, setCustomerCode] = useState("");
   const [requestedDeliveryDate, setRequestedDeliveryDate] = useState("");
   const [currencyCode, setCurrencyCode] = useState("AUD");
-  const [paymentTerms, setPaymentTerms] = useState<"on_shipment" | "prepayment">("on_shipment");
+  const [paymentTerms, setPaymentTerms] = useState<"on_shipment" | "prepayment" | "cash_on_delivery">("on_shipment");
   // Tracks whether the user has manually overridden paymentTerms; once true,
   // changing the customer no longer resets it to the customer's default.
   const [paymentTermsOverridden, setPaymentTermsOverridden] = useState(false);
@@ -73,7 +73,8 @@ export function SalesOrderNew() {
     if (paymentTermsOverridden) return;
     const c = activeCustomers.find((x) => x.customerCode === customerCode);
     if (!c) return;
-    if (c.defaultPaymentTerms === "on_shipment" || c.defaultPaymentTerms === "prepayment") {
+    if (c.defaultPaymentTerms === "on_shipment" || c.defaultPaymentTerms === "prepayment"
+        || c.defaultPaymentTerms === "cash_on_delivery") {
       setPaymentTerms(c.defaultPaymentTerms);
     }
   }, [customerCode, activeCustomers, paymentTermsOverridden]);
@@ -229,13 +230,14 @@ export function SalesOrderNew() {
                 <select
                   value={paymentTerms}
                   onChange={(e) => {
-                    setPaymentTerms(e.target.value as "on_shipment" | "prepayment");
+                    setPaymentTerms(e.target.value as "on_shipment" | "prepayment" | "cash_on_delivery");
                     setPaymentTermsOverridden(true);
                   }}
                   className="h-9 w-full rounded-md border border-border-default bg-bg-surface px-3 text-sm focus:border-border-focus focus:outline-none"
                 >
                   <option value="on_shipment">on_shipment</option>
                   <option value="prepayment">prepayment</option>
+                  <option value="cash_on_delivery">cash_on_delivery</option>
                 </select>
               </Field>
             </FormSection>

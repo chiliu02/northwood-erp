@@ -181,6 +181,66 @@ public class PaymentService {
     }
 
     /**
+     * §2.33 — auto-record the full customer payment for a cash-on-delivery
+     * order at shipment. Called by {@code SalesOrderShippedHandler} immediately
+     * after it creates the COD shipment invoice (same transaction): COD settles
+     * at the goods-delivered moment, so finance recognises the cash receipt
+     * (Dr Cash / Cr AR, netting the Dr AR / Cr Revenue the invoice just posted)
+     * in the same flow rather than waiting for an operator to record it. Always
+     * settles the just-posted invoice in full. The payment number is
+     * system-minted ({@link Payment#NUMBER_PREFIX}); the tender is
+     * {@link Payment.Method#CASH} (cash collected on delivery — the
+     * cash-on-delivery <i>term</i> lives on the order's payment_terms, not on
+     * the payment method).
+     */
+    @Transactional
+    public PaymentView recordCashOnDeliveryPayment(UUID customerInvoiceHeaderId, LocalDate paymentDate) {
+        PaymentSnapshot inv = lookupCustomerInvoice(customerInvoiceHeaderId);
+        Assert.state(inv.status() == CustomerInvoice.Status.POSTED,
+            "COD auto-payment expects a freshly posted invoice " + customerInvoiceHeaderId
+                + " (status=" + inv.status().dbValue() + ")");
+        BigDecimal outstanding = inv.totalAmount().subtract(inv.paidAmount());
+        Assert.argument(outstanding.signum() > 0,
+            "COD invoice " + customerInvoiceHeaderId + " has nothing outstanding to settle");
+
+        String paymentNumber = Payment.NUMBER_PREFIX
+            + UUID.randomUUID().toString().substring(0, Payment.NUMBER_SUFFIX_LENGTH).toUpperCase();
+        // Tender is CASH — money collected on delivery. The cash-on-delivery
+        // *term* lives on the order's payment_terms, not on the payment method
+        // (Method is tender type: bank_transfer / cash / card / cheque).
+        Payment payment = Payment.recordCustomerPayment(
+            paymentNumber,
+            inv.customerId(),
+            inv.customerName(),
+            paymentDate,
+            Payment.Method.CASH,
+            inv.currencyCode(),
+            outstanding,
+            customerInvoiceHeaderId,
+            inv.salesOrderHeaderId(),
+            CustomerInvoice.Status.PAID.dbValue()
+        );
+        payments.save(payment);
+
+        // GL: Dr Cash / Cr AR for a commercial invoice (§2.31 routes the credit
+        // side by invoice_type — COD invoices are commercial). Net of the
+        // invoice's own Dr AR / Cr Revenue, the order books as Dr Cash / Cr Revenue.
+        journalEntries.postCustomerPayment(
+            payment.id().value(),
+            inv.customerName(),
+            payment.paymentNumber(),
+            outstanding,
+            inv.currencyCode(),
+            paymentDate,
+            inv.invoiceType()
+        );
+
+        log.info("auto-recorded COD payment {} amount={} for invoice={} (sales_order={})",
+            payment.paymentNumber(), outstanding, customerInvoiceHeaderId, inv.salesOrderHeaderId());
+        return PaymentView.from(payment);
+    }
+
+    /**
      * Multi-invoice supplier payment: one physical payment settles several
      * approved supplier invoices from the same supplier. Validates each
      * invoice's status, currency, and supplier match; computes per-invoice

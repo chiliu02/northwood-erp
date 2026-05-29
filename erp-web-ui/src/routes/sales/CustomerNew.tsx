@@ -25,7 +25,7 @@ export function CustomerNew() {
   const [phone, setPhone] = useState("");
   const [billingAddress, setBillingAddress] = useState("");
   const [shippingAddress, setShippingAddress] = useState("");
-  const [defaultPaymentTerms, setDefaultPaymentTerms] = useState<"on_shipment" | "prepayment">("on_shipment");
+  const [defaultPaymentTerms, setDefaultPaymentTerms] = useState<"on_shipment" | "prepayment" | "cash_on_delivery">("on_shipment");
 
   const mutation = useMutation({
     mutationFn: () => apiPost<CreatedCustomer>("/api/customers", {
@@ -121,15 +121,16 @@ export function CustomerNew() {
             <Field
               label="Default payment terms"
               required
-              hint="Snapshotted onto every new order for this customer at placement (overridable per order). on_shipment = credit (bill on dispatch). prepayment = cash with order (§2.31 Slice B+)."
+              hint="Snapshotted onto every new order for this customer at placement (overridable per order). on_shipment = credit (bill on dispatch). prepayment = cash with order. cod = cash on delivery (auto-settled at shipment, §2.33)."
             >
               <select
                 value={defaultPaymentTerms}
-                onChange={(e) => setDefaultPaymentTerms(e.target.value as "on_shipment" | "prepayment")}
+                onChange={(e) => setDefaultPaymentTerms(e.target.value as "on_shipment" | "prepayment" | "cash_on_delivery")}
                 className="h-9 w-full rounded-md border border-border-default bg-bg-surface px-3 text-sm focus:border-border-focus focus:outline-none"
               >
                 <option value="on_shipment">on_shipment</option>
                 <option value="prepayment">prepayment</option>
+                <option value="cash_on_delivery">cash_on_delivery</option>
               </select>
             </Field>
           </FormSection>

@@ -83,7 +83,7 @@ public final class FinanceTestKit {
         );
 
         bus.register(outbox);
-        bus.register(new SalesOrderShippedHandler(inbox, customerInvoiceService, json));
+        bus.register(new SalesOrderShippedHandler(inbox, customerInvoiceService, paymentService, json));
         bus.register(new ShipmentPostedCogsHandler(inbox, journalService, productCards, customerInvoices, json));
         bus.register(new GoodsReceivedHandler(inbox, purchaseOrderLineFacts, journalService, json));
         bus.register(new PurchaseOrderCreatedHandler(inbox, purchaseOrderLineFacts, json));

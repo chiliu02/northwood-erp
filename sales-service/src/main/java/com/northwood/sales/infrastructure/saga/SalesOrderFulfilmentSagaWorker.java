@@ -7,8 +7,8 @@ import com.northwood.sales.application.saga.SalesOrderLineSnapshotPort;
 import com.northwood.sales.application.saga.SalesOrderLineSnapshotPort.LineSnapshot;
 import com.northwood.sales.application.saga.SalesOrderInvoiceSnapshotPort;
 import com.northwood.sales.application.saga.SalesOrderInvoiceSnapshotPort.OrderForPrepayment;
+import com.northwood.sales.domain.PaymentTerms;
 import com.northwood.sales.domain.events.PrepaymentInvoiceRequested;
-import com.northwood.sales.domain.events.SalesOrderPlaced;
 import com.northwood.sales.domain.events.StockReservationRequested;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.sales.domain.saga.FulfilmentSagaData;
@@ -119,7 +119,7 @@ public class SalesOrderFulfilmentSagaWorker {
      */
     private void advanceFromStarted(SalesOrderFulfilmentSaga saga) {
         String pt = readData(saga).paymentTerms();
-        if (SalesOrderPlaced.PAYMENT_TERMS_PREPAYMENT.equals(pt)) {
+        if (PaymentTerms.PREPAYMENT.dbValue().equals(pt)) {
             requestPrepaymentInvoice(saga);
         } else {
             requestStockReservation(saga);

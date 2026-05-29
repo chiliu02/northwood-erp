@@ -6,6 +6,7 @@ import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.GOODS_SHI
 import com.northwood.sales.application.SalesOrderService;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.inventory.domain.events.ShipmentPosted;
+import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.SalesOrder.ShippedLineInput;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
@@ -31,16 +32,19 @@ public class ShipmentPostedHandler extends AbstractInboxHandler<ShipmentPosted> 
 
     private final SalesOrderFulfilmentSagaManager sagaManager;
     private final SalesOrderService salesOrders;
+    private final SalesOrderHeaderStatusProjection statusProjection;
 
     public ShipmentPostedHandler(
         InboxPort inbox,
         SalesOrderFulfilmentSagaManager sagaManager,
         SalesOrderService salesOrders,
+        SalesOrderHeaderStatusProjection statusProjection,
         ObjectMapper json
     ) {
         super(inbox, json, ShipmentPosted.class, ShipmentPosted.EVENT_TYPE, CONSUMER_NAME);
         this.sagaManager = sagaManager;
         this.salesOrders = salesOrders;
+        this.statusProjection = statusProjection;
     }
 
     // §2.31 Slice C: prepayment orders walk ready_to_ship → goods_shipped →
@@ -66,6 +70,12 @@ public class ShipmentPostedHandler extends AbstractInboxHandler<ShipmentPosted> 
                 LocalDate.now(),
                 shippedLines
             );
+            // §2.31 / §2.33: prepayment + COD complete the saga at shipment, so
+            // mark the header completed here (the payment-received handler that
+            // normally does it never fires the completing transition for them).
+            if (COMPLETED.equals(newState)) {
+                statusProjection.markStatus(payload.salesOrderHeaderId(), SalesOrder.Status.COMPLETED);
+            }
             log.info("[{}] sales_order={} → {} (shipment={})",
                 CONSUMER_NAME, payload.salesOrderHeaderId(), newState, payload.shipmentNumber());
         }

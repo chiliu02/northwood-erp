@@ -84,7 +84,7 @@ public final class SalesTestKit {
         bus.register(new StockReservedHandler(inbox, sagaManager, statusProjection, readyToShipEmitter, lineSnapshots, json));
         bus.register(new ReplenishmentFulfilledHandler(inbox, sagaManager, lineSnapshots, appender, json));
         bus.register(new ReplenishmentCancelledHandler(inbox, sagaManager, statusProjection, orders, appender, json));
-        bus.register(new ShipmentPostedHandler(inbox, sagaManager, service, json));
+        bus.register(new ShipmentPostedHandler(inbox, sagaManager, service, statusProjection, json));
         bus.register(new CustomerInvoiceCreatedHandler(inbox, sagaManager, json));
         bus.register(new CustomerPaymentReceivedHandler(inbox, sagaManager, statusProjection, prepaymentSettledEmitter, json));
         bus.register(new InventoryCancellationAppliedHandler(inbox, sagaManager, compensationEmitter, json));

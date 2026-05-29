@@ -342,6 +342,7 @@ public final class SalesOrder {
             customerName,
             shipmentDate,
             Currencies.orBase(currencyCode),
+            paymentTerms.dbValue(),
             eventLines,
             Instant.now()
         ));

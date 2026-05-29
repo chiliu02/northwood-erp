@@ -29,7 +29,7 @@ export function PlaceOrder() {
   const [customerCode, setCustomerCode] = useState(SEED_CUSTOMER_CODE);
   const [requestedDeliveryDate, setRequestedDeliveryDate] = useState("");
   const [currencyCode, setCurrencyCode] = useState("AUD");
-  const [paymentTerms, setPaymentTerms] = useState<"on_shipment" | "prepayment">("on_shipment");
+  const [paymentTerms, setPaymentTerms] = useState<"on_shipment" | "prepayment" | "cash_on_delivery">("on_shipment");
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [submit, setSubmit] = useState<SubmitState>({ status: "idle" });
 
@@ -116,13 +116,14 @@ export function PlaceOrder() {
             <option value="EUR">EUR</option>
           </Select>
         </FieldRow>
-        <FieldRow label="Payment terms" required hint="On shipment = bill on dispatch (Northwood's credit-AR default). Prepayment = cash with order (lands in Slice B).">
+        <FieldRow label="Payment terms" required hint="On shipment = bill on dispatch (Northwood's credit-AR default). Prepayment = cash with order (invoice + pay before dispatch). COD = cash on delivery (invoice + payment auto-recorded at shipment).">
           <Select
             value={paymentTerms}
-            onChange={(e) => setPaymentTerms(e.target.value as "on_shipment" | "prepayment")}
+            onChange={(e) => setPaymentTerms(e.target.value as "on_shipment" | "prepayment" | "cash_on_delivery")}
           >
             <option value="on_shipment">on_shipment</option>
             <option value="prepayment">prepayment</option>
+            <option value="cash_on_delivery">cash_on_delivery</option>
           </Select>
         </FieldRow>
       </div>

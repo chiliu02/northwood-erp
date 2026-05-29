@@ -71,7 +71,7 @@ class CustomerServiceTest {
                 "CUST-002", "Beta Industries",
                 "ap@beta.example", "+61-3-8000-0000",
                 "10 Beta Ave, Melbourne", "10 Beta Ave, Melbourne",
-                PaymentTerms.ON_SHIPMENT
+                PaymentTerms.ON_SHIPMENT.dbValue()
             );
             assertThat(registered).isNotNull();
             assertThat(registered.customerId()).isNotNull();
@@ -85,7 +85,7 @@ class CustomerServiceTest {
 
         @Test void rejects_blank_customer_code() {
             assertThatThrownBy(() -> service.registerCustomer(
-                "", "name", null, null, null, null, PaymentTerms.ON_SHIPMENT
+                "", "name", null, null, null, null, PaymentTerms.ON_SHIPMENT.dbValue()
             )).isInstanceOf(IllegalArgumentException.class);
 
             verify(repo, never()).save(org.mockito.ArgumentMatchers.any());

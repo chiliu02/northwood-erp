@@ -9,7 +9,7 @@ import com.northwood.inventory.domain.events.ShipmentPosted;
 import com.northwood.inventory.domain.events.StockReserved;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaPort;
-import com.northwood.sales.domain.events.SalesOrderPlaced;
+import com.northwood.sales.domain.PaymentTerms;
 import com.northwood.sales.domain.saga.FulfilmentSagaData;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.shared.application.saga.SagaManager;
@@ -219,13 +219,29 @@ public class JdbcSalesOrderFulfilmentSagaManager
         // event still to wait for. Walk goods_shipped → completed in this same
         // transaction so the saga lands on the right terminal without an
         // active state hop the worker would otherwise pick up.
+        //
+        // §2.33: COD orders settle AT shipment — finance auto-creates the
+        // invoice and auto-records the full customer payment the moment the
+        // SalesOrderShipped lands. So the saga is self-contained: walk
+        // goods_shipped → invoice_created → completed in this transaction
+        // rather than wait for finance's CustomerInvoiceCreated /
+        // CustomerPaymentReceived (which would otherwise race — they carry
+        // different aggregate-ids / partition keys, so out-of-order delivery
+        // could strand the saga). Those events still arrive and update
+        // reporting; the saga is terminal by then and ignores them.
         String pt = readData(saga).paymentTerms();
-        boolean isPrepayment = SalesOrderPlaced.PAYMENT_TERMS_PREPAYMENT.equals(pt);
-        if (isPrepayment) {
+        if (PaymentTerms.PREPAYMENT.dbValue().equals(pt)) {
             saga.transitionTo(GOODS_SHIPPED, "prepayment_shipment_landed");
             saga.transitionTo(COMPLETED, "o2c_completed");
             sagaPort.update(saga);
             log.info("saga {} sales_order={} → goods_shipped → completed (prepayment; invoice + payment already settled)",
+                saga.sagaId(), salesOrderHeaderId);
+        } else if (PaymentTerms.CASH_ON_DELIVERY.dbValue().equals(pt)) {
+            saga.transitionTo(GOODS_SHIPPED, "cod_shipment_landed");
+            saga.transitionTo(INVOICE_CREATED, "cod_invoiced_at_shipment");
+            saga.transitionTo(COMPLETED, "o2c_completed");
+            sagaPort.update(saga);
+            log.info("saga {} sales_order={} → goods_shipped → invoice_created → completed (COD; invoice + payment auto-recorded at shipment)",
                 saga.sagaId(), salesOrderHeaderId);
         } else {
             saga.transitionTo(GOODS_SHIPPED, "wait_for_invoice");
@@ -275,7 +291,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
             //   and walk the rest of the fulfilment path).
             // Legacy sagas (paymentTerms null) fall back to on_shipment.
             String pt = readData(saga).paymentTerms();
-            boolean isPrepayment = SalesOrderPlaced.PAYMENT_TERMS_PREPAYMENT.equals(pt);
+            boolean isPrepayment = PaymentTerms.PREPAYMENT.dbValue().equals(pt);
             if (isPrepayment) {
                 saga.transitionTo(PREPAID, "wait_for_worker_pickup");
                 saga.parkUntil(Instant.now());

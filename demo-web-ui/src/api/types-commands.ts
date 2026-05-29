@@ -7,7 +7,7 @@ export interface PlaceOrderRequest {
   customerCode: string;
   requestedDeliveryDate?: string | null;     // ISO date
   currencyCode: string;
-  /** 'on_shipment' | 'prepayment'. Omit to inherit the customer's default. */
+  /** 'on_shipment' | 'prepayment' | 'cash_on_delivery'. Omit to inherit the customer's default. */
   paymentTerms?: string | null;
   lines: PlaceOrderLine[];
 }

@@ -68,7 +68,7 @@ Saga state-machine classes carry the constant the same way: a `public static fin
 **Apply methods return the saga's new state (`String`)** so callers gate side effects on it:
 - `applyStockReserved` returns `"stock_reservation_incomplete"` → handler projects `markStatus(SO, "in_fulfilment")`
 - `applyReplenishmentCancelled` returns `"rejected"` → handler projects `markStatus(SO, "rejected")` + emits `SalesOrderCancellationRequested`
-- `applyShipmentPosted` returns `"goods_shipped"` → handler calls `shipping.recordShipped(...)`
+- `applyShipmentPosted` returns `"goods_shipped"` (on_shipment) → handler calls `shipping.recordShipped(...)`; for prepayment / cash-on-delivery it returns `"completed"` (the saga walks straight to terminal at shipment — invoice + payment already settled / auto-settled), and the handler additionally projects `markStatus(SO, "completed")`
 - `applyInventoryCancellationApplied` returns `"compensated"` (the sole compensation ack since §2.40) → handler calls the compensation emitter
 - Returns `null` for genuinely-no-op cases (sub-assembly skipped, no-saga warns)
 

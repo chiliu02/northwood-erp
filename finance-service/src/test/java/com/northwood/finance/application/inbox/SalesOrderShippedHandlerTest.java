@@ -8,6 +8,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.northwood.finance.application.CustomerInvoiceService;
+import com.northwood.finance.application.PaymentService;
+import com.northwood.finance.domain.CustomerInvoiceId;
+import com.northwood.sales.domain.PaymentTerms;
 import com.northwood.sales.domain.SalesAggregateTypes;
 import com.northwood.sales.domain.events.SalesOrderShipped;
 import com.northwood.shared.application.inbox.InboxPort;
@@ -32,21 +35,22 @@ class SalesOrderShippedHandlerTest {
 
     @Mock InboxPort inbox;
     @Mock CustomerInvoiceService invoices;
+    @Mock PaymentService payments;
 
     private final ObjectMapper json = new ObjectMapper();
     private SalesOrderShippedHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new SalesOrderShippedHandler(inbox, invoices, json);
+        handler = new SalesOrderShippedHandler(inbox, invoices, payments, json);
     }
 
-    private EventEnvelope event() {
+    private EventEnvelope event(String paymentTerms) {
         UUID eventId = UUID.randomUUID();
         SalesOrderShipped payload = new SalesOrderShipped(
             eventId, SO, "SO-001", UUID.randomUUID(), "SHP-001",
             UUID.randomUUID(), "CUST-001", "Acme",
-            LocalDate.now(), Currencies.AUD,
+            LocalDate.now(), Currencies.AUD, paymentTerms,
             List.of(new SalesOrderShipped.ShippedLine(
                 UUID.randomUUID(), 10, UUID.randomUUID(), "SKU", "Product",
                 new BigDecimal("2"), new BigDecimal("100.00"), new BigDecimal("0.10")
@@ -61,21 +65,34 @@ class SalesOrderShippedHandlerTest {
         );
     }
 
-    @Test void delegates_to_invoice_service_and_records_processed() {
-        handler.handle(event());
+    @Test void on_shipment_invoices_only_no_auto_payment() {
+        handler.handle(event(PaymentTerms.ON_SHIPMENT.dbValue()));
 
         verify(invoices).createFromShippedOrder(any(SalesOrderShipped.class));
+        verify(payments, never()).recordCashOnDeliveryPayment(any(), any());
+        verify(inbox).recordProcessed(any());
+    }
+
+    @Test void cod_auto_records_full_payment_against_the_new_invoice() {
+        CustomerInvoiceId invoiceId = CustomerInvoiceId.newId();
+        when(invoices.createFromShippedOrder(any(SalesOrderShipped.class))).thenReturn(invoiceId);
+
+        handler.handle(event(PaymentTerms.CASH_ON_DELIVERY.dbValue()));
+
+        verify(invoices).createFromShippedOrder(any(SalesOrderShipped.class));
+        verify(payments).recordCashOnDeliveryPayment(eq(invoiceId.value()), any(LocalDate.class));
         verify(inbox).recordProcessed(any());
     }
 
     @Test void already_processed_short_circuits() {
-        EventEnvelope envelope = event();
+        EventEnvelope envelope = event(PaymentTerms.ON_SHIPMENT.dbValue());
         when(inbox.alreadyProcessed(eq(envelope.eventId()),
             eq(SalesOrderShippedHandler.CONSUMER_NAME))).thenReturn(true);
 
         handler.handle(envelope);
 
         verifyNoInteractions(invoices);
+        verifyNoInteractions(payments);
         verify(inbox, never()).recordProcessed(any());
     }
 
@@ -90,5 +107,6 @@ class SalesOrderShippedHandlerTest {
 
         verify(inbox, never()).alreadyProcessed(any(), any());
         verifyNoInteractions(invoices);
+        verifyNoInteractions(payments);
     }
 }
