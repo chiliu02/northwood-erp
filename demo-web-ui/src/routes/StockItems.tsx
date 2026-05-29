@@ -54,7 +54,7 @@ export function StockItems() {
           </thead>
           <tbody className="divide-y divide-border-subtle">
             {(data ?? []).map((s) => (
-              <tr key={s.stockItemId} className="hover:bg-bg-hover">
+              <tr key={s.productId} className="hover:bg-bg-hover">
                 <td className="px-4 py-2 font-mono">{s.productSku}</td>
                 <td className="px-4 py-2">{s.productName}</td>
                 <td className="px-4 py-2">

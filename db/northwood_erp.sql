@@ -195,7 +195,7 @@ CREATE TABLE product.product (
     sales_price NUMERIC(18, 6) NOT NULL DEFAULT 0,
     standard_cost NUMERIC(18, 6) NOT NULL DEFAULT 0,
     -- Reorder policy on the master record. Mirrored/owned-locally by
-    -- inventory.stock_item per the projection design (inventory has its own
+    -- inventory.product_card per the projection design (inventory has its own
     -- authoritative copy for replenishment planning); product.product carries
     -- it too so the catalog API can return reorder hints without a cross-
     -- service call.
@@ -392,7 +392,7 @@ CREATE TRIGGER trg_customer_updated_at
 -- (e.g. a raw material that purchasing buys but sales never lists); placeOrder
 -- treats that as unsellable, identically to a discontinued product. The seed
 -- makes lifecycle closure structural — one row per Product for its lifetime,
--- mirroring the inventory.stock_item and manufacturing.product_card
+-- mirroring the inventory.product_card and manufacturing.product_card
 -- shape.
 CREATE TABLE sales.product_card (
     product_id UUID PRIMARY KEY,
@@ -663,50 +663,43 @@ CREATE TABLE inventory.warehouse (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE inventory.stock_item (
-    stock_item_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
-    product_id UUID NOT NULL UNIQUE,
-    product_sku VARCHAR(50) NOT NULL,
-    product_name VARCHAR(200) NOT NULL,
-    product_type VARCHAR(30) NOT NULL CHECK (
+-- §2.38: inventory's single consumer-side product-master projection (the
+-- `_card` convention — one product_card per consumer schema, docs/conventions.md).
+-- Consolidates the former stock_item (sku/name/type/uom/tracking + reorder
+-- policy, §1F.2) and product_card (make-vs-buy flags, §2.35 Slice A) into one
+-- row per Product. Inventory holds NO invariants over any column — every value
+-- is projected from product-master events: ProductCreated seeds the descriptive
+-- columns + make-vs-buy defaults (RAW_MATERIAL/SERVICE → buy-only,
+-- FINISHED_GOOD/SEMI_FINISHED → make-only); ReorderPolicyChanged,
+-- MakeVsBuyChanged and ProductDiscontinued maintain the rest. Read by the
+-- StockItemQueryPort (stock-items UI), the §2.35 ReorderPolicyLookup
+-- (reorder-point detection) and ProductCardLookup (make-vs-buy routing).
+-- Only product_id is NOT NULL — every attribute column is nullable (or carries
+-- a default) so an out-of-order MakeVsBuyChanged / ProductDiscontinued can seed
+-- the row before ProductCreated lands.
+CREATE TABLE inventory.product_card (
+    product_id          UUID PRIMARY KEY,
+    product_sku         VARCHAR(50),
+    product_name        VARCHAR(200),
+    product_type        VARCHAR(30) CHECK (
         product_type IN ('raw_material', 'finished_good', 'semi_finished_good', 'service')
     ),
-    base_uom_code VARCHAR(20) NOT NULL,
+    base_uom_code       VARCHAR(20),
     stock_tracking_mode VARCHAR(20) NOT NULL DEFAULT 'tracked' CHECK (
         stock_tracking_mode IN ('tracked', 'not_tracked')
     ),
-    -- Reorder policy is owned here: it is a per-SKU inventory planning
-    -- parameter, not a catalogue attribute. The non-authoritative columns
-    -- above (sku/name/type/uom) are still projected from product events.
-    reorder_point NUMERIC(18, 4) NOT NULL DEFAULT 0,
-    reorder_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    is_purchased        BOOLEAN NOT NULL DEFAULT false,
+    is_manufactured     BOOLEAN NOT NULL DEFAULT false,
+    -- Reorder policy: a per-SKU planning parameter projected from product master
+    -- (Shape A). Read by the §2.35 detection service via ReorderPolicyLookup.
+    reorder_point       NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    reorder_quantity    NUMERIC(18, 4) NOT NULL DEFAULT 0,
     -- Stamped from product.ProductDiscontinued so reorder-alert logic can
-    -- suppress alerts for retired SKUs (§1F.1).
-    discontinued_at TIMESTAMPTZ,
-    version BIGINT NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TRIGGER trg_stock_item_updated_at
-    BEFORE UPDATE ON inventory.stock_item
-    FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
-
--- §2.35 Slice A: inventory-side projection of product.MakeVsBuyChanged.
--- Mirrors manufacturing.product_card's replenishment columns — duplicate
--- projection across services is the accepted cost of cross-schema isolation.
--- Read by the §2.35 reorder-point detection service (Slice B) to decide
--- whether to route a replenishment to manufacturing or purchasing.
--- Seed defaults: ProductCreated derives (is_purchased, is_manufactured) from
--- product_type (RAW_MATERIAL/SERVICE → buy-only, FINISHED_GOOD/SEMI_FINISHED
--- → make-only) so the table is non-empty for day-zero SKUs before any
--- MakeVsBuyChanged event arrives.
-CREATE TABLE inventory.product_card (
-    product_id        UUID PRIMARY KEY,
-    is_purchased      BOOLEAN NOT NULL DEFAULT false,
-    is_manufactured   BOOLEAN NOT NULL DEFAULT false,
-    discontinued_at   TIMESTAMPTZ,
-    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+    -- suppress alerts for retired SKUs (§1F.1); also the authoritative
+    -- "unsourceable" signal for §2.35 routing (both flags false ≡ never-
+    -- classified XOR discontinued — disambiguated by this timestamp).
+    discontinued_at     TIMESTAMPTZ,
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TRIGGER trg_product_card_updated_at

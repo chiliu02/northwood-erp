@@ -51,7 +51,7 @@ import tools.jackson.databind.ObjectMapper;
  * {@link ProbeConfig}) handles a private {@code test.RollbackProbe} event type
  * so it never collides with the real {@code ReorderPolicyChanged} handler. On
  * the <b>first</b> delivery it writes a sentinel ({@code 111}) to the seed
- * {@code stock_item} row and then throws; on the <b>redelivery</b> it writes
+ * {@code product_card} row and then throws; on the <b>redelivery</b> it writes
  * the success value ({@code 222}) and returns normally so
  * {@code AbstractInboxHandler.handle} records the inbox row.
  *
@@ -153,7 +153,7 @@ class InboxApplyRollbackAtomicityIT {
         // the sentinel write (111) nor an inbox row was committed. The redelivery
         // is still parked on allowRedelivery, so its success write can't interfere.
         BigDecimal pointAfterFailure = jdbc.queryForObject(
-            "SELECT reorder_point FROM inventory.stock_item WHERE product_id = ?",
+            "SELECT reorder_point FROM inventory.product_card WHERE product_id = ?",
             BigDecimal.class, SEED_PRODUCT_ID
         );
         assertThat(pointAfterFailure)
@@ -172,7 +172,7 @@ class InboxApplyRollbackAtomicityIT {
 
         await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofMillis(250)).untilAsserted(() -> {
             BigDecimal point = jdbc.queryForObject(
-                "SELECT reorder_point FROM inventory.stock_item WHERE product_id = ?",
+                "SELECT reorder_point FROM inventory.product_card WHERE product_id = ?",
                 BigDecimal.class, SEED_PRODUCT_ID
             );
             assertThat(point).isEqualByComparingTo(SUCCESS_VALUE);
@@ -252,7 +252,7 @@ class InboxApplyRollbackAtomicityIT {
             int attempt = state.attempts.incrementAndGet();
             if (attempt == 1) {
                 jdbc.update(
-                    "UPDATE inventory.stock_item SET reorder_point = ? WHERE product_id = ?",
+                    "UPDATE inventory.product_card SET reorder_point = ? WHERE product_id = ?",
                     SENTINEL_VALUE, payload.aggregateId()
                 );
                 state.firstAttemptFailed.countDown();
@@ -272,7 +272,7 @@ class InboxApplyRollbackAtomicityIT {
                 throw new IllegalStateException(e);
             }
             jdbc.update(
-                "UPDATE inventory.stock_item SET reorder_point = ? WHERE product_id = ?",
+                "UPDATE inventory.product_card SET reorder_point = ? WHERE product_id = ?",
                 SUCCESS_VALUE, payload.aggregateId()
             );
         }

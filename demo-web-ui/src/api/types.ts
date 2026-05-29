@@ -149,7 +149,6 @@ export interface BomFlatComponent {
 }
 
 export interface StockItemRow {
-  stockItemId: string;
   productId: string;
   productSku: string;
   productName: string;
@@ -161,7 +160,6 @@ export interface StockItemRow {
   onHand: string;
   reserved: string;
   available: string;
-  version: number;
 }
 
 export interface StockBalanceRow {

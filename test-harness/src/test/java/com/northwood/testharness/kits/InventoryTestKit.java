@@ -21,7 +21,7 @@ import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.SynchronousBus;
-import com.northwood.testharness.inmemory.inventory.InMemoryInventoryProductCardProjection;
+import com.northwood.testharness.inmemory.inventory.InMemoryInventoryProductCardLookup;
 import com.northwood.testharness.inmemory.inventory.InMemoryInventoryPurchaseOrderLineFactsProjection;
 import com.northwood.testharness.inmemory.inventory.InMemoryReorderPolicyLookup;
 import com.northwood.testharness.inmemory.inventory.InMemoryReplenishmentRequestRepository;
@@ -64,8 +64,8 @@ public final class InventoryTestKit {
     // detection service early-returns and existing scenarios stay green.
     // Tests for the §2.35 path opt in via reorderPolicies.put + productReplenishment.put.
     public final InMemoryReorderPolicyLookup reorderPolicies = new InMemoryReorderPolicyLookup();
-    public final InMemoryInventoryProductCardProjection productReplenishment =
-        new InMemoryInventoryProductCardProjection();
+    public final InMemoryInventoryProductCardLookup productReplenishment =
+        new InMemoryInventoryProductCardLookup();
     public final InMemoryReplenishmentRequestRepository replenishmentRequests;
     public final InMemoryInventoryPurchaseOrderLineFactsProjection purchaseOrderLineFacts =
         new InMemoryInventoryPurchaseOrderLineFactsProjection();

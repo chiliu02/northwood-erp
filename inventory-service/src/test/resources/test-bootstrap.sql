@@ -2,7 +2,7 @@
 -- We deliberately don't replay db/northwood_erp.sql wholesale (too much
 -- unrelated schema for one test); just the inventory pieces the seam
 -- exercises: shared functions, inventory.warehouse + seed row,
--- inventory.stock_item, inventory.stock_balance, inventory.inbox_message.
+-- inventory.product_card, inventory.stock_balance, inventory.inbox_message.
 -- The (currently empty) Liquibase master changelog runs against this on
 -- test boot; future changesets must stay idempotent and reference only
 -- tables that exist here — add any new prerequisites to this file too.
@@ -63,29 +63,22 @@ CREATE TABLE inventory.warehouse (
 INSERT INTO inventory.warehouse (warehouse_id, warehouse_code, name)
 VALUES ('00000000-0000-7000-8000-000000000020', 'WH-MAIN', 'Main Warehouse');
 
-CREATE TABLE inventory.stock_item (
-    stock_item_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
-    product_id UUID NOT NULL UNIQUE,
-    product_sku VARCHAR(50) NOT NULL,
-    product_name VARCHAR(200) NOT NULL,
-    product_type VARCHAR(30) NOT NULL,
-    base_uom_code VARCHAR(20) NOT NULL,
-    stock_tracking_mode VARCHAR(20) NOT NULL DEFAULT 'tracked',
-    reorder_point NUMERIC(18, 4) NOT NULL DEFAULT 0,
-    reorder_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
-    version BIGINT NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- §2.35 Slice A: inventory-side projection of product.MakeVsBuyChanged
--- (the `_card` convention — one consumer-side product-master table per schema).
+-- §2.38: inventory's single consumer-side product-master projection — the
+-- merged stock_item + product_card (sku/name/type/uom/tracking + make-vs-buy
+-- flags + reorder policy + discontinued_at). Only product_id is NOT NULL.
 CREATE TABLE inventory.product_card (
-    product_id        UUID PRIMARY KEY,
-    is_purchased      BOOLEAN NOT NULL DEFAULT false,
-    is_manufactured   BOOLEAN NOT NULL DEFAULT false,
-    discontinued_at   TIMESTAMPTZ,
-    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+    product_id          UUID PRIMARY KEY,
+    product_sku         VARCHAR(50),
+    product_name        VARCHAR(200),
+    product_type        VARCHAR(30),
+    base_uom_code       VARCHAR(20),
+    stock_tracking_mode VARCHAR(20) NOT NULL DEFAULT 'tracked',
+    is_purchased        BOOLEAN NOT NULL DEFAULT false,
+    is_manufactured     BOOLEAN NOT NULL DEFAULT false,
+    reorder_point       NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    reorder_quantity    NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    discontinued_at     TIMESTAMPTZ,
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- §2.35 Slice B: inventory-orchestrated replenishment requests.
@@ -176,13 +169,13 @@ CREATE TABLE inventory.inbox_message (
 CREATE TABLE inventory.inbox_message_default
     PARTITION OF inventory.inbox_message DEFAULT;
 
--- Seed row for the test SKU. version=1 mirrors the dev DB seed bump so the
--- reorder-policy projection (StockItemProjection) updates this row in place.
-INSERT INTO inventory.stock_item (
+-- Seed row for the test SKU so the reorder-policy projection
+-- (ProductCardProjection.applyReorderPolicy) updates this row in place.
+INSERT INTO inventory.product_card (
     product_id, product_sku, product_name, product_type, base_uom_code,
-    stock_tracking_mode, reorder_point, reorder_quantity, version
+    stock_tracking_mode, is_purchased, is_manufactured, reorder_point, reorder_quantity
 ) VALUES (
     '00000000-0000-7000-8000-000000000001',
     'FG-TABLE-001', 'Wooden Dining Table', 'finished_good', 'EA',
-    'tracked', 2, 5, 1
+    'tracked', false, true, 2, 5
 );

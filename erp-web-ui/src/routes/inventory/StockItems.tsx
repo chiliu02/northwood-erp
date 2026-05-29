@@ -7,7 +7,6 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { DataGrid, type Column } from "@/components/ui/DataGrid";
 
 interface StockItem {
-  stockItemId: string;
   productId: string;
   productSku: string;
   productName: string;
@@ -19,7 +18,6 @@ interface StockItem {
   onHand: string;
   reserved: string;
   available: string;
-  version: number;
 }
 
 // §2.35 Slice F: reporting.replenishment_history_view row.
@@ -146,7 +144,7 @@ export function StockItems() {
           <DataGrid
             columns={columns}
             rows={data ?? []}
-            rowKey={(s) => s.stockItemId}
+            rowKey={(s) => s.productId}
             loading={isLoading}
             emptyState="No stock items projected yet."
           />

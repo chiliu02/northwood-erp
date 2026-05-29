@@ -22,7 +22,7 @@ public class JdbcReorderPolicyLookup implements ReorderPolicyLookup {
             return Optional.ofNullable(jdbc.queryForObject(
                 """
                 SELECT reorder_point, reorder_quantity
-                FROM inventory.stock_item
+                FROM inventory.product_card
                 WHERE product_id = ?
                 """,
                 (rs, n) -> new ReorderPolicy(

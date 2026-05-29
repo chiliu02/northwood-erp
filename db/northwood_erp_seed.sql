@@ -267,8 +267,12 @@ COMMIT;
 -- ============================================================================
 -- §  SEED: INVENTORY
 -- Uses fixture UUIDs from §0; no cross-schema joins.
--- The stock_item table is inventory's local projection of product master;
--- in production it would be populated by consuming ProductCreated events.
+-- The product_card table is inventory's local projection of product master
+-- (§2.38 — consolidates the former stock_item + product_card); in production
+-- it would be populated by consuming ProductCreated / MakeVsBuyChanged events.
+-- is_purchased/is_manufactured are seeded here so the §2.35 reorder-point
+-- detection service can route make-vs-buy for SQL-seeded demo SKUs (which
+-- never emit a runtime MakeVsBuyChanged).
 -- ============================================================================
 
 BEGIN;
@@ -284,21 +288,21 @@ VALUES
     ('00000000-0000-7000-8000-000000000021', 'MELB', 'Melbourne Dispatch', 'Melbourne VIC')
 ON CONFLICT (warehouse_code) DO NOTHING;
 
-INSERT INTO inventory.stock_item (
+INSERT INTO inventory.product_card (
     product_id, product_sku, product_name, product_type, base_uom_code, stock_tracking_mode,
-    reorder_point, reorder_quantity
+    is_purchased, is_manufactured, reorder_point, reorder_quantity
 ) VALUES
-    ('00000000-0000-7000-8000-000000000001', 'FG-TABLE-001',   'Wooden Dining Table', 'finished_good', 'EA', 'tracked',  2,  5),
-    ('00000000-0000-7000-8000-000000000002', 'RM-BOARD-001',   'Wooden Board',        'raw_material',  'EA', 'tracked', 10, 20),
-    ('00000000-0000-7000-8000-000000000003', 'RM-LEG-001',     'Table Leg',           'raw_material',  'EA', 'tracked', 20, 40),
-    ('00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',   'Screw Pack',          'raw_material',  'EA', 'tracked', 10, 30),
-    ('00000000-0000-7000-8000-000000000005', 'RM-VARNISH-001', 'Varnish Pack',        'raw_material',  'EA', 'tracked', 10, 30),
+    ('00000000-0000-7000-8000-000000000001', 'FG-TABLE-001',   'Wooden Dining Table', 'finished_good', 'EA', 'tracked', false, true,   2,  5),
+    ('00000000-0000-7000-8000-000000000002', 'RM-BOARD-001',   'Wooden Board',        'raw_material',  'EA', 'tracked', true,  false, 10, 20),
+    ('00000000-0000-7000-8000-000000000003', 'RM-LEG-001',     'Table Leg',           'raw_material',  'EA', 'tracked', true,  false, 20, 40),
+    ('00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',   'Screw Pack',          'raw_material',  'EA', 'tracked', true,  false, 10, 30),
+    ('00000000-0000-7000-8000-000000000005', 'RM-VARNISH-001', 'Varnish Pack',        'raw_material',  'EA', 'tracked', true,  false, 10, 30),
     -- Sub-assembly demo set:
-    ('00000000-0000-7000-8000-000000000200', 'FG-CABINET-001',       'Storage Cabinet',           'finished_good',      'EA', 'tracked', 1,  3),
-    ('00000000-0000-7000-8000-000000000201', 'SA-DRAWER-001',        'Cabinet Drawer Sub-assembly', 'semi_finished_good', 'EA', 'tracked', 0,  0),
-    ('00000000-0000-7000-8000-000000000202', 'RM-DRAWER-FRONT-001',  'Drawer Front Panel',        'raw_material',       'EA', 'tracked', 5, 10),
-    ('00000000-0000-7000-8000-000000000203', 'RM-DRAWER-RUNNER-001', 'Drawer Runner',             'raw_material',       'EA', 'tracked', 5, 10),
-    ('00000000-0000-7000-8000-000000000400', 'FG-CHAIR-001',         'Wooden Dining Chair',       'finished_good',      'EA', 'tracked', 5, 10)
+    ('00000000-0000-7000-8000-000000000200', 'FG-CABINET-001',       'Storage Cabinet',             'finished_good',      'EA', 'tracked', false, true,  1,  3),
+    ('00000000-0000-7000-8000-000000000201', 'SA-DRAWER-001',        'Cabinet Drawer Sub-assembly', 'semi_finished_good', 'EA', 'tracked', false, true,  0,  0),
+    ('00000000-0000-7000-8000-000000000202', 'RM-DRAWER-FRONT-001',  'Drawer Front Panel',          'raw_material',       'EA', 'tracked', true,  false, 5, 10),
+    ('00000000-0000-7000-8000-000000000203', 'RM-DRAWER-RUNNER-001', 'Drawer Runner',               'raw_material',       'EA', 'tracked', true,  false, 5, 10),
+    ('00000000-0000-7000-8000-000000000400', 'FG-CHAIR-001',         'Wooden Dining Chair',         'finished_good',      'EA', 'tracked', false, true,  5, 10)
 ON CONFLICT (product_id) DO NOTHING;
 
 INSERT INTO inventory.stock_balance (

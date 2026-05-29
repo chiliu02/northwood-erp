@@ -138,7 +138,7 @@ class DuplicateDeliveryAppliedOnceIT {
 
         await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofMillis(250)).untilAsserted(() -> {
             BigDecimal point = jdbc.queryForObject(
-                "SELECT reorder_point FROM inventory.stock_item WHERE product_id = ?",
+                "SELECT reorder_point FROM inventory.product_card WHERE product_id = ?",
                 BigDecimal.class, SEED_PRODUCT_ID
             );
             assertThat(point).isEqualByComparingTo(new BigDecimal("55"));

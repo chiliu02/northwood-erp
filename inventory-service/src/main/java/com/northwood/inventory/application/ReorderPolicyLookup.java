@@ -9,7 +9,7 @@ import java.util.UUID;
  * Per-product (not per-warehouse) — the policy is a catalogue parameter; the
  * trigger fires when ANY warehouse's on-hand drops below it.
  *
- * <p>Returns {@link Optional#empty()} when no {@code stock_item} row exists
+ * <p>Returns {@link Optional#empty()} when no {@code product_card} row exists
  * for the product (a SKU never seen by inventory). The detection service
  * treats that as "no policy → no auto-replenishment", consistent with the
  * zero-default behaviour (a row with {@code reorder_point = 0} also

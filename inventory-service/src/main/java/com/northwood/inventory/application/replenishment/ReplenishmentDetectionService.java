@@ -2,9 +2,9 @@ package com.northwood.inventory.application.replenishment;
 
 import com.northwood.inventory.application.ReorderPolicyLookup;
 import com.northwood.inventory.application.ReorderPolicyLookup.ReorderPolicy;
+import com.northwood.inventory.application.ProductCardLookup;
+import com.northwood.inventory.application.ProductCardLookup.Replenishment;
 import com.northwood.inventory.application.StockBalanceLookup;
-import com.northwood.inventory.application.inbox.ProductCardProjection;
-import com.northwood.inventory.application.inbox.ProductCardProjection.Replenishment;
 import com.northwood.inventory.domain.ReplenishmentRequest;
 import com.northwood.inventory.domain.ReplenishmentRequest.Reason;
 import com.northwood.inventory.domain.ReplenishmentRequest.TargetService;
@@ -57,20 +57,20 @@ public class ReplenishmentDetectionService {
 
     private final ReorderPolicyLookup reorderPolicies;
     private final StockBalanceLookup stockBalances;
-    private final ProductCardProjection productReplenishment;
+    private final ProductCardLookup productCards;
     private final ReplenishmentRequestRepository replenishmentRequests;
     private final OutboxAppender outbox;
 
     public ReplenishmentDetectionService(
         ReorderPolicyLookup reorderPolicies,
         StockBalanceLookup stockBalances,
-        ProductCardProjection productReplenishment,
+        ProductCardLookup productCards,
         ReplenishmentRequestRepository replenishmentRequests,
         OutboxAppender outbox
     ) {
         this.reorderPolicies = reorderPolicies;
         this.stockBalances = stockBalances;
-        this.productReplenishment = productReplenishment;
+        this.productCards = productCards;
         this.replenishmentRequests = replenishmentRequests;
         this.outbox = outbox;
     }
@@ -85,7 +85,7 @@ public class ReplenishmentDetectionService {
     public void checkAfterOnHandDecrement(UUID warehouseId, UUID productId) {
         Optional<ReorderPolicy> policy = reorderPolicies.findByProductId(productId);
         if (policy.isEmpty()) {
-            log.debug("no reorder policy for product_id={} (stock_item row missing) — skipping replenishment check",
+            log.debug("no reorder policy for product_id={} (product_card row missing) — skipping replenishment check",
                 productId);
             return;
         }
@@ -120,7 +120,7 @@ public class ReplenishmentDetectionService {
      */
     @Transactional(propagation = Propagation.REQUIRED)
     public void raiseIfNoneOpen(UUID productId, UUID warehouseId, BigDecimal quantity, Reason reason) {
-        Optional<Replenishment> flags = productReplenishment.findByProductId(productId);
+        Optional<Replenishment> flags = productCards.findByProductId(productId);
         if (flags.isEmpty()) {
             log.warn("no inventory.product_card row for product_id={} — cannot classify make-vs-buy, "
                 + "skipping replenishment (reason={}, qty={}, warehouse_id={})",
@@ -190,7 +190,7 @@ public class ReplenishmentDetectionService {
         UUID sourceSalesOrderHeaderId,
         UUID sourceSalesOrderLineId
     ) {
-        Optional<Replenishment> flags = productReplenishment.findByProductId(productId);
+        Optional<Replenishment> flags = productCards.findByProductId(productId);
         if (flags.isEmpty()) {
             cancelUnsourceableSalesOrderShortage(productId, sourceSalesOrderHeaderId, sourceSalesOrderLineId,
                 "no inventory.product_card row for product " + productId + " — make-vs-buy unknown");

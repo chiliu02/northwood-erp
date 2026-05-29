@@ -28,15 +28,14 @@ class ProductCreatedHandlerTest {
     private static final String TYPE = "finished_good";
 
     @Mock InboxPort inbox;
-    @Mock ProductCreatedProjection stockItem;
-    @Mock ProductCardProjection replenishment;
+    @Mock ProductCardProjection productCard;
 
     private final ObjectMapper json = new ObjectMapper();
     private ProductCreatedHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new ProductCreatedHandler(inbox, stockItem, replenishment, json);
+        handler = new ProductCreatedHandler(inbox, productCard, json);
     }
 
     private EventEnvelope event() {
@@ -50,11 +49,10 @@ class ProductCreatedHandlerTest {
         );
     }
 
-    @Test void happy_path_seeds_stock_item_and_replenishment_stubs() {
+    @Test void happy_path_seeds_product_card() {
         handler.handle(event());
 
-        verify(stockItem).apply(eq(PRODUCT), eq(SKU), eq(NAME), eq(TYPE));
-        verify(replenishment).seedDefaultsFromProductType(eq(PRODUCT), eq(TYPE));
+        verify(productCard).applyCreated(eq(PRODUCT), eq(SKU), eq(NAME), eq(TYPE));
         verify(inbox).recordProcessed(any());
     }
 
@@ -65,8 +63,7 @@ class ProductCreatedHandlerTest {
 
         handler.handle(envelope);
 
-        verify(stockItem, never()).apply(any(), any(), any(), any());
-        verify(replenishment, never()).seedDefaultsFromProductType(any(), any());
+        verify(productCard, never()).applyCreated(any(), any(), any(), any());
         verify(inbox, never()).recordProcessed(any());
     }
 }

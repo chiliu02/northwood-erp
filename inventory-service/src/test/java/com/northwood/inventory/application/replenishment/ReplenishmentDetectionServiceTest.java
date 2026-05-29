@@ -8,12 +8,12 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.northwood.inventory.application.ProductCardLookup;
+import com.northwood.inventory.application.ProductCardLookup.Replenishment;
 import com.northwood.inventory.application.ReorderPolicyLookup;
 import com.northwood.inventory.application.ReorderPolicyLookup.ReorderPolicy;
 import com.northwood.inventory.application.StockBalanceLookup;
 import com.northwood.inventory.application.dto.StockBalanceView;
-import com.northwood.inventory.application.inbox.ProductCardProjection;
-import com.northwood.inventory.application.inbox.ProductCardProjection.Replenishment;
 import com.northwood.inventory.domain.ReplenishmentRequest;
 import com.northwood.inventory.domain.ReplenishmentRequest.Reason;
 import com.northwood.inventory.domain.ReplenishmentRequest.TargetService;
@@ -39,7 +39,7 @@ class ReplenishmentDetectionServiceTest {
 
     @Mock ReorderPolicyLookup reorderPolicies;
     @Mock StockBalanceLookup stockBalances;
-    @Mock ProductCardProjection productReplenishment;
+    @Mock ProductCardLookup productCards;
     @Mock ReplenishmentRequestRepository replenishmentRequests;
     @Mock OutboxAppender outbox;
 
@@ -48,7 +48,7 @@ class ReplenishmentDetectionServiceTest {
     @BeforeEach
     void setUp() {
         service = new ReplenishmentDetectionService(
-            reorderPolicies, stockBalances, productReplenishment, replenishmentRequests, outbox
+            reorderPolicies, stockBalances, productCards, replenishmentRequests, outbox
         );
     }
 
@@ -66,7 +66,7 @@ class ReplenishmentDetectionServiceTest {
     }
 
     private void stubFlags(boolean purchased, boolean manufactured) {
-        when(productReplenishment.findByProductId(PRODUCT))
+        when(productCards.findByProductId(PRODUCT))
             .thenReturn(Optional.of(new Replenishment(purchased, manufactured)));
     }
 
@@ -94,7 +94,7 @@ class ReplenishmentDetectionServiceTest {
 
         service.checkAfterOnHandDecrement(WAREHOUSE, PRODUCT);
 
-        verify(productReplenishment, never()).findByProductId(any());
+        verify(productCards, never()).findByProductId(any());
         verify(replenishmentRequests, never()).save(any());
     }
 
@@ -160,7 +160,7 @@ class ReplenishmentDetectionServiceTest {
     @Test void missing_product_card_row_skips() {
         stubPolicy(new BigDecimal("5"), new BigDecimal("10"));
         stubOnHand(new BigDecimal("3"));
-        when(productReplenishment.findByProductId(PRODUCT)).thenReturn(Optional.empty());
+        when(productCards.findByProductId(PRODUCT)).thenReturn(Optional.empty());
 
         service.checkAfterOnHandDecrement(WAREHOUSE, PRODUCT);
 
@@ -173,7 +173,7 @@ class ReplenishmentDetectionServiceTest {
 
         service.checkAfterOnHandDecrement(WAREHOUSE, PRODUCT);
 
-        verify(productReplenishment, never()).findByProductId(any());
+        verify(productCards, never()).findByProductId(any());
         verify(replenishmentRequests, never()).save(any());
     }
 
@@ -227,7 +227,7 @@ class ReplenishmentDetectionServiceTest {
     @Test void sales_order_shortage_missing_card_emits_cancelled() {
         UUID soHeader = UUID.randomUUID();
         UUID soLine = UUID.randomUUID();
-        when(productReplenishment.findByProductId(PRODUCT)).thenReturn(Optional.empty());
+        when(productCards.findByProductId(PRODUCT)).thenReturn(Optional.empty());
 
         service.raiseForSalesOrderShortage(PRODUCT, WAREHOUSE, new BigDecimal("4"), soHeader, soLine);
 
