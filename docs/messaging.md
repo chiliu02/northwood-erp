@@ -80,7 +80,7 @@ Reliable delivery + idempotent consumption are the cornerstone of this architect
 
 | Guarantee | Mechanism | Covered by |
 |---|---|---|
-| At most one worker advances a saga at a time | `claimDue` `FOR UPDATE SKIP LOCKED` + lease | `Jdbc{SalesOrderFulfilment,MakeToOrder,PurchaseToPay}SagaAdapterIT.claimDue_leases_active_due_rows_and_blocks_immediate_reclaim` |
+| At most one worker advances a saga at a time | `claimDue` `FOR UPDATE SKIP LOCKED` + lease | `Jdbc{SalesOrderFulfilment,WorkOrder,PurchaseToPay}SagaAdapterIT.claimDue_leases_active_due_rows_and_blocks_immediate_reclaim` |
 | Concurrent transition → optimistic-lock failure → manager retries | `update … WHERE saga_id = ? AND version = ?` | the same ITs' `update_enforces_optimistic_lock_via_version` |
 | Backed-off saga not re-claimed before `next_retry_at` | due-time filter in `claimDue` | the same ITs' `claimDue_skips_rows_with_future_next_retry_at` |
 | Out-of-order prerequisite (cross-partition) → park + retry | handler parks when the saga row is absent | §2.6 sales cross-partition regression (un-exercisable until partitions > 1) |

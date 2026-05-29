@@ -3,7 +3,7 @@ package com.northwood.manufacturing.infrastructure.saga;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.northwood.manufacturing.domain.saga.MakeToOrderSaga;
+import com.northwood.manufacturing.domain.saga.WorkOrderSaga;
 import com.zaxxer.hikari.HikariDataSource;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -27,14 +27,14 @@ import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * §2.25 Tier 3: real-Postgres test for {@link JdbcMakeToOrderSagaAdapter} —
+ * §2.25 Tier 3: real-Postgres test for {@link JdbcWorkOrderSagaAdapter} —
  * same {@code claimDue} (FOR UPDATE SKIP LOCKED + lease) + optimistic-locked
  * {@code update} surface as the other two saga adapters. Its domain key
  * ({@code work_order_id}) is nullable until a work order is attached, so the
  * round-trip is asserted via {@code findBySagaId} and the keyed finder via a
  * work-order-attached row.
  */
-class JdbcMakeToOrderSagaAdapterIT {
+class JdbcWorkOrderSagaAdapterIT {
 
     private static final PostgreSQLContainer<?> POSTGRES =
         new PostgreSQLContainer<>(DockerImageName.parse("postgres:17"))
@@ -44,7 +44,7 @@ class JdbcMakeToOrderSagaAdapterIT {
 
     private static HikariDataSource DATA_SOURCE;
     private static JdbcTemplate JDBC;
-    private static JdbcMakeToOrderSagaAdapter ADAPTER;
+    private static JdbcWorkOrderSagaAdapter ADAPTER;
 
     @BeforeAll
     static void bootContainerAndSchema() {
@@ -56,7 +56,7 @@ class JdbcMakeToOrderSagaAdapterIT {
         DATA_SOURCE.setPassword(POSTGRES.getPassword());
         DATA_SOURCE.setConnectionInitSql("SET search_path = manufacturing, shared");
         JDBC = new JdbcTemplate(DATA_SOURCE);
-        ADAPTER = new JdbcMakeToOrderSagaAdapter(JDBC);
+        ADAPTER = new JdbcWorkOrderSagaAdapter(JDBC);
     }
 
     private static void applySqlFile(Path file) {
@@ -77,28 +77,28 @@ class JdbcMakeToOrderSagaAdapterIT {
 
     @BeforeEach
     void clearTable() {
-        JDBC.execute("TRUNCATE manufacturing.make_to_order_saga");
+        JDBC.execute("TRUNCATE manufacturing.work_order_saga");
     }
 
     @Test
     void insert_then_find_round_trips() {
         UUID firstWo = UUID.randomUUID();
-        MakeToOrderSaga saga = MakeToOrderSaga.attachedToWorkOrder(
+        WorkOrderSaga saga = WorkOrderSaga.attachedToWorkOrder(
             UUID.randomUUID(), UUID.randomUUID(), firstWo, "{}");
         ADAPTER.insert(saga);
 
-        MakeToOrderSaga r = ADAPTER.findBySagaId(saga.sagaId()).orElseThrow();
+        WorkOrderSaga r = ADAPTER.findBySagaId(saga.sagaId()).orElseThrow();
         assertThat(r.sagaId()).isEqualTo(saga.sagaId());
-        assertThat(r.state()).isEqualTo(MakeToOrderSaga.WORK_ORDER_CREATED);
+        assertThat(r.state()).isEqualTo(WorkOrderSaga.WORK_ORDER_CREATED);
         assertThat(r.workOrderId()).isEqualTo(firstWo);
         assertThat(r.version()).isEqualTo(1L);
 
         // Keyed finder works once a work order is attached.
         UUID workOrderId = UUID.randomUUID();
-        MakeToOrderSaga withWo = workOrderCreatedDue(workOrderId, Instant.now());
+        WorkOrderSaga withWo = workOrderCreatedDue(workOrderId, Instant.now());
         ADAPTER.insert(withWo);
         assertThat(ADAPTER.findByWorkOrderId(workOrderId)).isPresent()
-            .get().extracting(MakeToOrderSaga::sagaId).isEqualTo(withWo.sagaId());
+            .get().extracting(WorkOrderSaga::sagaId).isEqualTo(withWo.sagaId());
     }
 
     @Test
@@ -107,12 +107,12 @@ class JdbcMakeToOrderSagaAdapterIT {
         ADAPTER.insert(workOrderCreatedDue(UUID.randomUUID(), Instant.now()));
 
         var claimed = ADAPTER.claimDue(
-            10, Set.of(MakeToOrderSaga.WORK_ORDER_CREATED), "worker-1", Duration.ofSeconds(30));
+            10, Set.of(WorkOrderSaga.WORK_ORDER_CREATED), "worker-1", Duration.ofSeconds(30));
         assertThat(claimed).hasSize(2)
             .allSatisfy(s -> assertThat(s.leaseOwner()).isEqualTo("worker-1"));
 
         assertThat(ADAPTER.claimDue(
-            10, Set.of(MakeToOrderSaga.WORK_ORDER_CREATED), "worker-2", Duration.ofSeconds(30)))
+            10, Set.of(WorkOrderSaga.WORK_ORDER_CREATED), "worker-2", Duration.ofSeconds(30)))
             .isEmpty();
     }
 
@@ -121,28 +121,28 @@ class JdbcMakeToOrderSagaAdapterIT {
         ADAPTER.insert(workOrderCreatedDue(UUID.randomUUID(), Instant.now().plus(Duration.ofHours(1))));
 
         assertThat(ADAPTER.claimDue(
-            10, Set.of(MakeToOrderSaga.WORK_ORDER_CREATED), "worker-1", Duration.ofSeconds(30)))
+            10, Set.of(WorkOrderSaga.WORK_ORDER_CREATED), "worker-1", Duration.ofSeconds(30)))
             .isEmpty();
     }
 
     @Test
     void update_enforces_optimistic_lock_via_version() {
-        MakeToOrderSaga saga = workOrderCreatedDue(UUID.randomUUID(), Instant.now());
+        WorkOrderSaga saga = workOrderCreatedDue(UUID.randomUUID(), Instant.now());
         ADAPTER.insert(saga);
 
-        MakeToOrderSaga loadedA = ADAPTER.findBySagaId(saga.sagaId()).orElseThrow();
-        MakeToOrderSaga loadedB = ADAPTER.findBySagaId(saga.sagaId()).orElseThrow();
+        WorkOrderSaga loadedA = ADAPTER.findBySagaId(saga.sagaId()).orElseThrow();
+        WorkOrderSaga loadedB = ADAPTER.findBySagaId(saga.sagaId()).orElseThrow();
 
         ADAPTER.update(loadedA); // 1 → 2
         assertThatThrownBy(() -> ADAPTER.update(loadedB))
             .isInstanceOf(OptimisticLockingFailureException.class);
     }
 
-    private static MakeToOrderSaga workOrderCreatedDue(UUID workOrderId, Instant nextRetryAt) {
+    private static WorkOrderSaga workOrderCreatedDue(UUID workOrderId, Instant nextRetryAt) {
         Instant now = Instant.now();
-        return new MakeToOrderSaga(
+        return new WorkOrderSaga(
             UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), workOrderId,
-            MakeToOrderSaga.WORK_ORDER_CREATED, "wait", null, 0, nextRetryAt, null, null,
+            WorkOrderSaga.WORK_ORDER_CREATED, "wait", null, 0, nextRetryAt, null, null,
             0L, "{}", now, now, null);
     }
 }

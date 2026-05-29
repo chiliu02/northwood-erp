@@ -2,7 +2,7 @@ package com.northwood.manufacturing.application;
 
 import com.northwood.manufacturing.application.dto.CompleteOperationCommand;
 import com.northwood.manufacturing.application.dto.WorkOrderView;
-import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
+import com.northwood.manufacturing.application.saga.WorkOrderSagaManager;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderOperation;
@@ -40,7 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
  * its last child can finish in the same transaction.
  *
  * <p>Sagas: each work order in the tree owns its own
- * {@code make_to_order_saga} row. When any WO in the tree completes, its
+ * {@code work_order_saga} row. When any WO in the tree completes, its
  * saga is advanced to {@code completed} here (no self-consuming inbox loop —
  * the saga is in manufacturing's bounded context).
  *
@@ -67,12 +67,12 @@ public class WorkOrderOperationService {
     private static final Logger log = LoggerFactory.getLogger(WorkOrderOperationService.class);
 
     private final WorkOrderRepository workOrders;
-    private final MakeToOrderSagaManager sagaManager;
+    private final WorkOrderSagaManager sagaManager;
     private final OutboxAppender outbox;
 
     public WorkOrderOperationService(
         WorkOrderRepository workOrders,
-        MakeToOrderSagaManager sagaManager,
+        WorkOrderSagaManager sagaManager,
         OutboxAppender outbox
     ) {
         this.workOrders = workOrders;

@@ -9,7 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
+import com.northwood.manufacturing.application.saga.WorkOrderSagaManager;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderMaterial;
@@ -38,7 +38,7 @@ class WorkOrderCancellationServiceTest {
     private static final UUID WORKCENTRE = UUID.randomUUID();
 
     @Mock WorkOrderRepository workOrders;
-    @Mock MakeToOrderSagaManager sagaManager;
+    @Mock WorkOrderSagaManager sagaManager;
     @Mock OutboxAppender outbox;
 
     private WorkOrderCancellationService service;

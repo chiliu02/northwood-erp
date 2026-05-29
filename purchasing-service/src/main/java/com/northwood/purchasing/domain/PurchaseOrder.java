@@ -24,7 +24,7 @@ import java.util.UUID;
  * <ul>
  *   <li>Shortage-driven auto-PR: {@code autoApprove} reflects
  *       {@code northwood.purchasing.shortagePoAutoApprove} (default
- *       {@code true}) — the make-to-order saga can flow without a human.</li>
+ *       {@code true}) — the work-order saga can flow without a human.</li>
  *   <li>Manual PR (REST {@code POST /api/purchase-requisitions}):
  *       {@code autoApprove=false} always — manual PRs land at draft and
  *       require a human to call {@code POST /api/purchase-orders/{id}/approve}.</li>

@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
-import com.northwood.manufacturing.domain.saga.MakeToOrderSaga;
+import com.northwood.manufacturing.domain.saga.WorkOrderSaga;
 import com.northwood.testharness.inmemory.SynchronousBus;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryBomLookup;
 import com.northwood.testharness.kits.InventoryTestKit;
@@ -21,7 +21,7 @@ import tools.jackson.databind.ObjectMapper;
  * <p>A reorder-point breach on a finished good whose BOM contains a
  * sub-assembly now releases BOTH the top-level replenishment work order and a
  * child work order for the sub-assembly (the recursion ported from the
- * make-to-order path), and seeds a {@code make_to_order_saga} per work order
+ * make-to-order path), and seeds a {@code work_order_saga} per work order
  * with a null sales-order pair (make-to-stock). Before Slice 1,
  * {@code releaseForReplenishment} skipped sub-assemblies and seeded no saga.
  *
@@ -78,19 +78,19 @@ class StockReplenishmentSubAssemblyPathTest {
 
         // Two sagas seeded — one per WO — both make-to-stock (null sales-order),
         // both parked at work_order_created (no worker tick yet).
-        List<MakeToOrderSaga> sagas = mfg.sagas.all();
+        List<WorkOrderSaga> sagas = mfg.sagas.all();
         assertThat(sagas).hasSize(2);
         assertThat(sagas).allSatisfy(s -> {
             assertThat(s.salesOrderHeaderId()).isNull();
             assertThat(s.salesOrderLineId()).isNull();
             assertThat(s.workOrderId()).isNotNull();
-            assertThat(s.state()).isEqualTo(MakeToOrderSaga.WORK_ORDER_CREATED);
+            assertThat(s.state()).isEqualTo(WorkOrderSaga.WORK_ORDER_CREATED);
         });
 
         // Identify the FG (root) and SubA (child) work orders via the sagas.
         WorkOrder fgWo = null;
         WorkOrder subAWo = null;
-        for (MakeToOrderSaga s : sagas) {
+        for (WorkOrderSaga s : sagas) {
             WorkOrder wo = mfg.workOrders.findById(WorkOrderId.of(s.workOrderId())).orElseThrow();
             if (wo.parentWorkOrderId() == null) {
                 fgWo = wo;

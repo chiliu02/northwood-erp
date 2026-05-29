@@ -11,7 +11,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Inbox handler for {@code sales.SalesOrderCancellationRequested}: cancels
  * any active work orders for this sales order, force-flips associated
- * make-to-order sagas to {@code 'compensated'}, and emits
+ * work-order sagas to {@code 'compensated'}, and emits
  * {@code manufacturing.SalesOrderCancellationApplied} so the sales fulfilment
  * saga can advance.
  */

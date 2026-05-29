@@ -9,7 +9,7 @@ import com.northwood.manufacturing.domain.RoutingOperation;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderMaterial;
 import com.northwood.manufacturing.domain.WorkOrderOperation;
-import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
+import com.northwood.manufacturing.application.saga.WorkOrderSagaManager;
 import com.northwood.manufacturing.domain.WorkOrderRepository;
 import com.northwood.shared.application.exception.NotFoundException;
 import java.math.BigDecimal;
@@ -27,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
  * Release a stock-replenishment work order (make-to-stock). Walks the active
  * BOM: {@code raw} components become {@code work_order_material} rows on this
  * WO; {@code sub_assembly} components recursively spawn child work orders (with
- * their own BOM + Routing snapshot) and a child {@code make_to_order_saga} at
+ * their own BOM + Routing snapshot) and a child {@code work_order_saga} at
  * {@code work_order_created}, so each sub-assembly drives its own
  * raw-material-reservation flow exactly the same way the top-level WO does.
  *
@@ -72,13 +72,13 @@ public class WorkOrderReleaseService {
     private final WorkOrderRepository workOrders;
     private final RoutingQueryPort routings;
     private final BomLookup boms;
-    private final MakeToOrderSagaManager sagaManager;
+    private final WorkOrderSagaManager sagaManager;
 
     public WorkOrderReleaseService(
         WorkOrderRepository workOrders,
         RoutingQueryPort routings,
         BomLookup boms,
-        MakeToOrderSagaManager sagaManager
+        WorkOrderSagaManager sagaManager
     ) {
         this.workOrders = workOrders;
         this.routings = routings;
@@ -93,7 +93,7 @@ public class WorkOrderReleaseService {
      * {@code raw} components become {@code work_order_material} rows; each
      * {@code sub_assembly} component recursively spawns a child work order (its
      * own BOM + routing snapshot) bound to its parent WO. Every work order —
-     * top-level and descendants — gets a {@code make_to_order_saga} seeded at
+     * top-level and descendants — gets a {@code work_order_saga} seeded at
      * {@code work_order_created} so the worker drives raw-material reservation →
      * completion exactly like make-to-order. (Closes the §2.35 gap where
      * replenishment WOs were created without a lifecycle saga and skipped

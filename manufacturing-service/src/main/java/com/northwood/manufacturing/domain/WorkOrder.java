@@ -37,7 +37,7 @@ public final class WorkOrder {
     /**
      * Human-readable number prefix for new work orders; stamped by
      * {@code WorkOrderReleaseService.release} (manual + parent) and
-     * {@code MakeToOrderSagaWorker} (saga-driven release). Pure formatting
+     * {@code WorkOrderSagaWorker} (saga-driven release). Pure formatting
      * choice — no consumer dispatches on this value.
      */
     public static final String NUMBER_PREFIX = "WO-";
@@ -506,7 +506,7 @@ public final class WorkOrder {
     /**
      * Project the outcome of the raw-material reservation back onto this WO.
      * Called by {@code RawMaterialsReservedHandler} after {@code
-     * inventory.RawMaterialsReserved} lands. The make-to-order saga already
+     * inventory.RawMaterialsReserved} lands. The work-order saga already
      * tracks the same outcome on its state machine; this method gives a UI
      * reading the WO directly (production-board detail, /api/work-orders-cmd/
      * {id}) access to the same signal without joining across services.

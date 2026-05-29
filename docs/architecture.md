@@ -21,7 +21,7 @@ Read this way, only the `finance` schema is "the accounting service" because it 
 
 **Where the analogy stops.** ERP also has coordination concerns that aren't accounting:
 
-- **Workflow** — sagas (`sales_order_fulfilment`, `make_to_order`, `purchase_to_pay`) orchestrate multi-step business transactions across humans and services. A saga is a multi-leg journal entry that may take days to balance, with compensation as the reverse-posting mechanism.
+- **Workflow** — sagas (`sales_order_fulfilment`, `work_order`, `purchase_to_pay`) orchestrate multi-step business transactions across humans and services. A saga is a multi-leg journal entry that may take days to balance, with compensation as the reverse-posting mechanism.
 - **Role-based UX** — `@PreAuthorize` + per-persona screens (`erp-web-ui`) are human-factors design, not bookkeeping.
 - **Forward-looking computation** — ATP checks against `stock_balance`, the planned production-planning-board view, materials-cost rollups. Real ERPs have MRP runs and capacity scheduling here; Northwood deliberately stops short.
 

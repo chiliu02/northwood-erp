@@ -11,8 +11,8 @@ import static org.mockito.Mockito.when;
 import com.northwood.inventory.domain.InventoryAggregateTypes;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.events.GoodsReceived;
-import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
-import com.northwood.manufacturing.application.saga.MakeToOrderShortageRecoveryQueryPort;
+import com.northwood.manufacturing.application.saga.WorkOrderSagaManager;
+import com.northwood.manufacturing.application.saga.WorkOrderShortageRecoveryQueryPort;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
 import java.math.BigDecimal;
@@ -31,14 +31,14 @@ import tools.jackson.databind.ObjectMapper;
  * Shell-smoke tests: handler dedupes, builds the receivedByProduct map,
  * fetches candidates from the recovery query port, and delegates each to the
  * manager. Substantive un-park / narrow / legacy-fallback transition logic is
- * tested in {@code JdbcMakeToOrderSagaManagerTest}.
+ * tested in {@code JdbcWorkOrderSagaManagerTest}.
  */
 @ExtendWith(MockitoExtension.class)
 class GoodsReceivedHandlerTest {
 
     @Mock InboxPort inbox;
-    @Mock MakeToOrderSagaManager sagaManager;
-    @Mock MakeToOrderShortageRecoveryQueryPort recovery;
+    @Mock WorkOrderSagaManager sagaManager;
+    @Mock WorkOrderShortageRecoveryQueryPort recovery;
 
     private final ObjectMapper json = new ObjectMapper();
     private GoodsReceivedHandler handler;

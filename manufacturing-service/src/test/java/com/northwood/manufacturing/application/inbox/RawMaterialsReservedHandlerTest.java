@@ -2,8 +2,8 @@ package com.northwood.manufacturing.application.inbox;
 
 import com.northwood.manufacturing.domain.events.RawMaterialShortageDetected;
 
-import static com.northwood.manufacturing.domain.saga.MakeToOrderSaga.RAW_MATERIALS_RESERVED;
-import static com.northwood.manufacturing.domain.saga.MakeToOrderSaga.RAW_MATERIAL_SHORTAGE;
+import static com.northwood.manufacturing.domain.saga.WorkOrderSaga.RAW_MATERIALS_RESERVED;
+import static com.northwood.manufacturing.domain.saga.WorkOrderSaga.RAW_MATERIAL_SHORTAGE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -14,7 +14,7 @@ import static org.mockito.Mockito.when;
 
 import com.northwood.inventory.domain.InventoryAggregateTypes;
 import com.northwood.inventory.domain.events.RawMaterialsReserved;
-import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
+import com.northwood.manufacturing.application.saga.WorkOrderSagaManager;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderMaterial;
@@ -43,7 +43,7 @@ class RawMaterialsReservedHandlerTest {
     private static final UUID SO_LINE = UUID.randomUUID();
 
     @Mock InboxPort inbox;
-    @Mock MakeToOrderSagaManager sagaManager;
+    @Mock WorkOrderSagaManager sagaManager;
     @Mock WorkOrderRepository workOrders;
     @Mock OutboxAppender outbox;
 

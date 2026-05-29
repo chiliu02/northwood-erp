@@ -1,6 +1,6 @@
 package com.northwood.manufacturing.infrastructure.saga;
 
-import com.northwood.manufacturing.application.saga.MakeToOrderShortageRecoveryQueryPort;
+import com.northwood.manufacturing.application.saga.WorkOrderShortageRecoveryQueryPort;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
@@ -11,8 +11,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * JDBC adapter for {@link MakeToOrderShortageRecoveryQueryPort}. Joins
- * {@code make_to_order_saga} (parked in {@code raw_material_shortage}) to
+ * JDBC adapter for {@link WorkOrderShortageRecoveryQueryPort}. Joins
+ * {@code work_order_saga} (parked in {@code raw_material_shortage}) to
  * {@code work_order_material} via the saga's {@code work_order_id} so the
  * receipt-side handler can decide which sagas to consider for un-parking.
  *
@@ -21,11 +21,11 @@ import org.springframework.stereotype.Component;
  * is negligible; the simpler shape avoids dynamic SQL building.
  */
 @Component
-public class JdbcMakeToOrderShortageRecoveryQueryPort implements MakeToOrderShortageRecoveryQueryPort {
+public class JdbcWorkOrderShortageRecoveryQueryPort implements WorkOrderShortageRecoveryQueryPort {
 
     private final JdbcTemplate jdbc;
 
-    public JdbcMakeToOrderShortageRecoveryQueryPort(JdbcTemplate jdbc) {
+    public JdbcWorkOrderShortageRecoveryQueryPort(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
@@ -38,7 +38,7 @@ public class JdbcMakeToOrderShortageRecoveryQueryPort implements MakeToOrderShor
         for (UUID productId : productIds) {
             List<UUID> matched = jdbc.queryForList("""
                 SELECT s.saga_id
-                FROM manufacturing.make_to_order_saga s
+                FROM manufacturing.work_order_saga s
                 WHERE s.saga_state = 'raw_material_shortage'
                   AND EXISTS (
                       SELECT 1 FROM manufacturing.work_order_material m

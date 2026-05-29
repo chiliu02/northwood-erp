@@ -4,10 +4,10 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import com.northwood.inventory.domain.events.RawMaterialsReserved;
-import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
-import com.northwood.manufacturing.domain.saga.MakeToOrderSaga;
-import static com.northwood.manufacturing.domain.saga.MakeToOrderSaga.*;
-import com.northwood.manufacturing.application.saga.MakeToOrderSagaPort;
+import com.northwood.manufacturing.application.saga.WorkOrderSagaManager;
+import com.northwood.manufacturing.domain.saga.WorkOrderSaga;
+import static com.northwood.manufacturing.domain.saga.WorkOrderSaga.*;
+import com.northwood.manufacturing.application.saga.WorkOrderSagaPort;
 import com.northwood.shared.application.saga.SagaManager;
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -20,18 +20,18 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * JDBC-backed make-to-order saga manager. Saga state truth — every transition
+ * JDBC-backed work-order saga manager. Saga state truth — every transition
  * the saga can take is a method here. Holds <i>only</i> the minimum needed
- * for saga state work: {@link MakeToOrderSagaPort} (inherited as
+ * for saga state work: {@link WorkOrderSagaPort} (inherited as
  * {@code sagaPort}) and {@link ObjectMapper} (saga.data JSON). All side
  * effects (event emission, calls into other services / aggregates) live
  * with the caller — the worker shell for worker-driven advances and the
  * inbox handler shells for inbox-driven advances.
  */
 @Service
-public class JdbcMakeToOrderSagaManager
-    extends SagaManager<MakeToOrderSaga, MakeToOrderSagaPort>
-    implements MakeToOrderSagaManager {
+public class JdbcWorkOrderSagaManager
+    extends SagaManager<WorkOrderSaga, WorkOrderSagaPort>
+    implements WorkOrderSagaManager {
 
     private final ObjectMapper json;
 
@@ -40,8 +40,8 @@ public class JdbcMakeToOrderSagaManager
      * {@code northwood.saga.lease-ttl-seconds} (default 30s) and
      * {@code northwood.saga.retry-backoff-seconds} (default 15s) — §2.13.
      */
-    public JdbcMakeToOrderSagaManager(
-        MakeToOrderSagaPort sagaPort,
+    public JdbcWorkOrderSagaManager(
+        WorkOrderSagaPort sagaPort,
         ObjectMapper json,
         PlatformTransactionManager transactionManager,
         @org.springframework.beans.factory.annotation.Value("${northwood.saga.lease-ttl-seconds:30}") long leaseTtlSeconds,
@@ -68,7 +68,7 @@ public class JdbcMakeToOrderSagaManager
     public void insertAttachedToWorkOrder(
         UUID salesOrderHeaderId, UUID salesOrderLineId, UUID workOrderId, String dataJson
     ) {
-        sagaPort.insert(MakeToOrderSaga.attachedToWorkOrder(
+        sagaPort.insert(WorkOrderSaga.attachedToWorkOrder(
             salesOrderHeaderId, salesOrderLineId, workOrderId, dataJson
         ));
     }
@@ -82,9 +82,9 @@ public class JdbcMakeToOrderSagaManager
     public String applyRawMaterialsReserved(
         UUID workOrderId, String status, Map<UUID, BigDecimal> shortageByProductId
     ) {
-        MakeToOrderSaga saga = sagaPort.findByWorkOrderId(workOrderId)
+        WorkOrderSaga saga = sagaPort.findByWorkOrderId(workOrderId)
             .orElseThrow(() -> new IllegalStateException(
-                "No make-to-order saga for work_order_id=" + workOrderId
+                "No work-order saga for work_order_id=" + workOrderId
                     + "; cannot apply " + RawMaterialsReserved.EVENT_TYPE
             ));
 
@@ -111,7 +111,7 @@ public class JdbcMakeToOrderSagaManager
     @Override
     @Transactional
     public String unparkOrNarrowShortage(UUID sagaId, Map<UUID, BigDecimal> receivedByProductId) {
-        MakeToOrderSaga saga = sagaPort.findBySagaId(sagaId).orElse(null);
+        WorkOrderSaga saga = sagaPort.findBySagaId(sagaId).orElse(null);
         if (saga == null || !RAW_MATERIAL_SHORTAGE.equals(saga.state())) {
             return null;
         }
@@ -138,9 +138,9 @@ public class JdbcMakeToOrderSagaManager
     @Override
     @Transactional
     public String applyManufacturingCompleted(UUID workOrderId) {
-        MakeToOrderSaga saga = sagaPort.findByWorkOrderId(workOrderId).orElse(null);
+        WorkOrderSaga saga = sagaPort.findByWorkOrderId(workOrderId).orElse(null);
         if (saga == null) {
-            log.warn("no make-to-order saga found for work_order={}; skipping saga advancement", workOrderId);
+            log.warn("no work-order saga found for work_order={}; skipping saga advancement", workOrderId);
             return null;
         }
         if (saga.terminalStates().contains(saga.state())) {
@@ -156,7 +156,7 @@ public class JdbcMakeToOrderSagaManager
     @Override
     @Transactional
     public String cancelForWorkOrder(UUID workOrderId) {
-        MakeToOrderSaga saga = sagaPort.findByWorkOrderId(workOrderId).orElse(null);
+        WorkOrderSaga saga = sagaPort.findByWorkOrderId(workOrderId).orElse(null);
         if (saga == null) {
             return null;
         }
@@ -176,7 +176,7 @@ public class JdbcMakeToOrderSagaManager
 
     private enum UnparkDecision { UNPARK, NARROW, NONE }
 
-    private UnparkDecision decideUnpark(MakeToOrderSaga saga, Map<UUID, BigDecimal> receivedByProductId) {
+    private UnparkDecision decideUnpark(WorkOrderSaga saga, Map<UUID, BigDecimal> receivedByProductId) {
         Map<String, Object> data;
         String existing = saga.dataJson();
         if (existing == null || existing.isBlank() || "{}".equals(existing.trim())) {
@@ -218,7 +218,7 @@ public class JdbcMakeToOrderSagaManager
         return allCovered ? UnparkDecision.UNPARK : UnparkDecision.NARROW;
     }
 
-    private void stashShortageOnSaga(MakeToOrderSaga saga, Map<UUID, BigDecimal> shortageByProductId) {
+    private void stashShortageOnSaga(WorkOrderSaga saga, Map<UUID, BigDecimal> shortageByProductId) {
         Map<String, Object> data;
         String existing = saga.dataJson();
         if (existing == null || existing.isBlank() || "{}".equals(existing.trim())) {

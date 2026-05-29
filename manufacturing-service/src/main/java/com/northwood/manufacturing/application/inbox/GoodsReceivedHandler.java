@@ -1,11 +1,11 @@
 package com.northwood.manufacturing.application.inbox;
 
-import static com.northwood.manufacturing.domain.saga.MakeToOrderSaga.RAW_MATERIAL_SHORTAGE;
-import static com.northwood.manufacturing.domain.saga.MakeToOrderSaga.WORK_ORDER_CREATED;
+import static com.northwood.manufacturing.domain.saga.WorkOrderSaga.RAW_MATERIAL_SHORTAGE;
+import static com.northwood.manufacturing.domain.saga.WorkOrderSaga.WORK_ORDER_CREATED;
 
-import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
+import com.northwood.manufacturing.application.saga.WorkOrderSagaManager;
 import com.northwood.inventory.domain.events.GoodsReceived;
-import com.northwood.manufacturing.application.saga.MakeToOrderShortageRecoveryQueryPort;
+import com.northwood.manufacturing.application.saga.WorkOrderShortageRecoveryQueryPort;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
 import com.northwood.shared.application.messaging.EventEnvelope;
@@ -29,13 +29,13 @@ public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
 
     public static final String CONSUMER_NAME = "manufacturing.make-to-order.goods-received";
 
-    private final MakeToOrderSagaManager sagaManager;
-    private final MakeToOrderShortageRecoveryQueryPort recovery;
+    private final WorkOrderSagaManager sagaManager;
+    private final WorkOrderShortageRecoveryQueryPort recovery;
 
     public GoodsReceivedHandler(
         InboxPort inbox,
-        MakeToOrderSagaManager sagaManager,
-        MakeToOrderShortageRecoveryQueryPort recovery,
+        WorkOrderSagaManager sagaManager,
+        WorkOrderShortageRecoveryQueryPort recovery,
         ObjectMapper json
     ) {
         super(inbox, json, GoodsReceived.class, GoodsReceived.EVENT_TYPE, CONSUMER_NAME);

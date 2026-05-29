@@ -23,7 +23,7 @@ import java.util.UUID;
  * seeded directly at {@code work_order_created}. (Saga is now a misnomer — it
  * serves make-to-stock too; §2.39 tracks the rename.)
  */
-public final class MakeToOrderSaga extends SagaInstance {
+public final class WorkOrderSaga extends SagaInstance {
 
     /**
      * Wire-format aggregate-type reserved for events this saga emits under its
@@ -34,11 +34,11 @@ public final class MakeToOrderSaga extends SagaInstance {
      * Declared for symmetry with {@code SalesOrderFulfilmentSaga} and as the
      * stable call site for any future saga-originated commands.
      */
-    public static final String AGGREGATE_TYPE = ManufacturingAggregateTypes.MAKE_TO_ORDER_SAGA;
+    public static final String AGGREGATE_TYPE = ManufacturingAggregateTypes.WORK_ORDER_SAGA;
 
     // ------------------------------------------------------------
     // State constants — Java-side ergonomic for the wire-format strings
-    // stored in manufacturing.make_to_order_saga.saga_state. The DB CHECK
+    // stored in manufacturing.work_order_saga.saga_state. The DB CHECK
     // and event payloads keep the underlying strings as canonical form.
     // ------------------------------------------------------------
     public static final String WORK_ORDER_CREATED = "work_order_created";
@@ -55,7 +55,7 @@ public final class MakeToOrderSaga extends SagaInstance {
     /**
      * Every state this saga's code can transition into. Cross-checked at
      * service startup against the schema CHECK on
-     * {@code manufacturing.make_to_order_saga.saga_state} via
+     * {@code manufacturing.work_order_saga.saga_state} via
      * {@code SagaStateInvariantChecker}.
      */
     public static final Set<String> ALL_STATES = Set.of(
@@ -71,7 +71,7 @@ public final class MakeToOrderSaga extends SagaInstance {
     private final UUID salesOrderLineId;
     private UUID workOrderId;
 
-    public MakeToOrderSaga(
+    public WorkOrderSaga(
         UUID sagaId,
         UUID salesOrderHeaderId,
         UUID salesOrderLineId,
@@ -104,14 +104,14 @@ public final class MakeToOrderSaga extends SagaInstance {
      * pre-attached. Used for the root stock-replenishment WO and every
      * sub-assembly child (all make-to-stock; sales-order pair null).
      */
-    public static MakeToOrderSaga attachedToWorkOrder(
+    public static WorkOrderSaga attachedToWorkOrder(
         UUID salesOrderHeaderId,
         UUID salesOrderLineId,
         UUID workOrderId,
         String dataJson
     ) {
         Instant now = Instant.now();
-        return new MakeToOrderSaga(
+        return new WorkOrderSaga(
             UUID.randomUUID(),
             salesOrderHeaderId,
             salesOrderLineId,

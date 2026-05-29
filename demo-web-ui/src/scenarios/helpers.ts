@@ -67,15 +67,15 @@ export function waitForSalesSaga(expectedStates: string[], opts?: { stepId?: str
 }
 
 /**
- * Wait for the make-to-order saga(s) for this SO to reach an expected state.
+ * Wait for the work-order saga(s) for this SO to reach an expected state.
  * If `captureWorkOrderIds=true`, stamps the discovered WO ids onto the context.
  */
-export function waitForMakeToOrderSaga(expectedStates: string[], opts?: {
+export function waitForWorkOrderSaga(expectedStates: string[], opts?: {
   stepId?: string; title?: string; captureWorkOrderIds?: boolean;
 }): ScenarioStep {
   return {
     id: opts?.stepId ?? `wait-mto-saga-${expectedStates[0]}`,
-    title: opts?.title ?? `Wait until make-to-order saga reaches ${expectedStates.join(" / ")}`,
+    title: opts?.title ?? `Wait until work-order saga reaches ${expectedStates.join(" / ")}`,
     hint: "polling /api/sagas/manufacturing every 2s",
     kind: "auto",
     run: async (ctx, signal) => {
@@ -212,7 +212,7 @@ export const customerPaymentRecordedForSo = async (ctx: ScenarioContext): Promis
 
 const SERVICE_TO_SAGA_TYPE: Record<"sales" | "manufacturing" | "purchasing", string> = {
   sales:         "sales_order_fulfilment",
-  manufacturing: "make_to_order",
+  manufacturing: "work_order",
   purchasing:    "purchase_to_pay",
 };
 

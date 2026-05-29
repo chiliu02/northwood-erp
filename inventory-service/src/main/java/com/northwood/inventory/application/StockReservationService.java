@@ -127,7 +127,7 @@ public class StockReservationService {
     public void reserveForWorkOrder(RawMaterialReservationRequested payload) {
         UUID warehouseId = warehouses.findIdByCode(payload.warehouseCode() == null ? WarehouseCodes.MAIN : payload.warehouseCode());
 
-        // Phase 3 retry support: a make-to-order saga that previously landed
+        // Phase 3 retry support: a work-order saga that previously landed
         // at raw_material_shortage will re-emit the reservation request after
         // a goods receipt unblocks it. The schema's UNIQUE on
         // stock_reservation_header.work_order_id blocks a second insert, so

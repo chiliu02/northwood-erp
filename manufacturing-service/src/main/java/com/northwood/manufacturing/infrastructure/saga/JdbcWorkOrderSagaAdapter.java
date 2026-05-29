@@ -1,7 +1,7 @@
 package com.northwood.manufacturing.infrastructure.saga;
 
-import com.northwood.manufacturing.domain.saga.MakeToOrderSaga;
-import com.northwood.manufacturing.application.saga.MakeToOrderSagaPort;
+import com.northwood.manufacturing.domain.saga.WorkOrderSaga;
+import com.northwood.manufacturing.application.saga.WorkOrderSagaPort;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -16,25 +16,25 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public class JdbcMakeToOrderSagaAdapter implements MakeToOrderSagaPort {
+public class JdbcWorkOrderSagaAdapter implements WorkOrderSagaPort {
 
     private final JdbcTemplate jdbc;
 
-    public JdbcMakeToOrderSagaAdapter(JdbcTemplate jdbc) {
+    public JdbcWorkOrderSagaAdapter(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
     @Override
-    public Optional<MakeToOrderSaga> findBySagaId(UUID sagaId) {
+    public Optional<WorkOrderSaga> findBySagaId(UUID sagaId) {
         return findBy("saga_id = ?", sagaId);
     }
 
     @Override
-    public Optional<MakeToOrderSaga> findByWorkOrderId(UUID workOrderId) {
+    public Optional<WorkOrderSaga> findByWorkOrderId(UUID workOrderId) {
         return findBy("work_order_id = ?", workOrderId);
     }
 
-    private Optional<MakeToOrderSaga> findBy(String predicate, Object value) {
+    private Optional<WorkOrderSaga> findBy(String predicate, Object value) {
         try {
             return Optional.ofNullable(jdbc.queryForObject(
                 """
@@ -42,7 +42,7 @@ public class JdbcMakeToOrderSagaAdapter implements MakeToOrderSagaPort {
                        saga_state, current_step, last_error, retry_count, next_retry_at,
                        lease_owner, lease_expires_at, version, data,
                        created_at, updated_at, completed_at
-                FROM manufacturing.make_to_order_saga
+                FROM manufacturing.work_order_saga
                 WHERE %s
                 """.formatted(predicate),
                 ROW_MAPPER, value
@@ -53,17 +53,17 @@ public class JdbcMakeToOrderSagaAdapter implements MakeToOrderSagaPort {
     }
 
     @Override
-    public List<MakeToOrderSaga> claimDue(int batchSize, Set<String> activeStates, String leaseOwner, Duration leaseTtl) {
+    public List<WorkOrderSaga> claimDue(int batchSize, Set<String> activeStates, String leaseOwner, Duration leaseTtl) {
         if (activeStates.isEmpty()) {
             return List.of();
         }
         String inList = activeStates.stream().map(s -> "'" + s.replace("'", "''") + "'")
             .reduce((a, b) -> a + "," + b).orElseThrow();
         String sql = """
-            UPDATE manufacturing.make_to_order_saga
+            UPDATE manufacturing.work_order_saga
             SET lease_owner = ?, lease_expires_at = ?
             WHERE saga_id IN (
-                SELECT saga_id FROM manufacturing.make_to_order_saga
+                SELECT saga_id FROM manufacturing.work_order_saga
                 WHERE saga_state IN (%s)
                   AND next_retry_at <= now()
                   AND (lease_owner IS NULL OR lease_expires_at < now())
@@ -81,9 +81,9 @@ public class JdbcMakeToOrderSagaAdapter implements MakeToOrderSagaPort {
     }
 
     @Override
-    public void update(MakeToOrderSaga saga) {
+    public void update(WorkOrderSaga saga) {
         int rows = jdbc.update("""
-            UPDATE manufacturing.make_to_order_saga SET
+            UPDATE manufacturing.work_order_saga SET
                 saga_state = ?, current_step = ?, last_error = ?,
                 retry_count = ?, next_retry_at = ?,
                 lease_owner = ?, lease_expires_at = ?,
@@ -110,9 +110,9 @@ public class JdbcMakeToOrderSagaAdapter implements MakeToOrderSagaPort {
     }
 
     @Override
-    public void insert(MakeToOrderSaga saga) {
+    public void insert(WorkOrderSaga saga) {
         jdbc.update("""
-            INSERT INTO manufacturing.make_to_order_saga (
+            INSERT INTO manufacturing.work_order_saga (
                 saga_id, sales_order_header_id, sales_order_line_id, work_order_id,
                 saga_state, current_step, last_error,
                 retry_count, next_retry_at, lease_owner, lease_expires_at,
@@ -129,10 +129,10 @@ public class JdbcMakeToOrderSagaAdapter implements MakeToOrderSagaPort {
         saga.incrementVersion();
     }
 
-    private static final RowMapper<MakeToOrderSaga> ROW_MAPPER = (rs, n) -> {
+    private static final RowMapper<WorkOrderSaga> ROW_MAPPER = (rs, n) -> {
         Timestamp leaseExpiresAt = rs.getTimestamp("lease_expires_at");
         Timestamp completedAt = rs.getTimestamp("completed_at");
-        return new MakeToOrderSaga(
+        return new WorkOrderSaga(
             rs.getObject("saga_id", UUID.class),
             rs.getObject("sales_order_header_id", UUID.class),
             rs.getObject("sales_order_line_id", UUID.class),

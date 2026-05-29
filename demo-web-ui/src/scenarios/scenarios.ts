@@ -19,7 +19,7 @@ import {
   shipmentPostedForSalesOrder,
   supplierInvoiceRecordedForPo,
   supplierPaymentRecordedForPo,
-  waitForMakeToOrderSaga,
+  waitForWorkOrderSaga,
   waitForP2PSaga,
   waitForSalesSaga,
 } from "./helpers";
@@ -34,9 +34,9 @@ const SCENARIO_3_1: Scenario = {
       stepId: "wait-mfg-requested",
       title: "Wait for sales saga → manufacturing_requested",
     }),
-    waitForMakeToOrderSaga(["raw_materials_reserved", "production_started", "production_completed"], {
+    waitForWorkOrderSaga(["raw_materials_reserved", "production_started", "production_completed"], {
       stepId: "wait-rm-reserved",
-      title: "Wait for make-to-order saga → raw_materials_reserved",
+      title: "Wait for work-order saga → raw_materials_reserved",
       captureWorkOrderIds: true,
     }),
     humanStep(
@@ -85,9 +85,9 @@ const SCENARIO_5_2: Scenario = {
       stepId: "wait-mfg-req",
       title: "Wait for sales saga → manufacturing_requested",
     }),
-    waitForMakeToOrderSaga(["raw_material_shortage"], {
+    waitForWorkOrderSaga(["raw_material_shortage"], {
       stepId: "wait-shortage",
-      title: "Wait for make-to-order saga → raw_material_shortage",
+      title: "Wait for work-order saga → raw_material_shortage",
       captureWorkOrderIds: true,
     }),
     waitForP2PSaga(["waiting_for_goods", "started"], {
@@ -101,9 +101,9 @@ const SCENARIO_5_2: Scenario = {
       "Open /goods-receipts → fill the PO id (captured by previous step) and required qty → Post.",
       goodsReceiptPostedForPo
     ),
-    waitForMakeToOrderSaga(["raw_materials_reserved", "production_started", "completed"], {
+    waitForWorkOrderSaga(["raw_materials_reserved", "production_started", "completed"], {
       stepId: "wait-mto-recovered",
-      title: "Wait for make-to-order saga to un-park and reach raw_materials_reserved",
+      title: "Wait for work-order saga to un-park and reach raw_materials_reserved",
     }),
     humanStep(
       "scenario-end",

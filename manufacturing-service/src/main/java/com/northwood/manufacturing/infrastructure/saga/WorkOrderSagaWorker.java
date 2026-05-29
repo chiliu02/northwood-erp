@@ -1,6 +1,6 @@
 package com.northwood.manufacturing.infrastructure.saga;
 
-import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
+import com.northwood.manufacturing.application.saga.WorkOrderSagaManager;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderMaterial;
@@ -8,9 +8,9 @@ import com.northwood.manufacturing.domain.WorkOrderRepository;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.manufacturing.domain.events.RawMaterialReservationRequested;
 import com.northwood.manufacturing.domain.events.RawMaterialReservationRequested.RequestedComponent;
-import com.northwood.manufacturing.domain.saga.MakeToOrderSaga;
-import static com.northwood.manufacturing.domain.saga.MakeToOrderSaga.RAW_MATERIAL_RESERVATION_REQUESTED;
-import static com.northwood.manufacturing.domain.saga.MakeToOrderSaga.WORK_ORDER_CREATED;
+import com.northwood.manufacturing.domain.saga.WorkOrderSaga;
+import static com.northwood.manufacturing.domain.saga.WorkOrderSaga.RAW_MATERIAL_RESERVATION_REQUESTED;
+import static com.northwood.manufacturing.domain.saga.WorkOrderSaga.WORK_ORDER_CREATED;
 import com.northwood.shared.domain.Assert;
 import com.northwood.shared.application.outbox.OutboxAppender;
 import java.lang.management.ManagementFactory;
@@ -25,10 +25,10 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Spring scheduling glue + worker-driven advance for the make-to-order saga.
+ * Spring scheduling glue + worker-driven advance for the work-order saga.
  * Holds the worker-driven side effects (WO load + outbox emission of
  * {@code RawMaterialReservationRequested}); the saga state machine lives
- * on {@link MakeToOrderSagaManager}.
+ * on {@link WorkOrderSagaManager}.
  *
  * <p>Worker-driven advances:
  * <ul>
@@ -45,20 +45,20 @@ import org.springframework.stereotype.Component;
  * (make-to-stock — both the root replenishment WO and its sub-assembly children).
  */
 @Component
-public class MakeToOrderSagaWorker {
+public class WorkOrderSagaWorker {
 
-    private static final Logger log = LoggerFactory.getLogger(MakeToOrderSagaWorker.class);
+    private static final Logger log = LoggerFactory.getLogger(WorkOrderSagaWorker.class);
     private static final int BATCH_SIZE = 10;
 
     private final String workerId =
         "manufacturing.mto-worker@" + ManagementFactory.getRuntimeMXBean().getName();
 
-    private final MakeToOrderSagaManager manager;
+    private final WorkOrderSagaManager manager;
     private final WorkOrderRepository workOrders;
     private final OutboxAppender outbox;
 
-    public MakeToOrderSagaWorker(
-        MakeToOrderSagaManager manager,
+    public WorkOrderSagaWorker(
+        WorkOrderSagaManager manager,
         WorkOrderRepository workOrders,
         OutboxAppender outbox
     ) {
@@ -77,14 +77,14 @@ public class MakeToOrderSagaWorker {
         manager.drain(BATCH_SIZE, workerId, this::advance);
     }
 
-    private void advance(MakeToOrderSaga saga) {
+    private void advance(WorkOrderSaga saga) {
         switch (saga.state()) {
             case WORK_ORDER_CREATED -> requestRawMaterialReservation(saga);
             default -> log.debug("[{}] no transition implemented for state {}", workerId, saga.state());
         }
     }
 
-    private void requestRawMaterialReservation(MakeToOrderSaga saga) {
+    private void requestRawMaterialReservation(WorkOrderSaga saga) {
         UUID workOrderId = saga.workOrderId();
         Assert.stateNotNull(workOrderId, "saga " + saga.sagaId() + " is in work_order_created but has no work_order_id");
         WorkOrder workOrder = workOrders.findById(WorkOrderId.of(workOrderId))

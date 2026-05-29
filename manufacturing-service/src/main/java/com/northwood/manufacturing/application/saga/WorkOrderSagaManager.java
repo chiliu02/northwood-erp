@@ -1,6 +1,6 @@
 package com.northwood.manufacturing.application.saga;
 
-import com.northwood.manufacturing.domain.saga.MakeToOrderSaga;
+import com.northwood.manufacturing.domain.saga.WorkOrderSaga;
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.UUID;
@@ -9,10 +9,10 @@ import java.util.function.Consumer;
 /**
  * Saga state-machine port for the make-to-order flow. Holds saga state truth
  * — every transition the saga can take is a method here. Implementation
- * depends only on {@code MakeToOrderSagaPort} (saga row CRUD) and an
+ * depends only on {@code WorkOrderSagaPort} (saga row CRUD) and an
  * {@code ObjectMapper} for {@code saga.data} JSON. All side effects
  * (event emission, projection writes, calls into other services / aggregates)
- * are caller's job — the {@code MakeToOrderSagaWorker} shell for worker-driven
+ * are caller's job — the {@code WorkOrderSagaWorker} shell for worker-driven
  * advances and the inbox handler shells for inbox-driven advances.
  *
  * <p>Each {@code applyXxx} returns the saga's new state (or its current state
@@ -20,7 +20,7 @@ import java.util.function.Consumer;
  * return value — e.g. {@code "raw_material_shortage"} triggers a
  * {@code RawMaterialShortageDetected} emission on the handler side.
  */
-public interface MakeToOrderSagaManager {
+public interface WorkOrderSagaManager {
 
     // ------------------------------------------------------------
     // Lifecycle (called from WorkOrderReleaseService)
@@ -40,7 +40,7 @@ public interface MakeToOrderSagaManager {
     );
 
     // ------------------------------------------------------------
-    // Worker drain (called from MakeToOrderSagaWorker)
+    // Worker drain (called from WorkOrderSagaWorker)
     // ------------------------------------------------------------
 
     /**
@@ -48,7 +48,7 @@ public interface MakeToOrderSagaManager {
      * worker shell supplies its own {@code workerId} and an {@code advanceFn}
      * that mutates the saga + emits any saga-driven outbound events.
      */
-    void drain(int batchSize, String workerId, Consumer<MakeToOrderSaga> advanceFn);
+    void drain(int batchSize, String workerId, Consumer<WorkOrderSaga> advanceFn);
 
     // ------------------------------------------------------------
     // Inbox-driven transitions

@@ -16,8 +16,8 @@ import com.northwood.manufacturing.application.inbox.RawMaterialsReservedHandler
 import com.northwood.manufacturing.application.inbox.ReplenishmentRequestedHandler;
 import com.northwood.manufacturing.application.inbox.SalesOrderCancellationRequestedHandler;
 import com.northwood.manufacturing.application.inbox.SupplierProductPriceChangedHandler;
-import com.northwood.manufacturing.infrastructure.saga.JdbcMakeToOrderSagaManager;
-import com.northwood.manufacturing.infrastructure.saga.MakeToOrderSagaWorker;
+import com.northwood.manufacturing.infrastructure.saga.JdbcWorkOrderSagaManager;
+import com.northwood.manufacturing.infrastructure.saga.WorkOrderSagaWorker;
 import com.northwood.shared.application.outbox.OutboxAppender;
 import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.testharness.inmemory.InMemoryInboxPort;
@@ -27,8 +27,8 @@ import com.northwood.testharness.inmemory.SynchronousBus;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryBomCycleDetector;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryBomRepository;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryBomLookup;
-import com.northwood.testharness.inmemory.manufacturing.InMemoryMakeToOrderSagaPort;
-import com.northwood.testharness.inmemory.manufacturing.InMemoryMakeToOrderShortageRecoveryQueryPort;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryWorkOrderSagaPort;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryWorkOrderShortageRecoveryQueryPort;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryProductActiveBomProjection;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryProductApprovedVendorProjection;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryProductMaterialsCostProjection;
@@ -40,7 +40,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Per-service test composition for manufacturing. Wires every application
- * service the production wiring uses, plus the make-to-order saga manager,
+ * service the production wiring uses, plus the work-order saga manager,
  * saga worker shell, and 9 inbox handlers, against in-memory adapters.
  *
  * <p>Saga-worker driving: {@link #advanceSagaWorker()} runs one drain pass
@@ -58,15 +58,15 @@ public final class ManufacturingTestKit {
     public final InMemoryBomLookup bomLookup = new InMemoryBomLookup();
     public final InMemoryBomRepository boms;
     public final InMemoryBomCycleDetector bomCycleDetector = new InMemoryBomCycleDetector(bomLookup);
-    public final InMemoryMakeToOrderSagaPort sagas = new InMemoryMakeToOrderSagaPort();
+    public final InMemoryWorkOrderSagaPort sagas = new InMemoryWorkOrderSagaPort();
     public final InMemoryProductReplenishmentProjection replenishment = new InMemoryProductReplenishmentProjection();
     public final InMemoryProductActiveBomProjection activeBoms = new InMemoryProductActiveBomProjection();
     public final InMemoryProductApprovedVendorProjection approvedVendors = new InMemoryProductApprovedVendorProjection();
     public final InMemoryProductMaterialsCostProjection materialsCosts = new InMemoryProductMaterialsCostProjection();
-    public final InMemoryMakeToOrderShortageRecoveryQueryPort shortageRecovery;
+    public final InMemoryWorkOrderShortageRecoveryQueryPort shortageRecovery;
 
-    public final JdbcMakeToOrderSagaManager sagaManager;
-    public final MakeToOrderSagaWorker sagaWorker;
+    public final JdbcWorkOrderSagaManager sagaManager;
+    public final WorkOrderSagaWorker sagaWorker;
     public final WorkOrderReleaseService releaseService;
     public final WorkOrderOperationService operationService;
     public final WorkOrderCancellationService cancellationService;
@@ -79,9 +79,9 @@ public final class ManufacturingTestKit {
     public ManufacturingTestKit(SynchronousBus bus, ObjectMapper json) {
         this.workOrders = new InMemoryWorkOrderRepository(outbox, json);
         this.boms = new InMemoryBomRepository(outbox, json);
-        this.shortageRecovery = new InMemoryMakeToOrderShortageRecoveryQueryPort(sagas, workOrders);
+        this.shortageRecovery = new InMemoryWorkOrderShortageRecoveryQueryPort(sagas, workOrders);
         PlatformTransactionManager txm = new NoopPlatformTransactionManager();
-        this.sagaManager = new JdbcMakeToOrderSagaManager(sagas, json, txm, 30L, 15L);
+        this.sagaManager = new JdbcWorkOrderSagaManager(sagas, json, txm, 30L, 15L);
         this.releaseService = new WorkOrderReleaseService(workOrders, routings, bomLookup, sagaManager);
 
         CurrentUserAccessor currentUser = new CurrentUserAccessor();
@@ -100,7 +100,7 @@ public final class ManufacturingTestKit {
         );
         this.bomService = new BomService(boms, bomCycleDetector, rollupService, replenishment);
 
-        this.sagaWorker = new MakeToOrderSagaWorker(
+        this.sagaWorker = new WorkOrderSagaWorker(
             sagaManager, workOrders, appender
         );
         this.workerId = "manufacturing.mto-test-worker";
@@ -122,7 +122,7 @@ public final class ManufacturingTestKit {
     }
 
     /**
-     * Drive the make-to-order saga worker through one drain pass. Picks up
+     * Drive the work-order saga worker through one drain pass. Picks up
      * sagas in {@code work_order_created} (advancing each by one transition).
      * §2.37 Slice 3 removed the {@code started} entry — every saga is now
      * seeded directly at {@code work_order_created} by the release service.

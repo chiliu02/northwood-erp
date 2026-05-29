@@ -1460,11 +1460,11 @@ CREATE TABLE manufacturing.production_report (
 CREATE INDEX idx_production_report_work_order_id
     ON manufacturing.production_report(work_order_id);
 
-CREATE TABLE manufacturing.make_to_order_saga (
+CREATE TABLE manufacturing.work_order_saga (
     saga_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     -- Nullable since §2.37 Slice 1: make-to-stock replenishment work orders run
     -- this same WO-lifecycle saga but have no originating sales order. (Saga is
-    -- still named make_to_order_saga; rename deferred — see dev-todo §2.39.)
+    -- still named work_order_saga; rename deferred — see dev-todo §2.39.)
     sales_order_header_id UUID,
     sales_order_line_id UUID,
     work_order_id UUID UNIQUE,
@@ -1490,18 +1490,18 @@ CREATE TABLE manufacturing.make_to_order_saga (
     completed_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_make_to_order_saga_state
-    ON manufacturing.make_to_order_saga(saga_state);
-CREATE INDEX idx_make_to_order_saga_sales_order_header_id
-    ON manufacturing.make_to_order_saga(sales_order_header_id);
-CREATE INDEX idx_make_to_order_saga_due
-    ON manufacturing.make_to_order_saga(next_retry_at)
+CREATE INDEX idx_work_order_saga_state
+    ON manufacturing.work_order_saga(saga_state);
+CREATE INDEX idx_work_order_saga_sales_order_header_id
+    ON manufacturing.work_order_saga(sales_order_header_id);
+CREATE INDEX idx_work_order_saga_due
+    ON manufacturing.work_order_saga(next_retry_at)
     WHERE saga_state NOT IN ('completed', 'compensated', 'failed');
-CREATE INDEX idx_make_to_order_saga_data
-    ON manufacturing.make_to_order_saga USING gin (data jsonb_path_ops);
+CREATE INDEX idx_work_order_saga_data
+    ON manufacturing.work_order_saga USING gin (data jsonb_path_ops);
 
-CREATE TRIGGER trg_make_to_order_saga_updated_at
-    BEFORE UPDATE ON manufacturing.make_to_order_saga
+CREATE TRIGGER trg_work_order_saga_updated_at
+    BEFORE UPDATE ON manufacturing.work_order_saga
     FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
 
 -- Status history for work orders.

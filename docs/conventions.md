@@ -746,7 +746,7 @@ One schema per bounded context plus `shared` for cross-service primitives.
 | `product`       | Product master (catalogue producer). |
 | `sales`         | Sales orders, customers, sales-side product-pricing projection, sales-order-fulfilment saga. |
 | `inventory`     | Stock items, balances, reservations, goods receipts, shipments. |
-| `manufacturing` | BOMs, work orders, routings, make-to-stock work-order saga (the `make_to_order_saga` table — driven by inventory's replenishment requests since §2.37; rename deferred to §2.39). |
+| `manufacturing` | BOMs, work orders, routings, make-to-stock work-order saga (the `work_order_saga` table — driven by inventory's replenishment requests since §2.37; rename deferred to §2.39). |
 | `purchasing`    | Suppliers, supplier prices, purchase requisitions, purchase orders, purchase-to-pay saga. |
 | `finance`       | Customer/supplier invoices, payments, journal entries, GL accounts, tax codes, exchange rates. |
 | `reporting`     | Read-only consolidated views. Inbox-only — reporting never publishes. |
@@ -785,7 +785,7 @@ A parent takes the `_header` suffix **only if** its detail child is named `_line
 |---|---|---|
 | Operational aggregate root        | `<aggregate>` or `<aggregate>_header`         | `customer`, `bom_header`, `sales_order_header` |
 | Master-detail child               | `<aggregate>_<role>` (`_line` or domain-specific) | `sales_order_line`, `work_order_material` |
-| Saga state                        | `<flow>_saga` (singular)                       | `sales_order_fulfilment_saga`, `make_to_order_saga`, `purchase_to_pay_saga` |
+| Saga state                        | `<flow>_saga` (singular)                       | `sales_order_fulfilment_saga`, `work_order_saga`, `purchase_to_pay_saga` |
 | Status history (partitioned)      | `<aggregate>_status_history`                   | `sales_order_status_history`, `invoice_status_history` |
 | Outbox / inbox plumbing           | `outbox_message`, `inbox_message` (partitioned, with a `_default` partition) | one pair per schema |
 | Consumer-side denormalized 1:1    | `<source_aggregate>_card`                      | `product_card` (in each consumer schema — sales / inventory / purchasing / finance / reporting / manufacturing) |

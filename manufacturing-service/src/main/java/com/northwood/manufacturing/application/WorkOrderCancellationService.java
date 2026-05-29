@@ -3,7 +3,7 @@ package com.northwood.manufacturing.application;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderRepository;
-import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
+import com.northwood.manufacturing.application.saga.WorkOrderSagaManager;
 import com.northwood.manufacturing.domain.events.ManufacturingSalesOrderCancellationApplied;
 import com.northwood.shared.application.outbox.OutboxAppender;
 import java.time.Instant;
@@ -26,7 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
  * Inventory's {@code WorkOrderCancelledHandler} consumes that event to
  * release the raw-material reservation tied to this WO.
  *
- * <p>Each cancelled WO's make-to-order saga is force-flipped to
+ * <p>Each cancelled WO's work-order saga is force-flipped to
  * {@code 'compensated'} in the same transaction.
  */
 @Service
@@ -35,12 +35,12 @@ public class WorkOrderCancellationService {
     private static final Logger log = LoggerFactory.getLogger(WorkOrderCancellationService.class);
 
     private final WorkOrderRepository workOrders;
-    private final MakeToOrderSagaManager sagaManager;
+    private final WorkOrderSagaManager sagaManager;
     private final OutboxAppender outbox;
 
     public WorkOrderCancellationService(
         WorkOrderRepository workOrders,
-        MakeToOrderSagaManager sagaManager,
+        WorkOrderSagaManager sagaManager,
         OutboxAppender outbox
     ) {
         this.workOrders = workOrders;

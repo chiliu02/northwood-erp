@@ -49,8 +49,8 @@ export const SAGA_CATALOGS: SagaCatalog[] = [
     terminalStates: ["completed", "compensated", "failed"],
   },
   {
-    type: "make_to_order",
-    label: "Make-to-order",
+    type: "work_order",
+    label: "Work order",
     service: "manufacturing",
     servicePort: 8084,
     persona: "linda",

@@ -7,7 +7,7 @@ import java.util.UUID;
 /**
  * Manufacturing's ack to {@code sales.SalesOrderCancellationRequested}: any
  * active work orders for this sales order have been cancelled (status flipped
- * to {@code 'cancelled'}, associated make-to-order saga(s) flipped to
+ * to {@code 'cancelled'}, associated work-order saga(s) flipped to
  * {@code 'compensated'}). Always emitted, even if zero WOs were cancelled —
  * the sales fulfilment saga waits on this ack regardless to advance from
  * {@code compensating} to {@code compensated}.
