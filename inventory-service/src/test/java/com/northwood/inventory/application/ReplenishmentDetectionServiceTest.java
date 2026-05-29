@@ -1,4 +1,4 @@
-package com.northwood.inventory.application.replenishment;
+package com.northwood.inventory.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;

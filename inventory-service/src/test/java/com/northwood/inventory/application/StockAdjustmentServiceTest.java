@@ -13,7 +13,6 @@ import com.northwood.inventory.application.StockAdjustmentService.StockAdjustmen
 import com.northwood.inventory.application.dto.AdjustStockCommand;
 import com.northwood.inventory.application.dto.AdjustStockCommand.Mode;
 import com.northwood.inventory.application.dto.StockBalanceView;
-import com.northwood.inventory.application.replenishment.ReplenishmentDetectionService;
 import com.northwood.inventory.domain.StockAdjustmentRepository;
 import com.northwood.inventory.domain.StockMovementDirection;
 import com.northwood.inventory.domain.StockMovementSourceTypes;

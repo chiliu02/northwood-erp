@@ -9,7 +9,7 @@ import java.util.UUID;
  * {@link com.northwood.inventory.application.inbox.ProductCardProjection} per
  * the {@code *Projection}-vs-{@code *Lookup} rule ({@code docs/conventions.md})
  * — the projection is written only by inbox handlers; non-handler readers like
- * {@link com.northwood.inventory.application.replenishment.ReplenishmentDetectionService}
+ * {@link com.northwood.inventory.application.ReplenishmentDetectionService}
  * read through this lookup instead.
  *
  * <p>Returns {@link Optional#empty()} when the product has never been seen by

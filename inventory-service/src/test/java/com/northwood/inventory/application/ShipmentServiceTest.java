@@ -14,7 +14,6 @@ import com.northwood.inventory.application.dto.PostShipmentCommand;
 import com.northwood.inventory.application.dto.ShipmentLineRequest;
 import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection;
 import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection.UpfrontPaymentGate;
-import com.northwood.inventory.application.replenishment.ReplenishmentDetectionService;
 import com.northwood.inventory.domain.ShipmentRepository;
 import com.northwood.inventory.domain.StockMovementDirection;
 import com.northwood.inventory.domain.StockMovementSourceTypes;

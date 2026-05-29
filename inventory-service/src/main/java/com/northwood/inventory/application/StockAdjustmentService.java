@@ -3,7 +3,6 @@ package com.northwood.inventory.application;
 import com.northwood.inventory.application.dto.AdjustStockCommand;
 import com.northwood.inventory.application.dto.StockAdjustmentView;
 import com.northwood.inventory.application.dto.StockBalanceView;
-import com.northwood.inventory.application.replenishment.ReplenishmentDetectionService;
 import com.northwood.inventory.domain.StockAdjustment;
 import com.northwood.inventory.domain.StockAdjustmentId;
 import com.northwood.inventory.domain.StockAdjustmentRepository;

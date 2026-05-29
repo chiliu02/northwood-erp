@@ -1,8 +1,8 @@
 package com.northwood.testharness.kits;
 
 import com.northwood.inventory.application.ShipmentService;
+import com.northwood.inventory.application.ReplenishmentDetectionService;
 import com.northwood.inventory.application.StockReservationService;
-import com.northwood.inventory.application.replenishment.ReplenishmentDetectionService;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.application.inbox.ManufacturingReplenishmentDispatchedHandler;
 import com.northwood.inventory.application.inbox.ManufacturingReplenishmentUndispatchableHandler;

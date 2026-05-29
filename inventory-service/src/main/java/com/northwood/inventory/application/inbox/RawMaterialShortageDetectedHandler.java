@@ -1,7 +1,7 @@
 package com.northwood.inventory.application.inbox;
 
 import com.northwood.inventory.application.WarehouseLookup;
-import com.northwood.inventory.application.replenishment.ReplenishmentDetectionService;
+import com.northwood.inventory.application.ReplenishmentDetectionService;
 import com.northwood.inventory.domain.ReplenishmentRequest.Reason;
 import com.northwood.manufacturing.domain.events.RawMaterialShortageDetected;
 import com.northwood.shared.application.inbox.InboxPort;

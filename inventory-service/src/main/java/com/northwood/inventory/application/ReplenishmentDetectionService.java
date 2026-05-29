@@ -1,4 +1,4 @@
-package com.northwood.inventory.application.replenishment;
+package com.northwood.inventory.application;
 
 import com.northwood.inventory.application.ReorderPolicyLookup;
 import com.northwood.inventory.application.ReorderPolicyLookup.ReorderPolicy;

@@ -17,7 +17,6 @@ import com.northwood.inventory.domain.StockReservationRepository;
 import com.northwood.inventory.domain.StockReservationRepository.ReservedLineSnapshot;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied;
-import com.northwood.inventory.application.replenishment.ReplenishmentDetectionService;
 import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
 import java.time.Instant;

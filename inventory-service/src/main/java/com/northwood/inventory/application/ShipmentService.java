@@ -6,7 +6,6 @@ import com.northwood.inventory.application.dto.ShipmentView;
 import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection;
 import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection.UpfrontPaymentGate;
 import com.northwood.sales.domain.PaymentTerms;
-import com.northwood.inventory.application.replenishment.ReplenishmentDetectionService;
 import com.northwood.inventory.domain.Shipment;
 import com.northwood.inventory.domain.ShipmentId;
 import com.northwood.inventory.domain.ShipmentLine;
