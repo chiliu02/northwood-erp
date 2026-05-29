@@ -70,18 +70,35 @@ public interface WorkOrderSagaManager {
     /**
      * Apply {@code inventory.GoodsReceived} for one candidate saga. Decrements
      * the saga's stashed shortage by the receipt quantities; un-parks
-     * ({@code raw_material_shortage → work_order_created}) when every entry is
-     * covered, otherwise saves the narrowed shortage and stays at
-     * {@code raw_material_shortage}. Returns the new state so the caller can
-     * count un-parked vs narrowed sagas. Returns null when the saga isn't in
-     * {@code raw_material_shortage} (already un-parked by a prior receipt) or
-     * the receipt didn't touch any of the saga's shortage products.
+     * ({@code raw_material_shortage → raw_material_reservation_requested}) when
+     * every entry is covered, otherwise saves the narrowed shortage and stays at
+     * {@code raw_material_shortage}.
+     *
+     * <p>§2.41: on un-park the saga lands directly at
+     * {@code raw_material_reservation_requested} (not {@code work_order_created},
+     * which misleadingly read as "a new WO is created"). The caller
+     * ({@code GoodsReceivedHandler}) re-emits {@code RawMaterialReservationRequested}
+     * via {@link RawMaterialReservationRequestEmitter} when it sees that state —
+     * mirroring the sales saga's {@code ReplenishmentFulfilledHandler}, which goes
+     * straight to {@code stock_reservation_requested} rather than bouncing through
+     * an entry state. Hence the outcome carries the {@code workOrderId} the caller
+     * needs to emit for.
+     *
+     * <p>The {@code state} is null (and {@code workOrderId} null) when the saga
+     * isn't in {@code raw_material_shortage} (already un-parked by a prior
+     * receipt) or the receipt didn't touch any of the saga's shortage products.
      *
      * <p>Legacy fallback: sagas without a {@code shortageByProductId} stash
      * un-park unconditionally (coarse old-behaviour path; see Javadoc on the
      * implementation for details).
      */
-    String unparkOrNarrowShortage(UUID sagaId, Map<UUID, BigDecimal> receivedByProductId);
+    RecoveryOutcome unparkOrNarrowShortage(UUID sagaId, Map<UUID, BigDecimal> receivedByProductId);
+
+    /**
+     * Outcome of {@link #unparkOrNarrowShortage}: the saga's new state plus the
+     * work order to re-request reservation for. Both null when nothing changed.
+     */
+    record RecoveryOutcome(String state, UUID workOrderId) {}
 
     /**
      * Mark the saga for a manufacturing-completed work order. Idempotent: a

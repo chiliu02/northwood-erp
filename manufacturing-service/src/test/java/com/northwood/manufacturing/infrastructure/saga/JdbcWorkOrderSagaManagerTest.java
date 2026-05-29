@@ -116,15 +116,18 @@ class JdbcWorkOrderSagaManagerTest {
             return sagaInState(RAW_MATERIAL_SHORTAGE, dataJson);
         }
 
-        @Test void receipt_covers_shortage_unparks_to_work_order_created() {
+        @Test void receipt_covers_shortage_unparks_to_raw_material_reservation_requested() {
             WorkOrderSaga saga = sagaWithStash("4");
             UUID sagaId = saga.sagaId();
             when(sagas.findBySagaId(sagaId)).thenReturn(Optional.of(saga));
 
-            String state = manager.unparkOrNarrowShortage(sagaId,
+            var outcome = manager.unparkOrNarrowShortage(sagaId,
                 Map.of(PRODUCT, new BigDecimal("4")));
 
-            assertThat(state).isEqualTo(WORK_ORDER_CREATED);
+            // §2.41: lands straight at raw_material_reservation_requested (not
+            // work_order_created) and carries the WO id for the handler to emit.
+            assertThat(outcome.state()).isEqualTo(RAW_MATERIAL_RESERVATION_REQUESTED);
+            assertThat(outcome.workOrderId()).isEqualTo(WO);
         }
 
         @Test void receipt_partially_covers_narrows_stash_stays_in_shortage() {
@@ -132,10 +135,10 @@ class JdbcWorkOrderSagaManagerTest {
             UUID sagaId = saga.sagaId();
             when(sagas.findBySagaId(sagaId)).thenReturn(Optional.of(saga));
 
-            String state = manager.unparkOrNarrowShortage(sagaId,
+            var outcome = manager.unparkOrNarrowShortage(sagaId,
                 Map.of(PRODUCT, new BigDecimal("3")));
 
-            assertThat(state).isEqualTo(RAW_MATERIAL_SHORTAGE);
+            assertThat(outcome.state()).isEqualTo(RAW_MATERIAL_SHORTAGE);
             assertThat(saga.dataJson()).contains("\"7\"");
         }
 
@@ -144,21 +147,23 @@ class JdbcWorkOrderSagaManagerTest {
             UUID sagaId = saga.sagaId();
             when(sagas.findBySagaId(sagaId)).thenReturn(Optional.of(saga));
 
-            String state = manager.unparkOrNarrowShortage(sagaId,
+            var outcome = manager.unparkOrNarrowShortage(sagaId,
                 Map.of(PRODUCT, new BigDecimal("1")));
 
-            assertThat(state).isEqualTo(WORK_ORDER_CREATED);
+            assertThat(outcome.state()).isEqualTo(RAW_MATERIAL_RESERVATION_REQUESTED);
+            assertThat(outcome.workOrderId()).isEqualTo(WO);
         }
 
-        @Test void saga_not_in_shortage_state_returns_null() {
+        @Test void saga_not_in_shortage_state_returns_empty_outcome() {
             WorkOrderSaga saga = sagaInState(RAW_MATERIALS_RESERVED, "{}");
             UUID sagaId = saga.sagaId();
             when(sagas.findBySagaId(sagaId)).thenReturn(Optional.of(saga));
 
-            String state = manager.unparkOrNarrowShortage(sagaId,
+            var outcome = manager.unparkOrNarrowShortage(sagaId,
                 Map.of(PRODUCT, new BigDecimal("1")));
 
-            assertThat(state).isNull();
+            assertThat(outcome.state()).isNull();
+            assertThat(outcome.workOrderId()).isNull();
             verify(sagas, never()).update(any());
         }
     }

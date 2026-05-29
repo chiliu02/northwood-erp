@@ -14,6 +14,7 @@ import com.northwood.manufacturing.application.inbox.ProductDiscontinuedHandler;
 import com.northwood.manufacturing.application.inbox.RawMaterialsReservedHandler;
 import com.northwood.manufacturing.application.inbox.ReplenishmentRequestedHandler;
 import com.northwood.manufacturing.application.inbox.SupplierProductPriceChangedHandler;
+import com.northwood.manufacturing.application.saga.RawMaterialReservationRequestEmitter;
 import com.northwood.manufacturing.infrastructure.saga.JdbcWorkOrderSagaManager;
 import com.northwood.manufacturing.infrastructure.saga.WorkOrderSagaWorker;
 import com.northwood.shared.application.outbox.OutboxAppender;
@@ -94,14 +95,16 @@ public final class ManufacturingTestKit {
         );
         this.bomService = new BomService(boms, bomCycleDetector, rollupService, replenishment);
 
+        RawMaterialReservationRequestEmitter reservationEmitter =
+            new RawMaterialReservationRequestEmitter(workOrders, appender);
         this.sagaWorker = new WorkOrderSagaWorker(
-            sagaManager, workOrders, appender
+            sagaManager, reservationEmitter
         );
         this.workerId = "manufacturing.mto-test-worker";
 
         bus.register(outbox);
         bus.register(new RawMaterialsReservedHandler(inbox, sagaManager, workOrders, appender, json));
-        bus.register(new GoodsReceivedHandler(inbox, sagaManager, shortageRecovery, json));
+        bus.register(new GoodsReceivedHandler(inbox, sagaManager, shortageRecovery, reservationEmitter, json));
         bus.register(new ActiveBomChangedHandler(inbox, activeBoms, rollupService, json));
         bus.register(new MakeVsBuyChangedHandler(inbox, replenishment, json));
         bus.register(new ProductCreatedHandler(inbox, replenishment, json));

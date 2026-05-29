@@ -11,6 +11,7 @@ import com.northwood.manufacturing.application.saga.WorkOrderSagaPort;
 import com.northwood.shared.application.saga.SagaManager;
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -110,17 +111,24 @@ public class JdbcWorkOrderSagaManager
 
     @Override
     @Transactional
-    public String unparkOrNarrowShortage(UUID sagaId, Map<UUID, BigDecimal> receivedByProductId) {
+    public RecoveryOutcome unparkOrNarrowShortage(UUID sagaId, Map<UUID, BigDecimal> receivedByProductId) {
         WorkOrderSaga saga = sagaPort.findBySagaId(sagaId).orElse(null);
         if (saga == null || !RAW_MATERIAL_SHORTAGE.equals(saga.state())) {
-            return null;
+            return new RecoveryOutcome(null, null);
         }
         UnparkDecision decision = decideUnpark(saga, receivedByProductId);
         switch (decision) {
             case UNPARK -> {
-                saga.transitionTo(WORK_ORDER_CREATED, "retry_raw_material_reservation");
+                // §2.41: land directly at raw_material_reservation_requested and
+                // re-park (mirroring the worker after it emits) — the
+                // GoodsReceivedHandler re-emits RawMaterialReservationRequested
+                // for this work order. Previously bounced through
+                // work_order_created so the worker re-emitted on its next tick,
+                // which misleadingly read as "a new work order is created".
+                saga.transitionTo(RAW_MATERIAL_RESERVATION_REQUESTED, "wait_for_raw_materials_reserved");
+                saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
                 sagaPort.update(saga);
-                log.info("un-parked saga {} work_order={} (shortage fully covered)",
+                log.info("un-parked saga {} work_order={} → raw_material_reservation_requested (shortage fully covered)",
                     saga.sagaId(), saga.workOrderId());
             }
             case NARROW -> {
@@ -129,10 +137,10 @@ public class JdbcWorkOrderSagaManager
                     saga.sagaId(), saga.workOrderId());
             }
             case NONE -> {
-                return null;
+                return new RecoveryOutcome(null, null);
             }
         }
-        return saga.state();
+        return new RecoveryOutcome(saga.state(), saga.workOrderId());
     }
 
     @Override
