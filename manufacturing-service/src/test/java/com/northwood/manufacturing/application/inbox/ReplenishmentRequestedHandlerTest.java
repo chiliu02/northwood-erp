@@ -2,6 +2,7 @@ package com.northwood.manufacturing.application.inbox;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -14,7 +15,9 @@ import com.northwood.manufacturing.application.WorkOrderReleaseService;
 import com.northwood.manufacturing.application.dto.ReleaseForReplenishmentCommand;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
+import com.northwood.manufacturing.domain.events.ReplenishmentUndispatchable;
 import com.northwood.shared.application.inbox.InboxPort;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import com.northwood.shared.application.messaging.EventEnvelope;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -40,13 +43,14 @@ class ReplenishmentRequestedHandlerTest {
     @Mock InboxPort inbox;
     @Mock WorkOrderReleaseService releaseService;
     @Mock BomLookup boms;
+    @Mock OutboxAppender outbox;
 
     private final ObjectMapper json = new ObjectMapper();
     private ReplenishmentRequestedHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new ReplenishmentRequestedHandler(inbox, releaseService, boms, json);
+        handler = new ReplenishmentRequestedHandler(inbox, releaseService, boms, outbox, json);
     }
 
     private EventEnvelope event(String targetService) {
@@ -98,12 +102,16 @@ class ReplenishmentRequestedHandlerTest {
         assertThat(cmd.workOrderNumber()).startsWith(WorkOrder.NUMBER_PREFIX);
     }
 
-    @Test void no_active_bom_logs_warn_and_skips_without_throwing() {
+    @Test void no_active_bom_emits_undispatchable_and_does_not_release() {
         when(boms.findActiveBomIdentity(PRODUCT)).thenReturn(Optional.empty());
 
         handler.handle(event(ReplenishmentRequested.TARGET_SERVICE_MANUFACTURING));
 
         verify(releaseService, never()).releaseForReplenishment(any());
+        ArgumentCaptor<ReplenishmentUndispatchable> cap = ArgumentCaptor.forClass(ReplenishmentUndispatchable.class);
+        verify(outbox).append(cap.capture(), eq(InventoryAggregateTypes.REPLENISHMENT_REQUEST), any());
+        assertThat(cap.getValue().replenishmentRequestId()).isEqualTo(REPLENISHMENT_REQUEST);
+        assertThat(cap.getValue().productId()).isEqualTo(PRODUCT);
         verify(inbox).recordProcessed(any());
     }
 }

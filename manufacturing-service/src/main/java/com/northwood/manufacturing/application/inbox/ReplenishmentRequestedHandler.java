@@ -1,14 +1,18 @@
 package com.northwood.manufacturing.application.inbox;
 
+import com.northwood.inventory.domain.InventoryAggregateTypes;
 import com.northwood.inventory.domain.events.ReplenishmentRequested;
 import com.northwood.manufacturing.application.BomLookup;
 import com.northwood.manufacturing.application.BomLookup.BomHeaderIdentity;
 import com.northwood.manufacturing.application.WorkOrderReleaseService;
 import com.northwood.manufacturing.application.dto.ReleaseForReplenishmentCommand;
 import com.northwood.manufacturing.domain.WorkOrder;
+import com.northwood.manufacturing.domain.events.ReplenishmentUndispatchable;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
 import com.northwood.shared.application.messaging.EventEnvelope;
+import com.northwood.shared.application.outbox.OutboxAppender;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
@@ -42,16 +46,19 @@ public class ReplenishmentRequestedHandler extends AbstractInboxHandler<Replenis
 
     private final WorkOrderReleaseService releaseService;
     private final BomLookup boms;
+    private final OutboxAppender outbox;
 
     public ReplenishmentRequestedHandler(
         InboxPort inbox,
         WorkOrderReleaseService releaseService,
         BomLookup boms,
+        OutboxAppender outbox,
         ObjectMapper json
     ) {
         super(inbox, json, ReplenishmentRequested.class, ReplenishmentRequested.EVENT_TYPE, CONSUMER_NAME);
         this.releaseService = releaseService;
         this.boms = boms;
+        this.outbox = outbox;
     }
 
     @Override
@@ -65,11 +72,22 @@ public class ReplenishmentRequestedHandler extends AbstractInboxHandler<Replenis
         UUID productId = payload.productId();
         Optional<BomHeaderIdentity> identity = boms.findActiveBomIdentity(productId);
         if (identity.isEmpty()) {
+            // §2.37 Slice 3: can't make it (no active BOM). Tell inventory so it
+            // cancels the request (ReplenishmentCancelled) — which for a
+            // sales_order_shortage request rejects the originating sales order.
+            String reason = "no active BOM for product " + productId + " — cannot release a work order";
+            outbox.append(new ReplenishmentUndispatchable(
+                UUID.randomUUID(),
+                payload.aggregateId(),
+                payload.aggregateId(),
+                productId,
+                reason,
+                Instant.now()
+            ), InventoryAggregateTypes.REPLENISHMENT_REQUEST, envelope.actorUserId());
             log.warn(
-                "[{}] product_id={} has no active BOM — cannot release a stock-replenishment work order "
-                    + "for replenishment_request={} (qty={}). Inventory's ReplenishmentRequest stays open; "
-                    + "operator should either author a BOM or flip make-vs-buy to purchasing-only.",
-                CONSUMER_NAME, productId, payload.aggregateId(), payload.quantity()
+                "[{}] product_id={} has no active BOM — emitting {} for replenishment_request={} (qty={}); "
+                    + "inventory will cancel the request.",
+                CONSUMER_NAME, productId, ReplenishmentUndispatchable.EVENT_TYPE, payload.aggregateId(), payload.quantity()
             );
             return;
         }

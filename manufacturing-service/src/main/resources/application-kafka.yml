@@ -1,6 +1,7 @@
 # Loaded only when SPRING_PROFILES_ACTIVE=kafka. Manufacturing is both a
-# producer (WorkOrderCreated, eventually OperationCompleted etc) and a
-# consumer (ManufacturingRequested from sales).
+# producer (WorkOrderCreated, ReplenishmentDispatched / ReplenishmentUndispatchable,
+# etc) and a consumer (inventory.ReplenishmentRequested → make-to-stock WO release;
+# sales.SalesOrderCancellationRequested → compensation).
 spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
@@ -37,9 +38,12 @@ northwood:
     #   into manufacturing.product_card) and ApprovedVendorListChanged
     #   (manufacturing.product_approved_vendor projection — read by the §2.8
     #   Slice C materialsCost rollup engine).
-    # - sales.events      for ManufacturingRequested (saga-driven WO release).
-    # - inventory.events  for RawMaterialsReserved (response to its own
-    #   RawMaterialReservationRequested), which drives the make-to-order saga
+    # - sales.events      for SalesOrderCancellationRequested (compensation —
+    #   cancel any WOs for the order). §2.37 Slice 3 retired the
+    #   ManufacturingRequested consumer (sales no longer drives WO release).
+    # - inventory.events  for ReplenishmentRequested (targetService=manufacturing
+    #   → make-to-stock WO release) and RawMaterialsReserved (response to its own
+    #   RawMaterialReservationRequested), which drives the WO-lifecycle saga
     #   from raw_material_reservation_requested onward.
     # - purchasing.events for SupplierProductPriceChanged (§2.8 Slice C drives
     #   the materialsCost rollup for purchased items off these).

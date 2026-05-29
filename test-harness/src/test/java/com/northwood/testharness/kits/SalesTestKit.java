@@ -10,11 +10,10 @@ import com.northwood.sales.application.inbox.CustomerInvoiceCreatedHandler;
 import com.northwood.sales.application.inbox.CustomerPaymentReceivedHandler;
 import com.northwood.sales.application.inbox.InventoryCancellationAppliedHandler;
 import com.northwood.sales.application.inbox.ManufacturingCancellationAppliedHandler;
-import com.northwood.sales.application.inbox.ManufacturingDispatchedHandler;
+import com.northwood.sales.application.inbox.ReplenishmentCancelledHandler;
+import com.northwood.sales.application.inbox.ReplenishmentFulfilledHandler;
 import com.northwood.sales.application.inbox.ShipmentPostedHandler;
 import com.northwood.sales.application.inbox.StockReservedHandler;
-import com.northwood.sales.application.inbox.WorkOrderCreatedHandler;
-import com.northwood.sales.application.inbox.WorkOrderManufacturingCompletedHandler;
 import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.sales.infrastructure.saga.JdbcSalesOrderFulfilmentSagaManager;
@@ -83,12 +82,9 @@ public final class SalesTestKit {
         this.service = new SalesOrderService(orders, sagaManager, customers, productCards);
 
         bus.register(outbox);
-        bus.register(new StockReservedHandler(inbox, sagaManager, statusProjection, readyToShipEmitter, json));
-        bus.register(new WorkOrderCreatedHandler(inbox, sagaManager, json));
-        bus.register(new WorkOrderManufacturingCompletedHandler(inbox, sagaManager, readyToShipEmitter, json));
-        bus.register(new ManufacturingDispatchedHandler(inbox, sagaManager, statusProjection, orders, lineSnapshots, appender, json));
-        bus.register(new com.northwood.sales.application.inbox.ReplenishmentFulfilledHandler(
-            inbox, sagaManager, lineSnapshots, appender, json));
+        bus.register(new StockReservedHandler(inbox, sagaManager, statusProjection, readyToShipEmitter, lineSnapshots, json));
+        bus.register(new ReplenishmentFulfilledHandler(inbox, sagaManager, lineSnapshots, appender, json));
+        bus.register(new ReplenishmentCancelledHandler(inbox, sagaManager, statusProjection, orders, appender, json));
         bus.register(new ShipmentPostedHandler(inbox, sagaManager, service, json));
         bus.register(new CustomerInvoiceCreatedHandler(inbox, sagaManager, json));
         bus.register(new CustomerPaymentReceivedHandler(inbox, sagaManager, statusProjection, prepaymentSettledEmitter, json));
@@ -113,10 +109,11 @@ public final class SalesTestKit {
     }
 
     /**
-     * Drive the sales fulfilment saga worker through one drain pass. Picks
-     * up sagas in {@code started} or {@code stock_reservation_incomplete} and advances
-     * each by one transition (emitting StockReservationRequested or
-     * ManufacturingRequested respectively).
+     * Drive the sales fulfilment saga worker through one drain pass. Picks up
+     * sagas in {@code started} or {@code prepaid} and advances each by one
+     * transition (emitting StockReservationRequested). §2.37 Slice 3 removed the
+     * worker's {@code stock_reservation_incomplete} leg — replenishment is now
+     * inbox-driven (ReplenishmentFulfilled / ReplenishmentCancelled).
      */
     public void advanceSagaWorker() {
         sagaWorker.drainOnce(workerId);

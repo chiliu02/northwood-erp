@@ -8,13 +8,20 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Saga state row for the make-to-order flow per sales-order line.
+ * Saga state row for the work-order lifecycle: raw-material reservation →
+ * (shortage recovery) → manufacturing completion, including sub-assembly
+ * recursion.
  *
- * <p>Initial transition implemented in this slice:
- * {@code started → work_order_created}. Later transitions
- * (raw_material_reservation_requested → raw_materials_reserved → manufacturing,
- * including sub-assembly recursion) follow when manufacturing commands and
- * BOM cycle prevention land.
+ * <p>The saga is entered at {@code work_order_created} (the WO already exists,
+ * created by {@code WorkOrderReleaseService}); the worker drives
+ * {@code work_order_created → raw_material_reservation_requested → …}.
+ *
+ * <p>§2.37 Slice 3 retired the {@code started} entry state: it only existed for
+ * the sales-driven make-to-order path (a {@code ManufacturingRequested} seeded
+ * a saga at {@code started}, which then released the WO). Sales-order shortages
+ * now route through inventory's replenishment (make-to-stock), so every saga is
+ * seeded directly at {@code work_order_created}. (Saga is now a misnomer — it
+ * serves make-to-stock too; §2.39 tracks the rename.)
  */
 public final class MakeToOrderSaga extends SagaInstance {
 
@@ -34,7 +41,6 @@ public final class MakeToOrderSaga extends SagaInstance {
     // stored in manufacturing.make_to_order_saga.saga_state. The DB CHECK
     // and event payloads keep the underlying strings as canonical form.
     // ------------------------------------------------------------
-    public static final String STARTED = "started";
     public static final String WORK_ORDER_CREATED = "work_order_created";
     public static final String RAW_MATERIAL_RESERVATION_REQUESTED = "raw_material_reservation_requested";
     public static final String RAW_MATERIALS_RESERVED = "raw_materials_reserved";
@@ -53,7 +59,6 @@ public final class MakeToOrderSaga extends SagaInstance {
      * {@code SagaStateInvariantChecker}.
      */
     public static final Set<String> ALL_STATES = Set.of(
-        STARTED,
         WORK_ORDER_CREATED,
         RAW_MATERIAL_RESERVATION_REQUESTED,
         RAW_MATERIALS_RESERVED, RAW_MATERIAL_SHORTAGE,
@@ -91,34 +96,13 @@ public final class MakeToOrderSaga extends SagaInstance {
         this.workOrderId = workOrderId;
     }
 
-    public static MakeToOrderSaga started(UUID salesOrderHeaderId, UUID salesOrderLineId, String dataJson) {
-        Instant now = Instant.now();
-        return new MakeToOrderSaga(
-            UUID.randomUUID(),
-            salesOrderHeaderId,
-            salesOrderLineId,
-            null,
-            STARTED,
-            "wait_for_worker_pickup",
-            null,
-            0,
-            now,
-            null,
-            null,
-            0L,
-            dataJson == null ? "{}" : dataJson,
-            now,
-            now,
-            null
-        );
-    }
-
     /**
-     * Factory for sub-assembly child sagas: skip {@code started} (the WO is
-     * already created by the recursing release service) and start at
-     * {@code work_order_created} so the worker's next tick picks the saga up
-     * for raw-material reservation. {@code workOrderId} is non-null and
-     * pre-attached.
+     * Factory for WO-lifecycle sagas: the WO is already created by the
+     * recursing release service, so the saga starts at
+     * {@code work_order_created} and the worker's next tick picks it up for
+     * raw-material reservation. {@code workOrderId} is non-null and
+     * pre-attached. Used for the root stock-replenishment WO and every
+     * sub-assembly child (all make-to-stock; sales-order pair null).
      */
     public static MakeToOrderSaga attachedToWorkOrder(
         UUID salesOrderHeaderId,

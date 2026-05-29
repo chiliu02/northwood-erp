@@ -38,10 +38,13 @@ northwood:
     #   (stamp discontinued_at). The three together make every row's lifetime
     #   mirror the Product aggregate's.
     # - inventory.events   for StockReserved + ShipmentPosted (saga advances) +
-    #   SalesOrderCancellationApplied (compensation ack from inventory).
-    # - manufacturing.events for WorkOrderCreated, WorkOrderManufacturingCompleted,
-    #   ManufacturingDispatched (saga advances past manufacturing_requested), and
-    #   SalesOrderCancellationApplied (compensation ack from manufacturing).
+    #   ReplenishmentFulfilled (retry reservation) / ReplenishmentCancelled
+    #   (reject order) — §2.37 Slice 3 fan-in — plus SalesOrderCancellationApplied
+    #   (compensation ack from inventory).
+    # - manufacturing.events for SalesOrderCancellationApplied (compensation ack
+    #   from manufacturing). §2.37 Slice 3 retired the WorkOrderCreated /
+    #   WorkOrderManufacturingCompleted / ManufacturingDispatched consumers —
+    #   sales no longer drives or tracks manufacturing directly.
     # - finance.events     for CustomerInvoiceCreated + CustomerPaymentReceived
     #   (saga advances past invoice_created → completed).
     subscribe-topics: product.events,inventory.events,manufacturing.events,finance.events

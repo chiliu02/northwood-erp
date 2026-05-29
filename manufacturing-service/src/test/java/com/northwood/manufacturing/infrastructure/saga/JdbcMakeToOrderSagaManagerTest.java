@@ -61,15 +61,6 @@ class JdbcMakeToOrderSagaManagerTest {
 
     @Nested
     class Lifecycle {
-        @Test void insertStarted_inserts_via_port() {
-            manager.insertStarted(SO_HEADER, SO_LINE, "{}");
-
-            ArgumentCaptor<MakeToOrderSaga> cap = ArgumentCaptor.forClass(MakeToOrderSaga.class);
-            verify(sagas).insert(cap.capture());
-            assertThat(cap.getValue().state()).isEqualTo(STARTED);
-            assertThat(cap.getValue().workOrderId()).isNull();
-        }
-
         @Test void insertAttachedToWorkOrder_inserts_at_work_order_created() {
             manager.insertAttachedToWorkOrder(SO_HEADER, SO_LINE, WO, "{}");
 

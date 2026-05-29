@@ -8,6 +8,7 @@ import com.northwood.inventory.domain.StockReservationRepository;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.StockReservationRepository.ReservedLineSnapshot;
 import com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied;
+import com.northwood.inventory.application.replenishment.ReplenishmentDetectionService;
 import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -49,6 +50,7 @@ public class StockReservationService {
     private final StockBalanceWriter stockBalances;
     private final StockBalanceLookup balanceLookup;
     private final WarehouseLookup warehouses;
+    private final ReplenishmentDetectionService replenishmentDetection;
     private final OutboxAppender outbox;
 
     public StockReservationService(
@@ -56,12 +58,14 @@ public class StockReservationService {
         StockBalanceWriter stockBalances,
         StockBalanceLookup balanceLookup,
         WarehouseLookup warehouses,
+        ReplenishmentDetectionService replenishmentDetection,
         OutboxAppender outbox
     ) {
         this.stockReservations = stockReservations;
         this.stockBalances = stockBalances;
         this.balanceLookup = balanceLookup;
         this.warehouses = warehouses;
+        this.replenishmentDetection = replenishmentDetection;
         this.outbox = outbox;
     }
 
@@ -82,12 +86,30 @@ public class StockReservationService {
 
         List<StockReservationLine> lines = new ArrayList<>();
         for (StockReservationRequested.RequestedLine req : payload.lines()) {
-            lines.add(reserveOneLine(
+            StockReservationLine line = reserveOneLine(
                 warehouseId,
                 UUID.randomUUID(),
                 req.productId(), req.productSku(), req.productName(),
                 req.requestedQuantity()
-            ));
+            );
+            lines.add(line);
+
+            // §2.37 Slice 3: inventory is the single make-vs-buy decision +
+            // trigger point. Any line short on stock raises its replenishment
+            // in THIS transaction (routing manufactured → manufacturing /
+            // purchased → purchasing itself) with the sales-order back-reference
+            // stamped, so the eventual ReplenishmentFulfilled un-parks the saga
+            // (retry reservation) and ReplenishmentCancelled rejects the order.
+            // Sales no longer drives manufacturing first — it just waits.
+            if (line.shortageQuantity().signum() > 0) {
+                replenishmentDetection.raiseForSalesOrderShortage(
+                    req.productId(),
+                    warehouseId,
+                    line.shortageQuantity(),
+                    payload.salesOrderId(),
+                    req.salesOrderLineId()
+                );
+            }
         }
 
         StockReservation reservation = StockReservation.forSalesOrder(

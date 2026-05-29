@@ -21,7 +21,8 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.36 Slice E: sales-side fan-in for {@code inventory.ReplenishmentFulfilled}.
+ * §2.36 Slice E / §2.37 Slice 3: sales-side fan-in for
+ * {@code inventory.ReplenishmentFulfilled}.
  *
  * <p>Only fires when the event carries the sales-order back-reference fields
  * ({@code sourceSalesOrderHeaderId} + {@code sourceSalesOrderLineId} both
@@ -32,7 +33,7 @@ import tools.jackson.databind.ObjectMapper;
  * <p>Delegates the state machine work to
  * {@link SalesOrderFulfilmentSagaManager#applyReplenishmentFulfilled(UUID, UUID)}.
  * When the manager returns {@code stock_reservation_requested} (every
- * outstanding purchasing-line has been replenished), this handler emits a
+ * outstanding short line has been replenished), this handler emits a
  * fresh {@code sales.StockReservationRequested} so inventory will retry the
  * reservation against the now-restocked inventory. The work the inventory
  * service does on that second emission mirrors the §2.9 work-order retry
@@ -100,6 +101,7 @@ public class ReplenishmentFulfilledHandler extends AbstractInboxHandler<Replenis
         List<StockReservationRequested.RequestedLine> requestedLines = new ArrayList<>();
         for (LineSnapshot s : snapshots) {
             requestedLines.add(new StockReservationRequested.RequestedLine(
+                s.salesOrderLineId(),
                 s.lineNumber(),
                 s.productId(),
                 s.productSku(),

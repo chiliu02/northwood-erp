@@ -5,13 +5,14 @@ import com.northwood.inventory.application.StockReservationService;
 import com.northwood.inventory.application.replenishment.ReplenishmentDetectionService;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.application.inbox.ManufacturingReplenishmentDispatchedHandler;
+import com.northwood.inventory.application.inbox.ManufacturingReplenishmentUndispatchableHandler;
 import com.northwood.inventory.application.inbox.PurchaseOrderCreatedHandler;
 import com.northwood.inventory.application.inbox.PurchasingReplenishmentDispatchedHandler;
+import com.northwood.inventory.application.inbox.PurchasingReplenishmentUndispatchableHandler;
 import com.northwood.inventory.application.inbox.RawMaterialReservationRequestedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderCancellationRequestedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderPlacedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderPrepaymentSettledHandler;
-import com.northwood.inventory.application.inbox.SalesOrderPurchasingRequestedHandler;
 import com.northwood.inventory.application.inbox.StockReservationRequestedHandler;
 import com.northwood.inventory.application.inbox.SubAssembliesConsumedHandler;
 import com.northwood.inventory.application.inbox.WorkOrderCancelledHandler;
@@ -80,10 +81,10 @@ public final class InventoryTestKit {
         OutboxAppender appender = new OutboxAppender(outbox, json, new CurrentUserAccessor());
         this.replenishmentRequests = new InMemoryReplenishmentRequestRepository(appender, json);
         this.replenishmentDetection = new ReplenishmentDetectionService(
-            reorderPolicies, stockBalances, productReplenishment, replenishmentRequests
+            reorderPolicies, stockBalances, productReplenishment, replenishmentRequests, appender
         );
         this.service = new StockReservationService(
-            reservations, stockBalances, stockBalances, warehouses, appender
+            reservations, stockBalances, stockBalances, warehouses, replenishmentDetection, appender
         );
         this.shipmentService = new ShipmentService(
             shipments, stockBalances, stockMovements, warehouses, salesOrderLineFacts,
@@ -107,8 +108,9 @@ public final class InventoryTestKit {
         bus.register(new PurchasingReplenishmentDispatchedHandler(inbox, replenishmentRequests, json));
         bus.register(new PurchaseOrderCreatedHandler(inbox, purchaseOrderLineFacts, replenishmentRequests, json));
 
-        // §2.36 Slice D: sales-order partial-reservation bridge.
-        bus.register(new SalesOrderPurchasingRequestedHandler(inbox, replenishmentDetection, warehouses, json));
+        // §2.37 Slice 3 cancel consumers: downstream can't source the request.
+        bus.register(new ManufacturingReplenishmentUndispatchableHandler(inbox, replenishmentRequests, json));
+        bus.register(new PurchasingReplenishmentUndispatchableHandler(inbox, replenishmentRequests, json));
     }
 
     /** Seed enough stock so a reservation will succeed. */

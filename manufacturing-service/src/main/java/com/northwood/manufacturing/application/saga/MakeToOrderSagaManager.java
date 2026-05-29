@@ -23,20 +23,17 @@ import java.util.function.Consumer;
 public interface MakeToOrderSagaManager {
 
     // ------------------------------------------------------------
-    // Lifecycle (called from inbox handlers / WorkOrderReleaseService)
+    // Lifecycle (called from WorkOrderReleaseService)
     // ------------------------------------------------------------
 
     /**
-     * Insert a fresh top-level saga at {@code started}. Called from
-     * {@code ManufacturingRequestedHandler} for each accepted line in
-     * {@code sales.ManufacturingRequested}.
-     */
-    void insertStarted(UUID salesOrderHeaderId, UUID salesOrderLineId, String dataJson);
-
-    /**
-     * Insert a sub-assembly child saga at {@code work_order_created} with
-     * {@code workOrderId} pre-attached. Called from
-     * {@code WorkOrderReleaseService} as it spawns child WOs during recursion.
+     * Insert a saga at {@code work_order_created} with {@code workOrderId}
+     * pre-attached. Called from {@code WorkOrderReleaseService} for every work
+     * order it releases — the root stock-replenishment WO and each sub-assembly
+     * child during recursion (all make-to-stock, so the sales-order pair is
+     * null). §2.37 Slice 3 retired the {@code started}-entry path (the
+     * sales-driven {@code ManufacturingRequested} flow); the saga is now always
+     * entered here.
      */
     void insertAttachedToWorkOrder(
         UUID salesOrderHeaderId, UUID salesOrderLineId, UUID workOrderId, String dataJson

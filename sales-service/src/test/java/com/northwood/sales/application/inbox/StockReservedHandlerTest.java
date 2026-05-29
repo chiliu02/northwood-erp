@@ -15,6 +15,7 @@ import com.northwood.inventory.domain.InventoryAggregateTypes;
 import com.northwood.inventory.domain.events.StockReserved;
 import com.northwood.sales.application.SalesOrderReadyToShipEmitter;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
+import com.northwood.sales.application.saga.SalesOrderLineSnapshotPort;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
 import java.math.BigDecimal;
@@ -37,13 +38,14 @@ class StockReservedHandlerTest {
     @Mock SalesOrderFulfilmentSagaManager sagaManager;
     @Mock SalesOrderHeaderStatusProjection statusProjection;
     @Mock SalesOrderReadyToShipEmitter readyToShipEmitter;
+    @Mock SalesOrderLineSnapshotPort lineSnapshots;
 
     private final ObjectMapper json = new ObjectMapper();
     private StockReservedHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new StockReservedHandler(inbox, sagaManager, statusProjection, readyToShipEmitter, json);
+        handler = new StockReservedHandler(inbox, sagaManager, statusProjection, readyToShipEmitter, lineSnapshots, json);
     }
 
     private EventEnvelope event(String status, BigDecimal shortage) {

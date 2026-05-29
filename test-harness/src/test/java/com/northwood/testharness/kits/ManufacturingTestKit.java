@@ -10,7 +10,6 @@ import com.northwood.manufacturing.application.inbox.ApprovedVendorListChangedHa
 import com.northwood.manufacturing.application.inbox.ActiveBomChangedHandler;
 import com.northwood.manufacturing.application.inbox.GoodsReceivedHandler;
 import com.northwood.manufacturing.application.inbox.MakeVsBuyChangedHandler;
-import com.northwood.manufacturing.application.inbox.ManufacturingRequestedHandler;
 import com.northwood.manufacturing.application.inbox.ProductCreatedHandler;
 import com.northwood.manufacturing.application.inbox.ProductDiscontinuedHandler;
 import com.northwood.manufacturing.application.inbox.RawMaterialsReservedHandler;
@@ -46,8 +45,8 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Saga-worker driving: {@link #advanceSagaWorker()} runs one drain pass
  * via the production worker shell. Test code calls it after seeding sagas
- * (typically by emitting events through the bus that an inbox handler then
- * routes to {@code manager.insertStarted}).
+ * (the release service seeds them at {@code work_order_created} as it releases
+ * each stock-replenishment work order).
  */
 public final class ManufacturingTestKit {
 
@@ -102,12 +101,11 @@ public final class ManufacturingTestKit {
         this.bomService = new BomService(boms, bomCycleDetector, rollupService, replenishment);
 
         this.sagaWorker = new MakeToOrderSagaWorker(
-            sagaManager, releaseService, workOrders, appender, json
+            sagaManager, workOrders, appender
         );
         this.workerId = "manufacturing.mto-test-worker";
 
         bus.register(outbox);
-        bus.register(new ManufacturingRequestedHandler(inbox, sagaManager, bomLookup, replenishment, appender, json));
         bus.register(new RawMaterialsReservedHandler(inbox, sagaManager, workOrders, appender, json));
         bus.register(new GoodsReceivedHandler(inbox, sagaManager, shortageRecovery, json));
         bus.register(new ActiveBomChangedHandler(inbox, activeBoms, rollupService, json));
@@ -120,13 +118,14 @@ public final class ManufacturingTestKit {
 
         // §2.35 Slice C: manufacturing's dispatcher for stock-replenishment
         // requests routed by inventory's detection-trigger.
-        bus.register(new ReplenishmentRequestedHandler(inbox, releaseService, bomLookup, json));
+        bus.register(new ReplenishmentRequestedHandler(inbox, releaseService, bomLookup, appender, json));
     }
 
     /**
      * Drive the make-to-order saga worker through one drain pass. Picks up
-     * sagas in {@code started} or {@code work_order_created} (advancing each
-     * by one transition).
+     * sagas in {@code work_order_created} (advancing each by one transition).
+     * §2.37 Slice 3 removed the {@code started} entry — every saga is now
+     * seeded directly at {@code work_order_created} by the release service.
      */
     public void advanceSagaWorker() {
         sagaWorker.drainOnce(workerId);

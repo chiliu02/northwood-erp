@@ -53,18 +53,15 @@ public class JdbcMakeToOrderSagaManager
 
     @Override
     protected Set<String> activeStates() {
-        return Set.of(STARTED, WORK_ORDER_CREATED);
+        // §2.37 Slice 3 dropped STARTED — the saga is now always entered at
+        // work_order_created (make-to-stock replenishment), never via a
+        // sales-driven ManufacturingRequested.
+        return Set.of(WORK_ORDER_CREATED);
     }
 
     // ============================================================
     // Lifecycle
     // ============================================================
-
-    @Override
-    @Transactional
-    public void insertStarted(UUID salesOrderHeaderId, UUID salesOrderLineId, String dataJson) {
-        sagaPort.insert(MakeToOrderSaga.started(salesOrderHeaderId, salesOrderLineId, dataJson));
-    }
 
     @Override
     @Transactional

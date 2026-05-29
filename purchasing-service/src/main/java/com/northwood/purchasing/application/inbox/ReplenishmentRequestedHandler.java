@@ -1,14 +1,19 @@
 package com.northwood.purchasing.application.inbox;
 
+import com.northwood.inventory.domain.InventoryAggregateTypes;
 import com.northwood.inventory.domain.events.ReplenishmentRequested;
 import com.northwood.purchasing.application.PurchaseRequisitionService;
 import com.northwood.purchasing.application.dto.RequisitionLineRequest;
 import com.northwood.purchasing.application.dto.StockReplenishmentCommand;
 import com.northwood.purchasing.domain.PurchaseRequisition;
+import com.northwood.purchasing.domain.events.ReplenishmentUndispatchable;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
 import com.northwood.shared.application.messaging.EventEnvelope;
+import com.northwood.shared.application.outbox.OutboxAppender;
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
@@ -47,14 +52,17 @@ public class ReplenishmentRequestedHandler extends AbstractInboxHandler<Replenis
     public static final String CONSUMER_NAME = "purchasing.replenishment-dispatcher";
 
     private final PurchaseRequisitionService requisitions;
+    private final OutboxAppender outbox;
 
     public ReplenishmentRequestedHandler(
         InboxPort inbox,
         PurchaseRequisitionService requisitions,
+        OutboxAppender outbox,
         ObjectMapper json
     ) {
         super(inbox, json, ReplenishmentRequested.class, ReplenishmentRequested.EVENT_TYPE, CONSUMER_NAME);
         this.requisitions = requisitions;
+        this.outbox = outbox;
     }
 
     @Override
@@ -74,7 +82,7 @@ public class ReplenishmentRequestedHandler extends AbstractInboxHandler<Replenis
         String requisitionNumber = PurchaseRequisition.NUMBER_PREFIX
             + UUID.randomUUID().toString().substring(0, PurchaseRequisition.NUMBER_SUFFIX_LENGTH).toUpperCase();
 
-        UUID prId = requisitions.createForStockReplenishment(new StockReplenishmentCommand(
+        Optional<UUID> prId = requisitions.createForStockReplenishment(new StockReplenishmentCommand(
             requisitionNumber,
             payload.aggregateId(),
             List.of(new RequisitionLineRequest(
@@ -86,8 +94,28 @@ public class ReplenishmentRequestedHandler extends AbstractInboxHandler<Replenis
             ))
         ));
 
+        if (prId.isEmpty()) {
+            // §2.37 Slice 3: no vendor to source from. Tell inventory so it
+            // cancels the request (ReplenishmentCancelled) — which for a
+            // sales_order_shortage request rejects the originating sales order.
+            String reason = "no approved vendor / supplier for product " + payload.productId()
+                + " — cannot raise a requisition";
+            outbox.append(new ReplenishmentUndispatchable(
+                UUID.randomUUID(),
+                payload.aggregateId(),
+                payload.aggregateId(),
+                payload.productId(),
+                reason,
+                Instant.now()
+            ), InventoryAggregateTypes.REPLENISHMENT_REQUEST, envelope.actorUserId());
+            log.warn("[{}] no vendor for product={} — emitting {} for replenishment_request={} (qty={}); inventory will cancel the request",
+                CONSUMER_NAME, payload.productId(), ReplenishmentUndispatchable.EVENT_TYPE,
+                payload.aggregateId(), payload.quantity());
+            return;
+        }
+
         log.info("[{}] created stock-replenishment PR={} ({}) for replenishment_request={} (product={}, qty={}, reason={})",
-            CONSUMER_NAME, prId, requisitionNumber, payload.aggregateId(),
+            CONSUMER_NAME, prId.get(), requisitionNumber, payload.aggregateId(),
             payload.productId(), payload.quantity(), payload.reason());
     }
 }

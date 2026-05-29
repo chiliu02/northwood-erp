@@ -129,9 +129,24 @@ public class PurchaseRequisitionService {
      * purchasing.ReplenishmentDispatched, and auto-converts to a PO using
      * the same {@code shortagePoAutoApprove} policy that applied to the
      * retired WO-shortage path.
+     *
+     * <p>§2.37 Slice 3: returns {@link Optional#empty()} when purchasing has no
+     * vendor to source from — no supplier is configured, so neither an approved
+     * vendor nor the default-supplier fallback can attach to the line. The
+     * caller ({@code ReplenishmentRequestedHandler}) then emits
+     * {@code purchasing.ReplenishmentUndispatchable} so inventory cancels the
+     * request (rejecting the originating sales order). The default supplier
+     * (SUP-001) is seeded on every install, so in practice this fires only on a
+     * mis-provisioned environment — it's the purchasing-side counterpart of the
+     * manufacturing no-BOM cancel producer.
      */
     @Transactional
-    public UUID createForStockReplenishment(StockReplenishmentCommand command) {
+    public Optional<UUID> createForStockReplenishment(StockReplenishmentCommand command) {
+        if (suppliers.findAll().isEmpty()) {
+            log.warn("no supplier configured — cannot raise stock-replenishment requisition for replenishment_request={} ({} line(s))",
+                command.replenishmentRequestId(), command.lines().size());
+            return Optional.empty();
+        }
         Supplier defaultSupplier = suppliers.defaultSupplier();
         List<PurchaseRequisitionLine> lines = buildLines(command.lines(), defaultSupplier);
 
@@ -149,7 +164,7 @@ public class PurchaseRequisitionService {
         // (northwood.purchasing.shortagePoAutoApprove, default true) — the
         // §2.35 loop flows without a human in the demo path.
         purchaseOrders.convertFromRequisition(pr.id(), shortagePoAutoApprove);
-        return pr.id().value();
+        return Optional.of(pr.id().value());
     }
 
     private List<PurchaseRequisitionLine> buildLines(

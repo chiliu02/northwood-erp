@@ -82,13 +82,15 @@ class JdbcMakeToOrderSagaAdapterIT {
 
     @Test
     void insert_then_find_round_trips() {
-        MakeToOrderSaga saga = MakeToOrderSaga.started(UUID.randomUUID(), UUID.randomUUID(), "{}");
+        UUID firstWo = UUID.randomUUID();
+        MakeToOrderSaga saga = MakeToOrderSaga.attachedToWorkOrder(
+            UUID.randomUUID(), UUID.randomUUID(), firstWo, "{}");
         ADAPTER.insert(saga);
 
         MakeToOrderSaga r = ADAPTER.findBySagaId(saga.sagaId()).orElseThrow();
         assertThat(r.sagaId()).isEqualTo(saga.sagaId());
-        assertThat(r.state()).isEqualTo(MakeToOrderSaga.STARTED);
-        assertThat(r.workOrderId()).isNull();
+        assertThat(r.state()).isEqualTo(MakeToOrderSaga.WORK_ORDER_CREATED);
+        assertThat(r.workOrderId()).isEqualTo(firstWo);
         assertThat(r.version()).isEqualTo(1L);
 
         // Keyed finder works once a work order is attached.
@@ -101,16 +103,16 @@ class JdbcMakeToOrderSagaAdapterIT {
 
     @Test
     void claimDue_leases_active_due_rows_and_blocks_immediate_reclaim() {
-        ADAPTER.insert(MakeToOrderSaga.started(UUID.randomUUID(), UUID.randomUUID(), "{}"));
-        ADAPTER.insert(MakeToOrderSaga.started(UUID.randomUUID(), UUID.randomUUID(), "{}"));
+        ADAPTER.insert(workOrderCreatedDue(UUID.randomUUID(), Instant.now()));
+        ADAPTER.insert(workOrderCreatedDue(UUID.randomUUID(), Instant.now()));
 
         var claimed = ADAPTER.claimDue(
-            10, Set.of(MakeToOrderSaga.STARTED), "worker-1", Duration.ofSeconds(30));
+            10, Set.of(MakeToOrderSaga.WORK_ORDER_CREATED), "worker-1", Duration.ofSeconds(30));
         assertThat(claimed).hasSize(2)
             .allSatisfy(s -> assertThat(s.leaseOwner()).isEqualTo("worker-1"));
 
         assertThat(ADAPTER.claimDue(
-            10, Set.of(MakeToOrderSaga.STARTED), "worker-2", Duration.ofSeconds(30)))
+            10, Set.of(MakeToOrderSaga.WORK_ORDER_CREATED), "worker-2", Duration.ofSeconds(30)))
             .isEmpty();
     }
 
@@ -125,7 +127,7 @@ class JdbcMakeToOrderSagaAdapterIT {
 
     @Test
     void update_enforces_optimistic_lock_via_version() {
-        MakeToOrderSaga saga = MakeToOrderSaga.started(UUID.randomUUID(), UUID.randomUUID(), "{}");
+        MakeToOrderSaga saga = workOrderCreatedDue(UUID.randomUUID(), Instant.now());
         ADAPTER.insert(saga);
 
         MakeToOrderSaga loadedA = ADAPTER.findBySagaId(saga.sagaId()).orElseThrow();

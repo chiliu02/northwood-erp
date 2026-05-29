@@ -2,6 +2,7 @@ package com.northwood.inventory.application.replenishment;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -17,6 +18,8 @@ import com.northwood.inventory.domain.ReplenishmentRequest;
 import com.northwood.inventory.domain.ReplenishmentRequest.Reason;
 import com.northwood.inventory.domain.ReplenishmentRequest.TargetService;
 import com.northwood.inventory.domain.ReplenishmentRequestRepository;
+import com.northwood.inventory.domain.events.ReplenishmentCancelled;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.UUID;
@@ -38,13 +41,14 @@ class ReplenishmentDetectionServiceTest {
     @Mock StockBalanceLookup stockBalances;
     @Mock ProductCardProjection productReplenishment;
     @Mock ReplenishmentRequestRepository replenishmentRequests;
+    @Mock OutboxAppender outbox;
 
     private ReplenishmentDetectionService service;
 
     @BeforeEach
     void setUp() {
         service = new ReplenishmentDetectionService(
-            reorderPolicies, stockBalances, productReplenishment, replenishmentRequests
+            reorderPolicies, stockBalances, productReplenishment, replenishmentRequests, outbox
         );
     }
 
@@ -185,6 +189,50 @@ class ReplenishmentDetectionServiceTest {
         service.checkAfterOnHandDecrement(WAREHOUSE, PRODUCT);
 
         verify(replenishmentRequests).save(any());
+    }
+
+    @Test void sales_order_shortage_sourceable_saves_request_with_back_reference() {
+        UUID soHeader = UUID.randomUUID();
+        UUID soLine = UUID.randomUUID();
+        stubFlags(true, false);
+
+        service.raiseForSalesOrderShortage(PRODUCT, WAREHOUSE, new BigDecimal("4"), soHeader, soLine);
+
+        ArgumentCaptor<ReplenishmentRequest> captor = ArgumentCaptor.forClass(ReplenishmentRequest.class);
+        verify(replenishmentRequests).save(captor.capture());
+        ReplenishmentRequest r = captor.getValue();
+        assertThat(r.reason()).isEqualTo(Reason.SALES_ORDER_SHORTAGE);
+        assertThat(r.targetService()).isEqualTo(TargetService.PURCHASING);
+        assertThat(r.sourceSalesOrderHeaderId()).isEqualTo(soHeader);
+        assertThat(r.sourceSalesOrderLineId()).isEqualTo(soLine);
+        verify(outbox, never()).append(any(), any());
+    }
+
+    @Test void sales_order_shortage_unsourceable_emits_cancelled_and_raises_nothing() {
+        UUID soHeader = UUID.randomUUID();
+        UUID soLine = UUID.randomUUID();
+        stubFlags(false, false);   // neither purchased nor manufactured
+
+        service.raiseForSalesOrderShortage(PRODUCT, WAREHOUSE, new BigDecimal("4"), soHeader, soLine);
+
+        verify(replenishmentRequests, never()).save(any());
+        ArgumentCaptor<ReplenishmentCancelled> cap = ArgumentCaptor.forClass(ReplenishmentCancelled.class);
+        verify(outbox).append(cap.capture(), eq(ReplenishmentRequest.AGGREGATE_TYPE));
+        ReplenishmentCancelled c = cap.getValue();
+        assertThat(c.sourceSalesOrderHeaderId()).isEqualTo(soHeader);
+        assertThat(c.sourceSalesOrderLineId()).isEqualTo(soLine);
+        assertThat(c.productId()).isEqualTo(PRODUCT);
+    }
+
+    @Test void sales_order_shortage_missing_card_emits_cancelled() {
+        UUID soHeader = UUID.randomUUID();
+        UUID soLine = UUID.randomUUID();
+        when(productReplenishment.findByProductId(PRODUCT)).thenReturn(Optional.empty());
+
+        service.raiseForSalesOrderShortage(PRODUCT, WAREHOUSE, new BigDecimal("4"), soHeader, soLine);
+
+        verify(replenishmentRequests, never()).save(any());
+        verify(outbox).append(any(ReplenishmentCancelled.class), eq(ReplenishmentRequest.AGGREGATE_TYPE));
     }
 
     @Test void raiseIfNoneOpen_supports_work_order_shortage_path() {

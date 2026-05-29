@@ -9,7 +9,10 @@ import com.northwood.inventory.domain.ReplenishmentRequest;
 import com.northwood.inventory.domain.ReplenishmentRequest.Reason;
 import com.northwood.inventory.domain.ReplenishmentRequest.TargetService;
 import com.northwood.inventory.domain.ReplenishmentRequestRepository;
+import com.northwood.inventory.domain.events.ReplenishmentCancelled;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -56,17 +59,20 @@ public class ReplenishmentDetectionService {
     private final StockBalanceLookup stockBalances;
     private final ProductCardProjection productReplenishment;
     private final ReplenishmentRequestRepository replenishmentRequests;
+    private final OutboxAppender outbox;
 
     public ReplenishmentDetectionService(
         ReorderPolicyLookup reorderPolicies,
         StockBalanceLookup stockBalances,
         ProductCardProjection productReplenishment,
-        ReplenishmentRequestRepository replenishmentRequests
+        ReplenishmentRequestRepository replenishmentRequests,
+        OutboxAppender outbox
     ) {
         this.reorderPolicies = reorderPolicies;
         this.stockBalances = stockBalances;
         this.productReplenishment = productReplenishment;
         this.replenishmentRequests = replenishmentRequests;
+        this.outbox = outbox;
     }
 
     /**
@@ -167,9 +173,14 @@ public class ReplenishmentDetectionService {
      * each back-referenced to a distinct line. No {@code DuplicateKeyException}
      * swallow needed: the schema permits the multiplicity.
      *
-     * <p>Unsourceable SKUs (is_purchased=false AND is_manufactured=false) skip
-     * with a WARN — the order line is dead-end, the saga will eventually time
-     * out at {@code purchasing_requested} until operator intervention.
+     * <p>§2.37 Slice 3: unsourceable SKUs (no {@code product_card} row, or
+     * {@code is_purchased=false AND is_manufactured=false}) no longer skip
+     * silently — inventory emits {@code ReplenishmentCancelled} (carrying the
+     * sales-order back-reference) so sales' fan-in flips the order to
+     * {@code rejected} instead of parking forever. This is the inventory-local
+     * counterpart of the manufacturing-no-BOM / purchasing-no-vendor cancel
+     * producers; the event is appended directly to the outbox (no aggregate to
+     * mutate — the request was never raised because it can't be sourced).
      */
     @Transactional(propagation = Propagation.REQUIRED)
     public void raiseForSalesOrderShortage(
@@ -181,16 +192,20 @@ public class ReplenishmentDetectionService {
     ) {
         Optional<Replenishment> flags = productReplenishment.findByProductId(productId);
         if (flags.isEmpty()) {
+            cancelUnsourceableSalesOrderShortage(productId, sourceSalesOrderHeaderId, sourceSalesOrderLineId,
+                "no inventory.product_card row for product " + productId + " — make-vs-buy unknown");
             log.warn("no inventory.product_card row for product_id={} — cannot classify make-vs-buy, "
-                + "skipping sales-order-shortage replenishment (qty={}, warehouse_id={}, sales_order={}, sales_order_line={})",
+                + "cancelling sales-order-shortage replenishment (qty={}, warehouse_id={}, sales_order={}, sales_order_line={})",
                 productId, quantity, warehouseId, sourceSalesOrderHeaderId, sourceSalesOrderLineId);
             return;
         }
         boolean purchased = flags.get().isPurchased();
         boolean manufactured = flags.get().isManufactured();
         if (!purchased && !manufactured) {
+            cancelUnsourceableSalesOrderShortage(productId, sourceSalesOrderHeaderId, sourceSalesOrderLineId,
+                "product " + productId + " is unsourceable (is_purchased=false, is_manufactured=false)");
             log.warn("unsourceable SKU product_id={} (is_purchased=false, is_manufactured=false) — "
-                + "skipping sales-order-shortage replenishment (qty={}, warehouse_id={}, sales_order={}, sales_order_line={})",
+                + "cancelling sales-order-shortage replenishment (qty={}, warehouse_id={}, sales_order={}, sales_order_line={})",
                 productId, quantity, warehouseId, sourceSalesOrderHeaderId, sourceSalesOrderLineId);
             return;
         }
@@ -206,5 +221,32 @@ public class ReplenishmentDetectionService {
         log.info("raised sales-order-shortage replenishment_request {} for product_id={} warehouse_id={} qty={} → {} (sales_order={}, sales_order_line={})",
             r.id().value(), productId, warehouseId, quantity, target.dbValue(),
             sourceSalesOrderHeaderId, sourceSalesOrderLineId);
+    }
+
+    /**
+     * §2.37 Slice 3: a sales-order line is short on stock but the SKU can't be
+     * sourced (no make-vs-buy snapshot, or neither purchased nor manufactured).
+     * No {@link ReplenishmentRequest} can be raised — {@code target_service} is
+     * NOT NULL and there is no target — so we emit {@code ReplenishmentCancelled}
+     * straight to the outbox (no aggregate to mutate). It carries the sales-order
+     * back-reference so sales' {@code ReplenishmentCancelledHandler} flips the
+     * order to {@code rejected}. {@code aggregateId} is a fresh id (no persisted
+     * request) used only as the partition key.
+     */
+    private void cancelUnsourceableSalesOrderShortage(
+        UUID productId,
+        UUID sourceSalesOrderHeaderId,
+        UUID sourceSalesOrderLineId,
+        String reason
+    ) {
+        outbox.append(new ReplenishmentCancelled(
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            productId,
+            sourceSalesOrderHeaderId,
+            sourceSalesOrderLineId,
+            reason,
+            Instant.now()
+        ), ReplenishmentRequest.AGGREGATE_TYPE);
     }
 }

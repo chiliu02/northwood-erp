@@ -12,6 +12,8 @@ import com.northwood.purchasing.application.inbox.SupplierInvoiceRejectedHandler
 import com.northwood.purchasing.application.inbox.SupplierPaymentMadeHandler;
 import com.northwood.purchasing.infrastructure.saga.JdbcPurchaseToPaySagaManager;
 import com.northwood.purchasing.infrastructure.saga.PurchaseToPaySagaWorker;
+import com.northwood.shared.application.outbox.OutboxAppender;
+import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.NoopPlatformTransactionManager;
@@ -92,8 +94,10 @@ public final class PurchasingTestKit {
 
         this.sagaWorker = new PurchaseToPaySagaWorker(sagaManager);
 
+        OutboxAppender appender = new OutboxAppender(outbox, json, new CurrentUserAccessor());
+
         bus.register(outbox);
-        bus.register(new ReplenishmentRequestedHandler(inbox, requisitionService, json));
+        bus.register(new ReplenishmentRequestedHandler(inbox, requisitionService, appender, json));
         bus.register(new GoodsReceivedHandler(inbox, sagaManager, receiptProjection, json));
         bus.register(new SupplierInvoiceApprovedHandler(inbox, sagaManager, paymentProjection, json));
         bus.register(new SupplierInvoiceRejectedHandler(inbox, sagaManager, json));

@@ -1,8 +1,7 @@
 package com.northwood.sales.application.saga;
 
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
-import java.math.BigDecimal;
-import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -68,104 +67,56 @@ public interface SalesOrderFulfilmentSagaManager {
      * {@code reservationStatus}:
      * <ul>
      *   <li>{@code reserved} (full cover) — transitions
-     *       {@code stock_reservation_requested → ready_to_ship}, skipping
-     *       manufacturing entirely. Every line is already reserved against
-     *       {@code stock_balance}, so there's nothing to manufacture.</li>
+     *       {@code stock_reservation_requested → ready_to_ship}. Every line is
+     *       already reserved against {@code stock_balance}, so there's nothing
+     *       to replenish.</li>
      *   <li>{@code partially_reserved} / {@code failed} —
-     *       {@code shortageByLineNumber} must be non-null and non-empty
-     *       (throws {@link IllegalStateException} otherwise — inventory
-     *       has nothing meaningful to say about a non-success outcome
-     *       without per-line shortages). Stashes the map onto
-     *       {@code saga.data}, transitions {@code → stock_reservation_incomplete}, and
-     *       parks the saga for immediate worker pickup so the worker
-     *       forwards the shortage as a {@code ManufacturingRequested}
-     *       on the next tick.</li>
+     *       {@code shortageLineIds} must be non-empty (throws
+     *       {@link IllegalStateException} otherwise — inventory has nothing
+     *       meaningful to say about a non-success outcome without per-line
+     *       shortages). §2.37 Slice 3: inventory has already raised the
+     *       {@code ReplenishmentRequest} for each short line in the same
+     *       transaction, so sales just records the outstanding line ids on
+     *       {@code saga.data} and parks at {@code stock_reservation_incomplete}
+     *       until the replenishments fulfil (or one is cancelled).</li>
      * </ul>
      */
     String applyStockReserved(
         UUID salesOrderHeaderId,
         String reservationStatus,
-        Map<Integer, BigDecimal> shortageByLineNumber
+        Set<UUID> shortageLineIds
     );
 
     /**
-     * Apply {@code manufacturing.WorkOrderCreated}. Records the WO id in the
-     * saga's outstanding set (top-level WOs only — sub-assembly child WOs
-     * with non-null {@code parentWorkOrderId} are no-ops). On the first
-     * top-level WO, transitions {@code manufacturing_requested →
-     * manufacturing_in_progress}.
-     */
-    String applyWorkOrderCreated(UUID salesOrderHeaderId, UUID workOrderId, UUID parentWorkOrderId);
-
-    /**
-     * Apply {@code manufacturing.WorkOrderManufacturingCompleted}. Moves the
-     * WO id from outstanding to completed. Transitions
-     * {@code → ready_to_ship} once every WO sales has heard about has finished
-     * (cross-partition-safe gate via expectedWorkOrderCount when known).
-     * Sub-assembly child WOs are no-ops.
-     */
-    String applyWorkOrderManufacturingCompleted(UUID salesOrderHeaderId, UUID workOrderId, UUID parentWorkOrderId);
-
-    /**
-     * Apply {@code manufacturing.ManufacturingDispatched}. On all-rejected
-     * (zero accepted lines) and saga still in {@code manufacturing_requested},
-     * transitions {@code → rejected}. Otherwise stamps
-     * {@code expectedWorkOrderCount} on saga data so the cross-partition
-     * completion gate is monotonic.
-     */
-    String applyManufacturingDispatched(UUID salesOrderHeaderId, int acceptedCount, int totalLines);
-
-    /**
-     * §2.36: reroute an all-rejected-as-purchased-only {@code ManufacturingDispatched}
-     * to the new {@code purchasing_requested} branch instead of terminal
-     * {@code rejected}. Only valid when the saga is in
-     * {@code manufacturing_requested}; no-op otherwise. Returns the per-line
-     * shortage map (read from {@code saga.data} where {@link #applyStockReserved}
-     * stashed it) so the caller can build a
-     * {@code sales.SalesOrderPurchasingRequested} event with the right
-     * quantities. Returns {@code Optional.empty()} if the transition was
-     * declined — caller falls back to the existing rejection path.
-     *
-     * <p>Stashes the {@code outstandingPurchasingLineIds} set on saga.data
-     * (from {@code outstandingLineIds}) so the §2.36 fan-in handler knows
-     * which {@code ReplenishmentFulfilled} events are addressed to this saga.
-     *
-     * <p>Used by {@code ManufacturingDispatchedHandler} when every rejected
-     * line carries outcome {@code rejected_not_manufactured} (i.e., the
-     * SKU has no active BOM by design — purchased-only). Mixed cases (some
-     * accepted, some {@code rejected_not_manufactured}, or any
-     * {@code rejected_no_bom}) take the existing §4.2-closure full-rejection
-     * path — restoring symmetry for those is tracked as a §2.36 follow-up.
-     */
-    java.util.Optional<PurchasingDivergence> applyManufacturingDispatchedReroutingToPurchasing(
-        UUID salesOrderHeaderId,
-        java.util.Set<UUID> outstandingLineIds
-    );
-
-    /** §2.36 result for {@link #applyManufacturingDispatchedReroutingToPurchasing}. */
-    record PurchasingDivergence(
-        Map<Integer, java.math.BigDecimal> shortageByLineNumber
-    ) {}
-
-    /**
-     * §2.36 Slice E: apply {@code inventory.ReplenishmentFulfilled} addressed
+     * §2.37 Slice 3: apply {@code inventory.ReplenishmentFulfilled} addressed
      * to a specific sales-order line. Removes the line id from the saga's
-     * {@code outstandingPurchasingLineIds} set. When the set empties and the
-     * saga is still in {@code purchasing_requested}, transitions back to
+     * {@code outstandingReplenishmentLineIds} set. When the set empties and the
+     * saga is still in {@code stock_reservation_incomplete}, transitions back to
      * {@code stock_reservation_requested} so the worker re-tries reservation
      * against the now-restocked inventory.
      *
      * <p>Returns the saga's new state (or current state for a no-op). Callers
      * gate on {@code "stock_reservation_requested"} to know that re-reservation
-     * is required — typically the handler emits no follow-on event and lets
-     * the existing worker tick pick the saga back up.
+     * is required — the handler re-emits {@code StockReservationRequested}.
      *
      * <p>Idempotent against duplicate fulfilment events (line already absent
      * from the set) and against late deliveries (saga no longer in
-     * {@code purchasing_requested} — e.g. operator cancelled, or the saga
-     * already advanced via some other path).
+     * {@code stock_reservation_incomplete}).
      */
     String applyReplenishmentFulfilled(UUID salesOrderHeaderId, UUID salesOrderLineId);
+
+    /**
+     * §2.37 Slice 3: apply {@code inventory.ReplenishmentCancelled} addressed
+     * to a specific sales-order line — the replenishment couldn't be sourced
+     * (unsourceable SKU, no active BOM, no approved vendor). A short line that
+     * can never be replenished means the order can't be fulfilled, so the saga
+     * transitions {@code stock_reservation_incomplete → rejected} (any one
+     * cancelled line rejects the whole order — the §4.2 closure policy).
+     * Returns {@code "rejected"} so the handler can flip the order header +
+     * request compensation. No-op (returns current state) if the saga has
+     * already left {@code stock_reservation_incomplete}.
+     */
+    String applyReplenishmentCancelled(UUID salesOrderHeaderId, UUID salesOrderLineId, String reason);
 
     /** Apply {@code inventory.ShipmentPosted}. Transitions {@code ready_to_ship → goods_shipped}. */
     String applyShipmentPosted(UUID salesOrderHeaderId);
