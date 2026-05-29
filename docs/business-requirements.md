@@ -161,7 +161,7 @@ The fulfilment Saga (REQ-SAL-030 → REQ-SAL-035) refuses to advance to "ready t
 A sales order moves through a fixed sequence of states. Operators do not click between states — events from other contexts drive transitions automatically.
 
 **REQ-SAL-030 — State: Placed** *(shipped)*
-The order has been captured and is durable. Inventory has been asked to reserve stock; manufacturing has been asked to make any internally-produced lines.
+The order has been captured and is durable. Inventory has been asked to reserve stock. If a line is short, inventory itself decides make-vs-buy and raises a replenishment request (§2.37) — sales does not ask manufacturing or purchasing directly; it parks until the shortage is replenished.
 
 **REQ-SAL-031 — State: Awaiting Prepayment** *(shipped, prepayment terms only)*
 The order is placed and a deposit invoice has been raised but not yet paid in full.
@@ -231,8 +231,8 @@ Each SKU declares a tracking mode. Tracked SKUs (raw materials, finished goods) 
 **REQ-INV-020 — Reserve stock for a sales-order line** *(shipped)*
 When a sales order is placed, inventory tries to reserve each line's full quantity. Outcomes per line:
 - **Fully reserved** — `on_hand` was sufficient; `reserved` increases by the quantity, available decreases.
-- **Partially reserved / shortage** — `on_hand` was insufficient; the system reserves what it can and emits a shortage signal. The sales order waits in Awaiting Stock; a downstream make-to-order work order or future receipt closes the gap.
-- **Cancelled and re-emitted** — if the saga later needs to retry the reservation (e.g. after a make-to-order shortage), the prior reservation is cancelled first to avoid double-booking.
+- **Partially reserved / shortage** — `on_hand` was insufficient; inventory reserves what it can and, in the same transaction, raises a `ReplenishmentRequest(reason=sales_order_shortage)` that it routes by make-vs-buy (§2.37 — a make-to-stock work order or a purchase order). The sales order waits in Awaiting Stock until the replenishment tops up `on_hand` and the reservation retries.
+- **Cancelled and re-emitted** — if the saga later needs to retry the reservation (e.g. once a replenishment has landed), the prior reservation is cancelled first to avoid double-booking.
 
 **REQ-INV-021 — Reserve raw materials for a work order** *(shipped)*
 When manufacturing releases a work order, inventory reserves each raw-material component (the BOM walk). Same outcomes as REQ-INV-020. A shortage triggers the unified replenishment loop via inventory (REQ-XBC-080, Trigger B).
@@ -349,10 +349,10 @@ The system rejects a BOM-line edit that would create a cycle (A requires B which
 **REQ-MFG-010 — Each makeable SKU may have an active routing** *(shipped — read-only)*
 A routing lists the operations needed to produce the SKU (operation code, work center, estimated duration). The routing snapshot is copied onto each work order at release time so historical work orders are reproducible even after routings change.
 
-### 4.3 Work orders — make-to-order
+### 4.3 Work orders — release mechanics
 
-**REQ-MFG-020 — Release a work order for a sales-order line** *(shipped)*
-When sales places an order with a makeable SKU that is short on stock, the make-to-order Saga releases a work order: the system walks the active BOM, snapshots component materials onto WO material lines, snapshots the routing onto WO operation lines, and asks inventory to reserve the raw materials.
+**REQ-MFG-020 — Release a work order** *(shipped — make-to-stock since §2.37)*
+When a work order is released, the system walks the active BOM, snapshots component materials onto WO material lines, snapshots the routing onto WO operation lines, and asks inventory to reserve the raw materials. Since §2.37 the only release trigger is a manufacturing-routed Replenishment Request from inventory (REQ-MFG-030 / REQ-INV-082) — manufacturing builds **make-to-stock**, replenishing on-hand rather than fulfilling a specific sales-order line. (Before §2.37 a sales-order shortage routed to manufacturing directly via a `ManufacturingRequested` event; that make-to-order path is retired — inventory now owns the make-vs-buy decision.)
 
 **REQ-MFG-021 — Sub-assembly recursion** *(shipped)*
 A WO whose product is a multi-level BOM releases child WOs for the sub-assemblies first. A parent WO does not start manufacturing operations until its children complete. Parent-on-children gating is automatic.
@@ -360,7 +360,7 @@ A WO whose product is a multi-level BOM releases child WOs for the sub-assemblie
 ### 4.4 Work orders — stock replenishment *(NEW — §2.35)*
 
 **REQ-MFG-030 — Release a work order for a replenishment request** *(planned, §2.35 Slice C)*
-When inventory raises a manufacturing-routed Replenishment Request (REQ-INV-082), manufacturing releases a stock work order. The WO is **not** tied to a sales-order line; it carries the originating `replenishment_request_id` instead. The BOM walk + material reservation + operation snapshotting are identical to the make-to-order path. Completion bumps the FG `on_hand` (REQ-MFG-080) and signals the replenishment as fulfilled (REQ-INV-084).
+When inventory raises a manufacturing-routed Replenishment Request (REQ-INV-082), manufacturing releases a stock work order. The WO is **not** tied to a sales-order line; it carries the originating `replenishment_request_id` instead (and, since §2.37 Slice 4, the `source_sales_order_header_id` of the order whose shortage triggered it, so reporting's production-planning board keeps the SO↔WO link). The BOM walk + material reservation + operation snapshotting follow the shared WO-release mechanics (REQ-MFG-020). Completion bumps the FG `on_hand` (REQ-MFG-080) and signals the replenishment as fulfilled (REQ-INV-084). If the SKU has no active BOM, manufacturing emits `ReplenishmentUndispatchable` and inventory cancels the request (which, for a sales-order-shortage replenishment, rejects the originating order).
 
 ### 4.5 Material reservation + shortage
 
@@ -598,17 +598,17 @@ Each business flow below spans multiple bounded contexts. They are the orchestra
 ### 8.1 Order-to-Cash (the main sales flow)
 
 **REQ-XBC-010 — Order-to-Cash end-to-end** *(shipped)*
-A customer order moves through: order placed → (optional prepayment invoice + payment) → stock reserved → (if shortage) make-to-order WO completes → shipment posted → customer invoice raised → customer payment received → order closed.
+A customer order moves through: order placed → (optional prepayment invoice + payment) → stock reserved → (if shortage) inventory raises a replenishment that tops up on-hand (a make-to-stock WO or a purchase, §2.37) → reservation retries and succeeds → shipment posted → customer invoice raised → customer payment received → order closed.
 
 ### 8.2 Procure-to-Pay (the main purchasing flow)
 
 **REQ-XBC-020 — Procure-to-Pay end-to-end** *(shipped)*
 Demand (manual / shortage / replenishment) raises a PR → PR approved + converted to PO → PO approved + sent to supplier → goods received → supplier invoice approved (three-way match) → supplier payment posted.
 
-### 8.3 Make-to-Order (sales-driven manufacturing)
+### 8.3 Sales-shortage → make-to-stock replenishment
 
-**REQ-XBC-030 — Make-to-Order flow** *(shipped)*
-A sales order for a makeable SKU with insufficient stock triggers manufacturing to release a work order (or a tree of sub-assembly WOs). Operations complete bottom-up; the top-level WO's completion bumps FG on-hand, which closes out the sales-order reservation, which advances the order to Ready to Ship.
+**REQ-XBC-030 — Sales-shortage make-to-stock flow** *(shipped — re-routed through inventory by §2.37)*
+A sales order for a makeable SKU with insufficient stock no longer triggers manufacturing directly. Inventory detects the shortage on reservation, raises a `ReplenishmentRequest(reason=sales_order_shortage)`, and (because the SKU is makeable) routes it to manufacturing, which releases a **make-to-stock** work order (or a tree of sub-assembly WOs — REQ-MFG-021). Operations complete bottom-up; the top-level WO's completion bumps FG on-hand, which fulfils the replenishment; the parked sales order retries its reservation, succeeds, and advances to Ready to Ship. (Before §2.37 the WO was bound to the sales-order line and tracked by the sales saga; now the WO replenishes stock and the sales order simply re-reserves once stock is available. See REQ-XBC-080 for the unified replenishment loop this is now a case of.)
 
 ### 8.4 Material-Shortage → Auto-Requisition
 

@@ -61,7 +61,7 @@ Keycloak loads the `northwood` realm from `db/keycloak/northwood-realm.json` on 
 
 ### Why Kafka is required
 
-The seven services run as separate JVMs in this layout. The only wired event bus is `KafkaEventPublisher` + `KafkaInboxDispatcher`, both registered under `@Profile("kafka")` (along with each service's outbox drainer). Under the default `dev` profile no `EventPublisher` is registered — events accumulate in the outbox table with nothing draining them, so cross-service flows (e.g. sales emitting `ManufacturingRequested` for manufacturing to consume) silently never fire.
+The seven services run as separate JVMs in this layout. The only wired event bus is `KafkaEventPublisher` + `KafkaInboxDispatcher`, both registered under `@Profile("kafka")` (along with each service's outbox drainer). Under the default `dev` profile no `EventPublisher` is registered — events accumulate in the outbox table with nothing draining them, so cross-service flows (e.g. inventory emitting `ReplenishmentRequested` for manufacturing or purchasing to consume) silently never fire.
 
 Every demo below assumes services are launched with `SPRING_PROFILES_ACTIVE=kafka` (set in each terminal before `mvn spring-boot:run`). The Kafka container in `docker-compose.yml` is pre-configured for the single-broker case (`KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1` and friends — without those, internal topics fail to create and consumer groups silently hang on `FIND_COORDINATOR`).
 
@@ -138,8 +138,8 @@ While the scenario is running, navigate to other pages with the sidebar and the 
 Drive the demo step by step using the persona-grouped sidebar. Suggested run-order:
 
 1. **Emma** — `/products` → click ✏ on Wooden Dining Table → change the price → confirm `product.SalesPriceChanged` (and/or `product.StandardCostChanged`) lands in the saga / event log.
-2. **Sarah** — `/sales-orders/new` → place 1 × FG-TABLE-001 → submit → land on the **Saga Console**.
-3. **Linda** — `/production-board` → click the released WO → **Complete operation** for each op (sequence 10, 20, 30…). Each completion advances the make-to-order saga.
+2. **Sarah** — `/sales-orders/new` → place 1 × FG-TABLE-001 → submit → land on the **Saga Console**. With 2 on hand the line reserves fully, so the sales saga goes straight to `ready_to_ship` — no work order is raised (a stock-covered order skips manufacturing entirely since §2.37).
+3. **Linda** — *(only fires when the order is short)* — to see a work order, place a quantity above on-hand so inventory raises a make-to-stock replenishment WO. Then `/production-board` → click the released WO → **Complete operation** for each op (sequence 10, 20, 30…). Each completion advances the work-order (make-to-stock) saga; when the WO completes it bumps on-hand and the parked sales order re-reserves and reaches `ready_to_ship`.
 4. **Mike** — `/shipments` → paste the SO id from the saga's `domainKey` → post the shipment.
 5. Watch finance auto-create a customer invoice (the sales saga jumps to `invoice_created`).
 6. **Olivia** — `/payments` → Customer (AR) tab → paste the customer-invoice id → Record. Sales saga reaches `completed`.
@@ -176,7 +176,7 @@ Three useful psql queries to project on a side screen:
 SELECT sales_order_header_id, saga_state, current_step, data
   FROM sales.sales_order_fulfilment_saga ORDER BY updated_at DESC;
 
--- Make-to-order saga (one row per work order)
+-- Make-to-stock work-order saga (one row per work order; table still named make_to_order_saga, rename tracked as §2.39)
 SELECT work_order_id, saga_state, current_step
   FROM manufacturing.make_to_order_saga ORDER BY updated_at DESC;
 
@@ -235,7 +235,7 @@ curl -X PUT http://localhost:8081/api/products/{id}/reorder-policy \
 curl -X POST http://localhost:8081/api/products/{id}/discontinue
 ```
 
-**Outbox:** `product.ProductDiscontinued`. **Today's behaviour (§1F.1, 2026-05-14):** six services consume the event. Sales `placeOrder` rejects new lines for the SKU with `ProductDiscontinuedException`. Manufacturing retires `product_replenishment` and the active BOM. Purchasing's PR entry-point rejects requisitions for the SKU. Inventory + finance + reporting/atp stamp their own `discontinued_at`. Existing draft sales orders are **not** retroactively flagged; "reorder rules stop generating purchase suggestions" remains future-tense (no auto-reorder job exists today for the flag to suppress).
+**Outbox:** `product.ProductDiscontinued`. **Today's behaviour (§1F.1, 2026-05-14):** six services consume the event. Sales `placeOrder` rejects new lines for the SKU with `ProductDiscontinuedException`. Manufacturing flips its `product_card` make-vs-buy flags off and retires the active BOM. Purchasing's PR entry-point rejects requisitions for the SKU. Inventory + finance + reporting/atp stamp their own `discontinued_at`. Existing draft sales orders are **not** retroactively flagged; "reorder rules stop generating purchase suggestions" remains future-tense (no auto-reorder job exists today for the flag to suppress).
 
 ### 1.5 — Make-vs-buy classification
 
@@ -245,7 +245,7 @@ curl -X PUT http://localhost:8081/api/products/{id}/make-vs-buy \
   -d '{"manufacturedInternally":true,"purchasedExternally":false}'
 ```
 
-**Outbox:** `product.MakeVsBuyChanged`. **Projection:** manufacturing's `ProductReplenishmentProjectionService` consumes this; the make-to-order entry gate (`ManufacturingRequestedHandler`) reads it before BOM lookup so a "purchased only" product is rejected up front.
+**Outbox:** `product.MakeVsBuyChanged`. **Projection:** inventory mirrors the `is_manufactured` / `is_purchased` flags onto its `product_card`; since §2.37 inventory's replenishment routing reads them to decide make-vs-buy (manufactured → make-to-stock WO, purchased → purchasing). Manufacturing also keeps its own make-vs-buy projection so it can reject a replenishment for a SKU with no active BOM (`ReplenishmentUndispatchable`).
 
 ---
 
@@ -268,7 +268,7 @@ The financial dashboard's `inventory_value`, `accounts_receivable`, and `account
 
 ## Demo 3 — Saga: sales-order fulfilment (happy path)
 
-**Important framing:** every sales order with an active BOM goes through make-to-order. The reservation in step 2 reserves a customer-facing slot; supply is produced by manufacturing in step 4. There is no separate "stock-only" path.
+**Important framing (since §2.37):** a sales order ships straight from stock whenever the line is fully reservable. Manufacturing is involved only when a line is **short** — and even then it's indirect: inventory raises a make-to-stock replenishment and the sales order parks until on-hand is topped up. The happy path below has enough stock on hand, so it never touches manufacturing.
 
 ### 3.1 — Place an order; watch all three sagas drive it
 
@@ -292,27 +292,19 @@ curl -X POST http://localhost:8082/api/sales-orders \
 | State | Trigger to advance |
 |---|---|
 | `started` | worker emits `sales.StockReservationRequested` |
-| `stock_reservation_requested` | inbound `inventory.StockReserved` |
-| `stock_reservation_incomplete` | worker emits `sales.ManufacturingRequested` |
-| `manufacturing_requested` | inbound `manufacturing.WorkOrderCreated` |
-| `manufacturing_in_progress` | inbound `manufacturing.WorkOrderManufacturingCompleted` |
+| `stock_reservation_requested` | inbound `inventory.StockReserved` — fully reserved → `ready_to_ship`; short → `stock_reservation_incomplete` |
+| `stock_reservation_incomplete` | parked; inbound `inventory.ReplenishmentFulfilled` for all short lines → retry via `stock_reservation_requested`. Inbound `inventory.ReplenishmentCancelled` → `rejected` (terminal) |
 | `ready_to_ship` | post a shipment via `POST /api/shipments` (inventory) |
 | `goods_shipped` | inbound `finance.CustomerInvoiceCreated` (auto-created from `sales.SalesOrderShipped`) |
 | `invoice_created` | inbound `finance.CustomerPaymentReceived` (full settlement) |
 | `completed` | terminal |
 
-Partial customer payment lands on `invoice_partially_paid` instead, parking until the next allocation.
+Partial customer payment lands on `invoice_partially_paid` instead, parking until the next allocation. (The §2.37 flip removed the old `manufacturing_requested` / `manufacturing_in_progress` / `manufacturing_completed` / `purchasing_requested` states — sales no longer drives manufacturing; inventory owns make-vs-buy and the sales order simply parks at `stock_reservation_incomplete` until replenished.)
 
 **To drive the saga to completion (UI: Scenario 3.1 does all of this):**
 
-1. Wait for the make-to-order saga to hit `raw_materials_reserved` (auto, single tick).
-2. Complete each work order operation (UI: production board → ▶ Complete operation):
-   ```bash
-   curl -X POST http://localhost:8084/api/work-orders/{wo-id}/operations/{seq}/complete \
-     -H 'content-type: application/json' \
-     -d '{"actualMinutes":30}'
-   ```
-3. Post a shipment (UI: `/shipments`):
+1. Wait for the sales saga to reach `ready_to_ship` (auto, single tick — the line is stock-covered, so it reserves fully and never touches manufacturing). For the shortage variant, see Demo 5 / Demo 7.
+2. Post a shipment (UI: `/shipments`):
    ```bash
    curl -X POST http://localhost:8083/api/shipments \
      -H 'content-type: application/json' \
@@ -326,7 +318,7 @@ Partial customer payment lands on `invoice_partially_paid` instead, parking unti
                     "shippedQuantity":1,
                     "unitCost":150}]}'
    ```
-4. Customer invoice is auto-created from the shipment event. Pay it (UI: `/payments` → Customer tab):
+3. Customer invoice is auto-created from the shipment event. Pay it (UI: `/payments` → Customer tab):
    ```bash
    curl -X POST http://localhost:8086/api/payments/customer \
      -H 'content-type: application/json' \
@@ -338,7 +330,7 @@ Partial customer payment lands on `invoice_partially_paid` instead, parking unti
 
 `paymentMethod` must be one of `bank_transfer | cash | card | cheque` — the API rejects anything else.
 
-**What the audience sees:** all three saga rows progress in lock-step in the saga console; the Sales Order 360 view at `/sales-orders/{id}` updates after every event.
+**What the audience sees:** the sales saga row progresses through the saga console (the stock-covered happy path runs only the sales saga — no work-order or purchase-to-pay row appears); the Sales Order 360 view at `/sales-orders/{id}` updates after every event.
 
 ### 3.2 — Prepayment / cash-with-order (the second AR pattern) ✅ §2.31
 
@@ -379,7 +371,7 @@ What happens next, in one tick:
 3. Inventory consumes the settled event and flips `sales_order_line_facts.prepayment_settled = true` — the 409 gate is now unlocked.
 4. Sales saga worker picks the row up from `prepaid` and emits `sales.StockReservationRequested`; the rest of the fulfilment flow walks the same path as Demo 3.1.
 
-Post the shipment when the saga reaches `ready_to_ship` (single-line stock-cover order: the make-to-order detour is skipped). Finance reacts to `inventory.ShipmentPosted` and posts **two** journal entries in the same tx:
+Post the shipment when the saga reaches `ready_to_ship` (single-line stock-cover order: it reserves fully and never touches manufacturing). Finance reacts to `inventory.ShipmentPosted` and posts **two** journal entries in the same tx:
 - **Dr 2110 Customer Deposits / Cr 4000 Sales Revenue** for $320 — reclassify the deposit to revenue (the goods-delivered performance obligation).
 - **Dr 5000 COGS / Cr 1220 Finished Goods Inventory** at standard cost (the existing on-shipment pair).
 
@@ -414,7 +406,7 @@ curl -i -X POST http://localhost:8083/api/shipments \
 
 ### 4.1 — Cancel an order mid-fulfilment
 
-Place an order **as Sarah (sales_clerk)**, advance it to `manufacturing_in_progress` (e.g. follow Demo 3 partway: place order → wait for `stock_reservation_incomplete` → wait for first `WorkOrderCreated`).
+Place an order **as Sarah (sales_clerk)** for a short quantity so it parks at `stock_reservation_incomplete` (e.g. follow Demo 3 partway: place order → wait for `stock_reservation_incomplete` while inventory's make-to-stock replenishment is still in flight). Cancel works from any pre-shipment state.
 
 **Security demo moment.** With Sarah still logged in, hover over the **Cancel order** button on the sales-order detail page — it's disabled with a tooltip "Requires role: sales_manager". Sarah doesn't have authority to cancel; only sales-mgr does. Click **Sign out** (top-right), then sign back in as **sales-mgr**. Now the Cancel button is enabled. Click it, supply a reason, confirm. Behind the scenes Spring Security's `@PreAuthorize("hasRole('sales_manager')")` accepts the call.
 
@@ -432,12 +424,12 @@ Returns 200 with the order body now showing `status='cancelled'` and `cancelledA
 
 1. **Sales** — header flipped to `'cancelled'`, saga flipped to `'compensating'`, `sales.SalesOrderCancellationRequested` emitted.
 2. **Inventory** consumes — releases the stock reservation (`stock_balance.reserved_quantity` decremented; reservation header status `'released'`), emits `inventory.SalesOrderCancellationApplied`.
-3. **Manufacturing** consumes — for every active WO (status NOT IN `completed/closed/cancelled`): `WorkOrder.cancel()` flips it to `'cancelled'` + emits `manufacturing.WorkOrderCancelled`. The associated `make_to_order_saga` is flipped to `'compensated'`. One `manufacturing.SalesOrderCancellationApplied` ack per cancel command.
-4. **Inventory** also consumes `manufacturing.WorkOrderCancelled` to release the raw-material reservation (`stock_balance.reserved_quantity` decremented for the rm components).
+3. **Manufacturing** consumes — for every active WO *bound to this sales order* (status NOT IN `completed/closed/cancelled`): `WorkOrder.cancel()` flips it to `'cancelled'` + emits `manufacturing.WorkOrderCancelled`, and the associated `make_to_order_saga` is flipped to `'compensated'`. One `manufacturing.SalesOrderCancellationApplied` ack per cancel command. **§2.37:** make-to-stock replenishment WOs are bound to a `ReplenishmentRequest`, not the sales order, so for a current order this cancels **zero** WOs — the handler still runs and still emits the ack (the sales saga waits for it).
+4. **Inventory** also consumes `manufacturing.WorkOrderCancelled` (when emitted) to release the raw-material reservation (`stock_balance.reserved_quantity` decremented for the rm components).
 5. **Sales** consumes both acks (one inbox handler each). When both have arrived, the saga advances `compensating → compensated` and emits `sales.SalesOrderCompensated`.
 6. **Reporting** consumes `sales.SalesOrderCompensated` and flips `sales_order_360_view.order_status` to `'cancelled'`.
 
-Watch the Saga Console UI walk `manufacturing_in_progress → compensating → compensated`. The 360 view (`/sales-orders/{id}/360`) shows `order_status='cancelled'` afterwards.
+Watch the Saga Console UI walk `stock_reservation_incomplete → compensating → compensated`. The 360 view (`/sales-orders/{id}/360`) shows `order_status='cancelled'` afterwards.
 
 After `goods_shipped` the cancel is rejected with HTTP 409 — that path requires the credit-note / return-goods flow (out of scope, dev-todo §4.2). Hard-cancel by design: WIP from in-progress operations is written off rather than letting production finish (soft-cancel parked in dev-todo §3.7).
 
@@ -445,24 +437,23 @@ After `goods_shipped` the cancel is rejected with HTTP 409 — that path require
 
 Pre-state: 0 × FG-TABLE-001 on hand. Place an order for 2 of them.
 
-The `StockReservedHandler` stashes the shortage on saga.data and **still advances to `stock_reservation_incomplete`**. The worker then emits `ManufacturingRequested` carrying the shortage map; manufacturing fills the gap by releasing work orders. End-state is the same as 3.1, just longer.
+The `StockReservedHandler` stashes the short line-ids on saga.data and **advances to `stock_reservation_incomplete`** (parked). Inventory — in the same transaction as the partial reservation — raises a `ReplenishmentRequest(reason=sales_order_shortage)` and, because FG-TABLE-001 is makeable, routes it to manufacturing as a make-to-stock WO. When that WO completes it bumps FG on-hand and emits `inventory.ReplenishmentFulfilled`; the parked sales order retries its reservation and reaches `ready_to_ship`. End-state is the same as 3.1, just longer.
 
-If manufacturing has **no active BOM** for the product, `ManufacturingDispatchedHandler` flips both the saga and the order header to `rejected`. To force this branch in a demo, deactivate the BOM via `POST /api/boms/{id}/activate` with a different BOM, or use a finished-good seeded without a BOM.
+If the SKU has **no active BOM**, manufacturing emits `manufacturing.ReplenishmentUndispatchable`; inventory cancels the request and emits `inventory.ReplenishmentCancelled`, which flips the sales saga and the order header to `rejected`. (A purchased-only SKU with no vendor takes the same shape via `purchasing.ReplenishmentUndispatchable`.) To force the no-BOM branch in a demo, deactivate the BOM via `POST /api/boms/{id}/activate` with a different BOM, or use a finished-good seeded without a BOM.
 
 ---
 
-## Demo 5 — Saga: make-to-order
+## Demo 5 — Saga: make-to-stock work order
 
-The `manufacturing.make_to_order_saga` row appears the moment sales emits `ManufacturingRequested`. One saga row per work order (not per sales-order line — sub-assembly children get their own saga at `work_order_created`).
+The `manufacturing.make_to_order_saga` row (table name unchanged; rename to a generic name is tracked as §2.39) appears the moment inventory dispatches a manufacturing-routed `inventory.ReplenishmentRequested` — i.e. a make-to-stock work order, **not** a sales-order line. Since §2.37 the saga is always entered directly at `work_order_created` (the old `started` state was removed); the WO carries the originating `replenishment_request_id` (and the triggering `source_sales_order_header_id`, for the reporting board's SO↔WO link) rather than being bound to a sales order. One saga row per work order — sub-assembly children get their own saga at `work_order_created`.
 
 ### 5.1 — Order with sufficient raw materials
 
-The make-to-order state machine:
+The make-to-stock state machine:
 
 | State | Trigger |
 |---|---|
-| `started` | worker creates the work order, snapshots BOM + routing |
-| `work_order_created` | worker emits `manufacturing.RawMaterialReservationRequested` |
+| `work_order_created` | saga is entered here (WO created, BOM + routing snapshotted); worker emits `manufacturing.RawMaterialReservationRequested` |
 | `raw_material_reservation_requested` | inbound `inventory.RawMaterialsReserved` |
 | `raw_materials_reserved` | worker releases production |
 | (worker drives ops to completion) | `POST /api/work-orders/{id}/operations/{seq}/complete` per op |
@@ -474,13 +465,13 @@ Sub-assembly recursion: if a BOM line is `sub_assembly`, the release service rec
 
 Pre-state: only 2 × RM-LEG-001 on hand; ordered quantity needs 4.
 
-`RawMaterialsReservedHandler` sees status `partially_reserved` / `failed`, transitions saga to `raw_material_shortage`, stashes the per-product shortage on saga.data, and emits `manufacturing.RawMaterialShortageDetected`. Purchasing's `RawMaterialShortageDetectedHandler` consumes this and creates a `purchase_requisition` with `source_type='work_order_shortage'` (which auto-converts to a PO in the same transaction — see Demo 6). When goods arrive, `GoodsReceivedHandler` (manufacturing-side) decrements the stash; once fully covered, the saga returns to `work_order_created` and re-emits the reservation request.
+`RawMaterialsReservedHandler` sees status `partially_reserved` / `failed`, transitions saga to `raw_material_shortage`, stashes the per-product shortage on saga.data, and emits `manufacturing.RawMaterialShortageDetected`. Since §2.35 this is consumed by **inventory** (not purchasing directly): inventory raises a `ReplenishmentRequest(reason=work_order_shortage)` and routes it by make-vs-buy — raw materials are buy-only, so it goes to purchasing, which creates a `purchase_requisition` with `source_type='stock_replenishment'` (which auto-converts to a PO in the same transaction — see Demo 6). When goods arrive, `GoodsReceivedHandler` (manufacturing-side) decrements the stash; once fully covered, the saga returns to `work_order_created` and re-emits the reservation request. Manufacturing and purchasing never signal each other directly — the coupling is mediated by `inventory.ReplenishmentRequest`.
 
 ---
 
 ## Demo 6 — Saga: purchase-to-pay
 
-`purchasing.purchase_to_pay_saga` row is inserted at `started` in the same txn as the PO is created. **PO draft/approve flow (since 2026-05-06)**: manual PRs land their PO at `'draft'` and require a human to call `POST /api/purchase-orders/{id}/approve`; shortage-driven PRs (Demo 5.2) auto-approve when `northwood.purchasing.shortagePoAutoApprove=true` (default), so the make-to-order saga still flows automatically. Saga walks `started → purchase_order_approved → waiting_for_goods`. `three_way_match_*` saga states stay reserved for future variance-handling workflows.
+`purchasing.purchase_to_pay_saga` row is inserted at `started` in the same txn as the PO is created. **PO draft/approve flow (since 2026-05-06)**: manual PRs land their PO at `'draft'` and require a human to call `POST /api/purchase-orders/{id}/approve`; replenishment-driven PRs (Demo 5.2 — `source_type='stock_replenishment'`) auto-approve when `northwood.purchasing.shortagePoAutoApprove=true` (default), so the make-to-stock saga still flows automatically. Saga walks `started → purchase_order_approved → waiting_for_goods`. `three_way_match_*` saga states stay reserved for future variance-handling workflows.
 
 ### 6.1 — Manual requisition → approve → goods receipt → invoice → payment
 
@@ -586,14 +577,14 @@ curl -X POST http://localhost:8082/api/sales-orders \
 
 **Watch this unfold:**
 
-1. Sales fulfilment saga: `started` → `stock_reservation_requested` → `stock_reservation_incomplete` (with shortage stash) → `manufacturing_requested`.
-2. Make-to-order saga starts; advances to `raw_material_shortage` because RM-LEG-001 is short by 35 units.
-3. `manufacturing.RawMaterialShortageDetected` fires → purchasing creates a PR + PO → P2P saga starts at `started` → `waiting_for_goods`.
+1. Sales fulfilment saga: `started` → `stock_reservation_requested` → `stock_reservation_incomplete` (the FG-TABLE line can't be reserved — 0 on hand). The saga parks here.
+2. Inventory raises a `ReplenishmentRequest(reason=sales_order_shortage)` for the FG and, because it's makeable, routes it to manufacturing as a make-to-stock WO. The make-to-stock saga is entered at `work_order_created`; releasing it hits the RM-LEG-001 shortage (short by 35) and advances to `raw_material_shortage`.
+3. `manufacturing.RawMaterialShortageDetected` fires → **inventory** raises a second `ReplenishmentRequest(reason=work_order_shortage)`, routes it to purchasing → PR + PO → P2P saga starts at `started` → `waiting_for_goods`.
 4. **Time-skip:** Tom posts a goods receipt for 35 × RM-LEG-001 (Demo 6 step 2 with `receivedQuantity:35`).
 5. Inventory bumps `stock_balance.on_hand_quantity`. P2P saga: `waiting_for_goods` → `goods_received`.
-6. Manufacturing's `GoodsReceivedHandler` un-parks the make-to-order saga: → `work_order_created` → re-emits reservation → `raw_materials_reserved`.
-7. Operation completion: 10 work orders × however many ops each. `manufacturing.WorkOrderManufacturingCompleted` × 10.
-8. Sales fulfilment saga's tracker: `outstandingWorkOrderIds` empties as completions arrive; advances to `ready_to_ship` only when `expectedWorkOrderCount` (stamped at dispatch) matches.
+6. Manufacturing's `GoodsReceivedHandler` un-parks the make-to-stock saga: → `work_order_created` → re-emits reservation → `raw_materials_reserved`.
+7. Operation completion: the FG work order(s) complete. Each top-level completion bumps FG `stock_balance.on_hand_quantity` and fulfils the FG replenishment (`inventory.ReplenishmentFulfilled`).
+8. Once the FG replenishment is fulfilled, the parked sales saga retries: `stock_reservation_incomplete` → `stock_reservation_requested` → (now coverable) `ready_to_ship`.
 9. Post a shipment for 10 units. Sales: `ready_to_ship` → `goods_shipped`. Inventory decrements on-hand and releases the reservation.
 10. `sales.SalesOrderShipped` triggers finance to auto-create a customer invoice. Sales: `goods_shipped` → `invoice_created`.
 11. Olivia records the supplier invoice and pays it (Demo 6 steps 3 & 4). P2P saga: → `supplier_invoice_approved` → `completed`.
@@ -756,8 +747,8 @@ A *consumer-dependency* outage (e.g. PostgreSQL briefly down while Kafka keeps d
 | Goods receipt 400 with `Unknown purchase_order_line_id` | The receipt line names a `purchaseOrderLineId` that inventory hasn't projected yet — usually because the PO hasn't been created at all, or `PurchaseOrderCreated` hasn't reached inventory's inbox yet (cold start). Use the picker in `/goods-receipts` rather than hand-typed line ids. |
 | Goods receipt 400 with `Product mismatch on purchase_order_line_id` | The receipt line's `productId` doesn't match the `purchase_order_line.product_id`. Defence-in-depth check against client-side picker bypass. Re-pick the line from the picker. |
 | Shipment 400 with `Unknown sales_order_line_id` / `Product mismatch on sales_order_line_id` | Same shape on the SO side. Inventory projects `sales_order_line_facts` from `SalesOrderPlaced`; the validation runs in `ShipmentService.post`. Lines without a `salesOrderLineId` (unlinked manual shipments) skip the check. |
-| Make-to-order saga stuck on `started` (and `manufacturing.work_order_header` stays empty) | Manufacturing-service didn't receive the `sales.ManufacturingRequested` event. Either manufacturing-service isn't running, **or it was launched without `SPRING_PROFILES_ACTIVE=kafka`** so it's on the in-JVM bus and never sees cross-JVM events. Set the profile and restart. |
-| Sales saga stuck on `manufacturing_requested` | Same as above — make-to-order saga can't advance because manufacturing isn't getting the event. Check the kafka profile is set on every service. |
+| Make-to-stock saga never appears (and `manufacturing.work_order_header` stays empty) on a shortage order | Manufacturing-service didn't receive inventory's `inventory.ReplenishmentRequested` event. Either manufacturing-service isn't running, **or it was launched without `SPRING_PROFILES_ACTIVE=kafka`** so it's on the in-JVM bus and never sees cross-JVM events. Set the profile and restart. |
+| Sales saga stuck on `stock_reservation_incomplete` | The replenishment that should top up on-hand isn't completing — manufacturing (or purchasing) isn't getting inventory's `ReplenishmentRequested`, or the make-to-stock WO / PO is itself stalled. Check the kafka profile is set on every service, then trace the replenishment via the `inventory.replenishment_request` table. |
 | Service starts but logs `FIND_COORDINATOR` errors / consumer group never joins | Stale Kafka volume from before the single-broker replication-factor overrides were added. `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d`. The volume gets wiped, internal topics (`__consumer_offsets`, `__transaction_state`) get recreated with replication-factor=1. |
 | `kafka-console-consumer.sh --from-beginning` returns 0 messages even though publishes succeeded | Same root cause as above — the spawned consumer-group can't find its coordinator. Probe with `kafka-get-offsets.sh --topic <name>` first to confirm messages are actually there. |
 | Customer payment 400 with CHECK constraint error | Out-of-date Postgres volume from before the `2026-05-05-extend-fulfilment-saga-states.sql` migration. Either let Liquibase apply it on next sales-service boot, or wipe the volume: `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d`. |

@@ -746,7 +746,7 @@ One schema per bounded context plus `shared` for cross-service primitives.
 | `product`       | Product master (catalogue producer). |
 | `sales`         | Sales orders, customers, sales-side product-pricing projection, sales-order-fulfilment saga. |
 | `inventory`     | Stock items, balances, reservations, goods receipts, shipments. |
-| `manufacturing` | BOMs, work orders, routings, make-to-order saga. |
+| `manufacturing` | BOMs, work orders, routings, make-to-stock work-order saga (the `make_to_order_saga` table — driven by inventory's replenishment requests since §2.37; rename deferred to §2.39). |
 | `purchasing`    | Suppliers, supplier prices, purchase requisitions, purchase orders, purchase-to-pay saga. |
 | `finance`       | Customer/supplier invoices, payments, journal entries, GL accounts, tax codes, exchange rates. |
 | `reporting`     | Read-only consolidated views. Inbox-only — reporting never publishes. |
