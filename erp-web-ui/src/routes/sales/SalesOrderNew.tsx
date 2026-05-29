@@ -58,10 +58,11 @@ export function SalesOrderNew() {
   const [customerCode, setCustomerCode] = useState("");
   const [requestedDeliveryDate, setRequestedDeliveryDate] = useState("");
   const [currencyCode, setCurrencyCode] = useState("AUD");
-  const [paymentTerms, setPaymentTerms] = useState<"on_shipment" | "prepayment" | "cash_on_delivery">("on_shipment");
+  const [paymentTerms, setPaymentTerms] = useState<"on_shipment" | "prepayment" | "cash_on_delivery" | "deposit">("on_shipment");
   // Tracks whether the user has manually overridden paymentTerms; once true,
   // changing the customer no longer resets it to the customer's default.
   const [paymentTermsOverridden, setPaymentTermsOverridden] = useState(false);
+  const [depositPercent, setDepositPercent] = useState("50");
   const [lines, setLines] = useState<DraftLine[]>([]);
 
   // Snapshot the selected customer's defaultPaymentTerms onto the form so the
@@ -74,7 +75,7 @@ export function SalesOrderNew() {
     const c = activeCustomers.find((x) => x.customerCode === customerCode);
     if (!c) return;
     if (c.defaultPaymentTerms === "on_shipment" || c.defaultPaymentTerms === "prepayment"
-        || c.defaultPaymentTerms === "cash_on_delivery") {
+        || c.defaultPaymentTerms === "cash_on_delivery" || c.defaultPaymentTerms === "deposit") {
       setPaymentTerms(c.defaultPaymentTerms);
     }
   }, [customerCode, activeCustomers, paymentTermsOverridden]);
@@ -114,6 +115,7 @@ export function SalesOrderNew() {
       requestedDeliveryDate: requestedDeliveryDate || null,
       currencyCode: currencyCode.trim().toUpperCase(),
       paymentTerms,
+      depositPercent: paymentTerms === "deposit" ? depositPercent : null,
       lines: lines.map((l) => ({
         productId: l.productId,
         productSku: l.productSku,
@@ -230,7 +232,7 @@ export function SalesOrderNew() {
                 <select
                   value={paymentTerms}
                   onChange={(e) => {
-                    setPaymentTerms(e.target.value as "on_shipment" | "prepayment" | "cash_on_delivery");
+                    setPaymentTerms(e.target.value as "on_shipment" | "prepayment" | "cash_on_delivery" | "deposit");
                     setPaymentTermsOverridden(true);
                   }}
                   className="h-9 w-full rounded-md border border-border-default bg-bg-surface px-3 text-sm focus:border-border-focus focus:outline-none"
@@ -238,8 +240,21 @@ export function SalesOrderNew() {
                   <option value="on_shipment">on_shipment</option>
                   <option value="prepayment">prepayment</option>
                   <option value="cash_on_delivery">cash_on_delivery</option>
+                  <option value="deposit">deposit</option>
                 </select>
               </Field>
+              {paymentTerms === "deposit" && (
+                <Field label="Deposit %" required hint="Up-front fraction (0–100); the balance invoices at shipment.">
+                  <input
+                    type="number"
+                    min="1"
+                    max="99"
+                    value={depositPercent}
+                    onChange={(e) => setDepositPercent(e.target.value)}
+                    className="h-9 w-full rounded-md border border-border-default bg-bg-surface px-3 text-sm focus:border-border-focus focus:outline-none"
+                  />
+                </Field>
+              )}
             </FormSection>
           </div>
 

@@ -149,6 +149,10 @@ export function SalesOrderDetail() {
                       {data.paymentTerms === "prepayment" && data.paymentStatus !== "paid" && (
                         <StatusPill label="awaiting prepayment" tone="warn" />
                       )}
+                      {data.paymentTerms === "deposit" && data.paymentStatus !== "paid"
+                        && data.paymentStatus !== "partially_paid" && (
+                        <StatusPill label="awaiting deposit" tone="warn" />
+                      )}
                     </div>
                   } />
                 </FormSection>

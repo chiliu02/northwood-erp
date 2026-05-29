@@ -70,13 +70,14 @@ public class JdbcSalesOrderFulfilmentSagaManager
     @Override
     protected Set<String> activeStates() {
         // Worker-pickup checkpoints, each requiring the worker to emit an event
-        // and transition forward. STARTED → stock-reservation / prepayment
-        // request; PREPAID → stock-reservation request (§2.31 Slice B).
+        // and transition forward. STARTED → stock-reservation / prepayment /
+        // deposit request; PREPAID (§2.31) + DEPOSIT_PAID (§2.32) → stock-
+        // reservation request after the up-front payment settles.
         // §2.37 Slice 3 removed STOCK_RESERVATION_INCOMPLETE from this set —
         // inventory now raises the replenishment in-tx, so the worker has
         // nothing to do there; the saga parks until ReplenishmentFulfilled /
         // ReplenishmentCancelled drives it via the inbox.
-        return Set.of(STARTED, PREPAID);
+        return Set.of(STARTED, PREPAID, DEPOSIT_PAID);
     }
 
     // ============================================================

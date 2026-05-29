@@ -4,6 +4,7 @@ import com.northwood.finance.application.CustomerInvoiceService;
 import com.northwood.finance.application.JournalEntryService;
 import com.northwood.finance.application.PaymentService;
 import com.northwood.finance.application.SupplierInvoiceService;
+import com.northwood.finance.application.inbox.DepositInvoiceRequestedHandler;
 import com.northwood.finance.application.inbox.GoodsReceivedHandler;
 import com.northwood.finance.application.inbox.ProductCreatedHandler;
 import com.northwood.finance.application.inbox.ProductDiscontinuedHandler;
@@ -84,6 +85,7 @@ public final class FinanceTestKit {
 
         bus.register(outbox);
         bus.register(new SalesOrderShippedHandler(inbox, customerInvoiceService, paymentService, json));
+        bus.register(new DepositInvoiceRequestedHandler(inbox, customerInvoiceService, json));
         bus.register(new ShipmentPostedCogsHandler(inbox, journalService, productCards, customerInvoices, json));
         bus.register(new GoodsReceivedHandler(inbox, purchaseOrderLineFacts, journalService, json));
         bus.register(new PurchaseOrderCreatedHandler(inbox, purchaseOrderLineFacts, json));
