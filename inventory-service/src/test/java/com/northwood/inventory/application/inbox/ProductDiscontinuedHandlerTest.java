@@ -27,7 +27,7 @@ class ProductDiscontinuedHandlerTest {
 
     @Mock InboxPort inbox;
     @Mock ProductDiscontinuedProjection stockItem;
-    @Mock ProductReplenishmentProjection replenishment;
+    @Mock ProductCardProjection replenishment;
 
     private final ObjectMapper json = new ObjectMapper();
     private ProductDiscontinuedHandler handler;

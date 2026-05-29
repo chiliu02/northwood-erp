@@ -15,8 +15,8 @@ import tools.jackson.databind.ObjectMapper;
  * {@link StockItemProjection#applyReorderPolicy}.
  *
  * <p>§2.35 Slice A extension: also seeds a default row in
- * {@code inventory.product_replenishment} via
- * {@link ProductReplenishmentProjection#seedDefaultsFromProductType} so the
+ * {@code inventory.product_card} via
+ * {@link ProductCardProjection#seedDefaultsFromProductType} so the
  * §2.35 detection service has non-empty make-vs-buy flags for day-zero SKUs
  * before any {@code MakeVsBuyChanged} event arrives.
  */
@@ -26,12 +26,12 @@ public class ProductCreatedHandler extends AbstractInboxHandler<ProductCreated> 
     public static final String CONSUMER_NAME = "inventory.product-created";
 
     private final ProductCreatedProjection stockItem;
-    private final ProductReplenishmentProjection replenishment;
+    private final ProductCardProjection replenishment;
 
     public ProductCreatedHandler(
         InboxPort inbox,
         ProductCreatedProjection stockItem,
-        ProductReplenishmentProjection replenishment,
+        ProductCardProjection replenishment,
         ObjectMapper json
     ) {
         super(inbox, json, ProductCreated.class, ProductCreated.EVENT_TYPE, CONSUMER_NAME);

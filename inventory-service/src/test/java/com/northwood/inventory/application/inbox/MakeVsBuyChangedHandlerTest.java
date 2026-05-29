@@ -25,7 +25,7 @@ class MakeVsBuyChangedHandlerTest {
     private static final UUID PRODUCT = UUID.randomUUID();
 
     @Mock InboxPort inbox;
-    @Mock ProductReplenishmentProjection projection;
+    @Mock ProductCardProjection projection;
 
     private final ObjectMapper json = new ObjectMapper();
     private MakeVsBuyChangedHandler handler;

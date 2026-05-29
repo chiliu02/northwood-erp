@@ -3,8 +3,8 @@ package com.northwood.inventory.application.replenishment;
 import com.northwood.inventory.application.ReorderPolicyLookup;
 import com.northwood.inventory.application.ReorderPolicyLookup.ReorderPolicy;
 import com.northwood.inventory.application.StockBalanceLookup;
-import com.northwood.inventory.application.inbox.ProductReplenishmentProjection;
-import com.northwood.inventory.application.inbox.ProductReplenishmentProjection.Replenishment;
+import com.northwood.inventory.application.inbox.ProductCardProjection;
+import com.northwood.inventory.application.inbox.ProductCardProjection.Replenishment;
 import com.northwood.inventory.domain.ReplenishmentRequest;
 import com.northwood.inventory.domain.ReplenishmentRequest.Reason;
 import com.northwood.inventory.domain.ReplenishmentRequest.TargetService;
@@ -54,13 +54,13 @@ public class ReplenishmentDetectionService {
 
     private final ReorderPolicyLookup reorderPolicies;
     private final StockBalanceLookup stockBalances;
-    private final ProductReplenishmentProjection productReplenishment;
+    private final ProductCardProjection productReplenishment;
     private final ReplenishmentRequestRepository replenishmentRequests;
 
     public ReplenishmentDetectionService(
         ReorderPolicyLookup reorderPolicies,
         StockBalanceLookup stockBalances,
-        ProductReplenishmentProjection productReplenishment,
+        ProductCardProjection productReplenishment,
         ReplenishmentRequestRepository replenishmentRequests
     ) {
         this.reorderPolicies = reorderPolicies;
@@ -116,7 +116,7 @@ public class ReplenishmentDetectionService {
     public void raiseIfNoneOpen(UUID productId, UUID warehouseId, BigDecimal quantity, Reason reason) {
         Optional<Replenishment> flags = productReplenishment.findByProductId(productId);
         if (flags.isEmpty()) {
-            log.warn("no inventory.product_replenishment row for product_id={} — cannot classify make-vs-buy, "
+            log.warn("no inventory.product_card row for product_id={} — cannot classify make-vs-buy, "
                 + "skipping replenishment (reason={}, qty={}, warehouse_id={})",
                 productId, reason.dbValue(), quantity, warehouseId);
             return;
@@ -181,7 +181,7 @@ public class ReplenishmentDetectionService {
     ) {
         Optional<Replenishment> flags = productReplenishment.findByProductId(productId);
         if (flags.isEmpty()) {
-            log.warn("no inventory.product_replenishment row for product_id={} — cannot classify make-vs-buy, "
+            log.warn("no inventory.product_card row for product_id={} — cannot classify make-vs-buy, "
                 + "skipping sales-order-shortage replenishment (qty={}, warehouse_id={}, sales_order={}, sales_order_line={})",
                 productId, quantity, warehouseId, sourceSalesOrderHeaderId, sourceSalesOrderLineId);
             return;

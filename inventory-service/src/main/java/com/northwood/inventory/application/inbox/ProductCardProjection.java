@@ -5,7 +5,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Maintains and reads the {@code inventory.product_replenishment} projection.
+ * Maintains and reads the {@code inventory.product_card} projection — the
+ * consumer-side denormalized cache of product-master make-vs-buy facts inventory
+ * owns locally (the {@code _card} convention, {@code docs/conventions.md}).
  * Mirrors {@link com.northwood.manufacturing.application.inbox.ProductReplenishmentProjection}
  * — duplicate projection across services is the accepted cost of cross-schema
  * isolation. Inventory needs its own local snapshot of make-vs-buy so the
@@ -22,9 +24,9 @@ import java.util.UUID;
  * "unsourceable" and logs a warning rather than guessing a routing.
  *
  * <p>Application-side port; JDBC implementation lives in
- * {@code infrastructure/persistence/JdbcProductReplenishmentProjection}.
+ * {@code infrastructure/persistence/JdbcProductCardProjection}.
  */
-public interface ProductReplenishmentProjection {
+public interface ProductCardProjection {
 
     /**
      * Seed a default row at product registration so the §2.35 detection

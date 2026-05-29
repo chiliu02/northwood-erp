@@ -36,7 +36,7 @@ import tools.jackson.databind.ObjectMapper;
  * — drives a Kafka envelope onto {@code product.events} and asserts that
  * inventory's {@code @KafkaListener}, dispatcher, and
  * {@link com.northwood.inventory.application.inbox.MakeVsBuyChangedHandler}
- * land the new flags on {@code inventory.product_replenishment}, and that
+ * land the new flags on {@code inventory.product_card}, and that
  * the inbox row records the message_id for redelivery dedup.
  *
  * <p>Container lifecycle + bootstrap rationale: see
@@ -100,7 +100,7 @@ class MakeVsBuyChangedSeamIT {
     @Autowired JdbcTemplate jdbc;
 
     @Test
-    void makeVsBuyChanged_fromKafka_updatesProductReplenishmentProjection() {
+    void makeVsBuyChanged_fromKafka_updatesProductCardProjection() {
         UUID eventId = UUID.randomUUID();
 
         // FG-TABLE-001 is seeded as a finished_good — make-only by default.
@@ -141,11 +141,11 @@ class MakeVsBuyChangedSeamIT {
 
         await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofMillis(250)).untilAsserted(() -> {
             Boolean purchased = jdbc.queryForObject(
-                "SELECT is_purchased FROM inventory.product_replenishment WHERE product_id = ?",
+                "SELECT is_purchased FROM inventory.product_card WHERE product_id = ?",
                 Boolean.class, SEED_PRODUCT_ID
             );
             Boolean manufactured = jdbc.queryForObject(
-                "SELECT is_manufactured FROM inventory.product_replenishment WHERE product_id = ?",
+                "SELECT is_manufactured FROM inventory.product_card WHERE product_id = ?",
                 Boolean.class, SEED_PRODUCT_ID
             );
             assertThat(purchased).isTrue();

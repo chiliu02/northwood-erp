@@ -78,8 +78,9 @@ CREATE TABLE inventory.stock_item (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- §2.35 Slice A: inventory-side projection of product.MakeVsBuyChanged.
-CREATE TABLE inventory.product_replenishment (
+-- §2.35 Slice A: inventory-side projection of product.MakeVsBuyChanged
+-- (the `_card` convention — one consumer-side product-master table per schema).
+CREATE TABLE inventory.product_card (
     product_id        UUID PRIMARY KEY,
     is_purchased      BOOLEAN NOT NULL DEFAULT false,
     is_manufactured   BOOLEAN NOT NULL DEFAULT false,
@@ -175,8 +176,8 @@ CREATE TABLE inventory.inbox_message (
 CREATE TABLE inventory.inbox_message_default
     PARTITION OF inventory.inbox_message DEFAULT;
 
--- Seed row for the test SKU. version=1 so the projection update goes through
--- JdbcStockItemRepository.save's UPDATE path (mirrors the dev DB seed bump).
+-- Seed row for the test SKU. version=1 mirrors the dev DB seed bump so the
+-- reorder-policy projection (StockItemProjection) updates this row in place.
 INSERT INTO inventory.stock_item (
     product_id, product_sku, product_name, product_type, base_uom_code,
     stock_tracking_mode, reorder_point, reorder_quantity, version

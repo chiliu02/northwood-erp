@@ -701,7 +701,7 @@ CREATE TRIGGER trg_stock_item_updated_at
 -- product_type (RAW_MATERIAL/SERVICE → buy-only, FINISHED_GOOD/SEMI_FINISHED
 -- → make-only) so the table is non-empty for day-zero SKUs before any
 -- MakeVsBuyChanged event arrives.
-CREATE TABLE inventory.product_replenishment (
+CREATE TABLE inventory.product_card (
     product_id        UUID PRIMARY KEY,
     is_purchased      BOOLEAN NOT NULL DEFAULT false,
     is_manufactured   BOOLEAN NOT NULL DEFAULT false,
@@ -709,8 +709,8 @@ CREATE TABLE inventory.product_replenishment (
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TRIGGER trg_product_replenishment_updated_at
-    BEFORE UPDATE ON inventory.product_replenishment
+CREATE TRIGGER trg_product_card_updated_at
+    BEFORE UPDATE ON inventory.product_card
     FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
 
 -- §2.35 Slice B: inventory-orchestrated replenishment requests.

@@ -29,7 +29,7 @@ class ProductCreatedHandlerTest {
 
     @Mock InboxPort inbox;
     @Mock ProductCreatedProjection stockItem;
-    @Mock ProductReplenishmentProjection replenishment;
+    @Mock ProductCardProjection replenishment;
 
     private final ObjectMapper json = new ObjectMapper();
     private ProductCreatedHandler handler;

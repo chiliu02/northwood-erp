@@ -11,8 +11,8 @@ import com.northwood.inventory.application.ReorderPolicyLookup;
 import com.northwood.inventory.application.ReorderPolicyLookup.ReorderPolicy;
 import com.northwood.inventory.application.StockBalanceLookup;
 import com.northwood.inventory.application.dto.StockBalanceView;
-import com.northwood.inventory.application.inbox.ProductReplenishmentProjection;
-import com.northwood.inventory.application.inbox.ProductReplenishmentProjection.Replenishment;
+import com.northwood.inventory.application.inbox.ProductCardProjection;
+import com.northwood.inventory.application.inbox.ProductCardProjection.Replenishment;
 import com.northwood.inventory.domain.ReplenishmentRequest;
 import com.northwood.inventory.domain.ReplenishmentRequest.Reason;
 import com.northwood.inventory.domain.ReplenishmentRequest.TargetService;
@@ -36,7 +36,7 @@ class ReplenishmentDetectionServiceTest {
 
     @Mock ReorderPolicyLookup reorderPolicies;
     @Mock StockBalanceLookup stockBalances;
-    @Mock ProductReplenishmentProjection productReplenishment;
+    @Mock ProductCardProjection productReplenishment;
     @Mock ReplenishmentRequestRepository replenishmentRequests;
 
     private ReplenishmentDetectionService service;
@@ -153,7 +153,7 @@ class ReplenishmentDetectionServiceTest {
         verify(replenishmentRequests, never()).save(any());
     }
 
-    @Test void missing_product_replenishment_row_skips() {
+    @Test void missing_product_card_row_skips() {
         stubPolicy(new BigDecimal("5"), new BigDecimal("10"));
         stubOnHand(new BigDecimal("3"));
         when(productReplenishment.findByProductId(PRODUCT)).thenReturn(Optional.empty());

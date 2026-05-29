@@ -9,7 +9,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * §2.35 Slice A: idempotent inbox handler for {@code product.MakeVsBuyChanged}.
- * Updates the {@code inventory.product_replenishment} projection so the §2.35
+ * Updates the {@code inventory.product_card} projection so the §2.35
  * reorder-point detection service (Slice B) reads make-vs-buy locally rather
  * than across schemas. Mirrors manufacturing's own
  * {@link com.northwood.manufacturing.application.inbox.MakeVsBuyChangedHandler}
@@ -20,11 +20,11 @@ public class MakeVsBuyChangedHandler extends AbstractInboxHandler<MakeVsBuyChang
 
     public static final String CONSUMER_NAME = "inventory.product-replenishment-projector";
 
-    private final ProductReplenishmentProjection projection;
+    private final ProductCardProjection projection;
 
     public MakeVsBuyChangedHandler(
         InboxPort inbox,
-        ProductReplenishmentProjection projection,
+        ProductCardProjection projection,
         ObjectMapper json
     ) {
         super(inbox, json, MakeVsBuyChanged.class, MakeVsBuyChanged.EVENT_TYPE, CONSUMER_NAME);

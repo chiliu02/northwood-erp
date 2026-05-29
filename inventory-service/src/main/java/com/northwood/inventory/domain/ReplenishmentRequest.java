@@ -76,7 +76,7 @@ public final class ReplenishmentRequest {
     /**
      * Which downstream service handles the request. Derived by the detection
      * service from the SKU's make-vs-buy classification (snapshotted into
-     * inventory by Slice A's {@code ProductReplenishmentProjection}).
+     * inventory by Slice A's {@code ProductCardProjection}).
      */
     public enum TargetService {
         MANUFACTURING("manufacturing"),

@@ -13,7 +13,7 @@ import tools.jackson.databind.ObjectMapper;
  * logic can suppress alerts for retired SKUs.
  *
  * <p>§2.35 Slice A extension: also flips
- * {@code inventory.product_replenishment.is_purchased = false,
+ * {@code inventory.product_card.is_purchased = false,
  * is_manufactured = false} so the §2.35 detection service classifies the SKU
  * as unsourceable (logs + skips) rather than dispatching a replenishment.
  */
@@ -23,12 +23,12 @@ public class ProductDiscontinuedHandler extends AbstractInboxHandler<ProductDisc
     public static final String CONSUMER_NAME = "inventory.product-discontinued";
 
     private final ProductDiscontinuedProjection stockItem;
-    private final ProductReplenishmentProjection replenishment;
+    private final ProductCardProjection replenishment;
 
     public ProductDiscontinuedHandler(
         InboxPort inbox,
         ProductDiscontinuedProjection stockItem,
-        ProductReplenishmentProjection replenishment,
+        ProductCardProjection replenishment,
         ObjectMapper json
     ) {
         super(inbox, json, ProductDiscontinued.class, ProductDiscontinued.EVENT_TYPE, CONSUMER_NAME);
