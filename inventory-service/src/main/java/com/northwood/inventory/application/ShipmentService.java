@@ -4,7 +4,8 @@ import com.northwood.inventory.application.dto.PostShipmentCommand;
 import com.northwood.inventory.application.dto.ShipmentLineRequest;
 import com.northwood.inventory.application.dto.ShipmentView;
 import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection;
-import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection.PrepaymentGate;
+import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection.UpfrontPaymentGate;
+import com.northwood.sales.domain.PaymentTerms;
 import com.northwood.inventory.application.replenishment.ReplenishmentDetectionService;
 import com.northwood.inventory.domain.Shipment;
 import com.northwood.inventory.domain.ShipmentId;
@@ -87,19 +88,19 @@ public class ShipmentService {
     }
 
     /**
-     * §2.31 Slice C. Thrown when {@code ShipmentService.post} is asked to
-     * dispatch a prepayment-terms sales order whose prepayment invoice
-     * hasn't been fully paid yet. Mapped to HTTP 409. Inventory reads
-     * {@code inventory.sales_order_line_facts.prepayment_settled} (flipped
-     * true by {@code sales.SalesOrderPrepaymentSettled}) — no cross-context
-     * read into sales' saga.
+     * §2.31 Slice C / §2.32 Slice C. Thrown when {@code ShipmentService.post} is
+     * asked to dispatch a prepayment- or deposit-terms sales order whose
+     * up-front payment hasn't landed yet. Mapped to HTTP 409. Inventory reads
+     * {@code inventory.sales_order_line_facts.upfront_settled} (flipped true by
+     * {@code sales.SalesOrderUpfrontPaymentSettled}) — no cross-context read
+     * into sales' saga.
      */
-    public static class UnpaidPrepaymentOrderException extends ConflictException {
-        public static final String CODE = "UNPAID_PREPAYMENT_ORDER";
+    public static class UnpaidUpfrontOrderException extends ConflictException {
+        public static final String CODE = "UNPAID_UPFRONT_ORDER";
         private final UUID salesOrderHeaderId;
-        public UnpaidPrepaymentOrderException(UUID salesOrderHeaderId) {
-            super(CODE, "Cannot ship sales_order=%s — payment_terms='prepayment' and prepayment invoice is not yet fully paid"
-                .formatted(salesOrderHeaderId));
+        public UnpaidUpfrontOrderException(UUID salesOrderHeaderId, String paymentTerms) {
+            super(CODE, "Cannot ship sales_order=%s — payment_terms='%s' and the up-front payment is not yet fully settled"
+                .formatted(salesOrderHeaderId, paymentTerms));
             this.salesOrderHeaderId = salesOrderHeaderId;
         }
         public UUID salesOrderHeaderId() { return salesOrderHeaderId; }
@@ -148,17 +149,18 @@ public class ShipmentService {
         String warehouseCode = command.warehouseCode() == null ? WarehouseCodes.MAIN : command.warehouseCode();
         UUID warehouseId = warehouses.findIdByCode(warehouseCode);
 
-        // §2.31 Slice C: gate prepayment orders on prepayment_settled. The
-        // header-level facts are denormalised onto each line of
-        // sales_order_line_facts (one query for both validations). Skip when
-        // no sales_order_header_id is supplied — unlinked manual shipments
+        // §2.31 / §2.32 Slice C: gate prepayment + deposit orders on
+        // upfront_settled. The header-level facts are denormalised onto each
+        // line of sales_order_line_facts (one query for both validations). Skip
+        // when no sales_order_header_id is supplied — unlinked manual shipments
         // are an existing affordance.
         if (command.salesOrderHeaderId() != null) {
-            Optional<PrepaymentGate> gate = salesOrderLineFacts.findPrepaymentGate(command.salesOrderHeaderId());
-            if (gate.isPresent()
-                && "prepayment".equals(gate.get().paymentTerms())
-                && !gate.get().prepaymentSettled()) {
-                throw new UnpaidPrepaymentOrderException(command.salesOrderHeaderId());
+            Optional<UpfrontPaymentGate> gate = salesOrderLineFacts.findUpfrontPaymentGate(command.salesOrderHeaderId());
+            if (gate.isPresent() && !gate.get().upfrontSettled()) {
+                String pt = gate.get().paymentTerms();
+                if (PaymentTerms.PREPAYMENT.dbValue().equals(pt) || PaymentTerms.DEPOSIT.dbValue().equals(pt)) {
+                    throw new UnpaidUpfrontOrderException(command.salesOrderHeaderId(), pt);
+                }
             }
         }
 

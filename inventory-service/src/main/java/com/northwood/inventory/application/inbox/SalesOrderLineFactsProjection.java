@@ -34,12 +34,13 @@ public interface SalesOrderLineFactsProjection {
     );
 
     /**
-     * §2.31 Slice C. Flip {@code prepayment_settled = true} on every line of
-     * the order. Driven by {@code sales.SalesOrderPrepaymentSettled} (emitted
-     * when the fulfilment saga reaches {@code prepaid}). Idempotent — the
-     * UPDATE is a no-op once the flag is already true.
+     * §2.31 Slice C / §2.32 Slice C. Flip {@code upfront_settled = true} on
+     * every line of the order. Driven by {@code sales.SalesOrderUpfrontPaymentSettled}
+     * (emitted when the fulfilment saga settles the up-front payment —
+     * {@code prepaid} for prepayment, {@code deposit_paid} for deposit).
+     * Idempotent — the UPDATE is a no-op once the flag is already true.
      */
-    void applyPrepaymentSettled(UUID salesOrderHeaderId);
+    void applyUpfrontPaymentSettled(UUID salesOrderHeaderId);
 
     /**
      * Return the projected {@code product_id} for the named SO line, or empty
@@ -49,12 +50,12 @@ public interface SalesOrderLineFactsProjection {
     Optional<UUID> findProductIdForLine(UUID salesOrderLineId);
 
     /**
-     * §2.31 Slice C. Returns the (paymentTerms, prepaymentSettled) pair for
-     * any line of the order, or empty when no line-facts row exists yet
-     * (e.g. SalesOrderPlaced hasn't been consumed). Used by ShipmentService
-     * to gate prepayment orders: prepayment + !settled → HTTP 409.
+     * §2.31 Slice C / §2.32 Slice C. Returns the (paymentTerms, upfrontSettled)
+     * pair for any line of the order, or empty when no line-facts row exists yet
+     * (e.g. SalesOrderPlaced hasn't been consumed). Used by ShipmentService to
+     * gate up-front-payment orders: (prepayment | deposit) + !settled → HTTP 409.
      */
-    Optional<PrepaymentGate> findPrepaymentGate(UUID salesOrderHeaderId);
+    Optional<UpfrontPaymentGate> findUpfrontPaymentGate(UUID salesOrderHeaderId);
 
-    record PrepaymentGate(String paymentTerms, boolean prepaymentSettled) {}
+    record UpfrontPaymentGate(String paymentTerms, boolean upfrontSettled) {}
 }

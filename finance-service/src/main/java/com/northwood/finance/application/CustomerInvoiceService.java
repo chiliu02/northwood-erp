@@ -89,6 +89,15 @@ public class CustomerInvoiceService {
                 payload.aggregateId(), existing.get().invoiceNumber());
             return CustomerInvoiceId.of(existing.get().customerInvoiceHeaderId());
         }
+        // §2.32 Slice C: a deposit order already has a deposit invoice (the
+        // earliest invoice for the order). At shipment, create the BALANCE
+        // invoice for the remainder instead of a full commercial invoice; the
+        // deposit portion's revenue is recognised against the deposit invoice in
+        // ShipmentPostedCogsHandler.
+        if (existing.isPresent()
+            && existing.get().invoiceType() == CustomerInvoice.InvoiceType.DEPOSIT) {
+            return createBalanceInvoice(payload, existing.get());
+        }
 
         List<CustomerInvoiceLine> lines = new ArrayList<>();
         int sentinelZeroLines = 0;
@@ -231,6 +240,59 @@ public class CustomerInvoiceService {
 
         log.info("auto-created deposit customer_invoice {} for sales_order={} (deposit={} {}; no GL until payment)",
             invoiceNumber, payload.aggregateId(), invoice.totalAmount(), invoice.currencyCode());
+        return invoice.id();
+    }
+
+    /**
+     * §2.32 Slice C. Create the <b>balance</b> invoice (order total − deposit)
+     * for a deposit order at shipment — a single synthetic balance line, posting
+     * Dr AR / Cr Revenue like a commercial invoice. The deposit portion's
+     * revenue is recognised separately (Dr 2110 / Cr Revenue) against the
+     * deposit invoice in {@code ShipmentPostedCogsHandler}; together the two
+     * recognise the full order revenue at shipment.
+     */
+    private CustomerInvoiceId createBalanceInvoice(SalesOrderShipped payload,
+                                                   CustomerInvoiceRepository.ShipmentTimeInvoice depositInvoice) {
+        BigDecimal orderTotal = BigDecimal.ZERO;
+        for (SalesOrderShipped.ShippedLine sl : payload.lines()) {
+            BigDecimal qty = sl.shippedQuantity();
+            BigDecimal unit = sl.unitPrice() == null ? BigDecimal.ZERO : sl.unitPrice();
+            BigDecimal taxRate = sl.taxRate() == null ? BigDecimal.ZERO : sl.taxRate();
+            BigDecimal lineSubtotal = qty.multiply(unit).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal lineTax = lineSubtotal.multiply(taxRate).setScale(2, RoundingMode.HALF_UP);
+            orderTotal = orderTotal.add(lineSubtotal).add(lineTax);
+        }
+        BigDecimal balance = orderTotal.subtract(depositInvoice.totalAmount());
+
+        CustomerInvoiceLine balanceLine = new CustomerInvoiceLine(
+            UUID.randomUUID(), 1,
+            null, null, null,
+            "Balance (order " + payload.orderNumber() + ", less deposit " + depositInvoice.totalAmount() + ")",
+            BigDecimal.ONE, balance, BigDecimal.ZERO, BigDecimal.ZERO, balance
+        );
+        String invoiceNumber = CustomerInvoice.NUMBER_PREFIX + UUID.randomUUID().toString().substring(0, CustomerInvoice.NUMBER_SUFFIX_LENGTH).toUpperCase();
+        CustomerInvoice invoice = CustomerInvoice.createBalance(
+            invoiceNumber,
+            payload.aggregateId(),
+            payload.customerId(),
+            payload.customerCode(),
+            payload.customerName(),
+            payload.currencyCode(),
+            List.of(balanceLine)
+        );
+        customerInvoices.save(invoice);
+
+        journalEntries.postCustomerInvoiceCreation(
+            invoice.id().value(),
+            invoice.customerName(),
+            invoice.invoiceNumber(),
+            invoice.totalAmount(),
+            invoice.currencyCode(),
+            java.time.LocalDate.now()
+        );
+
+        log.info("auto-created balance customer_invoice {} for sales_order={} (balance={} {} = total {} - deposit {})",
+            invoiceNumber, payload.aggregateId(), balance, invoice.currencyCode(), orderTotal, depositInvoice.totalAmount());
         return invoice.id();
     }
 

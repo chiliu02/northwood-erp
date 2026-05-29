@@ -191,6 +191,26 @@ public final class CustomerInvoice {
             customerId, customerCode, customerName, currencyCode, lines);
     }
 
+    /**
+     * §2.32 Slice C factory: create + auto-post the <b>balance</b> invoice for a
+     * deposit order at shipment (the remaining {@code total − deposit}). Behaves
+     * like {@link #create} (commercial) — the caller posts Dr AR / Cr Revenue
+     * for the balance; the deposit portion is recognised separately against the
+     * deposit invoice in the shipment-time COGS handler.
+     */
+    public static CustomerInvoice createBalance(
+        String invoiceNumber,
+        UUID salesOrderHeaderId,
+        UUID customerId,
+        String customerCode,
+        String customerName,
+        String currencyCode,
+        List<CustomerInvoiceLine> lines
+    ) {
+        return build(InvoiceType.BALANCE, invoiceNumber, salesOrderHeaderId,
+            customerId, customerCode, customerName, currencyCode, lines);
+    }
+
     private static CustomerInvoice build(
         InvoiceType invoiceType,
         String invoiceNumber,

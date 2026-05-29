@@ -435,9 +435,10 @@ CREATE TABLE sales.sales_order_header (
     payment_terms VARCHAR(20) NOT NULL DEFAULT 'on_shipment' CHECK (
         payment_terms IN ('on_shipment', 'prepayment', 'cash_on_delivery', 'deposit')
     ),
-    -- §2.32: up-front fraction (0,100] for deposit orders; NULL for every other
-    -- payment_terms. The deposit invoice is total * deposit_percent / 100.
-    deposit_percent NUMERIC(5, 2) CHECK (deposit_percent IS NULL OR (deposit_percent > 0 AND deposit_percent <= 100)),
+    -- §2.32: up-front fraction (0,100) for deposit orders; NULL for every other
+    -- payment_terms. Strictly partial (100% would be prepayment). The deposit
+    -- invoice is total * deposit_percent / 100; the balance invoices at shipment.
+    deposit_percent NUMERIC(5, 2) CHECK (deposit_percent IS NULL OR (deposit_percent > 0 AND deposit_percent < 100)),
     currency_code CHAR(3) NOT NULL DEFAULT 'AUD',
     -- exchange_rate against company base currency at the time of order.
     -- Required even for AUD (1.0) so reporting joins are uniform.
@@ -1041,16 +1042,18 @@ CREATE TABLE inventory.sales_order_line_facts (
     sales_order_line_id UUID PRIMARY KEY,
     sales_order_header_id UUID NOT NULL,
     product_id UUID NOT NULL,
-    -- §2.31 Slice C: payment_terms snapshotted from sales.SalesOrderPlaced;
-    -- prepayment_settled flipped true by sales.SalesOrderPrepaymentSettled.
-    -- ShipmentService.post refuses prepayment orders with prepayment_settled=false
-    -- (HTTP 409). Both columns repeat on every line (denormalised against the
-    -- header-level fact in sales) — the facts row is the only inventory-side
-    -- read for shipment gating, so one query covers both validations.
+    -- §2.31 Slice C / §2.32 Slice C: payment_terms snapshotted from
+    -- sales.SalesOrderPlaced; upfront_settled flipped true by
+    -- sales.SalesOrderUpfrontPaymentSettled (prepayment fully paid, or deposit
+    -- fully paid). ShipmentService.post refuses prepayment/deposit orders with
+    -- upfront_settled=false (HTTP 409). Both columns repeat on every line
+    -- (denormalised against the header-level fact in sales) — the facts row is
+    -- the only inventory-side read for shipment gating, so one query covers
+    -- both validations.
     payment_terms VARCHAR(20) NOT NULL DEFAULT 'on_shipment' CHECK (
         payment_terms IN ('on_shipment', 'prepayment', 'cash_on_delivery', 'deposit')
     ),
-    prepayment_settled BOOLEAN NOT NULL DEFAULT false,
+    upfront_settled BOOLEAN NOT NULL DEFAULT false,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_sales_order_line_facts_header ON inventory.sales_order_line_facts(sales_order_header_id);

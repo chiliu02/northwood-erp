@@ -35,14 +35,14 @@ class CustomerPaymentReceivedHandlerTest {
     @Mock InboxPort inbox;
     @Mock SalesOrderFulfilmentSagaManager sagaManager;
     @Mock SalesOrderHeaderStatusProjection statusProjection;
-    @Mock com.northwood.sales.application.SalesOrderPrepaymentSettledEmitter prepaymentSettledEmitter;
+    @Mock com.northwood.sales.application.SalesOrderUpfrontPaymentSettledEmitter upfrontSettledEmitter;
 
     private final ObjectMapper json = new ObjectMapper();
     private CustomerPaymentReceivedHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new CustomerPaymentReceivedHandler(inbox, sagaManager, statusProjection, prepaymentSettledEmitter, json);
+        handler = new CustomerPaymentReceivedHandler(inbox, sagaManager, statusProjection, upfrontSettledEmitter, json);
     }
 
     private EventEnvelope event(String invoiceStatusAfter) {

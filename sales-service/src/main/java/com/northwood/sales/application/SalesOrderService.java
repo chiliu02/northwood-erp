@@ -314,8 +314,8 @@ public class SalesOrderService {
             return null;
         }
         BigDecimal pct = requested == null ? new BigDecimal("50") : requested;
-        Assert.argument(pct.signum() > 0 && pct.compareTo(new BigDecimal("100")) <= 0,
-            "deposit_percent must be in (0, 100], got " + pct);
+        Assert.argument(pct.signum() > 0 && pct.compareTo(new BigDecimal("100")) < 0,
+            "deposit_percent must be in (0, 100) — a deposit is strictly partial; got " + pct);
         return pct;
     }
 

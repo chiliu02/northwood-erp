@@ -45,16 +45,16 @@ public class JdbcSalesOrderLineFactsProjection implements SalesOrderLineFactsPro
 
     @Override
     @Transactional
-    public void applyPrepaymentSettled(UUID salesOrderHeaderId) {
+    public void applyUpfrontPaymentSettled(UUID salesOrderHeaderId) {
         int updated = jdbc.update("""
             UPDATE inventory.sales_order_line_facts
-               SET prepayment_settled = true
+               SET upfront_settled = true
              WHERE sales_order_header_id = ?
-               AND prepayment_settled = false
+               AND upfront_settled = false
             """,
             salesOrderHeaderId
         );
-        log.info("flipped prepayment_settled=true for sales_order={} ({} line(s))",
+        log.info("flipped upfront_settled=true for sales_order={} ({} line(s))",
             salesOrderHeaderId, updated);
     }
 
@@ -71,19 +71,19 @@ public class JdbcSalesOrderLineFactsProjection implements SalesOrderLineFactsPro
     }
 
     @Override
-    public Optional<PrepaymentGate> findPrepaymentGate(UUID salesOrderHeaderId) {
+    public Optional<UpfrontPaymentGate> findUpfrontPaymentGate(UUID salesOrderHeaderId) {
         // Every line of the order carries the same (payment_terms,
-        // prepayment_settled) pair (header-level facts denormalised on each
+        // upfront_settled) pair (header-level facts denormalised on each
         // line), so LIMIT 1 returns a representative snapshot.
         return jdbc.query("""
-            SELECT payment_terms, prepayment_settled
+            SELECT payment_terms, upfront_settled
               FROM inventory.sales_order_line_facts
              WHERE sales_order_header_id = ?
              LIMIT 1
             """,
-            (rs, n) -> new PrepaymentGate(
+            (rs, n) -> new UpfrontPaymentGate(
                 rs.getString("payment_terms"),
-                rs.getBoolean("prepayment_settled")
+                rs.getBoolean("upfront_settled")
             ),
             salesOrderHeaderId
         ).stream().findFirst();

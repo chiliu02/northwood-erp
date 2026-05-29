@@ -103,16 +103,21 @@ public class ShipmentPostedCogsHandler extends AbstractInboxHandler<ShipmentPost
         log.info("[{}] posted COGS for shipment {} ({} line(s))",
             CONSUMER_NAME, payload.shipmentNumber(), lineCosts.size());
 
-        // §2.31 Slice C: for prepayment orders, also post the deferred-
-        // revenue Dr 2110 Customer Deposits / Cr Revenue pair against the
-        // existing prepayment invoice — this is when revenue is recognised
-        // (the goods-delivered performance obligation). markRevenueRecognized
-        // is the idempotency gate: stamps the column on first call, returns
-        // false on subsequent calls (so a redelivered ShipmentPosted that
-        // somehow slips past inbox dedup still doesn't double-post).
+        // §2.31 / §2.32 Slice C: for prepayment AND deposit orders, post the
+        // deferred-revenue Dr 2110 Customer Deposits / Cr Revenue pair against
+        // the up-front invoice — this is when that portion's revenue is
+        // recognised (the goods-delivered performance obligation). For deposit
+        // it recognises the deposit amount; the balance invoice (Cr Revenue for
+        // the remainder) is created from SalesOrderShipped. findInvoiceForShipment
+        // returns the earliest invoice for the order, which is always the
+        // prepayment/deposit invoice (created at placement, before any balance).
+        // markRevenueRecognized is the idempotency gate: stamps on first call,
+        // returns false thereafter (so a redelivered ShipmentPosted still doesn't
+        // double-post).
         var existing = customerInvoices.findInvoiceForShipment(payload.salesOrderHeaderId());
         if (existing.isPresent()
-            && existing.get().invoiceType() == CustomerInvoice.InvoiceType.PREPAYMENT
+            && (existing.get().invoiceType() == CustomerInvoice.InvoiceType.PREPAYMENT
+                || existing.get().invoiceType() == CustomerInvoice.InvoiceType.DEPOSIT)
             && !existing.get().revenueRecognized()) {
             boolean stamped = customerInvoices.markRevenueRecognized(existing.get().customerInvoiceHeaderId());
             if (stamped) {
@@ -124,9 +129,9 @@ public class ShipmentPostedCogsHandler extends AbstractInboxHandler<ShipmentPost
                     existing.get().currencyCode(),
                     postingDate
                 );
-                log.info("[{}] recognised deferred revenue for prepayment invoice {} (sales_order={}, total={} {})",
-                    CONSUMER_NAME, existing.get().invoiceNumber(), payload.salesOrderHeaderId(),
-                    existing.get().totalAmount(), existing.get().currencyCode());
+                log.info("[{}] recognised deferred revenue for {} invoice {} (sales_order={}, total={} {})",
+                    CONSUMER_NAME, existing.get().invoiceType().dbValue(), existing.get().invoiceNumber(),
+                    payload.salesOrderHeaderId(), existing.get().totalAmount(), existing.get().currencyCode());
             }
         }
     }
