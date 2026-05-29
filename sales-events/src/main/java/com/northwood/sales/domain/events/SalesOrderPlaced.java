@@ -20,6 +20,10 @@ import java.util.UUID;
  * {@link com.northwood.sales.domain.PaymentTerms} {@code dbValue()}. Nullable
  * for backward compatibility with in-flight messages produced before §2.31 —
  * consumers treat a null as {@code on_shipment}.
+ *
+ * <p>{@code depositPercent} (§2.32) is the up-front fraction (0–100) for
+ * {@code deposit} orders — non-null only when {@code paymentTerms = 'deposit'};
+ * null for every other term.
  */
 public record SalesOrderPlaced(
     UUID eventId,
@@ -31,6 +35,7 @@ public record SalesOrderPlaced(
     String currencyCode,
     BigDecimal totalAmount,
     String paymentTerms,
+    BigDecimal depositPercent,
     List<PlacedLine> lines,
     Instant occurredAt
 ) implements DomainEvent {

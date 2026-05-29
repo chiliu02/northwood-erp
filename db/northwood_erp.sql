@@ -366,7 +366,7 @@ CREATE TABLE sales.customer (
     -- cash with order, invoice at placement, shipment gated on payment
     -- (§2.31 Slice B+).
     default_payment_terms VARCHAR(20) NOT NULL DEFAULT 'on_shipment' CHECK (
-        default_payment_terms IN ('on_shipment', 'prepayment', 'cash_on_delivery')
+        default_payment_terms IN ('on_shipment', 'prepayment', 'cash_on_delivery', 'deposit')
     ),
     version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -430,9 +430,14 @@ CREATE TABLE sales.sales_order_header (
     -- on the place-order command). 'on_shipment' = current credit-terms flow;
     -- 'prepayment' = cash-with-order (§2.31 Slice B+ branches the saga on it).
     -- 'cash_on_delivery' = COD (§2.33; invoice + payment auto-recorded at shipment).
+    -- 'deposit' = part-payment (§2.32; deposit_percent invoiced + paid up front,
+    -- balance invoiced at shipment).
     payment_terms VARCHAR(20) NOT NULL DEFAULT 'on_shipment' CHECK (
-        payment_terms IN ('on_shipment', 'prepayment', 'cash_on_delivery')
+        payment_terms IN ('on_shipment', 'prepayment', 'cash_on_delivery', 'deposit')
     ),
+    -- §2.32: up-front fraction (0,100] for deposit orders; NULL for every other
+    -- payment_terms. The deposit invoice is total * deposit_percent / 100.
+    deposit_percent NUMERIC(5, 2) CHECK (deposit_percent IS NULL OR (deposit_percent > 0 AND deposit_percent <= 100)),
     currency_code CHAR(3) NOT NULL DEFAULT 'AUD',
     -- exchange_rate against company base currency at the time of order.
     -- Required even for AUD (1.0) so reporting joins are uniform.
@@ -1038,7 +1043,7 @@ CREATE TABLE inventory.sales_order_line_facts (
     -- header-level fact in sales) — the facts row is the only inventory-side
     -- read for shipment gating, so one query covers both validations.
     payment_terms VARCHAR(20) NOT NULL DEFAULT 'on_shipment' CHECK (
-        payment_terms IN ('on_shipment', 'prepayment', 'cash_on_delivery')
+        payment_terms IN ('on_shipment', 'prepayment', 'cash_on_delivery', 'deposit')
     ),
     prepayment_settled BOOLEAN NOT NULL DEFAULT false,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()

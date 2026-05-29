@@ -40,7 +40,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
             """
             SELECT sales_order_header_id, order_number, customer_id, customer_code, customer_name,
                    order_date, requested_delivery_date, status, currency_code, exchange_rate,
-                   payment_terms, subtotal_amount, tax_amount, total_amount, cancelled_at, version
+                   payment_terms, deposit_percent, subtotal_amount, tax_amount, total_amount, cancelled_at, version
             FROM sales.sales_order_header WHERE sales_order_header_id = ?
             """,
             HEADER_MAPPER, id.value()
@@ -62,6 +62,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
             SalesOrderId.of(h.salesOrderId), h.orderNumber, h.customerId, h.customerCode, h.customerName,
             h.orderDate, h.requestedDeliveryDate, SalesOrder.Status.fromDb(h.status), h.currencyCode, h.exchangeRate,
             PaymentTerms.fromDb(h.paymentTerms),
+            h.depositPercent,
             h.subtotal, h.tax, h.total, h.cancelledAt, h.version, lines
         ));
     }
@@ -84,16 +85,16 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
             INSERT INTO sales.sales_order_header (
                 sales_order_header_id, order_number, customer_id, customer_code, customer_name,
                 order_date, requested_delivery_date, status, currency_code,
-                exchange_rate, exchange_rate_captured_at, payment_terms,
+                exchange_rate, exchange_rate_captured_at, payment_terms, deposit_percent,
                 subtotal_amount, tax_amount, total_amount, version,
                 created_by, last_modified_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now(), ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now(), ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             o.id().value(), o.orderNumber(), o.customerId(), o.customerCode(), o.customerName(),
             Date.valueOf(o.orderDate()),
             o.requestedDeliveryDate() == null ? null : Date.valueOf(o.requestedDeliveryDate()),
             o.status().dbValue(), o.currencyCode(),
-            o.exchangeRate(), o.paymentTerms().dbValue(),
+            o.exchangeRate(), o.paymentTerms().dbValue(), o.depositPercent(),
             o.subtotalAmount(), o.taxAmount(), o.totalAmount(),
             1L,
             actor, actor
@@ -165,7 +166,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
     private record SalesOrderHeaderRow(
         UUID salesOrderId, String orderNumber, UUID customerId, String customerCode, String customerName,
         LocalDate orderDate, LocalDate requestedDeliveryDate, String status, String currencyCode,
-        java.math.BigDecimal exchangeRate, String paymentTerms,
+        java.math.BigDecimal exchangeRate, String paymentTerms, java.math.BigDecimal depositPercent,
         java.math.BigDecimal subtotal, java.math.BigDecimal tax,
         java.math.BigDecimal total, Instant cancelledAt, long version
     ) {}
@@ -185,6 +186,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
             rs.getString("currency_code"),
             rs.getBigDecimal("exchange_rate"),
             rs.getString("payment_terms"),
+            rs.getBigDecimal("deposit_percent"),
             rs.getBigDecimal("subtotal_amount"),
             rs.getBigDecimal("tax_amount"),
             rs.getBigDecimal("total_amount"),

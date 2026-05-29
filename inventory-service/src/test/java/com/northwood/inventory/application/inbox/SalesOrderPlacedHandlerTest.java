@@ -46,6 +46,7 @@ class SalesOrderPlacedHandlerTest {
             eventId, SO, "SO-001", UUID.randomUUID(), "CUST-001", "Acme",
             Currencies.AUD, new BigDecimal("100.00"),
             PaymentTerms.ON_SHIPMENT.dbValue(),
+            null,
             lines, Instant.now()
         );
         return new EventEnvelope(

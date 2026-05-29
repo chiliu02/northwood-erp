@@ -25,12 +25,24 @@ import com.northwood.shared.domain.Assert;
  *       shipment gated on full payment.</li>
  *   <li>{@link #CASH_ON_DELIVERY} — cash-on-delivery (§2.33); invoice + full
  *       payment auto-recorded at shipment.</li>
+ *   <li>{@link #DEPOSIT} — deposit / part-payment (§2.32); a per-order
+ *       {@code deposit_percent} is invoiced + paid up front, the balance is
+ *       invoiced at shipment.</li>
  * </ul>
+ *
+ * <p><b>Naming.</b> Deliberately plural — the codebase's enums are otherwise
+ * singular ({@code ProductType}, {@code Payment.Method}, {@code …Status}), but
+ * "payment terms" is the established commercial noun phrase (a customer is
+ * offered <i>payment terms</i>), and the name matches the {@code paymentTerms}
+ * wire field + the {@code payment_terms} columns it mirrors. Kept plural for
+ * that ubiquitous-language fit rather than renamed to {@code PaymentTerm} for
+ * enum-naming uniformity.
  */
 public enum PaymentTerms {
     ON_SHIPMENT("on_shipment"),
     PREPAYMENT("prepayment"),
-    CASH_ON_DELIVERY("cash_on_delivery");
+    CASH_ON_DELIVERY("cash_on_delivery"),
+    DEPOSIT("deposit");
 
     private final String dbValue;
 
