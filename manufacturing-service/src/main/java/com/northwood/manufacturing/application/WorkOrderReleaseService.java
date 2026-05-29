@@ -118,7 +118,8 @@ public class WorkOrderReleaseService {
             command.finishedProductId(),
             command.finishedProductSku(),
             command.finishedProductName(),
-            command.plannedQuantity()
+            command.plannedQuantity(),
+            command.sourceSalesOrderHeaderId()
         );
     }
 
@@ -136,7 +137,8 @@ public class WorkOrderReleaseService {
         UUID finishedProductId,
         String finishedProductSku,
         String finishedProductName,
-        BigDecimal planned
+        BigDecimal planned,
+        UUID sourceSalesOrderHeaderId
     ) {
         ActiveBom bom = boms.findActiveByFinishedProductId(finishedProductId)
             .orElseThrow(() -> new BomNotFoundException(finishedProductId));
@@ -157,7 +159,7 @@ public class WorkOrderReleaseService {
 
         WorkOrder workOrder = replenishmentRequestId != null
             ? WorkOrder.releaseForReplenishment(
-                workOrderNumber, replenishmentRequestId,
+                workOrderNumber, replenishmentRequestId, sourceSalesOrderHeaderId,
                 finishedProductId, finishedProductSku, finishedProductName,
                 bom.bomHeaderId(), planned, materials, operations)
             : WorkOrder.release(
@@ -189,7 +191,8 @@ public class WorkOrderReleaseService {
                 /* replenishmentRequestId */ null,
                 workOrder.id().value(),
                 sub.componentProductId(), sub.componentSku(), sub.componentName(),
-                childPlanned
+                childPlanned,
+                /* sourceSalesOrderHeaderId */ null
             );
             log.info("spawned child work_order {} for sub_assembly {} under parent {} ({} units)",
                 child.id().value(), sub.componentSku(), workOrder.id().value(), childPlanned);

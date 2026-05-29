@@ -54,10 +54,14 @@ class ReplenishmentRequestedHandlerTest {
     }
 
     private EventEnvelope event(String targetService) {
+        return event(targetService, ReplenishmentRequested.REASON_REORDER_POINT_BREACH, null);
+    }
+
+    private EventEnvelope event(String targetService, String reason, UUID sourceSalesOrderHeaderId) {
         UUID eventId = UUID.randomUUID();
         ReplenishmentRequested payload = new ReplenishmentRequested(
             eventId, REPLENISHMENT_REQUEST, PRODUCT, WAREHOUSE, QTY,
-            targetService, ReplenishmentRequested.REASON_REORDER_POINT_BREACH,
+            targetService, reason, sourceSalesOrderHeaderId,
             Instant.now()
         );
         return new EventEnvelope(
@@ -100,6 +104,31 @@ class ReplenishmentRequestedHandlerTest {
         assertThat(cmd.finishedProductName()).isEqualTo("Widget");
         assertThat(cmd.plannedQuantity()).isEqualByComparingTo(QTY);
         assertThat(cmd.workOrderNumber()).startsWith(WorkOrder.NUMBER_PREFIX);
+    }
+
+    @Test void sales_order_shortage_threads_source_so_onto_the_release_command() {
+        // §2.37 Slice 4: a sales-order-shortage replenishment carries the
+        // originating SO header; the handler threads it onto the command so
+        // WorkOrderCreated keeps the SO link for reporting.
+        UUID sourceSo = UUID.randomUUID();
+        when(boms.findActiveBomIdentity(PRODUCT))
+            .thenReturn(Optional.of(new BomHeaderIdentity("FG-WIDGET-001", "Widget")));
+        WorkOrder stub = WorkOrder.reconstitute(
+            WorkOrderId.newId(), "WO-STUB",
+            null, null, REPLENISHMENT_REQUEST, null,
+            PRODUCT, "FG-WIDGET-001", "Widget", UUID.randomUUID(), QTY,
+            WorkOrder.Status.RELEASED, WorkOrder.MaterialStatus.RESERVATION_PENDING,
+            BigDecimal.ZERO, null, null, 1L, List.of(), List.of()
+        );
+        when(releaseService.releaseForReplenishment(any())).thenReturn(stub);
+
+        handler.handle(event(ReplenishmentRequested.TARGET_SERVICE_MANUFACTURING,
+            ReplenishmentRequested.REASON_SALES_ORDER_SHORTAGE, sourceSo));
+
+        ArgumentCaptor<ReleaseForReplenishmentCommand> captor =
+            ArgumentCaptor.forClass(ReleaseForReplenishmentCommand.class);
+        verify(releaseService).releaseForReplenishment(captor.capture());
+        assertThat(captor.getValue().sourceSalesOrderHeaderId()).isEqualTo(sourceSo);
     }
 
     @Test void no_active_bom_emits_undispatchable_and_does_not_release() {

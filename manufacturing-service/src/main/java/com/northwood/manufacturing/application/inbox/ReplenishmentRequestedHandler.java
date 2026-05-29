@@ -100,7 +100,8 @@ public class ReplenishmentRequestedHandler extends AbstractInboxHandler<Replenis
             productId,
             identity.get().productSku(),
             identity.get().productName(),
-            payload.quantity()
+            payload.quantity(),
+            payload.sourceSalesOrderHeaderId()
         );
 
         WorkOrder wo = releaseService.releaseForReplenishment(command);

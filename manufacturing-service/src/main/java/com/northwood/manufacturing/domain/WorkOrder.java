@@ -225,7 +225,8 @@ public final class WorkOrder {
             workOrderNumber, salesOrderHeaderId, salesOrderLineId,
             /* replenishmentRequestId */ null,
             parentWorkOrderId, finishedProductId, finishedProductSku, finishedProductName,
-            bomHeaderId, plannedQuantity, materials, operations
+            bomHeaderId, plannedQuantity, materials, operations,
+            /* sourceSalesOrderHeaderId */ null
         );
     }
 
@@ -241,6 +242,7 @@ public final class WorkOrder {
     public static WorkOrder releaseForReplenishment(
         String workOrderNumber,
         UUID replenishmentRequestId,
+        UUID sourceSalesOrderHeaderId,
         UUID finishedProductId,
         String finishedProductSku,
         String finishedProductName,
@@ -257,7 +259,8 @@ public final class WorkOrder {
             replenishmentRequestId,
             /* parentWorkOrderId  */ null,
             finishedProductId, finishedProductSku, finishedProductName,
-            bomHeaderId, plannedQuantity, materials, operations
+            bomHeaderId, plannedQuantity, materials, operations,
+            sourceSalesOrderHeaderId
         );
         wo.pendingEvents.add(new ReplenishmentDispatched(
             UUID.randomUUID(),
@@ -280,7 +283,8 @@ public final class WorkOrder {
         UUID bomHeaderId,
         BigDecimal plannedQuantity,
         List<WorkOrderMaterial> materials,
-        List<WorkOrderOperation> operations
+        List<WorkOrderOperation> operations,
+        UUID sourceSalesOrderHeaderId
     ) {
         Assert.argument(plannedQuantity != null && plannedQuantity.signum() > 0, "plannedQuantity must be > 0");
         Assert.notEmpty(operations, "at least one operation is required to release a work order");
@@ -335,6 +339,7 @@ public final class WorkOrder {
             materialLines,
             operationLines,
             replenishmentRequestId,
+            sourceSalesOrderHeaderId,
             Instant.now()
         ));
         return wo;

@@ -52,6 +52,7 @@ class ReplenishmentRequestedHandlerTest {
         ReplenishmentRequested payload = new ReplenishmentRequested(
             eventId, REPLENISHMENT_REQUEST, PRODUCT, WAREHOUSE, QTY,
             targetService, ReplenishmentRequested.REASON_REORDER_POINT_BREACH,
+            /* sourceSalesOrderHeaderId */ null,
             Instant.now()
         );
         return new EventEnvelope(

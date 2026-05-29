@@ -270,6 +270,7 @@ public final class ReplenishmentRequest {
             requestedQuantity,
             targetService.dbValue(),
             reason.dbValue(),
+            sourceSalesOrderHeaderId,
             Instant.now()
         ));
         return r;

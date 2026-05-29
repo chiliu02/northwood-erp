@@ -103,8 +103,9 @@ class WorkOrderTest {
     class ReleaseForReplenishment {
         @Test void emits_both_WorkOrderCreated_and_ReplenishmentDispatched() {
             UUID replenishmentRequestId = UUID.randomUUID();
+            UUID sourceSalesOrderHeaderId = UUID.randomUUID();
             WorkOrder wo = WorkOrder.releaseForReplenishment(
-                "WO-REPL-001", replenishmentRequestId,
+                "WO-REPL-001", replenishmentRequestId, sourceSalesOrderHeaderId,
                 FG_PRODUCT, "FG-X", "Finished X",
                 BOM, BigDecimal.ONE,
                 List.of(mat()), List.of(op(10))
@@ -126,6 +127,8 @@ class WorkOrderTest {
             assertThat(created.salesOrderHeaderId()).isNull();
             assertThat(created.salesOrderLineId()).isNull();
             assertThat(created.replenishmentRequestId()).isEqualTo(replenishmentRequestId);
+            // §2.37 Slice 4: the originating SO is threaded onto WorkOrderCreated.
+            assertThat(created.sourceSalesOrderHeaderId()).isEqualTo(sourceSalesOrderHeaderId);
 
             ReplenishmentDispatched dispatched = (ReplenishmentDispatched) events.get(1);
             assertThat(dispatched.aggregateId()).isEqualTo(wo.id().value());
@@ -134,7 +137,7 @@ class WorkOrderTest {
 
         @Test void rejects_null_replenishmentRequestId() {
             assertThatThrownBy(() -> WorkOrder.releaseForReplenishment(
-                "WO", null,
+                "WO", null, /* sourceSalesOrderHeaderId */ null,
                 FG_PRODUCT, "FG-X", "X", BOM, BigDecimal.ONE,
                 List.of(), List.of(op(10))
             )).isInstanceOf(IllegalArgumentException.class);
