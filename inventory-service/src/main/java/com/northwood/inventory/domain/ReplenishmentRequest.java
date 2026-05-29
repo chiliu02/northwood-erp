@@ -1,5 +1,6 @@
 package com.northwood.inventory.domain;
 
+import com.northwood.inventory.domain.events.ReplenishmentCancelled;
 import com.northwood.inventory.domain.events.ReplenishmentFulfilled;
 import com.northwood.inventory.domain.events.ReplenishmentRequested;
 import com.northwood.shared.domain.Assert;
@@ -194,6 +195,7 @@ public final class ReplenishmentRequest {
     private UUID linkedPurchaseOrderId;
     private Instant dispatchedAt;
     private Instant fulfilledAt;
+    private Instant cancelledAt;
     private final long version;
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
 
@@ -257,7 +259,7 @@ public final class ReplenishmentRequest {
             id, productId, warehouseId, requestedQuantity,
             targetService, reason, sourceSalesOrderHeaderId, sourceSalesOrderLineId,
             Status.REQUESTED,
-            null, null, null, null, null,
+            null, null, null, null, null, null,
             0L
         );
         r.pendingEvents.add(new ReplenishmentRequested(
@@ -289,13 +291,14 @@ public final class ReplenishmentRequest {
         UUID linkedPurchaseOrderId,
         Instant dispatchedAt,
         Instant fulfilledAt,
+        Instant cancelledAt,
         long version
     ) {
         return new ReplenishmentRequest(
             id, productId, warehouseId, requestedQuantity,
             targetService, reason, sourceSalesOrderHeaderId, sourceSalesOrderLineId, status,
             dispatchedAggregateKind, dispatchedAggregateId, linkedPurchaseOrderId,
-            dispatchedAt, fulfilledAt,
+            dispatchedAt, fulfilledAt, cancelledAt,
             version
         );
     }
@@ -315,6 +318,7 @@ public final class ReplenishmentRequest {
         UUID linkedPurchaseOrderId,
         Instant dispatchedAt,
         Instant fulfilledAt,
+        Instant cancelledAt,
         long version
     ) {
         this.id = id;
@@ -331,6 +335,7 @@ public final class ReplenishmentRequest {
         this.linkedPurchaseOrderId = linkedPurchaseOrderId;
         this.dispatchedAt = dispatchedAt;
         this.fulfilledAt = fulfilledAt;
+        this.cancelledAt = cancelledAt;
         this.version = version;
     }
 
@@ -414,6 +419,36 @@ public final class ReplenishmentRequest {
         ));
     }
 
+    /**
+     * §2.37 Slice 2: cancel this request — the downstream service couldn't
+     * source it (no active BOM / no supplier / discontinued) or inventory
+     * classified the SKU as unsourceable. Emits {@link ReplenishmentCancelled}
+     * carrying the sales-order back-reference (non-null only for
+     * {@code sales_order_shortage}) so sales' fan-in (§2.37 Slice 3) can reject
+     * the originating order. Idempotent against the already-cancelled state.
+     * Valid only from {@code REQUESTED} or {@code DISPATCHED}; a fulfilled
+     * request can't be cancelled.
+     */
+    public void markCancelled(String reason) {
+        if (status == Status.CANCELLED) {
+            return;
+        }
+        Assert.state(status == Status.REQUESTED || status == Status.DISPATCHED,
+            "Cannot cancel: replenishment " + id.value() + " is " + status.dbValue()
+                + " — only REQUESTED or DISPATCHED requests can be cancelled");
+        this.status = Status.CANCELLED;
+        this.cancelledAt = Instant.now();
+        pendingEvents.add(new ReplenishmentCancelled(
+            UUID.randomUUID(),
+            id.value(),
+            productId,
+            sourceSalesOrderHeaderId,
+            sourceSalesOrderLineId,
+            reason,
+            Instant.now()
+        ));
+    }
+
     private boolean matchesTargetService(DispatchedAggregateKind kind) {
         return switch (kind) {
             case WORK_ORDER -> targetService == TargetService.MANUFACTURING;
@@ -441,5 +476,6 @@ public final class ReplenishmentRequest {
     public UUID linkedPurchaseOrderId()                 { return linkedPurchaseOrderId; }
     public Instant dispatchedAt()                       { return dispatchedAt; }
     public Instant fulfilledAt()                        { return fulfilledAt; }
+    public Instant cancelledAt()                        { return cancelledAt; }
     public long version()                               { return version; }
 }

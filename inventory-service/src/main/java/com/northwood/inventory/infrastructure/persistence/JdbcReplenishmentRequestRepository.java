@@ -24,6 +24,7 @@ public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestR
     private static final RowMapper<ReplenishmentRequest> ROW_MAPPER = (rs, n) -> {
         Timestamp dispatchedAt = rs.getTimestamp("dispatched_at");
         Timestamp fulfilledAt = rs.getTimestamp("fulfilled_at");
+        Timestamp cancelledAt = rs.getTimestamp("cancelled_at");
         String kind = rs.getString("dispatched_aggregate_kind");
         return ReplenishmentRequest.reconstitute(
             ReplenishmentRequestId.of(rs.getObject("replenishment_request_id", UUID.class)),
@@ -40,6 +41,7 @@ public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestR
             rs.getObject("linked_purchase_order_id", UUID.class),
             dispatchedAt == null ? null : dispatchedAt.toInstant(),
             fulfilledAt == null ? null : fulfilledAt.toInstant(),
+            cancelledAt == null ? null : cancelledAt.toInstant(),
             rs.getLong("version")
         );
     };
@@ -50,7 +52,7 @@ public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestR
                source_sales_order_header_id, source_sales_order_line_id, status,
                dispatched_aggregate_kind, dispatched_aggregate_id,
                linked_purchase_order_id,
-               dispatched_at, fulfilled_at, version
+               dispatched_at, fulfilled_at, cancelled_at, version
         FROM inventory.replenishment_request
         """;
 
@@ -141,6 +143,7 @@ public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestR
                 linked_purchase_order_id = ?,
                 dispatched_at = ?,
                 fulfilled_at = ?,
+                cancelled_at = ?,
                 version = version + 1
             WHERE replenishment_request_id = ? AND version = ?
             """,
@@ -150,6 +153,7 @@ public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestR
             r.linkedPurchaseOrderId(),
             r.dispatchedAt() == null ? null : Timestamp.from(r.dispatchedAt()),
             r.fulfilledAt() == null ? null : Timestamp.from(r.fulfilledAt()),
+            r.cancelledAt() == null ? null : Timestamp.from(r.cancelledAt()),
             r.id().value(), r.version()
         );
         if (rows == 0) {

@@ -7,6 +7,7 @@ import com.northwood.inventory.domain.ReplenishmentRequest.DispatchedAggregateKi
 import com.northwood.inventory.domain.ReplenishmentRequest.Reason;
 import com.northwood.inventory.domain.ReplenishmentRequest.Status;
 import com.northwood.inventory.domain.ReplenishmentRequest.TargetService;
+import com.northwood.inventory.domain.events.ReplenishmentCancelled;
 import com.northwood.inventory.domain.events.ReplenishmentFulfilled;
 import com.northwood.inventory.domain.events.ReplenishmentRequested;
 import com.northwood.shared.domain.DomainEvent;
@@ -294,6 +295,79 @@ class ReplenishmentRequestTest {
             );
             r.pullPendingEvents();
             assertThatThrownBy(r::markFulfilled).isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    @Nested
+    class MarkCancelled {
+
+        @Test void cancel_from_requested_emits_event_and_stamps_cancelled_at() {
+            ReplenishmentRequest r = ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.MANUFACTURING, Reason.REORDER_POINT_BREACH
+            );
+            r.pullPendingEvents();
+
+            r.markCancelled("no_active_bom");
+
+            assertThat(r.status()).isEqualTo(Status.CANCELLED);
+            assertThat(r.cancelledAt()).isNotNull();
+            List<DomainEvent> events = r.pullPendingEvents();
+            assertThat(events).hasSize(1).first().isInstanceOf(ReplenishmentCancelled.class);
+            ReplenishmentCancelled e = (ReplenishmentCancelled) events.get(0);
+            assertThat(e.aggregateId()).isEqualTo(r.id().value());
+            assertThat(e.productId()).isEqualTo(PRODUCT);
+            assertThat(e.reason()).isEqualTo("no_active_bom");
+            assertThat(e.sourceSalesOrderHeaderId()).isNull();
+            assertThat(e.sourceSalesOrderLineId()).isNull();
+        }
+
+        @Test void cancel_from_dispatched_is_allowed() {
+            ReplenishmentRequest r = ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.MANUFACTURING, Reason.REORDER_POINT_BREACH
+            );
+            r.pullPendingEvents();
+            r.markDispatched(DispatchedAggregateKind.WORK_ORDER, UUID.randomUUID());
+
+            r.markCancelled("downstream_failed");
+            assertThat(r.status()).isEqualTo(Status.CANCELLED);
+        }
+
+        @Test void cancel_propagates_sales_order_back_reference() {
+            UUID headerId = UUID.randomUUID();
+            UUID lineId = UUID.randomUUID();
+            ReplenishmentRequest r = ReplenishmentRequest.requestForSalesOrderShortage(
+                PRODUCT, WAREHOUSE, QTY, TargetService.PURCHASING, headerId, lineId
+            );
+            r.pullPendingEvents();
+
+            r.markCancelled("unsourceable");
+            ReplenishmentCancelled e = (ReplenishmentCancelled) r.pullPendingEvents().get(0);
+            assertThat(e.sourceSalesOrderHeaderId()).isEqualTo(headerId);
+            assertThat(e.sourceSalesOrderLineId()).isEqualTo(lineId);
+        }
+
+        @Test void is_idempotent_when_already_cancelled() {
+            ReplenishmentRequest r = ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.MANUFACTURING, Reason.REORDER_POINT_BREACH
+            );
+            r.pullPendingEvents();
+            r.markCancelled("x");
+            r.pullPendingEvents();
+
+            r.markCancelled("x");  // second call: no-op, no events
+            assertThat(r.pullPendingEvents()).isEmpty();
+        }
+
+        @Test void rejects_cancel_from_fulfilled() {
+            ReplenishmentRequest r = ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.MANUFACTURING, Reason.REORDER_POINT_BREACH
+            );
+            r.pullPendingEvents();
+            r.markDispatched(DispatchedAggregateKind.WORK_ORDER, UUID.randomUUID());
+            r.markFulfilled();
+
+            assertThatThrownBy(() -> r.markCancelled("too_late"))
+                .isInstanceOf(IllegalStateException.class);
         }
     }
 
