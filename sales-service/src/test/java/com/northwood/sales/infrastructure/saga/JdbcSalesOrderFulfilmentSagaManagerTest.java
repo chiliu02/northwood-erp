@@ -354,6 +354,39 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
     }
 
     @Nested
+    class ApplyDepositBranch {
+        @Test void awaiting_deposit_invoice_advances_to_deposit_invoiced() {
+            SalesOrderFulfilmentSaga saga = sagaInState(AWAITING_DEPOSIT_INVOICE,
+                FulfilmentSagaData.none().withPaymentTerms("deposit"));
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyCustomerInvoiceCreated(SO);
+
+            assertThat(state).isEqualTo(DEPOSIT_INVOICED);
+        }
+
+        @Test void full_settlement_of_deposit_invoice_advances_to_deposit_paid() {
+            SalesOrderFulfilmentSaga saga = sagaInState(DEPOSIT_INVOICED,
+                FulfilmentSagaData.none().withPaymentTerms("deposit"));
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyCustomerPaymentReceived(SO, true);
+
+            assertThat(state).isEqualTo(DEPOSIT_PAID);
+        }
+
+        @Test void partial_deposit_payment_stays_at_deposit_invoiced() {
+            SalesOrderFulfilmentSaga saga = sagaInState(DEPOSIT_INVOICED,
+                FulfilmentSagaData.none().withPaymentTerms("deposit"));
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyCustomerPaymentReceived(SO, false);
+
+            assertThat(state).isEqualTo(DEPOSIT_INVOICED);
+        }
+    }
+
+    @Nested
     class ApplyShipmentPostedPrepaymentBranch {
         @Test void prepayment_ready_to_ship_advances_through_goods_shipped_to_completed() {
             SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP,

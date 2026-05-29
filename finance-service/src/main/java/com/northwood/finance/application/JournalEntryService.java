@@ -439,12 +439,16 @@ public class JournalEntryService {
         CustomerInvoice.InvoiceType invoiceType
     ) {
         Assert.notNull(invoiceType, "invoiceType");
-        boolean prepayment = invoiceType == CustomerInvoice.InvoiceType.PREPAYMENT;
-        String creditAccount = prepayment
+        // §2.31 prepayment + §2.32 deposit both park the receipt in 2110 Customer
+        // Deposits (a liability) until shipment reclassifies it to revenue;
+        // commercial + balance invoices settle the AR posted at invoice creation.
+        boolean toDeposits = invoiceType == CustomerInvoice.InvoiceType.PREPAYMENT
+            || invoiceType == CustomerInvoice.InvoiceType.DEPOSIT;
+        String creditAccount = toDeposits
             ? FinanceAccountCodes.CUSTOMER_DEPOSITS
             : FinanceAccountCodes.AR;
-        String creditMemo = prepayment
-            ? "Hold deposit from " + customerName + " (prepayment invoice)"
+        String creditMemo = toDeposits
+            ? "Hold deposit from " + customerName + " (" + invoiceType.dbValue() + " invoice)"
             : "Settle receivable from " + customerName;
         post(
             JournalEntry.NUMBER_PREFIX + journalSuffix(),

@@ -27,7 +27,7 @@ public class JdbcSalesOrderInvoiceSnapshotPort implements SalesOrderInvoiceSnaps
     public Optional<OrderForPrepayment> findOrderForPrepayment(UUID salesOrderHeaderId) {
         List<OrderForPrepayment> headers = jdbc.query(
             """
-            SELECT order_number, customer_id, customer_code, customer_name, currency_code
+            SELECT order_number, customer_id, customer_code, customer_name, currency_code, deposit_percent
             FROM sales.sales_order_header
             WHERE sales_order_header_id = ?
             """,
@@ -38,6 +38,7 @@ public class JdbcSalesOrderInvoiceSnapshotPort implements SalesOrderInvoiceSnaps
                 rs.getString("customer_code"),
                 rs.getString("customer_name"),
                 rs.getString("currency_code"),
+                rs.getBigDecimal("deposit_percent"),
                 List.of()
             ),
             salesOrderHeaderId
@@ -77,6 +78,7 @@ public class JdbcSalesOrderInvoiceSnapshotPort implements SalesOrderInvoiceSnaps
             header.customerCode(),
             header.customerName(),
             header.currencyCode(),
+            header.depositPercent(),
             lines
         ));
     }

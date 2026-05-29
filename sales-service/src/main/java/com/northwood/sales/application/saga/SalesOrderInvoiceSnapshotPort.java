@@ -33,6 +33,8 @@ public interface SalesOrderInvoiceSnapshotPort {
         String customerCode,
         String customerName,
         String currencyCode,
+        /** §2.32: the order's deposit percent (0,100]; non-null only for deposit orders. */
+        BigDecimal depositPercent,
         List<PricedLine> lines
     ) {}
 

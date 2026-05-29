@@ -5,6 +5,7 @@ import com.northwood.finance.domain.CustomerInvoice;
 import com.northwood.finance.domain.CustomerInvoiceId;
 import com.northwood.finance.domain.CustomerInvoiceLine;
 import com.northwood.finance.domain.CustomerInvoiceRepository;
+import com.northwood.sales.domain.events.DepositInvoiceRequested;
 import com.northwood.sales.domain.events.PrepaymentInvoiceRequested;
 import com.northwood.sales.domain.events.SalesOrderShipped;
 import java.math.BigDecimal;
@@ -187,6 +188,49 @@ public class CustomerInvoiceService {
         log.info("auto-created prepayment customer_invoice {} for sales_order={} (total={} {}, {} line(s); no GL until payment)",
             invoiceNumber, payload.aggregateId(),
             invoice.totalAmount(), invoice.currencyCode(), lines.size());
+        return invoice.id();
+    }
+
+    /**
+     * §2.32 Slice B. Auto-create a <b>deposit</b> customer invoice from a
+     * {@code sales.DepositInvoiceRequested} event. A deposit is a part-payment
+     * on account, not a line-itemised charge, so the invoice is a single
+     * synthetic "deposit" line (no product) whose total is the requested
+     * {@code depositAmount} — the real-ERP down-payment-request shape. Like
+     * {@link #createFromPrepaymentRequest}, stamps {@code invoice_type='deposit'}
+     * and posts <b>no</b> journal entry (Treatment A — the deposit hits the GL
+     * only when paid, Dr Cash / Cr 2110).
+     */
+    @Transactional
+    public CustomerInvoiceId createFromDepositRequest(DepositInvoiceRequested payload) {
+        String description = "Deposit ("
+            + payload.depositPercent().stripTrailingZeros().toPlainString()
+            + "% of order " + payload.orderNumber() + ")";
+        CustomerInvoiceLine depositLine = new CustomerInvoiceLine(
+            UUID.randomUUID(), 1,
+            null,           // no originating sales-order line — it's an on-account deposit
+            null, null,     // no product
+            description,
+            BigDecimal.ONE, // quantity 1 × unit_price (= the deposit amount)
+            payload.depositAmount(),
+            BigDecimal.ZERO, BigDecimal.ZERO,
+            payload.depositAmount()
+        );
+
+        String invoiceNumber = CustomerInvoice.NUMBER_PREFIX + UUID.randomUUID().toString().substring(0, CustomerInvoice.NUMBER_SUFFIX_LENGTH).toUpperCase();
+        CustomerInvoice invoice = CustomerInvoice.createDeposit(
+            invoiceNumber,
+            payload.aggregateId(),
+            payload.customerId(),
+            payload.customerCode(),
+            payload.customerName(),
+            payload.currencyCode(),
+            List.of(depositLine)
+        );
+        customerInvoices.save(invoice);
+
+        log.info("auto-created deposit customer_invoice {} for sales_order={} (deposit={} {}; no GL until payment)",
+            invoiceNumber, payload.aggregateId(), invoice.totalAmount(), invoice.currencyCode());
         return invoice.id();
     }
 

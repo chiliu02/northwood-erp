@@ -532,6 +532,11 @@ CREATE TABLE sales.sales_order_fulfilment_saga (
             -- (the worker picks the row up from prepaid the same way it does
             -- from started / stock_reservation_incomplete).
             'awaiting_prepayment_invoice', 'prepaid',
+            -- §2.32 deposit branch: awaiting_deposit_invoice parks after
+            -- DepositInvoiceRequested; deposit_invoiced waits for the deposit
+            -- payment; deposit_paid is the active checkpoint (like prepaid) the
+            -- worker picks up to request stock reservation.
+            'awaiting_deposit_invoice', 'deposit_invoiced', 'deposit_paid',
             'manufacturing_requested', 'manufacturing_in_progress', 'manufacturing_completed',
             -- §2.36: purchasing_requested is the symmetric branch off
             -- stock_reservation_incomplete for purchased-only short lines.
@@ -2065,7 +2070,7 @@ CREATE TABLE finance.customer_invoice_header (
     -- goods-delivered performance obligation). Default keeps legacy rows on
     -- the commercial path.
     invoice_type VARCHAR(20) NOT NULL DEFAULT 'commercial' CHECK (
-        invoice_type IN ('commercial', 'prepayment')
+        invoice_type IN ('commercial', 'prepayment', 'deposit', 'balance')
     ),
     currency_code CHAR(3) NOT NULL DEFAULT 'AUD',
     exchange_rate NUMERIC(18, 8) NOT NULL DEFAULT 1.0 CHECK (exchange_rate > 0),

@@ -261,14 +261,22 @@ public class JdbcSalesOrderFulfilmentSagaManager
         // created the invoice from SalesOrderShipped). Prepayment path:
         // awaiting_prepayment_invoice → invoice_created (finance built the
         // invoice from PrepaymentInvoiceRequested before any stock movement).
-        if (GOODS_SHIPPED.equals(saga.state()) || AWAITING_PREPAYMENT_INVOICE.equals(saga.state())) {
+        // §2.32: the deposit invoice (created from DepositInvoiceRequested at
+        // placement) parks the saga at deposit_invoiced awaiting the deposit
+        // payment — distinct from the on-shipment / prepayment invoice cycle.
+        if (AWAITING_DEPOSIT_INVOICE.equals(saga.state())) {
+            saga.transitionTo(DEPOSIT_INVOICED, "wait_for_deposit_payment");
+            sagaPort.update(saga);
+            log.info("saga {} sales_order={} awaiting_deposit_invoice → deposit_invoiced",
+                saga.sagaId(), salesOrderHeaderId);
+        } else if (GOODS_SHIPPED.equals(saga.state()) || AWAITING_PREPAYMENT_INVOICE.equals(saga.state())) {
             String fromState = saga.state();
             saga.transitionTo(INVOICE_CREATED, "wait_for_payment");
             sagaPort.update(saga);
             log.info("saga {} sales_order={} {} → invoice_created",
                 saga.sagaId(), salesOrderHeaderId, fromState);
         } else {
-            log.debug("saga {} sales_order={} not in goods_shipped / awaiting_prepayment_invoice (state={}); ignoring",
+            log.debug("saga {} sales_order={} not in goods_shipped / awaiting_prepayment_invoice / awaiting_deposit_invoice (state={}); ignoring",
                 saga.sagaId(), salesOrderHeaderId, saga.state());
         }
         return saga.state();
@@ -278,6 +286,25 @@ public class JdbcSalesOrderFulfilmentSagaManager
     @Transactional
     public String applyCustomerPaymentReceived(UUID salesOrderHeaderId, boolean fullySettled) {
         SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, CustomerPaymentReceived.EVENT_TYPE);
+
+        // §2.32: a payment against the DEPOSIT invoice (saga parked at
+        // deposit_invoiced) settles the up-front portion. Full settlement →
+        // deposit_paid (an ACTIVE checkpoint, like prepaid: the worker picks the
+        // saga up to request stock reservation). The balance invoice/payment
+        // cycle after shipment is the on-shipment tail handled below.
+        if (DEPOSIT_INVOICED.equals(saga.state())) {
+            if (fullySettled) {
+                saga.transitionTo(DEPOSIT_PAID, "wait_for_worker_pickup");
+                saga.parkUntil(Instant.now());
+                sagaPort.update(saga);
+                log.info("saga {} sales_order={} → deposit_paid (deposit invoice fully paid; worker continues forward)",
+                    saga.sagaId(), salesOrderHeaderId);
+            } else {
+                log.info("saga {} sales_order={} deposit invoice partially paid; staying at deposit_invoiced",
+                    saga.sagaId(), salesOrderHeaderId);
+            }
+            return saga.state();
+        }
 
         if (!INVOICE_CREATED.equals(saga.state()) && !INVOICE_PARTIALLY_PAID.equals(saga.state())) {
             log.debug("saga {} sales_order={} not in payment-receivable state (state={}); ignoring",

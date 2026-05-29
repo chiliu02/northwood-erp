@@ -50,6 +50,7 @@ public final class InMemorySalesOrderInvoiceSnapshotPort implements SalesOrderIn
             order.customerCode(),
             order.customerName(),
             order.currencyCode(),
+            order.depositPercent(),
             lines
         ));
     }

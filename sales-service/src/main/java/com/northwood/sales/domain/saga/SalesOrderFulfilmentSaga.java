@@ -75,6 +75,15 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
     // on-shipment flow).
     public static final String AWAITING_PREPAYMENT_INVOICE = "awaiting_prepayment_invoice";
     public static final String PREPAID = "prepaid";
+    // §2.32 deposit branch: AWAITING_DEPOSIT_INVOICE parks after
+    // DepositInvoiceRequested until finance acks with CustomerInvoiceCreated;
+    // DEPOSIT_INVOICED waits for the deposit payment; DEPOSIT_PAID is the active
+    // worker-pickup checkpoint (like PREPAID) between deposit settlement and the
+    // stock-reservation request. The balance cycle after shipment reuses the
+    // on-shipment GOODS_SHIPPED → INVOICE_CREATED → COMPLETED tail.
+    public static final String AWAITING_DEPOSIT_INVOICE = "awaiting_deposit_invoice";
+    public static final String DEPOSIT_INVOICED = "deposit_invoiced";
+    public static final String DEPOSIT_PAID = "deposit_paid";
     public static final String COMPLETED = "completed";
     public static final String COMPENSATING = "compensating";
     public static final String COMPENSATED = "compensated";
@@ -95,6 +104,7 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
         STARTED,
         STOCK_RESERVATION_REQUESTED, STOCK_RESERVATION_INCOMPLETE, REJECTED,
         AWAITING_PREPAYMENT_INVOICE, PREPAID,
+        AWAITING_DEPOSIT_INVOICE, DEPOSIT_INVOICED, DEPOSIT_PAID,
         READY_TO_SHIP, GOODS_SHIPPED,
         INVOICE_REQUESTED, INVOICE_CREATED, INVOICE_PARTIALLY_PAID,
         COMPLETED,

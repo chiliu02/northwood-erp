@@ -8,12 +8,15 @@ import com.northwood.sales.application.saga.SalesOrderLineSnapshotPort.LineSnaps
 import com.northwood.sales.application.saga.SalesOrderInvoiceSnapshotPort;
 import com.northwood.sales.application.saga.SalesOrderInvoiceSnapshotPort.OrderForPrepayment;
 import com.northwood.sales.domain.PaymentTerms;
+import com.northwood.sales.domain.events.DepositInvoiceRequested;
 import com.northwood.sales.domain.events.PrepaymentInvoiceRequested;
 import com.northwood.sales.domain.events.StockReservationRequested;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.sales.domain.saga.FulfilmentSagaData;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.AWAITING_DEPOSIT_INVOICE;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.AWAITING_PREPAYMENT_INVOICE;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.DEPOSIT_PAID;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.PREPAID;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STARTED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_REQUESTED;
@@ -21,6 +24,7 @@ import com.northwood.shared.domain.Assert;
 import com.northwood.shared.application.outbox.OutboxAppender;
 import java.lang.management.ManagementFactory;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -99,7 +103,7 @@ public class SalesOrderFulfilmentSagaWorker {
     private void advance(SalesOrderFulfilmentSaga saga) {
         switch (saga.state()) {
             case STARTED -> advanceFromStarted(saga);
-            case PREPAID -> requestStockReservation(saga);
+            case PREPAID, DEPOSIT_PAID -> requestStockReservation(saga);
             default -> log.debug("[{}] no transition implemented for state {}", workerId, saga.state());
         }
     }
@@ -121,9 +125,66 @@ public class SalesOrderFulfilmentSagaWorker {
         String pt = readData(saga).paymentTerms();
         if (PaymentTerms.PREPAYMENT.dbValue().equals(pt)) {
             requestPrepaymentInvoice(saga);
+        } else if (PaymentTerms.DEPOSIT.dbValue().equals(pt)) {
+            requestDepositInvoice(saga);
         } else {
             requestStockReservation(saga);
         }
+    }
+
+    /**
+     * §2.32. Branch at {@code started} for deposit orders: compute the up-front
+     * deposit ({@code total × deposit_percent / 100}) and emit
+     * {@code DepositInvoiceRequested}, parking at {@code awaiting_deposit_invoice}
+     * until finance acks with {@code CustomerInvoiceCreated}. The worker picks
+     * the saga back up from {@code deposit_paid} (after the deposit is settled)
+     * to walk the same {@link #requestStockReservation} path as on-shipment.
+     */
+    private void requestDepositInvoice(SalesOrderFulfilmentSaga saga) {
+        UUID salesOrderId = saga.salesOrderId();
+        OrderForPrepayment order = invoiceSnapshots.findOrderForPrepayment(salesOrderId)
+            .orElseThrow(() -> new IllegalStateException(
+                "No sales-order header found for sales_order_header_id=" + salesOrderId
+                    + " — cannot request deposit invoice"));
+        Assert.stateNotEmpty(order.lines(), "No lines found for sales_order_header_id=" + salesOrderId
+            + " — cannot request deposit invoice");
+        Assert.stateNotNull(order.depositPercent(), "deposit order " + salesOrderId
+            + " has no deposit_percent — cannot compute the deposit amount");
+
+        BigDecimal depositAmount = orderTotal(order)
+            .multiply(order.depositPercent())
+            .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+
+        DepositInvoiceRequested event = new DepositInvoiceRequested(
+            UUID.randomUUID(),
+            salesOrderId,
+            order.orderNumber(),
+            order.customerId(),
+            order.customerCode(),
+            order.customerName(),
+            order.currencyCode(),
+            depositAmount,
+            order.depositPercent(),
+            Instant.now()
+        );
+        outbox.append(event, SalesOrderFulfilmentSaga.AGGREGATE_TYPE);
+
+        saga.transitionTo(AWAITING_DEPOSIT_INVOICE, "wait_for_deposit_invoice");
+        saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
+
+        log.info("[{}] saga {} sales_order={} → awaiting_deposit_invoice (deposit {}% = {} {})",
+            workerId, saga.sagaId(), salesOrderId, order.depositPercent(), depositAmount, order.currencyCode());
+    }
+
+    /** Order total (subtotal + tax) from the priced lines, rounded to 2dp. */
+    private static BigDecimal orderTotal(OrderForPrepayment order) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (SalesOrderInvoiceSnapshotPort.PricedLine l : order.lines()) {
+            BigDecimal lineSubtotal = l.orderedQuantity().multiply(l.unitPrice());
+            BigDecimal taxRate = l.taxRate() == null ? BigDecimal.ZERO : l.taxRate();
+            total = total.add(lineSubtotal).add(lineSubtotal.multiply(taxRate));
+        }
+        return total.setScale(2, RoundingMode.HALF_UP);
     }
 
     private void requestPrepaymentInvoice(SalesOrderFulfilmentSaga saga) {
