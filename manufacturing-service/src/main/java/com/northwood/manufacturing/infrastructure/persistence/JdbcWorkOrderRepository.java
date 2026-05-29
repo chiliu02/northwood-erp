@@ -132,17 +132,6 @@ public class JdbcWorkOrderRepository implements WorkOrderRepository {
         );
     }
 
-    @Override
-    public List<UUID> findActiveIdsForSalesOrder(UUID salesOrderHeaderId) {
-        return jdbc.queryForList("""
-            SELECT work_order_id FROM manufacturing.work_order
-            WHERE sales_order_header_id = ?
-              AND status NOT IN ('completed', 'closed', 'cancelled')
-            """,
-            UUID.class, salesOrderHeaderId
-        );
-    }
-
     private void insert(WorkOrder workOrder, String actor) {
         jdbc.update("""
             INSERT INTO manufacturing.work_order (

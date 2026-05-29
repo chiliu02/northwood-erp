@@ -7,7 +7,6 @@ import com.northwood.inventory.domain.events.ReplenishmentCancelled;
 import com.northwood.inventory.domain.events.ReplenishmentFulfilled;
 import com.northwood.inventory.domain.events.ShipmentPosted;
 import com.northwood.inventory.domain.events.StockReserved;
-import com.northwood.manufacturing.domain.events.ManufacturingSalesOrderCancellationApplied;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaPort;
 import com.northwood.sales.domain.events.SalesOrderPlaced;
@@ -301,30 +300,17 @@ public class JdbcSalesOrderFulfilmentSagaManager
     @Override
     @Transactional
     public String applyInventoryCancellationApplied(UUID salesOrderHeaderId) {
-        return recordCompensationAck(salesOrderHeaderId, true,
+        SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId,
             InventorySalesOrderCancellationApplied.EVENT_TYPE);
-    }
-
-    @Override
-    @Transactional
-    public String applyManufacturingCancellationApplied(UUID salesOrderHeaderId) {
-        return recordCompensationAck(salesOrderHeaderId, false,
-            ManufacturingSalesOrderCancellationApplied.EVENT_TYPE);
-    }
-
-    private String recordCompensationAck(UUID salesOrderHeaderId, boolean inventorySide, String eventName) {
-        SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, eventName);
-        FulfilmentSagaData data = inventorySide
-            ? readData(saga).withInventoryCancellationAcked()
-            : readData(saga).withManufacturingCancellationAcked();
+        FulfilmentSagaData data = readData(saga).withInventoryCancellationAcked();
         writeData(saga, data);
         sagaPort.update(saga);
 
-        if (data.bothCancellationAcksReceived() && COMPENSATING.equals(saga.state())) {
+        if (data.cancellationAcked() && COMPENSATING.equals(saga.state())) {
             saga.transitionTo(COMPENSATED, "cancelled");
             sagaPort.update(saga);
-            log.info("saga {} sales_order={} → compensated ({} ack triggered completion)",
-                saga.sagaId(), salesOrderHeaderId, eventName);
+            log.info("saga {} sales_order={} → compensated (inventory ack triggered completion)",
+                saga.sagaId(), salesOrderHeaderId);
         }
         return saga.state();
     }

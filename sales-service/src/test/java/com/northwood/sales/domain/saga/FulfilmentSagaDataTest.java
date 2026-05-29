@@ -12,9 +12,8 @@ class FulfilmentSagaDataTest {
     @Nested
     class CompactConstructor {
         @Test void defaults_null_fields() {
-            FulfilmentSagaData d = new FulfilmentSagaData(null, null, null, null);
+            FulfilmentSagaData d = new FulfilmentSagaData(null, null, null);
             assertThat(d.inventoryCancellationAcked()).isFalse();
-            assertThat(d.manufacturingCancellationAcked()).isFalse();
             assertThat(d.paymentTerms()).isNull();                       // null = legacy fallback (on_shipment)
             assertThat(d.outstandingReplenishmentLineIds()).isEmpty();
         }
@@ -23,7 +22,7 @@ class FulfilmentSagaDataTest {
             FulfilmentSagaData d = FulfilmentSagaData.none();
             assertThat(d.outstandingReplenishmentLineIds()).isEmpty();
             assertThat(d.allReplenishmentLinesFulfilled()).isTrue();
-            assertThat(d.bothCancellationAcksReceived()).isFalse();
+            assertThat(d.cancellationAcked()).isFalse();
         }
     }
 
@@ -71,12 +70,13 @@ class FulfilmentSagaDataTest {
 
     @Nested
     class CompensationAcks {
-        @Test void both_acks_required() {
-            FulfilmentSagaData inv = FulfilmentSagaData.none().withInventoryCancellationAcked();
-            assertThat(inv.bothCancellationAcksReceived()).isFalse();
+        @Test void inventory_ack_satisfies_the_gate() {
+            // §2.40: inventory is the sole compensation ack (manufacturing leg retired).
+            FulfilmentSagaData none = FulfilmentSagaData.none();
+            assertThat(none.cancellationAcked()).isFalse();
 
-            FulfilmentSagaData both = inv.withManufacturingCancellationAcked();
-            assertThat(both.bothCancellationAcksReceived()).isTrue();
+            FulfilmentSagaData inv = none.withInventoryCancellationAcked();
+            assertThat(inv.cancellationAcked()).isTrue();
         }
 
         @Test void acks_preserve_other_fields() {

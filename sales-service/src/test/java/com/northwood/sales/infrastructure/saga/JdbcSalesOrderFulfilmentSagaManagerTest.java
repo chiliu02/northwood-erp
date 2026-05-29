@@ -310,23 +310,24 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
 
     @Nested
     class ApplyCancellationApplied {
-        @Test void inventory_ack_alone_does_not_complete() {
+        // §2.40: inventory is the sole compensation ack (manufacturing leg retired),
+        // so an inventory ack from compensating completes the compensation outright.
+        @Test void inventory_ack_from_compensating_completes_to_compensated() {
             SalesOrderFulfilmentSaga saga = sagaInState(COMPENSATING);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
             String state = manager.applyInventoryCancellationApplied(SO);
 
-            assertThat(state).isEqualTo(COMPENSATING);
+            assertThat(state).isEqualTo(COMPENSATED);
         }
 
-        @Test void manufacturing_ack_after_inventory_completes_to_compensated() {
-            SalesOrderFulfilmentSaga saga = sagaInState(COMPENSATING,
-                FulfilmentSagaData.none().withInventoryCancellationAcked());
+        @Test void inventory_ack_outside_compensating_does_not_complete() {
+            SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyManufacturingCancellationApplied(SO);
+            String state = manager.applyInventoryCancellationApplied(SO);
 
-            assertThat(state).isEqualTo(COMPENSATED);
+            assertThat(state).isEqualTo(READY_TO_SHIP);
         }
 
         @Test void no_saga_throws_illegal_state() {

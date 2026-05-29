@@ -7,15 +7,13 @@ import java.util.UUID;
 /**
  * Cancel command accepted by the sales side. The header is already flipped to
  * {@code 'cancelled'} in the same transaction; this event is the request to
- * downstream services (inventory, manufacturing) to compensate — release the
- * stock reservation, cancel any in-progress work orders, etc.
+ * inventory to compensate — release the stock reservation.
  *
- * <p>Inventory and manufacturing each ack with their own event
- * ({@code InventorySalesOrderCancellationApplied} /
- * {@code ManufacturingSalesOrderCancellationApplied}, both carrying the wire
- * suffix {@code SalesOrderCancellationApplied} under their service prefix);
- * the sales fulfilment saga waits in {@code compensating} until both acks
- * land, then transitions to {@code compensated}.
+ * <p>Inventory acks with {@code InventorySalesOrderCancellationApplied}; the
+ * sales fulfilment saga waits in {@code compensating} until that ack lands,
+ * then transitions to {@code compensated}. (§2.40 retired the manufacturing
+ * leg — post-§2.37 no work order is bound to a sales order, so inventory is
+ * the sole compensation contract.)
  */
 public record SalesOrderCancellationRequested(
     UUID eventId,

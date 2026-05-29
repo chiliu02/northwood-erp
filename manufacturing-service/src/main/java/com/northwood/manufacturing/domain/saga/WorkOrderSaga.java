@@ -46,11 +46,9 @@ public final class WorkOrderSaga extends SagaInstance {
     public static final String RAW_MATERIALS_RESERVED = "raw_materials_reserved";
     public static final String RAW_MATERIAL_SHORTAGE = "raw_material_shortage";
     public static final String COMPLETED = "completed";
-    public static final String COMPENSATING = "compensating";
-    public static final String COMPENSATED = "compensated";
     public static final String FAILED = "failed";
 
-    private static final Set<String> TERMINAL_STATES = Set.of(COMPLETED, COMPENSATED, FAILED);
+    private static final Set<String> TERMINAL_STATES = Set.of(COMPLETED, FAILED);
 
     /**
      * Every state this saga's code can transition into. Cross-checked at
@@ -63,7 +61,6 @@ public final class WorkOrderSaga extends SagaInstance {
         RAW_MATERIAL_RESERVATION_REQUESTED,
         RAW_MATERIALS_RESERVED, RAW_MATERIAL_SHORTAGE,
         COMPLETED,
-        COMPENSATING, COMPENSATED,
         FAILED
     );
 

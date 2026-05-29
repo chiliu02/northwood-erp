@@ -153,23 +153,6 @@ public class JdbcWorkOrderSagaManager
         return saga.state();
     }
 
-    @Override
-    @Transactional
-    public String cancelForWorkOrder(UUID workOrderId) {
-        WorkOrderSaga saga = sagaPort.findByWorkOrderId(workOrderId).orElse(null);
-        if (saga == null) {
-            return null;
-        }
-        if (saga.terminalStates().contains(saga.state())) {
-            return saga.state();
-        }
-        saga.transitionTo(COMPENSATED, "cancelled_via_sales");
-        sagaPort.update(saga);
-        log.info("saga {} (work_order={}) → compensated (cancelled via sales)",
-            saga.sagaId(), workOrderId);
-        return saga.state();
-    }
-
     // ============================================================
     // Internal helpers
     // ============================================================

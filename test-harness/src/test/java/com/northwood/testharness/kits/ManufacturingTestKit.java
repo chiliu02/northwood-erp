@@ -2,7 +2,6 @@ package com.northwood.testharness.kits;
 
 import com.northwood.manufacturing.application.BomService;
 import com.northwood.manufacturing.application.MaterialsCostRollupService;
-import com.northwood.manufacturing.application.WorkOrderCancellationService;
 import com.northwood.manufacturing.application.WorkOrderOperationService;
 import com.northwood.manufacturing.application.WorkOrderPrioritisationService;
 import com.northwood.manufacturing.application.WorkOrderReleaseService;
@@ -14,7 +13,6 @@ import com.northwood.manufacturing.application.inbox.ProductCreatedHandler;
 import com.northwood.manufacturing.application.inbox.ProductDiscontinuedHandler;
 import com.northwood.manufacturing.application.inbox.RawMaterialsReservedHandler;
 import com.northwood.manufacturing.application.inbox.ReplenishmentRequestedHandler;
-import com.northwood.manufacturing.application.inbox.SalesOrderCancellationRequestedHandler;
 import com.northwood.manufacturing.application.inbox.SupplierProductPriceChangedHandler;
 import com.northwood.manufacturing.infrastructure.saga.JdbcWorkOrderSagaManager;
 import com.northwood.manufacturing.infrastructure.saga.WorkOrderSagaWorker;
@@ -69,7 +67,6 @@ public final class ManufacturingTestKit {
     public final WorkOrderSagaWorker sagaWorker;
     public final WorkOrderReleaseService releaseService;
     public final WorkOrderOperationService operationService;
-    public final WorkOrderCancellationService cancellationService;
     public final WorkOrderPrioritisationService prioritisationService;
     public final MaterialsCostRollupService rollupService;
     public final BomService bomService;
@@ -87,9 +84,6 @@ public final class ManufacturingTestKit {
         CurrentUserAccessor currentUser = new CurrentUserAccessor();
         OutboxAppender appender = new OutboxAppender(outbox, json, currentUser);
         this.operationService = new WorkOrderOperationService(
-            workOrders, sagaManager, appender
-        );
-        this.cancellationService = new WorkOrderCancellationService(
             workOrders, sagaManager, appender
         );
         this.prioritisationService = new WorkOrderPrioritisationService(
@@ -112,7 +106,6 @@ public final class ManufacturingTestKit {
         bus.register(new MakeVsBuyChangedHandler(inbox, replenishment, json));
         bus.register(new ProductCreatedHandler(inbox, replenishment, json));
         bus.register(new ProductDiscontinuedHandler(inbox, replenishment, activeBoms, bomLookup, json));
-        bus.register(new SalesOrderCancellationRequestedHandler(inbox, cancellationService, json));
         bus.register(new SupplierProductPriceChangedHandler(inbox, rollupService, json));
         bus.register(new ApprovedVendorListChangedHandler(inbox, approvedVendors, json));
 

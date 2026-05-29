@@ -424,10 +424,8 @@ Returns 200 with the order body now showing `status='cancelled'` and `cancelledA
 
 1. **Sales** — header flipped to `'cancelled'`, saga flipped to `'compensating'`, `sales.SalesOrderCancellationRequested` emitted.
 2. **Inventory** consumes — releases the stock reservation (`stock_balance.reserved_quantity` decremented; reservation header status `'released'`), emits `inventory.SalesOrderCancellationApplied`.
-3. **Manufacturing** consumes — for every active WO *bound to this sales order* (status NOT IN `completed/closed/cancelled`): `WorkOrder.cancel()` flips it to `'cancelled'` + emits `manufacturing.WorkOrderCancelled`, and the associated `work_order_saga` is flipped to `'compensated'`. One `manufacturing.SalesOrderCancellationApplied` ack per cancel command. **§2.37:** make-to-stock replenishment WOs are bound to a `ReplenishmentRequest`, not the sales order, so for a current order this cancels **zero** WOs — the handler still runs and still emits the ack (the sales saga waits for it).
-4. **Inventory** also consumes `manufacturing.WorkOrderCancelled` (when emitted) to release the raw-material reservation (`stock_balance.reserved_quantity` decremented for the rm components).
-5. **Sales** consumes both acks (one inbox handler each). When both have arrived, the saga advances `compensating → compensated` and emits `sales.SalesOrderCompensated`.
-6. **Reporting** consumes `sales.SalesOrderCompensated` and flips `sales_order_360_view.order_status` to `'cancelled'`.
+3. **Sales** consumes that ack. While in `compensating`, the saga advances `compensating → compensated` and emits `sales.SalesOrderCompensated`. (**§2.40:** inventory is the sole compensation ack — post-§2.37 no work order is bound to a sales order, so the manufacturing sales-cancel leg, `WorkOrder.cancel`, and `manufacturing.WorkOrderCancelled` were deleted.)
+4. **Reporting** consumes `sales.SalesOrderCompensated` and flips `sales_order_360_view.order_status` to `'cancelled'`.
 
 Watch the Saga Console UI walk `stock_reservation_incomplete → compensating → compensated`. The 360 view (`/sales-orders/{id}/360`) shows `order_status='cancelled'` afterwards.
 
@@ -445,7 +443,7 @@ If the SKU has **no active BOM**, manufacturing emits `manufacturing.Replenishme
 
 ## Demo 5 — Saga: make-to-stock work order
 
-The `manufacturing.work_order_saga` row (table name unchanged; rename to a generic name is tracked as §2.39) appears the moment inventory dispatches a manufacturing-routed `inventory.ReplenishmentRequested` — i.e. a make-to-stock work order, **not** a sales-order line. Since §2.37 the saga is always entered directly at `work_order_created` (the old `started` state was removed); the WO carries the originating `replenishment_request_id` (and the triggering `source_sales_order_header_id`, for the reporting board's SO↔WO link) rather than being bound to a sales order. One saga row per work order — sub-assembly children get their own saga at `work_order_created`.
+The `manufacturing.work_order_saga` row (renamed from `make_to_order_saga` in §2.39) appears the moment inventory dispatches a manufacturing-routed `inventory.ReplenishmentRequested` — i.e. a make-to-stock work order, **not** a sales-order line. Since §2.37 the saga is always entered directly at `work_order_created` (the old `started` state was removed); the WO carries the originating `replenishment_request_id` (and the triggering `source_sales_order_header_id`, for the reporting board's SO↔WO link) rather than being bound to a sales order. One saga row per work order — sub-assembly children get their own saga at `work_order_created`.
 
 ### 5.1 — Order with sufficient raw materials
 

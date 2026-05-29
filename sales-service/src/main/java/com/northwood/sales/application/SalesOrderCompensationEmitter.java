@@ -12,13 +12,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * Shared {@code sales.SalesOrderCompensated} emission for the two
- * cancellation-ack inbox handlers ({@code InventoryCancellationAppliedHandler}
- * and {@code ManufacturingCancellationAppliedHandler}). Reads
+ * {@code sales.SalesOrderCompensated} emission for the compensation-ack inbox
+ * handler ({@code InventoryCancellationAppliedHandler}). Reads
  * {@code SalesOrder.cancelledAt} for the event's {@code cancelledAt} field and
- * hands the event to {@link OutboxAppender}. The only reason this class exists
- * is that those two handlers share this construction + its silent-fallback
- * contract; the mechanical serialise-and-append lives in {@code OutboxAppender}.
+ * hands the event to {@link OutboxAppender}. Encapsulates the construction +
+ * its silent-fallback contract; the mechanical serialise-and-append lives in
+ * {@code OutboxAppender}. (§2.40 retired the second consumer,
+ * {@code ManufacturingCancellationAppliedHandler}, when manufacturing dropped
+ * out of the compensation gate — inventory is now the sole ack.)
  *
  * <p><b>Silent-fallback contract on {@code cancelledAt}.</b> Sourced from
  * {@code SalesOrder.cancelledAt} (set when the user invoked {@code cancel}).

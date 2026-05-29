@@ -25,9 +25,6 @@ public interface StockReservationRepository {
      */
     Optional<UUID> findActiveHeaderIdForSalesOrder(UUID salesOrderHeaderId);
 
-    /** Same as {@link #findActiveHeaderIdForSalesOrder} for the work-order side. */
-    Optional<UUID> findActiveHeaderIdForWorkOrder(UUID workOrderId);
-
     /**
      * Find any reservation header id for this work order, regardless of
      * status. Used by the retry-cancel-then-recreate flow which needs to

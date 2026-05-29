@@ -189,25 +189,6 @@ public class StockReservationService {
     }
 
     /**
-     * Release the raw-material reservation tied to a cancelled work order.
-     * Decrements the matching {@code stock_balance.reserved_quantity} bumps
-     * and marks the reservation header status {@code 'released'}. Idempotent
-     * against the absence of a reservation (e.g. a WO cancelled before its
-     * raw materials were reserved). Doesn't emit an event — manufacturing's
-     * cancel-applied ack to the sales saga doesn't depend on this.
-     */
-    @Transactional
-    public void releaseForWorkOrder(UUID workOrderId) {
-        Optional<UUID> headerId = stockReservations.findActiveHeaderIdForWorkOrder(workOrderId);
-        if (headerId.isEmpty()) {
-            log.info("no live raw-material reservation to release for work_order={}", workOrderId);
-            return;
-        }
-        unwindReservation(headerId.get());
-        log.info("released raw-material reservation {} for work_order={}", headerId.get(), workOrderId);
-    }
-
-    /**
      * Roll back the {@code stock_balance.reserved_quantity} bumps for every
      * line of {@code headerId}, then mark the reservation header
      * {@code 'released'}. Shared subroutine for both release paths.

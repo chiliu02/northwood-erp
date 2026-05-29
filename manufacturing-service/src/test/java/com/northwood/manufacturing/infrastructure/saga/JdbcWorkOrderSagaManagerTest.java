@@ -194,35 +194,4 @@ class JdbcWorkOrderSagaManagerTest {
             verify(sagas, never()).update(any());
         }
     }
-
-    @Nested
-    class CancelForWorkOrder {
-        @Test void non_terminal_saga_flips_to_compensated() {
-            WorkOrderSaga saga = sagaInState(RAW_MATERIAL_RESERVATION_REQUESTED, "{}");
-            when(sagas.findByWorkOrderId(WO)).thenReturn(Optional.of(saga));
-
-            String state = manager.cancelForWorkOrder(WO);
-
-            assertThat(state).isEqualTo(COMPENSATED);
-            verify(sagas).update(saga);
-        }
-
-        @Test void already_terminal_saga_left_alone() {
-            WorkOrderSaga saga = sagaInState(COMPLETED, "{}");
-            when(sagas.findByWorkOrderId(WO)).thenReturn(Optional.of(saga));
-
-            String state = manager.cancelForWorkOrder(WO);
-
-            assertThat(state).isEqualTo(COMPLETED);
-            verify(sagas, never()).update(any());
-        }
-
-        @Test void no_saga_returns_null() {
-            when(sagas.findByWorkOrderId(WO)).thenReturn(Optional.empty());
-
-            String state = manager.cancelForWorkOrder(WO);
-
-            assertThat(state).isNull();
-        }
-    }
 }

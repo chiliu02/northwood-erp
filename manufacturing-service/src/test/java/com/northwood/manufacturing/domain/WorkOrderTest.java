@@ -320,15 +320,6 @@ class WorkOrderTest {
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
-        @Test void noop_on_cancelled() {
-            WorkOrder wo = release(List.of(op(10)));
-            wo.pullPendingEvents();
-            wo.cancel("test");
-            wo.pullPendingEvents();
-            wo.applyReservationOutcome(WorkOrder.MaterialStatus.RESERVED);
-            assertThat(wo.materialStatus()).isEqualTo(WorkOrder.MaterialStatus.RESERVATION_PENDING);  // unchanged
-        }
-
         @Test void noop_on_completed() {
             WorkOrder wo = release(List.of(op(10)));
             wo.pullPendingEvents();

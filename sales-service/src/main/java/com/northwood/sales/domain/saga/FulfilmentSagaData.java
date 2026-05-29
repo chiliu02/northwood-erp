@@ -29,9 +29,11 @@ import java.util.UUID;
  *       {@code stock_reservation_requested} to retry reservation against the
  *       now-restocked inventory. A {@code ReplenishmentCancelled} for any of
  *       these lines rejects the order outright.</li>
- *   <li>{@link #inventoryCancellationAcked} / {@link #manufacturingCancellationAcked}
- *       — compensation acks; the saga advances to {@code compensated} once both
- *       downstream services confirm the cancel.</li>
+ *   <li>{@link #inventoryCancellationAcked} — the compensation ack; the saga
+ *       advances to {@code compensated} once inventory confirms the cancel.
+ *       §2.40 retired the manufacturing leg of the compensation gate (no work
+ *       order is bound to a sales order post-§2.37), so inventory is now the
+ *       sole compensation contract.</li>
  * </ul>
  *
  * <p>The compact constructor defaults null fields so saga rows written before a
@@ -39,7 +41,6 @@ import java.util.UUID;
  */
 public record FulfilmentSagaData(
     Boolean inventoryCancellationAcked,
-    Boolean manufacturingCancellationAcked,
     String paymentTerms,
     Set<UUID> outstandingReplenishmentLineIds
 ) {
@@ -49,7 +50,6 @@ public record FulfilmentSagaData(
         // null on legacy saga.data blobs without tripping
         // FAIL_ON_NULL_FOR_PRIMITIVES; the compact constructor unboxes to false.
         inventoryCancellationAcked = inventoryCancellationAcked != null && inventoryCancellationAcked;
-        manufacturingCancellationAcked = manufacturingCancellationAcked != null && manufacturingCancellationAcked;
         // paymentTerms stays null on legacy rows; consumers fall back to the
         // on-shipment path (the only path that existed pre-§2.31 Slice B).
         outstandingReplenishmentLineIds = outstandingReplenishmentLineIds == null
@@ -58,14 +58,13 @@ public record FulfilmentSagaData(
     }
 
     public static FulfilmentSagaData none() {
-        return new FulfilmentSagaData(false, false, null, Set.of());
+        return new FulfilmentSagaData(false, null, Set.of());
     }
 
     /** Stamp the order's commercial payment terms at saga creation. */
     public FulfilmentSagaData withPaymentTerms(String paymentTerms) {
         return new FulfilmentSagaData(
             inventoryCancellationAcked,
-            manufacturingCancellationAcked,
             paymentTerms,
             new LinkedHashSet<>(outstandingReplenishmentLineIds)
         );
@@ -74,17 +73,6 @@ public record FulfilmentSagaData(
     /** Record inventory's compensation ack ({@code inventory.SalesOrderCancellationApplied}). */
     public FulfilmentSagaData withInventoryCancellationAcked() {
         return new FulfilmentSagaData(
-            true,
-            manufacturingCancellationAcked,
-            paymentTerms,
-            new LinkedHashSet<>(outstandingReplenishmentLineIds)
-        );
-    }
-
-    /** Record manufacturing's compensation ack ({@code manufacturing.SalesOrderCancellationApplied}). */
-    public FulfilmentSagaData withManufacturingCancellationAcked() {
-        return new FulfilmentSagaData(
-            inventoryCancellationAcked,
             true,
             paymentTerms,
             new LinkedHashSet<>(outstandingReplenishmentLineIds)
@@ -99,7 +87,6 @@ public record FulfilmentSagaData(
     public FulfilmentSagaData withOutstandingReplenishmentLineIds(Set<UUID> lineIds) {
         return new FulfilmentSagaData(
             inventoryCancellationAcked,
-            manufacturingCancellationAcked,
             paymentTerms,
             lineIds == null ? Set.of() : new LinkedHashSet<>(lineIds)
         );
@@ -118,7 +105,6 @@ public record FulfilmentSagaData(
         next.remove(salesOrderLineId);
         return new FulfilmentSagaData(
             inventoryCancellationAcked,
-            manufacturingCancellationAcked,
             paymentTerms,
             next
         );
@@ -129,9 +115,8 @@ public record FulfilmentSagaData(
         return outstandingReplenishmentLineIds.isEmpty();
     }
 
-    /** Both downstream services have acked the cancel — saga can advance to {@code compensated}. */
-    public boolean bothCancellationAcksReceived() {
-        return Boolean.TRUE.equals(inventoryCancellationAcked)
-            && Boolean.TRUE.equals(manufacturingCancellationAcked);
+    /** Inventory has acked the cancel — the saga can advance to {@code compensated}. */
+    public boolean cancellationAcked() {
+        return Boolean.TRUE.equals(inventoryCancellationAcked);
     }
 }

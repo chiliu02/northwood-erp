@@ -132,16 +132,13 @@ public interface SalesOrderFulfilmentSagaManager {
     String applyCustomerPaymentReceived(UUID salesOrderHeaderId, boolean fullySettled);
 
     /**
-     * Apply {@code inventory.SalesOrderCancellationApplied}. Records the
-     * inventory ack on saga data. When manufacturing's ack has also arrived,
-     * transitions {@code compensating → compensated} and returns
-     * {@code "compensated"} so the caller can emit
-     * {@code sales.SalesOrderCompensated}.
+     * Apply {@code inventory.SalesOrderCancellationApplied} — the sole
+     * compensation ack since §2.40 retired the manufacturing leg. Records the
+     * inventory ack on saga data and, when in {@code compensating}, transitions
+     * {@code compensating → compensated} and returns {@code "compensated"} so the
+     * caller can emit {@code sales.SalesOrderCompensated}.
      */
     String applyInventoryCancellationApplied(UUID salesOrderHeaderId);
-
-    /** Mirror of {@link #applyInventoryCancellationApplied} for manufacturing's ack. */
-    String applyManufacturingCancellationApplied(UUID salesOrderHeaderId);
 
     // ------------------------------------------------------------
     // Exceptions

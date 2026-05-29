@@ -2,7 +2,6 @@ package com.northwood.manufacturing.domain;
 
 import com.northwood.manufacturing.domain.events.OperationCompleted;
 import com.northwood.manufacturing.domain.events.ReplenishmentDispatched;
-import com.northwood.manufacturing.domain.events.WorkOrderCancelled;
 import com.northwood.manufacturing.domain.events.WorkOrderCreated;
 import com.northwood.manufacturing.domain.events.WorkOrderCreated.MaterialLine;
 import com.northwood.manufacturing.domain.events.WorkOrderCreated.OperationLine;
@@ -473,34 +472,6 @@ public final class WorkOrder {
         if (allOperationsCompleted() && nowAllChildrenComplete) {
             transitionToCompleted();
         }
-    }
-
-    /**
-     * Cancel this work order. Idempotent against already-terminal states (a
-     * WO already in {@code completed} / {@code closed} / {@code cancelled}
-     * silently no-ops without emitting). Emits {@link WorkOrderCancelled} so
-     * inventory can release the raw-material reservation tied to this WO and
-     * reporting can flip the production-board row.
-     *
-     * <p>Hard cancel by design (dev-todo §1.1): WIP is written off — the WO
-     * goes straight to {@code cancelled} regardless of how many operations
-     * have completed. Soft-cancel ("let production finish then scrap") is a
-     * future polish.
-     */
-    public void cancel(String reason) {
-        if (status == Status.COMPLETED || status == Status.CLOSED || status == Status.CANCELLED) {
-            return;
-        }
-        this.status = Status.CANCELLED;
-        this.actualCompletedAt = Instant.now();
-        pendingEvents.add(new WorkOrderCancelled(
-            UUID.randomUUID(),
-            id.value(),
-            parentWorkOrderId,
-            salesOrderHeaderId,
-            reason,
-            Instant.now()
-        ));
     }
 
     /**

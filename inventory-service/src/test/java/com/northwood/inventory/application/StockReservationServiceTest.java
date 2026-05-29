@@ -316,31 +316,4 @@ class StockReservationServiceTest {
         }
     }
 
-    @Nested
-    class ReleaseForWorkOrder {
-
-        @Test void live_reservation_unwinds_no_event_emitted() {
-            when(reservations.findActiveHeaderIdForWorkOrder(WO)).thenReturn(Optional.of(PRIOR_RES_ID));
-            when(reservations.findWarehouseIdForHeader(PRIOR_RES_ID)).thenReturn(Optional.of(WAREHOUSE));
-            when(reservations.findReservedLines(PRIOR_RES_ID)).thenReturn(List.of(
-                new ReservedLineSnapshot(PRODUCT_1, new BigDecimal("3"))
-            ));
-
-            service.releaseForWorkOrder(WO);
-
-            verify(stockBalances).releaseReserved(WAREHOUSE, PRODUCT_1, new BigDecimal("3"));
-            verify(reservations).markReleased(PRIOR_RES_ID);
-            verifyNoInteractions(outbox);
-        }
-
-        @Test void no_reservation_is_noop() {
-            when(reservations.findActiveHeaderIdForWorkOrder(WO)).thenReturn(Optional.empty());
-
-            service.releaseForWorkOrder(WO);
-
-            verify(reservations, never()).markReleased(any());
-            verifyNoInteractions(stockBalances);
-            verifyNoInteractions(outbox);
-        }
-    }
 }

@@ -1473,8 +1473,7 @@ CREATE TABLE manufacturing.work_order_saga (
             'started', 'work_order_created', 'bom_exploded', 'raw_material_reservation_requested',
             'raw_materials_reserved', 'raw_material_shortage', 'purchase_requisition_requested',
             'waiting_for_purchased_materials', 'production_released', 'production_started',
-            'production_completed', 'finished_goods_received', 'completed', 'compensating',
-            'compensated', 'failed'
+            'production_completed', 'finished_goods_received', 'completed', 'failed'
         )
     ),
     current_step VARCHAR(100),
@@ -1496,7 +1495,7 @@ CREATE INDEX idx_work_order_saga_sales_order_header_id
     ON manufacturing.work_order_saga(sales_order_header_id);
 CREATE INDEX idx_work_order_saga_due
     ON manufacturing.work_order_saga(next_retry_at)
-    WHERE saga_state NOT IN ('completed', 'compensated', 'failed');
+    WHERE saga_state NOT IN ('completed', 'failed');
 CREATE INDEX idx_work_order_saga_data
     ON manufacturing.work_order_saga USING gin (data jsonb_path_ops);
 

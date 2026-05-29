@@ -193,10 +193,10 @@ public class SalesOrderService {
      * Cancel a sales order and kick off saga compensation. The header is
      * flipped to {@code 'cancelled'} (with {@code cancelled_at = now()}) and a
      * {@code sales.SalesOrderCancellationRequested} event is written to the
-     * outbox. The fulfilment saga is moved to {@code 'compensating'}; the
-     * downstream services (inventory, manufacturing) ack via their own
-     * {@code InventorySalesOrderCancellationApplied} / {@code ManufacturingSalesOrderCancellationApplied}
-     * events, after which the saga advances to {@code 'compensated'}.
+     * outbox. The fulfilment saga is moved to {@code 'compensating'}; inventory
+     * acks via {@code InventorySalesOrderCancellationApplied} (the sole
+     * compensation ack since §2.40), after which the saga advances to
+     * {@code 'compensated'}.
      *
      * <p>Cancellable up to (and including) {@code ready_to_ship}; once
      * {@code goods_shipped} or beyond, the credit-note / return-goods flow

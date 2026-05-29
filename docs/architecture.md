@@ -82,7 +82,7 @@ Event-driven systems trade direct call graphs for decoupled producers and consum
 |---|---|
 | `<Event>.EVENT_TYPE` constants for every event type string | *Events jars* section below |
 | `<AggregateRoot>.AGGREGATE_TYPE` (or `<Event>.AGGREGATE_TYPE` for cross-service / no-aggregate cases) for every outbox `aggregate_type` string | `docs/sagas.md` § *Saga manager class shape* |
-| Distinct Java class per wire-format suffix, even when the wire format would collide (see `InventorySalesOrderCancellationApplied` / `ManufacturingSalesOrderCancellationApplied`) | Javadoc on each affected event class |
+| Distinct Java class per wire-format suffix, even when the wire format would collide (see `manufacturing.ReplenishmentUndispatchable` / `purchasing.ReplenishmentUndispatchable`) | Javadoc on each affected event class |
 | Each inbox handler passes `<Event>.class` + `<Event>.EVENT_TYPE` to its `AbstractInboxHandler` constructor — registration is a structural Java reference | *Events jars* section below |
 | Plain Java imports per type (no wildcards, no FQN inline) so the import block stays a faithful TOC | This section + IDE convention |
 

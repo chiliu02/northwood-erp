@@ -83,15 +83,6 @@ public final class InMemoryStockReservationRepository implements StockReservatio
     }
 
     @Override
-    public Optional<UUID> findActiveHeaderIdForWorkOrder(UUID workOrderId) {
-        return byHeaderId.values().stream()
-            .filter(r -> workOrderId.equals(r.workOrderId()))
-            .filter(r -> isActive(statusByHeaderId.get(r.id().value())))
-            .map(r -> r.id().value())
-            .findFirst();
-    }
-
-    @Override
     public Optional<UUID> findAnyHeaderIdForWorkOrder(UUID workOrderId) {
         return byHeaderId.values().stream()
             .filter(r -> workOrderId.equals(r.workOrderId()))

@@ -90,11 +90,4 @@ public interface WorkOrderSagaManager {
      * terminal state). Returns null when no saga exists for the WO (logged).
      */
     String applyManufacturingCompleted(UUID workOrderId);
-
-    /**
-     * Force-flip the saga to {@code compensated} for a cancelled work order.
-     * Idempotent: terminal sagas left alone. Returns the new state or null
-     * when no saga exists for the WO.
-     */
-    String cancelForWorkOrder(UUID workOrderId);
 }

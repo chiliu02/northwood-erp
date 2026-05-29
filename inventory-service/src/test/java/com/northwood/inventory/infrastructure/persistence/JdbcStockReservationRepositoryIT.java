@@ -121,7 +121,7 @@ class JdbcStockReservationRepositoryIT {
             workOrderId, WAREHOUSE_ID, List.of(fullyReservedLine(UUID.randomUUID(), "4")));
         save(reservation);
 
-        assertThat(REPO.findActiveHeaderIdForWorkOrder(workOrderId)).contains(reservation.id().value());
+        assertThat(REPO.findAnyHeaderIdForWorkOrder(workOrderId)).contains(reservation.id().value());
         // XOR source: work_order set, sales_order null.
         assertThat(dbColumnIsNull(reservation.id().value(), "sales_order_header_id")).isTrue();
         assertThat(dbColumnIsNull(reservation.id().value(), "work_order_id")).isFalse();
