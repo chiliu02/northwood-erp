@@ -1462,8 +1462,11 @@ CREATE INDEX idx_production_report_work_order_id
 
 CREATE TABLE manufacturing.make_to_order_saga (
     saga_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
-    sales_order_header_id UUID NOT NULL,
-    sales_order_line_id UUID NOT NULL,
+    -- Nullable since §2.37 Slice 1: make-to-stock replenishment work orders run
+    -- this same WO-lifecycle saga but have no originating sales order. (Saga is
+    -- still named make_to_order_saga; rename deferred — see dev-todo §2.39.)
+    sales_order_header_id UUID,
+    sales_order_line_id UUID,
     work_order_id UUID UNIQUE,
     saga_state VARCHAR(50) NOT NULL CHECK (
         saga_state IN (
