@@ -2004,6 +2004,28 @@ CREATE TRIGGER trg_product_card_updated_at
     BEFORE UPDATE ON finance.product_card
     FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
 
+-- §2.42 Perpetual-WIP sub-ledger. One row per work order. Tracks the
+-- standard-cost value accumulated in Work In Progress (1230) as raw materials
+-- are issued (inventory.RawMaterialsReserved) and completed sub-assemblies are
+-- rolled in (manufacturing.SubAssembliesConsumed), plus the idempotency
+-- timestamps for the two posting legs (charge raw materials once;
+-- complete once). Settled to zero at manufacturing.WorkOrderManufacturingCompleted
+-- (Dr 1220 Finished Goods / Cr 1230 WIP at the finished good's standard cost).
+-- A finance-owned running total (a projection, not an aggregate — deltas get
+-- aggregates, totals get projections; docs/conventions.md).
+CREATE TABLE finance.work_order_wip (
+    work_order_id        UUID PRIMARY KEY,
+    finished_product_id  UUID,
+    wip_value            NUMERIC(18, 6) NOT NULL DEFAULT 0,
+    materials_charged_at TIMESTAMPTZ,
+    completed_at         TIMESTAMPTZ,
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER trg_work_order_wip_updated_at
+    BEFORE UPDATE ON finance.work_order_wip
+    FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
+
 -- purchasing.PurchaseOrderCreated + inventory.GoodsReceived. One row per
 -- purchase-order line. Used by 3-way match: invoice quantity must not exceed
 -- received_quantity, invoice unit_price must match unit_price (within

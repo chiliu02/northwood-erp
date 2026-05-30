@@ -38,6 +38,10 @@
         </dependency>
         <dependency>
             <groupId>com.northwood</groupId>
+            <artifactId>manufacturing-events</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.northwood</groupId>
             <artifactId>purchasing-events</artifactId>
         </dependency>
         <dependency>

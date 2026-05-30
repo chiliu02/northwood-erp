@@ -9,10 +9,13 @@ import com.northwood.finance.application.inbox.GoodsReceivedHandler;
 import com.northwood.finance.application.inbox.ProductCreatedHandler;
 import com.northwood.finance.application.inbox.ProductDiscontinuedHandler;
 import com.northwood.finance.application.inbox.PurchaseOrderCreatedHandler;
+import com.northwood.finance.application.inbox.RawMaterialsReservedWipHandler;
 import com.northwood.finance.application.inbox.SalesOrderShippedHandler;
 import com.northwood.finance.application.inbox.ShipmentPostedCogsHandler;
 import com.northwood.finance.application.inbox.StandardCostChangedHandler;
+import com.northwood.finance.application.inbox.SubAssembliesConsumedWipHandler;
 import com.northwood.finance.application.inbox.ValuationClassChangedHandler;
+import com.northwood.finance.application.inbox.WorkOrderManufacturingCompletedWipHandler;
 import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.SynchronousBus;
@@ -23,6 +26,7 @@ import com.northwood.testharness.inmemory.finance.InMemoryPaymentRepository;
 import com.northwood.testharness.inmemory.finance.InMemoryProductCard;
 import com.northwood.testharness.inmemory.finance.InMemoryPurchaseOrderLineFactsProjection;
 import com.northwood.testharness.inmemory.finance.InMemorySupplierInvoiceRepository;
+import com.northwood.testharness.inmemory.finance.InMemoryWorkOrderWipProjection;
 import java.math.BigDecimal;
 import tools.jackson.databind.ObjectMapper;
 
@@ -30,7 +34,7 @@ import tools.jackson.databind.ObjectMapper;
  * Per-service test composition for finance. Wires
  * {@link CustomerInvoiceService}, {@link PaymentService},
  * {@link SupplierInvoiceService}, {@link JournalEntryService} (real impl
- * over an in-memory journal repository + GL chart) and registers the 8
+ * over an in-memory journal repository + GL chart) and registers the 11
  * finance inbox handlers.
  *
  * <p>Finance has no sagas; the only state carried in the kit is the
@@ -56,6 +60,7 @@ public final class FinanceTestKit {
     public final InMemoryGlAccountLookup glAccounts = new InMemoryGlAccountLookup();
     public final InMemoryProductCard productCards = new InMemoryProductCard();
     public final InMemoryPurchaseOrderLineFactsProjection purchaseOrderLineFacts = new InMemoryPurchaseOrderLineFactsProjection();
+    public final InMemoryWorkOrderWipProjection workOrderWip = new InMemoryWorkOrderWipProjection();
 
     public final JournalEntryService journalService;
     public final CustomerInvoiceService customerInvoiceService;
@@ -93,5 +98,10 @@ public final class FinanceTestKit {
         bus.register(new ProductDiscontinuedHandler(inbox, productCards, json));
         bus.register(new StandardCostChangedHandler(inbox, productCards, json));
         bus.register(new ValuationClassChangedHandler(inbox, productCards, json));
+        // §2.42 perpetual WIP: raw materials issued → WIP, sub-assemblies rolled in,
+        // finished goods settled out of WIP at completion.
+        bus.register(new RawMaterialsReservedWipHandler(inbox, journalService, productCards, workOrderWip, json));
+        bus.register(new WorkOrderManufacturingCompletedWipHandler(inbox, journalService, productCards, workOrderWip, json));
+        bus.register(new SubAssembliesConsumedWipHandler(inbox, journalService, productCards, workOrderWip, json));
     }
 }

@@ -670,7 +670,15 @@ INSERT INTO finance.gl_account (account_code, account_name, account_type) VALUES
     ('1200', 'Inventory',                     'asset'),
     ('1210', 'Raw Materials Inventory',       'asset'),
     ('1220', 'Finished Goods Inventory',      'asset'),
-    ('1300', 'Work In Progress',              'asset'),
+    -- §2.42 Perpetual WIP. Raw materials Dr here when issued to a work order
+    -- (Cr 1210); the finished good Dr's 1220 / Cr's 1230 at completion. Nets to
+    -- zero per WO at standard cost (no variance accounts in the material-only cut).
+    ('1230', 'Work In Progress',              'asset'),
+    -- 1300 is the GRNI clearing account that finance posts against (see
+    -- FinanceAccountCodes.GRNI = "1300"): Cr at goods receipt, Dr at invoice
+    -- approval. §2.42 corrected its label from the misleading "Work In Progress"
+    -- (that name now belongs to 1230) and dropped the unused 2200 duplicate.
+    ('1300', 'Goods Received Not Invoiced',   'asset'),
     ('2100', 'Accounts Payable',              'liability'),
     -- §2.31 Slice B: liability for cash received on prepayment orders before
     -- goods are delivered. Credited at payment receipt for prepayment
@@ -678,7 +686,6 @@ INSERT INTO finance.gl_account (account_code, account_name, account_type) VALUES
     -- against Sales Revenue once the goods-delivered performance obligation
     -- is met.
     ('2110', 'Customer Deposits',             'liability'),
-    ('2200', 'Goods Received Not Invoiced',   'liability'),
     ('3000', 'Owner''s Equity',               'equity'),
     ('3100', 'Retained Earnings',             'equity'),
     ('4000', 'Sales Revenue',                 'revenue'),

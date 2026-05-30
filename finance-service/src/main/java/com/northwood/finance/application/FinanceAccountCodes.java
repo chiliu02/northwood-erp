@@ -53,6 +53,13 @@ final class FinanceAccountCodes {
     /** 1300 — Goods Received Not Invoiced; clears between receipt and invoice approval. */
     static final String GRNI = "1300";
 
+    /**
+     * 1230 — Work In Progress (§2.42). Raw materials Dr here when issued to a
+     * work order (Cr 1210); the finished good Dr's 1220 / Cr's 1230 at
+     * completion. Nets to zero per WO at standard cost (material-only cut).
+     */
+    static final String WIP = "1230";
+
     /** 1210 — Raw Materials Inventory; per-class breakdown of {@link #INVENTORY}. */
     static final String RM_INVENTORY = "1210";
 

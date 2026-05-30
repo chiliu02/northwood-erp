@@ -330,6 +330,142 @@ public class JournalEntryService {
         );
     }
 
+    /**
+     * §2.42 Perpetual WIP — raw materials issued to a work order:
+     * Dr 1230 WIP / Cr 1210 Raw Materials (per valuation class) for the sum of
+     * {@code reservedQuantity * standardCost} across the work order's materials.
+     * The credit side resolves per product via {@link #inventoryAccountForProduct}
+     * (raw materials land in 1210; the rare semi-finished line lands in 1220),
+     * so the journal stays balanced against the single WIP debit. Caller gates
+     * on the WIP sub-ledger so a re-reserved work order can't charge twice.
+     */
+    @Transactional
+    public void postWorkInProgressCharge(
+        UUID workOrderId,
+        String workOrderNumber,
+        List<LineCost> materialCosts,
+        String currencyCode,
+        LocalDate postingDate
+    ) {
+        postWipCharge(
+            JournalEntry.SourceDocumentType.WORK_ORDER_WIP, workOrderId,
+            "Work order " + workOrderNumber + " — raw materials issued to WIP",
+            "Raw materials into WIP for " + workOrderNumber,
+            materialCosts,
+            "Raw materials issued via " + workOrderNumber,
+            currencyCode, postingDate);
+    }
+
+    /**
+     * §2.42 Perpetual WIP — completed sub-assemblies consumed into a parent
+     * work order: Dr 1230 WIP / Cr 1220 Finished Goods (per valuation class) for
+     * the sum of {@code consumedQuantity * standardCost}. Rolls each child
+     * sub-assembly's standard-cost value (which the child's completion took into
+     * 1220) into the parent's WIP, so the parent's completion releases the full
+     * rolled-up cost and WIP nets to zero.
+     */
+    @Transactional
+    public void postSubAssemblyConsumption(
+        UUID parentWorkOrderId,
+        String workOrderNumber,
+        List<LineCost> subAssemblyCosts,
+        String currencyCode,
+        LocalDate postingDate
+    ) {
+        postWipCharge(
+            JournalEntry.SourceDocumentType.WORK_ORDER_WIP, parentWorkOrderId,
+            "Work order " + workOrderNumber + " — sub-assemblies consumed into WIP",
+            "Sub-assemblies into WIP for " + workOrderNumber,
+            subAssemblyCosts,
+            "Sub-assemblies consumed via " + workOrderNumber,
+            currencyCode, postingDate);
+    }
+
+    /**
+     * §2.42 Perpetual WIP — work order completed: Dr 1220 Finished Goods (the
+     * finished good's valuation class) / Cr 1230 WIP at the finished good's
+     * standard cost ({@code amount = completedQuantity * standardCost}). This is
+     * the leg that empties WIP; because every charge into WIP was at standard
+     * cost too, WIP nets to zero per work order — no variance accounts in the
+     * material-only cut. Caller gates on the WIP sub-ledger (complete once).
+     */
+    @Transactional
+    public void postWorkOrderCompletion(
+        UUID workOrderId,
+        String workOrderNumber,
+        UUID finishedProductId,
+        BigDecimal amount,
+        String currencyCode,
+        LocalDate postingDate
+    ) {
+        if (amount == null || amount.signum() <= 0) {
+            log.debug("skip WIP completion post for work order {} — amount {} is zero/negative",
+                workOrderNumber, amount);
+            return;
+        }
+        post(
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
+            postingDate,
+            JournalEntry.SourceModule.FINANCE,
+            JournalEntry.SourceDocumentType.WORK_ORDER_COMPLETION,
+            workOrderId,
+            "Work order " + workOrderNumber + " — finished goods received from WIP",
+            currencyCode,
+            inventoryAccountForProduct(finishedProductId),
+            "Finished goods from " + workOrderNumber,
+            FinanceAccountCodes.WIP,
+            "Settle WIP for " + workOrderNumber,
+            amount,
+            postingDate
+        );
+    }
+
+    /**
+     * Shared shape for the two WIP-charge legs (raw materials issued; consumed
+     * sub-assemblies rolled in): a single Dr 1230 WIP against per-valuation-class
+     * inventory credits. Skips a zero/negative total (e.g. a projection cold-start
+     * left every line without a standard cost).
+     */
+    private void postWipCharge(
+        JournalEntry.SourceDocumentType sourceDocumentType,
+        UUID workOrderId,
+        String description,
+        String debitDescription,
+        List<LineCost> lineCosts,
+        String creditDescription,
+        String currencyCode,
+        LocalDate postingDate
+    ) {
+        BigDecimal total = lineCosts.stream()
+            .map(LineCost::amount)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (total.signum() <= 0) {
+            log.debug("skip WIP post for work order {} — total {} is zero/negative", workOrderId, total);
+            return;
+        }
+        java.util.Map<String, BigDecimal> creditsByAccount = new java.util.LinkedHashMap<>();
+        for (LineCost lc : lineCosts) {
+            if (lc.amount().signum() <= 0) continue;
+            creditsByAccount.merge(inventoryAccountForProduct(lc.productId()), lc.amount(), BigDecimal::add);
+        }
+        java.util.Map<String, BigDecimal> debitsByAccount = new java.util.LinkedHashMap<>();
+        debitsByAccount.put(FinanceAccountCodes.WIP, total);
+
+        postMultiDebitMultiCredit(
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
+            postingDate,
+            JournalEntry.SourceModule.FINANCE,
+            sourceDocumentType,
+            workOrderId,
+            description,
+            currencyCode,
+            debitsByAccount,
+            debitDescription,
+            creditsByAccount,
+            creditDescription
+        );
+    }
+
     @Transactional
     public void postSupplierPayment(
         UUID paymentId,

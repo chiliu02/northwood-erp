@@ -393,4 +393,92 @@ class JournalEntryServicePostingsTest {
             verify(journals, never()).save(any());
         }
     }
+
+    // §2.42 Perpetual WIP — the three new legs.
+    @Nested
+    class WorkInProgressPostings {
+
+        @Test void raw_materials_issued_posts_dr_wip_cr_rm_inventory() {
+            when(productCards.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of(ValuationClass.RAW_MATERIALS));
+
+            service.postWorkInProgressCharge(
+                UUID.randomUUID(), "WO-1",
+                List.of(new LineCost(PRODUCT_RM, new BigDecimal("120.00"))),
+                Currencies.AUD, POSTING_DATE);
+
+            JournalEntry entry = capturedSave();
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.WORK_ORDER_WIP);
+            assertThat(debitFor(entry, "1230")).isEqualByComparingTo("120.00");
+            assertThat(creditFor(entry, "1210")).isEqualByComparingTo("120.00");
+        }
+
+        @Test void sub_assemblies_consumed_posts_dr_wip_cr_fg_inventory() {
+            when(productCards.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of(ValuationClass.SEMI_FINISHED_GOODS));
+
+            service.postSubAssemblyConsumption(
+                UUID.randomUUID(), "WO-PARENT",
+                List.of(new LineCost(PRODUCT_FG, new BigDecimal("90.00"))),
+                Currencies.AUD, POSTING_DATE);
+
+            JournalEntry entry = capturedSave();
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.WORK_ORDER_WIP);
+            assertThat(debitFor(entry, "1230")).isEqualByComparingTo("90.00");
+            assertThat(creditFor(entry, "1220")).isEqualByComparingTo("90.00");
+        }
+
+        @Test void work_order_completion_posts_dr_fg_inventory_cr_wip() {
+            when(productCards.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of(ValuationClass.FINISHED_GOODS));
+
+            service.postWorkOrderCompletion(
+                UUID.randomUUID(), "WO-1", PRODUCT_FG,
+                new BigDecimal("210.00"), Currencies.AUD, POSTING_DATE);
+
+            JournalEntry entry = capturedSave();
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.WORK_ORDER_COMPLETION);
+            assertThat(debitFor(entry, "1220")).isEqualByComparingTo("210.00");
+            assertThat(creditFor(entry, "1230")).isEqualByComparingTo("210.00");
+        }
+
+        @Test void wip_legs_net_to_zero_across_charge_consume_complete() {
+            when(productCards.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of(ValuationClass.RAW_MATERIALS));
+            when(productCards.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of(ValuationClass.FINISHED_GOODS));
+            UUID wo = UUID.randomUUID();
+
+            // Dr WIP 120 (materials) + Dr WIP 90 (sub-assemblies) ...
+            service.postWorkInProgressCharge(wo, "WO-1",
+                List.of(new LineCost(PRODUCT_RM, new BigDecimal("120.00"))), Currencies.AUD, POSTING_DATE);
+            service.postSubAssemblyConsumption(wo, "WO-1",
+                List.of(new LineCost(PRODUCT_FG, new BigDecimal("90.00"))), Currencies.AUD, POSTING_DATE);
+            // ... Cr WIP 210 (completion at FG standard cost = rolled-up materials).
+            service.postWorkOrderCompletion(wo, "WO-1", PRODUCT_FG,
+                new BigDecimal("210.00"), Currencies.AUD, POSTING_DATE);
+
+            ArgumentCaptor<JournalEntry> cap = ArgumentCaptor.forClass(JournalEntry.class);
+            verify(journals, times(3)).save(cap.capture());
+            BigDecimal wipDr = cap.getAllValues().stream()
+                .map(e -> debitFor(e, "1230")).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal wipCr = cap.getAllValues().stream()
+                .map(e -> creditFor(e, "1230")).reduce(BigDecimal.ZERO, BigDecimal::add);
+            assertThat(wipDr).isEqualByComparingTo("210.00");
+            assertThat(wipCr).isEqualByComparingTo("210.00");
+            assertThat(wipDr.subtract(wipCr)).isEqualByComparingTo("0");  // WIP nets to zero
+        }
+
+        @Test void zero_total_charge_skips_save() {
+            service.postWorkInProgressCharge(
+                UUID.randomUUID(), "WO-EMPTY",
+                List.of(new LineCost(PRODUCT_RM, BigDecimal.ZERO)),
+                Currencies.AUD, POSTING_DATE);
+
+            verify(journals, never()).save(any());
+        }
+
+        @Test void zero_completion_amount_skips_save() {
+            service.postWorkOrderCompletion(
+                UUID.randomUUID(), "WO-EMPTY", PRODUCT_FG,
+                BigDecimal.ZERO, Currencies.AUD, POSTING_DATE);
+
+            verify(journals, never()).save(any());
+        }
+    }
 }
