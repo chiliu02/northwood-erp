@@ -40,6 +40,17 @@ locals {
   bff_targets = {
     for k, s in local.services : "NORTHWOOD_BFF_TARGETS_${upper(k)}" => "http://${k}:${s.port}"
   }
+
+  # §1D telemetry — point every app at the observability box: OTLP traces to
+  # Tempo (:4317) and log push to Loki (:3100). Empty (apps keep their localhost
+  # defaults, nothing receives) when observability is disabled. Shared by the
+  # services and BFFs env blocks in services.tf.
+  obs_dns = module.infra_ec2.observability_private_dns
+  telemetry_env = var.enable_observability ? {
+    OTLP_ENDPOINT              = "http://${local.obs_dns}:4317"
+    LOKI_URL                   = "http://${local.obs_dns}:3100/loki/api/v1/push"
+    NORTHWOOD_TRACING_SAMPLING = tostring(var.tracing_sampling)
+  } : {}
 }
 
 module "network" {
@@ -71,12 +82,16 @@ module "infra_ec2" {
     postgres = module.network.security_group_ids.postgres
     kafka    = module.network.security_group_ids.kafka
     keycloak = module.network.security_group_ids.keycloak
+    obs      = module.network.security_group_ids.obs
   }
 
   instance_types    = var.infra_instance_types
   repo_root         = local.repo_root
   load_seed_data    = var.load_seed_data
   keycloak_hostname = var.keycloak_hostname
+
+  enable_observability        = var.enable_observability
+  observability_instance_type = var.observability_instance_type
 
   postgres_superuser_password = module.secrets.postgres_superuser_password
   keycloak_admin_password     = module.secrets.keycloak_admin_password

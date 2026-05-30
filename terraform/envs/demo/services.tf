@@ -27,13 +27,13 @@ module "services" {
   desired_count  = lookup(var.service_desired_counts, each.key, 1)
   advertise      = true
 
-  environment = {
+  environment = merge(local.telemetry_env, {
     SPRING_PROFILES_ACTIVE       = "kafka" # mandatory: outbox publisher + consumers gate on it
     KAFKA_BOOTSTRAP_SERVERS      = local.kafka_bootstrap
     KEYCLOAK_ISSUER_URI          = local.keycloak_issuer_internal
     "${upper(each.key)}_DB_URL"  = "jdbc:postgresql://${local.postgres_dns}:5432/northwood_erp?currentSchema=${each.key},shared"
     "${upper(each.key)}_DB_USER" = "${each.key}_service"
-  }
+  })
 
   secrets = {
     "${upper(each.key)}_DB_PASSWORD"    = module.secrets.service_db_password_arns[each.key]
@@ -67,6 +67,7 @@ module "bffs" {
   # Base env for both BFFs: kafka (event drawer) + the 7 Service Connect targets.
   # erp-bff additionally needs the Keycloak issuer for its OIDC login.
   environment = merge(
+    local.telemetry_env,
     {
       SPRING_PROFILES_ACTIVE  = "kafka"
       KAFKA_BOOTSTRAP_SERVERS = local.kafka_bootstrap

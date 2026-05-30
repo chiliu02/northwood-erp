@@ -8,12 +8,41 @@ variable "subnet_id" {
 }
 
 variable "security_group_ids" {
-  description = "Per-box SG IDs from the network module."
+  description = "Per-box SG IDs from the network module. `obs` is consumed only when enable_observability = true."
   type = object({
     postgres = string
     kafka    = string
     keycloak = string
+    obs      = optional(string, "")
   })
+}
+
+variable "enable_observability" {
+  description = "Provision the LGTM observability EC2 (Loki/Grafana/Tempo + Prometheus). False => no obs box (apps fall back to their localhost telemetry defaults; nothing receives)."
+  type        = bool
+  default     = true
+}
+
+variable "observability_instance_type" {
+  description = "Instance type for the observability box. The LGTM stack is heavier than a single infra box, so it defaults larger."
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "observability_images" {
+  description = "Container images for the LGTM stack (versions carried over from docker-compose.yml)."
+  type = object({
+    tempo      = string
+    loki       = string
+    prometheus = string
+    grafana    = string
+  })
+  default = {
+    tempo      = "grafana/tempo:2.7.0"
+    loki       = "grafana/loki:3.3.0"
+    prometheus = "prom/prometheus:v3.0.1"
+    grafana    = "grafana/grafana:11.3.1"
+  }
 }
 
 variable "instance_types" {

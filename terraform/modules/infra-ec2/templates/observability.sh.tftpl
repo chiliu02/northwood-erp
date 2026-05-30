@@ -1,0 +1,74 @@
+#!/bin/bash
+set -euxo pipefail
+
+# ===========================================================================
+# Observability box — the LGTM stack (Loki / Grafana / Tempo + Prometheus),
+# the AWS analogue of the §1D docker-compose observability services. One EC2,
+# four containers on a shared user-defined docker network named "northwood" so
+# Grafana's provisioned datasources reach the backends by container name
+# (http://prometheus:9090, http://tempo:3200, http://loki:3100) unchanged.
+#
+# Telemetry transports (match §1D):
+#   - Traces : services push OTLP -> Tempo on :4317 (gRPC) / :4318 (HTTP).
+#   - Logs   : services push      -> Loki on :3100 (loki4j appender, LOKI_URL).
+#   - Metrics: Prometheus. Scrape-of-Fargate needs service discovery (see the
+#              staged prometheus.yml header) — traces + logs are the working
+#              push-based demo path out of the box.
+#
+# Configs are staged in the private artifacts bucket (same pattern as the other
+# infra boxes); user-data pulls them on first boot. Named volumes keep state
+# across stop/start (the cost-saving "pause"), mirroring the compose volumes.
+# ===========================================================================
+
+dnf install -y docker
+systemctl enable --now docker
+command -v aws >/dev/null 2>&1 || dnf install -y awscli-2 || dnf install -y awscli
+
+mkdir -p /opt/northwood/obs/grafana/datasources \
+         /opt/northwood/obs/grafana/dashboards-provisioning \
+         /opt/northwood/obs/grafana/dashboards
+
+# Pull the staged config tree (tempo.yaml, loki-config.yaml, prometheus.yml,
+# grafana datasources + dashboard provisioning + the §1D.5 dashboard JSON).
+aws s3 cp "s3://${bucket}/${key_prefix}" /opt/northwood/obs/ \
+  --recursive --region "${region}"
+
+docker network create northwood || true
+
+# ---- Tempo: OTLP receivers on 4317/4318, query API on 3200 -----------------
+docker run -d --name tempo --restart unless-stopped --network northwood \
+  -p 4317:4317 -p 4318:4318 -p 3200:3200 \
+  -v /opt/northwood/obs/tempo.yaml:/etc/tempo.yaml:ro \
+  -v northwood-tempo:/var/tempo \
+  ${image_tempo} -config.file=/etc/tempo.yaml
+
+# ---- Loki: log push + query on 3100 ----------------------------------------
+docker run -d --name loki --restart unless-stopped --network northwood \
+  -p 3100:3100 \
+  -v /opt/northwood/obs/loki-config.yaml:/etc/loki/local-config.yaml:ro \
+  -v northwood-loki:/loki \
+  ${image_loki} -config.file=/etc/loki/local-config.yaml
+
+# ---- Prometheus: 9090. OTLP receiver on so an OTel/ADOT collector or a
+#      service pushing OTLP metrics can write in without scrape SD. ----------
+docker run -d --name prometheus --restart unless-stopped --network northwood \
+  -p 9090:9090 \
+  -v /opt/northwood/obs/prometheus.yml:/etc/prometheus/prometheus.yml:ro \
+  -v northwood-prometheus:/prometheus \
+  ${image_prometheus} \
+  --config.file=/etc/prometheus/prometheus.yml \
+  --storage.tsdb.retention.time=24h \
+  --web.enable-otlp-receiver
+
+# ---- Grafana: anonymous-admin UI on 3000 (reach via SSM port-forward) ------
+docker run -d --name grafana --restart unless-stopped --network northwood \
+  -p 3000:3000 \
+  -e GF_AUTH_ANONYMOUS_ENABLED=true \
+  -e GF_AUTH_ANONYMOUS_ORG_ROLE=Admin \
+  -e GF_AUTH_DISABLE_LOGIN_FORM=true \
+  -e GF_FEATURE_TOGGLES_ENABLE=traceqlEditor \
+  -v /opt/northwood/obs/grafana/datasources:/etc/grafana/provisioning/datasources:ro \
+  -v /opt/northwood/obs/grafana/dashboards-provisioning:/etc/grafana/provisioning/dashboards:ro \
+  -v /opt/northwood/obs/grafana/dashboards:/var/lib/grafana/dashboards:ro \
+  -v northwood-grafana:/var/lib/grafana \
+  ${image_grafana}

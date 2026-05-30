@@ -101,3 +101,23 @@ variable "infra_instance_types" {
     keycloak = "t3.small"
   }
 }
+
+# ---- observability (§1D) ---------------------------------------------------
+
+variable "enable_observability" {
+  description = "Provision the LGTM observability EC2 (Loki/Grafana/Tempo + Prometheus) and point all 9 apps at it (OTLP traces + Loki logs). False => no obs box, no telemetry env (apps keep localhost defaults; nothing receives)."
+  type        = bool
+  default     = true
+}
+
+variable "observability_instance_type" {
+  description = "Instance type for the observability box (the LGTM stack is heavier than a single infra box)."
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "tracing_sampling" {
+  description = "Trace sampling probability stamped into NORTHWOOD_TRACING_SAMPLING (1.0 = every request, demo default; 0.1 ≈ prod-style)."
+  type        = number
+  default     = 1.0
+}

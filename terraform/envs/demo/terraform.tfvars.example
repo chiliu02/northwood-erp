@@ -28,3 +28,9 @@
 #   kafka    = "t3.small"
 #   keycloak = "t3.small"
 # }
+
+# Observability (§1D): the LGTM box + telemetry env on all 9 apps.
+# Set false to skip it (and its cost) — apps then keep localhost defaults.
+# enable_observability        = true
+# observability_instance_type = "t3.medium"
+# tracing_sampling            = 1.0   # 0.1 for prod-style sampling

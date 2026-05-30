@@ -1,8 +1,8 @@
 # Northwood demo — Terraform (Part A + app tier)
 
 Automates **docs/aws-demo-deployment.md** Part A (network + Postgres/Kafka/Keycloak
-on EC2) and the app tier (ECR + Secrets Manager + ECS Fargate ×9 + ALB). The 2 SPAs
-(S3/CloudFront) and the observability EC2 are intentionally **out of scope** here.
+on EC2), the app tier (ECR + Secrets Manager + ECS Fargate ×9 + ALB), and the §1D
+observability EC2 (LGTM stack). The 2 SPAs (S3/CloudFront) remain **out of scope** here.
 
 ```
 terraform/
@@ -14,7 +14,7 @@ terraform/
     variables.tf / outputs.tf / terraform.tfvars.example
   modules/
     network/                 # VPC, 5 subnets (2 public for the ALB), NAT, SGs (§4)
-    infra-ec2/               # postgres/kafka/keycloak EC2 + user-data + artifacts bucket
+    infra-ec2/               # postgres/kafka/keycloak + observability EC2 + user-data + artifacts bucket
     ecr/ secrets/            # 9 repos; Secrets Manager (DB pwds, BFF secret, bypass token)
     ecs-cluster/ ecs-service/# Fargate cluster + Service Connect; reusable per-app service
     alb/                     # public ALB + BFF target groups
@@ -120,6 +120,22 @@ terraform destroy
 
 - **Single Kafka broker, RF=1**, carried over from compose — recover-after-restart, not
   failover. Same posture as the local stack; see `docs/messaging.md`.
+
+- **Observability (§1D) is one EC2 running the LGTM stack** (Tempo, Loki, Prometheus,
+  Grafana as four containers on a shared docker network), the AWS analogue of the compose
+  observability services. All 9 apps get `OTLP_ENDPOINT` (Tempo `:4317`) + `LOKI_URL`
+  (Loki `:3100`) + `NORTHWOOD_TRACING_SAMPLING` env, so **traces and logs flow push-based
+  out of the box**. Toggle the whole tier with `enable_observability` (the SG rules for it
+  already existed). Reach Grafana via SSM port-forward — it has no public IP:
+  `terraform output grafana_access_hint`.
+  - **Metrics caveat.** §1D metrics are Prometheus **scrape** of `/actuator/prometheus`,
+    which doesn't translate to Fargate (no `host.docker.internal`, no stable task IPs). The
+    box runs Prometheus with its OTLP receiver enabled and self-scrapes, but service-metric
+    collection needs service discovery (ECS SD / Cloud Map) **or** OTLP metrics push from
+    the apps — left as a documented follow-up in the staged `prometheus.yml`. The §1D
+    Grafana metric panels stay empty on AWS until that's wired; traces + logs are unaffected.
+  - **Grafana's Postgres datasource** is templated to the Postgres box's private DNS (the
+    compose file hardcodes the `postgres` service name, which doesn't resolve on AWS).
 
 - **Not machine-validated.** Terraform wasn't installed in the authoring environment, so
   `terraform fmt`/`validate`/`plan` have not been run against this yet. Run `terraform

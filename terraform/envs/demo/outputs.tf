@@ -26,6 +26,16 @@ output "infra_instance_ids" {
   value       = module.infra_ec2.instance_ids
 }
 
+output "observability_private_dns" {
+  description = "Private DNS of the observability box (OTLP :4317 / Loki :3100). Empty when enable_observability = false."
+  value       = module.infra_ec2.observability_private_dns
+}
+
+output "grafana_access_hint" {
+  description = "How to reach Grafana — it has no public IP, so port-forward 3000 over SSM."
+  value       = var.enable_observability ? "aws ssm start-session --target ${lookup(module.infra_ec2.instance_ids, "observability", "")} --document-name AWS-StartPortForwardingSession --parameters portNumber=3000,localPortNumber=3000  # then open http://localhost:3000" : "observability disabled"
+}
+
 output "artifacts_bucket" {
   description = "Private staging bucket (db/ init scripts + env files)."
   value       = module.infra_ec2.artifacts_bucket

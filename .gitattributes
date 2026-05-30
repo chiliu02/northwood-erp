@@ -1,0 +1,6 @@
+# EC2 user-data shell templates render (via Terraform templatefile) into
+# cloud-init scripts that execute on Linux. Force LF so a Windows checkout
+# (core.autocrlf=true) can't introduce a CRLF shebang (#!/bin/bash\r), which
+# fails to exec on instance boot.
+*.sh        text eol=lf
+*.sh.tftpl  text eol=lf

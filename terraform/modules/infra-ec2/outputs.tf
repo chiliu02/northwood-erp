@@ -13,6 +13,11 @@ output "keycloak_private_dns" {
   value       = aws_instance.keycloak.private_dns
 }
 
+output "observability_private_dns" {
+  description = "Private DNS of the observability box — feed into OTLP_ENDPOINT (:4317) and LOKI_URL (:3100). Empty when enable_observability = false."
+  value       = var.enable_observability ? aws_instance.observability[0].private_dns : ""
+}
+
 output "artifacts_bucket" {
   description = "Private staging bucket holding db/ init scripts + env files."
   value       = aws_s3_bucket.artifacts.id
@@ -20,9 +25,12 @@ output "artifacts_bucket" {
 
 output "instance_ids" {
   description = "Instance IDs (for `aws ssm start-session` and stop/start to save cost)."
-  value = {
-    postgres = aws_instance.postgres.id
-    kafka    = aws_instance.kafka.id
-    keycloak = aws_instance.keycloak.id
-  }
+  value = merge(
+    {
+      postgres = aws_instance.postgres.id
+      kafka    = aws_instance.kafka.id
+      keycloak = aws_instance.keycloak.id
+    },
+    var.enable_observability ? { observability = aws_instance.observability[0].id } : {},
+  )
 }
