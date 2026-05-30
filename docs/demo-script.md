@@ -600,7 +600,7 @@ curl -X POST http://localhost:8082/api/sales-orders \
 
 ### GL postings to watch in `finance.journal_entry_header` / `_line`
 
-Six balanced debit/credit pairs land in the same txn as their originating action:
+Balanced debit/credit pairs land in the same txn as their originating action — the buy→sell cycle plus the §2.42 make cycle (perpetual WIP, fires during manufacturing replenishment):
 
 | Action | Dr | Cr |
 |---|---|---|
@@ -610,6 +610,9 @@ Six balanced debit/credit pairs land in the same txn as their originating action
 | Shipment | 5000 COGS | 1200 Inventory |
 | Customer invoice | 1100 AR | 4000 Revenue |
 | Customer payment | 1000 Bank | 1100 AR |
+| Raw materials issued to WO (§2.42) | 1230 WIP | 1210 Raw Materials |
+| Work order completion (§2.42) | 1220 Finished Goods | 1230 WIP |
+| Sub-assemblies consumed (§2.42) | 1230 WIP | 1220 Finished Goods |
 
 Reverse a journal entry: `POST /api/journal-entries/{id}/reverse` (creates a debit/credit-flipped reversal in the same txn that flips the original from `posted` → `reversed`).
 

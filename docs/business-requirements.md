@@ -467,7 +467,7 @@ Finance keeps the books in money. Every economic event in the other contexts (sh
 ### 6.1 Chart of accounts
 
 **REQ-FIN-001 — Chart of accounts is seed data** *(shipped)*
-The GL accounts are seeded once by SQL. Accounts cannot be edited through the application. The set covers: Cash/Bank (`1010`), Accounts Receivable (`1110`), Customer Deposits (`2110`), Accounts Payable (`2210`), Raw Materials Inventory (`1210`), FG Inventory (`1220`), GRNI (`1300`), Revenue (`4000`), Materials COGS (`5200`), General COGS (`5000`), Write-off (`5500`).
+The GL accounts are seeded once by SQL. Accounts cannot be edited through the application. The set covers: Cash/Bank (`1010`), Accounts Receivable (`1110`), Customer Deposits (`2110`), Accounts Payable (`2210`), Raw Materials Inventory (`1210`), FG Inventory (`1220`), Work In Progress (`1230`, §2.42), GRNI (`1300`), Revenue (`4000`), Materials COGS (`5200`), General COGS (`5000`), Write-off (`5500`).
 
 ### 6.2 Journal entries — double-entry posting
 
@@ -480,9 +480,9 @@ Every journal carries `source_document_type` + `source_document_id` so a user ca
 **REQ-FIN-012 — Journal reversal** *(shipped)*
 A posted journal may be reversed by posting an inverse-signed copy. The original stays on file; the reversal is itself a new journal. Reversal of reversal is rejected (the chain is immutable).
 
-### 6.3 The six perpetual-inventory postings
+### 6.3 The perpetual-inventory postings
 
-Each posts one balanced journal at the moment its source event fires. These are the operational heart of finance.
+Each posts one balanced journal at the moment its source event fires. These are the operational heart of finance. The six purchase/sale postings (REQ-FIN-020–025) cover the buy→sell cycle; the three manufacturing postings (REQ-FIN-026–028, §2.42) cover the make cycle.
 
 **REQ-FIN-020 — Goods receipt — Dr Inventory / Cr GRNI** *(shipped)*
 On goods receipt: debit the SKU's inventory account (1210 or 1220 by valuation class), credit GRNI (1300) at the PO line price × received quantity.
@@ -501,6 +501,15 @@ On customer invoice creation (auto-triggered by shipment): debit AR (1110), cred
 
 **REQ-FIN-025 — Customer payment — Dr Bank / Cr AR** *(shipped)*
 On customer payment: debit Bank (1010), credit AR (1110) at the payment amount.
+
+**REQ-FIN-026 — Raw materials issued to a work order — Dr WIP / Cr Raw Materials** *(shipped, §2.42)*
+When a work order's raw materials are fully reserved (issued to production), debit Work In Progress (1230), credit the material's inventory account (1210) at standard cost × reserved quantity. Establishes the manufacturing→finance edge; perpetual WIP, material-cost-only.
+
+**REQ-FIN-027 — Work order completion — Dr Finished Goods / Cr WIP** *(shipped, §2.42)*
+When a work order completes, debit the finished good's inventory account (1220), credit WIP (1230) at standard cost × completed quantity. Because every WIP leg posts at standard cost, WIP nets to zero per work order — no variance accounts in the material-only cut.
+
+**REQ-FIN-028 — Sub-assemblies consumed — Dr WIP / Cr Finished Goods** *(shipped, §2.42)*
+When a parent work order consumes its completed sub-assembly children, debit parent WIP (1230), credit the sub-assembly's FG account (1220) at standard cost — rolling each child's value into the parent's WIP so the parent's completion releases the full rolled-up cost.
 
 ### 6.4 Prepayments (customer deposits)
 
