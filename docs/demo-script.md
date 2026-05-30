@@ -431,6 +431,18 @@ Watch the Saga Console UI walk `stock_reservation_incomplete → compensating �
 
 After `goods_shipped` the cancel is rejected with HTTP 409 — that path requires the credit-note / return-goods flow (out of scope, dev-todo §4.2). Hard-cancel by design: WIP from in-progress operations is written off rather than letting production finish (soft-cancel parked in dev-todo §3.7).
 
+### 4.1.1 — Cancel a **paid** deposit order → automatic refund (§2.34)
+
+The §4.1 cancel above was an *unpaid* order — nothing had moved through the GL, so the cancel just releases the reservation. Now cancel an order where the customer has already paid up front, and finance unwinds the money too.
+
+Run Demo 3 (deposit/prepayment) partway: place a **deposit** order (e.g. `paymentTerms:"deposit"`, `depositPercent:50`), then pay the deposit invoice. The order now sits at saga `deposit_paid` with **Cr 2110 Customer Deposits** for the deposit amount — the customer's money is on the balance sheet.
+
+Cancel it (as sales-mgr, before shipment). On top of the §4.1 sales↔inventory compensation, **finance** consumes `sales.SalesOrderCancellationRequested` and — seeing a paid prepayment/deposit invoice — posts the refund:
+
+- **Dr 2110 Customer Deposits / Cr 1000 Bank** for the paid amount (the exact inverse of the original receipt), and stamps `customer_invoice_header.refunded_at` (idempotent — a redelivered cancel can't refund twice).
+
+**What the audience sees:** the sales-order detail (demo-web-ui) shows a green **"refunded"** lozenge once the order is cancelled, with a Refund section linking to the journal. Open **Journal entries → "Customer refunds"** (`/journal-entries`) to see the `customer_refund` posting; 2110 Customer Deposits nets to **zero** across the deposit receipt + the refund. On-shipment and COD orders have nothing in 2110 before shipment, so cancelling them refunds nothing (finance no-ops).
+
 ### 4.2 — Reservation comes back partial or failed
 
 Pre-state: 0 × FG-TABLE-001 on hand. Place an order for 2 of them.

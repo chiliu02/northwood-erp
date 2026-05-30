@@ -10,14 +10,18 @@ import { formatMoney, truncateUuid } from "@/lib/utils";
 import { PERSONAS } from "@/personas";
 
 const SOURCE_TYPES = [
-  { value: "",                   label: "All source types" },
-  { value: "supplier_invoice",   label: "Supplier invoices" },
-  { value: "supplier_payment",   label: "Supplier payments" },
-  { value: "customer_invoice",   label: "Customer invoices" },
-  { value: "customer_payment",   label: "Customer payments" },
-  { value: "goods_receipt",      label: "Goods receipts" },
-  { value: "shipment_cost",      label: "Shipment cost (COGS)" },
-  { value: "journal_reversal",   label: "Reversals" },
+  { value: "",                     label: "All source types" },
+  { value: "supplier_invoice",     label: "Supplier invoices" },
+  { value: "supplier_payment",     label: "Supplier payments" },
+  { value: "customer_invoice",     label: "Customer invoices" },
+  { value: "customer_payment",     label: "Customer payments" },
+  { value: "customer_refund",      label: "Customer refunds" },        // §2.34 Dr 2110 / Cr Bank
+  { value: "goods_receipt",        label: "Goods receipts" },
+  { value: "shipment_cost",        label: "Shipment cost (COGS)" },
+  { value: "stock_adjustment",     label: "Stock adjustments" },       // §2.29
+  { value: "work_order_wip",       label: "Work in progress (WIP)" },  // §2.42
+  { value: "work_order_completion", label: "WO completion (FG)" },     // §2.42
+  { value: "journal_reversal",     label: "Reversals" },
 ];
 
 export function JournalEntries() {
