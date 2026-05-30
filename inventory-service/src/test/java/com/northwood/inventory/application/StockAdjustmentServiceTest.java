@@ -35,6 +35,7 @@ class StockAdjustmentServiceTest {
     @Mock StockBalanceLookup balanceLookup;
     @Mock StockMovementWriter movements;
     @Mock WarehouseLookup warehouses;
+    @Mock ReplenishmentDetectionService replenishmentDetection;
 
     private StockAdjustmentService service;
 
@@ -43,7 +44,7 @@ class StockAdjustmentServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new StockAdjustmentService(stockAdjustments, stockBalances, balanceLookup, movements, warehouses);
+        service = new StockAdjustmentService(stockAdjustments, stockBalances, balanceLookup, movements, warehouses, replenishmentDetection);
     }
 
     private AdjustStockCommand cmd(String warehouseCode, Mode mode, BigDecimal value) {
@@ -63,6 +64,8 @@ class StockAdjustmentServiceTest {
             eq(new BigDecimal("25")), isNull(),
             eq(StockMovementSourceTypes.STOCK_ADJUSTMENT), any(), isNull()
         );
+        // §2.35 Slice B: upward adjustments don't breach the reorder point.
+        verify(replenishmentDetection, never()).checkAfterOnHandDecrement(any(), any());
     }
 
     @Test void delta_down_decrements_and_records_movement_out() {
@@ -78,6 +81,8 @@ class StockAdjustmentServiceTest {
             eq(new BigDecimal("10")), isNull(),
             eq(StockMovementSourceTypes.STOCK_ADJUSTMENT), any(), isNull()
         );
+        // §2.35 Slice B: downward adjustment must trigger the detection check.
+        verify(replenishmentDetection).checkAfterOnHandDecrement(WAREHOUSE, PRODUCT);
     }
 
     @Test void delta_down_insufficient_on_hand_rejects_and_records_no_movement() {

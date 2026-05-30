@@ -59,19 +59,22 @@ public class StockAdjustmentService {
     private final StockBalanceLookup balanceLookup;
     private final StockMovementWriter movements;
     private final WarehouseLookup warehouses;
+    private final ReplenishmentDetectionService replenishmentDetection;
 
     public StockAdjustmentService(
         StockAdjustmentRepository stockAdjustments,
         StockBalanceWriter stockBalances,
         StockBalanceLookup balanceLookup,
         StockMovementWriter movements,
-        WarehouseLookup warehouses
+        WarehouseLookup warehouses,
+        ReplenishmentDetectionService replenishmentDetection
     ) {
         this.stockAdjustments = stockAdjustments;
         this.stockBalances = stockBalances;
         this.balanceLookup = balanceLookup;
         this.movements = movements;
         this.warehouses = warehouses;
+        this.replenishmentDetection = replenishmentDetection;
     }
 
     @Transactional(readOnly = true)
@@ -122,6 +125,14 @@ public class StockAdjustmentService {
             throw new StockAdjustmentRejectedException(
                 "Insufficient on-hand stock for a downward adjustment of %s — would leave less than the reserved quantity"
                     .formatted(magnitude.toPlainString()));
+        }
+
+        // §2.35 Slice B: if this decrement brings on_hand below reorder_point,
+        // raise an inventory.ReplenishmentRequest. Only the OUT path can
+        // breach the threshold — an upward adjustment never triggers
+        // automatic replenishment.
+        if (direction == StockMovementDirection.OUT) {
+            replenishmentDetection.checkAfterOnHandDecrement(warehouseId, command.productId());
         }
 
         StockMovementType movementType = direction == StockMovementDirection.IN

@@ -17,6 +17,7 @@ import com.northwood.sales.domain.SalesOrderRepository;
 import com.northwood.shared.application.exception.BadRequestException;
 import com.northwood.shared.application.exception.ConflictException;
 import com.northwood.shared.application.exception.NotFoundException;
+import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.LineNumbering;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -193,10 +194,10 @@ public class SalesOrderService {
      * Cancel a sales order and kick off saga compensation. The header is
      * flipped to {@code 'cancelled'} (with {@code cancelled_at = now()}) and a
      * {@code sales.SalesOrderCancellationRequested} event is written to the
-     * outbox. The fulfilment saga is moved to {@code 'compensating'}; the
-     * downstream services (inventory, manufacturing) ack via their own
-     * {@code InventorySalesOrderCancellationApplied} / {@code ManufacturingSalesOrderCancellationApplied}
-     * events, after which the saga advances to {@code 'compensated'}.
+     * outbox. The fulfilment saga is moved to {@code 'compensating'}; inventory
+     * acks via {@code InventorySalesOrderCancellationApplied} (the sole
+     * compensation ack since §2.40), after which the saga advances to
+     * {@code 'compensated'}.
      *
      * <p>Cancellable up to (and including) {@code ready_to_ship}; once
      * {@code goods_shipped} or beyond, the credit-note / return-goods flow
@@ -267,6 +268,11 @@ public class SalesOrderService {
             ? customer.defaultPaymentTerms()
             : PaymentTerms.fromDb(command.paymentTerms());
 
+        // §2.32: deposit orders carry an up-front percent (default 50%); every
+        // other term must not carry one. Validated here so a bad value is a 400,
+        // not a CHECK violation at INSERT time.
+        BigDecimal depositPercent = resolveDepositPercent(paymentTerms, command.depositPercent());
+
         SalesOrder order = SalesOrder.place(
             command.orderNumber(),
             customer.customerId(),
@@ -276,6 +282,7 @@ public class SalesOrderService {
             command.currencyCode(),
             BigDecimal.ONE,
             paymentTerms,
+            depositPercent,
             lines
         );
 
@@ -293,6 +300,23 @@ public class SalesOrderService {
         sagaManager.insertStarted(order.id().value(), dataJson);
 
         return SalesOrderView.from(order);
+    }
+
+    /**
+     * §2.32: resolve + validate the up-front deposit fraction. Deposit orders
+     * default to 50% when none is supplied; the value must be in (0, 100]. Any
+     * other payment term must not carry a percent (a provided one is a 400).
+     */
+    private static BigDecimal resolveDepositPercent(PaymentTerms terms, BigDecimal requested) {
+        if (terms != PaymentTerms.DEPOSIT) {
+            Assert.argument(requested == null,
+                "deposit_percent is only valid for deposit orders (payment_terms=deposit)");
+            return null;
+        }
+        BigDecimal pct = requested == null ? new BigDecimal("50") : requested;
+        Assert.argument(pct.signum() > 0 && pct.compareTo(new BigDecimal("100")) < 0,
+            "deposit_percent must be in (0, 100) — a deposit is strictly partial; got " + pct);
+        return pct;
     }
 
     /**

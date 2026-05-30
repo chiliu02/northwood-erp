@@ -103,6 +103,13 @@ public final class JournalEntry {
         GOODS_RECEIPT("goods_receipt"),
         SHIPMENT_COST("shipment_cost"),
         STOCK_ADJUSTMENT("stock_adjustment"),
+        // §2.42 perpetual WIP. WORK_ORDER_WIP marks the WIP-charge legs (raw
+        // materials issued; consumed sub-assemblies rolled in); WORK_ORDER_COMPLETION
+        // marks the finished-good settlement (Dr 1220 FG / Cr 1230 WIP).
+        WORK_ORDER_WIP("work_order_wip"),
+        WORK_ORDER_COMPLETION("work_order_completion"),
+        // §2.34 refund on a cancelled prepayment/deposit order (Dr 2110 / Cr 1000).
+        CUSTOMER_REFUND("customer_refund"),
         JOURNAL_REVERSAL("journal_reversal");
 
         private final String dbValue;

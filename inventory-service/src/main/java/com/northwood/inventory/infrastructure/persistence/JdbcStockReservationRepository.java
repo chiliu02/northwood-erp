@@ -103,13 +103,10 @@ public class JdbcStockReservationRepository implements StockReservationRepositor
     }
 
     @Override
-    public Optional<UUID> findActiveHeaderIdForWorkOrder(UUID workOrderId) {
+    public Optional<UUID> findAnyHeaderIdForWorkOrder(UUID workOrderId) {
         try {
             return Optional.ofNullable(jdbc.queryForObject(
-                """
-                SELECT stock_reservation_header_id FROM inventory.stock_reservation_header
-                WHERE work_order_id = ? AND status IN ('reserved', 'partially_reserved')
-                """,
+                "SELECT stock_reservation_header_id FROM inventory.stock_reservation_header WHERE work_order_id = ?",
                 UUID.class, workOrderId
             ));
         } catch (EmptyResultDataAccessException e) {
@@ -118,11 +115,11 @@ public class JdbcStockReservationRepository implements StockReservationRepositor
     }
 
     @Override
-    public Optional<UUID> findAnyHeaderIdForWorkOrder(UUID workOrderId) {
+    public Optional<UUID> findAnyHeaderIdForSalesOrder(UUID salesOrderHeaderId) {
         try {
             return Optional.ofNullable(jdbc.queryForObject(
-                "SELECT stock_reservation_header_id FROM inventory.stock_reservation_header WHERE work_order_id = ?",
-                UUID.class, workOrderId
+                "SELECT stock_reservation_header_id FROM inventory.stock_reservation_header WHERE sales_order_header_id = ?",
+                UUID.class, salesOrderHeaderId
             ));
         } catch (EmptyResultDataAccessException e) {
             return Optional.empty();

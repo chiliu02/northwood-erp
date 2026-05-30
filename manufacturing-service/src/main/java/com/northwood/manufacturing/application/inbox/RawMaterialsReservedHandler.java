@@ -1,8 +1,8 @@
 package com.northwood.manufacturing.application.inbox;
 
-import static com.northwood.manufacturing.domain.saga.MakeToOrderSaga.RAW_MATERIAL_SHORTAGE;
+import static com.northwood.manufacturing.domain.saga.WorkOrderSaga.RAW_MATERIAL_SHORTAGE;
 
-import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
+import com.northwood.manufacturing.application.saga.WorkOrderSagaManager;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderMaterial;
@@ -33,7 +33,7 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <ol>
  *   <li>Ask the saga manager to apply the reservation outcome (which advances
- *       the make-to-order saga to {@code raw_materials_reserved} or
+ *       the work-order saga to {@code raw_materials_reserved} or
  *       {@code raw_material_shortage}).</li>
  *   <li>Project the outcome onto the WO aggregate's {@code material_status}
  *       via {@link WorkOrder#applyReservationOutcome(String)}, so a UI reading
@@ -50,13 +50,13 @@ public class RawMaterialsReservedHandler extends AbstractInboxHandler<RawMateria
 
     public static final String CONSUMER_NAME = "manufacturing.make-to-order.raw-materials-reserved";
 
-    private final MakeToOrderSagaManager sagaManager;
+    private final WorkOrderSagaManager sagaManager;
     private final WorkOrderRepository workOrders;
     private final OutboxAppender outbox;
 
     public RawMaterialsReservedHandler(
         InboxPort inbox,
-        MakeToOrderSagaManager sagaManager,
+        WorkOrderSagaManager sagaManager,
         WorkOrderRepository workOrders,
         OutboxAppender outbox,
         ObjectMapper json

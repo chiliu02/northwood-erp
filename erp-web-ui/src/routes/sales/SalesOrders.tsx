@@ -61,6 +61,7 @@ export function SalesOrders() {
           <div className="flex items-center gap-1.5">
             <StatusPill label={s.label} tone={s.tone} />
             {isAwaitingPrepayment(r) && <StatusPill label="awaiting prepayment" tone="warn" />}
+            {isAwaitingDeposit(r) && <StatusPill label="awaiting deposit" tone="warn" />}
           </div>
         );
       },
@@ -195,6 +196,13 @@ function FulfilmentSummary({ row }: { row: SalesOrderRow }) {
 // Goes away once the customer pays — same observable as the demo SPA.
 function isAwaitingPrepayment(r: SalesOrderRow): boolean {
   return r.paymentTerms === "prepayment" && r.paymentStatus !== "paid";
+}
+
+// §2.32: a deposit order awaiting its up-front deposit (nothing paid yet);
+// clears once the deposit lands (partially_paid).
+function isAwaitingDeposit(r: SalesOrderRow): boolean {
+  return r.paymentTerms === "deposit"
+    && r.paymentStatus !== "paid" && r.paymentStatus !== "partially_paid";
 }
 
 function isPast(row: SalesOrderRow, after: string): boolean {

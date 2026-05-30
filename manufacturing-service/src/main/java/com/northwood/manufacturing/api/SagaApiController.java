@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * Read-only API for the Saga Console — manufacturing's make-to-order saga.
+ * Read-only API for the Saga Console — manufacturing's work-order saga.
  * See sales-service's {@code SagaApiController} for the design rationale; the
  * three controllers are deliberately near-duplicates.
  */

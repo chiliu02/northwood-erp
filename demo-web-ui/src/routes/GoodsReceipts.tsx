@@ -136,7 +136,7 @@ export function GoodsReceipts() {
     <FormCard title="Goods receipt" persona={<PersonaTag {...persona} />}>
       <p className="mb-4 text-sm text-text-muted">
         Post a receipt against an open purchase order. Inventory bumps stock_balance and emits
-        <span className="font-mono"> inventory.GoodsReceived</span> — you'll see the manufacturing make-to-order saga
+        <span className="font-mono"> inventory.GoodsReceived</span> — you'll see the manufacturing work-order saga
         un-park (if it was on <span className="font-mono">raw_material_shortage</span>) and the P2P saga advance.
       </p>
 

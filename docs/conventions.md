@@ -30,9 +30,9 @@ Re-using `*Repository` for a non-aggregate port to "save a rename" is exactly th
 - §2.17 — `product.ApprovedVendorRepository` deleted; the approved-vendor list folded into the `Product` aggregate as a child collection (mutated via `Product.setApprovedVendors`, dirty-flag-driven persistence by `JdbcProductRepository` to the denormalised `product.approved_vendor` table).
 - §2.18 — `manufacturing.RoutingRepository` and `purchasing.SupplierRepository` had no mutators / events / `pendingEvents` — renamed to `RoutingQueryPort` / `SupplierQueryPort` (with the interfaces moved from `domain/` to `application/`) since they're CQRS read-side ports, not DDD repositories.
 
-**`*Projection` rule (sharper than the others).** A `*Projection` lives in `application/inbox/` and is consumed *only* by `*Handler` classes in the same `inbox/` package. It exists solely to write inbox-event-derived facts onto a read-model table. If any non-handler caller ever needs to access the same table — a saga worker, a controller, a backfill batch — it goes through a separate class (`*Lookup` for value reads, `*QueryPort` for whole-row reads, `*Writer` for non-event-driven writes), not the projection. Implementations may use `JdbcTemplate` (split into the interface in `application/inbox/` + `Jdbc*Projection` in `infrastructure/persistence/`) or delegate through an aggregate `*Repository` (concrete class in `application/inbox/`, no infra-side file — see `inventory.application.inbox.StockItemProjection`). The package location encodes the architectural fact that projections are event-driven; `*Service` (without the `Projection` suffix) is reserved for command-side orchestration in `application/`.
+**`*Projection` rule (sharper than the others).** A `*Projection` lives in `application/inbox/` and is consumed *only* by `*Handler` classes in the same `inbox/` package. It exists solely to write inbox-event-derived facts onto a read-model table. If any non-handler caller ever needs to access the same table — a saga worker, a controller, a backfill batch — it goes through a separate class (`*Lookup` for value reads, `*QueryPort` for whole-row reads, `*Writer` for non-event-driven writes), not the projection. Implementations split the interface in `application/inbox/` + a `Jdbc*Projection` in `infrastructure/persistence/` (e.g. `inventory.application.inbox.ProductCardProjection` + `infrastructure.persistence.JdbcProductCardProjection`). (A projection that delegates through an aggregate `*Repository` — concrete class in `application/inbox/`, no infra-side file — is permitted too, but no instance survives today.) The package location encodes the architectural fact that projections are event-driven; `*Service` (without the `Projection` suffix) is reserved for command-side orchestration in `application/`.
 
-**Projection vs aggregate.** Most projection tables (`sales.product_card`, `manufacturing.product_card`, `purchasing.product_approved_vendor`, `finance.product_card`, all 6 reporting views) are **caches of facts owned by another service** — the consumer reads them locally because the per-service `search_path` blocks cross-schema joins, but mutation authority lives upstream with the producer. These stay as projections; promoting them to a `*Repository`+aggregate would mislead readers about ownership ("is this where I change pricing?" — no, that's `Product.changePricing()` in product-service). The aggregate shape is for state the **consuming service authoritatively owns + mutates + holds invariants over**. Promote a projection to a real aggregate only when consumer-side invariants emerge that need a place to live (full criteria below in *Aggregate vs projection — deltas get aggregates…*). `inventory.stock_item` is currently aggregate-shaped but emits zero events — flagged for demotion as `dev-todo.md` §2.22 since it is structurally a snapshot projection of upstream product-master state, not an emitter of inventory-originated facts. The candidate to watch for *future* promotion is `finance.purchase_order_line_facts` — currently a projection, would become an aggregate if 3-way-match logic grows beyond the simple comparisons in `SupplierInvoiceService` (variance handling, partial-receipt-with-multiple-invoices, etc.).
+**Projection vs aggregate.** Most projection tables (`sales.product_card`, `manufacturing.product_card`, `purchasing.product_approved_vendor`, `finance.product_card`, all 6 reporting views) are **caches of facts owned by another service** — the consumer reads them locally because the per-service `search_path` blocks cross-schema joins, but mutation authority lives upstream with the producer. These stay as projections; promoting them to a `*Repository`+aggregate would mislead readers about ownership ("is this where I change pricing?" — no, that's `Product.changePricing()` in product-service). The aggregate shape is for state the **consuming service authoritatively owns + mutates + holds invariants over**. Promote a projection to a real aggregate only when consumer-side invariants emerge that need a place to live (full criteria below in *Aggregate vs projection — deltas get aggregates…*). `inventory.stock_item` was demoted from an aggregate to a plain `*Projection` under §2.22 (it emitted zero events and held no inventory-side invariants beyond non-negative guards on the projected columns) — it is structurally a snapshot projection of upstream product-master state, not an emitter of inventory-originated facts. §2.38 then folded it into the sibling `inventory.product_card` per the one-`_card`-per-schema rule, so inventory now carries a single product-master projection (`ProductCardProjection` write + `StockItemQueryPort` / `ReorderPolicyLookup` / `ProductCardLookup` reads). The candidate to watch for *future* promotion is `finance.purchase_order_line_facts` — currently a projection, would become an aggregate if 3-way-match logic grows beyond the simple comparisons in `SupplierInvoiceService` (variance handling, partial-receipt-with-multiple-invoices, etc.).
 
 **Consumer-side denormalized tables: one table per (schema, aggregate), suffixed `_card`.** When a consumer schema holds multiple 1:1 facts about the same upstream aggregate — whether mirrored from upstream events or computed by local engines — group them into one table named `<schema>.<source_aggregate>_card`. The `_card` suffix carries the per-entity-record metaphor (inventory card, customer card — the institutional record on an external entity, maintained by someone who tracks it without owning it) and disambiguates the consumer-side table from the source-schema's bare aggregate table (e.g. `sales.product_card` vs `product.product`). The standard wiring per consumer schema:
 
@@ -246,6 +246,45 @@ Call sites reflect this directly: `salesOrders.findById(id)` says "find a sales 
 When two collaborators in a single class would naturally take the same name (e.g. `PaymentService` holds both `SupplierInvoiceRepository` and `CustomerInvoiceRepository`), qualify both with the full aggregate name: `supplierInvoices` + `customerInvoices`. Never use a bare `invoices` field — even if today only one kind is held, the qualifier ages well.
 
 This applies to application-service-to-application-service composition too: `PaymentService.journalEntries` of type `JournalEntryService` follows the same rule (field name = the data the collaborator operates on, plural).
+
+## Aggregate roots live at `domain/` root, not in per-aggregate sub-packages
+
+Every aggregate root, its `*Id` value object, and its `*Repository` interface live directly under `<service>-service/.../domain/` — never inside a per-aggregate sub-package like `domain/<aggregate>/`. Sub-packages under `domain/` are reserved for cross-cutting concerns the service already uses (`domain/events/` for the locally-produced event payloads, `domain/audit/` in the shared module, etc.), not for one-aggregate-per-folder organisation.
+
+```
+inventory-service/src/main/java/com/northwood/inventory/domain/
+├── events/                          ← OK: cross-cutting (event payloads)
+├── Shipment.java                    ← aggregate root, at root
+├── ShipmentId.java
+├── ShipmentRepository.java
+├── StockAdjustment.java             ← another aggregate, at root
+├── StockAdjustmentId.java
+├── StockAdjustmentRepository.java
+├── ReplenishmentRequest.java        ← §2.35 aggregate, at root (not in domain/replenishment/)
+├── ReplenishmentRequestId.java
+├── ReplenishmentRequestRepository.java
+└── InventoryAggregateTypes.java     ← cross-cutting constants holder
+```
+
+**Why this convention exists.** Each `<service>-events/` jar shares the *same Java package path* as the corresponding `<service>-service/` (both publish into `com.northwood.<service>.domain` and `com.northwood.<service>.domain.events`). Java treats those across-jar files as one logical package at compile time: a service-side class at `com.northwood.<service>.domain` references the events-jar's `<Service>AggregateTypes` constant, event-class `EVENT_TYPE` strings, status-constant holders, and the `domain.events.*` event records *without an explicit import* — they're already in the same package.
+
+Promote an aggregate into `domain/<aggregate>/` and every one of those previously-implicit cross-jar references becomes a fresh `import` line, e.g.:
+
+```java
+// before move — aggregate in com.northwood.inventory.domain (events-jar shares package):
+public static final String AGGREGATE_TYPE = InventoryAggregateTypes.REPLENISHMENT_REQUEST;
+// ... ReplenishmentRequested below is also in inventory.domain.events:
+r.pendingEvents.add(new ReplenishmentRequested(...));
+
+// after moving the aggregate to com.northwood.inventory.domain.replenishment:
+import com.northwood.inventory.domain.InventoryAggregateTypes;     // newly required
+import com.northwood.inventory.domain.events.ReplenishmentRequested; // unchanged, still cross-package
+// ...
+```
+
+The new imports aren't a bug per se, but they multiply across the aggregate, its sibling `*Id` / `*Repository`, every test that uses them, and every Jdbc adapter that references the aggregate type — a project-wide refactor in the dozens of file touches for what is meant to be a pure-organisational change. A single-aggregate worked example (the §2.35 `ReplenishmentRequest`, briefly promoted into `domain/replenishment/` and then moved back) exposed ~140–180 file touches when extrapolated codebase-wide. The convention is therefore: **aggregate roots live at `domain/` root; sub-packages exist only for cross-cutting concerns that already span aggregates**.
+
+This is a Northwood-specific rule driven by the events-jar topology — codebases that don't publish a sibling jar at the same package coordinate face no equivalent friction and may legitimately prefer per-aggregate sub-packages.
 
 ## Hexagonal 4-way rule — full why-each-direction-is-forbidden
 
@@ -707,7 +746,7 @@ One schema per bounded context plus `shared` for cross-service primitives.
 | `product`       | Product master (catalogue producer). |
 | `sales`         | Sales orders, customers, sales-side product-pricing projection, sales-order-fulfilment saga. |
 | `inventory`     | Stock items, balances, reservations, goods receipts, shipments. |
-| `manufacturing` | BOMs, work orders, routings, make-to-order saga. |
+| `manufacturing` | BOMs, work orders, routings, make-to-stock work-order saga (the `work_order_saga` table — driven by inventory's replenishment requests since §2.37; rename deferred to §2.39). |
 | `purchasing`    | Suppliers, supplier prices, purchase requisitions, purchase orders, purchase-to-pay saga. |
 | `finance`       | Customer/supplier invoices, payments, journal entries, GL accounts, tax codes, exchange rates. |
 | `reporting`     | Read-only consolidated views. Inbox-only — reporting never publishes. |
@@ -746,10 +785,10 @@ A parent takes the `_header` suffix **only if** its detail child is named `_line
 |---|---|---|
 | Operational aggregate root        | `<aggregate>` or `<aggregate>_header`         | `customer`, `bom_header`, `sales_order_header` |
 | Master-detail child               | `<aggregate>_<role>` (`_line` or domain-specific) | `sales_order_line`, `work_order_material` |
-| Saga state                        | `<flow>_saga` (singular)                       | `sales_order_fulfilment_saga`, `make_to_order_saga`, `purchase_to_pay_saga` |
+| Saga state                        | `<flow>_saga` (singular)                       | `sales_order_fulfilment_saga`, `work_order_saga`, `purchase_to_pay_saga` |
 | Status history (partitioned)      | `<aggregate>_status_history`                   | `sales_order_status_history`, `invoice_status_history` |
 | Outbox / inbox plumbing           | `outbox_message`, `inbox_message` (partitioned, with a `_default` partition) | one pair per schema |
-| Consumer-side denormalized 1:1    | `<source_aggregate>_card`                      | `product_card` (in each consumer schema — sales / purchasing / finance / reporting / manufacturing) |
+| Consumer-side denormalized 1:1    | `<source_aggregate>_card`                      | `product_card` (in each consumer schema — sales / inventory / purchasing / finance / reporting / manufacturing) |
 | Consumer-side 1:N child of upstream aggregate | `<source_aggregate>_<child>`       | `product_approved_vendor` (in purchasing, manufacturing) |
 | Per-child-row cross-schema cache  | `<child_full_name>_facts`                      | `inventory.sales_order_line_facts`, `inventory.purchase_order_line_facts`, `finance.purchase_order_line_facts` |
 | Running-total / derived           | `<unit>_balance`                               | `inventory.stock_balance`, `inventory.wip_balance` |

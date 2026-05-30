@@ -155,7 +155,7 @@ class JdbcPurchaseRequisitionRepositoryIT {
     private static PurchaseRequisition approvedRequisition(String number) {
         return PurchaseRequisition.reconstitute(
             PurchaseRequisitionId.newId(), number,
-            PurchaseRequisition.SourceType.MANUAL, null, null,
+            PurchaseRequisition.SourceType.MANUAL, null, null, null,
             PurchaseRequisition.Status.APPROVED, "planner", List.of(), 0L);
     }
 

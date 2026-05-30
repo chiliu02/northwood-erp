@@ -7,28 +7,28 @@ import com.northwood.sales.application.saga.SalesOrderLineSnapshotPort;
 import com.northwood.sales.application.saga.SalesOrderLineSnapshotPort.LineSnapshot;
 import com.northwood.sales.application.saga.SalesOrderInvoiceSnapshotPort;
 import com.northwood.sales.application.saga.SalesOrderInvoiceSnapshotPort.OrderForPrepayment;
-import com.northwood.sales.domain.events.ManufacturingRequested;
+import com.northwood.sales.domain.PaymentTerms;
+import com.northwood.sales.domain.events.DepositInvoiceRequested;
 import com.northwood.sales.domain.events.PrepaymentInvoiceRequested;
-import com.northwood.sales.domain.events.SalesOrderPlaced;
 import com.northwood.sales.domain.events.StockReservationRequested;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.sales.domain.saga.FulfilmentSagaData;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.AWAITING_DEPOSIT_INVOICE;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.AWAITING_PREPAYMENT_INVOICE;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.MANUFACTURING_REQUESTED;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.DEPOSIT_PAID;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.PREPAID;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STARTED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_REQUESTED;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_INCOMPLETE;
 import com.northwood.shared.domain.Assert;
 import com.northwood.shared.application.outbox.OutboxAppender;
 import java.lang.management.ManagementFactory;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,10 +45,17 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>{@code started → stock_reservation_requested}: read sales-order
  *       lines, emit {@code StockReservationRequested}, transition saga.</li>
- *   <li>{@code stock_reservation_incomplete → manufacturing_requested}: read sales-order
- *       lines, filter by shortage (when present), emit
- *       {@code ManufacturingRequested}, transition saga.</li>
+ *   <li>{@code prepaid → stock_reservation_requested}: same, after a
+ *       prepayment invoice has been fully paid (§2.31 Slice B).</li>
  * </ul>
+ *
+ * <p>§2.37 Slice 3 removed the {@code stock_reservation_incomplete →
+ * manufacturing_requested} leg: inventory now raises the
+ * {@code ReplenishmentRequest} in the same transaction as the partial
+ * reservation, so the worker no longer forwards shortages to manufacturing.
+ * The saga parks at {@code stock_reservation_incomplete} until an
+ * {@code inventory.ReplenishmentFulfilled} / {@code ReplenishmentCancelled}
+ * drives it via the inbox.
  *
  * <p>The drain machinery commits saga state via {@code port.save(saga)}
  * after this callback returns, so transitions made here land atomically
@@ -96,8 +103,7 @@ public class SalesOrderFulfilmentSagaWorker {
     private void advance(SalesOrderFulfilmentSaga saga) {
         switch (saga.state()) {
             case STARTED -> advanceFromStarted(saga);
-            case STOCK_RESERVATION_INCOMPLETE -> requestManufacturing(saga);
-            case PREPAID -> requestStockReservation(saga);
+            case PREPAID, DEPOSIT_PAID -> requestStockReservation(saga);
             default -> log.debug("[{}] no transition implemented for state {}", workerId, saga.state());
         }
     }
@@ -117,11 +123,68 @@ public class SalesOrderFulfilmentSagaWorker {
      */
     private void advanceFromStarted(SalesOrderFulfilmentSaga saga) {
         String pt = readData(saga).paymentTerms();
-        if (SalesOrderPlaced.PAYMENT_TERMS_PREPAYMENT.equals(pt)) {
+        if (PaymentTerms.PREPAYMENT.dbValue().equals(pt)) {
             requestPrepaymentInvoice(saga);
+        } else if (PaymentTerms.DEPOSIT.dbValue().equals(pt)) {
+            requestDepositInvoice(saga);
         } else {
             requestStockReservation(saga);
         }
+    }
+
+    /**
+     * §2.32. Branch at {@code started} for deposit orders: compute the up-front
+     * deposit ({@code total × deposit_percent / 100}) and emit
+     * {@code DepositInvoiceRequested}, parking at {@code awaiting_deposit_invoice}
+     * until finance acks with {@code CustomerInvoiceCreated}. The worker picks
+     * the saga back up from {@code deposit_paid} (after the deposit is settled)
+     * to walk the same {@link #requestStockReservation} path as on-shipment.
+     */
+    private void requestDepositInvoice(SalesOrderFulfilmentSaga saga) {
+        UUID salesOrderId = saga.salesOrderId();
+        OrderForPrepayment order = invoiceSnapshots.findOrderForPrepayment(salesOrderId)
+            .orElseThrow(() -> new IllegalStateException(
+                "No sales-order header found for sales_order_header_id=" + salesOrderId
+                    + " — cannot request deposit invoice"));
+        Assert.stateNotEmpty(order.lines(), "No lines found for sales_order_header_id=" + salesOrderId
+            + " — cannot request deposit invoice");
+        Assert.stateNotNull(order.depositPercent(), "deposit order " + salesOrderId
+            + " has no deposit_percent — cannot compute the deposit amount");
+
+        BigDecimal depositAmount = orderTotal(order)
+            .multiply(order.depositPercent())
+            .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+
+        DepositInvoiceRequested event = new DepositInvoiceRequested(
+            UUID.randomUUID(),
+            salesOrderId,
+            order.orderNumber(),
+            order.customerId(),
+            order.customerCode(),
+            order.customerName(),
+            order.currencyCode(),
+            depositAmount,
+            order.depositPercent(),
+            Instant.now()
+        );
+        outbox.append(event, SalesOrderFulfilmentSaga.AGGREGATE_TYPE);
+
+        saga.transitionTo(AWAITING_DEPOSIT_INVOICE, "wait_for_deposit_invoice");
+        saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
+
+        log.info("[{}] saga {} sales_order={} → awaiting_deposit_invoice (deposit {}% = {} {})",
+            workerId, saga.sagaId(), salesOrderId, order.depositPercent(), depositAmount, order.currencyCode());
+    }
+
+    /** Order total (subtotal + tax) from the priced lines, rounded to 2dp. */
+    private static BigDecimal orderTotal(OrderForPrepayment order) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (SalesOrderInvoiceSnapshotPort.PricedLine l : order.lines()) {
+            BigDecimal lineSubtotal = l.orderedQuantity().multiply(l.unitPrice());
+            BigDecimal taxRate = l.taxRate() == null ? BigDecimal.ZERO : l.taxRate();
+            total = total.add(lineSubtotal).add(lineSubtotal.multiply(taxRate));
+        }
+        return total.setScale(2, RoundingMode.HALF_UP);
     }
 
     private void requestPrepaymentInvoice(SalesOrderFulfilmentSaga saga) {
@@ -175,6 +238,7 @@ public class SalesOrderFulfilmentSagaWorker {
         List<StockReservationRequested.RequestedLine> lines = new ArrayList<>();
         for (LineSnapshot s : snapshots) {
             lines.add(new StockReservationRequested.RequestedLine(
+                s.salesOrderLineId(),
                 s.lineNumber(),
                 s.productId(),
                 s.productSku(),
@@ -198,72 +262,6 @@ public class SalesOrderFulfilmentSagaWorker {
 
         log.info("[{}] saga {} sales_order={} → stock_reservation_requested ({} line(s))",
             workerId, saga.sagaId(), salesOrderId, lines.size());
-    }
-
-    private void requestManufacturing(SalesOrderFulfilmentSaga saga) {
-        UUID salesOrderId = saga.salesOrderId();
-        // hasShortage preserves the empty-means-no-shortage semantic from
-        // StockReservedHandler.extractShortage. applyStockReserved routes
-        // RESERVED outcomes straight to READY_TO_SHIP, so STOCK_RESERVATION_INCOMPLETE is
-        // only reachable for partial / failed reservations — which always
-        // carry a non-empty shortage map. An empty map here is therefore a
-        // "shouldn't happen" defensive case: skip + WARN to surface the
-        // invariant violation rather than emit a ManufacturingRequested
-        // that would over-produce.
-        Map<Integer, BigDecimal> shortageByLineNumber = readShortage(saga);
-        boolean hasShortage = !shortageByLineNumber.isEmpty();
-
-        if (!hasShortage) {
-            log.warn("[{}] saga {} sales_order={} reached STOCK_RESERVATION_INCOMPLETE with no shortage stashed; skipping {} emission. applyStockReserved should have routed full-reservation outcomes to READY_TO_SHIP.",
-                workerId, saga.sagaId(), salesOrderId, ManufacturingRequested.EVENT_TYPE);
-            return;
-        }
-
-        List<ManufacturingRequested.RequestedLine> lines = new ArrayList<>();
-        for (LineSnapshot s : lineSnapshots.findLines(salesOrderId)) {
-            BigDecimal shortage = shortageByLineNumber.get(s.lineNumber());
-            if (shortage == null || shortage.signum() <= 0) {
-                continue;
-            }
-            lines.add(new ManufacturingRequested.RequestedLine(
-                s.salesOrderLineId(),
-                s.lineNumber(),
-                s.productId(),
-                s.productSku(),
-                s.productName(),
-                shortage
-            ));
-        }
-
-        if (lines.isEmpty()) {
-            saga.transitionTo(MANUFACTURING_REQUESTED, "wait_for_work_order_created");
-            saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
-            log.info("[{}] saga {} sales_order={} → manufacturing_requested (no demand to forward)",
-                workerId, saga.sagaId(), salesOrderId);
-            return;
-        }
-
-        ManufacturingRequested event = new ManufacturingRequested(
-            UUID.randomUUID(),
-            salesOrderId,
-            salesOrderId,
-            lines,
-            Instant.now()
-        );
-        outbox.append(event, SalesOrderFulfilmentSaga.AGGREGATE_TYPE);
-
-        saga.transitionTo(MANUFACTURING_REQUESTED, "wait_for_work_order_created");
-        saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
-
-        log.info("[{}] saga {} sales_order={} → manufacturing_requested ({} line(s), shortage forwarded)",
-            workerId, saga.sagaId(), salesOrderId, lines.size());
-    }
-
-    private Map<Integer, BigDecimal> readShortage(SalesOrderFulfilmentSaga saga) {
-        FulfilmentSagaData data = readData(saga);
-        return data == null || data.shortageByLineNumber() == null
-            ? Map.of()
-            : data.shortageByLineNumber();
     }
 
     private FulfilmentSagaData readData(SalesOrderFulfilmentSaga saga) {

@@ -6,12 +6,14 @@ import com.northwood.purchasing.application.SupplierProductPriceService;
 import com.northwood.purchasing.application.inbox.ApprovedVendorListChangedHandler;
 import com.northwood.purchasing.application.inbox.GoodsReceivedHandler;
 import com.northwood.purchasing.application.inbox.ProductDiscontinuedHandler;
-import com.northwood.purchasing.application.inbox.RawMaterialShortageDetectedHandler;
+import com.northwood.purchasing.application.inbox.ReplenishmentRequestedHandler;
 import com.northwood.purchasing.application.inbox.SupplierInvoiceApprovedHandler;
 import com.northwood.purchasing.application.inbox.SupplierInvoiceRejectedHandler;
 import com.northwood.purchasing.application.inbox.SupplierPaymentMadeHandler;
 import com.northwood.purchasing.infrastructure.saga.JdbcPurchaseToPaySagaManager;
 import com.northwood.purchasing.infrastructure.saga.PurchaseToPaySagaWorker;
+import com.northwood.shared.application.outbox.OutboxAppender;
+import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.NoopPlatformTransactionManager;
@@ -40,7 +42,7 @@ import tools.jackson.databind.ObjectMapper;
  * {@code purchase_order_approved} and parks them at {@code waiting_for_goods}.
  *
  * <p>The kit pre-seeds one active default supplier (SUP-001) so
- * {@code PurchaseRequisitionService.createForWorkOrderShortage} works out of
+ * {@code PurchaseRequisitionService.createForStockReplenishment} works out of
  * the box. Tests that need richer supplier setup add via
  * {@link InMemorySupplierQueryPort#putActive}.
  */
@@ -92,8 +94,10 @@ public final class PurchasingTestKit {
 
         this.sagaWorker = new PurchaseToPaySagaWorker(sagaManager);
 
+        OutboxAppender appender = new OutboxAppender(outbox, json, new CurrentUserAccessor());
+
         bus.register(outbox);
-        bus.register(new RawMaterialShortageDetectedHandler(inbox, requisitionService, json));
+        bus.register(new ReplenishmentRequestedHandler(inbox, requisitionService, appender, json));
         bus.register(new GoodsReceivedHandler(inbox, sagaManager, receiptProjection, json));
         bus.register(new SupplierInvoiceApprovedHandler(inbox, sagaManager, paymentProjection, json));
         bus.register(new SupplierInvoiceRejectedHandler(inbox, sagaManager, json));

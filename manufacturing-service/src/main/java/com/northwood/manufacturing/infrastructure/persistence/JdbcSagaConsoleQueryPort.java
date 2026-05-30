@@ -16,7 +16,7 @@ public class JdbcSagaConsoleQueryPort implements SagaConsoleQueryPort {
         SELECT saga_id, work_order_id, saga_state, current_step,
                last_error, retry_count, version,
                created_at, updated_at, completed_at
-          FROM manufacturing.make_to_order_saga
+          FROM manufacturing.work_order_saga
          ORDER BY updated_at DESC
         """;
 
@@ -39,7 +39,7 @@ public class JdbcSagaConsoleQueryPort implements SagaConsoleQueryPort {
             rs.getObject("saga_id", UUID.class),
             rs.getObject("work_order_id", UUID.class),
             "work_order_id",
-            "make_to_order",
+            "work_order",
             rs.getString("saga_state"),
             rs.getString("current_step"),
             rs.getString("last_error"),

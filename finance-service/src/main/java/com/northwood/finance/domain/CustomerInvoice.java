@@ -88,11 +88,21 @@ public final class CustomerInvoice {
      *   <li>{@link #PREPAYMENT} — invoice created at order placement, NO GL
      *       at creation; payment posts Dr Cash / Cr 2110 Customer Deposits;
      *       shipment (Slice C) reclassifies Dr 2110 / Cr Revenue.</li>
+     *   <li>{@link #DEPOSIT} — §2.32; part-payment invoice created at placement
+     *       for {@code total × deposit_percent}, NO GL at creation; payment
+     *       posts Dr Cash / Cr 2110 (same as prepayment); shipment recognises
+     *       the deposit portion and a {@link #BALANCE} invoice carries the
+     *       remainder.</li>
+     *   <li>{@link #BALANCE} — §2.32; the remaining {@code total − deposit}
+     *       invoiced at shipment, posting Dr AR / Cr Revenue (like
+     *       {@link #COMMERCIAL}).</li>
      * </ul>
      */
     public enum InvoiceType {
         COMMERCIAL("commercial"),
-        PREPAYMENT("prepayment");
+        PREPAYMENT("prepayment"),
+        DEPOSIT("deposit"),
+        BALANCE("balance");
 
         private final String dbValue;
 
@@ -159,6 +169,45 @@ public final class CustomerInvoice {
         List<CustomerInvoiceLine> lines
     ) {
         return build(InvoiceType.PREPAYMENT, invoiceNumber, salesOrderHeaderId,
+            customerId, customerCode, customerName, currencyCode, lines);
+    }
+
+    /**
+     * §2.32 Slice B factory: create + auto-post a <b>deposit</b> invoice (a
+     * part-payment on account) from a single synthetic deposit line. Like
+     * {@link #createPrepayment}, posts no GL at creation (Treatment A) —
+     * the deposit hits the GL only when paid (Dr Cash / Cr 2110).
+     */
+    public static CustomerInvoice createDeposit(
+        String invoiceNumber,
+        UUID salesOrderHeaderId,
+        UUID customerId,
+        String customerCode,
+        String customerName,
+        String currencyCode,
+        List<CustomerInvoiceLine> lines
+    ) {
+        return build(InvoiceType.DEPOSIT, invoiceNumber, salesOrderHeaderId,
+            customerId, customerCode, customerName, currencyCode, lines);
+    }
+
+    /**
+     * §2.32 Slice C factory: create + auto-post the <b>balance</b> invoice for a
+     * deposit order at shipment (the remaining {@code total − deposit}). Behaves
+     * like {@link #create} (commercial) — the caller posts Dr AR / Cr Revenue
+     * for the balance; the deposit portion is recognised separately against the
+     * deposit invoice in the shipment-time COGS handler.
+     */
+    public static CustomerInvoice createBalance(
+        String invoiceNumber,
+        UUID salesOrderHeaderId,
+        UUID customerId,
+        String customerCode,
+        String customerName,
+        String currencyCode,
+        List<CustomerInvoiceLine> lines
+    ) {
+        return build(InvoiceType.BALANCE, invoiceNumber, salesOrderHeaderId,
             customerId, customerCode, customerName, currencyCode, lines);
     }
 

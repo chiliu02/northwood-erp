@@ -12,6 +12,7 @@ import type {
   PurchaseOrderTracking,
   PurchaseOrderView,
   PurchaseRequisitionView,
+  ReplenishmentHistoryRow,
   SalesOrder360,
   SalesOrderView,
   StockBalanceRow,
@@ -60,6 +61,10 @@ export const fetchAtp             = ()                : Promise<AvailableToPromi
 export const fetchAtpForProduct   = (id: string)      : Promise<AvailableToPromiseRow>      => getJson(`/api/atp/${id}`);
 export const fetchMaterialShortages = (includeResolved = false): Promise<MaterialShortageRow[]> =>
   getJson(`/api/material-shortages?includeResolved=${includeResolved}`);
+export const fetchReplenishmentHistory = (limit = 50): Promise<ReplenishmentHistoryRow[]> =>
+  getJson(`/api/replenishment-history?limit=${limit}`);
+export const fetchReplenishmentHistoryForProduct = (productId: string, limit = 20): Promise<ReplenishmentHistoryRow[]> =>
+  getJson(`/api/replenishment-history?productId=${productId}&limit=${limit}`);
 
 // Owning-service catalogs
 export const fetchProducts   = (): Promise<ProductRow[]>   => getJson("/api/products");

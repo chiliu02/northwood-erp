@@ -46,14 +46,17 @@ class StockReservationServiceTest {
     @Mock StockBalanceWriter stockBalances;
     @Mock StockBalanceLookup balanceLookup;
     @Mock WarehouseLookup warehouses;
+    @Mock ReplenishmentDetectionService replenishmentDetection;
     @Mock OutboxAppender outbox;
+
+    private static final UUID SO_LINE_1 = UUID.randomUUID();
 
     private StockReservationService service;
 
     @BeforeEach
     void setUp() {
         service = new StockReservationService(
-            reservations, stockBalances, balanceLookup, warehouses, outbox
+            reservations, stockBalances, balanceLookup, warehouses, replenishmentDetection, outbox
         );
     }
 
@@ -61,7 +64,7 @@ class StockReservationServiceTest {
         return new StockReservationRequested(
             UUID.randomUUID(), SO, SO, warehouseCode,
             List.of(new StockReservationRequested.RequestedLine(
-                10, PRODUCT_1, "SKU-1", "Product 1", requested
+                SO_LINE_1, 10, PRODUCT_1, "SKU-1", "Product 1", requested
             )),
             Instant.now()
         );
@@ -111,6 +114,11 @@ class StockReservationServiceTest {
             assertThat(saved.lines().get(0).reservedQuantity()).isEqualByComparingTo("4");
             assertThat(saved.lines().get(0).shortageQuantity()).isEqualByComparingTo("6");
             assertThat(saved.lines().get(0).status()).isEqualTo(StockReservation.Status.PARTIALLY_RESERVED);
+
+            // §2.37 Slice 3: inventory raises the replenishment in the same
+            // transaction for the short line, with the sales-order back-reference.
+            verify(replenishmentDetection).raiseForSalesOrderShortage(
+                eq(PRODUCT_1), eq(WAREHOUSE), eq(new BigDecimal("6")), eq(SO), eq(SO_LINE_1));
         }
 
         @Test void failed_when_no_stock_skips_try_reserve_call() {
@@ -307,31 +315,4 @@ class StockReservationServiceTest {
         }
     }
 
-    @Nested
-    class ReleaseForWorkOrder {
-
-        @Test void live_reservation_unwinds_no_event_emitted() {
-            when(reservations.findActiveHeaderIdForWorkOrder(WO)).thenReturn(Optional.of(PRIOR_RES_ID));
-            when(reservations.findWarehouseIdForHeader(PRIOR_RES_ID)).thenReturn(Optional.of(WAREHOUSE));
-            when(reservations.findReservedLines(PRIOR_RES_ID)).thenReturn(List.of(
-                new ReservedLineSnapshot(PRODUCT_1, new BigDecimal("3"))
-            ));
-
-            service.releaseForWorkOrder(WO);
-
-            verify(stockBalances).releaseReserved(WAREHOUSE, PRODUCT_1, new BigDecimal("3"));
-            verify(reservations).markReleased(PRIOR_RES_ID);
-            verifyNoInteractions(outbox);
-        }
-
-        @Test void no_reservation_is_noop() {
-            when(reservations.findActiveHeaderIdForWorkOrder(WO)).thenReturn(Optional.empty());
-
-            service.releaseForWorkOrder(WO);
-
-            verify(reservations, never()).markReleased(any());
-            verifyNoInteractions(stockBalances);
-            verifyNoInteractions(outbox);
-        }
-    }
 }

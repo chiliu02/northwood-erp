@@ -11,7 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.northwood.manufacturing.application.WorkOrderOperationService.WorkOrderNotFoundException;
 import com.northwood.manufacturing.application.dto.CompleteOperationCommand;
-import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
+import com.northwood.manufacturing.application.saga.WorkOrderSagaManager;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderMaterial;
@@ -42,7 +42,7 @@ class WorkOrderOperationServiceTest {
     private static final UUID WORKCENTRE = UUID.randomUUID();
 
     @Mock WorkOrderRepository workOrders;
-    @Mock MakeToOrderSagaManager sagaManager;
+    @Mock WorkOrderSagaManager sagaManager;
     @Mock OutboxAppender outbox;
 
     private WorkOrderOperationService service;

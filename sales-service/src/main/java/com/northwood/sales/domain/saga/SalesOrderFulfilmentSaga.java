@@ -12,16 +12,23 @@ import java.util.UUID;
  * inherited from {@link SagaInstance}.
  *
  * <p>State machine (per the schema CHECK constraint):
- * {@code started → stock_reservation_requested → stock_reservation_incomplete →
- *  manufacturing_requested → manufacturing_in_progress → manufacturing_completed →
- *  ready_to_ship → goods_shipped → invoice_requested → invoice_created → completed}.
- * Fully-reserved orders shortcut directly from
- * {@code stock_reservation_requested → ready_to_ship}, skipping the
- * manufacturing leg. Side rails: {@code rejected},
- * {@code compensating}, {@code compensated}, {@code failed}.
+ * {@code started → stock_reservation_requested → ready_to_ship → goods_shipped
+ *  → invoice_created → completed}.
+ * Fully-reserved orders take that happy path straight through. A partial/failed
+ * reservation parks at {@code stock_reservation_incomplete} while inventory
+ * replenishes (§2.37 Slice 3 made inventory the single make-vs-buy decision +
+ * trigger point — it raises the {@code ReplenishmentRequest} in the same
+ * transaction as the reservation); once every short line's
+ * {@code inventory.ReplenishmentFulfilled} has landed the saga re-enters
+ * {@code stock_reservation_requested} to retry. Side rails: {@code rejected}
+ * (a short line's replenishment was cancelled — unsourceable / no BOM / no
+ * vendor), {@code compensating}, {@code compensated}, {@code failed}.
  *
- * <p>This slice implements the first two transitions only; later transitions
- * arrive when the consuming services are fleshed out.
+ * <p>The {@code manufacturing_*} / {@code purchasing_requested} states were
+ * retired in §2.37 Slice 3 when sales stopped driving manufacturing directly.
+ * The DB CHECK constraint still lists them (a fresh-volume migration concern,
+ * not a code one); the {@code SagaStateInvariantChecker} only fails if code
+ * writes a state the DB rejects, so dropping them here is safe.
  */
 public final class SalesOrderFulfilmentSaga extends SagaInstance {
 
@@ -42,11 +49,19 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
     // ------------------------------------------------------------
     public static final String STARTED = "started";
     public static final String STOCK_RESERVATION_REQUESTED = "stock_reservation_requested";
+    /**
+     * Parked state: reservation came back partial/failed and inventory has
+     * raised a {@code ReplenishmentRequest} (in the same transaction) for each
+     * short line. The saga waits here for every outstanding
+     * {@code inventory.ReplenishmentFulfilled} — at which point it re-enters
+     * {@link #STOCK_RESERVATION_REQUESTED} to retry reservation against the
+     * now-restocked inventory. A {@code ReplenishmentCancelled} for any short
+     * line moves the saga to {@link #REJECTED} instead. (§2.37 Slice 3 removed
+     * the worker's old {@code stock_reservation_incomplete → manufacturing_requested}
+     * leg; the worker no longer acts on this state.)
+     */
     public static final String STOCK_RESERVATION_INCOMPLETE = "stock_reservation_incomplete";
     public static final String REJECTED = "rejected";
-    public static final String MANUFACTURING_REQUESTED = "manufacturing_requested";
-    public static final String MANUFACTURING_IN_PROGRESS = "manufacturing_in_progress";
-    public static final String MANUFACTURING_COMPLETED = "manufacturing_completed";
     public static final String READY_TO_SHIP = "ready_to_ship";
     public static final String GOODS_SHIPPED = "goods_shipped";
     public static final String INVOICE_REQUESTED = "invoice_requested";
@@ -60,6 +75,15 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
     // on-shipment flow).
     public static final String AWAITING_PREPAYMENT_INVOICE = "awaiting_prepayment_invoice";
     public static final String PREPAID = "prepaid";
+    // §2.32 deposit branch: AWAITING_DEPOSIT_INVOICE parks after
+    // DepositInvoiceRequested until finance acks with CustomerInvoiceCreated;
+    // DEPOSIT_INVOICED waits for the deposit payment; DEPOSIT_PAID is the active
+    // worker-pickup checkpoint (like PREPAID) between deposit settlement and the
+    // stock-reservation request. The balance cycle after shipment reuses the
+    // on-shipment GOODS_SHIPPED → INVOICE_CREATED → COMPLETED tail.
+    public static final String AWAITING_DEPOSIT_INVOICE = "awaiting_deposit_invoice";
+    public static final String DEPOSIT_INVOICED = "deposit_invoiced";
+    public static final String DEPOSIT_PAID = "deposit_paid";
     public static final String COMPLETED = "completed";
     public static final String COMPENSATING = "compensating";
     public static final String COMPENSATED = "compensated";
@@ -80,7 +104,7 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
         STARTED,
         STOCK_RESERVATION_REQUESTED, STOCK_RESERVATION_INCOMPLETE, REJECTED,
         AWAITING_PREPAYMENT_INVOICE, PREPAID,
-        MANUFACTURING_REQUESTED, MANUFACTURING_IN_PROGRESS, MANUFACTURING_COMPLETED,
+        AWAITING_DEPOSIT_INVOICE, DEPOSIT_INVOICED, DEPOSIT_PAID,
         READY_TO_SHIP, GOODS_SHIPPED,
         INVOICE_REQUESTED, INVOICE_CREATED, INVOICE_PARTIALLY_PAID,
         COMPLETED,

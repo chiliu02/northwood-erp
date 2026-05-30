@@ -24,11 +24,11 @@ public class ReorderPolicyChangedHandler extends AbstractInboxHandler<ReorderPol
 
     public static final String CONSUMER_NAME = "inventory.stock-item-projector";
 
-    private final StockItemProjection projection;
+    private final ProductCardProjection projection;
 
     public ReorderPolicyChangedHandler(
         InboxPort inbox,
-        StockItemProjection projection,
+        ProductCardProjection projection,
         ObjectMapper json
     ) {
         super(inbox, json, ReorderPolicyChanged.class, ReorderPolicyChanged.EVENT_TYPE, CONSUMER_NAME);

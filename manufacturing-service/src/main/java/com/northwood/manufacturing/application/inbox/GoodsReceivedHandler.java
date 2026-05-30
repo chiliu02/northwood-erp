@@ -1,11 +1,12 @@
 package com.northwood.manufacturing.application.inbox;
 
-import static com.northwood.manufacturing.domain.saga.MakeToOrderSaga.RAW_MATERIAL_SHORTAGE;
-import static com.northwood.manufacturing.domain.saga.MakeToOrderSaga.WORK_ORDER_CREATED;
+import static com.northwood.manufacturing.domain.saga.WorkOrderSaga.RAW_MATERIAL_RESERVATION_REQUESTED;
+import static com.northwood.manufacturing.domain.saga.WorkOrderSaga.RAW_MATERIAL_SHORTAGE;
 
-import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
+import com.northwood.manufacturing.application.saga.RawMaterialReservationRequestEmitter;
+import com.northwood.manufacturing.application.saga.WorkOrderSagaManager;
 import com.northwood.inventory.domain.events.GoodsReceived;
-import com.northwood.manufacturing.application.saga.MakeToOrderShortageRecoveryQueryPort;
+import com.northwood.manufacturing.application.saga.WorkOrderShortageRecoveryQueryPort;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
 import com.northwood.shared.application.messaging.EventEnvelope;
@@ -21,26 +22,36 @@ import tools.jackson.databind.ObjectMapper;
  * Inbox handler for {@code inventory.GoodsReceived}. Builds the per-product
  * received-quantity map, asks the recovery query port for candidate
  * shortage-parked sagas, and for each candidate calls the manager to either
- * un-park (saga transitions back to {@code work_order_created}, picked up
- * next worker tick) or narrow the stashed shortage.
+ * un-park (saga transitions to {@code raw_material_reservation_requested}) or
+ * narrow the stashed shortage.
+ *
+ * <p>§2.41: on un-park this handler re-emits {@code RawMaterialReservationRequested}
+ * via {@link RawMaterialReservationRequestEmitter} (the same emitter the worker
+ * uses for the initial request) so inventory retries the reservation against the
+ * now-restocked materials. Mirrors the sales saga's {@code ReplenishmentFulfilledHandler}
+ * — the recovery lands straight at the reservation-requested state rather than
+ * bouncing through {@code work_order_created} for the worker to re-emit.
  */
 @Component
 public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
 
     public static final String CONSUMER_NAME = "manufacturing.make-to-order.goods-received";
 
-    private final MakeToOrderSagaManager sagaManager;
-    private final MakeToOrderShortageRecoveryQueryPort recovery;
+    private final WorkOrderSagaManager sagaManager;
+    private final WorkOrderShortageRecoveryQueryPort recovery;
+    private final RawMaterialReservationRequestEmitter reservationEmitter;
 
     public GoodsReceivedHandler(
         InboxPort inbox,
-        MakeToOrderSagaManager sagaManager,
-        MakeToOrderShortageRecoveryQueryPort recovery,
+        WorkOrderSagaManager sagaManager,
+        WorkOrderShortageRecoveryQueryPort recovery,
+        RawMaterialReservationRequestEmitter reservationEmitter,
         ObjectMapper json
     ) {
         super(inbox, json, GoodsReceived.class, GoodsReceived.EVENT_TYPE, CONSUMER_NAME);
         this.sagaManager = sagaManager;
         this.recovery = recovery;
+        this.reservationEmitter = reservationEmitter;
     }
 
     @Override
@@ -57,10 +68,14 @@ public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
         int unparkedCount = 0;
         int narrowedCount = 0;
         for (UUID sagaId : candidates) {
-            String newState = sagaManager.unparkOrNarrowShortage(sagaId, receivedByProduct);
-            if (WORK_ORDER_CREATED.equals(newState)) {
+            WorkOrderSagaManager.RecoveryOutcome outcome =
+                sagaManager.unparkOrNarrowShortage(sagaId, receivedByProduct);
+            if (RAW_MATERIAL_RESERVATION_REQUESTED.equals(outcome.state())) {
+                // Shortage fully covered — re-request reservation against the
+                // now-restocked materials (§2.41; mirrors the worker's emission).
+                reservationEmitter.emitFor(outcome.workOrderId());
                 unparkedCount++;
-            } else if (RAW_MATERIAL_SHORTAGE.equals(newState)) {
+            } else if (RAW_MATERIAL_SHORTAGE.equals(outcome.state())) {
                 narrowedCount++;
             }
         }

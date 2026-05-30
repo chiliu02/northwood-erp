@@ -25,13 +25,6 @@ public class StockItemController {
         this.service = service;
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<StockItemView> getById(@PathVariable UUID id) {
-        return service.findById(id)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
-    }
-
     @GetMapping("/by-product/{productId}")
     public ResponseEntity<StockItemView> getByProductId(@PathVariable UUID productId) {
         return service.findByProductId(productId)

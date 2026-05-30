@@ -89,17 +89,6 @@ public final class InMemoryWorkOrderRepository implements WorkOrderRepository {
         return out;
     }
 
-    @Override
-    public List<UUID> findActiveIdsForSalesOrder(UUID salesOrderHeaderId) {
-        List<UUID> out = new ArrayList<>();
-        for (WorkOrder w : store.values()) {
-            if (salesOrderHeaderId.equals(w.salesOrderHeaderId()) && !isTerminal(w.status())) {
-                out.add(w.id().value());
-            }
-        }
-        return out;
-    }
-
     private static boolean isTerminal(WorkOrder.Status status) {
         return status == WorkOrder.Status.COMPLETED
             || status == WorkOrder.Status.CLOSED

@@ -2,14 +2,14 @@ package com.northwood.manufacturing.application;
 
 import com.northwood.manufacturing.application.BomLookup.ActiveBom;
 import com.northwood.manufacturing.application.BomLookup.Component;
-import com.northwood.manufacturing.application.dto.ReleaseCommand;
+import com.northwood.manufacturing.application.dto.ReleaseForReplenishmentCommand;
 import com.northwood.manufacturing.domain.Bom;
 import com.northwood.manufacturing.domain.Routing;
 import com.northwood.manufacturing.domain.RoutingOperation;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderMaterial;
 import com.northwood.manufacturing.domain.WorkOrderOperation;
-import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
+import com.northwood.manufacturing.application.saga.WorkOrderSagaManager;
 import com.northwood.manufacturing.domain.WorkOrderRepository;
 import com.northwood.shared.application.exception.NotFoundException;
 import java.math.BigDecimal;
@@ -24,10 +24,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Release a work order against a sales-order line. Walks the active BOM:
- * {@code raw} components become {@code work_order_material} rows on this WO;
- * {@code sub_assembly} components recursively spawn child work orders (with
- * their own BOM + Routing snapshot) and a child make-to-order saga at
+ * Release a stock-replenishment work order (make-to-stock). Walks the active
+ * BOM: {@code raw} components become {@code work_order_material} rows on this
+ * WO; {@code sub_assembly} components recursively spawn child work orders (with
+ * their own BOM + Routing snapshot) and a child {@code work_order_saga} at
  * {@code work_order_created}, so each sub-assembly drives its own
  * raw-material-reservation flow exactly the same way the top-level WO does.
  *
@@ -36,6 +36,11 @@ import org.springframework.transaction.annotation.Transactional;
  * their {@code WorkOrderCreated} outbox writes flush together. Child sagas
  * are inserted at {@code work_order_created} with {@code work_order_id}
  * pre-attached so the next worker tick can advance them.
+ *
+ * <p>§2.37 Slice 3 removed the sales-order-bound {@code release(ReleaseCommand)}
+ * path: sales no longer drives manufacturing directly — manufactured
+ * sales-order shortages now flow through inventory's replenishment (make-to-
+ * stock), which lands here via {@link #releaseForReplenishment}.
  */
 @Service
 public class WorkOrderReleaseService {
@@ -67,13 +72,13 @@ public class WorkOrderReleaseService {
     private final WorkOrderRepository workOrders;
     private final RoutingQueryPort routings;
     private final BomLookup boms;
-    private final MakeToOrderSagaManager sagaManager;
+    private final WorkOrderSagaManager sagaManager;
 
     public WorkOrderReleaseService(
         WorkOrderRepository workOrders,
         RoutingQueryPort routings,
         BomLookup boms,
-        MakeToOrderSagaManager sagaManager
+        WorkOrderSagaManager sagaManager
     ) {
         this.workOrders = workOrders;
         this.routings = routings;
@@ -81,19 +86,64 @@ public class WorkOrderReleaseService {
         this.sagaManager = sagaManager;
     }
 
+    /**
+     * §2.35 Slice C / §2.37 Slice 1: release a stock-replenishment work order
+     * (make-to-stock — no sales-order line). Walks the active BOM with the same
+     * multi-level recursion as the make-to-order path ({@link #releaseInternal}):
+     * {@code raw} components become {@code work_order_material} rows; each
+     * {@code sub_assembly} component recursively spawns a child work order (its
+     * own BOM + routing snapshot) bound to its parent WO. Every work order —
+     * top-level and descendants — gets a {@code work_order_saga} seeded at
+     * {@code work_order_created} so the worker drives raw-material reservation →
+     * completion exactly like make-to-order. (Closes the §2.35 gap where
+     * replenishment WOs were created without a lifecycle saga and skipped
+     * sub-assemblies.)
+     *
+     * <p>The top-level WO carries the {@code replenishmentRequestId} and emits
+     * {@code manufacturing.ReplenishmentDispatched} alongside
+     * {@code WorkOrderCreated} (via {@link WorkOrder#releaseForReplenishment});
+     * children carry only {@code parentWorkOrderId} and emit
+     * {@code WorkOrderCreated}. The seeded sagas have a null sales-order pair
+     * (make-to-stock) — the schema permits it since §2.37 Slice 1.
+     *
+     * <p>Synchronous recursion inside this service's transaction: parent + all
+     * descendants + their sagas + every outbox write commit together, or none do.
+     */
     @Transactional
-    public WorkOrder release(ReleaseCommand command) {
-        return releaseInternal(command);
+    public WorkOrder releaseForReplenishment(ReleaseForReplenishmentCommand command) {
+        return releaseReplenishmentInternal(
+            command.workOrderNumber(),
+            command.replenishmentRequestId(),
+            /* parentWorkOrderId */ null,
+            command.finishedProductId(),
+            command.finishedProductSku(),
+            command.finishedProductName(),
+            command.plannedQuantity(),
+            command.sourceSalesOrderHeaderId()
+        );
     }
 
-    private WorkOrder releaseInternal(ReleaseCommand command) {
-        ActiveBom bom = boms.findActiveByFinishedProductId(command.finishedProductId())
-            .orElseThrow(() -> new BomNotFoundException(command.finishedProductId()));
-
-        Routing routing = routings.findActiveByFinishedProductId(command.finishedProductId())
-            .orElseThrow(() -> new RoutingNotFoundException(command.finishedProductId()));
-
-        BigDecimal planned = command.plannedQuantity();
+    /**
+     * Recursive core for the replenishment path. The root call passes a non-null
+     * {@code replenishmentRequestId} (and null parent) → the top-level WO that
+     * dispatches against the request; recursive child calls pass a non-null
+     * {@code parentWorkOrderId} (and null request) → sub-assembly WOs that emit
+     * {@code WorkOrderCreated} only.
+     */
+    private WorkOrder releaseReplenishmentInternal(
+        String workOrderNumber,
+        UUID replenishmentRequestId,
+        UUID parentWorkOrderId,
+        UUID finishedProductId,
+        String finishedProductSku,
+        String finishedProductName,
+        BigDecimal planned,
+        UUID sourceSalesOrderHeaderId
+    ) {
+        ActiveBom bom = boms.findActiveByFinishedProductId(finishedProductId)
+            .orElseThrow(() -> new BomNotFoundException(finishedProductId));
+        Routing routing = routings.findActiveByFinishedProductId(finishedProductId)
+            .orElseThrow(() -> new RoutingNotFoundException(finishedProductId));
 
         List<WorkOrderMaterial> materials = new ArrayList<>();
         List<Component> subAssemblyComponents = new ArrayList<>();
@@ -105,6 +155,53 @@ public class WorkOrderReleaseService {
             materials.add(buildMaterial(c, planned));
         }
 
+        List<WorkOrderOperation> operations = buildOperations(routing);
+
+        WorkOrder workOrder = replenishmentRequestId != null
+            ? WorkOrder.releaseForReplenishment(
+                workOrderNumber, replenishmentRequestId, sourceSalesOrderHeaderId,
+                finishedProductId, finishedProductSku, finishedProductName,
+                bom.bomHeaderId(), planned, materials, operations)
+            : WorkOrder.release(
+                workOrderNumber, /* salesOrderHeaderId */ null, /* salesOrderLineId */ null,
+                parentWorkOrderId, finishedProductId, finishedProductSku, finishedProductName,
+                bom.bomHeaderId(), planned, materials, operations);
+
+        workOrders.save(workOrder);
+
+        // Seed the WO-lifecycle saga at work_order_created with no sales order
+        // (make-to-stock) so the worker drives raw-material reservation +
+        // completion, exactly like make-to-order's sub-assembly children.
+        sagaManager.insertAttachedToWorkOrder(
+            /* salesOrderHeaderId */ null, /* salesOrderLineId */ null,
+            workOrder.id().value(), "{}"
+        );
+
+        log.info(
+            "released stock-replenishment work_order {} ({}) product={} (planned_qty={}, materials={}, ops={}, sub_assemblies={}, replenishment_request={}, parent={})",
+            workOrder.id().value(), workOrderNumber, finishedProductId,
+            planned, materials.size(), operations.size(), subAssemblyComponents.size(),
+            replenishmentRequestId, parentWorkOrderId
+        );
+
+        for (Component sub : subAssemblyComponents) {
+            BigDecimal childPlanned = scaledQuantity(sub, planned);
+            WorkOrder child = releaseReplenishmentInternal(
+                WorkOrder.NUMBER_PREFIX + UUID.randomUUID().toString().substring(0, WorkOrder.NUMBER_SUFFIX_LENGTH).toUpperCase(),
+                /* replenishmentRequestId */ null,
+                workOrder.id().value(),
+                sub.componentProductId(), sub.componentSku(), sub.componentName(),
+                childPlanned,
+                /* sourceSalesOrderHeaderId */ null
+            );
+            log.info("spawned child work_order {} for sub_assembly {} under parent {} ({} units)",
+                child.id().value(), sub.componentSku(), workOrder.id().value(), childPlanned);
+        }
+
+        return workOrder;
+    }
+
+    private List<WorkOrderOperation> buildOperations(Routing routing) {
         List<WorkOrderOperation> operations = new ArrayList<>();
         for (RoutingOperation op : routing.operations()) {
             operations.add(new WorkOrderOperation(
@@ -118,54 +215,7 @@ public class WorkOrderReleaseService {
                 WorkOrder.OperationStatus.PLANNED
             ));
         }
-
-        WorkOrder workOrder = WorkOrder.release(
-            command.workOrderNumber(),
-            command.salesOrderHeaderId(),
-            command.salesOrderLineId(),
-            command.parentWorkOrderId(),
-            command.finishedProductId(),
-            command.finishedProductSku(),
-            command.finishedProductName(),
-            bom.bomHeaderId(),
-            planned,
-            materials,
-            operations
-        );
-
-        workOrders.save(workOrder);
-        log.info(
-            "released work_order {} for sales_order_line={} (parent={}, planned_qty={}, materials={}, ops={}, sub_assemblies={})",
-            workOrder.id().value(), command.salesOrderLineId(), command.parentWorkOrderId(),
-            planned, materials.size(), operations.size(), subAssemblyComponents.size()
-        );
-
-        for (Component sub : subAssemblyComponents) {
-            BigDecimal childPlanned = scaledQuantity(sub, planned);
-            ReleaseCommand childCommand = new ReleaseCommand(
-                WorkOrder.NUMBER_PREFIX + UUID.randomUUID().toString().substring(0, WorkOrder.NUMBER_SUFFIX_LENGTH).toUpperCase(),
-                command.salesOrderHeaderId(),
-                command.salesOrderLineId(),
-                workOrder.id().value(),
-                sub.componentProductId(),
-                sub.componentSku(),
-                sub.componentName(),
-                childPlanned
-            );
-            WorkOrder child = releaseInternal(childCommand);
-            sagaManager.insertAttachedToWorkOrder(
-                command.salesOrderHeaderId(),
-                command.salesOrderLineId(),
-                child.id().value(),
-                "{}"
-            );
-            log.info(
-                "spawned child work_order {} for sub_assembly {} under parent {} ({} units)",
-                child.id().value(), sub.componentSku(), workOrder.id().value(), childPlanned
-            );
-        }
-
-        return workOrder;
+        return operations;
     }
 
     private WorkOrderMaterial buildMaterial(Component c, BigDecimal planned) {

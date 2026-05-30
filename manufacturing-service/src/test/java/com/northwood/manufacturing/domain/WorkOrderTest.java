@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.northwood.manufacturing.domain.events.OperationCompleted;
+import com.northwood.manufacturing.domain.events.ReplenishmentDispatched;
 import com.northwood.manufacturing.domain.events.WorkOrderCreated;
 import com.northwood.manufacturing.domain.events.WorkOrderManufacturingCompleted;
 import com.northwood.shared.domain.DomainEvent;
@@ -88,6 +89,58 @@ class WorkOrderTest {
             WorkOrder wo = release(parentId, List.of(op(10)));
             WorkOrderCreated e = (WorkOrderCreated) wo.pullPendingEvents().get(0);
             assertThat(e.parentWorkOrderId()).isEqualTo(parentId);
+        }
+
+        @Test void make_to_order_path_leaves_replenishmentRequestId_null() {
+            WorkOrder wo = release(List.of(op(10)));
+            assertThat(wo.replenishmentRequestId()).isNull();
+            WorkOrderCreated e = (WorkOrderCreated) wo.pullPendingEvents().get(0);
+            assertThat(e.replenishmentRequestId()).isNull();
+        }
+    }
+
+    @Nested
+    class ReleaseForReplenishment {
+        @Test void emits_both_WorkOrderCreated_and_ReplenishmentDispatched() {
+            UUID replenishmentRequestId = UUID.randomUUID();
+            UUID sourceSalesOrderHeaderId = UUID.randomUUID();
+            WorkOrder wo = WorkOrder.releaseForReplenishment(
+                "WO-REPL-001", replenishmentRequestId, sourceSalesOrderHeaderId,
+                FG_PRODUCT, "FG-X", "Finished X",
+                BOM, BigDecimal.ONE,
+                List.of(mat()), List.of(op(10))
+            );
+
+            assertThat(wo.replenishmentRequestId()).isEqualTo(replenishmentRequestId);
+            assertThat(wo.salesOrderHeaderId()).isNull();
+            assertThat(wo.salesOrderLineId()).isNull();
+            assertThat(wo.parentWorkOrderId()).isNull();
+            assertThat(wo.status()).isEqualTo(WorkOrder.Status.RELEASED);
+
+            List<DomainEvent> events = wo.pullPendingEvents();
+            assertThat(events).hasSize(2);
+            assertThat(events.get(0)).isInstanceOf(WorkOrderCreated.class);
+            assertThat(events.get(1)).isInstanceOf(ReplenishmentDispatched.class);
+
+            WorkOrderCreated created = (WorkOrderCreated) events.get(0);
+            assertThat(created.aggregateId()).isEqualTo(wo.id().value());
+            assertThat(created.salesOrderHeaderId()).isNull();
+            assertThat(created.salesOrderLineId()).isNull();
+            assertThat(created.replenishmentRequestId()).isEqualTo(replenishmentRequestId);
+            // §2.37 Slice 4: the originating SO is threaded onto WorkOrderCreated.
+            assertThat(created.sourceSalesOrderHeaderId()).isEqualTo(sourceSalesOrderHeaderId);
+
+            ReplenishmentDispatched dispatched = (ReplenishmentDispatched) events.get(1);
+            assertThat(dispatched.aggregateId()).isEqualTo(wo.id().value());
+            assertThat(dispatched.replenishmentRequestId()).isEqualTo(replenishmentRequestId);
+        }
+
+        @Test void rejects_null_replenishmentRequestId() {
+            assertThatThrownBy(() -> WorkOrder.releaseForReplenishment(
+                "WO", null, /* sourceSalesOrderHeaderId */ null,
+                FG_PRODUCT, "FG-X", "X", BOM, BigDecimal.ONE,
+                List.of(), List.of(op(10))
+            )).isInstanceOf(IllegalArgumentException.class);
         }
     }
 
@@ -265,15 +318,6 @@ class WorkOrderTest {
             WorkOrder wo = release(List.of(op(10)));
             assertThatThrownBy(() -> wo.applyReservationOutcome(WorkOrder.MaterialStatus.RESERVATION_PENDING))
                 .isInstanceOf(IllegalArgumentException.class);
-        }
-
-        @Test void noop_on_cancelled() {
-            WorkOrder wo = release(List.of(op(10)));
-            wo.pullPendingEvents();
-            wo.cancel("test");
-            wo.pullPendingEvents();
-            wo.applyReservationOutcome(WorkOrder.MaterialStatus.RESERVED);
-            assertThat(wo.materialStatus()).isEqualTo(WorkOrder.MaterialStatus.RESERVATION_PENDING);  // unchanged
         }
 
         @Test void noop_on_completed() {

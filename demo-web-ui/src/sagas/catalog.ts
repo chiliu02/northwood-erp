@@ -31,13 +31,15 @@ export const SAGA_CATALOGS: SagaCatalog[] = [
     servicePort: 8082,
     persona: "sarah",
     domainKeyLabel: "sales_order_header_id",
+    // Curated to the main on-shipment forward path. The prepayment
+    // (awaiting_prepayment_invoice → prepaid) and deposit
+    // (awaiting_deposit_invoice → deposit_invoiced → deposit_paid) branches
+    // sit before stock reservation, off `started`; they're deliberately left
+    // off the main indicator as pre-flow branches.
     forwardStages: [
       "started",
       "stock_reservation_requested",
       "stock_reservation_incomplete",
-      "manufacturing_requested",
-      "manufacturing_in_progress",
-      "manufacturing_completed",
       "ready_to_ship",
       "goods_shipped",
       "invoice_requested",
@@ -49,33 +51,20 @@ export const SAGA_CATALOGS: SagaCatalog[] = [
     terminalStates: ["completed", "compensated", "failed"],
   },
   {
-    type: "make_to_order",
-    label: "Make-to-order",
+    type: "work_order",
+    label: "Work order",
     service: "manufacturing",
     servicePort: 8084,
     persona: "linda",
     domainKeyLabel: "work_order_id",
     forwardStages: [
-      "started",
       "work_order_created",
-      "bom_exploded",
       "raw_material_reservation_requested",
       "raw_materials_reserved",
-      "production_released",
-      "production_started",
-      "production_completed",
-      "finished_goods_received",
       "completed",
     ],
-    sideRailStates: [
-      "raw_material_shortage",
-      "purchase_requisition_requested",
-      "waiting_for_purchased_materials",
-      "compensating",
-      "compensated",
-      "failed",
-    ],
-    terminalStates: ["completed", "compensated", "failed"],
+    sideRailStates: ["raw_material_shortage", "failed"],
+    terminalStates: ["completed", "failed"],
   },
   {
     type: "purchase_to_pay",

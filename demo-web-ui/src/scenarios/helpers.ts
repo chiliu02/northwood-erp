@@ -1,14 +1,16 @@
 // Shared step-builder helpers — used by every scenario.
 
-import { placeSalesOrder } from "@/api/commands";
+import { cancelSalesOrder, placeSalesOrder, recordCustomerPayment } from "@/api/commands";
 import {
   fetchCustomerInvoices,
+  fetchJournalEntries,
   fetchPurchaseOrderDetail,
   fetchSalesOrder360,
   fetchSalesOrderDetail,
   fetchSupplierInvoices,
   fetchWorkOrderDetail,
 } from "@/api/fetchers";
+import type { CustomerInvoiceView } from "@/api/types";
 import type { SagaRow } from "@/sagas/stream";
 import type { ScenarioContext, ScenarioStep } from "./types";
 
@@ -48,6 +50,77 @@ export function placeOrderStep(orderedQuantity: string): ScenarioStep {
   };
 }
 
+/** §2.34: place a deposit order (paymentTerms=deposit) with the seed customer + product. */
+export function placeDepositOrderStep(orderedQuantity: string, depositPercent: string): ScenarioStep {
+  return {
+    id: "place-deposit-order",
+    title: `Place a ${depositPercent}% deposit order for ${orderedQuantity} × FG-TABLE-001`,
+    hint: "POST /api/sales-cmd/sales-orders (paymentTerms=deposit) → sales-service",
+    kind: "auto",
+    run: async (ctx) => {
+      const result = await placeSalesOrder({
+        orderNumber: `SO-DEP-${Date.now()}`,
+        customerCode: ctx.customerCode ?? SEED.CUSTOMER_CODE,
+        currencyCode: "AUD",
+        paymentTerms: "deposit",
+        depositPercent,
+        lines: [{
+          productId:   ctx.productId   ?? SEED.PRODUCT_ID,
+          productSku:  ctx.productSku  ?? SEED.PRODUCT_SKU,
+          productName: ctx.productName ?? SEED.PRODUCT_NAME,
+          orderedQuantity,
+          unitPrice: ctx.unitPrice ?? "320",
+        }],
+      });
+      return { salesOrderHeaderId: result.id, orderedQuantity, depositPercent };
+    },
+  };
+}
+
+/**
+ * §2.34: find the order's up-front (deposit/prepayment) invoice — the only one
+ * created before shipment — and pay it in full. Stamps customerInvoiceHeaderId
+ * so the refund-verify step can find the refund journal by source-document id.
+ */
+export function payUpfrontInvoiceStep(): ScenarioStep {
+  return {
+    id: "pay-upfront-invoice",
+    title: "Pay the deposit invoice in full",
+    hint: "poll for the deposit invoice, then POST /api/payments/customer → finance",
+    kind: "auto",
+    run: async (ctx, signal) => {
+      if (!ctx.salesOrderHeaderId) throw new Error("no salesOrderHeaderId in context");
+      let invoice: CustomerInvoiceView | undefined;
+      await pollUntil(signal, 60_000, async () => {
+        const invoices = await fetchCustomerInvoices().catch(() => []);
+        invoice = invoices.find((i) => i.salesOrderHeaderId === ctx.salesOrderHeaderId);
+        return invoice != null;
+      });
+      await recordCustomerPayment({
+        paymentNumber: `PMT-DEP-${Date.now()}`,
+        customerInvoiceHeaderId: invoice!.id,
+        amount: invoice!.totalAmount,
+        paymentMethod: "bank_transfer",
+      });
+      return { customerInvoiceHeaderId: invoice!.id };
+    },
+  };
+}
+
+/** §1G.3 / §2.34: cancel the order (must be pre-shipment). */
+export function cancelOrderStep(reason: string): ScenarioStep {
+  return {
+    id: "cancel-order",
+    title: "Cancel the order",
+    hint: "POST /api/sales-cmd/sales-orders/{id}/cancel → sales-service",
+    kind: "auto",
+    run: async (ctx) => {
+      if (!ctx.salesOrderHeaderId) throw new Error("no salesOrderHeaderId in context");
+      await cancelSalesOrder(ctx.salesOrderHeaderId, { reason });
+    },
+  };
+}
+
 /** Poll the sales-fulfilment saga (sales-service) until the SO's saga is in one of the expected states. */
 export function waitForSalesSaga(expectedStates: string[], opts?: { stepId?: string; title?: string }): ScenarioStep {
   return {
@@ -67,31 +140,30 @@ export function waitForSalesSaga(expectedStates: string[], opts?: { stepId?: str
 }
 
 /**
- * Wait for the make-to-order saga(s) for this SO to reach an expected state.
+ * Wait for the work-order saga(s) for this SO to reach an expected state.
  * If `captureWorkOrderIds=true`, stamps the discovered WO ids onto the context.
  */
-export function waitForMakeToOrderSaga(expectedStates: string[], opts?: {
+export function waitForWorkOrderSaga(expectedStates: string[], opts?: {
   stepId?: string; title?: string; captureWorkOrderIds?: boolean;
 }): ScenarioStep {
   return {
     id: opts?.stepId ?? `wait-mto-saga-${expectedStates[0]}`,
-    title: opts?.title ?? `Wait until make-to-order saga reaches ${expectedStates.join(" / ")}`,
+    title: opts?.title ?? `Wait until work-order saga reaches ${expectedStates.join(" / ")}`,
     hint: "polling /api/sagas/manufacturing every 2s",
     kind: "auto",
     run: async (ctx, signal) => {
       if (!ctx.salesOrderHeaderId) throw new Error("no salesOrderHeaderId in context");
-      // First: wait for the SO 360 view to surface the WO ids (manufacturing
-      // ManufacturingDispatched populates that). Then poll mto sagas.
+      // Post-§2.37 the make-to-stock work order is created by inventory's
+      // replenishment (no ManufacturingDispatched / SO→WO binding). The
+      // work-order saga's domainKey is the work_order_id, not the SO, so we
+      // can't match on the SO directly — poll the manufacturing work-order
+      // sagas and accept any whose state is in `expectedStates` and whose
+      // updatedAt is at/after the order date (a loose recency check).
       let workOrderIds: string[] = [];
       await pollUntil(signal, 60_000, async () => {
         const rows = await fetchSagaRows("manufacturing");
-        // Match by sales-order header id via the SO 360 view, since the saga's
-        // domainKey is the work_order_id (not the SO).
         const so = await fetchSalesOrder360(ctx.salesOrderHeaderId!).catch(() => null);
         if (!so) return false;
-        // The saga rows are filtered by membership in mtoWorkOrderIds; for this
-        // helper, accept any saga whose state is in `expectedStates` AND whose
-        // updatedAt is after the SO's last_event_at (loose membership check).
         const matched = rows.filter((r) =>
           expectedStates.includes(r.state) &&
           (!so.lastEventAt || (r.updatedAt ?? "") >= (so.orderDate ?? "1970-01-01"))
@@ -208,11 +280,18 @@ export const customerPaymentRecordedForSo = async (ctx: ScenarioContext): Promis
   return inv != null && inv.status === "paid";
 };
 
+/** §2.34: a customer_refund journal (Dr 2110 / Cr Bank) has posted for the order's up-front invoice. */
+export const refundPostedForInvoice = async (ctx: ScenarioContext): Promise<boolean> => {
+  if (!ctx.customerInvoiceHeaderId) return false;
+  const journals = await fetchJournalEntries("customer_refund").catch(() => []);
+  return journals.some((j) => j.sourceDocumentId === ctx.customerInvoiceHeaderId);
+};
+
 // -------- Internals --------
 
 const SERVICE_TO_SAGA_TYPE: Record<"sales" | "manufacturing" | "purchasing", string> = {
   sales:         "sales_order_fulfilment",
-  manufacturing: "make_to_order",
+  manufacturing: "work_order",
   purchasing:    "purchase_to_pay",
 };
 

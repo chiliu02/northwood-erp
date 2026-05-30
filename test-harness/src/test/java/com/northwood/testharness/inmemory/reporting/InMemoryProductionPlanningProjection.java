@@ -67,13 +67,6 @@ public final class InMemoryProductionPlanningProjection implements ProductionPla
     }
 
     @Override
-    public void recordWorkOrderCancelled(UUID workOrderId, Instant occurredAt) {
-        Row r = row(workOrderId);
-        r.status = WorkOrderStatuses.CANCELLED;
-        r.lastEventAt = occurredAt;
-    }
-
-    @Override
     public void recordRawMaterialsReserved(UUID workOrderId, String reservationStatus, Instant occurredAt) {
         Row r = row(workOrderId);
         r.materialStatus = reservationStatus;

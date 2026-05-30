@@ -45,6 +45,17 @@ public interface CustomerInvoiceRepository {
      */
     boolean markRevenueRecognized(UUID customerInvoiceHeaderId);
 
+    /**
+     * §2.34. Stamp {@code refunded_at} on the invoice. Used by the
+     * cancellation-refund path so the same cancellation can't post the
+     * Dr 2110 / Cr 1000 Bank refund pair twice. UPDATEs only when the column
+     * is still null — concurrent posters land on "first wins, second no-ops".
+     *
+     * @return true if this call stamped the column, false if it was already
+     *         non-null.
+     */
+    boolean markRefunded(UUID customerInvoiceHeaderId);
+
     record PaymentSnapshot(
         UUID customerId,
         String customerName,

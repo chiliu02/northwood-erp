@@ -29,7 +29,8 @@ export function PlaceOrder() {
   const [customerCode, setCustomerCode] = useState(SEED_CUSTOMER_CODE);
   const [requestedDeliveryDate, setRequestedDeliveryDate] = useState("");
   const [currencyCode, setCurrencyCode] = useState("AUD");
-  const [paymentTerms, setPaymentTerms] = useState<"on_shipment" | "prepayment">("on_shipment");
+  const [paymentTerms, setPaymentTerms] = useState<"on_shipment" | "prepayment" | "cash_on_delivery" | "deposit">("on_shipment");
+  const [depositPercent, setDepositPercent] = useState("50");
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [submit, setSubmit] = useState<SubmitState>({ status: "idle" });
 
@@ -84,6 +85,7 @@ export function PlaceOrder() {
         requestedDeliveryDate: requestedDeliveryDate || null,
         currencyCode,
         paymentTerms,
+        depositPercent: paymentTerms === "deposit" ? depositPercent : null,
         lines: apiLines,
       });
       setSubmit({ status: "success", message: `placed ${result.orderNumber ?? orderNumber}` });
@@ -116,15 +118,22 @@ export function PlaceOrder() {
             <option value="EUR">EUR</option>
           </Select>
         </FieldRow>
-        <FieldRow label="Payment terms" required hint="On shipment = bill on dispatch (Northwood's credit-AR default). Prepayment = cash with order (lands in Slice B).">
+        <FieldRow label="Payment terms" required hint="On shipment = bill on dispatch (Northwood's credit-AR default). Prepayment = cash with order (invoice + pay before dispatch). COD = cash on delivery (invoice + payment auto-recorded at shipment). Deposit = part-payment up front, balance invoiced at shipment.">
           <Select
             value={paymentTerms}
-            onChange={(e) => setPaymentTerms(e.target.value as "on_shipment" | "prepayment")}
+            onChange={(e) => setPaymentTerms(e.target.value as "on_shipment" | "prepayment" | "cash_on_delivery" | "deposit")}
           >
             <option value="on_shipment">on_shipment</option>
             <option value="prepayment">prepayment</option>
+            <option value="cash_on_delivery">cash_on_delivery</option>
+            <option value="deposit">deposit</option>
           </Select>
         </FieldRow>
+        {paymentTerms === "deposit" && (
+          <FieldRow label="Deposit %" required hint="Up-front fraction (0–100); the balance invoices at shipment.">
+            <Input type="number" min="1" max="99" value={depositPercent} onChange={(e) => setDepositPercent(e.target.value)} />
+          </FieldRow>
+        )}
       </div>
 
       <div className="mt-6">

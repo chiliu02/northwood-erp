@@ -16,12 +16,14 @@ import java.util.UUID;
  * {@link StockReservationRequested} event.
  *
  * <p>{@code paymentTerms} is the wire-format value of the commercial terms
- * snapshotted from the customer at placement (overridable per order). One of
- * {@link #PAYMENT_TERMS_ON_SHIPMENT} or {@link #PAYMENT_TERMS_PREPAYMENT};
- * nullable for backward compatibility with in-flight messages produced before
- * §2.31 — consumers treat a null as {@code on_shipment}. Slice A (foundation)
- * just snapshots and projects the value; Slice B+ hangs the saga branch + GL
- * routing on it.
+ * snapshotted from the customer at placement (overridable per order) — a
+ * {@link com.northwood.sales.domain.PaymentTerms} {@code dbValue()}. Nullable
+ * for backward compatibility with in-flight messages produced before §2.31 —
+ * consumers treat a null as {@code on_shipment}.
+ *
+ * <p>{@code depositPercent} (§2.32) is the up-front fraction (0–100) for
+ * {@code deposit} orders — non-null only when {@code paymentTerms = 'deposit'};
+ * null for every other term.
  */
 public record SalesOrderPlaced(
     UUID eventId,
@@ -33,16 +35,12 @@ public record SalesOrderPlaced(
     String currencyCode,
     BigDecimal totalAmount,
     String paymentTerms,
+    BigDecimal depositPercent,
     List<PlacedLine> lines,
     Instant occurredAt
 ) implements DomainEvent {
 
     public static final String EVENT_TYPE = "sales.SalesOrderPlaced";
-
-    /** {@code paymentTerms} wire value — credit terms; invoice on shipment (default). */
-    public static final String PAYMENT_TERMS_ON_SHIPMENT = "on_shipment";
-    /** {@code paymentTerms} wire value — cash with order; invoice at placement, shipment gated on payment. */
-    public static final String PAYMENT_TERMS_PREPAYMENT = "prepayment";
 
     @Override public String eventType() { return EVENT_TYPE; }
 

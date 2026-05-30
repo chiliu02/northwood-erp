@@ -124,7 +124,7 @@ public final class SalesOrder {
      * Wire-format aggregate-type stamped onto {@code sales.outbox_message.aggregate_type}
      * for events this aggregate emits. Same-service outbox writers reference this
      * constant; cross-service emitters that target this aggregate type carry their own
-     * literal on the event class (see {@code ManufacturingDispatched.AGGREGATE_TYPE}).
+     * literal on the event class.
      */
     public static final String AGGREGATE_TYPE = SalesAggregateTypes.SALES_ORDER;
 
@@ -151,6 +151,11 @@ public final class SalesOrder {
      * a mutator.
      */
     private final PaymentTerms paymentTerms;
+    /**
+     * §2.32: up-front fraction (0,100] for {@link PaymentTerms#DEPOSIT} orders;
+     * null for every other term. Immutable, like {@link #paymentTerms}.
+     */
+    private final BigDecimal depositPercent;
     private final String currencyCode;
     private final BigDecimal exchangeRate;
     private BigDecimal subtotalAmount;
@@ -174,6 +179,7 @@ public final class SalesOrder {
         String currencyCode,
         BigDecimal exchangeRate,
         PaymentTerms paymentTerms,
+        BigDecimal depositPercent,
         List<SalesOrderLine> lines
     ) {
         Assert.notEmpty(lines, "at least one line is required");
@@ -190,6 +196,7 @@ public final class SalesOrder {
             Assert.notNull(currencyCode, "currencyCode"),
             exchangeRate == null ? BigDecimal.ONE : exchangeRate,
             Assert.notNull(paymentTerms, "paymentTerms"),
+            depositPercent,
             BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
             null,
             0L,
@@ -219,6 +226,7 @@ public final class SalesOrder {
             currencyCode,
             order.totalAmount,
             paymentTerms.dbValue(),
+            depositPercent,
             placedLines,
             Instant.now()
         ));
@@ -237,6 +245,7 @@ public final class SalesOrder {
         String currencyCode,
         BigDecimal exchangeRate,
         PaymentTerms paymentTerms,
+        BigDecimal depositPercent,
         BigDecimal subtotalAmount,
         BigDecimal taxAmount,
         BigDecimal totalAmount,
@@ -247,7 +256,7 @@ public final class SalesOrder {
         return new SalesOrder(
             id, orderNumber, customerId, customerCode, customerName,
             orderDate, requestedDeliveryDate, status, currencyCode, exchangeRate, paymentTerms,
-            subtotalAmount, taxAmount, totalAmount, cancelledAt, version, new ArrayList<>(lines)
+            depositPercent, subtotalAmount, taxAmount, totalAmount, cancelledAt, version, new ArrayList<>(lines)
         );
     }
 
@@ -255,6 +264,7 @@ public final class SalesOrder {
         SalesOrderId id, String orderNumber, UUID customerId, String customerCode, String customerName,
         LocalDate orderDate, LocalDate requestedDeliveryDate, Status status, String currencyCode, BigDecimal exchangeRate,
         PaymentTerms paymentTerms,
+        BigDecimal depositPercent,
         BigDecimal subtotalAmount, BigDecimal taxAmount, BigDecimal totalAmount, Instant cancelledAt, long version,
         List<SalesOrderLine> lines
     ) {
@@ -269,6 +279,7 @@ public final class SalesOrder {
         this.currencyCode = currencyCode;
         this.exchangeRate = exchangeRate;
         this.paymentTerms = paymentTerms;
+        this.depositPercent = depositPercent;
         this.subtotalAmount = subtotalAmount;
         this.taxAmount = taxAmount;
         this.totalAmount = totalAmount;
@@ -342,6 +353,7 @@ public final class SalesOrder {
             customerName,
             shipmentDate,
             Currencies.orBase(currencyCode),
+            paymentTerms.dbValue(),
             eventLines,
             Instant.now()
         ));
@@ -404,6 +416,7 @@ public final class SalesOrder {
     public String currencyCode()              { return currencyCode; }
     public BigDecimal exchangeRate()          { return exchangeRate; }
     public PaymentTerms paymentTerms()        { return paymentTerms; }
+    public BigDecimal depositPercent()        { return depositPercent; }
     public BigDecimal subtotalAmount()        { return subtotalAmount; }
     public BigDecimal taxAmount()             { return taxAmount; }
     public BigDecimal totalAmount()           { return totalAmount; }

@@ -4,25 +4,36 @@ import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.READY_TO_
 
 import com.northwood.sales.application.SalesOrderReadyToShipEmitter;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
+import com.northwood.sales.application.saga.SalesOrderLineSnapshotPort;
+import com.northwood.sales.application.saga.SalesOrderLineSnapshotPort.LineSnapshot;
 import com.northwood.inventory.domain.events.StockReserved;
 import com.northwood.sales.domain.SalesOrder;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
 import com.northwood.shared.application.messaging.EventEnvelope;
-import java.math.BigDecimal;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.UUID;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Inbox handler for {@code inventory.StockReserved}. Parses the payload,
- * extracts the per-line shortage map, asks the manager to advance the saga,
- * then projects the order header to {@code 'in_fulfilment'} (always, since
- * any StockReserved event means inventory has acted on the request). When the
- * manager reports a full-reservation shortcut to {@code ready_to_ship}, emits
+ * Inbox handler for {@code inventory.StockReserved}. Resolves which sales-order
+ * lines came back short, asks the manager to advance the saga, then projects
+ * the order header to {@code 'in_fulfilment'} (always, since any StockReserved
+ * event means inventory has acted on the request). When the manager reports a
+ * full-reservation shortcut to {@code ready_to_ship}, emits
  * {@code sales.SalesOrderReadyToShip} so reporting can advance
  * {@code order_status} (the shipment picker's filter).
+ *
+ * <p>§2.37 Slice 3: a partial/failed reservation no longer forwards anything to
+ * manufacturing — inventory has already raised the {@code ReplenishmentRequest}
+ * for each short line in the same transaction. This handler just hands the
+ * short sales-order-line ids to the saga so it can park awaiting their
+ * {@code ReplenishmentFulfilled} / {@code ReplenishmentCancelled}. The reply
+ * carries per-line {@code lineNumber}; the line ids are resolved from the
+ * order's line snapshots (positional line-number correlation, same as the rest
+ * of the fulfilment flow).
  */
 @Component
 public class StockReservedHandler extends AbstractInboxHandler<StockReserved> {
@@ -32,30 +43,33 @@ public class StockReservedHandler extends AbstractInboxHandler<StockReserved> {
     private final SalesOrderFulfilmentSagaManager sagaManager;
     private final SalesOrderHeaderStatusProjection statusProjection;
     private final SalesOrderReadyToShipEmitter readyToShipEmitter;
+    private final SalesOrderLineSnapshotPort lineSnapshots;
 
     public StockReservedHandler(
         InboxPort inbox,
         SalesOrderFulfilmentSagaManager sagaManager,
         SalesOrderHeaderStatusProjection statusProjection,
         SalesOrderReadyToShipEmitter readyToShipEmitter,
+        SalesOrderLineSnapshotPort lineSnapshots,
         ObjectMapper json
     ) {
         super(inbox, json, StockReserved.class, StockReserved.EVENT_TYPE, CONSUMER_NAME);
         this.sagaManager = sagaManager;
         this.statusProjection = statusProjection;
         this.readyToShipEmitter = readyToShipEmitter;
+        this.lineSnapshots = lineSnapshots;
     }
 
     @Override
     protected void apply(StockReserved payload, EventEnvelope envelope) {
-        Map<Integer, BigDecimal> shortage = extractShortage(payload);
-        String newState = sagaManager.applyStockReserved(payload.salesOrderId(), payload.status(), shortage);
+        Set<UUID> shortageLineIds = extractShortageLineIds(payload);
+        String newState = sagaManager.applyStockReserved(payload.salesOrderId(), payload.status(), shortageLineIds);
         statusProjection.markStatus(payload.salesOrderId(), SalesOrder.Status.IN_FULFILMENT);
 
-        // Full reservation shortcuts the saga straight to ready_to_ship (no
-        // manufacturing leg). Emit so reporting can advance order_status — the
-        // value the shipment picker filters on. Partial/failed return
-        // stock_reservation_incomplete and forward to manufacturing instead.
+        // Full reservation shortcuts the saga straight to ready_to_ship. Emit so
+        // reporting can advance order_status — the value the shipment picker
+        // filters on. Partial/failed park at stock_reservation_incomplete and
+        // wait for inventory's replenishment to fulfil.
         if (READY_TO_SHIP.equals(newState)) {
             readyToShipEmitter.emitReadyToShip(payload.salesOrderId());
         }
@@ -64,14 +78,27 @@ public class StockReservedHandler extends AbstractInboxHandler<StockReserved> {
             CONSUMER_NAME, payload.salesOrderId(), payload.status(), newState, payload.stockReservationId());
     }
 
-    private static Map<Integer, BigDecimal> extractShortage(StockReserved payload) {
-        Map<Integer, BigDecimal> shortage = new LinkedHashMap<>();
+    /**
+     * Sales-order-line ids of the lines the reservation came back short on.
+     * Resolves the reply's per-line {@code lineNumber}s against the order's line
+     * snapshots. Empty for a full reservation.
+     */
+    private Set<UUID> extractShortageLineIds(StockReserved payload) {
+        Set<Integer> shortLineNumbers = new LinkedHashSet<>();
         for (StockReserved.ReservedLine line : payload.lines()) {
-            BigDecimal qty = line.shortageQuantity();
-            if (qty != null && qty.signum() > 0) {
-                shortage.put(line.lineNumber(), qty);
+            if (line.shortageQuantity() != null && line.shortageQuantity().signum() > 0) {
+                shortLineNumbers.add(line.lineNumber());
             }
         }
-        return shortage;
+        if (shortLineNumbers.isEmpty()) {
+            return Set.of();
+        }
+        Set<UUID> ids = new LinkedHashSet<>();
+        for (LineSnapshot s : lineSnapshots.findLines(payload.salesOrderId())) {
+            if (shortLineNumbers.contains(s.lineNumber())) {
+                ids.add(s.salesOrderLineId());
+            }
+        }
+        return ids;
     }
 }

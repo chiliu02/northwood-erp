@@ -49,7 +49,6 @@ import tools.jackson.databind.ObjectMapper;
  *       then {@code → completed} when the last operation lands, persisting
  *       operation status + actual_minutes via the update path and emitting
  *       {@code OperationCompleted} + {@code WorkOrderManufacturingCompleted};</li>
- *   <li>{@code cancel} flipping to {@code cancelled} + the {@code WorkOrderCancelled} outbox;</li>
  *   <li>the {@code WHERE version = ?} optimistic lock → {@code OptimisticLockingFailureException}.</li>
  * </ul>
  */
@@ -168,21 +167,6 @@ class JdbcWorkOrderRepositoryIT {
     }
 
     @Test
-    void cancel_flips_to_cancelled_and_emits_outbox() {
-        WorkOrder wo = releasedWorkOrder("WO-CAN-001");
-        save(wo);
-
-        WorkOrder loaded = REPO.findById(wo.id()).orElseThrow();
-        loaded.cancel("demand pulled");
-        save(loaded);
-
-        WorkOrder r = REPO.findById(wo.id()).orElseThrow();
-        assertThat(r.status()).isEqualTo(WorkOrder.Status.CANCELLED);
-        assertThat(r.actualCompletedAt()).isNotNull();
-        assertThat(countOutbox(wo.id().value())).isEqualTo(2L); // WorkOrderCreated + WorkOrderCancelled
-    }
-
-    @Test
     void stale_version_update_raises_optimistic_lock_failure() {
         WorkOrder wo = releasedWorkOrder("WO-LOCK-001");
         save(wo);
@@ -190,10 +174,10 @@ class JdbcWorkOrderRepositoryIT {
         WorkOrder loadedA = REPO.findById(wo.id()).orElseThrow();
         WorkOrder loadedB = REPO.findById(wo.id()).orElseThrow();
 
-        loadedB.cancel("first");
+        loadedB.applyReservationOutcome(WorkOrder.MaterialStatus.RESERVED);
         save(loadedB); // version 1 → 2
 
-        loadedA.cancel("stale");
+        loadedA.applyReservationOutcome(WorkOrder.MaterialStatus.SHORTAGE);
         assertThatThrownBy(() -> save(loadedA))
             .isInstanceOf(OptimisticLockingFailureException.class);
     }

@@ -27,6 +27,7 @@ public class JdbcPurchaseRequisitionRepository implements PurchaseRequisitionRep
         PurchaseRequisition.SourceType.fromDb(rs.getString("source_type")),
         rs.getObject("source_work_order_id", UUID.class),
         rs.getObject("source_product_id", UUID.class),
+        rs.getObject("source_replenishment_request_id", UUID.class),
         PurchaseRequisition.Status.fromDb(rs.getString("status")),
         rs.getString("requested_by"),
         List.of(),
@@ -64,6 +65,7 @@ public class JdbcPurchaseRequisitionRepository implements PurchaseRequisitionRep
         List<PurchaseRequisition> matches = jdbc.query("""
             SELECT purchase_requisition_header_id, requisition_number,
                    source_type, source_product_id, source_work_order_id,
+                   source_replenishment_request_id,
                    status, requested_by, version
             FROM purchasing.purchase_requisition_header
             WHERE purchase_requisition_header_id = ?
@@ -84,6 +86,7 @@ public class JdbcPurchaseRequisitionRepository implements PurchaseRequisitionRep
         return Optional.of(PurchaseRequisition.reconstitute(
             stub.id(), stub.requisitionNumber(),
             stub.sourceType(), stub.sourceWorkOrderId(), stub.sourceProductId(),
+            stub.sourceReplenishmentRequestId(),
             stub.status(), stub.requestedBy(), lines, stub.version()
         ));
     }
@@ -96,6 +99,7 @@ public class JdbcPurchaseRequisitionRepository implements PurchaseRequisitionRep
         List<PurchaseRequisition> headers = jdbc.query("""
             SELECT purchase_requisition_header_id, requisition_number,
                    source_type, source_product_id, source_work_order_id,
+                   source_replenishment_request_id,
                    status, requested_by, version
             FROM purchasing.purchase_requisition_header
             ORDER BY created_at DESC
@@ -124,12 +128,14 @@ public class JdbcPurchaseRequisitionRepository implements PurchaseRequisitionRep
             INSERT INTO purchasing.purchase_requisition_header (
                 purchase_requisition_header_id, requisition_number,
                 source_type, source_product_id, source_work_order_id,
+                source_replenishment_request_id,
                 status, requested_by, version,
                 created_by, last_modified_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             pr.id().value(), pr.requisitionNumber(),
             pr.sourceType().dbValue(), pr.sourceProductId(), pr.sourceWorkOrderId(),
+            pr.sourceReplenishmentRequestId(),
             pr.status().dbValue(), pr.requestedBy(),
             1L,
             actor, actor

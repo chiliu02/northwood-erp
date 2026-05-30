@@ -16,9 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.PlatformTransactionManager;
 import tools.jackson.databind.ObjectMapper;
 
-import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -38,9 +36,8 @@ import static org.mockito.Mockito.*;
 class JdbcSalesOrderFulfilmentSagaManagerTest {
 
     private static final UUID SO = UUID.randomUUID();
-    private static final UUID WO_1 = UUID.randomUUID();
-    private static final UUID WO_2 = UUID.randomUUID();
-    private static final UUID PRODUCT = UUID.randomUUID();
+    private static final UUID LINE_1 = UUID.randomUUID();
+    private static final UUID LINE_2 = UUID.randomUUID();
 
     @Mock SalesOrderFulfilmentSagaPort sagas;
     @Mock PlatformTransactionManager txManager;
@@ -105,57 +102,43 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             SalesOrderFulfilmentSaga saga = sagaInState(STOCK_RESERVATION_REQUESTED);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyStockReserved(SO, "reserved", Map.of());
+            String state = manager.applyStockReserved(SO, "reserved", Set.of());
 
             assertThat(state).isEqualTo(READY_TO_SHIP);
             assertThat(saga.state()).isEqualTo(READY_TO_SHIP);
-            FulfilmentSagaData data = json.readValue(saga.dataJson(), FulfilmentSagaData.class);
-            assertThat(data.shortageByLineNumber()).isEmpty();
         }
 
-        @Test void partial_reservation_stashes_shortage() {
+        @Test void partial_reservation_parks_with_outstanding_lines() {
             SalesOrderFulfilmentSaga saga = sagaInState(STOCK_RESERVATION_REQUESTED);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            manager.applyStockReserved(SO, "partially_reserved", Map.of(10, new BigDecimal("2")));
+            manager.applyStockReserved(SO, "partially_reserved", Set.of(LINE_1));
 
             assertThat(saga.state()).isEqualTo(STOCK_RESERVATION_INCOMPLETE);
             FulfilmentSagaData data = json.readValue(saga.dataJson(), FulfilmentSagaData.class);
-            assertThat(data.shortageByLineNumber()).containsEntry(10, new BigDecimal("2"));
+            assertThat(data.outstandingReplenishmentLineIds()).containsExactly(LINE_1);
         }
 
-        @Test void failed_reservation_stashes_full_shortage() {
+        @Test void failed_reservation_parks_with_outstanding_lines() {
             SalesOrderFulfilmentSaga saga = sagaInState(STOCK_RESERVATION_REQUESTED);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            manager.applyStockReserved(SO, "failed", Map.of(10, new BigDecimal("3")));
+            manager.applyStockReserved(SO, "failed", Set.of(LINE_1, LINE_2));
 
             assertThat(saga.state()).isEqualTo(STOCK_RESERVATION_INCOMPLETE);
+            FulfilmentSagaData data = json.readValue(saga.dataJson(), FulfilmentSagaData.class);
+            assertThat(data.outstandingReplenishmentLineIds()).containsExactlyInAnyOrder(LINE_1, LINE_2);
         }
 
-        @Test void partial_reservation_without_shortage_map_throws() {
+        @Test void partial_reservation_without_short_lines_throws() {
             SalesOrderFulfilmentSaga saga = sagaInState(STOCK_RESERVATION_REQUESTED);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            assertThatThrownBy(() -> manager.applyStockReserved(SO, "partially_reserved", null))
+            assertThatThrownBy(() -> manager.applyStockReserved(SO, "partially_reserved", Set.of()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("partially_reserved")
                 .hasMessageContaining(SO.toString())
-                .hasMessageContaining("Inventory must include shortageByLineNumber");
-
-            assertThat(saga.state()).isEqualTo(STOCK_RESERVATION_REQUESTED);
-            verify(sagas, never()).update(any());
-        }
-
-        @Test void failed_reservation_with_empty_shortage_map_throws() {
-            SalesOrderFulfilmentSaga saga = sagaInState(STOCK_RESERVATION_REQUESTED);
-            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
-
-            assertThatThrownBy(() -> manager.applyStockReserved(SO, "failed", Map.of()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("failed")
-                .hasMessageContaining(SO.toString())
-                .hasMessageContaining("Inventory must include shortageByLineNumber");
+                .hasMessageContaining("Inventory must report the per-line shortage");
 
             assertThat(saga.state()).isEqualTo(STOCK_RESERVATION_REQUESTED);
             verify(sagas, never()).update(any());
@@ -164,185 +147,80 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
         @Test void throws_when_no_saga() {
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> manager.applyStockReserved(SO, "reserved", Map.of()))
+            assertThatThrownBy(() -> manager.applyStockReserved(SO, "reserved", Set.of()))
                 .isInstanceOf(IllegalStateException.class);
         }
     }
 
     @Nested
-    class ApplyWorkOrderCreated {
-        @Test void first_top_level_wo_advances_to_in_progress() {
-            SalesOrderFulfilmentSaga saga = sagaInState(MANUFACTURING_REQUESTED);
+    class ApplyReplenishmentFulfilled {
+        @Test void last_outstanding_line_re_enters_stock_reservation_requested() {
+            SalesOrderFulfilmentSaga saga = sagaInState(STOCK_RESERVATION_INCOMPLETE,
+                FulfilmentSagaData.none().withOutstandingReplenishmentLineIds(Set.of(LINE_1)));
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyWorkOrderCreated(SO, WO_1, null);
+            String state = manager.applyReplenishmentFulfilled(SO, LINE_1);
 
-            assertThat(state).isEqualTo(MANUFACTURING_IN_PROGRESS);
+            assertThat(state).isEqualTo(STOCK_RESERVATION_REQUESTED);
+            assertThat(saga.state()).isEqualTo(STOCK_RESERVATION_REQUESTED);
+        }
+
+        @Test void partial_fulfilment_holds_and_decrements() {
+            SalesOrderFulfilmentSaga saga = sagaInState(STOCK_RESERVATION_INCOMPLETE,
+                FulfilmentSagaData.none().withOutstandingReplenishmentLineIds(Set.of(LINE_1, LINE_2)));
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyReplenishmentFulfilled(SO, LINE_1);
+
+            assertThat(state).isEqualTo(STOCK_RESERVATION_INCOMPLETE);
             FulfilmentSagaData data = json.readValue(saga.dataJson(), FulfilmentSagaData.class);
-            assertThat(data.outstandingWorkOrderIds()).containsExactly(WO_1);
+            assertThat(data.outstandingReplenishmentLineIds()).containsExactly(LINE_2);
         }
 
-        @Test void subsequent_wo_just_registers() {
-            SalesOrderFulfilmentSaga saga = sagaInState(MANUFACTURING_IN_PROGRESS,
-                FulfilmentSagaData.none().withWorkOrderCreated(WO_1));
+        @Test void duplicate_fulfilment_is_idempotent_noop() {
+            SalesOrderFulfilmentSaga saga = sagaInState(STOCK_RESERVATION_INCOMPLETE,
+                FulfilmentSagaData.none().withOutstandingReplenishmentLineIds(Set.of(LINE_2)));
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyWorkOrderCreated(SO, WO_2, null);
+            String state = manager.applyReplenishmentFulfilled(SO, LINE_1);   // not outstanding
 
-            assertThat(state).isEqualTo(MANUFACTURING_IN_PROGRESS);
-            FulfilmentSagaData data = json.readValue(saga.dataJson(), FulfilmentSagaData.class);
-            assertThat(data.outstandingWorkOrderIds()).containsExactlyInAnyOrder(WO_1, WO_2);
+            assertThat(state).isEqualTo(STOCK_RESERVATION_INCOMPLETE);
+            verify(sagas, never()).update(any());
         }
 
-        @Test void sub_assembly_is_skipped_returns_null() {
-            String state = manager.applyWorkOrderCreated(SO, UUID.randomUUID(), UUID.randomUUID());
-
-            assertThat(state).isNull();
-            verifyNoInteractions(sagas);
-        }
-    }
-
-    @Nested
-    class ApplyWorkOrderManufacturingCompleted {
-        @Test void last_wo_completion_advances_to_ready_to_ship() {
-            SalesOrderFulfilmentSaga saga = sagaInState(MANUFACTURING_IN_PROGRESS,
-                FulfilmentSagaData.none()
-                    .withExpectedWorkOrderCount(1)
-                    .withWorkOrderCreated(WO_1));
+        @Test void late_delivery_on_advanced_saga_is_noop() {
+            SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyWorkOrderManufacturingCompleted(SO, WO_1, null);
+            String state = manager.applyReplenishmentFulfilled(SO, LINE_1);
 
             assertThat(state).isEqualTo(READY_TO_SHIP);
-        }
-
-        @Test void partial_completion_holds() {
-            SalesOrderFulfilmentSaga saga = sagaInState(MANUFACTURING_IN_PROGRESS,
-                FulfilmentSagaData.none()
-                    .withExpectedWorkOrderCount(2)
-                    .withWorkOrderCreated(WO_1)
-                    .withWorkOrderCreated(WO_2));
-            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
-
-            String state = manager.applyWorkOrderManufacturingCompleted(SO, WO_1, null);
-
-            assertThat(state).isEqualTo(MANUFACTURING_IN_PROGRESS);
-        }
-
-        @Test void sub_assembly_completion_returns_null() {
-            String state = manager.applyWorkOrderManufacturingCompleted(SO, UUID.randomUUID(), UUID.randomUUID());
-
-            assertThat(state).isNull();
-            verifyNoInteractions(sagas);
+            verify(sagas, never()).update(any());
         }
     }
 
     @Nested
-    class ApplyManufacturingDispatched {
-        @Test void all_rejected_flips_to_rejected() {
-            SalesOrderFulfilmentSaga saga = sagaInState(MANUFACTURING_REQUESTED);
+    class ApplyReplenishmentCancelled {
+        @Test void cancel_while_awaiting_replenishment_rejects() {
+            SalesOrderFulfilmentSaga saga = sagaInState(STOCK_RESERVATION_INCOMPLETE,
+                FulfilmentSagaData.none().withOutstandingReplenishmentLineIds(Set.of(LINE_1, LINE_2)));
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyManufacturingDispatched(SO, 0, 2);
+            String state = manager.applyReplenishmentCancelled(SO, LINE_1, "no active BOM");
 
             assertThat(state).isEqualTo(REJECTED);
-            assertThat(saga.currentStep()).isEqualTo("no_manufacturable_lines");
+            assertThat(saga.state()).isEqualTo(REJECTED);
+            assertThat(saga.currentStep()).isEqualTo("replenishment_cancelled");
         }
 
-        @Test void partial_rejection_flips_to_rejected() {
-            // §4.2 closure: any rejection rejects the whole order (was: silently
-            // stamp expectedWorkOrderCount=acceptedCount and proceed with the
-            // accepted lines, dropping the rejected one).
-            SalesOrderFulfilmentSaga saga = sagaInState(MANUFACTURING_REQUESTED);
+        @Test void late_cancel_on_advanced_saga_is_noop() {
+            SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyManufacturingDispatched(SO, 2, 3);
+            String state = manager.applyReplenishmentCancelled(SO, LINE_1, "no vendor");
 
-            assertThat(state).isEqualTo(REJECTED);
-            assertThat(saga.currentStep()).isEqualTo("partial_dispatch_rejection");
-        }
-
-        @Test void all_accepted_stamps_expected_count() {
-            SalesOrderFulfilmentSaga saga = sagaInState(MANUFACTURING_REQUESTED);
-            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
-
-            String state = manager.applyManufacturingDispatched(SO, 3, 3);
-
-            assertThat(state).isEqualTo(MANUFACTURING_REQUESTED);
-            FulfilmentSagaData data = json.readValue(saga.dataJson(), FulfilmentSagaData.class);
-            assertThat(data.expectedWorkOrderCount()).isEqualTo(3);
-        }
-    }
-
-    @Nested
-    class CrossPartitionRace {
-        // §2.6 — targeted regression for the cross-partition race fixed
-        // 2026-05-05. The race: with two top-level work orders, WO1's
-        // *Completed* reaches sales before WO2's *Created* (siblings on
-        // different Kafka partitions, no cross-partition ordering). For the
-        // instant after WO1 completes, `outstanding` is empty — and the
-        // legacy "outstanding empty AND completed non-empty" gate would read
-        // that as "all done" and advance to ready_to_ship while WO2 is still
-        // unbuilt. The fix stamps an expectedWorkOrderCount at dispatch time
-        // and gates on completed.size() >= expectedCount, which is
-        // order-independent: the empty-outstanding window can no longer trip
-        // the gate. This drives the adversarial ordering through the manager
-        // (not just the data object — see FulfilmentSagaDataTest for that)
-        // and asserts the saga holds, then advances only once both complete.
-        @Test void completion_before_sibling_creation_holds_then_advances() {
-            SalesOrderFulfilmentSaga saga = sagaInState(MANUFACTURING_REQUESTED);
-            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
-
-            // Dispatch: both lines accepted → expectedWorkOrderCount=2 stamped,
-            // saga stays in manufacturing_requested awaiting WO creation.
-            assertThat(manager.applyManufacturingDispatched(SO, 2, 2)).isEqualTo(MANUFACTURING_REQUESTED);
-
-            // WO1 created → first top-level WO advances to in_progress.
-            assertThat(manager.applyWorkOrderCreated(SO, WO_1, null)).isEqualTo(MANUFACTURING_IN_PROGRESS);
-
-            // THE RACE: WO1 completes before WO2 is created. With expectedCount
-            // set, the count gate (1 >= 2 == false) holds the saga; the legacy
-            // outstanding-set gate would have advanced here.
-            assertThat(manager.applyWorkOrderManufacturingCompleted(SO, WO_1, null))
-                .isEqualTo(MANUFACTURING_IN_PROGRESS);
-
-            // At the race moment outstanding is empty (WO1's completion cleared
-            // it) yet the saga has not advanced — the exact false-positive the
-            // legacy gate tripped on, now defused.
-            FulfilmentSagaData atRace = json.readValue(saga.dataJson(), FulfilmentSagaData.class);
-            assertThat(atRace.outstandingWorkOrderIds()).isEmpty();
-            assertThat(atRace.completedWorkOrderIds()).containsExactly(WO_1);
-
-            // WO2's late Created → registers without advancing.
-            assertThat(manager.applyWorkOrderCreated(SO, WO_2, null)).isEqualTo(MANUFACTURING_IN_PROGRESS);
-
-            // WO2 completes → completed.size() reaches expectedCount → advance.
-            assertThat(manager.applyWorkOrderManufacturingCompleted(SO, WO_2, null)).isEqualTo(READY_TO_SHIP);
-        }
-
-        @Test void completion_arriving_entirely_before_its_creation_does_not_advance() {
-            // Even more adversarial reordering: WO1's Completed arrives before
-            // its own Created. The count gate still holds (1 of 2), and the
-            // late Created is absorbed idempotently (WO already completed).
-            SalesOrderFulfilmentSaga saga = sagaInState(MANUFACTURING_REQUESTED);
-            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
-
-            assertThat(manager.applyManufacturingDispatched(SO, 2, 2)).isEqualTo(MANUFACTURING_REQUESTED);
-
-            // Completion before any Created — count gate (1 >= 2 == false) holds.
-            assertThat(manager.applyWorkOrderManufacturingCompleted(SO, WO_1, null))
-                .isEqualTo(MANUFACTURING_REQUESTED);
-
-            // Late Created for the already-completed WO1: idempotent no-op on
-            // the WO set, but it does advance requested → in_progress.
-            assertThat(manager.applyWorkOrderCreated(SO, WO_1, null)).isEqualTo(MANUFACTURING_IN_PROGRESS);
-            FulfilmentSagaData data = json.readValue(saga.dataJson(), FulfilmentSagaData.class);
-            assertThat(data.outstandingWorkOrderIds()).isEmpty();
-            assertThat(data.completedWorkOrderIds()).containsExactly(WO_1);
-
-            // Second WO runs its normal course → saga advances once count is met.
-            assertThat(manager.applyWorkOrderCreated(SO, WO_2, null)).isEqualTo(MANUFACTURING_IN_PROGRESS);
-            assertThat(manager.applyWorkOrderManufacturingCompleted(SO, WO_2, null)).isEqualTo(READY_TO_SHIP);
+            assertThat(state).isEqualTo(READY_TO_SHIP);
+            verify(sagas, never()).update(any());
         }
     }
 
@@ -432,34 +310,30 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
 
     @Nested
     class ApplyCancellationApplied {
-        @Test void inventory_ack_alone_does_not_complete() {
+        // §2.40: inventory is the sole compensation ack (manufacturing leg retired),
+        // so an inventory ack from compensating completes the compensation outright.
+        @Test void inventory_ack_from_compensating_completes_to_compensated() {
             SalesOrderFulfilmentSaga saga = sagaInState(COMPENSATING);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
             String state = manager.applyInventoryCancellationApplied(SO);
 
-            assertThat(state).isEqualTo(COMPENSATING);
-        }
-
-        @Test void manufacturing_ack_after_inventory_completes_to_compensated() {
-            SalesOrderFulfilmentSaga saga = sagaInState(COMPENSATING,
-                FulfilmentSagaData.none().withInventoryCancellationAcked());
-            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
-
-            String state = manager.applyManufacturingCancellationApplied(SO);
-
             assertThat(state).isEqualTo(COMPENSATED);
         }
 
+        @Test void inventory_ack_outside_compensating_does_not_complete() {
+            SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP);
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyInventoryCancellationApplied(SO);
+
+            assertThat(state).isEqualTo(READY_TO_SHIP);
+        }
+
         @Test void no_saga_throws_illegal_state() {
-            // Consistency with every other apply method — an orphan ack with no
-            // saga row is a genuine invariant violation that inbox redelivery /
-            // dead-letter handling should surface, not silently swallow.
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.empty());
 
-            org.assertj.core.api.Assertions.assertThatThrownBy(
-                () -> manager.applyInventoryCancellationApplied(SO)
-            )
+            assertThatThrownBy(() -> manager.applyInventoryCancellationApplied(SO))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("inventory.SalesOrderCancellationApplied");
             verify(sagas, never()).update(any());
@@ -467,22 +341,8 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
     }
 
     @Nested
-    class ActiveStates {
-        @Test void worker_polls_started_stock_reservation_incomplete_and_prepaid() {
-            // §2.31 Slice B: PREPAID joins the active-states set as the
-            // worker-pickup checkpoint between full payment receipt for a
-            // prepayment invoice and the StockReservationRequested emission.
-            Set<String> active = Set.of(STARTED, STOCK_RESERVATION_INCOMPLETE, PREPAID);
-            assertThat(active).containsExactlyInAnyOrder(STARTED, STOCK_RESERVATION_INCOMPLETE, PREPAID);
-        }
-    }
-
-    @Nested
     class ApplyCustomerInvoiceCreatedPrepaymentBranch {
         @Test void awaiting_prepayment_invoice_advances_to_invoice_created() {
-            // §2.31 Slice B: the prepayment path also lands on invoice_created
-            // through finance's CustomerInvoiceCreated, but its source state
-            // is awaiting_prepayment_invoice (vs goods_shipped on-shipment).
             SalesOrderFulfilmentSaga saga = sagaInState(AWAITING_PREPAYMENT_INVOICE,
                 FulfilmentSagaData.none().withPaymentTerms("prepayment"));
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
@@ -494,11 +354,41 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
     }
 
     @Nested
+    class ApplyDepositBranch {
+        @Test void awaiting_deposit_invoice_advances_to_deposit_invoiced() {
+            SalesOrderFulfilmentSaga saga = sagaInState(AWAITING_DEPOSIT_INVOICE,
+                FulfilmentSagaData.none().withPaymentTerms("deposit"));
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyCustomerInvoiceCreated(SO);
+
+            assertThat(state).isEqualTo(DEPOSIT_INVOICED);
+        }
+
+        @Test void full_settlement_of_deposit_invoice_advances_to_deposit_paid() {
+            SalesOrderFulfilmentSaga saga = sagaInState(DEPOSIT_INVOICED,
+                FulfilmentSagaData.none().withPaymentTerms("deposit"));
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyCustomerPaymentReceived(SO, true);
+
+            assertThat(state).isEqualTo(DEPOSIT_PAID);
+        }
+
+        @Test void partial_deposit_payment_stays_at_deposit_invoiced() {
+            SalesOrderFulfilmentSaga saga = sagaInState(DEPOSIT_INVOICED,
+                FulfilmentSagaData.none().withPaymentTerms("deposit"));
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyCustomerPaymentReceived(SO, false);
+
+            assertThat(state).isEqualTo(DEPOSIT_INVOICED);
+        }
+    }
+
+    @Nested
     class ApplyShipmentPostedPrepaymentBranch {
         @Test void prepayment_ready_to_ship_advances_through_goods_shipped_to_completed() {
-            // §2.31 Slice C: invoice + payment already done for prepayment;
-            // shipment is the final settlement event, no need to wait for
-            // CustomerInvoiceCreated or CustomerPaymentReceived afterwards.
             SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP,
                 FulfilmentSagaData.none().withPaymentTerms("prepayment"));
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
@@ -509,7 +399,6 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
         }
 
         @Test void on_shipment_ready_to_ship_stops_at_goods_shipped() {
-            // Regression: on-shipment path still waits for invoice / payment.
             SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP,
                 FulfilmentSagaData.none().withPaymentTerms("on_shipment"));
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
@@ -520,7 +409,6 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
         }
 
         @Test void legacy_no_payment_terms_stops_at_goods_shipped() {
-            // Pre-§2.31 sagas had no paymentTerms — treat as on_shipment.
             SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP, FulfilmentSagaData.none());
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
@@ -533,10 +421,6 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
     @Nested
     class ApplyCustomerPaymentReceivedPrepaymentBranch {
         @Test void full_settlement_of_prepayment_invoice_advances_to_prepaid() {
-            // §2.31 Slice B: full payment for a prepayment-terms order routes
-            // to prepaid (an ACTIVE worker-pickup state), not completed —
-            // the saga still has to walk stock reservation → manufacturing →
-            // shipment from there.
             SalesOrderFulfilmentSaga saga = sagaInState(INVOICE_CREATED,
                 FulfilmentSagaData.none().withPaymentTerms("prepayment"));
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
@@ -547,8 +431,6 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
         }
 
         @Test void full_settlement_on_shipment_still_completes() {
-            // §2.31 Slice B: regression check for the existing on-shipment
-            // path — paymentTerms="on_shipment" must still route to completed.
             SalesOrderFulfilmentSaga saga = sagaInState(INVOICE_CREATED,
                 FulfilmentSagaData.none().withPaymentTerms("on_shipment"));
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
@@ -559,9 +441,6 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
         }
 
         @Test void legacy_saga_without_payment_terms_still_completes() {
-            // Pre-§2.31-Slice-B sagas have no paymentTerms field on
-            // saga.data; the manager must treat that as on_shipment so
-            // already-in-flight orders complete cleanly across the upgrade.
             SalesOrderFulfilmentSaga saga = sagaInState(INVOICE_CREATED, FulfilmentSagaData.none());
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 

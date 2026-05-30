@@ -1,10 +1,11 @@
 package com.northwood.sales.application.inbox;
 
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.COMPLETED;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.DEPOSIT_PAID;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.PREPAID;
 
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
-import com.northwood.sales.application.SalesOrderPrepaymentSettledEmitter;
+import com.northwood.sales.application.SalesOrderUpfrontPaymentSettledEmitter;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.sales.domain.SalesOrder;
 import com.northwood.shared.application.inbox.InboxPort;
@@ -28,19 +29,19 @@ public class CustomerPaymentReceivedHandler extends AbstractInboxHandler<Custome
 
     private final SalesOrderFulfilmentSagaManager sagaManager;
     private final SalesOrderHeaderStatusProjection statusProjection;
-    private final SalesOrderPrepaymentSettledEmitter prepaymentSettledEmitter;
+    private final SalesOrderUpfrontPaymentSettledEmitter upfrontSettledEmitter;
 
     public CustomerPaymentReceivedHandler(
         InboxPort inbox,
         SalesOrderFulfilmentSagaManager sagaManager,
         SalesOrderHeaderStatusProjection statusProjection,
-        SalesOrderPrepaymentSettledEmitter prepaymentSettledEmitter,
+        SalesOrderUpfrontPaymentSettledEmitter upfrontSettledEmitter,
         ObjectMapper json
     ) {
         super(inbox, json, CustomerPaymentReceived.class, CustomerPaymentReceived.EVENT_TYPE, CONSUMER_NAME);
         this.sagaManager = sagaManager;
         this.statusProjection = statusProjection;
-        this.prepaymentSettledEmitter = prepaymentSettledEmitter;
+        this.upfrontSettledEmitter = upfrontSettledEmitter;
     }
 
     @Override
@@ -49,8 +50,10 @@ public class CustomerPaymentReceivedHandler extends AbstractInboxHandler<Custome
         String newState = sagaManager.applyCustomerPaymentReceived(payload.salesOrderHeaderId(), fullySettled);
         if (COMPLETED.equals(newState)) {
             statusProjection.markStatus(payload.salesOrderHeaderId(), SalesOrder.Status.COMPLETED);
-        } else if (PREPAID.equals(newState)) {
-            prepaymentSettledEmitter.emitPrepaymentSettled(payload.salesOrderHeaderId());
+        } else if (PREPAID.equals(newState) || DEPOSIT_PAID.equals(newState)) {
+            // §2.31 prepaid + §2.32 deposit_paid both settle the up-front payment
+            // → tell inventory to lift the shipment gate.
+            upfrontSettledEmitter.emitUpfrontPaymentSettled(payload.salesOrderHeaderId());
         }
     }
 }

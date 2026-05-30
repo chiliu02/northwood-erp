@@ -10,6 +10,12 @@ import java.util.UUID;
  * A new purchase requisition has been created. Carries enough detail for any
  * downstream consumer (e.g. a future approval workflow, a supplier-facing
  * notification) to act without having to query purchasing's schema.
+ *
+ * <p>§2.35: the {@code sourceReplenishmentRequestId} field is populated when
+ * the PR was raised by purchasing's {@code ReplenishmentRequestedHandler} in
+ * response to an {@code inventory.ReplenishmentRequested} event
+ * ({@code sourceType = 'stock_replenishment'}). Null for the other source
+ * types.
  */
 public record PurchaseRequisitionCreated(
     UUID eventId,
@@ -18,6 +24,7 @@ public record PurchaseRequisitionCreated(
     String sourceType,
     UUID sourceWorkOrderId,
     UUID sourceProductId,
+    UUID sourceReplenishmentRequestId,
     String status,
     List<RequestedLine> lines,
     Instant occurredAt
@@ -32,10 +39,16 @@ public record PurchaseRequisitionCreated(
      * producer-side enum is {@code PurchaseRequisition.SourceType}; same wire format,
      * different access path per the cross-service contract rule
      * (see {@code docs/conventions.md} → <i>Cross-service wire-format constants</i>).
+     *
+     * <p>{@code SOURCE_TYPE_WORK_ORDER_SHORTAGE} is retained for historical
+     * rows; new rows from Java are emitted with {@link #SOURCE_TYPE_STOCK_REPLENISHMENT}
+     * after the §2.35 decoupling. See {@code project_235_mfg_pur_decoupling}
+     * for the rationale.
      */
     public static final String SOURCE_TYPE_MANUAL = "manual";
     public static final String SOURCE_TYPE_LOW_STOCK = "low_stock";
     public static final String SOURCE_TYPE_WORK_ORDER_SHORTAGE = "work_order_shortage";
+    public static final String SOURCE_TYPE_STOCK_REPLENISHMENT = "stock_replenishment";
 
     @Override public String eventType() { return EVENT_TYPE; }
 

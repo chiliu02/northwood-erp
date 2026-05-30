@@ -15,6 +15,9 @@ export interface ScenarioContext {
   orderedQuantity?: string;
   workOrderIds?: string[];
   purchaseOrderHeaderId?: string;
+  /** §2.34: the up-front (deposit/prepayment) invoice paid then refunded on cancel. */
+  customerInvoiceHeaderId?: string;
+  depositPercent?: string;
 }
 
 export type StepStatus = "pending" | "running" | "verifying" | "completed" | "skipped" | "failed";

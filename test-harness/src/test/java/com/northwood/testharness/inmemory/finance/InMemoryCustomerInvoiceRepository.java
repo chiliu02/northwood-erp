@@ -21,6 +21,7 @@ public final class InMemoryCustomerInvoiceRepository implements CustomerInvoiceR
     private final Map<UUID, CustomerInvoice> store = new HashMap<>();
     private final Map<UUID, BigDecimal> paidByInvoice = new HashMap<>();
     private final java.util.Set<UUID> revenueRecognized = new java.util.HashSet<>();
+    private final java.util.Set<UUID> refunded = new java.util.HashSet<>();
     private final OutboxPort outbox;
     private final ObjectMapper json;
 
@@ -92,6 +93,11 @@ public final class InMemoryCustomerInvoiceRepository implements CustomerInvoiceR
     @Override
     public boolean markRevenueRecognized(UUID customerInvoiceHeaderId) {
         return revenueRecognized.add(customerInvoiceHeaderId);
+    }
+
+    @Override
+    public boolean markRefunded(UUID customerInvoiceHeaderId) {
+        return refunded.add(customerInvoiceHeaderId);
     }
 
     /**

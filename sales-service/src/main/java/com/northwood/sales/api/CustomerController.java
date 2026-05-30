@@ -7,7 +7,6 @@ import com.northwood.sales.api.dto.DeactivateCustomerRequest;
 import com.northwood.sales.api.dto.RegisterCustomerRequest;
 import com.northwood.sales.application.CustomerService;
 import com.northwood.sales.application.dto.CustomerView;
-import com.northwood.sales.domain.PaymentTerms;
 import com.northwood.shared.api.security.RequireSalesClerk;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -39,9 +38,7 @@ public class CustomerController {
             request.customerCode(), request.name(),
             request.email(), request.phone(),
             request.billingAddress(), request.shippingAddress(),
-            request.defaultPaymentTerms() == null
-                ? null
-                : PaymentTerms.fromDb(request.defaultPaymentTerms())
+            request.defaultPaymentTerms()
         );
         return ResponseEntity
             .created(URI.create("/api/customers/" + view.customerId()))

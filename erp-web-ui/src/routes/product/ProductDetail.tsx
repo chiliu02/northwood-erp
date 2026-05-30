@@ -290,7 +290,7 @@ function ReorderPolicyDialog({ open, product, onClose, onSuccess }: DialogProps)
     <ConfirmDialog
       open={open}
       title="Set reorder policy"
-      message={<>Updates the replenishment thresholds on <strong>{product.sku}</strong>. Inventory's stock_item projection picks this up via <code>product.ReorderPolicyChanged</code>.</>}
+      message={<>Updates the replenishment thresholds on <strong>{product.sku}</strong>. Inventory's product_card projection picks this up via <code>product.ReorderPolicyChanged</code>.</>}
       confirmLabel="Save"
       busy={mutation.isPending}
       onCancel={onClose}

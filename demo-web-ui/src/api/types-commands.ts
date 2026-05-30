@@ -7,8 +7,10 @@ export interface PlaceOrderRequest {
   customerCode: string;
   requestedDeliveryDate?: string | null;     // ISO date
   currencyCode: string;
-  /** 'on_shipment' | 'prepayment'. Omit to inherit the customer's default. */
+  /** 'on_shipment' | 'prepayment' | 'cash_on_delivery' | 'deposit'. Omit to inherit the customer's default. */
   paymentTerms?: string | null;
+  /** §2.32: up-front fraction (0,100) for deposit orders; null/omit otherwise. */
+  depositPercent?: string | null;
   lines: PlaceOrderLine[];
 }
 export interface PlaceOrderLine {

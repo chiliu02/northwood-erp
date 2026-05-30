@@ -21,7 +21,7 @@ Read this way, only the `finance` schema is "the accounting service" because it 
 
 **Where the analogy stops.** ERP also has coordination concerns that aren't accounting:
 
-- **Workflow** — sagas (`sales_order_fulfilment`, `make_to_order`, `purchase_to_pay`) orchestrate multi-step business transactions across humans and services. A saga is a multi-leg journal entry that may take days to balance, with compensation as the reverse-posting mechanism.
+- **Workflow** — sagas (`sales_order_fulfilment`, `work_order`, `purchase_to_pay`) orchestrate multi-step business transactions across humans and services. A saga is a multi-leg journal entry that may take days to balance, with compensation as the reverse-posting mechanism.
 - **Role-based UX** — `@PreAuthorize` + per-persona screens (`erp-web-ui`) are human-factors design, not bookkeeping.
 - **Forward-looking computation** — ATP checks against `stock_balance`, the planned production-planning-board view, materials-cost rollups. Real ERPs have MRP runs and capacity scheduling here; Northwood deliberately stops short.
 
@@ -82,7 +82,7 @@ Event-driven systems trade direct call graphs for decoupled producers and consum
 |---|---|
 | `<Event>.EVENT_TYPE` constants for every event type string | *Events jars* section below |
 | `<AggregateRoot>.AGGREGATE_TYPE` (or `<Event>.AGGREGATE_TYPE` for cross-service / no-aggregate cases) for every outbox `aggregate_type` string | `docs/sagas.md` § *Saga manager class shape* |
-| Distinct Java class per wire-format suffix, even when the wire format would collide (see `InventorySalesOrderCancellationApplied` / `ManufacturingSalesOrderCancellationApplied`) | Javadoc on each affected event class |
+| Distinct Java class per wire-format suffix, even when the wire format would collide (see `manufacturing.ReplenishmentUndispatchable` / `purchasing.ReplenishmentUndispatchable`) | Javadoc on each affected event class |
 | Each inbox handler passes `<Event>.class` + `<Event>.EVENT_TYPE` to its `AbstractInboxHandler` constructor — registration is a structural Java reference | *Events jars* section below |
 | Plain Java imports per type (no wildcards, no FQN inline) so the import block stays a faithful TOC | This section + IDE convention |
 
@@ -154,14 +154,15 @@ When an event is appended to the outbox, the `aggregate_type` column (and the ma
 - **(b) Source authority** — the emitter is the natural source of knowledge for that fact (it has inputs no other module can synthesize from its own state).
 - **(c) No invariant claim** — the emitter isn't claiming jurisdiction over the named aggregate's invariants (state-machine, lifecycle, business rules).
 
-**Northwood examples that pass.** Two events in the system today are cross-context-stamped, both deliberately:
+**Northwood example that passes.** One event in the system today is cross-context-stamped, deliberately:
 
-- **`ManufacturingDispatched` stamped `SalesOrder`** (emitted from `ManufacturingRequestedHandler` in manufacturing-service). Manufacturing learns per-line accept/reject outcomes by joining its own `product_replenishment` projection + active-BOM lookup — knowledge only manufacturing has — but the resulting fact is what the SalesOrder needs to advance the fulfilment saga. Passes (a) "SalesOrder is the subject," (b) "manufacturing is the only source of the accept/reject decision," (c) "manufacturing doesn't claim ownership of SalesOrder's state-machine — it just reports an outcome."
 - **`ProductMaterialsCostComputed` stamped `Product`** (emitted from `MaterialsCostRollupService` in manufacturing-service). Manufacturing has the rollup inputs (vendor prices + active BOM); the conclusion is a fact about a Product. Passes all three: Product is the subject, manufacturing is uniquely positioned to compute the value, no claim on Product's lifecycle invariants.
+
+(A second example, **`ManufacturingDispatched` stamped `SalesOrder`**, was retired in §2.37 when sales stopped routing shortages through manufacturing — but it remains a clean illustration of the rule: manufacturing was the only source of the per-line accept/reject decision, the fact was what the SalesOrder needed to advance, and it claimed no ownership of SalesOrder's state machine.)
 
 **Northwood counter-examples that would fail.** A hypothetical "manufacturing emits `ProductDiscontinued`" would violate (b) and (c): manufacturing has no special knowledge of why a product should be discontinued, and discontinuation is a Product lifecycle decision. Same logic applies to "purchasing emits `SupplierBlocked`" — that's a Supplier-aggregate lifecycle event that purchasing observes but doesn't decide. Such cases should emit a module-A-owned event (e.g. `BlockingRecommended`) and let the aggregate's owner consume it and decide whether to flip lifecycle state.
 
-**Happy consequence: Kafka partition co-location.** Because `aggregate_type` + `aggregate_id` together drive the partition key, cross-context stamping naturally co-locates every event for a saga's correlation aggregate onto one partition (`StockReserved` → `WorkOrderCreated` → `ManufacturingDispatched` → `ShipmentPosted` all keyed by the same `SalesOrder` id). The sales fulfilment saga consumes the lot in order without cross-partition joins. This is a payoff of correct modeling, not the *reason* for the choice — the modeling rule stands on its own. If you ever find yourself reaching for cross-context stamping purely for partition reasons (criteria (a)/(b)/(c) don't all pass), invent a producer-owned aggregate for the event instead and accept the cross-partition cost or design the consumer to tolerate it.
+**Happy consequence: Kafka partition co-location.** Because `aggregate_type` + `aggregate_id` together drive the partition key, cross-context stamping naturally co-locates every event for a saga's correlation aggregate onto one partition (`StockReserved` → `ShipmentPosted` → `CustomerInvoiceCreated` → `CustomerPaymentReceived` all keyed by the same `SalesOrder` id). The sales fulfilment saga consumes the lot in order without cross-partition joins. This is a payoff of correct modeling, not the *reason* for the choice — the modeling rule stands on its own. If you ever find yourself reaching for cross-context stamping purely for partition reasons (criteria (a)/(b)/(c) don't all pass), invent a producer-owned aggregate for the event instead and accept the cross-partition cost or design the consumer to tolerate it.
 
 ## DDD layering inside a service (the product-service template)
 

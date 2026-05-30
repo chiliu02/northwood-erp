@@ -35,6 +35,7 @@ class GoodsReceiptServiceTest {
     @Mock StockMovementWriter movements;
     @Mock WarehouseLookup warehouses;
     @Mock PurchaseOrderLineFactsProjection purchaseOrderLineFacts;
+    @Mock com.northwood.inventory.domain.ReplenishmentRequestRepository replenishmentRequests;
 
     private GoodsReceiptService service;
 
@@ -46,7 +47,10 @@ class GoodsReceiptServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new GoodsReceiptService(receipts, stockBalances, movements, warehouses, purchaseOrderLineFacts);
+        service = new GoodsReceiptService(
+            receipts, stockBalances, movements, warehouses,
+            purchaseOrderLineFacts, replenishmentRequests
+        );
     }
 
     private PostGoodsReceiptCommand cmd(String warehouseCode, List<GoodsReceiptLineRequest> lines) {

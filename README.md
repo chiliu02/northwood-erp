@@ -27,7 +27,7 @@ Northwood/
 ├── product-service/              SKUs, pricing, reorder policy (Material Master / Shape A hub)
 ├── sales-service/                Sales orders + sales_order_fulfilment_saga
 ├── inventory-service/            Stock balances, reservations, goods receipts, shipments
-├── manufacturing-service/        Work orders, BOMs, routing + make_to_order_saga
+├── manufacturing-service/        Work orders, BOMs, routing + work_order_saga
 ├── purchasing-service/           POs, requisitions, supplier prices + purchase_to_pay_saga
 ├── finance-service/              AP/AR invoices, payments, journal entries (perpetual inventory)
 ├── reporting-service/            Six read-side projections, inbox-only

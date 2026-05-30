@@ -13,7 +13,7 @@ import java.util.UUID;
  * <ul>
  *   <li>Purchasing matches receipts against PO lines (bumps
  *       {@code received_quantity}, advances P2P saga).</li>
- *   <li>Manufacturing un-parks any make-to-order saga in
+ *   <li>Manufacturing un-parks any work-order saga in
  *       {@code raw_material_shortage} whose work-order materials include the
  *       received product.</li>
  * </ul>

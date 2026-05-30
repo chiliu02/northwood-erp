@@ -135,7 +135,7 @@ class JdbcWorkOrderRepositoryMaterialStatusIT {
     private WorkOrder reconstituteForUpdate() {
         return WorkOrder.reconstitute(
             WorkOrderId.of(workOrderId), "WO-IT",
-            null, null, null,
+            null, null, null, null,
             SEED_FG_PRODUCT_ID, "FG-TABLE-001", "Wooden Dining Table",
             SEED_BOM_HEADER_ID, BigDecimal.ONE,
             WorkOrder.Status.RELEASED, WorkOrder.MaterialStatus.RESERVATION_PENDING,

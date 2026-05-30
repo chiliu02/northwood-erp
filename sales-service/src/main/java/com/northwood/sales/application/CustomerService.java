@@ -61,11 +61,15 @@ public class CustomerService {
         String customerCode, String name,
         String email, String phone,
         String billingAddress, String shippingAddress,
-        PaymentTerms defaultPaymentTerms
+        String defaultPaymentTerms
     ) {
+        // Parse the wire-format term here so the controller (api/) stays free of
+        // the domain enum — mirrors product-service's ProductService.
+        PaymentTerms terms = defaultPaymentTerms == null
+            ? PaymentTerms.ON_SHIPMENT
+            : PaymentTerms.fromDb(defaultPaymentTerms);
         Customer customer = Customer.register(
-            customerCode, name, email, phone, billingAddress, shippingAddress,
-            defaultPaymentTerms == null ? PaymentTerms.ON_SHIPMENT : defaultPaymentTerms
+            customerCode, name, email, phone, billingAddress, shippingAddress, terms
         );
         customers.save(customer);
         return CustomerView.from(customer);

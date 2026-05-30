@@ -51,6 +51,17 @@ public final class Payment {
     public static final String AGGREGATE_TYPE = FinanceAggregateTypes.PAYMENT;
 
     /**
+     * Prefix for auto-generated payment numbers (parallel to other aggregates'
+     * {@code NUMBER_PREFIX}). Operator-recorded payments supply their own
+     * number via the command; system-recorded payments (the §2.33 COD
+     * auto-payment) mint one as {@code NUMBER_PREFIX + }random-suffix.
+     */
+    public static final String NUMBER_PREFIX = "PAY-";
+
+    /** Character count of the random suffix appended to {@link #NUMBER_PREFIX}. */
+    public static final int NUMBER_SUFFIX_LENGTH = 8;
+
+    /**
      * Payment method. Mirrors the schema CHECK on
      * {@code finance.payment.payment_method}.
      */

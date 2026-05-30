@@ -49,6 +49,7 @@ public class StockReservationService {
     private final StockBalanceWriter stockBalances;
     private final StockBalanceLookup balanceLookup;
     private final WarehouseLookup warehouses;
+    private final ReplenishmentDetectionService replenishmentDetection;
     private final OutboxAppender outbox;
 
     public StockReservationService(
@@ -56,12 +57,14 @@ public class StockReservationService {
         StockBalanceWriter stockBalances,
         StockBalanceLookup balanceLookup,
         WarehouseLookup warehouses,
+        ReplenishmentDetectionService replenishmentDetection,
         OutboxAppender outbox
     ) {
         this.stockReservations = stockReservations;
         this.stockBalances = stockBalances;
         this.balanceLookup = balanceLookup;
         this.warehouses = warehouses;
+        this.replenishmentDetection = replenishmentDetection;
         this.outbox = outbox;
     }
 
@@ -69,14 +72,43 @@ public class StockReservationService {
     public void reserveForSalesOrder(StockReservationRequested payload) {
         UUID warehouseId = warehouses.findIdByCode(payload.warehouseCode() == null ? WarehouseCodes.MAIN : payload.warehouseCode());
 
+        // §2.36 Slice E retry support: a SO saga that landed at
+        // purchasing_requested and was un-parked by a ReplenishmentFulfilled
+        // re-emits StockReservationRequested to retry reservation against the
+        // now-restocked inventory. The schema's UNIQUE on
+        // stock_reservation_header.sales_order_header_id blocks a second
+        // insert, so drop any prior reservation for this SO and roll back the
+        // reserved_quantity bumps it made before creating the new one. Mirror
+        // of the work-order retry path that's been in place since the §2.9
+        // shortage-recovery work.
+        cancelPriorSalesOrderReservation(payload.salesOrderId(), warehouseId);
+
         List<StockReservationLine> lines = new ArrayList<>();
         for (StockReservationRequested.RequestedLine req : payload.lines()) {
-            lines.add(reserveOneLine(
+            StockReservationLine line = reserveOneLine(
                 warehouseId,
                 UUID.randomUUID(),
                 req.productId(), req.productSku(), req.productName(),
                 req.requestedQuantity()
-            ));
+            );
+            lines.add(line);
+
+            // §2.37 Slice 3: inventory is the single make-vs-buy decision +
+            // trigger point. Any line short on stock raises its replenishment
+            // in THIS transaction (routing manufactured → manufacturing /
+            // purchased → purchasing itself) with the sales-order back-reference
+            // stamped, so the eventual ReplenishmentFulfilled un-parks the saga
+            // (retry reservation) and ReplenishmentCancelled rejects the order.
+            // Sales no longer drives manufacturing first — it just waits.
+            if (line.shortageQuantity().signum() > 0) {
+                replenishmentDetection.raiseForSalesOrderShortage(
+                    req.productId(),
+                    warehouseId,
+                    line.shortageQuantity(),
+                    payload.salesOrderId(),
+                    req.salesOrderLineId()
+                );
+            }
         }
 
         StockReservation reservation = StockReservation.forSalesOrder(
@@ -94,7 +126,7 @@ public class StockReservationService {
     public void reserveForWorkOrder(RawMaterialReservationRequested payload) {
         UUID warehouseId = warehouses.findIdByCode(payload.warehouseCode() == null ? WarehouseCodes.MAIN : payload.warehouseCode());
 
-        // Phase 3 retry support: a make-to-order saga that previously landed
+        // Phase 3 retry support: a work-order saga that previously landed
         // at raw_material_shortage will re-emit the reservation request after
         // a goods receipt unblocks it. The schema's UNIQUE on
         // stock_reservation_header.work_order_id blocks a second insert, so
@@ -156,25 +188,6 @@ public class StockReservationService {
     }
 
     /**
-     * Release the raw-material reservation tied to a cancelled work order.
-     * Decrements the matching {@code stock_balance.reserved_quantity} bumps
-     * and marks the reservation header status {@code 'released'}. Idempotent
-     * against the absence of a reservation (e.g. a WO cancelled before its
-     * raw materials were reserved). Doesn't emit an event — manufacturing's
-     * cancel-applied ack to the sales saga doesn't depend on this.
-     */
-    @Transactional
-    public void releaseForWorkOrder(UUID workOrderId) {
-        Optional<UUID> headerId = stockReservations.findActiveHeaderIdForWorkOrder(workOrderId);
-        if (headerId.isEmpty()) {
-            log.info("no live raw-material reservation to release for work_order={}", workOrderId);
-            return;
-        }
-        unwindReservation(headerId.get());
-        log.info("released raw-material reservation {} for work_order={}", headerId.get(), workOrderId);
-    }
-
-    /**
      * Roll back the {@code stock_balance.reserved_quantity} bumps for every
      * line of {@code headerId}, then mark the reservation header
      * {@code 'released'}. Shared subroutine for both release paths.
@@ -203,6 +216,26 @@ public class StockReservationService {
         // UNIQUE on stock_reservation_header.work_order_id.
         stockReservations.deleteHeaderAndLines(id);
         log.info("cancelled prior reservation {} for work_order={} (retry)", id, workOrderId);
+    }
+
+    /**
+     * §2.36 Slice E: sibling of {@link #cancelPriorReservationFor(UUID, UUID)}
+     * for the sales-order retry case. Removes any earlier-attempt reservation
+     * for the same SO (e.g. the partial reservation from before the saga
+     * rerouted to {@code purchasing_requested}) so the new attempt can claim
+     * the now-restocked balance cleanly.
+     */
+    private void cancelPriorSalesOrderReservation(UUID salesOrderId, UUID warehouseId) {
+        Optional<UUID> priorHeaderId = stockReservations.findAnyHeaderIdForSalesOrder(salesOrderId);
+        if (priorHeaderId.isEmpty()) {
+            return;
+        }
+        UUID id = priorHeaderId.get();
+        for (ReservedLineSnapshot line : stockReservations.findReservedLines(id)) {
+            stockBalances.releaseReserved(warehouseId, line.productId(), line.reservedQuantity());
+        }
+        stockReservations.deleteHeaderAndLines(id);
+        log.info("cancelled prior reservation {} for sales_order={} (retry)", id, salesOrderId);
     }
 
     /**

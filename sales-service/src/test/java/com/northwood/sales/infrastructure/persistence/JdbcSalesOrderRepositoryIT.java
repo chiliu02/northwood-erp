@@ -160,7 +160,7 @@ class JdbcSalesOrderRepositoryIT {
         return SalesOrder.reconstitute(
             SalesOrderId.newId(), orderNumber, CUSTOMER_ID, "CUST-SO-IT", "Customer IT",
             LocalDate.now(), null, SalesOrder.Status.SUBMITTED, "AUD", BigDecimal.ONE,
-            PaymentTerms.ON_SHIPMENT,
+            PaymentTerms.ON_SHIPMENT, null,
             new BigDecimal("100.00"), BigDecimal.ZERO, new BigDecimal("100.00"),
             null, 0L, List.of(line));
     }
