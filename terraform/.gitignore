@@ -1,0 +1,21 @@
+# Local Terraform working dirs (downloaded provider plugins, module cache)
+**/.terraform/*
+
+# State + plan files — never commit (state holds secrets; remote backend is S3)
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+
+# Real variable files (may carry secrets) — keep the .example
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# CLI config overrides
+.terraformrc
+terraform.rc
+
+# NOTE: .terraform.lock.hcl is intentionally NOT ignored — commit it so provider
+# versions are pinned/reproducible across machines.

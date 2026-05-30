@@ -1,0 +1,30 @@
+# Copy to terraform.tfvars and adjust. All values shown are the defaults —
+# uncomment only what you want to change.
+
+# region      = "ap-southeast-2"
+# name_prefix = "northwood-demo"
+
+# Image tag the build script pushed to ECR (use a git SHA for real runs).
+# image_tag = "latest"
+
+# Empty schema instead of the populated demo dataset.
+# load_seed_data = false
+
+# HTTPS: supply an ACM cert ARN (in the same region) + set keycloak_hostname.
+# Leave both empty for an HTTP-only throwaway demo on the ALB DNS name.
+# certificate_arn   = "arn:aws:acm:ap-southeast-2:123456789012:certificate/xxxx"
+# keycloak_hostname = "https://auth.demo.example.com"
+
+# Per-service scaling (defaults to 1 each). Example: 2x sales, 2x demo-bff.
+# service_desired_counts = { sales = 2 }
+# bff_desired_counts     = { "demo-web-ui-bff" = 2 }
+
+# Sizing (Fargate units).
+# service_cpu = 512
+# service_memory = 1024
+
+# infra_instance_types = {
+#   postgres = "t3.small"
+#   kafka    = "t3.small"
+#   keycloak = "t3.small"
+# }

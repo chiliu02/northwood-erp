@@ -1,0 +1,31 @@
+#!/bin/bash
+set -euxo pipefail
+
+dnf install -y docker
+systemctl enable --now docker
+
+mkdir -p /data/kafka
+
+# The one mandatory change vs. local compose (§5.2): advertise this box's
+# PRIVATE DNS, not localhost, so app-tier clients on other hosts can connect.
+KAFKA_DNS=$(hostname -f)
+
+docker run -d --name northwood-kafka --restart unless-stopped \
+  -p 9092:9092 \
+  -v /data/kafka:/var/lib/kafka/data \
+  -e KAFKA_NODE_ID=1 \
+  -e KAFKA_PROCESS_ROLES=broker,controller \
+  -e KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093 \
+  -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://$KAFKA_DNS:9092 \
+  -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+  -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093 \
+  -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
+  -e KAFKA_AUTO_CREATE_TOPICS_ENABLE=true \
+  -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+  -e KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
+  -e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
+  -e KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR=1 \
+  -e KAFKA_DEFAULT_REPLICATION_FACTOR=1 \
+  -e KAFKA_MIN_INSYNC_REPLICAS=1 \
+  -e CLUSTER_ID=${cluster_id} \
+  ${image}

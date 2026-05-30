@@ -1,0 +1,24 @@
+#!/bin/bash
+set -euxo pipefail
+
+dnf install -y docker
+systemctl enable --now docker
+command -v aws >/dev/null 2>&1 || dnf install -y awscli-2 || dnf install -y awscli
+
+mkdir -p /opt/northwood/import /data/keycloak
+
+aws s3 cp "s3://${bucket}/${realm_key}" /opt/northwood/import/northwood-realm.json --region "${region}"
+aws s3 cp "s3://${bucket}/${env_key}" /opt/northwood/keycloak.env --region "${region}"
+
+docker run -d --name northwood-keycloak --restart unless-stopped \
+  --env-file /opt/northwood/keycloak.env \
+  -p 8080:8080 \
+  -v /data/keycloak:/opt/keycloak/data \
+  -v /opt/northwood/import/northwood-realm.json:/opt/keycloak/data/import/northwood-realm.json:ro \
+  -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+  -e KC_HTTP_PORT=8080 -e KC_HEALTH_ENABLED=true \
+  -e KC_HOSTNAME_STRICT=false \
+%{ if hostname != "" ~}
+  -e KC_HOSTNAME=${hostname} \
+%{ endif ~}
+  ${image} start-dev --import-realm
