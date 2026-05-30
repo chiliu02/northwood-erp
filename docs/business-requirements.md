@@ -327,6 +327,22 @@ After §2.35 ships, there is no operational event flowing directly from manufact
 **REQ-INV-088 — Replenishment is asynchronous and visible to operators** *(planned, §2.35)*
 Every step (request raised, dispatched, fulfilled) is observable in the Replenishment History view (REQ-RPT-060). Operators do not need to take action for the common case; the system advances the state automatically. Operators only intervene when a request stalls (e.g. supplier delivery delayed) or when the unsourceable-SKU warning surfaces (REQ-INV-086).
 
+### 3.10 Operating model: make-to-stock (MTS)
+
+**REQ-INV-090 — Northwood operates make-to-stock, not make-to-order** *(shipped — the model §2.37 settled on)*
+Northwood sells a fixed catalogue of **standard products** (REQ-PROD-001). Goods are not customised per customer: a sales order carries no design or configuration information — it is demand against a stockable SKU. Production and purchasing are therefore driven by **inventory stocking policy (the reorder point, REQ-PROD-020)**, independent of any individual customer order. Customer orders are fulfilled from on-hand stock (REQ-INV-020); a shortfall triggers **replenishment** (REQ-INV-080) rather than directly driving production. No sales order pulls a work order into existence — manufacturing is a consequence of stocking policy, never of a specific order.
+*Rationale:* a make-to-stock model is what lets inventory own the make-vs-buy decision (REQ-INV-082, REQ-INV-087) and keeps the Sales Order Fulfilment Saga out of manufacturing — see `docs/sagas.md` for why the Saga waits on a replenishment delta rather than orchestrating production.
+
+**REQ-INV-091 — Replenishment is demand-source-aware** *(shipped)*
+A `ReplenishmentRequest` carries the reason it was raised. Three triggers feed the one unified loop (REQ-INV-080, REQ-XBC-080):
+
+- `reorder_point_breach` — **independent demand**; the classic make-to-stock reorder loop (Trigger A).
+- `work_order_shortage` — **dependent demand**; BOM explosion for multi-level manufactured products, when a work-order release cannot fully reserve a raw-material component (Trigger B).
+- `sales_order_shortage` — a **demand-driven top-up safety valve** for when standard stock genuinely cannot cover an order (REQ-INV-020); inventory tops up on-hand and the parked order re-reserves.
+
+**REQ-INV-092 — Scope of the MRP practice modelled** *(shipped — deliberate scope)*
+The planning practice Northwood models is a **reorder-point system plus BOM explosion** — the reactive end of MRP — **not** time-phased planning (there is no netting of projected demand against projected supply over a planning horizon). For a standard-catalogue make-to-stock finished-goods business this is the appropriate level of fidelity for the showcase; time-phased MRP is out of scope.
+
 ---
 
 ## 4. Manufacturing (REQ-MFG)

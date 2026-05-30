@@ -12,6 +12,14 @@ Each long-running cross-context flow has its own saga state table in the schema 
 
 Saga rows include `next_retry_at`, `lease_owner`, `lease_expires_at` for safe multi-worker polling via `SELECT ... FOR UPDATE SKIP LOCKED`.
 
+## Why the Sales Order Fulfilment Saga does not drive manufacturing
+
+Northwood is **make-to-stock** (the business model is captured in `docs/business-requirements.md` §3.10 / REQ-INV-090): production is triggered by inventory stocking policy — the reorder point — not pulled into existence by each sales order. So the Sales Order Fulfilment Saga does **not** orchestrate manufacturing or purchasing. On a partial or failed reservation it records the short line ids on `saga.data.outstandingReplenishmentLineIds`, parks at `stock_reservation_incomplete`, and waits. Inventory raises a `ReplenishmentRequest` (an aggregate, not a Saga) in the *same transaction* as the reservation and owns the make-vs-buy routing — the Saga never sees whether the gap is closed by a work order or a purchase order.
+
+This is the reason §2.37 collapsed the manufacturing leg out of the Saga: once sourcing is owned by inventory policy rather than by the order, the `manufacturing_requested` / `manufacturing_in_progress` / `manufacturing_completed` / `purchasing_requested` states plus their WO-tracking handlers and fields had nothing left to coordinate (the retired states and events are enumerated in the §2.37 note on the `sales.sales_order_fulfilment_saga` bullet above).
+
+The resulting shape is intentionally thin: reserve from stock → (if short) park and retry on `ReplenishmentFulfilled`, or reject on `ReplenishmentCancelled`. The Saga waits on a **delta**; it does not coordinate sourcing.
+
 ## Reusable saga base — split across modules so domain doesn't import application
 
 - `SagaInstance` (in `shared-kernel/.../domain/saga/`) — framework-free abstract row with state/lease/version fields. Service `*Saga` aggregates live in their service's `domain/saga/` and extend this. Kernel placement is what lets service-domain saga aggregates exist without crossing into application.
