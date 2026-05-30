@@ -538,16 +538,16 @@ CREATE TABLE sales.sales_order_fulfilment_saga (
             -- payment; deposit_paid is the active checkpoint (like prepaid) the
             -- worker picks up to request stock reservation.
             'awaiting_deposit_invoice', 'deposit_invoiced', 'deposit_paid',
-            'manufacturing_requested', 'manufacturing_in_progress', 'manufacturing_completed',
-            -- §2.36: purchasing_requested is the symmetric branch off
-            -- stock_reservation_incomplete for purchased-only short lines.
-            -- The worker emits sales.SalesOrderPurchasingRequested (per-line
-            -- shortages routed through inventory's ReplenishmentRequest), and
-            -- the saga parks here until every outstanding ReplenishmentFulfilled
-            -- for the order's products has fired — then it re-enters
-            -- stock_reservation_requested to retry reservation with the now-
-            -- restocked inventory.
-            'purchasing_requested',
+            -- §2.37 Slice 3 retired the manufacturing_requested /
+            -- manufacturing_in_progress / manufacturing_completed states and the
+            -- §2.36 purchasing_requested state when sales stopped driving
+            -- manufacturing/purchasing directly: inventory now owns the
+            -- make-vs-buy decision and raises ReplenishmentRequest for every
+            -- short line, so a partial reservation simply parks at
+            -- stock_reservation_incomplete until the ReplenishmentFulfilled /
+            -- ReplenishmentCancelled events resolve it. All four states are gone
+            -- from SalesOrderFulfilmentSaga.ALL_STATES, so the CHECK no longer
+            -- lists them.
             'ready_to_ship', 'goods_shipped', 'invoice_requested', 'invoice_created',
             'invoice_partially_paid',
             'completed', 'compensating', 'compensated', 'failed'
@@ -1477,10 +1477,19 @@ CREATE TABLE manufacturing.work_order_saga (
     work_order_id UUID UNIQUE,
     saga_state VARCHAR(50) NOT NULL CHECK (
         saga_state IN (
-            'started', 'work_order_created', 'bom_exploded', 'raw_material_reservation_requested',
-            'raw_materials_reserved', 'raw_material_shortage', 'purchase_requisition_requested',
-            'waiting_for_purchased_materials', 'production_released', 'production_started',
-            'production_completed', 'finished_goods_received', 'completed', 'failed'
+            -- These six are the states WorkOrderSaga.ALL_STATES actually drives:
+            -- work_order_created → raw_material_reservation_requested →
+            -- raw_materials_reserved / raw_material_shortage → completed / failed.
+            -- §2.37 Slice 3 retired the 'started' entry state (it only seeded the
+            -- old sales-driven make-to-order path; saga is now entered directly at
+            -- work_order_created). The fuller production lifecycle (bom_exploded,
+            -- purchase_requisition_requested, waiting_for_purchased_materials,
+            -- production_released/started/completed, finished_goods_received) was
+            -- aspirational schema-prep that the saga never implemented — dropped
+            -- here to keep the CHECK aligned with the code; see dev-todo (fuller
+            -- WO production lifecycle, low priority) if it's ever built out.
+            'work_order_created', 'raw_material_reservation_requested',
+            'raw_materials_reserved', 'raw_material_shortage', 'completed', 'failed'
         )
     ),
     current_step VARCHAR(100),
