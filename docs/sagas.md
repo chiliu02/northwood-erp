@@ -2,6 +2,91 @@
 
 Detail companion to `CLAUDE.md`. Read when authoring a new saga, a new inbox handler that advances one, or any worker that drains saga state.
 
+## Aggregate vs Saga — a thing vs a process
+
+Both an aggregate and a Saga can carry a state machine, so they look alike on a diagram. They answer different questions:
+
+- An **aggregate with a state machine** (e.g. `inventory.ReplenishmentRequest`: `requested → dispatched → fulfilled`/`cancelled`) is a **thing** — one business fact with identity, inside **one** consistency boundary, and the source of truth for that fact. Each transition is one local ACID transaction (mutate the row + drain `pendingEvents` to the outbox in the same `save()`), and the aggregate enforces its own invariants (`markFulfilled()` throws unless `status == dispatched`).
+- A **Saga** (e.g. `sales.sales_order_fulfilment_saga`) is a **process** — progress markers for a workflow that spans **many** boundaries (aggregates / services / external systems) that cannot be committed atomically together. It owns no business fact; it coordinates the things that do.
+
+The notation is shared; the semantics are not. `t3/docs/system-map.html` deliberately titles the inventory diagram *"ReplenishmentRequest (aggregate, not a Saga)"* for exactly this reason. This is the same instinct as `docs/conventions.md` → *deltas get aggregates, totals get projections*, applied to processes.
+
+| | Aggregate (state machine) | Saga (process manager) |
+|---|---|---|
+| Is a… | business fact / thing | workflow / process |
+| States mean | lifecycle of one fact | progress through a multi-step flow |
+| Boundary | one aggregate, one txn per transition | many boundaries, eventual consistency |
+| Owns | a business invariant | only orchestration progress |
+| Undo | a local terminal state (`cancelled`) | distributed compensation (`compensating`/`compensated`) |
+| Emits | its own deltas (drained at `save()`) | commands, if anything — some Sagas emit nothing |
+| Driver | passive — handlers mutate it | active — leased polling worker + retries |
+| Persisted row is | the source of truth | a coordination bookmark (state, lease, retry, `data`) |
+| Carries | `AGGREGATE_TYPE`, `pendingEvents`, invariant | lease/retry fields, `data`; no invariant |
+
+Litmus test (the `docs/conventions.md` rule, applied to processes): **does it emit its own delta — a fact with identity and downstream consumers? → aggregate. Does it only watch other people's deltas and decide what to do next, owning no fact of its own? → a process (and *maybe* a Saga — see the next section).**
+
+## When does a flow actually need a Saga?
+
+Crossing into a second aggregate does **not** automatically require a Saga. Coordinating across boundaries has two forms, and only one is a Saga:
+
+- **Choreography** — aggregate A emits an event; a handler updates aggregate B in its own transaction. No central coordinator, no remembered state. Northwood does this constantly (e.g. a product price change fanning out to inventory/sales/manufacturing snapshot projections). *Multiple aggregates, multiple services, zero Sagas.*
+- **Orchestration (the Saga)** — a stateful coordinator that remembers where the process is and drives it step by step.
+
+A Saga is warranted only when **both** hold:
+
+1. the process spans **more than one transaction** (multiple aggregates, services, or external systems — it can't be committed atomically), **and**
+2. it needs **stateful coordination** — at least one of:
+   - **remember progress** across steps (a later step depends on earlier ones),
+   - **gate / join** on multiple outcomes ("don't ship until stock reserved *and* prepayment paid"),
+   - **compensate** on failure (a later step fails → undo earlier ones, which means having recorded that they happened),
+   - **wait with timeout / retry** (park until an event arrives, then retry).
+
+If you have (1) but not (2) — each reaction is independent, fire-and-forget, needs no memory or undo — choreography suffices. The Saga is specifically for the *stateful, joinable, compensatable, retryable* case. Note the real axis is **consistency boundaries**, not aggregate count — an external system (a payment gateway, say) is another boundary and can pull in a Saga even with a single aggregate.
+
+**The decision ladder:**
+
+1. Fits in one aggregate, one txn per transition? → **aggregate state machine**. No Saga.
+2. Crosses boundaries, but each effect is independent fire-and-forget (A happened ⇒ do B, never look back)? → **choreography** (event + handler). Still no Saga.
+3. Crosses boundaries **and** needs to remember progress / join multiple outcomes / compensate / retry-with-timeout? → **Saga** (process manager / orchestration).
+
+## The three Sagas, analysed against the criteria
+
+Each clears the bar (multiple boundaries + stateful coordination), but they lean on *different* criteria — "Saga" is not one shape.
+
+**`sales.sales_order_fulfilment_saga` — gate + compensate + drive.** Spans sales + inventory + finance. Remembers progress; **gates** shipment on prepayment and **joins** reservation/replenishment acks; **compensates** on cancel (release reservations, reverse prepayment postings); **waits/retries** by parking at `stock_reservation_incomplete`. It also **emits** commands (`StockReservationRequested`, `PrepaymentInvoiceRequested`). The only Saga here that compensates, and the only one whose state set grows/shrinks with business gates — the full-strength "why Sagas exist" example. (Why it does *not* drive manufacturing: see *Why the Sales Order Fulfilment Saga does not drive manufacturing* below.)
+
+**`manufacturing.work_order_saga` — wait/retry + fan-in join.** Spans manufacturing ↔ inventory, plus a parent/child tree of `WorkOrder` instances.
+- *Remember progress* ✓: `work_order_created → raw_material_reservation_requested → raw_materials_reserved`/`raw_material_shortage → in_progress → completed`.
+- *Gate / join* ✓: the **parent-on-children** join — a parent WO holds at `in_progress` until every sub-assembly child WO completes.
+- *Wait / retry* ✓ — its load-bearing justification: the `raw_material_shortage` path parks and is un-parked by `inventory.GoodsReceived`, which re-emits `RawMaterialReservationRequested` (§2.41) to retry. Cross-service wait-then-retry.
+- *Compensate* ✗ today: §2.40 retired the WO cancellation subsystem once no WO was bound to a sales order; the Saga is now forward-only.
+- *Emits* one command (`RawMaterialReservationRequested`).
+
+Sharp nuance: not all of its coordination is Saga work. The parent-child **cascade** runs in-aggregate, in one transaction (`WorkOrder.onChildCompleted(true)` cascades up the parent chain). The Saga holds the *join state* (which children are still outstanding); the aggregate holds the *cascade mechanics*. A clean case of a flow splitting work between Saga and aggregate, each for the part it suits.
+
+**`purchasing.purchase_to_pay_saga` — passive join / progress tracker.** Spans the widest set — purchasing ↔ inventory ↔ finance.
+- *Remember progress* ✓: `started → purchase_order_approved → waiting_for_goods → goods_received → supplier_invoice_approved → completed`.
+- *Gate / join* ✓: completion is a **three-way join** — receipt *and* invoice approval *and* full payment, three independent events from three services; partial payment parks at `supplier_partially_paid`. (The `three_way_match_*` states are reserved for future variance handling; nothing reaches them yet.)
+- *Wait / retry* ✓: long parks against inbound events with the standard lease/retry polling.
+- *Compensate* ✗: forward-only; no PO-unwind path.
+- *Emits* no worker commands at all — every transition is inline or inbox-handler-driven against `PurchaseOrder` / `SupplierInvoice` / `Payment`.
+
+The most interesting interrogation: with no emission and no compensation, *is it a Saga or a status projection of the PO?* It stays a Saga, by a hair, for two reasons a projection can't satisfy: (1) it makes an **authoritative completion decision** over a multi-service join (and partial payment ≠ complete), not a field-mirror; and (2) its worker **self-advances** `purchase_order_approved → waiting_for_goods` — a transition driven by no external event. Strip those two and it would collapse into a read-model projection. Tracing exactly *why the answer is "Saga"* is the sharpest way to feel where the Saga/projection line runs.
+
+**Summary — three shapes of Saga:**
+
+| | SO Fulfilment | WorkOrder | PurchaseToPay |
+|---|---|---|---|
+| Boundaries | sales + inventory + finance | manufacturing + inventory (+ child WOs) | purchasing + inventory + finance |
+| Remember progress | ✓ | ✓ | ✓ |
+| Gate / join | ✓ prepayment gate + reservation join | ✓ parent-on-children fan-in | ✓ receipt + invoice + payment join |
+| Wait / retry | ✓ park on shortage | ✓ park on shortage, retry on receipt | ✓ wait for goods / invoice / payment |
+| Compensate | ✓ cancel → release + reverse | ✗ (retired §2.40) | ✗ |
+| Emits commands? | ✓ reservation, prepayment | ✓ reservation | ✗ (passive) |
+| Archetype | **gate + compensate + drive** | **wait/retry + fan-in join** | **passive join / tracker** |
+
+The payoff of analysing all three: **"Saga" isn't one thing.** All qualify, but SO Fulfilment is the full-strength compensating orchestrator; WorkOrder is justified mainly by cross-boundary wait/retry plus a fan-in (handing the cascade back to the aggregate); PurchaseToPay is the minimal *remember + join + decide-completion* tracker that most tempts the "could this be a projection?" question — and answering it is the cleanest way to locate the Saga/projection boundary.
+
 ## Saga / process manager — what we have today
 
 Each long-running cross-context flow has its own saga state table in the schema that owns the flow:
