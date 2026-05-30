@@ -108,6 +108,8 @@ public final class JournalEntry {
         // marks the finished-good settlement (Dr 1220 FG / Cr 1230 WIP).
         WORK_ORDER_WIP("work_order_wip"),
         WORK_ORDER_COMPLETION("work_order_completion"),
+        // §2.34 refund on a cancelled prepayment/deposit order (Dr 2110 / Cr 1000).
+        CUSTOMER_REFUND("customer_refund"),
         JOURNAL_REVERSAL("journal_reversal");
 
         private final String dbValue;

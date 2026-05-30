@@ -168,6 +168,31 @@ class JournalEntryServicePostingsTest {
             assertThat(creditFor(entry, "4000")).isEqualByComparingTo("550.00");
         }
 
+        // §2.34: refund on a cancelled prepayment/deposit order — the inverse
+        // of the original payment receipt (Dr 2110 Customer Deposits / Cr 1000 Bank).
+        @Test void customer_refund_posts_dr_customer_deposits_cr_bank() {
+            UUID invoiceId = UUID.randomUUID();
+            service.postCustomerRefund(
+                invoiceId, "Globex Ltd", "INV-DEP-001",
+                new BigDecimal("150.00"), Currencies.AUD, POSTING_DATE
+            );
+
+            JournalEntry entry = capturedSave();
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.CUSTOMER_REFUND);
+            assertThat(entry.sourceDocumentId()).isEqualTo(invoiceId);
+            assertThat(debitFor(entry, "2110")).isEqualByComparingTo("150.00");
+            assertThat(creditFor(entry, "1000")).isEqualByComparingTo("150.00");
+        }
+
+        @Test void customer_refund_zero_amount_skips_save() {
+            service.postCustomerRefund(
+                UUID.randomUUID(), "Globex Ltd", "INV-ZERO",
+                BigDecimal.ZERO, Currencies.AUD, POSTING_DATE
+            );
+
+            verify(journals, never()).save(any());
+        }
+
         @Test void posting_defaults_currency_to_AUD_when_null() {
             service.postSupplierPayment(
                 UUID.randomUUID(), "Acme", "PMT-X",

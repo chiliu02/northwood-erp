@@ -604,6 +604,46 @@ public class JournalEntryService {
     }
 
     /**
+     * §2.34 Refund the up-front amount on a cancelled prepayment/deposit order:
+     * Dr 2110 Customer Deposits / Cr 1000 Bank at the paid amount. The exact
+     * inverse of the original payment-receipt pair ({@link #postCustomerPayment}
+     * posted Dr Bank / Cr 2110 for a prepayment/deposit invoice), so the deposit
+     * liability and the cash both unwind to zero. The caller —
+     * {@code SalesOrderCancellationRefundHandler} — gates this on
+     * {@code customer_invoice_header.refunded_at} so a redelivered cancellation
+     * can't refund twice.
+     */
+    @Transactional
+    public void postCustomerRefund(
+        UUID customerInvoiceHeaderId,
+        String customerName,
+        String invoiceNumber,
+        BigDecimal amount,
+        String currencyCode,
+        LocalDate postingDate
+    ) {
+        if (amount == null || amount.signum() <= 0) {
+            log.debug("skip refund post for invoice {} — amount {} is zero/negative", invoiceNumber, amount);
+            return;
+        }
+        post(
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
+            postingDate,
+            JournalEntry.SourceModule.FINANCE,
+            JournalEntry.SourceDocumentType.CUSTOMER_REFUND,
+            customerInvoiceHeaderId,
+            "Refund on cancelled order — invoice " + invoiceNumber + " (" + customerName + ")",
+            currencyCode,
+            FinanceAccountCodes.CUSTOMER_DEPOSITS,
+            "Reverse deposit on cancellation for " + customerName,
+            FinanceAccountCodes.BANK,
+            "Bank refund to " + customerName,
+            amount,
+            postingDate
+        );
+    }
+
+    /**
      * §3.7 Bulk reverse every posted journal entry that originated from the
      * given source document. Returns the new reversal entry ids. All
      * reversals run inside this method's transaction — if any one fails the

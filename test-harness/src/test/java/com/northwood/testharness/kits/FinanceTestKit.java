@@ -10,6 +10,7 @@ import com.northwood.finance.application.inbox.ProductCreatedHandler;
 import com.northwood.finance.application.inbox.ProductDiscontinuedHandler;
 import com.northwood.finance.application.inbox.PurchaseOrderCreatedHandler;
 import com.northwood.finance.application.inbox.RawMaterialsReservedWipHandler;
+import com.northwood.finance.application.inbox.SalesOrderCancellationRefundHandler;
 import com.northwood.finance.application.inbox.SalesOrderShippedHandler;
 import com.northwood.finance.application.inbox.ShipmentPostedCogsHandler;
 import com.northwood.finance.application.inbox.StandardCostChangedHandler;
@@ -34,7 +35,7 @@ import tools.jackson.databind.ObjectMapper;
  * Per-service test composition for finance. Wires
  * {@link CustomerInvoiceService}, {@link PaymentService},
  * {@link SupplierInvoiceService}, {@link JournalEntryService} (real impl
- * over an in-memory journal repository + GL chart) and registers the 11
+ * over an in-memory journal repository + GL chart) and registers the 12
  * finance inbox handlers.
  *
  * <p>Finance has no sagas; the only state carried in the kit is the
@@ -91,6 +92,9 @@ public final class FinanceTestKit {
         bus.register(outbox);
         bus.register(new SalesOrderShippedHandler(inbox, customerInvoiceService, paymentService, json));
         bus.register(new DepositInvoiceRequestedHandler(inbox, customerInvoiceService, json));
+        // §2.34: refund the up-front amount (Dr 2110 / Cr Bank) when a paid
+        // prepayment/deposit order is cancelled pre-shipment.
+        bus.register(new SalesOrderCancellationRefundHandler(inbox, journalService, customerInvoices, json));
         bus.register(new ShipmentPostedCogsHandler(inbox, journalService, productCards, customerInvoices, json));
         bus.register(new GoodsReceivedHandler(inbox, purchaseOrderLineFacts, journalService, json));
         bus.register(new PurchaseOrderCreatedHandler(inbox, purchaseOrderLineFacts, json));

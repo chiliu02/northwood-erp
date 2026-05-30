@@ -175,6 +175,19 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
     }
 
     @Override
+    public boolean markRefunded(java.util.UUID customerInvoiceHeaderId) {
+        int updated = jdbc.update("""
+            UPDATE finance.customer_invoice_header
+               SET refunded_at = now()
+             WHERE customer_invoice_header_id = ?
+               AND refunded_at IS NULL
+            """,
+            customerInvoiceHeaderId
+        );
+        return updated > 0;
+    }
+
+    @Override
     public void save(CustomerInvoice ci) {
         String actor = currentUser.currentUsername().orElse(null);
         if (ci.version() == 0L) {

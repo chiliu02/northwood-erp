@@ -2120,6 +2120,11 @@ CREATE TABLE finance.customer_invoice_header (
     -- whose shipment hasn't posted yet). Non-null gates the redelivery of
     -- ShipmentPosted at finance — the journal pair is posted at most once.
     revenue_recognized_at TIMESTAMPTZ,
+    -- §2.34: stamped when a cancelled prepayment/deposit order's up-front amount
+    -- is refunded (Dr 2110 Customer Deposits / Cr 1000 Bank). Null means not
+    -- refunded; non-null gates redelivery of sales.SalesOrderCancellationRequested
+    -- at finance so the refund pair posts at most once.
+    refunded_at TIMESTAMPTZ,
     created_by VARCHAR(64),
     last_modified_by VARCHAR(64),
     CHECK (paid_amount >= 0 AND paid_amount <= total_amount)
