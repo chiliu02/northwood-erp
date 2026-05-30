@@ -2,6 +2,7 @@ package com.northwood.sales.infrastructure.persistence;
 
 import com.northwood.sales.application.CustomerLookup;
 import com.northwood.sales.domain.Customer;
+import com.northwood.sales.domain.PaymentTerms;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -22,7 +23,7 @@ public class JdbcCustomerLookup implements CustomerLookup {
         try {
             return Optional.ofNullable(jdbc.queryForObject(
                 """
-                SELECT customer_id, customer_code, name, status
+                SELECT customer_id, customer_code, name, status, default_payment_terms
                 FROM sales.customer
                 WHERE customer_code = ?
                 """,
@@ -30,7 +31,8 @@ public class JdbcCustomerLookup implements CustomerLookup {
                     rs.getObject("customer_id", UUID.class),
                     rs.getString("customer_code"),
                     rs.getString("name"),
-                    Customer.Status.fromDb(rs.getString("status"))
+                    Customer.Status.fromDb(rs.getString("status")),
+                    PaymentTerms.fromDb(rs.getString("default_payment_terms"))
                 ),
                 customerCode
             ));

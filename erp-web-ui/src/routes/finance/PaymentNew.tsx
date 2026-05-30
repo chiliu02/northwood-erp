@@ -154,7 +154,7 @@ function SupplierPaymentForm() {
       <p className="mb-4 max-w-3xl text-sm text-text-muted">
         Pay an approved supplier invoice. On full settlement the P2P saga reaches{" "}
         <code>completed</code> and the PO header flips to <code>paid</code>.
-        Partial settlements park the saga at <code>supplier_payment_made</code>.
+        Partial settlements park the saga at <code>supplier_partially_paid</code>.
       </p>
 
       <div className="grid gap-4 max-w-4xl">
@@ -320,7 +320,7 @@ function CustomerPaymentForm() {
       <p className="mb-4 max-w-3xl text-sm text-text-muted">
         Record an incoming customer payment. On full settlement the fulfilment saga reaches{" "}
         <code>completed</code> and the order header flips to <code>completed</code>.
-        Partial settlements transition to <code>invoice_paid</code> and park.
+        Partial settlements transition to <code>invoice_partially_paid</code> and park.
       </p>
 
       <div className="grid gap-4 max-w-4xl">

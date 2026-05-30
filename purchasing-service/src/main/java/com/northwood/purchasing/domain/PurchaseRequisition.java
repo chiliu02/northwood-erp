@@ -2,6 +2,7 @@ package com.northwood.purchasing.domain;
 
 import com.northwood.purchasing.domain.events.PurchaseRequisitionCreated;
 import com.northwood.purchasing.domain.events.PurchaseRequisitionCreated.RequestedLine;
+import com.northwood.purchasing.domain.events.ReplenishmentDispatched;
 import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.DomainEvent;
 import java.time.Instant;
@@ -58,8 +59,23 @@ public final class PurchaseRequisition {
      */
     public enum SourceType {
         MANUAL("manual"),
+        /** Schema-prep — not currently produced by Java. */
         LOW_STOCK("low_stock"),
-        WORK_ORDER_SHORTAGE("work_order_shortage");
+        /**
+         * Historical — was the WO-shortage auto-requisition source until
+         * §2.35 retired the producer. Historical rows keep this value; new
+         * Java-emitted rows use {@link #STOCK_REPLENISHMENT} instead, with
+         * the WO shortage now routed through inventory's
+         * {@code ReplenishmentRequest} (see {@code project_235_mfg_pur_decoupling}).
+         */
+        WORK_ORDER_SHORTAGE("work_order_shortage"),
+        /**
+         * §2.35: created by purchasing's {@code ReplenishmentRequestedHandler}
+         * in response to {@code inventory.ReplenishmentRequested} with
+         * {@code targetService = "purchasing"}. Carries
+         * {@code sourceReplenishmentRequestId}.
+         */
+        STOCK_REPLENISHMENT("stock_replenishment");
 
         private final String dbValue;
 
@@ -149,13 +165,21 @@ public final class PurchaseRequisition {
     private final SourceType sourceType;
     private final UUID sourceWorkOrderId;
     private final UUID sourceProductId;
+    private final UUID sourceReplenishmentRequestId;
     private Status status;
     private final String requestedBy;
     private final List<PurchaseRequisitionLine> lines;
     private final long version;
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
 
-    /** Factory: a new requisition. Auto-approves at creation (phase 1). */
+    /**
+     * Factory: a new requisition. Auto-approves at creation (phase 1). Used
+     * for {@link SourceType#MANUAL} + {@link SourceType#LOW_STOCK} +
+     * {@link SourceType#WORK_ORDER_SHORTAGE} (historical) paths. The
+     * §2.35 {@link SourceType#STOCK_REPLENISHMENT} path goes through
+     * {@link #createForStockReplenishment} instead — that factory also
+     * emits a sibling {@code purchasing.ReplenishmentDispatched}.
+     */
     public static PurchaseRequisition create(
         String requisitionNumber,
         SourceType sourceType,
@@ -165,15 +189,73 @@ public final class PurchaseRequisition {
         List<PurchaseRequisitionLine> lines
     ) {
         Assert.notNull(sourceType, "sourceType");
+        Assert.argument(sourceType != SourceType.STOCK_REPLENISHMENT,
+            "use createForStockReplenishment for STOCK_REPLENISHMENT requisitions");
         Assert.notEmpty(lines, "at least one line is required");
-        validateSource(sourceType, sourceWorkOrderId, sourceProductId);
+        validateSource(sourceType, sourceWorkOrderId, sourceProductId, /* replenishmentRequestId */ null);
 
         PurchaseRequisitionId id = PurchaseRequisitionId.newId();
         PurchaseRequisition pr = new PurchaseRequisition(
             id, requisitionNumber, sourceType, sourceWorkOrderId, sourceProductId,
+            /* sourceReplenishmentRequestId */ null,
             Status.APPROVED, requestedBy, new ArrayList<>(lines), 0L
         );
 
+        pr.pendingEvents.add(buildCreatedEvent(
+            id, requisitionNumber, sourceType, sourceWorkOrderId, sourceProductId,
+            /* sourceReplenishmentRequestId */ null, lines
+        ));
+        return pr;
+    }
+
+    /**
+     * §2.35 Slice D: factory for a stock-replenishment requisition. Identical
+     * shape to {@link #create} but with the {@code STOCK_REPLENISHMENT}
+     * source type, the {@code sourceReplenishmentRequestId} threaded through,
+     * AND a sibling {@link ReplenishmentDispatched} event emitted alongside
+     * {@code PurchaseRequisitionCreated} so inventory's Slice E
+     * close-the-loop handler picks up the dispatch atomically.
+     */
+    public static PurchaseRequisition createForStockReplenishment(
+        String requisitionNumber,
+        UUID replenishmentRequestId,
+        String requestedBy,
+        List<PurchaseRequisitionLine> lines
+    ) {
+        Assert.notNull(replenishmentRequestId, "replenishmentRequestId");
+        Assert.notEmpty(lines, "at least one line is required");
+
+        PurchaseRequisitionId id = PurchaseRequisitionId.newId();
+        PurchaseRequisition pr = new PurchaseRequisition(
+            id, requisitionNumber, SourceType.STOCK_REPLENISHMENT,
+            /* sourceWorkOrderId */ null,
+            /* sourceProductId   */ null,
+            replenishmentRequestId,
+            Status.APPROVED, requestedBy, new ArrayList<>(lines), 0L
+        );
+
+        pr.pendingEvents.add(buildCreatedEvent(
+            id, requisitionNumber, SourceType.STOCK_REPLENISHMENT,
+            null, null, replenishmentRequestId, lines
+        ));
+        pr.pendingEvents.add(new ReplenishmentDispatched(
+            UUID.randomUUID(),
+            id.value(),
+            replenishmentRequestId,
+            Instant.now()
+        ));
+        return pr;
+    }
+
+    private static PurchaseRequisitionCreated buildCreatedEvent(
+        PurchaseRequisitionId id,
+        String requisitionNumber,
+        SourceType sourceType,
+        UUID sourceWorkOrderId,
+        UUID sourceProductId,
+        UUID sourceReplenishmentRequestId,
+        List<PurchaseRequisitionLine> lines
+    ) {
         List<RequestedLine> wireLines = new ArrayList<>();
         for (PurchaseRequisitionLine l : lines) {
             wireLines.add(new RequestedLine(
@@ -181,29 +263,31 @@ public final class PurchaseRequisition {
                 l.requestedQuantity(), l.suggestedSupplierId()
             ));
         }
-        pr.pendingEvents.add(new PurchaseRequisitionCreated(
+        return new PurchaseRequisitionCreated(
             UUID.randomUUID(),
             id.value(),
             requisitionNumber,
             sourceType.dbValue(),
             sourceWorkOrderId,
             sourceProductId,
+            sourceReplenishmentRequestId,
             Status.APPROVED.dbValue(),
             wireLines,
             Instant.now()
-        ));
-        return pr;
+        );
     }
 
     /** Factory: hydrate from the DB; emits no events. */
     public static PurchaseRequisition reconstitute(
         PurchaseRequisitionId id, String requisitionNumber,
         SourceType sourceType, UUID sourceWorkOrderId, UUID sourceProductId,
+        UUID sourceReplenishmentRequestId,
         Status status, String requestedBy,
         List<PurchaseRequisitionLine> lines, long version
     ) {
         return new PurchaseRequisition(
             id, requisitionNumber, sourceType, sourceWorkOrderId, sourceProductId,
+            sourceReplenishmentRequestId,
             status, requestedBy, new ArrayList<>(lines), version
         );
     }
@@ -211,6 +295,7 @@ public final class PurchaseRequisition {
     private PurchaseRequisition(
         PurchaseRequisitionId id, String requisitionNumber,
         SourceType sourceType, UUID sourceWorkOrderId, UUID sourceProductId,
+        UUID sourceReplenishmentRequestId,
         Status status, String requestedBy,
         List<PurchaseRequisitionLine> lines, long version
     ) {
@@ -219,23 +304,29 @@ public final class PurchaseRequisition {
         this.sourceType = sourceType;
         this.sourceWorkOrderId = sourceWorkOrderId;
         this.sourceProductId = sourceProductId;
+        this.sourceReplenishmentRequestId = sourceReplenishmentRequestId;
         this.status = status;
         this.requestedBy = requestedBy;
         this.lines = lines;
         this.version = version;
     }
 
-    private static void validateSource(SourceType sourceType, UUID workOrderId, UUID productId) {
+    private static void validateSource(
+        SourceType sourceType, UUID workOrderId, UUID productId, UUID replenishmentRequestId
+    ) {
         switch (sourceType) {
-            case MANUAL -> {
-                Assert.argument(workOrderId == null && productId == null, "manual requisitions cannot carry source ids");
-            }
-            case LOW_STOCK -> {
-                Assert.argument(productId != null && workOrderId == null, "low_stock requisitions need source_product_id only");
-            }
-            case WORK_ORDER_SHORTAGE -> {
-                Assert.argument(workOrderId != null && productId == null, "work_order_shortage requisitions need source_work_order_id only");
-            }
+            case MANUAL -> Assert.argument(
+                workOrderId == null && productId == null && replenishmentRequestId == null,
+                "manual requisitions cannot carry source ids");
+            case LOW_STOCK -> Assert.argument(
+                productId != null && workOrderId == null && replenishmentRequestId == null,
+                "low_stock requisitions need source_product_id only");
+            case WORK_ORDER_SHORTAGE -> Assert.argument(
+                workOrderId != null && productId == null && replenishmentRequestId == null,
+                "work_order_shortage requisitions need source_work_order_id only");
+            case STOCK_REPLENISHMENT -> Assert.argument(
+                replenishmentRequestId != null && workOrderId == null && productId == null,
+                "stock_replenishment requisitions need source_replenishment_request_id only");
         }
     }
 
@@ -264,6 +355,7 @@ public final class PurchaseRequisition {
     public SourceType sourceType()                          { return sourceType; }
     public UUID sourceWorkOrderId()                         { return sourceWorkOrderId; }
     public UUID sourceProductId()                           { return sourceProductId; }
+    public UUID sourceReplenishmentRequestId()              { return sourceReplenishmentRequestId; }
     public Status status()                                  { return status; }
     public String requestedBy()                             { return requestedBy; }
     public List<PurchaseRequisitionLine> lines()            { return List.copyOf(lines); }

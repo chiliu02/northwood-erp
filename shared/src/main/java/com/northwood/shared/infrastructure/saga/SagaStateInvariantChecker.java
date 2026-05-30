@@ -19,7 +19,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * {@link SagaStateInvariantCheck} against its schema's CHECK constraint —
  * fails the boot if any state name in code is missing from the DB list.
  *
- * <p>Catches the drift mode we hit on 2026-05-05 (the {@code invoice_paid}
+ * <p>Catches the drift mode we hit on 2026-05-05 (the {@code invoice_partially_paid}
  * saga state was added to code without updating the baseline's CHECK; mocked unit
  * tests passed because they never reached an INSERT; a real partial customer
  * payment would have crashed). Now every service's first boot after a code

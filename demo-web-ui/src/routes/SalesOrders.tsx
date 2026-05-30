@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ban, Plus } from "lucide-react";
 import { fetchSalesOrders } from "@/api/fetchers";
@@ -12,6 +12,32 @@ import { Button, FieldRow, FormStatus, Input, type SubmitState } from "@/compone
 import { formatMoney, truncateUuid } from "@/lib/utils";
 
 const NON_CANCELLABLE = new Set(["shipped", "completed", "cancelled", "rejected"]);
+
+// §2.31 Slice D: derive the awaiting-prepayment lozenge from the saga's
+// observable state on SO-360 — payment_terms='prepayment' AND the prepayment
+// invoice hasn't been fully paid yet (payment_status != 'paid'). Goes away
+// once the customer pays.
+function isAwaitingPrepayment(o: SalesOrder360): boolean {
+  return o.paymentTerms === "prepayment" && o.paymentStatus !== "paid";
+}
+
+// §2.32: a deposit order awaiting its up-front deposit — payment_terms='deposit'
+// and nothing's been paid yet. Clears once the deposit lands (partially_paid).
+function isAwaitingDeposit(o: SalesOrder360): boolean {
+  return o.paymentTerms === "deposit"
+    && o.paymentStatus !== "paid" && o.paymentStatus !== "partially_paid";
+}
+
+// §2.34: when a prepayment/deposit order whose up-front amount was paid is
+// cancelled, finance automatically refunds it (Dr 2110 Customer Deposits / Cr
+// Bank) in the same cancel flow. So a cancelled prepayment/deposit order with a
+// non-zero paid amount has had its deposit returned — surfaced here, with the
+// posting itself visible under Journal entries → "Customer refunds".
+function wasRefunded(o: SalesOrder360): boolean {
+  return o.orderStatus === "cancelled"
+    && (o.paymentTerms === "deposit" || o.paymentTerms === "prepayment")
+    && Number(o.paidAmount ?? 0) > 0;
+}
 
 export function SalesOrders() {
   const navigate = useNavigate();
@@ -37,9 +63,14 @@ export function SalesOrders() {
       rowKey={(o) => o.salesOrderHeaderId}
       renderRow={(o) => (
         <div className="space-y-1">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <span className="font-mono text-text-primary">{o.orderNumber}</span>
-            <StatusBadge kind={inferStatusKind(o.orderStatus)}>{o.orderStatus}</StatusBadge>
+            <div className="flex items-center gap-1.5">
+              {isAwaitingPrepayment(o) && <StatusBadge kind="warn">awaiting prepayment</StatusBadge>}
+              {isAwaitingDeposit(o) && <StatusBadge kind="warn">awaiting deposit</StatusBadge>}
+              {wasRefunded(o) && <StatusBadge kind="success">refunded</StatusBadge>}
+              <StatusBadge kind={inferStatusKind(o.orderStatus)}>{o.orderStatus}</StatusBadge>
+            </div>
           </div>
           <div className="flex items-center justify-between text-xs text-text-muted">
             <span>{o.customerName ?? "—"}</span>
@@ -60,6 +91,9 @@ function SalesOrderDetail({ order }: { order: SalesOrder360 }) {
         <div className="flex items-center gap-3">
           <h2 className="font-mono text-xl font-semibold">{order.orderNumber}</h2>
           <StatusBadge kind={inferStatusKind(order.orderStatus)}>{order.orderStatus}</StatusBadge>
+          {isAwaitingPrepayment(order) && <StatusBadge kind="warn">awaiting prepayment</StatusBadge>}
+          {isAwaitingDeposit(order) && <StatusBadge kind="warn">awaiting deposit</StatusBadge>}
+          {wasRefunded(order) && <StatusBadge kind="success">refunded</StatusBadge>}
           {order.hasShortage && <StatusBadge kind="warn">shortage</StatusBadge>}
           <span className="ml-auto">
             {cancellable && <CancelOrderButton order={order} />}
@@ -68,6 +102,7 @@ function SalesOrderDetail({ order }: { order: SalesOrder360 }) {
         <p className="text-sm text-text-muted">
           {order.customerName ?? "—"} · ordered {order.orderDate ?? "—"}
           {order.requestedDeliveryDate && <> · requested {order.requestedDeliveryDate}</>}
+          {" · terms "}<span className="font-mono">{order.paymentTerms}</span>
         </p>
       </header>
 
@@ -84,6 +119,17 @@ function SalesOrderDetail({ order }: { order: SalesOrder360 }) {
         <section>
           <h3 className="text-sm font-semibold text-text-primary">Shortage</h3>
           <p className="mt-1 text-sm text-text-muted">{order.shortageSummary}</p>
+        </section>
+      )}
+
+      {wasRefunded(order) && (
+        <section>
+          <h3 className="text-sm font-semibold text-text-primary">Refund</h3>
+          <p className="mt-1 text-sm text-text-muted">
+            The {order.paymentTerms} of {formatMoney(order.paidAmount, order.currencyCode)} was returned on
+            cancellation (Dr 2110 Customer Deposits / Cr Bank). See the posting under{" "}
+            <Link to="/journal-entries" className="underline">Journal entries</Link> → “Customer refunds”.
+          </p>
         </section>
       )}
 

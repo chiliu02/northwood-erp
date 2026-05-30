@@ -1,6 +1,8 @@
 package com.northwood.inventory.application;
 
+import com.northwood.inventory.application.dto.StockBalanceView;
 import java.math.BigDecimal;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -19,4 +21,11 @@ public interface StockBalanceLookup {
      * Returns {@code 0} when the row doesn't exist.
      */
     BigDecimal findAvailableQuantity(UUID warehouseId, UUID productId);
+
+    /**
+     * Return the full on-hand / reserved / available triple for the given
+     * (warehouse, product) — what the stock-adjustment screen displays and
+     * previews from. Empty when the row doesn't exist.
+     */
+    Optional<StockBalanceView> findBalance(UUID warehouseId, UUID productId);
 }

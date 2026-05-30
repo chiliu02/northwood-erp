@@ -53,7 +53,7 @@ public final class InMemoryStockReservationRepository implements StockReservatio
             try {
                 outbox.appendPending(OutboxRow.pending(
                     event.eventId(),
-                    "StockReservation",
+                    StockReservation.AGGREGATE_TYPE,
                     event.aggregateId(),
                     event.eventType(),
                     event.eventVersion(),
@@ -83,18 +83,17 @@ public final class InMemoryStockReservationRepository implements StockReservatio
     }
 
     @Override
-    public Optional<UUID> findActiveHeaderIdForWorkOrder(UUID workOrderId) {
+    public Optional<UUID> findAnyHeaderIdForWorkOrder(UUID workOrderId) {
         return byHeaderId.values().stream()
             .filter(r -> workOrderId.equals(r.workOrderId()))
-            .filter(r -> isActive(statusByHeaderId.get(r.id().value())))
             .map(r -> r.id().value())
             .findFirst();
     }
 
     @Override
-    public Optional<UUID> findAnyHeaderIdForWorkOrder(UUID workOrderId) {
+    public Optional<UUID> findAnyHeaderIdForSalesOrder(UUID salesOrderHeaderId) {
         return byHeaderId.values().stream()
-            .filter(r -> workOrderId.equals(r.workOrderId()))
+            .filter(r -> salesOrderHeaderId.equals(r.salesOrderId()))
             .map(r -> r.id().value())
             .findFirst();
     }

@@ -52,13 +52,24 @@ public class KafkaInboxDispatcher {
         groupId = "${spring.kafka.consumer.group-id}"
     )
     public void onMessage(ConsumerRecord<String, String> record) {
+        // Offset-commit contract (Spring Kafka defaults — enable.auto.commit=false
+        // + AckMode.BATCH; see docs/messaging.md → Consumer-side idempotency):
+        // the container commits this record's offset ONLY after this method
+        // returns normally. So returning normally (a successful handle, or the
+        // malformed-skip below) commits the offset; letting an exception
+        // propagate aborts the commit and the DefaultErrorHandler re-seeks, so
+        // the record is redelivered (then dead-lettered after the retry budget).
+        // At-least-once delivery + the inbox dedup inside each handler =
+        // exactly-once effect. Covered by KafkaInboxDispatcherDeliveryIT.
         EventEnvelope envelope;
         try {
             envelope = json.readValue(record.value(), EventEnvelope.class);
         } catch (JacksonException e) {
-            // Malformed envelope on the topic — log and skip rather than block
-            // the consumer group on a poison message. (DLQ wiring is explicitly
-            // deferred in dev-todo.md.)
+            // Malformed envelope on the topic — log and return normally, which
+            // commits (skips) the offset rather than blocking the partition on a
+            // poison message. This is the one failure path that does NOT
+            // redeliver. (A dedicated DLQ for malformed payloads is deferred in
+            // dev-todo.md.)
             log.error(
                 "Skipping malformed envelope on {}-{}@{}: {}",
                 record.topic(), record.partition(), record.offset(), e.getMessage()
@@ -72,9 +83,10 @@ public class KafkaInboxDispatcher {
                 continue;
             }
             dispatched = true;
-            // Exceptions propagate so Spring Kafka's default error handling
-            // re-delivers the record. The inbox idempotency check makes that
-            // safe.
+            // A handler exception propagates out of this method, so the offset
+            // is NOT committed; Spring Kafka's DefaultErrorHandler re-seeks and
+            // the record is redelivered (then dead-lettered after the retry
+            // budget). The inbox idempotency check makes the redelivery safe.
             handler.handle(envelope);
         }
         if (!dispatched) {

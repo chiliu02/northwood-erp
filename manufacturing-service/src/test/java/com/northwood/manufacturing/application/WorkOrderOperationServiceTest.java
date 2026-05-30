@@ -3,6 +3,7 @@ package com.northwood.manufacturing.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -10,7 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.northwood.manufacturing.application.WorkOrderOperationService.WorkOrderNotFoundException;
 import com.northwood.manufacturing.application.dto.CompleteOperationCommand;
-import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
+import com.northwood.manufacturing.application.saga.WorkOrderSagaManager;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderMaterial;
@@ -18,9 +19,7 @@ import com.northwood.manufacturing.domain.WorkOrderOperation;
 import com.northwood.manufacturing.domain.WorkOrderRepository;
 import com.northwood.manufacturing.domain.WorkOrderRepository.CompletedChild;
 import com.northwood.manufacturing.domain.events.SubAssembliesConsumed;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
-import com.northwood.shared.application.security.CurrentUserAccessor;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -32,7 +31,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 class WorkOrderOperationServiceTest {
@@ -44,16 +42,14 @@ class WorkOrderOperationServiceTest {
     private static final UUID WORKCENTRE = UUID.randomUUID();
 
     @Mock WorkOrderRepository workOrders;
-    @Mock MakeToOrderSagaManager sagaManager;
-    @Mock OutboxPort outbox;
-    @Mock CurrentUserAccessor currentUser;
+    @Mock WorkOrderSagaManager sagaManager;
+    @Mock OutboxAppender outbox;
 
-    private final ObjectMapper json = new ObjectMapper();
     private WorkOrderOperationService service;
 
     @BeforeEach
     void setUp() {
-        service = new WorkOrderOperationService(workOrders, sagaManager, outbox, json, currentUser);
+        service = new WorkOrderOperationService(workOrders, sagaManager, outbox);
     }
 
     private WorkOrderOperation op(int seq) {
@@ -117,7 +113,7 @@ class WorkOrderOperationServiceTest {
 
             assertThat(wo.status()).isEqualTo(WorkOrder.Status.COMPLETED);
             verify(sagaManager).applyManufacturingCompleted(wo.id().value());
-            verify(outbox, never()).appendPending(any());
+            verify(outbox, never()).append(any(), any());
         }
 
         @Test void unfinished_children_holds_completion_at_in_progress() {
@@ -146,23 +142,21 @@ class WorkOrderOperationServiceTest {
                 new CompletedChild(childWoA, childProductA, new BigDecimal("3")),
                 new CompletedChild(childWoB, childProductB, new BigDecimal("2"))
             ));
-            when(currentUser.currentUsername()).thenReturn(Optional.empty());
 
             service.completeOperation(new CompleteOperationCommand(parent.id().value(), 10, new BigDecimal("30")));
 
             verify(sagaManager).applyManufacturingCompleted(parent.id().value());
 
-            ArgumentCaptor<OutboxRow> cap = ArgumentCaptor.forClass(OutboxRow.class);
-            verify(outbox).appendPending(cap.capture());
-            OutboxRow row = cap.getValue();
-            assertThat(row.getEventType()).isEqualTo(SubAssembliesConsumed.EVENT_TYPE);
-            assertThat(row.getAggregateId()).isEqualTo(parent.id().value());
-            SubAssembliesConsumed deserialised = json.readValue(row.getPayload(), SubAssembliesConsumed.class);
-            assertThat(deserialised.items()).hasSize(2);
-            assertThat(deserialised.items().get(0).childWorkOrderId()).isEqualTo(childWoA);
-            assertThat(deserialised.items().get(0).quantity()).isEqualByComparingTo("3");
-            assertThat(deserialised.items().get(1).childWorkOrderId()).isEqualTo(childWoB);
-            assertThat(deserialised.items().get(1).quantity()).isEqualByComparingTo("2");
+            ArgumentCaptor<SubAssembliesConsumed> cap = ArgumentCaptor.forClass(SubAssembliesConsumed.class);
+            verify(outbox).append(cap.capture(), eq(WorkOrder.AGGREGATE_TYPE));
+            SubAssembliesConsumed event = cap.getValue();
+            assertThat(event.eventType()).isEqualTo(SubAssembliesConsumed.EVENT_TYPE);
+            assertThat(event.aggregateId()).isEqualTo(parent.id().value());
+            assertThat(event.items()).hasSize(2);
+            assertThat(event.items().get(0).childWorkOrderId()).isEqualTo(childWoA);
+            assertThat(event.items().get(0).quantity()).isEqualByComparingTo("3");
+            assertThat(event.items().get(1).childWorkOrderId()).isEqualTo(childWoB);
+            assertThat(event.items().get(1).quantity()).isEqualByComparingTo("2");
         }
 
         @Test void child_completion_cascades_to_parent_when_siblings_done() {
@@ -185,7 +179,6 @@ class WorkOrderOperationServiceTest {
             when(workOrders.findCompletedChildren(parentId)).thenReturn(List.of(
                 new CompletedChild(child.id().value(), UUID.randomUUID(), new BigDecimal("1"))
             ));
-            when(currentUser.currentUsername()).thenReturn(Optional.empty());
 
             service.completeOperation(new CompleteOperationCommand(child.id().value(), 10, new BigDecimal("30")));
 
@@ -236,15 +229,14 @@ class WorkOrderOperationServiceTest {
                 new CompletedChild(nullQtyChild, UUID.randomUUID(), null),
                 new CompletedChild(validChild, validProduct, new BigDecimal("5"))
             ));
-            when(currentUser.currentUsername()).thenReturn(Optional.empty());
 
             service.completeOperation(new CompleteOperationCommand(parent.id().value(), 10, new BigDecimal("30")));
 
-            ArgumentCaptor<OutboxRow> cap = ArgumentCaptor.forClass(OutboxRow.class);
-            verify(outbox).appendPending(cap.capture());
-            SubAssembliesConsumed deserialised = json.readValue(cap.getValue().getPayload(), SubAssembliesConsumed.class);
-            assertThat(deserialised.items()).hasSize(1);
-            assertThat(deserialised.items().get(0).childWorkOrderId()).isEqualTo(validChild);
+            ArgumentCaptor<SubAssembliesConsumed> cap = ArgumentCaptor.forClass(SubAssembliesConsumed.class);
+            verify(outbox).append(cap.capture(), eq(WorkOrder.AGGREGATE_TYPE));
+            SubAssembliesConsumed event = cap.getValue();
+            assertThat(event.items()).hasSize(1);
+            assertThat(event.items().get(0).childWorkOrderId()).isEqualTo(validChild);
         }
 
         @Test void all_null_quantities_skip_emission_entirely() {
@@ -258,7 +250,7 @@ class WorkOrderOperationServiceTest {
 
             service.completeOperation(new CompleteOperationCommand(parent.id().value(), 10, new BigDecimal("30")));
 
-            verify(outbox, never()).appendPending(any());
+            verify(outbox, never()).append(any(), any());
         }
     }
 

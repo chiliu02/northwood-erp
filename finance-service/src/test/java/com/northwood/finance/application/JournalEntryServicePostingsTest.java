@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.northwood.finance.application.JournalEntryService.LineCost;
+import com.northwood.finance.domain.CustomerInvoice;
 import com.northwood.finance.domain.JournalEntry;
 import com.northwood.finance.domain.JournalEntryId;
 import com.northwood.finance.domain.JournalEntryLine;
@@ -123,17 +124,73 @@ class JournalEntryServicePostingsTest {
             assertThat(creditFor(entry, "4000")).isEqualByComparingTo("550.00");
         }
 
-        @Test void customer_payment_posts_dr_bank_cr_ar() {
+        @Test void customer_payment_commercial_posts_dr_bank_cr_ar() {
             UUID paymentId = UUID.randomUUID();
             service.postCustomerPayment(
                 paymentId, "Globex Ltd", "PMT-002",
-                new BigDecimal("550.00"), Currencies.AUD, POSTING_DATE
+                new BigDecimal("550.00"), Currencies.AUD, POSTING_DATE,
+                CustomerInvoice.InvoiceType.COMMERCIAL
             );
 
             JournalEntry entry = capturedSave();
             assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.CUSTOMER_PAYMENT);
             assertThat(debitFor(entry, "1000")).isEqualByComparingTo("550.00");
             assertThat(creditFor(entry, "1100")).isEqualByComparingTo("550.00");
+        }
+
+        @Test void customer_payment_prepayment_posts_dr_bank_cr_customer_deposits() {
+            UUID paymentId = UUID.randomUUID();
+            service.postCustomerPayment(
+                paymentId, "Globex Ltd", "PMT-003",
+                new BigDecimal("550.00"), Currencies.AUD, POSTING_DATE,
+                CustomerInvoice.InvoiceType.PREPAYMENT
+            );
+
+            JournalEntry entry = capturedSave();
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.CUSTOMER_PAYMENT);
+            assertThat(debitFor(entry, "1000")).isEqualByComparingTo("550.00");
+            assertThat(creditFor(entry, "2110")).isEqualByComparingTo("550.00");
+        }
+
+        // §2.31 Slice C: deferred-revenue recognition at shipment for a
+        // prepayment invoice. The journal is Dr 2110 Customer Deposits / Cr
+        // 4000 Sales Revenue at total amount (tax-inclusive).
+        @Test void prepayment_revenue_recognition_posts_dr_customer_deposits_cr_revenue() {
+            UUID invoiceId = UUID.randomUUID();
+            service.postPrepaymentRevenueRecognition(
+                invoiceId, "Globex Ltd", "INV-PREPAY-001",
+                new BigDecimal("550.00"), Currencies.AUD, POSTING_DATE
+            );
+
+            JournalEntry entry = capturedSave();
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.CUSTOMER_INVOICE);
+            assertThat(debitFor(entry, "2110")).isEqualByComparingTo("550.00");
+            assertThat(creditFor(entry, "4000")).isEqualByComparingTo("550.00");
+        }
+
+        // §2.34: refund on a cancelled prepayment/deposit order — the inverse
+        // of the original payment receipt (Dr 2110 Customer Deposits / Cr 1000 Bank).
+        @Test void customer_refund_posts_dr_customer_deposits_cr_bank() {
+            UUID invoiceId = UUID.randomUUID();
+            service.postCustomerRefund(
+                invoiceId, "Globex Ltd", "INV-DEP-001",
+                new BigDecimal("150.00"), Currencies.AUD, POSTING_DATE
+            );
+
+            JournalEntry entry = capturedSave();
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.CUSTOMER_REFUND);
+            assertThat(entry.sourceDocumentId()).isEqualTo(invoiceId);
+            assertThat(debitFor(entry, "2110")).isEqualByComparingTo("150.00");
+            assertThat(creditFor(entry, "1000")).isEqualByComparingTo("150.00");
+        }
+
+        @Test void customer_refund_zero_amount_skips_save() {
+            service.postCustomerRefund(
+                UUID.randomUUID(), "Globex Ltd", "INV-ZERO",
+                BigDecimal.ZERO, Currencies.AUD, POSTING_DATE
+            );
+
+            verify(journals, never()).save(any());
         }
 
         @Test void posting_defaults_currency_to_AUD_when_null() {
@@ -309,6 +366,143 @@ class JournalEntryServicePostingsTest {
 
             assertThatThrownBy(() -> service.reverseEntry(id.value(), "test", POSTING_DATE))
                 .isInstanceOf(IllegalArgumentException.class);
+            verify(journals, never()).save(any());
+        }
+    }
+
+    @Nested
+    class StockAdjustmentPosting {
+
+        @Test void gain_posts_dr_inventory_cr_inventory_adjustment() {
+            when(productCards.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of(ValuationClass.RAW_MATERIALS));
+
+            service.postStockAdjustment(
+                UUID.randomUUID(), "ADJ-001", PRODUCT_RM,
+                new BigDecimal("50.00"), true, Currencies.AUD, POSTING_DATE);
+
+            JournalEntry entry = capturedSave();
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.STOCK_ADJUSTMENT);
+            assertThat(debitFor(entry, "1210")).isEqualByComparingTo("50.00");   // gain Dr's RM inventory
+            assertThat(creditFor(entry, "5400")).isEqualByComparingTo("50.00");  // Cr Inventory Adjustment
+        }
+
+        @Test void loss_posts_dr_inventory_adjustment_cr_inventory() {
+            when(productCards.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of(ValuationClass.FINISHED_GOODS));
+
+            service.postStockAdjustment(
+                UUID.randomUUID(), "ADJ-002", PRODUCT_FG,
+                new BigDecimal("30.00"), false, Currencies.AUD, POSTING_DATE);
+
+            JournalEntry entry = capturedSave();
+            assertThat(debitFor(entry, "5400")).isEqualByComparingTo("30.00");   // loss Dr's Inventory Adjustment
+            assertThat(creditFor(entry, "1220")).isEqualByComparingTo("30.00");  // Cr FG inventory
+        }
+
+        @Test void unclassified_product_falls_back_to_generic_inventory_1200() {
+            when(productCards.findValuationClass(PRODUCT_UNCLASSIFIED)).thenReturn(Optional.empty());
+
+            service.postStockAdjustment(
+                UUID.randomUUID(), "ADJ-003", PRODUCT_UNCLASSIFIED,
+                new BigDecimal("20.00"), true, Currencies.AUD, POSTING_DATE);
+
+            JournalEntry entry = capturedSave();
+            assertThat(debitFor(entry, "1200")).isEqualByComparingTo("20.00");
+            assertThat(creditFor(entry, "5400")).isEqualByComparingTo("20.00");
+        }
+
+        @Test void zero_amount_skips_save_entirely() {
+            service.postStockAdjustment(
+                UUID.randomUUID(), "ADJ-ZERO", PRODUCT_RM,
+                BigDecimal.ZERO, true, Currencies.AUD, POSTING_DATE);
+
+            verify(journals, never()).save(any());
+        }
+    }
+
+    // §2.42 Perpetual WIP — the three new legs.
+    @Nested
+    class WorkInProgressPostings {
+
+        @Test void raw_materials_issued_posts_dr_wip_cr_rm_inventory() {
+            when(productCards.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of(ValuationClass.RAW_MATERIALS));
+
+            service.postWorkInProgressCharge(
+                UUID.randomUUID(), "WO-1",
+                List.of(new LineCost(PRODUCT_RM, new BigDecimal("120.00"))),
+                Currencies.AUD, POSTING_DATE);
+
+            JournalEntry entry = capturedSave();
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.WORK_ORDER_WIP);
+            assertThat(debitFor(entry, "1230")).isEqualByComparingTo("120.00");
+            assertThat(creditFor(entry, "1210")).isEqualByComparingTo("120.00");
+        }
+
+        @Test void sub_assemblies_consumed_posts_dr_wip_cr_fg_inventory() {
+            when(productCards.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of(ValuationClass.SEMI_FINISHED_GOODS));
+
+            service.postSubAssemblyConsumption(
+                UUID.randomUUID(), "WO-PARENT",
+                List.of(new LineCost(PRODUCT_FG, new BigDecimal("90.00"))),
+                Currencies.AUD, POSTING_DATE);
+
+            JournalEntry entry = capturedSave();
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.WORK_ORDER_WIP);
+            assertThat(debitFor(entry, "1230")).isEqualByComparingTo("90.00");
+            assertThat(creditFor(entry, "1220")).isEqualByComparingTo("90.00");
+        }
+
+        @Test void work_order_completion_posts_dr_fg_inventory_cr_wip() {
+            when(productCards.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of(ValuationClass.FINISHED_GOODS));
+
+            service.postWorkOrderCompletion(
+                UUID.randomUUID(), "WO-1", PRODUCT_FG,
+                new BigDecimal("210.00"), Currencies.AUD, POSTING_DATE);
+
+            JournalEntry entry = capturedSave();
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.WORK_ORDER_COMPLETION);
+            assertThat(debitFor(entry, "1220")).isEqualByComparingTo("210.00");
+            assertThat(creditFor(entry, "1230")).isEqualByComparingTo("210.00");
+        }
+
+        @Test void wip_legs_net_to_zero_across_charge_consume_complete() {
+            when(productCards.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of(ValuationClass.RAW_MATERIALS));
+            when(productCards.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of(ValuationClass.FINISHED_GOODS));
+            UUID wo = UUID.randomUUID();
+
+            // Dr WIP 120 (materials) + Dr WIP 90 (sub-assemblies) ...
+            service.postWorkInProgressCharge(wo, "WO-1",
+                List.of(new LineCost(PRODUCT_RM, new BigDecimal("120.00"))), Currencies.AUD, POSTING_DATE);
+            service.postSubAssemblyConsumption(wo, "WO-1",
+                List.of(new LineCost(PRODUCT_FG, new BigDecimal("90.00"))), Currencies.AUD, POSTING_DATE);
+            // ... Cr WIP 210 (completion at FG standard cost = rolled-up materials).
+            service.postWorkOrderCompletion(wo, "WO-1", PRODUCT_FG,
+                new BigDecimal("210.00"), Currencies.AUD, POSTING_DATE);
+
+            ArgumentCaptor<JournalEntry> cap = ArgumentCaptor.forClass(JournalEntry.class);
+            verify(journals, times(3)).save(cap.capture());
+            BigDecimal wipDr = cap.getAllValues().stream()
+                .map(e -> debitFor(e, "1230")).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal wipCr = cap.getAllValues().stream()
+                .map(e -> creditFor(e, "1230")).reduce(BigDecimal.ZERO, BigDecimal::add);
+            assertThat(wipDr).isEqualByComparingTo("210.00");
+            assertThat(wipCr).isEqualByComparingTo("210.00");
+            assertThat(wipDr.subtract(wipCr)).isEqualByComparingTo("0");  // WIP nets to zero
+        }
+
+        @Test void zero_total_charge_skips_save() {
+            service.postWorkInProgressCharge(
+                UUID.randomUUID(), "WO-EMPTY",
+                List.of(new LineCost(PRODUCT_RM, BigDecimal.ZERO)),
+                Currencies.AUD, POSTING_DATE);
+
+            verify(journals, never()).save(any());
+        }
+
+        @Test void zero_completion_amount_skips_save() {
+            service.postWorkOrderCompletion(
+                UUID.randomUUID(), "WO-EMPTY", PRODUCT_FG,
+                BigDecimal.ZERO, Currencies.AUD, POSTING_DATE);
+
             verify(journals, never()).save(any());
         }
     }

@@ -7,6 +7,10 @@ export interface PlaceOrderRequest {
   customerCode: string;
   requestedDeliveryDate?: string | null;     // ISO date
   currencyCode: string;
+  /** 'on_shipment' | 'prepayment' | 'cash_on_delivery' | 'deposit'. Omit to inherit the customer's default. */
+  paymentTerms?: string | null;
+  /** §2.32: up-front fraction (0,100) for deposit orders; null/omit otherwise. */
+  depositPercent?: string | null;
   lines: PlaceOrderLine[];
 }
 export interface PlaceOrderLine {
@@ -16,6 +20,17 @@ export interface PlaceOrderLine {
   orderedQuantity: string;
   unitPrice?: string;
   taxRate?: string;
+}
+
+export interface AdjustStockRequest {
+  adjustmentNumber: string;
+  productId: string;
+  productSku: string;
+  productName: string;
+  warehouseCode: string;
+  mode: "DELTA" | "SET";
+  value: string;
+  reason: string;
 }
 
 export interface PostGoodsReceiptRequest {

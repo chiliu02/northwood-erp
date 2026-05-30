@@ -195,7 +195,7 @@ CREATE TABLE product.product (
     sales_price NUMERIC(18, 6) NOT NULL DEFAULT 0,
     standard_cost NUMERIC(18, 6) NOT NULL DEFAULT 0,
     -- Reorder policy on the master record. Mirrored/owned-locally by
-    -- inventory.stock_item per the projection design (inventory has its own
+    -- inventory.product_card per the projection design (inventory has its own
     -- authoritative copy for replenishment planning); product.product carries
     -- it too so the catalog API can return reorder hints without a cross-
     -- service call.
@@ -359,6 +359,15 @@ CREATE TABLE sales.customer (
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (
         status IN ('active', 'inactive', 'blocked')
     ),
+    -- §2.31 Slice A: default commercial payment terms for this customer.
+    -- Snapshotted onto sales.sales_order_header.payment_terms at order
+    -- placement (overridable per-order). 'on_shipment' = credit terms,
+    -- invoice on shipment (Northwood's existing AR flow). 'prepayment' =
+    -- cash with order, invoice at placement, shipment gated on payment
+    -- (§2.31 Slice B+).
+    default_payment_terms VARCHAR(20) NOT NULL DEFAULT 'on_shipment' CHECK (
+        default_payment_terms IN ('on_shipment', 'prepayment', 'cash_on_delivery', 'deposit')
+    ),
     version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -383,7 +392,7 @@ CREATE TRIGGER trg_customer_updated_at
 -- (e.g. a raw material that purchasing buys but sales never lists); placeOrder
 -- treats that as unsellable, identically to a discontinued product. The seed
 -- makes lifecycle closure structural — one row per Product for its lifetime,
--- mirroring the inventory.stock_item and manufacturing.product_card
+-- mirroring the inventory.product_card and manufacturing.product_card
 -- shape.
 CREATE TABLE sales.product_card (
     product_id UUID PRIMARY KEY,
@@ -416,6 +425,20 @@ CREATE TABLE sales.sales_order_header (
             'shipped', 'completed', 'cancelled', 'rejected'
         )
     ),
+    -- §2.31 Slice A: commercial payment terms snapshotted from
+    -- sales.customer.default_payment_terms at placement (overridable per-order
+    -- on the place-order command). 'on_shipment' = current credit-terms flow;
+    -- 'prepayment' = cash-with-order (§2.31 Slice B+ branches the saga on it).
+    -- 'cash_on_delivery' = COD (§2.33; invoice + payment auto-recorded at shipment).
+    -- 'deposit' = part-payment (§2.32; deposit_percent invoiced + paid up front,
+    -- balance invoiced at shipment).
+    payment_terms VARCHAR(20) NOT NULL DEFAULT 'on_shipment' CHECK (
+        payment_terms IN ('on_shipment', 'prepayment', 'cash_on_delivery', 'deposit')
+    ),
+    -- §2.32: up-front fraction (0,100) for deposit orders; NULL for every other
+    -- payment_terms. Strictly partial (100% would be prepayment). The deposit
+    -- invoice is total * deposit_percent / 100; the balance invoices at shipment.
+    deposit_percent NUMERIC(5, 2) CHECK (deposit_percent IS NULL OR (deposit_percent > 0 AND deposit_percent < 100)),
     currency_code CHAR(3) NOT NULL DEFAULT 'AUD',
     -- exchange_rate against company base currency at the time of order.
     -- Required even for AUD (1.0) so reporting joins are uniform.
@@ -502,10 +525,31 @@ CREATE TABLE sales.sales_order_fulfilment_saga (
     sales_order_header_id UUID NOT NULL UNIQUE,
     saga_state VARCHAR(50) NOT NULL CHECK (
         saga_state IN (
-            'started', 'stock_reservation_requested', 'stock_reserved', 'stock_reservation_failed',
-            'manufacturing_requested', 'manufacturing_in_progress', 'manufacturing_completed',
+            'started', 'stock_reservation_requested', 'stock_reservation_incomplete', 'rejected',
+            -- §2.31 Slice B: prepayment branch states. awaiting_prepayment_invoice
+            -- parks the saga after PrepaymentInvoiceRequested until finance acks
+            -- with CustomerInvoiceCreated. prepaid is the active checkpoint
+            -- between full payment receipt and stock reservation request
+            -- (the worker picks the row up from prepaid the same way it does
+            -- from started / stock_reservation_incomplete).
+            'awaiting_prepayment_invoice', 'prepaid',
+            -- §2.32 deposit branch: awaiting_deposit_invoice parks after
+            -- DepositInvoiceRequested; deposit_invoiced waits for the deposit
+            -- payment; deposit_paid is the active checkpoint (like prepaid) the
+            -- worker picks up to request stock reservation.
+            'awaiting_deposit_invoice', 'deposit_invoiced', 'deposit_paid',
+            -- §2.37 Slice 3 retired the manufacturing_requested /
+            -- manufacturing_in_progress / manufacturing_completed states and the
+            -- §2.36 purchasing_requested state when sales stopped driving
+            -- manufacturing/purchasing directly: inventory now owns the
+            -- make-vs-buy decision and raises ReplenishmentRequest for every
+            -- short line, so a partial reservation simply parks at
+            -- stock_reservation_incomplete until the ReplenishmentFulfilled /
+            -- ReplenishmentCancelled events resolve it. All four states are gone
+            -- from SalesOrderFulfilmentSaga.ALL_STATES, so the CHECK no longer
+            -- lists them.
             'ready_to_ship', 'goods_shipped', 'invoice_requested', 'invoice_created',
-            'invoice_paid',
+            'invoice_partially_paid',
             'completed', 'compensating', 'compensated', 'failed'
         )
     ),
@@ -636,33 +680,128 @@ CREATE TABLE inventory.warehouse (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE inventory.stock_item (
-    stock_item_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
-    product_id UUID NOT NULL UNIQUE,
-    product_sku VARCHAR(50) NOT NULL,
-    product_name VARCHAR(200) NOT NULL,
-    product_type VARCHAR(30) NOT NULL CHECK (
+-- §2.38: inventory's single consumer-side product-master projection (the
+-- `_card` convention — one product_card per consumer schema, docs/conventions.md).
+-- Consolidates the former stock_item (sku/name/type/uom/tracking + reorder
+-- policy, §1F.2) and product_card (make-vs-buy flags, §2.35 Slice A) into one
+-- row per Product. Inventory holds NO invariants over any column — every value
+-- is projected from product-master events: ProductCreated seeds the descriptive
+-- columns + make-vs-buy defaults (RAW_MATERIAL/SERVICE → buy-only,
+-- FINISHED_GOOD/SEMI_FINISHED → make-only); ReorderPolicyChanged,
+-- MakeVsBuyChanged and ProductDiscontinued maintain the rest. Read by the
+-- StockItemQueryPort (stock-items UI), the §2.35 ReorderPolicyLookup
+-- (reorder-point detection) and ProductCardLookup (make-vs-buy routing).
+-- Only product_id is NOT NULL — every attribute column is nullable (or carries
+-- a default) so an out-of-order MakeVsBuyChanged / ProductDiscontinued can seed
+-- the row before ProductCreated lands.
+CREATE TABLE inventory.product_card (
+    product_id          UUID PRIMARY KEY,
+    product_sku         VARCHAR(50),
+    product_name        VARCHAR(200),
+    product_type        VARCHAR(30) CHECK (
         product_type IN ('raw_material', 'finished_good', 'semi_finished_good', 'service')
     ),
-    base_uom_code VARCHAR(20) NOT NULL,
+    base_uom_code       VARCHAR(20),
     stock_tracking_mode VARCHAR(20) NOT NULL DEFAULT 'tracked' CHECK (
         stock_tracking_mode IN ('tracked', 'not_tracked')
     ),
-    -- Reorder policy is owned here: it is a per-SKU inventory planning
-    -- parameter, not a catalogue attribute. The non-authoritative columns
-    -- above (sku/name/type/uom) are still projected from product events.
-    reorder_point NUMERIC(18, 4) NOT NULL DEFAULT 0,
-    reorder_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    is_purchased        BOOLEAN NOT NULL DEFAULT false,
+    is_manufactured     BOOLEAN NOT NULL DEFAULT false,
+    -- Reorder policy: a per-SKU planning parameter projected from product master
+    -- (Shape A). Read by the §2.35 detection service via ReorderPolicyLookup.
+    reorder_point       NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    reorder_quantity    NUMERIC(18, 4) NOT NULL DEFAULT 0,
     -- Stamped from product.ProductDiscontinued so reorder-alert logic can
-    -- suppress alerts for retired SKUs (§1F.1).
-    discontinued_at TIMESTAMPTZ,
-    version BIGINT NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    -- suppress alerts for retired SKUs (§1F.1); also the authoritative
+    -- "unsourceable" signal for §2.35 routing (both flags false ≡ never-
+    -- classified XOR discontinued — disambiguated by this timestamp).
+    discontinued_at     TIMESTAMPTZ,
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TRIGGER trg_stock_item_updated_at
-    BEFORE UPDATE ON inventory.stock_item
+CREATE TRIGGER trg_product_card_updated_at
+    BEFORE UPDATE ON inventory.product_card
+    FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
+
+-- §2.35 Slice B: inventory-orchestrated replenishment requests.
+-- Raised by ReplenishmentDetectionService on the two on-hand-decrement paths
+-- (shipment, stock adjustment) when on_hand < reorder_point and no open
+-- request exists for the (product, warehouse) pair. Also raised by the §2.35
+-- shortage-to-replenishment bridge (Slice C, manufacturing.RawMaterialShortageDetected)
+-- with reason='work_order_shortage' — the same aggregate handles both triggers.
+--
+-- The one-open-per-(product,warehouse) invariant is enforced by the partial
+-- unique index below, NOT by an in-Java check, because that's the only
+-- race-safe way under concurrent decrements. The detection service catches
+-- the PG unique-violation and converts it to a debug-logged no-op.
+--
+-- dispatched_aggregate_kind / dispatched_aggregate_id are populated by
+-- Slice E's close-the-loop handlers when the downstream WO or PR receives
+-- the request. linked_purchase_order_id is stamped when the PR converts to
+-- a PO (so GoodsReceived can resolve to this request).
+CREATE TABLE inventory.replenishment_request (
+    replenishment_request_id    UUID PRIMARY KEY,
+    product_id                  UUID NOT NULL,
+    warehouse_id                UUID NOT NULL REFERENCES inventory.warehouse(warehouse_id),
+    requested_quantity          NUMERIC(18, 4) NOT NULL CHECK (requested_quantity > 0),
+    target_service              VARCHAR(20) NOT NULL CHECK (target_service IN ('manufacturing', 'purchasing')),
+    -- §2.36: sales_order_shortage is the third reason — a sales order
+    -- line short on stock for a purchased-only SKU. Distinct from
+    -- reorder_point_breach (proactive policy-driven) and
+    -- work_order_shortage (manufacturing's raw-material bridge); these
+    -- are reactive demand-driven requests carrying a source-line back-
+    -- reference so the sales saga can un-park on fulfilment.
+    reason                      VARCHAR(40) NOT NULL CHECK (reason IN ('reorder_point_breach', 'work_order_shortage', 'sales_order_shortage')),
+    status                      VARCHAR(20) NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'dispatched', 'fulfilled', 'cancelled')),
+    dispatched_aggregate_kind   VARCHAR(30) CHECK (dispatched_aggregate_kind IN ('work_order', 'purchase_requisition')),
+    dispatched_aggregate_id     UUID,
+    linked_purchase_order_id    UUID,
+    -- §2.36: back-reference to the sales-order line that triggered a
+    -- sales_order_shortage replenishment. Populated only when
+    -- reason='sales_order_shortage'; null for the other two reasons
+    -- (proactive reorder-point + WO-raw-material-shortage have no
+    -- single source line to attribute to). Stamped onto
+    -- ReplenishmentFulfilled payload at markFulfilled time so sales
+    -- can un-park the corresponding fulfilment saga.
+    -- source_sales_order_header_id sits alongside (same nullable
+    -- semantic) so the fan-in handler can route to the saga without
+    -- a cross-schema join — sales is keyed by header_id, not line_id.
+    source_sales_order_header_id UUID,
+    source_sales_order_line_id   UUID,
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    dispatched_at               TIMESTAMPTZ,
+    fulfilled_at                TIMESTAMPTZ,
+    cancelled_at                TIMESTAMPTZ,
+    version                     BIGINT NOT NULL DEFAULT 0,
+    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- One-open invariant: at most one open (requested / dispatched) request
+-- per (product, warehouse) for the proactive policy-driven and WO-shortage
+-- paths — re-triggering while a request is pending is a no-op. Sales-
+-- order-shortage requests are EXCLUDED from this constraint: every short
+-- SO line raises its own request (back-referenced to the line) so the
+-- sales saga can wait for ITS specific replenishment to land, even when
+-- multiple sales orders are short on the same SKU.
+CREATE UNIQUE INDEX uq_replenishment_request_open
+    ON inventory.replenishment_request (product_id, warehouse_id)
+    WHERE status IN ('requested', 'dispatched')
+      AND reason <> 'sales_order_shortage';
+
+CREATE INDEX idx_replenishment_request_dispatched_aggregate
+    ON inventory.replenishment_request (dispatched_aggregate_id)
+    WHERE dispatched_aggregate_id IS NOT NULL;
+
+CREATE INDEX idx_replenishment_request_linked_purchase_order
+    ON inventory.replenishment_request (linked_purchase_order_id)
+    WHERE linked_purchase_order_id IS NOT NULL;
+
+CREATE INDEX idx_replenishment_request_source_sales_order_line
+    ON inventory.replenishment_request (source_sales_order_line_id)
+    WHERE source_sales_order_line_id IS NOT NULL;
+
+CREATE TRIGGER trg_replenishment_request_updated_at
+    BEFORE UPDATE ON inventory.replenishment_request
     FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
 
 CREATE TABLE inventory.stock_balance (
@@ -833,6 +972,37 @@ CREATE TABLE inventory.goods_receipt_line (
 
 CREATE INDEX idx_goods_receipt_header_po_id ON inventory.goods_receipt_header(purchase_order_header_id);
 
+-- Stock adjustments: a warehouse operator's manual inventory gain/loss
+-- (cycle-count correction, damage, shrinkage, demo setup). Post-only header,
+-- single product per adjustment. The signed change is recorded as a positive
+-- magnitude + a direction; on_hand is derived from the resulting stock_movement
+-- (never set directly), and the adjustment emits inventory.StockAdjusted so
+-- finance posts the corresponding GL entry. §2.29.
+CREATE TABLE inventory.stock_adjustment (
+    stock_adjustment_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
+    adjustment_number VARCHAR(50) NOT NULL UNIQUE,
+    warehouse_id UUID NOT NULL REFERENCES inventory.warehouse(warehouse_id),
+    product_id UUID NOT NULL,
+    product_sku VARCHAR(50) NOT NULL,
+    product_name VARCHAR(200) NOT NULL,
+    direction VARCHAR(10) NOT NULL CHECK (direction IN ('in', 'out')),
+    quantity NUMERIC(18, 4) NOT NULL CHECK (quantity > 0),
+    reason VARCHAR(500) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'posted' CHECK (status IN ('draft', 'posted', 'reversed')),
+    version BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    posted_at TIMESTAMPTZ,
+    created_by VARCHAR(64),
+    last_modified_by VARCHAR(64)
+);
+
+CREATE INDEX idx_stock_adjustment_product_id ON inventory.stock_adjustment(product_id);
+
+CREATE TRIGGER trg_stock_adjustment_updated_at
+    BEFORE UPDATE ON inventory.stock_adjustment
+    FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
+
 CREATE TABLE inventory.shipment_header (
     shipment_header_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     shipment_number VARCHAR(50) NOT NULL UNIQUE,
@@ -877,6 +1047,18 @@ CREATE TABLE inventory.sales_order_line_facts (
     sales_order_line_id UUID PRIMARY KEY,
     sales_order_header_id UUID NOT NULL,
     product_id UUID NOT NULL,
+    -- §2.31 Slice C / §2.32 Slice C: payment_terms snapshotted from
+    -- sales.SalesOrderPlaced; upfront_settled flipped true by
+    -- sales.SalesOrderUpfrontPaymentSettled (prepayment fully paid, or deposit
+    -- fully paid). ShipmentService.post refuses prepayment/deposit orders with
+    -- upfront_settled=false (HTTP 409). Both columns repeat on every line
+    -- (denormalised against the header-level fact in sales) — the facts row is
+    -- the only inventory-side read for shipment gating, so one query covers
+    -- both validations.
+    payment_terms VARCHAR(20) NOT NULL DEFAULT 'on_shipment' CHECK (
+        payment_terms IN ('on_shipment', 'prepayment', 'cash_on_delivery', 'deposit')
+    ),
+    upfront_settled BOOLEAN NOT NULL DEFAULT false,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_sales_order_line_facts_header ON inventory.sales_order_line_facts(sales_order_header_id);
@@ -1112,10 +1294,17 @@ CREATE INDEX idx_bom_line_component_product_id ON manufacturing.bom_line(compone
 CREATE TABLE manufacturing.work_order (
     work_order_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     work_order_number VARCHAR(50) NOT NULL UNIQUE,
-    -- Source disambiguation: a work order is either standalone ("manual") or
-    -- traced to a sales order line. Replaces the polymorphic source_type/source_id.
+    -- Source disambiguation: a work order is either standalone ("manual"),
+    -- traced to a sales-order line (make-to-order), or traced to a
+    -- §2.35 inventory.replenishment_request (stock replenishment).
     sales_order_header_id UUID,
     sales_order_line_id UUID,
+    -- §2.35 Slice C: populated when a stock-replenishment WO is released by
+    -- manufacturing.ReplenishmentRequestedHandler. Mutually exclusive with
+    -- the sales-order columns (see CHECK below). Slice E's close-the-loop
+    -- handler reads this when the WO completes to flip the replenishment
+    -- status → 'fulfilled'.
+    replenishment_request_id UUID,
     parent_work_order_id UUID REFERENCES manufacturing.work_order(work_order_id) ON DELETE RESTRICT,
     finished_product_id UUID NOT NULL,
     finished_product_sku VARCHAR(50) NOT NULL,
@@ -1148,10 +1337,17 @@ CREATE TABLE manufacturing.work_order (
     CHECK (completed_quantity >= 0),
     CHECK (scrapped_quantity >= 0),
     CHECK (completed_quantity + scrapped_quantity <= planned_quantity),
-    -- Either both sales_order references are set or neither is.
+    -- §2.35 Slice C: origin is one of three mutually-exclusive shapes:
+    --   1) manual          — all three origin columns NULL
+    --   2) make-to-order   — sales_order_header_id + sales_order_line_id both set,
+    --                        replenishment_request_id NULL
+    --   3) stock replenish — replenishment_request_id set, sales-order cols NULL
+    -- (parent_work_order_id is independent — sub-assembly children inherit the
+    -- parent's origin and copy the parent's identifiers on the existing release path.)
     CHECK (
-        (sales_order_header_id IS NULL AND sales_order_line_id IS NULL) OR
-        (sales_order_header_id IS NOT NULL AND sales_order_line_id IS NOT NULL)
+        (sales_order_header_id IS NULL AND sales_order_line_id IS NULL AND replenishment_request_id IS NULL)
+        OR (sales_order_header_id IS NOT NULL AND sales_order_line_id IS NOT NULL AND replenishment_request_id IS NULL)
+        OR (sales_order_header_id IS NULL AND sales_order_line_id IS NULL AND replenishment_request_id IS NOT NULL)
     )
 );
 
@@ -1162,6 +1358,11 @@ CREATE INDEX idx_work_order_finished_product_id
     ON manufacturing.work_order(finished_product_id);
 CREATE INDEX idx_work_order_parent
     ON manufacturing.work_order(parent_work_order_id) WHERE parent_work_order_id IS NOT NULL;
+
+-- §2.35 Slice E: lets the close-the-loop handler find the WO that fulfils
+-- a given replenishment_request without scanning the whole table.
+CREATE INDEX idx_work_order_replenishment_request
+    ON manufacturing.work_order(replenishment_request_id) WHERE replenishment_request_id IS NOT NULL;
 
 CREATE TRIGGER trg_work_order_updated_at
     BEFORE UPDATE ON manufacturing.work_order
@@ -1271,18 +1472,29 @@ CREATE TABLE manufacturing.production_report (
 CREATE INDEX idx_production_report_work_order_id
     ON manufacturing.production_report(work_order_id);
 
-CREATE TABLE manufacturing.make_to_order_saga (
+CREATE TABLE manufacturing.work_order_saga (
     saga_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
-    sales_order_header_id UUID NOT NULL,
-    sales_order_line_id UUID NOT NULL,
+    -- Nullable since §2.37 Slice 1: make-to-stock replenishment work orders run
+    -- this same WO-lifecycle saga but have no originating sales order. (Saga is
+    -- still named work_order_saga; rename deferred — see dev-todo §2.39.)
+    sales_order_header_id UUID,
+    sales_order_line_id UUID,
     work_order_id UUID UNIQUE,
     saga_state VARCHAR(50) NOT NULL CHECK (
         saga_state IN (
-            'started', 'work_order_created', 'bom_exploded', 'raw_material_reservation_requested',
-            'raw_materials_reserved', 'raw_material_shortage', 'purchase_requisition_requested',
-            'waiting_for_purchased_materials', 'production_released', 'production_started',
-            'production_completed', 'finished_goods_received', 'completed', 'compensating',
-            'compensated', 'failed'
+            -- These six are the states WorkOrderSaga.ALL_STATES actually drives:
+            -- work_order_created → raw_material_reservation_requested →
+            -- raw_materials_reserved / raw_material_shortage → completed / failed.
+            -- §2.37 Slice 3 retired the 'started' entry state (it only seeded the
+            -- old sales-driven make-to-order path; saga is now entered directly at
+            -- work_order_created). The fuller production lifecycle (bom_exploded,
+            -- purchase_requisition_requested, waiting_for_purchased_materials,
+            -- production_released/started/completed, finished_goods_received) was
+            -- aspirational schema-prep that the saga never implemented — dropped
+            -- here to keep the CHECK aligned with the code; see dev-todo (fuller
+            -- WO production lifecycle, low priority) if it's ever built out.
+            'work_order_created', 'raw_material_reservation_requested',
+            'raw_materials_reserved', 'raw_material_shortage', 'completed', 'failed'
         )
     ),
     current_step VARCHAR(100),
@@ -1300,18 +1512,18 @@ CREATE TABLE manufacturing.make_to_order_saga (
     completed_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_make_to_order_saga_state
-    ON manufacturing.make_to_order_saga(saga_state);
-CREATE INDEX idx_make_to_order_saga_sales_order_header_id
-    ON manufacturing.make_to_order_saga(sales_order_header_id);
-CREATE INDEX idx_make_to_order_saga_due
-    ON manufacturing.make_to_order_saga(next_retry_at)
-    WHERE saga_state NOT IN ('completed', 'compensated', 'failed');
-CREATE INDEX idx_make_to_order_saga_data
-    ON manufacturing.make_to_order_saga USING gin (data jsonb_path_ops);
+CREATE INDEX idx_work_order_saga_state
+    ON manufacturing.work_order_saga(saga_state);
+CREATE INDEX idx_work_order_saga_sales_order_header_id
+    ON manufacturing.work_order_saga(sales_order_header_id);
+CREATE INDEX idx_work_order_saga_due
+    ON manufacturing.work_order_saga(next_retry_at)
+    WHERE saga_state NOT IN ('completed', 'failed');
+CREATE INDEX idx_work_order_saga_data
+    ON manufacturing.work_order_saga USING gin (data jsonb_path_ops);
 
-CREATE TRIGGER trg_make_to_order_saga_updated_at
-    BEFORE UPDATE ON manufacturing.make_to_order_saga
+CREATE TRIGGER trg_work_order_saga_updated_at
+    BEFORE UPDATE ON manufacturing.work_order_saga
     FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
 
 -- Status history for work orders.
@@ -1505,13 +1717,21 @@ CREATE TABLE purchasing.purchase_requisition_header (
     purchase_requisition_header_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     requisition_number VARCHAR(50) NOT NULL UNIQUE,
     -- Source columns: a requisition either originates manually, from low-stock
-    -- (project/product reorder), or from a work-order shortage. We split the
-    -- polymorphic ref into named nullable columns + check.
+    -- (legacy/schema-prep), from a work-order shortage (legacy/historical
+    -- only — §2.35 retired the producer), or from a §2.35
+    -- inventory.replenishment_request (the new automatic-replenishment loop —
+    -- covers both reorder-point breaches AND ex-WO-shortage triggers, which
+    -- now route through inventory's ReplenishmentRequest).
+    --
+    -- 'work_order_shortage' is kept in the CHECK because historical rows may
+    -- still reference it; new rows from Java code use 'stock_replenishment'
+    -- instead (see purchasing.PurchaseRequisitionService.createForStockReplenishment).
     source_type VARCHAR(40) NOT NULL DEFAULT 'manual' CHECK (
-        source_type IN ('manual', 'low_stock', 'work_order_shortage')
+        source_type IN ('manual', 'low_stock', 'work_order_shortage', 'stock_replenishment')
     ),
-    source_product_id UUID,         -- set when source_type = 'low_stock'
-    source_work_order_id UUID,      -- set when source_type = 'work_order_shortage'
+    source_product_id UUID,                      -- set when source_type = 'low_stock'
+    source_work_order_id UUID,                   -- set when source_type = 'work_order_shortage' (historical)
+    source_replenishment_request_id UUID,        -- §2.35: set when source_type = 'stock_replenishment'
     status VARCHAR(30) NOT NULL DEFAULT 'draft' CHECK (
         status IN ('draft', 'pending_approval', 'approved', 'rejected', 'converted', 'cancelled')
     ),
@@ -1525,11 +1745,18 @@ CREATE TABLE purchasing.purchase_requisition_header (
     created_by VARCHAR(64),
     last_modified_by VARCHAR(64),
     CHECK (
-        (source_type = 'manual' AND source_product_id IS NULL AND source_work_order_id IS NULL) OR
-        (source_type = 'low_stock' AND source_product_id IS NOT NULL AND source_work_order_id IS NULL) OR
-        (source_type = 'work_order_shortage' AND source_product_id IS NULL AND source_work_order_id IS NOT NULL)
+        (source_type = 'manual' AND source_product_id IS NULL AND source_work_order_id IS NULL AND source_replenishment_request_id IS NULL) OR
+        (source_type = 'low_stock' AND source_product_id IS NOT NULL AND source_work_order_id IS NULL AND source_replenishment_request_id IS NULL) OR
+        (source_type = 'work_order_shortage' AND source_product_id IS NULL AND source_work_order_id IS NOT NULL AND source_replenishment_request_id IS NULL) OR
+        (source_type = 'stock_replenishment' AND source_product_id IS NULL AND source_work_order_id IS NULL AND source_replenishment_request_id IS NOT NULL)
     )
 );
+
+-- §2.35 Slice E lookup: lets the close-the-loop handler find the PR that
+-- fulfils a given replenishment_request without scanning the whole table.
+CREATE INDEX idx_purchase_requisition_header_replenishment_request
+    ON purchasing.purchase_requisition_header(source_replenishment_request_id)
+    WHERE source_replenishment_request_id IS NOT NULL;
 
 CREATE TRIGGER trg_purchase_requisition_header_updated_at
     BEFORE UPDATE ON purchasing.purchase_requisition_header
@@ -1630,7 +1857,7 @@ CREATE TABLE purchasing.purchase_to_pay_saga (
     saga_state VARCHAR(50) NOT NULL CHECK (
         saga_state IN (
             'started', 'purchase_order_approved', 'waiting_for_goods', 'goods_received',
-            'supplier_invoice_approved', 'supplier_payment_made', 'completed', 'failed'
+            'supplier_invoice_approved', 'supplier_partially_paid', 'completed', 'failed'
         )
     ),
     current_step VARCHAR(100),
@@ -1795,6 +2022,28 @@ CREATE TRIGGER trg_product_card_updated_at
     BEFORE UPDATE ON finance.product_card
     FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
 
+-- §2.42 Perpetual-WIP sub-ledger. One row per work order. Tracks the
+-- standard-cost value accumulated in Work In Progress (1230) as raw materials
+-- are issued (inventory.RawMaterialsReserved) and completed sub-assemblies are
+-- rolled in (manufacturing.SubAssembliesConsumed), plus the idempotency
+-- timestamps for the two posting legs (charge raw materials once;
+-- complete once). Settled to zero at manufacturing.WorkOrderManufacturingCompleted
+-- (Dr 1220 Finished Goods / Cr 1230 WIP at the finished good's standard cost).
+-- A finance-owned running total (a projection, not an aggregate — deltas get
+-- aggregates, totals get projections; docs/conventions.md).
+CREATE TABLE finance.work_order_wip (
+    work_order_id        UUID PRIMARY KEY,
+    finished_product_id  UUID,
+    wip_value            NUMERIC(18, 6) NOT NULL DEFAULT 0,
+    materials_charged_at TIMESTAMPTZ,
+    completed_at         TIMESTAMPTZ,
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER trg_work_order_wip_updated_at
+    BEFORE UPDATE ON finance.work_order_wip
+    FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
+
 -- purchasing.PurchaseOrderCreated + inventory.GoodsReceived. One row per
 -- purchase-order line. Used by 3-way match: invoice quantity must not exceed
 -- received_quantity, invoice unit_price must match unit_price (within
@@ -1855,6 +2104,17 @@ CREATE TABLE finance.customer_invoice_header (
     status VARCHAR(30) NOT NULL DEFAULT 'draft' CHECK (
         status IN ('draft', 'posted', 'partially_paid', 'paid', 'cancelled')
     ),
+    -- §2.31 Slice B: discriminator between the two AR commercial patterns.
+    -- 'commercial' = invoice created at shipment, posts Dr AR / Cr Revenue at
+    -- creation, payment posts Dr Cash / Cr AR (Northwood's existing flow).
+    -- 'prepayment' = invoice created at order placement, NO GL at creation,
+    -- payment posts Dr Cash / Cr 2110 Customer Deposits; shipment reclassifies
+    -- Dr 2110 / Cr Revenue (Treatment A — revenue recognised at shipment, the
+    -- goods-delivered performance obligation). Default keeps legacy rows on
+    -- the commercial path.
+    invoice_type VARCHAR(20) NOT NULL DEFAULT 'commercial' CHECK (
+        invoice_type IN ('commercial', 'prepayment', 'deposit', 'balance')
+    ),
     currency_code CHAR(3) NOT NULL DEFAULT 'AUD',
     exchange_rate NUMERIC(18, 8) NOT NULL DEFAULT 1.0 CHECK (exchange_rate > 0),
     exchange_rate_captured_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1872,6 +2132,17 @@ CREATE TABLE finance.customer_invoice_header (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     posted_at TIMESTAMPTZ,
+    -- §2.31 Slice C: stamped when the deferred-revenue Dr 2110 / Cr Revenue
+    -- pair is posted at shipment (prepayment invoices only). Null means
+    -- revenue is still deferred (commercial invoice; or prepayment invoice
+    -- whose shipment hasn't posted yet). Non-null gates the redelivery of
+    -- ShipmentPosted at finance — the journal pair is posted at most once.
+    revenue_recognized_at TIMESTAMPTZ,
+    -- §2.34: stamped when a cancelled prepayment/deposit order's up-front amount
+    -- is refunded (Dr 2110 Customer Deposits / Cr 1000 Bank). Null means not
+    -- refunded; non-null gates redelivery of sales.SalesOrderCancellationRequested
+    -- at finance so the refund pair posts at most once.
+    refunded_at TIMESTAMPTZ,
     created_by VARCHAR(64),
     last_modified_by VARCHAR(64),
     CHECK (paid_amount >= 0 AND paid_amount <= total_amount)
@@ -2601,6 +2872,10 @@ CREATE TABLE reporting.sales_order_360_view (
     shipment_status VARCHAR(40) NOT NULL,
     invoice_status VARCHAR(40) NOT NULL,
     payment_status VARCHAR(40) NOT NULL,
+    -- §2.31 Slice A: commercial terms surfaced on the SO-360 view; projected
+    -- from sales.SalesOrderPlaced.paymentTerms. UI uses this to render a
+    -- "Prepayment" lozenge (and later, an "awaiting prepayment" state).
+    payment_terms VARCHAR(20) NOT NULL DEFAULT 'on_shipment',
     currency_code CHAR(3) NOT NULL DEFAULT 'AUD',
     total_amount NUMERIC(18, 2) NOT NULL DEFAULT 0,
     invoiced_amount NUMERIC(18, 2) NOT NULL DEFAULT 0,
@@ -2734,6 +3009,51 @@ CREATE TABLE reporting.purchase_order_tracking_view (
 
 CREATE INDEX idx_po_tracking_supplier_id ON reporting.purchase_order_tracking_view(supplier_id);
 CREATE INDEX idx_po_tracking_status ON reporting.purchase_order_tracking_view(po_status);
+
+-- §2.35 Slice F: replenishment history view. One row per ReplenishmentRequest,
+-- driven by the four §2.35 events:
+--   inventory.ReplenishmentRequested            → INSERT row in 'requested'
+--   manufacturing.ReplenishmentDispatched       → UPDATE status → 'dispatched',
+--                                                 dispatched_aggregate_kind='work_order'
+--   purchasing.ReplenishmentDispatched          → UPDATE status → 'dispatched',
+--                                                 dispatched_aggregate_kind='purchase_requisition'
+--   inventory.ReplenishmentFulfilled            → UPDATE status → 'fulfilled'
+--
+-- Product SKU/name are joined at query time from
+-- reporting.available_to_promise_view (which carries them keyed by product_id).
+-- Warehouse code is denormalised at request time from… actually warehouse
+-- identity isn't projected into reporting today; the controller exposes
+-- warehouse_id only. UI can resolve via the existing
+-- inventory.warehouse endpoint if it needs to display the code.
+-- No CHECK constraints on enumerated columns: this is a downstream
+-- projection that must tolerate out-of-order arrival with placeholder
+-- values ('(pending)' / zero quantities) until the request event catches
+-- up. The producer (inventory.replenishment_request) already enforces the
+-- wire-format invariants. Same pattern as other reporting views.
+CREATE TABLE reporting.replenishment_history_view (
+    replenishment_request_id    UUID PRIMARY KEY,
+    product_id                  UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+    warehouse_id                UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+    requested_quantity          NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    target_service              VARCHAR(20) NOT NULL DEFAULT '(pending)',
+    reason                      VARCHAR(40) NOT NULL DEFAULT '(pending)',
+    status                      VARCHAR(20) NOT NULL DEFAULT 'requested',
+    dispatched_aggregate_kind   VARCHAR(30),
+    dispatched_aggregate_id     UUID,
+    requested_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
+    dispatched_at               TIMESTAMPTZ,
+    fulfilled_at                TIMESTAMPTZ,
+    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_replenishment_history_product
+    ON reporting.replenishment_history_view(product_id);
+CREATE INDEX idx_replenishment_history_status
+    ON reporting.replenishment_history_view(status);
+
+CREATE TRIGGER trg_replenishment_history_view_updated_at
+    BEFORE UPDATE ON reporting.replenishment_history_view
+    FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
 
 -- Financial dashboard now keyed by (date, currency_code) to support multi-currency.
 CREATE TABLE reporting.financial_dashboard_daily (

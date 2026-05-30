@@ -15,6 +15,7 @@ export interface SalesOrder360 {
   shipmentStatus: string | null;
   invoiceStatus: string | null;
   paymentStatus: string | null;
+  paymentTerms: string;                // 'on_shipment' | 'prepayment' | 'cash_on_delivery'
   currencyCode: string;
   totalAmount: string;
   invoicedAmount: string;
@@ -148,7 +149,6 @@ export interface BomFlatComponent {
 }
 
 export interface StockItemRow {
-  stockItemId: string;
   productId: string;
   productSku: string;
   productName: string;
@@ -157,7 +157,36 @@ export interface StockItemRow {
   trackingMode: string;
   reorderPoint: string;
   reorderQuantity: string;
-  version: number;
+  onHand: string;
+  reserved: string;
+  available: string;
+}
+
+export interface StockBalanceRow {
+  warehouseId: string;
+  productId: string;
+  onHand: string;
+  reserved: string;
+  available: string;
+}
+
+// §2.35 Slice F: reporting.replenishment_history_view rows powering the
+// "Replenishment activity" widget on the stock-items page.
+export interface ReplenishmentHistoryRow {
+  replenishmentRequestId: string;
+  productId: string;
+  productSku: string | null;
+  productName: string | null;
+  warehouseId: string;
+  requestedQuantity: string;
+  targetService: string;
+  reason: string;
+  status: string;
+  dispatchedAggregateKind: string | null;
+  dispatchedAggregateId: string | null;
+  requestedAt: string;
+  dispatchedAt: string | null;
+  fulfilledAt: string | null;
 }
 
 // Purchasing — purchase-order detail (header + lines), from purchasing-service GET /{id}.
@@ -215,6 +244,7 @@ export interface SalesOrderView {
   orderDate: string | null;
   requestedDeliveryDate: string | null;
   status: string;
+  paymentTerms: string;                // 'on_shipment' | 'prepayment' | 'cash_on_delivery'
   currencyCode: string;
   subtotalAmount: string;
   taxAmount: string;

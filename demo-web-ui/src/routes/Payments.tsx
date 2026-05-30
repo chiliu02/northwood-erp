@@ -222,7 +222,7 @@ function CustomerPaymentForm() {
       <p className="mb-4 text-sm text-text-muted">
         Record an incoming customer payment. On full settlement the fulfilment saga reaches
         <span className="font-mono"> completed</span> and the order header flips to <span className="font-mono">completed</span>.
-        Partial settlements transition to <span className="font-mono">invoice_paid</span> and park.
+        Partial settlements transition to <span className="font-mono">invoice_partially_paid</span> and park.
       </p>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <FieldRow label="Payment number" required>

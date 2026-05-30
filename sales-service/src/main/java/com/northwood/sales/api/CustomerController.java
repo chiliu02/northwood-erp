@@ -37,7 +37,8 @@ public class CustomerController {
         CustomerView view = service.registerCustomer(
             request.customerCode(), request.name(),
             request.email(), request.phone(),
-            request.billingAddress(), request.shippingAddress()
+            request.billingAddress(), request.shippingAddress(),
+            request.defaultPaymentTerms()
         );
         return ResponseEntity
             .created(URI.create("/api/customers/" + view.customerId()))

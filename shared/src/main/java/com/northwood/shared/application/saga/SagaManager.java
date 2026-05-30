@@ -120,7 +120,7 @@ public abstract class SagaManager<S extends SagaInstance, P extends SagaPort<S>>
                 tx.executeWithoutResult(status -> {
                     advanceFn.accept(saga);
                     saga.releaseLease();
-                    sagaPort.save(saga);
+                    sagaPort.update(saga);
                 });
             } catch (RuntimeException ex) {
                 log.warn("[{}] saga {} advance failed: {}", workerId, saga.sagaId(), ex.toString());
@@ -134,7 +134,7 @@ public abstract class SagaManager<S extends SagaInstance, P extends SagaPort<S>>
                                 ex.getClass().getSimpleName() + ": " + ex.getMessage()
                             );
                             reloaded.releaseLease();
-                            sagaPort.save(reloaded);
+                            sagaPort.update(reloaded);
                         });
                     });
                 } catch (RuntimeException nested) {

@@ -48,7 +48,7 @@ public final class InMemoryWorkOrderRepository implements WorkOrderRepository {
             try {
                 outbox.appendPending(OutboxRow.pending(
                     event.eventId(),
-                    "WorkOrder",
+                    WorkOrder.AGGREGATE_TYPE,
                     event.aggregateId(),
                     event.eventType(),
                     event.eventVersion(),
@@ -84,17 +84,6 @@ public final class InMemoryWorkOrderRepository implements WorkOrderRepository {
         for (WorkOrder w : store.values()) {
             if (parentWorkOrderId.equals(w.parentWorkOrderId()) && w.status() == WorkOrder.Status.COMPLETED) {
                 out.add(new CompletedChild(w.id().value(), w.finishedProductId(), w.completedQuantity()));
-            }
-        }
-        return out;
-    }
-
-    @Override
-    public List<UUID> findActiveIdsForSalesOrder(UUID salesOrderHeaderId) {
-        List<UUID> out = new ArrayList<>();
-        for (WorkOrder w : store.values()) {
-            if (salesOrderHeaderId.equals(w.salesOrderHeaderId()) && !isTerminal(w.status())) {
-                out.add(w.id().value());
             }
         }
         return out;

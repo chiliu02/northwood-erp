@@ -1,5 +1,6 @@
 package com.northwood.sales.application;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -14,6 +15,8 @@ import com.northwood.sales.application.dto.PlaceOrderCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand.OrderLine;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.sales.domain.Customer;
+import com.northwood.sales.domain.PaymentTerms;
+import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.SalesOrderRepository;
 import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
@@ -23,9 +26,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
@@ -44,14 +50,16 @@ class SalesOrderServicePlaceOrderTest {
     @BeforeEach
     void setUp() {
         service = new SalesOrderService(orders, sagaManager, customers, productCards);
-        when(customers.findByCode("CUST-1")).thenReturn(Optional.of(
-            new CustomerSummary(CUSTOMER_ID, "CUST-1", "Customer One", Customer.Status.ACTIVE)
+        // Lenient so nested @Nested classes can stub a different customer code
+        // without tripping strict-mode UnnecessaryStubbing on this shared setup.
+        Mockito.lenient().when(customers.findByCode("CUST-1")).thenReturn(Optional.of(
+            new CustomerSummary(CUSTOMER_ID, "CUST-1", "Customer One", Customer.Status.ACTIVE, PaymentTerms.ON_SHIPMENT)
         ));
     }
 
     private PlaceOrderCommand commandWithUnitPrice(BigDecimal unitPrice) {
         return new PlaceOrderCommand(
-            "SO-1001", "CUST-1", LocalDate.now().plusDays(7), Currencies.AUD,
+            "SO-1001", "CUST-1", LocalDate.now().plusDays(7), Currencies.AUD, null,
             List.of(new OrderLine(
                 PRODUCT_ID, "SKU-1", "Widget",
                 new BigDecimal("2"), unitPrice, BigDecimal.ZERO
@@ -124,5 +132,66 @@ class SalesOrderServicePlaceOrderTest {
 
         verify(orders).save(any());
         verify(sagaManager).insertStarted(any(), any());
+    }
+
+    /**
+     * §2.31 Slice A.1 — the foundation slice's whole point: per-order
+     * {@code payment_terms} flows from customer default through the snapshot,
+     * with a command-level override that wins when supplied. No behavior
+     * change to the saga yet (Slice B+ hangs branching on it).
+     */
+    @Nested class PaymentTermsSnapshot {
+
+        @BeforeEach void priceLiveProduct() {
+            when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
+                new CatalogPrice(new BigDecimal("10.00"), Currencies.AUD, null)
+            ));
+        }
+
+        @Test void snapshots_customer_default_when_command_has_no_override() {
+            when(customers.findByCode("CUST-PREPAY")).thenReturn(Optional.of(
+                new CustomerSummary(CUSTOMER_ID, "CUST-PREPAY", "Prepay Co",
+                    Customer.Status.ACTIVE, PaymentTerms.PREPAYMENT)
+            ));
+
+            service.placeOrder(new PlaceOrderCommand(
+                "SO-PT-1", "CUST-PREPAY", LocalDate.now().plusDays(7), Currencies.AUD, null,
+                List.of(new OrderLine(PRODUCT_ID, "SKU-1", "Widget",
+                    new BigDecimal("1"), null, BigDecimal.ZERO))
+            ));
+
+            ArgumentCaptor<SalesOrder> cap = ArgumentCaptor.forClass(SalesOrder.class);
+            verify(orders).save(cap.capture());
+            assertThat(cap.getValue().paymentTerms()).isEqualTo(PaymentTerms.PREPAYMENT);
+        }
+
+        @Test void command_override_wins_over_customer_default() {
+            // Customer's default is on_shipment (the existing CUST-1 mock from
+            // setUp); command overrides to prepayment.
+            service.placeOrder(new PlaceOrderCommand(
+                "SO-PT-2", "CUST-1", LocalDate.now().plusDays(7), Currencies.AUD,
+                PaymentTerms.PREPAYMENT.dbValue(),
+                List.of(new OrderLine(PRODUCT_ID, "SKU-1", "Widget",
+                    new BigDecimal("1"), null, BigDecimal.ZERO))
+            ));
+
+            ArgumentCaptor<SalesOrder> cap = ArgumentCaptor.forClass(SalesOrder.class);
+            verify(orders).save(cap.capture());
+            assertThat(cap.getValue().paymentTerms()).isEqualTo(PaymentTerms.PREPAYMENT);
+        }
+
+        @Test void rejects_unknown_payment_terms_wire_value() {
+            assertThatThrownBy(() -> service.placeOrder(new PlaceOrderCommand(
+                "SO-PT-3", "CUST-1", LocalDate.now().plusDays(7), Currencies.AUD,
+                "letter_of_credit",   // not in the enum
+                List.of(new OrderLine(PRODUCT_ID, "SKU-1", "Widget",
+                    new BigDecimal("1"), null, BigDecimal.ZERO))
+            )))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("payment_terms")
+                .hasMessageContaining("letter_of_credit");
+
+            verify(orders, never()).save(any());
+        }
     }
 }

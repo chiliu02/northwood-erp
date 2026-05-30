@@ -70,7 +70,7 @@ public class JdbcPurchaseToPaySagaManager
         }
         if (STARTED.equals(saga.state())) {
             saga.transitionTo(PURCHASE_ORDER_APPROVED, "wait_for_worker_pickup");
-            sagaPort.save(saga);
+            sagaPort.update(saga);
             log.info("saga {} purchase_order={} → purchase_order_approved",
                 saga.sagaId(), purchaseOrderHeaderId);
         }
@@ -88,7 +88,7 @@ public class JdbcPurchaseToPaySagaManager
 
         if (fullyReceived && WAITING_FOR_GOODS.equals(saga.state())) {
             saga.transitionTo(GOODS_RECEIVED, "wait_for_supplier_invoice");
-            sagaPort.save(saga);
+            sagaPort.update(saga);
             log.info("saga {} purchase_order={} → goods_received (fully received)",
                 saga.sagaId(), purchaseOrderHeaderId);
         }
@@ -102,7 +102,7 @@ public class JdbcPurchaseToPaySagaManager
 
         if (GOODS_RECEIVED.equals(saga.state())) {
             saga.transitionTo(SUPPLIER_INVOICE_APPROVED, "wait_for_payment");
-            sagaPort.save(saga);
+            sagaPort.update(saga);
             log.info("saga {} purchase_order={} → supplier_invoice_approved",
                 saga.sagaId(), purchaseOrderHeaderId);
         } else {
@@ -119,7 +119,7 @@ public class JdbcPurchaseToPaySagaManager
 
         if (GOODS_RECEIVED.equals(saga.state())) {
             saga.transitionTo(FAILED, "supplier_invoice_rejected");
-            sagaPort.save(saga);
+            sagaPort.update(saga);
             log.info("saga {} purchase_order={} → failed (supplier invoice rejected)",
                 saga.sagaId(), purchaseOrderHeaderId);
         } else {
@@ -135,18 +135,18 @@ public class JdbcPurchaseToPaySagaManager
         PurchaseToPaySaga saga = requireSaga(purchaseOrderHeaderId, SupplierPaymentMade.EVENT_TYPE);
 
         if (!SUPPLIER_INVOICE_APPROVED.equals(saga.state())
-            && !SUPPLIER_PAYMENT_MADE.equals(saga.state())) {
+            && !SUPPLIER_PARTIALLY_PAID.equals(saga.state())) {
             log.debug("saga {} purchase_order={} not in payment-receivable state (state={}); ignoring",
                 saga.sagaId(), purchaseOrderHeaderId, saga.state());
         } else if (fullySettled) {
             saga.transitionTo(COMPLETED, "p2p_completed");
-            sagaPort.save(saga);
+            sagaPort.update(saga);
             log.info("saga {} purchase_order={} → completed (fully settled)",
                 saga.sagaId(), purchaseOrderHeaderId);
         } else {
-            saga.transitionTo(SUPPLIER_PAYMENT_MADE, "wait_for_remaining_payments");
-            sagaPort.save(saga);
-            log.info("saga {} purchase_order={} → supplier_payment_made (partial)",
+            saga.transitionTo(SUPPLIER_PARTIALLY_PAID, "wait_for_remaining_payments");
+            sagaPort.update(saga);
+            log.info("saga {} purchase_order={} → supplier_partially_paid (partial)",
                 saga.sagaId(), purchaseOrderHeaderId);
         }
         return saga.state();

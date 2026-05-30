@@ -39,7 +39,7 @@ import tools.jackson.databind.ObjectMapper;
  * {@code product.events} Kafka topic (simulating product-service's outbox
  * publisher) and asserts that inventory-service's {@code @KafkaListener},
  * dispatcher, and projection handler land the updated values on
- * {@code inventory.stock_item}. The inbox row is also asserted to verify
+ * {@code inventory.product_card}. The inbox row is also asserted to verify
  * idempotency machinery is in place.
  *
  * <p>Containers: a fresh PostgreSQL with a minimal schema bootstrap (just the
@@ -118,7 +118,7 @@ class ReorderPolicyChangedSeamIT {
     @Autowired JdbcTemplate jdbc;
 
     @Test
-    void reorderPolicyChanged_fromKafka_updatesStockItemProjection() {
+    void reorderPolicyChanged_fromKafka_updatesProductCardProjection() {
         UUID eventId = UUID.randomUUID();
         BigDecimal newReorderPoint = new BigDecimal("11");
         BigDecimal newReorderQuantity = new BigDecimal("22");
@@ -161,11 +161,11 @@ class ReorderPolicyChangedSeamIT {
         // Poll the projection until the handler has applied the update.
         await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofMillis(250)).untilAsserted(() -> {
             BigDecimal point = jdbc.queryForObject(
-                "SELECT reorder_point FROM inventory.stock_item WHERE product_id = ?",
+                "SELECT reorder_point FROM inventory.product_card WHERE product_id = ?",
                 BigDecimal.class, SEED_PRODUCT_ID
             );
             BigDecimal qty = jdbc.queryForObject(
-                "SELECT reorder_quantity FROM inventory.stock_item WHERE product_id = ?",
+                "SELECT reorder_quantity FROM inventory.product_card WHERE product_id = ?",
                 BigDecimal.class, SEED_PRODUCT_ID
             );
             assertThat(point).isEqualByComparingTo(newReorderPoint);

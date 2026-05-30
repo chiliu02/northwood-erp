@@ -30,6 +30,14 @@ final class FinanceAccountCodes {
     /** 2100 — Accounts Payable. */
     static final String AP = "2100";
 
+    /**
+     * 2110 — Customer Deposits (liability). §2.31 Slice B. Credited on
+     * customer-payment receipt for a {@code prepayment} invoice (Dr Cash);
+     * debited at shipment (Slice C) to reclassify the deposit against Sales
+     * Revenue once the goods-delivered performance obligation is met.
+     */
+    static final String CUSTOMER_DEPOSITS = "2110";
+
     /** 1000 — operating bank account. */
     static final String BANK = "1000";
 
@@ -45,6 +53,13 @@ final class FinanceAccountCodes {
     /** 1300 — Goods Received Not Invoiced; clears between receipt and invoice approval. */
     static final String GRNI = "1300";
 
+    /**
+     * 1230 — Work In Progress (§2.42). Raw materials Dr here when issued to a
+     * work order (Cr 1210); the finished good Dr's 1220 / Cr's 1230 at
+     * completion. Nets to zero per WO at standard cost (material-only cut).
+     */
+    static final String WIP = "1230";
+
     /** 1210 — Raw Materials Inventory; per-class breakdown of {@link #INVENTORY}. */
     static final String RM_INVENTORY = "1210";
 
@@ -53,6 +68,9 @@ final class FinanceAccountCodes {
 
     /** 5200 — Raw Materials COGS; per-class breakdown of {@link #COGS}. */
     static final String MATERIALS_COGS = "5200";
+
+    /** 5400 — Inventory Adjustment; the gain/loss offset for manual stock adjustments (§2.29). */
+    static final String INVENTORY_ADJUSTMENT = "5400";
 
     private FinanceAccountCodes() {}
 }

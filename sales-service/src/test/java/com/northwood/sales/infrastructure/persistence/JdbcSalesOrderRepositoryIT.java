@@ -3,6 +3,7 @@ package com.northwood.sales.infrastructure.persistence;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.northwood.sales.domain.PaymentTerms;
 import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.SalesOrderId;
 import com.northwood.sales.domain.SalesOrderLine;
@@ -159,6 +160,7 @@ class JdbcSalesOrderRepositoryIT {
         return SalesOrder.reconstitute(
             SalesOrderId.newId(), orderNumber, CUSTOMER_ID, "CUST-SO-IT", "Customer IT",
             LocalDate.now(), null, SalesOrder.Status.SUBMITTED, "AUD", BigDecimal.ONE,
+            PaymentTerms.ON_SHIPMENT, null,
             new BigDecimal("100.00"), BigDecimal.ZERO, new BigDecimal("100.00"),
             null, 0L, List.of(line));
     }

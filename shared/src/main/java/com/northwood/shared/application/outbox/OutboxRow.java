@@ -12,16 +12,15 @@ import org.springframework.data.relational.core.mapping.Column;
  * repository's {@code @Table} annotation in the service's infrastructure layer.
  *
  * <p>Insertions happen in the same transaction as the aggregate write. A
- * separate publisher (see {@link OutboxPublisher}) drains rows where
- * {@code status = 'pending'} and publishes them to the bus, ordered by
- * {@code sequence_number}.
+ * separate publisher drains rows where {@code status = 'pending'} and
+ * publishes them to the bus, ordered by {@code sequence_number}.
  */
 public final class OutboxRow {
 
     // ------------------------------------------------------------
     // Status constants — wire-format strings stored in
     // <service>.outbox_message.status. Lifecycle: pending → published
-    // (drained by OutboxPublisher) or pending → failed (publisher error
+    // (drained by OutboxDrainer) or pending → failed (publisher error
     // with retry metadata; failed rows are picked up again next tick).
     // ------------------------------------------------------------
     public static final String PENDING = "pending";

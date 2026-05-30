@@ -21,10 +21,11 @@ const PERSONA_NAV: Record<PersonaKey, NavItem[]> = {
     { to: "/sales-orders",     label: "Sales orders" },
   ],
   mike: [
-    { to: "/stock-items",     label: "Stock items" },
-    { to: "/goods-receipts",  label: "Goods receipts" },
-    { to: "/shipments",       label: "Shipments" },
-    { to: "/atp",             label: "Available-to-promise" },
+    { to: "/stock-items",       label: "Stock items" },
+    { to: "/stock-adjustments", label: "Stock adjustment" },
+    { to: "/goods-receipts",    label: "Goods receipts" },
+    { to: "/shipments",         label: "Shipments" },
+    { to: "/atp",               label: "Available-to-promise" },
   ],
   linda: [
     { to: "/production-board",  label: "Production board" },

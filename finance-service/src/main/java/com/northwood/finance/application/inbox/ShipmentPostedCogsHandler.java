@@ -2,6 +2,8 @@ package com.northwood.finance.application.inbox;
 
 import com.northwood.finance.application.JournalEntryService;
 import com.northwood.finance.application.ProductCardLookup;
+import com.northwood.finance.domain.CustomerInvoice;
+import com.northwood.finance.domain.CustomerInvoiceRepository;
 import com.northwood.inventory.domain.events.ShipmentPosted;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
@@ -48,16 +50,19 @@ public class ShipmentPostedCogsHandler extends AbstractInboxHandler<ShipmentPost
 
     private final JournalEntryService journals;
     private final ProductCardLookup productCards;
+    private final CustomerInvoiceRepository customerInvoices;
 
     public ShipmentPostedCogsHandler(
         InboxPort inbox,
         JournalEntryService journals,
         ProductCardLookup productCards,
+        CustomerInvoiceRepository customerInvoices,
         ObjectMapper json
     ) {
         super(inbox, json, ShipmentPosted.class, ShipmentPosted.EVENT_TYPE, CONSUMER_NAME);
         this.journals = journals;
         this.productCards = productCards;
+        this.customerInvoices = customerInvoices;
     }
 
     @Override
@@ -97,5 +102,37 @@ public class ShipmentPostedCogsHandler extends AbstractInboxHandler<ShipmentPost
 
         log.info("[{}] posted COGS for shipment {} ({} line(s))",
             CONSUMER_NAME, payload.shipmentNumber(), lineCosts.size());
+
+        // §2.31 / §2.32 Slice C: for prepayment AND deposit orders, post the
+        // deferred-revenue Dr 2110 Customer Deposits / Cr Revenue pair against
+        // the up-front invoice — this is when that portion's revenue is
+        // recognised (the goods-delivered performance obligation). For deposit
+        // it recognises the deposit amount; the balance invoice (Cr Revenue for
+        // the remainder) is created from SalesOrderShipped. findInvoiceForShipment
+        // returns the earliest invoice for the order, which is always the
+        // prepayment/deposit invoice (created at placement, before any balance).
+        // markRevenueRecognized is the idempotency gate: stamps on first call,
+        // returns false thereafter (so a redelivered ShipmentPosted still doesn't
+        // double-post).
+        var existing = customerInvoices.findInvoiceForShipment(payload.salesOrderHeaderId());
+        if (existing.isPresent()
+            && (existing.get().invoiceType() == CustomerInvoice.InvoiceType.PREPAYMENT
+                || existing.get().invoiceType() == CustomerInvoice.InvoiceType.DEPOSIT)
+            && !existing.get().revenueRecognized()) {
+            boolean stamped = customerInvoices.markRevenueRecognized(existing.get().customerInvoiceHeaderId());
+            if (stamped) {
+                journals.postPrepaymentRevenueRecognition(
+                    existing.get().customerInvoiceHeaderId(),
+                    existing.get().customerName(),
+                    existing.get().invoiceNumber(),
+                    existing.get().totalAmount(),
+                    existing.get().currencyCode(),
+                    postingDate
+                );
+                log.info("[{}] recognised deferred revenue for {} invoice {} (sales_order={}, total={} {})",
+                    CONSUMER_NAME, existing.get().invoiceType().dbValue(), existing.get().invoiceNumber(),
+                    payload.salesOrderHeaderId(), existing.get().totalAmount(), existing.get().currencyCode());
+            }
+        }
     }
 }

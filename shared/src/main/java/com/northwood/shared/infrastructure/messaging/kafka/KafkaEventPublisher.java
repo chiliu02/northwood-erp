@@ -21,7 +21,7 @@ import org.springframework.kafka.core.KafkaTemplate;
  * nothing publishes to it.
  *
  * <p>Topic derivation: {@link EventEnvelope#headers()} carries
- * {@code source-service} (set by {@link com.northwood.shared.infrastructure.outbox.OutboxPublisher}).
+ * {@code source-service} (set by {@link com.northwood.shared.application.outbox.OutboxDrainer}).
  * Topics are per-aggregate-context — {@code product.events}, {@code inventory.events},
  * {@code sales.events}, etc. — never per-event-type. See dev-todo.md decision 3.
  */
@@ -53,9 +53,9 @@ public class KafkaEventPublisher implements EventPublisher {
             );
         }
         log.debug("publishing {} ({}) to {}", envelope.eventType(), envelope.eventId(), topic);
-        // Synchronous send: the OutboxPublisher.drain() transaction marks the
+        // Synchronous send: the OutboxDrainer.drain() transaction marks the
         // outbox row 'published' only after this returns. A broker-side failure
-        // throws; OutboxPublisher catches and marks the row 'failed' with a
+        // throws; OutboxDrainer catches and marks the row 'failed' with a
         // retry on the next tick.
         kafkaTemplate.send(topic, key, value).join();
     }

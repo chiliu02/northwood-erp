@@ -26,6 +26,8 @@ public interface SalesOrder360Projection {
         LocalDate requestedDeliveryDate,
         String currencyCode,
         BigDecimal totalAmount,
+        /** §2.31 Slice A — commercial terms wire value ({@code on_shipment} / {@code prepayment}); nullable for backward compat. */
+        String paymentTerms,
         Instant occurredAt,
         String eventType,
         String actorUserId);
@@ -33,15 +35,44 @@ public interface SalesOrder360Projection {
     void recordManufacturingCompleted(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
 
     /**
+     * Record the inventory reservation outcome for the order: set
+     * {@code stock_status} to {@code stockStatus} ({@code reserved} /
+     * {@code partially_reserved} / {@code failed}). A full {@code 'reserved'}
+     * is sticky — never rolled back by a later partial/stale event. Idempotent.
+     */
+    void recordStockReserved(UUID salesOrderHeaderId, String stockStatus, Instant occurredAt, String actorUserId);
+
+    /**
+     * Record that the sales fulfilment saga has reached {@code ready_to_ship}
+     * (every line reserved from stock or produced): advance {@code order_status}
+     * to {@code 'ready_to_ship'} so the shipment UI's order picker surfaces it.
+     * Also marks {@code manufacturing_status='not_required'} when it is still
+     * {@code 'pending'} (a stock-covered order skipped manufacturing). Never
+     * downgrades a terminal {@code 'cancelled'}. Idempotent.
+     */
+    void recordReadyToShip(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
+
+    /**
      * Record that the sales fulfilment saga has finished compensation: flip
      * {@code order_status} to {@code 'cancelled'}.
      */
     void recordCancellation(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
 
+    /**
+     * Record a posted shipment: set {@code shipment_status='shipped'} and
+     * advance {@code order_status} to {@code 'shipped'} (forward-only; never
+     * downgrades a later state, preserves {@code 'cancelled'}).
+     */
     void recordShipment(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
 
     void recordInvoice(UUID salesOrderHeaderId, BigDecimal invoiced, Instant occurredAt, String actorUserId);
 
+    /**
+     * Record a customer payment: bump {@code paid_amount}/{@code outstanding}
+     * and set {@code payment_status}. On full settlement
+     * ({@code invoiceStatusAfter == paid}) advance {@code order_status} to
+     * {@code 'completed'} (forward-only; preserves {@code 'cancelled'}).
+     */
     void recordPayment(
         UUID salesOrderHeaderId,
         BigDecimal allocated,

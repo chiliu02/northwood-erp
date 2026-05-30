@@ -16,8 +16,8 @@ import com.northwood.inventory.domain.StockReservation;
 import com.northwood.inventory.domain.StockReservationRepository;
 import com.northwood.inventory.domain.StockReservationRepository.ReservedLineSnapshot;
 import com.northwood.inventory.domain.WarehouseCodes;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
+import com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -30,7 +30,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 class StockReservationServiceTest {
@@ -47,15 +46,17 @@ class StockReservationServiceTest {
     @Mock StockBalanceWriter stockBalances;
     @Mock StockBalanceLookup balanceLookup;
     @Mock WarehouseLookup warehouses;
-    @Mock OutboxPort outbox;
+    @Mock ReplenishmentDetectionService replenishmentDetection;
+    @Mock OutboxAppender outbox;
 
-    private final ObjectMapper json = new ObjectMapper();
+    private static final UUID SO_LINE_1 = UUID.randomUUID();
+
     private StockReservationService service;
 
     @BeforeEach
     void setUp() {
         service = new StockReservationService(
-            reservations, stockBalances, balanceLookup, warehouses, outbox, json
+            reservations, stockBalances, balanceLookup, warehouses, replenishmentDetection, outbox
         );
     }
 
@@ -63,7 +64,7 @@ class StockReservationServiceTest {
         return new StockReservationRequested(
             UUID.randomUUID(), SO, SO, warehouseCode,
             List.of(new StockReservationRequested.RequestedLine(
-                10, PRODUCT_1, "SKU-1", "Product 1", requested
+                SO_LINE_1, 10, PRODUCT_1, "SKU-1", "Product 1", requested
             )),
             Instant.now()
         );
@@ -113,6 +114,11 @@ class StockReservationServiceTest {
             assertThat(saved.lines().get(0).reservedQuantity()).isEqualByComparingTo("4");
             assertThat(saved.lines().get(0).shortageQuantity()).isEqualByComparingTo("6");
             assertThat(saved.lines().get(0).status()).isEqualTo(StockReservation.Status.PARTIALLY_RESERVED);
+
+            // §2.37 Slice 3: inventory raises the replenishment in the same
+            // transaction for the short line, with the sales-order back-reference.
+            verify(replenishmentDetection).raiseForSalesOrderShortage(
+                eq(PRODUCT_1), eq(WAREHOUSE), eq(new BigDecimal("6")), eq(SO), eq(SO_LINE_1));
         }
 
         @Test void failed_when_no_stock_skips_try_reserve_call() {
@@ -261,7 +267,7 @@ class StockReservationServiceTest {
     @Nested
     class ReleaseForSalesOrder {
 
-        @Test void live_reservation_unwinds_and_emits_ack_with_count_one() throws Exception {
+        @Test void live_reservation_unwinds_and_emits_ack_with_count_one() {
             when(reservations.findActiveHeaderIdForSalesOrder(SO)).thenReturn(Optional.of(PRIOR_RES_ID));
             when(reservations.findWarehouseIdForHeader(PRIOR_RES_ID)).thenReturn(Optional.of(WAREHOUSE));
             when(reservations.findReservedLines(PRIOR_RES_ID)).thenReturn(List.of(
@@ -275,16 +281,16 @@ class StockReservationServiceTest {
             verify(stockBalances).releaseReserved(WAREHOUSE, PRODUCT_2, new BigDecimal("2"));
             verify(reservations).markReleased(PRIOR_RES_ID);
 
-            ArgumentCaptor<OutboxRow> cap = ArgumentCaptor.forClass(OutboxRow.class);
-            verify(outbox).appendPending(cap.capture());
-            OutboxRow row = cap.getValue();
-            assertThat(row.getEventType()).isEqualTo(com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied.EVENT_TYPE);
-            assertThat(row.getAggregateId()).isEqualTo(SO);
-            assertThat(row.getAggregateType()).isEqualTo("StockReservation");
-            assertThat(json.readTree(row.getPayload()).get("reservationsReleased").asInt()).isEqualTo(1);
+            ArgumentCaptor<InventorySalesOrderCancellationApplied> cap =
+                ArgumentCaptor.forClass(InventorySalesOrderCancellationApplied.class);
+            verify(outbox).append(cap.capture(), eq(StockReservation.AGGREGATE_TYPE));
+            InventorySalesOrderCancellationApplied event = cap.getValue();
+            assertThat(event.eventType()).isEqualTo(InventorySalesOrderCancellationApplied.EVENT_TYPE);
+            assertThat(event.aggregateId()).isEqualTo(SO);
+            assertThat(event.reservationsReleased()).isEqualTo(1);
         }
 
-        @Test void no_live_reservation_still_emits_ack_with_count_zero() throws Exception {
+        @Test void no_live_reservation_still_emits_ack_with_count_zero() {
             when(reservations.findActiveHeaderIdForSalesOrder(SO)).thenReturn(Optional.empty());
 
             service.releaseForSalesOrder(SO);
@@ -292,9 +298,10 @@ class StockReservationServiceTest {
             verify(reservations, never()).markReleased(any());
             verifyNoInteractions(stockBalances);
 
-            ArgumentCaptor<OutboxRow> cap = ArgumentCaptor.forClass(OutboxRow.class);
-            verify(outbox).appendPending(cap.capture());
-            assertThat(json.readTree(cap.getValue().getPayload()).get("reservationsReleased").asInt()).isEqualTo(0);
+            ArgumentCaptor<InventorySalesOrderCancellationApplied> cap =
+                ArgumentCaptor.forClass(InventorySalesOrderCancellationApplied.class);
+            verify(outbox).append(cap.capture(), eq(StockReservation.AGGREGATE_TYPE));
+            assertThat(cap.getValue().reservationsReleased()).isEqualTo(0);
         }
 
         @Test void unwind_throws_when_warehouse_id_missing_for_header() {
@@ -304,35 +311,8 @@ class StockReservationServiceTest {
             assertThatThrownBy(() -> service.releaseForSalesOrder(SO))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("disappeared mid-release");
-            verify(outbox, never()).appendPending(any());
+            verify(outbox, never()).append(any(), any());
         }
     }
 
-    @Nested
-    class ReleaseForWorkOrder {
-
-        @Test void live_reservation_unwinds_no_event_emitted() {
-            when(reservations.findActiveHeaderIdForWorkOrder(WO)).thenReturn(Optional.of(PRIOR_RES_ID));
-            when(reservations.findWarehouseIdForHeader(PRIOR_RES_ID)).thenReturn(Optional.of(WAREHOUSE));
-            when(reservations.findReservedLines(PRIOR_RES_ID)).thenReturn(List.of(
-                new ReservedLineSnapshot(PRODUCT_1, new BigDecimal("3"))
-            ));
-
-            service.releaseForWorkOrder(WO);
-
-            verify(stockBalances).releaseReserved(WAREHOUSE, PRODUCT_1, new BigDecimal("3"));
-            verify(reservations).markReleased(PRIOR_RES_ID);
-            verifyNoInteractions(outbox);
-        }
-
-        @Test void no_reservation_is_noop() {
-            when(reservations.findActiveHeaderIdForWorkOrder(WO)).thenReturn(Optional.empty());
-
-            service.releaseForWorkOrder(WO);
-
-            verify(reservations, never()).markReleased(any());
-            verifyNoInteractions(stockBalances);
-            verifyNoInteractions(outbox);
-        }
-    }
 }

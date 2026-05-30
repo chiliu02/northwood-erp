@@ -41,7 +41,7 @@ public final class InMemorySalesOrderRepository implements SalesOrderRepository 
             try {
                 outbox.appendPending(OutboxRow.pending(
                     event.eventId(),
-                    "SalesOrder",
+                    SalesOrder.AGGREGATE_TYPE,
                     event.aggregateId(),
                     event.eventType(),
                     event.eventVersion(),

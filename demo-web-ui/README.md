@@ -18,18 +18,18 @@ Demo SPA for the Northwood ERP showcase — Saga Console, event drawer, scenario
 **Phase 5** ships the **scenario runner** — three baked playthroughs in the top-bar Scenarios dropdown:
 
 - **3.1 — Sales fulfilment (happy path)**: places a small order, waits for each saga state in turn, prompts for human steps (complete operations / post shipment / record customer payment), then waits for the sales saga to reach `completed`.
-- **5.2 — Raw material shortage**: places an order that exceeds raw materials, watches the make-to-order saga park at `raw_material_shortage`, waits for purchasing to auto-issue the PR/PO, then prompts for goods receipt to un-park.
+- **5.2 — Raw material shortage**: places an order that exceeds raw materials, watches the work-order saga park at `raw_material_shortage`, waits for purchasing to auto-issue the PR/PO, then prompts for goods receipt to un-park.
 - **7.1 — Big order touches every service**: combines 5.2 with the full settlement path through to all three sagas reaching `completed`.
 
 The runner state machine lives in `src/scenarios/runner.ts` — it interleaves auto API calls with `wait-for-saga-state` polls (2 s polls, 60–90 s timeouts) and pauses for human steps until the user clicks **Run step**. Every step's status renders inline (✓ / ▶ / ◯ / failed); the captured context UUIDs surface in a collapsible panel so the narrator can paste them into manual forms if they pause and explore. Pause / skip / abort are always available.
 
 **Phase 4** adds the **write paths** so the demo can be driven entirely from the SPA:
 - **Place sales order** (`/sales-orders/new`) — Sarah's form. Customer code defaults to `CUST-001`; line dropdown bound to active products with auto-filled price; total recalculated live. Posts to sales-service via the `/api/sales-cmd` proxy alias and redirects to the saga console so the audience watches it advance.
-- **Goods receipt** (`/goods-receipts`) — Mike posts a receipt against an open PO. Inventory bumps stock_balance and emits `inventory.GoodsReceived` (which un-parks any make-to-order saga in `raw_material_shortage`).
+- **Goods receipt** (`/goods-receipts`) — Mike posts a receipt against an open PO. Inventory bumps stock_balance and emits `inventory.GoodsReceived` (which un-parks any work-order saga in `raw_material_shortage`).
 - **Shipment** (`/shipments`) — Mike posts a shipment against a fulfilment-ready SO. Inventory decrements on-hand and releases the reservation; finance auto-creates the customer invoice from `sales.SalesOrderShipped`.
 - **Supplier invoice** (`/supplier-invoices`) — Olivia records a supplier invoice; finance runs the quantity-only 3-way match and emits `finance.SupplierInvoiceApproved` on success.
 - **Payments** (`/payments`) — Olivia, with a tabbed switcher between supplier (AP) and customer (AR) payments. Both close the corresponding saga on full settlement.
-- **Complete operation modal** — added to the production board's WO detail. Linda picks an op sequence + actual minutes; the make-to-order saga advances.
+- **Complete operation modal** — added to the production board's WO detail. Linda picks an op sequence + actual minutes; the work-order saga advances.
 - **Product edit modal** — Emma's pricing / reorder / discontinue commands inline on the products list (small ✏ button per row).
 
 **Note:** Phase 4 originally shipped without a BFF, with the SPA orchestrating from the browser via per-path Vite proxies. Phase 6 added the BFF and collapsed the Vite proxy to a single entry; the SPA's fetcher contract stayed identical, so this paragraph is now historical.

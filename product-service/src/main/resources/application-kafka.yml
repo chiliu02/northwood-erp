@@ -22,3 +22,9 @@ spring:
     # product-service is producer-only — no listener observation needed today.
     template:
       observation-enabled: true
+
+northwood:
+  service-name: product            # stamps source-service header / Kafka topic
+  outbox:
+    drain:
+      enabled: true                # activates OutboxDrainAutoConfiguration (drainer + scheduler)

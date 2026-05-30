@@ -94,7 +94,7 @@ public class JdbcPurchaseToPaySagaAdapter implements PurchaseToPaySagaPort {
     }
 
     @Override
-    public void save(PurchaseToPaySaga saga) {
+    public void update(PurchaseToPaySaga saga) {
         int rows = jdbc.update("""
             UPDATE purchasing.purchase_to_pay_saga SET
                 saga_state = ?, current_step = ?, last_error = ?,

@@ -13,6 +13,7 @@ public record CustomerView(
     String billingAddress,
     String shippingAddress,
     String status,
+    String defaultPaymentTerms,
     long version
 ) {
     public static CustomerView from(Customer c) {
@@ -25,6 +26,7 @@ public record CustomerView(
             c.billingAddress(),
             c.shippingAddress(),
             c.status().dbValue(),
+            c.defaultPaymentTerms().dbValue(),
             c.version()
         );
     }

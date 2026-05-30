@@ -8,31 +8,36 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Idempotent inbox handler for {@code product.ProductCreated}. Inserts a
- * stub {@code inventory.stock_item} row so subsequent product-master events
- * for the SKU (notably {@code ReorderPolicyChanged}) have a row to project
- * onto. §1F.2: closes the gap previously documented inline on
- * {@link StockItemProjection#applyReorderPolicy}.
+ * Idempotent inbox handler for {@code product.ProductCreated}. Seeds inventory's
+ * consolidated {@code inventory.product_card} row (§2.38) so subsequent
+ * product-master events for the SKU ({@code ReorderPolicyChanged},
+ * {@code MakeVsBuyChanged}, {@code ProductDiscontinued}) have a row to project
+ * onto. The seed carries the descriptive columns (sku/name/type/uom) and
+ * derives the make-vs-buy defaults from the product type so the §2.35 detection
+ * service has non-empty flags for day-zero SKUs before any
+ * {@code MakeVsBuyChanged} arrives. §1F.2: closes the race where a product
+ * registered after boot would have its {@code ReorderPolicyChanged} arrive
+ * before a row exists and silently no-op.
  */
 @Component
 public class ProductCreatedHandler extends AbstractInboxHandler<ProductCreated> {
 
     public static final String CONSUMER_NAME = "inventory.product-created";
 
-    private final ProductCreatedProjection projection;
+    private final ProductCardProjection productCard;
 
     public ProductCreatedHandler(
         InboxPort inbox,
-        ProductCreatedProjection projection,
+        ProductCardProjection productCard,
         ObjectMapper json
     ) {
         super(inbox, json, ProductCreated.class, ProductCreated.EVENT_TYPE, CONSUMER_NAME);
-        this.projection = projection;
+        this.productCard = productCard;
     }
 
     @Override
     protected void apply(ProductCreated payload, EventEnvelope envelope) {
-        projection.apply(
+        productCard.applyCreated(
             payload.aggregateId(),
             payload.sku(),
             payload.name(),

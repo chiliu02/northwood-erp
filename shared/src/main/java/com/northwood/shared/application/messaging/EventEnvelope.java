@@ -36,7 +36,7 @@ public record EventEnvelope(
 ) {
     /**
      * Header carrying the originating service name (e.g. {@code "product"},
-     * {@code "sales"}). Set by {@code OutboxPublisher} when draining a row,
+     * {@code "sales"}). Set by {@code OutboxDrainer} when draining a row,
      * read by {@code KafkaEventPublisher} to derive the topic
      * ({@code <source-service>.events}). The reader fails fast if it is
      * missing or blank.

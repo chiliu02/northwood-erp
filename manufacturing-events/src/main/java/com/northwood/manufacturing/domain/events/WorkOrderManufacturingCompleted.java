@@ -9,7 +9,7 @@ import java.util.UUID;
 /**
  * The last operation on a work order has completed AND, if the work order has
  * sub-assembly children, all children are completed too. Drives the
- * manufacturing-side make-to-order saga to {@code completed} and the
+ * manufacturing-side work-order saga to {@code completed} and the
  * sales-side fulfilment saga to {@code ready_to_ship}.
  *
  * <p>{@code parentWorkOrderId} is {@code null} for top-level work orders.

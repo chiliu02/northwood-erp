@@ -78,6 +78,50 @@ public final class CustomerInvoice {
         }
     }
 
+    /**
+     * §2.31 Slice B. Discriminator between the two AR commercial patterns —
+     * mirrors the schema CHECK on {@code finance.customer_invoice_header.invoice_type}.
+     * <ul>
+     *   <li>{@link #COMMERCIAL} — invoice created at shipment, posts
+     *       Dr AR / Cr Revenue at creation, payment posts Dr Cash / Cr AR
+     *       (Northwood's existing on-shipment flow).</li>
+     *   <li>{@link #PREPAYMENT} — invoice created at order placement, NO GL
+     *       at creation; payment posts Dr Cash / Cr 2110 Customer Deposits;
+     *       shipment (Slice C) reclassifies Dr 2110 / Cr Revenue.</li>
+     *   <li>{@link #DEPOSIT} — §2.32; part-payment invoice created at placement
+     *       for {@code total × deposit_percent}, NO GL at creation; payment
+     *       posts Dr Cash / Cr 2110 (same as prepayment); shipment recognises
+     *       the deposit portion and a {@link #BALANCE} invoice carries the
+     *       remainder.</li>
+     *   <li>{@link #BALANCE} — §2.32; the remaining {@code total − deposit}
+     *       invoiced at shipment, posting Dr AR / Cr Revenue (like
+     *       {@link #COMMERCIAL}).</li>
+     * </ul>
+     */
+    public enum InvoiceType {
+        COMMERCIAL("commercial"),
+        PREPAYMENT("prepayment"),
+        DEPOSIT("deposit"),
+        BALANCE("balance");
+
+        private final String dbValue;
+
+        InvoiceType(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String dbValue() {
+            return dbValue;
+        }
+
+        public static InvoiceType fromDb(String value) {
+            for (InvoiceType t : values()) {
+                if (t.dbValue.equals(value)) return t;
+            }
+            throw Assert.unknownValue("customer_invoice invoice_type", value);
+        }
+    }
+
     private final CustomerInvoiceId id;
     private final String invoiceNumber;
     private final UUID salesOrderHeaderId;
@@ -89,12 +133,86 @@ public final class CustomerInvoice {
     private final BigDecimal taxAmount;
     private final BigDecimal totalAmount;
     private final Status status;
+    private final InvoiceType invoiceType;
     private final List<CustomerInvoiceLine> lines;
     private final long version;
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
 
-    /** Factory: create + auto-post from a sales-order shipment. */
+    /** Factory: create + auto-post from a sales-order shipment ({@link InvoiceType#COMMERCIAL}). */
     public static CustomerInvoice create(
+        String invoiceNumber,
+        UUID salesOrderHeaderId,
+        UUID customerId,
+        String customerCode,
+        String customerName,
+        String currencyCode,
+        List<CustomerInvoiceLine> lines
+    ) {
+        return build(InvoiceType.COMMERCIAL, invoiceNumber, salesOrderHeaderId,
+            customerId, customerCode, customerName, currencyCode, lines);
+    }
+
+    /**
+     * §2.31 Slice B factory: create + auto-post a prepayment invoice from a
+     * sales order at placement (no GL post at creation — Treatment A). Emits
+     * the same {@link CustomerInvoiceCreated} event the on-shipment path
+     * emits; downstream branching on {@link InvoiceType} happens at the
+     * payment-receipt GL handler in finance.
+     */
+    public static CustomerInvoice createPrepayment(
+        String invoiceNumber,
+        UUID salesOrderHeaderId,
+        UUID customerId,
+        String customerCode,
+        String customerName,
+        String currencyCode,
+        List<CustomerInvoiceLine> lines
+    ) {
+        return build(InvoiceType.PREPAYMENT, invoiceNumber, salesOrderHeaderId,
+            customerId, customerCode, customerName, currencyCode, lines);
+    }
+
+    /**
+     * §2.32 Slice B factory: create + auto-post a <b>deposit</b> invoice (a
+     * part-payment on account) from a single synthetic deposit line. Like
+     * {@link #createPrepayment}, posts no GL at creation (Treatment A) —
+     * the deposit hits the GL only when paid (Dr Cash / Cr 2110).
+     */
+    public static CustomerInvoice createDeposit(
+        String invoiceNumber,
+        UUID salesOrderHeaderId,
+        UUID customerId,
+        String customerCode,
+        String customerName,
+        String currencyCode,
+        List<CustomerInvoiceLine> lines
+    ) {
+        return build(InvoiceType.DEPOSIT, invoiceNumber, salesOrderHeaderId,
+            customerId, customerCode, customerName, currencyCode, lines);
+    }
+
+    /**
+     * §2.32 Slice C factory: create + auto-post the <b>balance</b> invoice for a
+     * deposit order at shipment (the remaining {@code total − deposit}). Behaves
+     * like {@link #create} (commercial) — the caller posts Dr AR / Cr Revenue
+     * for the balance; the deposit portion is recognised separately against the
+     * deposit invoice in the shipment-time COGS handler.
+     */
+    public static CustomerInvoice createBalance(
+        String invoiceNumber,
+        UUID salesOrderHeaderId,
+        UUID customerId,
+        String customerCode,
+        String customerName,
+        String currencyCode,
+        List<CustomerInvoiceLine> lines
+    ) {
+        return build(InvoiceType.BALANCE, invoiceNumber, salesOrderHeaderId,
+            customerId, customerCode, customerName, currencyCode, lines);
+    }
+
+    private static CustomerInvoice build(
+        InvoiceType invoiceType,
         String invoiceNumber,
         UUID salesOrderHeaderId,
         UUID customerId,
@@ -124,6 +242,7 @@ public final class CustomerInvoice {
             Currencies.orBase(currencyCode),
             subtotal, tax, total,
             Status.POSTED,
+            invoiceType,
             new ArrayList<>(lines), 0L
         );
 
@@ -150,6 +269,7 @@ public final class CustomerInvoice {
         String currencyCode,
         BigDecimal subtotalAmount, BigDecimal taxAmount, BigDecimal totalAmount,
         Status status,
+        InvoiceType invoiceType,
         List<CustomerInvoiceLine> lines, long version
     ) {
         return new CustomerInvoice(
@@ -158,6 +278,7 @@ public final class CustomerInvoice {
             currencyCode,
             subtotalAmount, taxAmount, totalAmount,
             status,
+            invoiceType,
             new ArrayList<>(lines), version
         );
     }
@@ -168,6 +289,7 @@ public final class CustomerInvoice {
         String currencyCode,
         BigDecimal subtotalAmount, BigDecimal taxAmount, BigDecimal totalAmount,
         Status status,
+        InvoiceType invoiceType,
         List<CustomerInvoiceLine> lines, long version
     ) {
         this.id = id;
@@ -181,6 +303,7 @@ public final class CustomerInvoice {
         this.taxAmount = taxAmount;
         this.totalAmount = totalAmount;
         this.status = status;
+        this.invoiceType = Assert.notNull(invoiceType, "invoiceType");
         this.lines = lines;
         this.version = version;
     }
@@ -202,6 +325,7 @@ public final class CustomerInvoice {
     public BigDecimal taxAmount()                { return taxAmount; }
     public BigDecimal totalAmount()              { return totalAmount; }
     public Status status()                       { return status; }
+    public InvoiceType invoiceType()             { return invoiceType; }
     public List<CustomerInvoiceLine> lines()     { return List.copyOf(lines); }
     public long version()                        { return version; }
 }

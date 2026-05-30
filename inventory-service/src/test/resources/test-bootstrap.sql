@@ -2,7 +2,7 @@
 -- We deliberately don't replay db/northwood_erp.sql wholesale (too much
 -- unrelated schema for one test); just the inventory pieces the seam
 -- exercises: shared functions, inventory.warehouse + seed row,
--- inventory.stock_item, inventory.stock_balance, inventory.inbox_message.
+-- inventory.product_card, inventory.stock_balance, inventory.inbox_message.
 -- The (currently empty) Liquibase master changelog runs against this on
 -- test boot; future changesets must stay idempotent and reference only
 -- tables that exist here — add any new prerequisites to this file too.
@@ -63,20 +63,47 @@ CREATE TABLE inventory.warehouse (
 INSERT INTO inventory.warehouse (warehouse_id, warehouse_code, name)
 VALUES ('00000000-0000-7000-8000-000000000020', 'WH-MAIN', 'Main Warehouse');
 
-CREATE TABLE inventory.stock_item (
-    stock_item_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
-    product_id UUID NOT NULL UNIQUE,
-    product_sku VARCHAR(50) NOT NULL,
-    product_name VARCHAR(200) NOT NULL,
-    product_type VARCHAR(30) NOT NULL,
-    base_uom_code VARCHAR(20) NOT NULL,
+-- §2.38: inventory's single consumer-side product-master projection — the
+-- merged stock_item + product_card (sku/name/type/uom/tracking + make-vs-buy
+-- flags + reorder policy + discontinued_at). Only product_id is NOT NULL.
+CREATE TABLE inventory.product_card (
+    product_id          UUID PRIMARY KEY,
+    product_sku         VARCHAR(50),
+    product_name        VARCHAR(200),
+    product_type        VARCHAR(30),
+    base_uom_code       VARCHAR(20),
     stock_tracking_mode VARCHAR(20) NOT NULL DEFAULT 'tracked',
-    reorder_point NUMERIC(18, 4) NOT NULL DEFAULT 0,
-    reorder_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
-    version BIGINT NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    is_purchased        BOOLEAN NOT NULL DEFAULT false,
+    is_manufactured     BOOLEAN NOT NULL DEFAULT false,
+    reorder_point       NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    reorder_quantity    NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    discontinued_at     TIMESTAMPTZ,
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- §2.35 Slice B: inventory-orchestrated replenishment requests.
+CREATE TABLE inventory.replenishment_request (
+    replenishment_request_id    UUID PRIMARY KEY,
+    product_id                  UUID NOT NULL,
+    warehouse_id                UUID NOT NULL REFERENCES inventory.warehouse(warehouse_id),
+    requested_quantity          NUMERIC(18, 4) NOT NULL CHECK (requested_quantity > 0),
+    target_service              VARCHAR(20) NOT NULL CHECK (target_service IN ('manufacturing', 'purchasing')),
+    reason                      VARCHAR(40) NOT NULL CHECK (reason IN ('reorder_point_breach', 'work_order_shortage')),
+    status                      VARCHAR(20) NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'dispatched', 'fulfilled', 'cancelled')),
+    dispatched_aggregate_kind   VARCHAR(30) CHECK (dispatched_aggregate_kind IN ('work_order', 'purchase_requisition')),
+    dispatched_aggregate_id     UUID,
+    linked_purchase_order_id    UUID,
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    dispatched_at               TIMESTAMPTZ,
+    fulfilled_at                TIMESTAMPTZ,
+    cancelled_at                TIMESTAMPTZ,
+    version                     BIGINT NOT NULL DEFAULT 0,
+    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX uq_replenishment_request_open
+    ON inventory.replenishment_request (product_id, warehouse_id)
+    WHERE status IN ('requested', 'dispatched');
 
 CREATE TABLE inventory.stock_balance (
     stock_balance_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
@@ -95,7 +122,7 @@ CREATE TABLE inventory.stock_balance (
 );
 
 -- Outbox table is empty in this test (the seam exercises the inbox path), but
--- the @KafkaProfile-gated OutboxPublisher's @Scheduled drainer fires every
+-- the @KafkaProfile-gated OutboxDrainScheduler's @Scheduled drainer fires every
 -- second once Spring starts and queries this table. Without the table the
 -- drainer logs an alarming "relation inventory.outbox_message does not exist"
 -- stack trace each tick — test still passes because Spring's scheduler
@@ -113,6 +140,7 @@ CREATE TABLE inventory.outbox_message (
     headers JSONB NOT NULL DEFAULT '{}'::jsonb,
     correlation_id UUID,
     causation_id UUID,
+    actor_user_id VARCHAR(64),
     status VARCHAR(30) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'published', 'failed')),
     retry_count INT NOT NULL DEFAULT 0,
     last_error TEXT,
@@ -141,13 +169,13 @@ CREATE TABLE inventory.inbox_message (
 CREATE TABLE inventory.inbox_message_default
     PARTITION OF inventory.inbox_message DEFAULT;
 
--- Seed row for the test SKU. version=1 so the projection update goes through
--- JdbcStockItemRepository.save's UPDATE path (mirrors the dev DB seed bump).
-INSERT INTO inventory.stock_item (
+-- Seed row for the test SKU so the reorder-policy projection
+-- (ProductCardProjection.applyReorderPolicy) updates this row in place.
+INSERT INTO inventory.product_card (
     product_id, product_sku, product_name, product_type, base_uom_code,
-    stock_tracking_mode, reorder_point, reorder_quantity, version
+    stock_tracking_mode, is_purchased, is_manufactured, reorder_point, reorder_quantity
 ) VALUES (
     '00000000-0000-7000-8000-000000000001',
     'FG-TABLE-001', 'Wooden Dining Table', 'finished_good', 'EA',
-    'tracked', 2, 5, 1
+    'tracked', false, true, 2, 5
 );

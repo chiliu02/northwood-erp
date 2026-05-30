@@ -20,6 +20,8 @@ public final class InMemoryCustomerInvoiceRepository implements CustomerInvoiceR
 
     private final Map<UUID, CustomerInvoice> store = new HashMap<>();
     private final Map<UUID, BigDecimal> paidByInvoice = new HashMap<>();
+    private final java.util.Set<UUID> revenueRecognized = new java.util.HashSet<>();
+    private final java.util.Set<UUID> refunded = new java.util.HashSet<>();
     private final OutboxPort outbox;
     private final ObjectMapper json;
 
@@ -67,8 +69,35 @@ public final class InMemoryCustomerInvoiceRepository implements CustomerInvoiceR
             : (paid.compareTo(inv.totalAmount()) >= 0 ? CustomerInvoice.Status.PAID : CustomerInvoice.Status.PARTIALLY_PAID);
         return Optional.of(new PaymentSnapshot(
             inv.customerId(), inv.customerName(), inv.salesOrderHeaderId(),
-            inv.currencyCode(), inv.totalAmount(), paid, status
+            inv.currencyCode(), inv.totalAmount(), paid, status,
+            inv.invoiceType()
         ));
+    }
+
+    @Override
+    public Optional<ShipmentTimeInvoice> findInvoiceForShipment(UUID salesOrderHeaderId) {
+        return store.values().stream()
+            .filter(inv -> salesOrderHeaderId.equals(inv.salesOrderHeaderId()))
+            .findFirst()
+            .map(inv -> new ShipmentTimeInvoice(
+                inv.id().value(),
+                inv.invoiceNumber(),
+                inv.invoiceType(),
+                inv.customerName(),
+                inv.currencyCode(),
+                inv.totalAmount(),
+                revenueRecognized.contains(inv.id().value())
+            ));
+    }
+
+    @Override
+    public boolean markRevenueRecognized(UUID customerInvoiceHeaderId) {
+        return revenueRecognized.add(customerInvoiceHeaderId);
+    }
+
+    @Override
+    public boolean markRefunded(UUID customerInvoiceHeaderId) {
+        return refunded.add(customerInvoiceHeaderId);
     }
 
     /**

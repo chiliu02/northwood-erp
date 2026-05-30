@@ -12,6 +12,10 @@ spring:
       group-id: sales-service
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # No commit settings here → Spring Kafka defaults: enable.auto.commit=false
+      # + AckMode.BATCH, so an offset commits only after the listener returns
+      # successfully (handler exception → no commit → redelivery; the inbox dedup
+      # makes that safe). Full contract: docs/messaging.md → Consumer-side idempotency.
       auto-offset-reset: earliest
     # §1D.2: turn on Spring Kafka's Micrometer observation so KafkaTemplate.send
     # creates a producer span (W3C traceparent stamped on the record headers)
@@ -24,8 +28,11 @@ spring:
       observation-enabled: true
 
 northwood:
+  service-name: sales              # stamps source-service header / Kafka topic
   outbox:
     poll-interval: 1000
+    drain:
+      enabled: true                # activates OutboxDrainAutoConfiguration (drainer + scheduler)
   saga:
     poll-interval: 1000
     # §2.13: claim-lease TTL + retry backoff for the @Scheduled saga worker.
@@ -40,10 +47,18 @@ northwood:
     #   (stamp discontinued_at). The three together make every row's lifetime
     #   mirror the Product aggregate's.
     # - inventory.events   for StockReserved + ShipmentPosted (saga advances) +
-    #   SalesOrderCancellationApplied (compensation ack from inventory).
-    # - manufacturing.events for WorkOrderCreated, WorkOrderManufacturingCompleted,
-    #   ManufacturingDispatched (saga advances past manufacturing_requested), and
-    #   SalesOrderCancellationApplied (compensation ack from manufacturing).
+    #   ReplenishmentFulfilled (retry reservation) / ReplenishmentCancelled
+    #   (reject order) — §2.37 Slice 3 fan-in — plus SalesOrderCancellationApplied
+    #   (compensation ack from inventory).
+    # - manufacturing.events for SalesOrderCancellationApplied (compensation ack
+    #   from manufacturing). §2.37 Slice 3 retired the WorkOrderCreated /
+    #   WorkOrderManufacturingCompleted / ManufacturingDispatched consumers —
+    #   sales no longer drives or tracks manufacturing directly.
     # - finance.events     for CustomerInvoiceCreated + CustomerPaymentReceived
     #   (saga advances past invoice_created → completed).
     subscribe-topics: product.events,inventory.events,manufacturing.events,finance.events
+    dlt:
+      redrive:
+        enabled: true             # per-service DLT auto-redrive (§2.28 Tier 1.B): re-applies this
+                                  # service's own dead-lettered records, parks the unrecoverable ones
+

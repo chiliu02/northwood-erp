@@ -2,6 +2,7 @@ package com.northwood.finance.application;
 
 import com.northwood.finance.application.GlAccountLookup.GlAccount;
 import com.northwood.finance.application.dto.JournalEntryView;
+import com.northwood.finance.domain.CustomerInvoice;
 import com.northwood.finance.domain.JournalEntry;
 import com.northwood.finance.domain.JournalEntryId;
 import com.northwood.finance.domain.JournalEntryLine;
@@ -285,6 +286,186 @@ public class JournalEntryService {
         );
     }
 
+    /**
+     * Stock adjustment → an inventory gain or loss against 5400 Inventory
+     * Adjustment, valued at the product's standard cost ({@code amount} is the
+     * positive valued magnitude, computed by the caller). A {@code gain}
+     * (on-hand increased) Dr's the product's inventory account (1210/1220 via
+     * valuation class) / Cr's 5400; a loss Dr's 5400 / Cr's the inventory
+     * account. Mirrors the perpetual-inventory goods-receipt / shipment
+     * postings — an inventory value change is never off-book (§2.29).
+     */
+    @Transactional
+    public void postStockAdjustment(
+        UUID stockAdjustmentId,
+        String adjustmentNumber,
+        UUID productId,
+        BigDecimal amount,
+        boolean gain,
+        String currencyCode,
+        LocalDate postingDate
+    ) {
+        if (amount == null || amount.signum() <= 0) {
+            log.debug("skip GL post for stock adjustment {} — amount {} is zero/negative",
+                adjustmentNumber, amount);
+            return;
+        }
+        String inventoryAccount = inventoryAccountForProduct(productId);
+        String debitAccount = gain ? inventoryAccount : FinanceAccountCodes.INVENTORY_ADJUSTMENT;
+        String creditAccount = gain ? FinanceAccountCodes.INVENTORY_ADJUSTMENT : inventoryAccount;
+        post(
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
+            postingDate,
+            JournalEntry.SourceModule.FINANCE,
+            JournalEntry.SourceDocumentType.STOCK_ADJUSTMENT,
+            stockAdjustmentId,
+            "Stock adjustment " + adjustmentNumber + (gain ? " — inventory gain" : " — inventory loss/shrinkage"),
+            currencyCode,
+            debitAccount,
+            gain ? "Inventory gain via " + adjustmentNumber : "Inventory write-down via " + adjustmentNumber,
+            creditAccount,
+            gain ? "Adjustment offset for " + adjustmentNumber : "Stock removed via " + adjustmentNumber,
+            amount,
+            postingDate
+        );
+    }
+
+    /**
+     * §2.42 Perpetual WIP — raw materials issued to a work order:
+     * Dr 1230 WIP / Cr 1210 Raw Materials (per valuation class) for the sum of
+     * {@code reservedQuantity * standardCost} across the work order's materials.
+     * The credit side resolves per product via {@link #inventoryAccountForProduct}
+     * (raw materials land in 1210; the rare semi-finished line lands in 1220),
+     * so the journal stays balanced against the single WIP debit. Caller gates
+     * on the WIP sub-ledger so a re-reserved work order can't charge twice.
+     */
+    @Transactional
+    public void postWorkInProgressCharge(
+        UUID workOrderId,
+        String workOrderNumber,
+        List<LineCost> materialCosts,
+        String currencyCode,
+        LocalDate postingDate
+    ) {
+        postWipCharge(
+            JournalEntry.SourceDocumentType.WORK_ORDER_WIP, workOrderId,
+            "Work order " + workOrderNumber + " — raw materials issued to WIP",
+            "Raw materials into WIP for " + workOrderNumber,
+            materialCosts,
+            "Raw materials issued via " + workOrderNumber,
+            currencyCode, postingDate);
+    }
+
+    /**
+     * §2.42 Perpetual WIP — completed sub-assemblies consumed into a parent
+     * work order: Dr 1230 WIP / Cr 1220 Finished Goods (per valuation class) for
+     * the sum of {@code consumedQuantity * standardCost}. Rolls each child
+     * sub-assembly's standard-cost value (which the child's completion took into
+     * 1220) into the parent's WIP, so the parent's completion releases the full
+     * rolled-up cost and WIP nets to zero.
+     */
+    @Transactional
+    public void postSubAssemblyConsumption(
+        UUID parentWorkOrderId,
+        String workOrderNumber,
+        List<LineCost> subAssemblyCosts,
+        String currencyCode,
+        LocalDate postingDate
+    ) {
+        postWipCharge(
+            JournalEntry.SourceDocumentType.WORK_ORDER_WIP, parentWorkOrderId,
+            "Work order " + workOrderNumber + " — sub-assemblies consumed into WIP",
+            "Sub-assemblies into WIP for " + workOrderNumber,
+            subAssemblyCosts,
+            "Sub-assemblies consumed via " + workOrderNumber,
+            currencyCode, postingDate);
+    }
+
+    /**
+     * §2.42 Perpetual WIP — work order completed: Dr 1220 Finished Goods (the
+     * finished good's valuation class) / Cr 1230 WIP at the finished good's
+     * standard cost ({@code amount = completedQuantity * standardCost}). This is
+     * the leg that empties WIP; because every charge into WIP was at standard
+     * cost too, WIP nets to zero per work order — no variance accounts in the
+     * material-only cut. Caller gates on the WIP sub-ledger (complete once).
+     */
+    @Transactional
+    public void postWorkOrderCompletion(
+        UUID workOrderId,
+        String workOrderNumber,
+        UUID finishedProductId,
+        BigDecimal amount,
+        String currencyCode,
+        LocalDate postingDate
+    ) {
+        if (amount == null || amount.signum() <= 0) {
+            log.debug("skip WIP completion post for work order {} — amount {} is zero/negative",
+                workOrderNumber, amount);
+            return;
+        }
+        post(
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
+            postingDate,
+            JournalEntry.SourceModule.FINANCE,
+            JournalEntry.SourceDocumentType.WORK_ORDER_COMPLETION,
+            workOrderId,
+            "Work order " + workOrderNumber + " — finished goods received from WIP",
+            currencyCode,
+            inventoryAccountForProduct(finishedProductId),
+            "Finished goods from " + workOrderNumber,
+            FinanceAccountCodes.WIP,
+            "Settle WIP for " + workOrderNumber,
+            amount,
+            postingDate
+        );
+    }
+
+    /**
+     * Shared shape for the two WIP-charge legs (raw materials issued; consumed
+     * sub-assemblies rolled in): a single Dr 1230 WIP against per-valuation-class
+     * inventory credits. Skips a zero/negative total (e.g. a projection cold-start
+     * left every line without a standard cost).
+     */
+    private void postWipCharge(
+        JournalEntry.SourceDocumentType sourceDocumentType,
+        UUID workOrderId,
+        String description,
+        String debitDescription,
+        List<LineCost> lineCosts,
+        String creditDescription,
+        String currencyCode,
+        LocalDate postingDate
+    ) {
+        BigDecimal total = lineCosts.stream()
+            .map(LineCost::amount)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (total.signum() <= 0) {
+            log.debug("skip WIP post for work order {} — total {} is zero/negative", workOrderId, total);
+            return;
+        }
+        java.util.Map<String, BigDecimal> creditsByAccount = new java.util.LinkedHashMap<>();
+        for (LineCost lc : lineCosts) {
+            if (lc.amount().signum() <= 0) continue;
+            creditsByAccount.merge(inventoryAccountForProduct(lc.productId()), lc.amount(), BigDecimal::add);
+        }
+        java.util.Map<String, BigDecimal> debitsByAccount = new java.util.LinkedHashMap<>();
+        debitsByAccount.put(FinanceAccountCodes.WIP, total);
+
+        postMultiDebitMultiCredit(
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
+            postingDate,
+            JournalEntry.SourceModule.FINANCE,
+            sourceDocumentType,
+            workOrderId,
+            description,
+            currencyCode,
+            debitsByAccount,
+            debitDescription,
+            creditsByAccount,
+            creditDescription
+        );
+    }
+
     @Transactional
     public void postSupplierPayment(
         UUID paymentId,
@@ -337,6 +518,52 @@ public class JournalEntryService {
         );
     }
 
+    /**
+     * §2.31 Slice C. Deferred-revenue recognition at shipment for a
+     * prepayment invoice: Dr 2110 Customer Deposits / Cr 4000 Sales Revenue
+     * at the invoice's total amount. Posted in addition to the existing
+     * Dr COGS / Cr Inventory pair (which fires for every shipment). The
+     * caller — {@code ShipmentPostedCogsHandler} — gates this method on
+     * {@code customer_invoice_header.revenue_recognized_at} so a redelivered
+     * shipment can't post twice. Tax-inclusive — the GST split (§3.3) is
+     * deferred indefinitely; revenue absorbs tax just like the on-shipment
+     * Cr Revenue pair does today.
+     */
+    @Transactional
+    public void postPrepaymentRevenueRecognition(
+        UUID customerInvoiceHeaderId,
+        String customerName,
+        String invoiceNumber,
+        BigDecimal totalAmount,
+        String currencyCode,
+        LocalDate postingDate
+    ) {
+        post(
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
+            postingDate,
+            JournalEntry.SourceModule.FINANCE,
+            JournalEntry.SourceDocumentType.CUSTOMER_INVOICE,
+            customerInvoiceHeaderId,
+            "Recognise revenue at shipment for prepayment invoice " + invoiceNumber + " " + customerName,
+            currencyCode,
+            FinanceAccountCodes.CUSTOMER_DEPOSITS,
+            "Reclassify deposit at shipment for " + customerName,
+            FinanceAccountCodes.REVENUE,
+            "Recognise revenue for " + customerName,
+            totalAmount,
+            postingDate
+        );
+    }
+
+    /**
+     * §2.31 Slice B: branches the credit side on {@code invoiceType}.
+     * {@link CustomerInvoice.InvoiceType#COMMERCIAL} → Cr 1100 AR (the
+     * existing on-shipment flow, balancing the Dr AR posted at invoice
+     * creation). {@link CustomerInvoice.InvoiceType#PREPAYMENT} →
+     * Cr 2110 Customer Deposits (the liability we owe the customer until
+     * shipment; reclassified to revenue at shipment in Slice C). The debit
+     * side (Dr Cash) is the same regardless.
+     */
     @Transactional
     public void postCustomerPayment(
         UUID paymentId,
@@ -344,8 +571,21 @@ public class JournalEntryService {
         String paymentNumber,
         BigDecimal amount,
         String currencyCode,
-        LocalDate postingDate
+        LocalDate postingDate,
+        CustomerInvoice.InvoiceType invoiceType
     ) {
+        Assert.notNull(invoiceType, "invoiceType");
+        // §2.31 prepayment + §2.32 deposit both park the receipt in 2110 Customer
+        // Deposits (a liability) until shipment reclassifies it to revenue;
+        // commercial + balance invoices settle the AR posted at invoice creation.
+        boolean toDeposits = invoiceType == CustomerInvoice.InvoiceType.PREPAYMENT
+            || invoiceType == CustomerInvoice.InvoiceType.DEPOSIT;
+        String creditAccount = toDeposits
+            ? FinanceAccountCodes.CUSTOMER_DEPOSITS
+            : FinanceAccountCodes.AR;
+        String creditMemo = toDeposits
+            ? "Hold deposit from " + customerName + " (" + invoiceType.dbValue() + " invoice)"
+            : "Settle receivable from " + customerName;
         post(
             JournalEntry.NUMBER_PREFIX + journalSuffix(),
             postingDate,
@@ -356,8 +596,48 @@ public class JournalEntryService {
             currencyCode,
             FinanceAccountCodes.BANK,
             "Bank receipt from " + customerName,
-            FinanceAccountCodes.AR,
-            "Settle receivable from " + customerName,
+            creditAccount,
+            creditMemo,
+            amount,
+            postingDate
+        );
+    }
+
+    /**
+     * §2.34 Refund the up-front amount on a cancelled prepayment/deposit order:
+     * Dr 2110 Customer Deposits / Cr 1000 Bank at the paid amount. The exact
+     * inverse of the original payment-receipt pair ({@link #postCustomerPayment}
+     * posted Dr Bank / Cr 2110 for a prepayment/deposit invoice), so the deposit
+     * liability and the cash both unwind to zero. The caller —
+     * {@code SalesOrderCancellationRefundHandler} — gates this on
+     * {@code customer_invoice_header.refunded_at} so a redelivered cancellation
+     * can't refund twice.
+     */
+    @Transactional
+    public void postCustomerRefund(
+        UUID customerInvoiceHeaderId,
+        String customerName,
+        String invoiceNumber,
+        BigDecimal amount,
+        String currencyCode,
+        LocalDate postingDate
+    ) {
+        if (amount == null || amount.signum() <= 0) {
+            log.debug("skip refund post for invoice {} — amount {} is zero/negative", invoiceNumber, amount);
+            return;
+        }
+        post(
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
+            postingDate,
+            JournalEntry.SourceModule.FINANCE,
+            JournalEntry.SourceDocumentType.CUSTOMER_REFUND,
+            customerInvoiceHeaderId,
+            "Refund on cancelled order — invoice " + invoiceNumber + " (" + customerName + ")",
+            currencyCode,
+            FinanceAccountCodes.CUSTOMER_DEPOSITS,
+            "Reverse deposit on cancellation for " + customerName,
+            FinanceAccountCodes.BANK,
+            "Bank refund to " + customerName,
             amount,
             postingDate
         );

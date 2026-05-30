@@ -10,7 +10,7 @@ import java.util.UUID;
  * customer invoice. Carries the invoice's resulting state ({@code paid} on
  * full settlement, {@code partially_paid} otherwise) so sales' fulfilment
  * saga knows whether to advance to {@code completed} or hold at
- * {@code invoice_paid} for partial.
+ * {@code invoice_partially_paid} for partial.
  *
  * <p>{@code aggregateId} is the payment id. {@code salesOrderHeaderId} is
  * the saga-routing key for sales.

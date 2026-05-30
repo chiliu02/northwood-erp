@@ -51,7 +51,7 @@ public final class SynchronousBus {
                 for (OutboxRow row : pending) {
                     dispatch(row);
                     row.markPublished();
-                    outbox.save(row);
+                    outbox.update(row);
                 }
             }
         }

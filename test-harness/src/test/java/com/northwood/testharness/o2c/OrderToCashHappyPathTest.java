@@ -3,12 +3,14 @@ package com.northwood.testharness.o2c;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.events.StockReserved;
 import com.northwood.sales.domain.events.SalesOrderPlaced;
+import com.northwood.sales.domain.events.SalesOrderReadyToShip;
 import com.northwood.sales.domain.events.SalesOrderShipped;
 import com.northwood.sales.domain.events.StockReservationRequested;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.northwood.finance.application.dto.RecordCustomerPaymentCommand;
+import com.northwood.finance.domain.Payment;
 import com.northwood.finance.domain.events.CustomerInvoiceCreated;
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
 import com.northwood.inventory.application.dto.PostShipmentCommand;
@@ -71,7 +73,7 @@ class OrderToCashHappyPathTest {
         UUID orderId = sales.placeOrder(new PlaceOrderCommand(
             "SO-9001", "CUST-001",
             LocalDate.of(2026, 5, 20),
-            Currencies.AUD,
+            Currencies.AUD, null,
             List.of(new OrderLine(productId, "FG-001", "Finished Good 1",
                 new BigDecimal("3"), null, BigDecimal.ZERO))
         ));
@@ -129,7 +131,7 @@ class OrderToCashHappyPathTest {
             "PAY-001",
             invoiceHeaderId,
             new BigDecimal("300.00"),
-            "bank_transfer",
+            Payment.Method.BANK_TRANSFER.dbValue(),
             LocalDate.of(2026, 5, 20)
         ));
         bus.drain();
@@ -143,7 +145,8 @@ class OrderToCashHappyPathTest {
         // Cross-service event audit:
         assertThat(sales.outbox.all())
             .extracting(OutboxRow::getEventType)
-            .contains(SalesOrderPlaced.EVENT_TYPE, StockReservationRequested.EVENT_TYPE, SalesOrderShipped.EVENT_TYPE);
+            .contains(SalesOrderPlaced.EVENT_TYPE, StockReservationRequested.EVENT_TYPE,
+                SalesOrderReadyToShip.EVENT_TYPE, SalesOrderShipped.EVENT_TYPE);
         assertThat(inventory.outbox.all())
             .extracting(OutboxRow::getEventType)
             .contains(StockReserved.EVENT_TYPE, ShipmentPosted.EVENT_TYPE);

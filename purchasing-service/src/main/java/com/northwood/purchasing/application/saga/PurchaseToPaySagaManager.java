@@ -16,7 +16,7 @@ import java.util.function.Consumer;
  * <p>Each {@code applyXxx} returns the saga's new state (or its current state
  * if the transition was a no-op). Callers gate post-saga side effects on the
  * return value — e.g. {@code "completed"} triggers
- * {@code paymentProjection.markFullyPaid}, {@code "supplier_payment_made"}
+ * {@code paymentProjection.markFullyPaid}, {@code "supplier_partially_paid"}
  * triggers {@code paymentProjection.addPartialPayment}.
  */
 public interface PurchaseToPaySagaManager {
@@ -83,9 +83,9 @@ public interface PurchaseToPaySagaManager {
     /**
      * Apply {@code finance.SupplierPaymentMade}. On full settlement,
      * transitions to {@code completed}. On partial, transitions to
-     * {@code supplier_payment_made} (or stays there for subsequent partials).
+     * {@code supplier_partially_paid} (or stays there for subsequent partials).
      * Accepted from {@code supplier_invoice_approved} or
-     * {@code supplier_payment_made}; ignored otherwise.
+     * {@code supplier_partially_paid}; ignored otherwise.
      */
     String applySupplierPaymentMade(UUID purchaseOrderHeaderId, boolean fullySettled);
 }

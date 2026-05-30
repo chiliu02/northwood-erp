@@ -17,9 +17,7 @@ import com.northwood.manufacturing.application.inbox.ProductMaterialsCostProject
 import com.northwood.manufacturing.application.inbox.ProductReplenishmentProjection;
 import com.northwood.manufacturing.application.BomLookup;
 import com.northwood.manufacturing.domain.Bom;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
-import com.northwood.shared.application.security.CurrentUserAccessor;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -33,7 +31,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 class MaterialsCostRollupServiceTest {
@@ -42,22 +39,15 @@ class MaterialsCostRollupServiceTest {
     @Mock ProductApprovedVendorProjection approvedVendors;
     @Mock ProductMaterialsCostProjection materialsCosts;
     @Mock BomLookup bomLookup;
-    @Mock OutboxPort outbox;
-    @Mock CurrentUserAccessor currentUser;
+    @Mock OutboxAppender outbox;
 
-    private final ObjectMapper json = new ObjectMapper();
     private MaterialsCostRollupService rollup;
 
     @BeforeEach
     void setUp() {
         rollup = new MaterialsCostRollupService(
-            replenishment, approvedVendors, materialsCosts, bomLookup, outbox, json, currentUser
+            replenishment, approvedVendors, materialsCosts, bomLookup, outbox
         );
-    }
-
-    /** Stub {@code currentUsername()} in tests that actually emit (apply + outbox). */
-    private void stubCurrentUser() {
-        when(currentUser.currentUsername()).thenReturn(Optional.empty());
     }
 
     @Nested
@@ -65,7 +55,6 @@ class MaterialsCostRollupServiceTest {
 
         @Test
         void purchasedItem_preferredMatch_appliesAndEmits() {
-            stubCurrentUser();
             UUID supplier = UUID.randomUUID();
             UUID product = UUID.randomUUID();
             when(bomLookup.findActiveByFinishedProductId(product)).thenReturn(Optional.empty());
@@ -81,9 +70,10 @@ class MaterialsCostRollupServiceTest {
                 eq(product), eq(new BigDecimal("12.50")), eq(Currencies.AUD),
                 eq("supplier_price_change"), any(Instant.class)
             );
-            ArgumentCaptor<OutboxRow> rowCaptor = ArgumentCaptor.forClass(OutboxRow.class);
-            verify(outbox).appendPending(rowCaptor.capture());
-            assertThat(rowCaptor.getValue().getEventType())
+            ArgumentCaptor<ProductMaterialsCostComputed> eventCaptor =
+                ArgumentCaptor.forClass(ProductMaterialsCostComputed.class);
+            verify(outbox).append(eventCaptor.capture(), eq(ProductMaterialsCostComputed.AGGREGATE_TYPE));
+            assertThat(eventCaptor.getValue().eventType())
                 .isEqualTo(ProductMaterialsCostComputed.EVENT_TYPE);
         }
 
@@ -100,12 +90,11 @@ class MaterialsCostRollupServiceTest {
             rollup.onSupplierPriceChange(supplierB, product, Currencies.AUD, new BigDecimal("9.99"));
 
             verify(materialsCosts, never()).apply(any(), any(), anyString(), anyString(), any());
-            verify(outbox, never()).appendPending(any());
+            verify(outbox, never()).append(any(), any());
         }
 
         @Test
         void ambiguousPreferredVendor_emitsInputsMissing() {
-            stubCurrentUser();
             UUID supplier = UUID.randomUUID();
             UUID product = UUID.randomUUID();
             when(bomLookup.findActiveByFinishedProductId(product)).thenReturn(Optional.empty());
@@ -134,7 +123,7 @@ class MaterialsCostRollupServiceTest {
             rollup.onSupplierPriceChange(supplier, product, Currencies.AUD, new BigDecimal("12.50"));
 
             verify(materialsCosts, never()).apply(any(), any(), anyString(), anyString(), any());
-            verify(outbox, never()).appendPending(any());
+            verify(outbox, never()).append(any(), any());
         }
 
         @Test
@@ -148,7 +137,7 @@ class MaterialsCostRollupServiceTest {
             rollup.onSupplierPriceChange(supplier, product, Currencies.AUD, new BigDecimal("12.50"));
 
             verify(materialsCosts, never()).apply(any(), any(), anyString(), anyString(), any());
-            verify(outbox, never()).appendPending(any());
+            verify(outbox, never()).append(any(), any());
         }
     }
 
@@ -157,7 +146,6 @@ class MaterialsCostRollupServiceTest {
 
         @Test
         void singleLevel_sumsComponents() {
-            stubCurrentUser();
             UUID parent = UUID.randomUUID();
             UUID componentA = UUID.randomUUID();
             UUID componentB = UUID.randomUUID();
@@ -192,7 +180,6 @@ class MaterialsCostRollupServiceTest {
 
         @Test
         void scrapFactor_uplift_appliedPerLine() {
-            stubCurrentUser();
             UUID parent = UUID.randomUUID();
             UUID componentA = UUID.randomUUID();
             when(bomLookup.findActiveByFinishedProductId(parent))
@@ -219,7 +206,6 @@ class MaterialsCostRollupServiceTest {
 
         @Test
         void componentMissingCost_propagatesInputsMissing() {
-            stubCurrentUser();
             UUID parent = UUID.randomUUID();
             UUID componentA = UUID.randomUUID();
             UUID componentB = UUID.randomUUID();
@@ -249,7 +235,6 @@ class MaterialsCostRollupServiceTest {
 
         @Test
         void componentInputsMissingCost_alsoPropagates() {
-            stubCurrentUser();
             UUID parent = UUID.randomUUID();
             UUID componentA = UUID.randomUUID();
             when(bomLookup.findActiveByFinishedProductId(parent))
@@ -311,7 +296,7 @@ class MaterialsCostRollupServiceTest {
             rollup.recomputeViaBom(product, "bom_activated");
 
             verify(materialsCosts, never()).apply(any(), any(), anyString(), anyString(), any());
-            verify(outbox, never()).appendPending(any());
+            verify(outbox, never()).append(any(), any());
         }
     }
 
@@ -320,7 +305,6 @@ class MaterialsCostRollupServiceTest {
 
         @Test
         void supplierPriceChange_walksParent() {
-            stubCurrentUser();
             UUID supplier = UUID.randomUUID();
             UUID rawMaterial = UUID.randomUUID();
             UUID parent = UUID.randomUUID();
@@ -365,7 +349,7 @@ class MaterialsCostRollupServiceTest {
                 eq(parent), eq(new BigDecimal("25.000000")), eq(Currencies.AUD),
                 eq("child_materials_cost_changed"), any(Instant.class)
             );
-            verify(outbox, times(2)).appendPending(any());
+            verify(outbox, times(2)).append(any(), any());
         }
     }
 
@@ -389,7 +373,7 @@ class MaterialsCostRollupServiceTest {
             rollup.onSupplierPriceChange(supplier, product, Currencies.AUD, new BigDecimal("12.50"));
 
             verify(materialsCosts, never()).apply(any(), any(), anyString(), anyString(), any());
-            verify(outbox, never()).appendPending(any());
+            verify(outbox, never()).append(any(), any());
             verify(bomLookup, never()).findParentProductIdsByComponent(product);
         }
     }

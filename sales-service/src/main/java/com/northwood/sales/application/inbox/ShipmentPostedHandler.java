@@ -1,10 +1,12 @@
 package com.northwood.sales.application.inbox;
 
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.COMPLETED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.GOODS_SHIPPED;
 
 import com.northwood.sales.application.SalesOrderService;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.inventory.domain.events.ShipmentPosted;
+import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.SalesOrder.ShippedLineInput;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
@@ -12,6 +14,7 @@ import com.northwood.shared.application.messaging.EventEnvelope;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -29,22 +32,31 @@ public class ShipmentPostedHandler extends AbstractInboxHandler<ShipmentPosted> 
 
     private final SalesOrderFulfilmentSagaManager sagaManager;
     private final SalesOrderService salesOrders;
+    private final SalesOrderHeaderStatusProjection statusProjection;
 
     public ShipmentPostedHandler(
         InboxPort inbox,
         SalesOrderFulfilmentSagaManager sagaManager,
         SalesOrderService salesOrders,
+        SalesOrderHeaderStatusProjection statusProjection,
         ObjectMapper json
     ) {
         super(inbox, json, ShipmentPosted.class, ShipmentPosted.EVENT_TYPE, CONSUMER_NAME);
         this.sagaManager = sagaManager;
         this.salesOrders = salesOrders;
+        this.statusProjection = statusProjection;
     }
+
+    // §2.31 Slice C: prepayment orders walk ready_to_ship → goods_shipped →
+    // completed inside applyShipmentPosted (invoice + payment already settled).
+    // recordShipped must still run for those — both states indicate a real
+    // shipment transition this call (inbox dedup catches redelivery upstream).
+    private static final Set<String> POST_SHIPMENT_STATES = Set.of(GOODS_SHIPPED, COMPLETED);
 
     @Override
     protected void apply(ShipmentPosted payload, EventEnvelope envelope) {
         String newState = sagaManager.applyShipmentPosted(payload.salesOrderHeaderId());
-        if (GOODS_SHIPPED.equals(newState)) {
+        if (POST_SHIPMENT_STATES.contains(newState)) {
             List<ShippedLineInput> shippedLines = new ArrayList<>();
             for (ShipmentPosted.ShippedLine sl : payload.lines()) {
                 shippedLines.add(new ShippedLineInput(
@@ -58,8 +70,14 @@ public class ShipmentPostedHandler extends AbstractInboxHandler<ShipmentPosted> 
                 LocalDate.now(),
                 shippedLines
             );
-            log.info("[{}] sales_order={} → goods_shipped (shipment={})",
-                CONSUMER_NAME, payload.salesOrderHeaderId(), payload.shipmentNumber());
+            // §2.31 / §2.33: prepayment + COD complete the saga at shipment, so
+            // mark the header completed here (the payment-received handler that
+            // normally does it never fires the completing transition for them).
+            if (COMPLETED.equals(newState)) {
+                statusProjection.markStatus(payload.salesOrderHeaderId(), SalesOrder.Status.COMPLETED);
+            }
+            log.info("[{}] sales_order={} → {} (shipment={})",
+                CONSUMER_NAME, payload.salesOrderHeaderId(), newState, payload.shipmentNumber());
         }
     }
 }

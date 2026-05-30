@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.northwood.purchasing.domain.events.PurchaseRequisitionCreated;
+import com.northwood.purchasing.domain.events.ReplenishmentDispatched;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
 import java.util.List;
@@ -87,6 +88,59 @@ class PurchaseRequisitionTest {
             assertThat(e.sourceType()).isEqualTo("work_order_shortage");
             assertThat(e.sourceWorkOrderId()).isEqualTo(WO);
         }
+
+        @Test void create_rejects_STOCK_REPLENISHMENT_with_factory_redirect() {
+            // STOCK_REPLENISHMENT must go through createForStockReplenishment so
+            // the sibling ReplenishmentDispatched event is also emitted.
+            assertThatThrownBy(() -> PurchaseRequisition.create(
+                "PR-001", PurchaseRequisition.SourceType.STOCK_REPLENISHMENT, null, null, "buyer", List.of(line())
+            )).isInstanceOf(IllegalArgumentException.class)
+              .hasMessageContaining("createForStockReplenishment");
+        }
+    }
+
+    @Nested
+    class CreateForStockReplenishment {
+        @Test void emits_both_PurchaseRequisitionCreated_and_ReplenishmentDispatched() {
+            UUID replenishmentRequestId = UUID.randomUUID();
+            PurchaseRequisition pr = PurchaseRequisition.createForStockReplenishment(
+                "PR-REPL-001", replenishmentRequestId,
+                "inventory.replenishment-dispatcher", List.of(line())
+            );
+
+            assertThat(pr.sourceType()).isEqualTo(PurchaseRequisition.SourceType.STOCK_REPLENISHMENT);
+            assertThat(pr.sourceReplenishmentRequestId()).isEqualTo(replenishmentRequestId);
+            assertThat(pr.sourceWorkOrderId()).isNull();
+            assertThat(pr.sourceProductId()).isNull();
+            assertThat(pr.status()).isEqualTo(PurchaseRequisition.Status.APPROVED);
+
+            List<DomainEvent> events = pr.pullPendingEvents();
+            assertThat(events).hasSize(2);
+            assertThat(events.get(0)).isInstanceOf(PurchaseRequisitionCreated.class);
+            assertThat(events.get(1)).isInstanceOf(ReplenishmentDispatched.class);
+
+            PurchaseRequisitionCreated created = (PurchaseRequisitionCreated) events.get(0);
+            assertThat(created.sourceType()).isEqualTo("stock_replenishment");
+            assertThat(created.sourceReplenishmentRequestId()).isEqualTo(replenishmentRequestId);
+            assertThat(created.sourceWorkOrderId()).isNull();
+            assertThat(created.sourceProductId()).isNull();
+
+            ReplenishmentDispatched dispatched = (ReplenishmentDispatched) events.get(1);
+            assertThat(dispatched.aggregateId()).isEqualTo(pr.id().value());
+            assertThat(dispatched.replenishmentRequestId()).isEqualTo(replenishmentRequestId);
+        }
+
+        @Test void rejects_null_replenishmentRequestId() {
+            assertThatThrownBy(() -> PurchaseRequisition.createForStockReplenishment(
+                "PR", null, "buyer", List.of(line())
+            )).isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test void rejects_empty_lines() {
+            assertThatThrownBy(() -> PurchaseRequisition.createForStockReplenishment(
+                "PR", UUID.randomUUID(), "buyer", List.of()
+            )).isInstanceOf(IllegalArgumentException.class);
+        }
     }
 
     @Nested
@@ -113,7 +167,7 @@ class PurchaseRequisitionTest {
         @Test void rejects_when_in_terminal_states() {
             PurchaseRequisition pr = PurchaseRequisition.reconstitute(
                 PurchaseRequisitionId.newId(),
-                "PR", PurchaseRequisition.SourceType.MANUAL, null, null,
+                "PR", PurchaseRequisition.SourceType.MANUAL, null, null, null,
                 PurchaseRequisition.Status.REJECTED, "buyer", List.of(line()), 3L
             );
             assertThatThrownBy(pr::markConverted).isInstanceOf(IllegalStateException.class);

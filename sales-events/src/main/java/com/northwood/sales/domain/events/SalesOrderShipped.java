@@ -15,6 +15,13 @@ import java.util.UUID;
  * (inventory doesn't own pricing).
  *
  * <p>{@code aggregateId} is the sales-order-header id.
+ *
+ * <p>{@code paymentTerms} is the order's commercial terms — a
+ * {@link com.northwood.sales.domain.PaymentTerms} {@code dbValue()}. Finance
+ * branches on it at shipment: a {@code cash_on_delivery} order has its customer
+ * payment auto-recorded the moment the invoice is created (§2.33). Nullable for
+ * backward compatibility with in-flight messages produced before §2.33 —
+ * consumers treat null as {@code on_shipment}.
  */
 public record SalesOrderShipped(
     UUID eventId,
@@ -27,6 +34,7 @@ public record SalesOrderShipped(
     String customerName,
     LocalDate shipmentDate,
     String currencyCode,
+    String paymentTerms,
     List<ShippedLine> lines,
     Instant occurredAt
 ) implements DomainEvent {

@@ -2,9 +2,11 @@ package com.northwood.testharness.inmemory.inventory;
 
 import com.northwood.inventory.application.StockBalanceLookup;
 import com.northwood.inventory.application.StockBalanceWriter;
+import com.northwood.inventory.application.dto.StockBalanceView;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -37,6 +39,14 @@ public final class InMemoryStockBalances implements StockBalanceWriter, StockBal
     }
 
     @Override
+    public Optional<StockBalanceView> findBalance(UUID warehouseId, UUID productId) {
+        Balance b = balances.get(new Key(warehouseId, productId));
+        if (b == null) return Optional.empty();
+        return Optional.of(new StockBalanceView(
+            warehouseId, productId, b.onHand, b.reserved, b.onHand.subtract(b.reserved)));
+    }
+
+    @Override
     public void bump(UUID warehouseId, UUID productId, BigDecimal quantity) {
         balances.computeIfAbsent(new Key(warehouseId, productId), k -> new Balance()).onHand =
             balances.get(new Key(warehouseId, productId)).onHand.add(quantity);
@@ -49,6 +59,17 @@ public final class InMemoryStockBalances implements StockBalanceWriter, StockBal
         b.onHand = b.onHand.subtract(shippedQty);
         BigDecimal release = b.reserved.min(shippedQty);
         b.reserved = b.reserved.subtract(release);
+    }
+
+    @Override
+    public boolean decrementOnHand(UUID warehouseId, UUID productId, BigDecimal quantity) {
+        if (quantity == null || quantity.signum() <= 0) return false;
+        Balance b = balances.get(new Key(warehouseId, productId));
+        if (b == null) return false;
+        // Guard: on_hand - q must stay >= reserved (mirrors the JDBC writer); leave reserved alone.
+        if (b.onHand.subtract(quantity).compareTo(b.reserved) < 0) return false;
+        b.onHand = b.onHand.subtract(quantity);
+        return true;
     }
 
     @Override

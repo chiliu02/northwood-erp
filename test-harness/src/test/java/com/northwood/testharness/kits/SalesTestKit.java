@@ -3,20 +3,22 @@ package com.northwood.testharness.kits;
 import com.northwood.sales.application.dto.CancelOrderCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand;
 import com.northwood.sales.application.SalesOrderCompensationEmitter;
+import com.northwood.sales.application.SalesOrderUpfrontPaymentSettledEmitter;
+import com.northwood.sales.application.SalesOrderReadyToShipEmitter;
 import com.northwood.sales.application.SalesOrderService;
 import com.northwood.sales.application.inbox.CustomerInvoiceCreatedHandler;
 import com.northwood.sales.application.inbox.CustomerPaymentReceivedHandler;
 import com.northwood.sales.application.inbox.InventoryCancellationAppliedHandler;
-import com.northwood.sales.application.inbox.ManufacturingCancellationAppliedHandler;
-import com.northwood.sales.application.inbox.ManufacturingDispatchedHandler;
+import com.northwood.sales.application.inbox.ReplenishmentCancelledHandler;
+import com.northwood.sales.application.inbox.ReplenishmentFulfilledHandler;
 import com.northwood.sales.application.inbox.ShipmentPostedHandler;
 import com.northwood.sales.application.inbox.StockReservedHandler;
-import com.northwood.sales.application.inbox.WorkOrderCreatedHandler;
-import com.northwood.sales.application.inbox.WorkOrderManufacturingCompletedHandler;
 import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.sales.infrastructure.saga.JdbcSalesOrderFulfilmentSagaManager;
 import com.northwood.sales.infrastructure.saga.SalesOrderFulfilmentSagaWorker;
+import com.northwood.shared.application.outbox.OutboxAppender;
+import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.NoopPlatformTransactionManager;
@@ -25,6 +27,7 @@ import com.northwood.testharness.inmemory.sales.InMemoryCustomerLookup;
 import com.northwood.testharness.inmemory.sales.InMemoryProductCardLookup;
 import com.northwood.testharness.inmemory.sales.InMemorySalesOrderFulfilmentSagaPort;
 import com.northwood.testharness.inmemory.sales.InMemorySalesOrderHeaderStatusProjection;
+import com.northwood.testharness.inmemory.sales.InMemorySalesOrderInvoiceSnapshotPort;
 import com.northwood.testharness.inmemory.sales.InMemorySalesOrderLineSnapshotPort;
 import com.northwood.testharness.inmemory.sales.InMemorySalesOrderRepository;
 import java.util.Optional;
@@ -53,10 +56,13 @@ public final class SalesTestKit {
     public final InMemoryProductCardLookup productCards = new InMemoryProductCardLookup();
     public final InMemorySalesOrderHeaderStatusProjection statusProjection = new InMemorySalesOrderHeaderStatusProjection();
     public final InMemorySalesOrderLineSnapshotPort lineSnapshots;
+    public final InMemorySalesOrderInvoiceSnapshotPort invoiceSnapshots;
 
     public final JdbcSalesOrderFulfilmentSagaManager sagaManager;
     public final SalesOrderFulfilmentSagaWorker sagaWorker;
     public final SalesOrderCompensationEmitter compensationEmitter;
+    public final SalesOrderReadyToShipEmitter readyToShipEmitter;
+    public final SalesOrderUpfrontPaymentSettledEmitter upfrontSettledEmitter;
     public final SalesOrderService service;
 
     private final String workerId = "sales.fulfilment-test-worker";
@@ -64,22 +70,24 @@ public final class SalesTestKit {
     public SalesTestKit(SynchronousBus bus, ObjectMapper json) {
         this.orders = new InMemorySalesOrderRepository(outbox, json);
         this.lineSnapshots = new InMemorySalesOrderLineSnapshotPort(orders);
+        this.invoiceSnapshots = new InMemorySalesOrderInvoiceSnapshotPort(orders);
         PlatformTransactionManager txm = new NoopPlatformTransactionManager();
         this.sagaManager = new JdbcSalesOrderFulfilmentSagaManager(sagas, json, txm, 30L, 15L);
-        this.sagaWorker = new SalesOrderFulfilmentSagaWorker(sagaManager, lineSnapshots, outbox, json);
-        this.compensationEmitter = new SalesOrderCompensationEmitter(orders, outbox, json);
+        OutboxAppender appender = new OutboxAppender(outbox, json, new CurrentUserAccessor());
+        this.sagaWorker = new SalesOrderFulfilmentSagaWorker(sagaManager, lineSnapshots, invoiceSnapshots, appender, json);
+        this.compensationEmitter = new SalesOrderCompensationEmitter(orders, appender);
+        this.readyToShipEmitter = new SalesOrderReadyToShipEmitter(appender);
+        this.upfrontSettledEmitter = new SalesOrderUpfrontPaymentSettledEmitter(appender);
         this.service = new SalesOrderService(orders, sagaManager, customers, productCards);
 
         bus.register(outbox);
-        bus.register(new StockReservedHandler(inbox, sagaManager, statusProjection, json));
-        bus.register(new WorkOrderCreatedHandler(inbox, sagaManager, json));
-        bus.register(new WorkOrderManufacturingCompletedHandler(inbox, sagaManager, json));
-        bus.register(new ManufacturingDispatchedHandler(inbox, sagaManager, statusProjection, compensationEmitter, json));
-        bus.register(new ShipmentPostedHandler(inbox, sagaManager, service, json));
+        bus.register(new StockReservedHandler(inbox, sagaManager, statusProjection, readyToShipEmitter, lineSnapshots, json));
+        bus.register(new ReplenishmentFulfilledHandler(inbox, sagaManager, lineSnapshots, appender, json));
+        bus.register(new ReplenishmentCancelledHandler(inbox, sagaManager, statusProjection, orders, appender, json));
+        bus.register(new ShipmentPostedHandler(inbox, sagaManager, service, statusProjection, json));
         bus.register(new CustomerInvoiceCreatedHandler(inbox, sagaManager, json));
-        bus.register(new CustomerPaymentReceivedHandler(inbox, sagaManager, statusProjection, json));
+        bus.register(new CustomerPaymentReceivedHandler(inbox, sagaManager, statusProjection, upfrontSettledEmitter, json));
         bus.register(new InventoryCancellationAppliedHandler(inbox, sagaManager, compensationEmitter, json));
-        bus.register(new ManufacturingCancellationAppliedHandler(inbox, sagaManager, compensationEmitter, json));
     }
 
     public UUID placeOrder(PlaceOrderCommand cmd) {
@@ -99,10 +107,11 @@ public final class SalesTestKit {
     }
 
     /**
-     * Drive the sales fulfilment saga worker through one drain pass. Picks
-     * up sagas in {@code started} or {@code stock_reserved} and advances
-     * each by one transition (emitting StockReservationRequested or
-     * ManufacturingRequested respectively).
+     * Drive the sales fulfilment saga worker through one drain pass. Picks up
+     * sagas in {@code started} or {@code prepaid} and advances each by one
+     * transition (emitting StockReservationRequested). §2.37 Slice 3 removed the
+     * worker's {@code stock_reservation_incomplete} leg — replenishment is now
+     * inbox-driven (ReplenishmentFulfilled / ReplenishmentCancelled).
      */
     public void advanceSagaWorker() {
         sagaWorker.drainOnce(workerId);

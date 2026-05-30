@@ -29,6 +29,7 @@ public record StockReservationRequested(
     @Override public String eventType() { return EVENT_TYPE; }
 
     public record RequestedLine(
+        UUID salesOrderLineId,
         int lineNumber,
         UUID productId,
         String productSku,

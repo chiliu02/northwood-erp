@@ -3,7 +3,7 @@ package com.northwood.sales.application.inbox;
 import com.northwood.sales.domain.SalesOrder;
 
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.COMPLETED;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.INVOICE_PAID;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.INVOICE_PARTIALLY_PAID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -35,13 +35,14 @@ class CustomerPaymentReceivedHandlerTest {
     @Mock InboxPort inbox;
     @Mock SalesOrderFulfilmentSagaManager sagaManager;
     @Mock SalesOrderHeaderStatusProjection statusProjection;
+    @Mock com.northwood.sales.application.SalesOrderUpfrontPaymentSettledEmitter upfrontSettledEmitter;
 
     private final ObjectMapper json = new ObjectMapper();
     private CustomerPaymentReceivedHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new CustomerPaymentReceivedHandler(inbox, sagaManager, statusProjection, json);
+        handler = new CustomerPaymentReceivedHandler(inbox, sagaManager, statusProjection, upfrontSettledEmitter, json);
     }
 
     private EventEnvelope event(String invoiceStatusAfter) {
@@ -72,7 +73,7 @@ class CustomerPaymentReceivedHandlerTest {
     }
 
     @Test void partial_payment_does_not_project_completed() {
-        when(sagaManager.applyCustomerPaymentReceived(eq(SO), eq(false))).thenReturn(INVOICE_PAID);
+        when(sagaManager.applyCustomerPaymentReceived(eq(SO), eq(false))).thenReturn(INVOICE_PARTIALLY_PAID);
 
         handler.handle(event("partially_paid"));
 

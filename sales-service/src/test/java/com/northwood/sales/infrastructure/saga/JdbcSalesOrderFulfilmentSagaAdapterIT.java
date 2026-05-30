@@ -40,7 +40,7 @@ import org.testcontainers.utility.DockerImageName;
  *       worker's immediate claim returning nothing (lease not expired);</li>
  *   <li>{@code claimDue} skipping rows whose {@code next_retry_at} is in the
  *       future (parked / backed-off sagas);</li>
- *   <li>{@code save} enforcing optimistic concurrency via {@code WHERE saga_id = ?
+ *   <li>{@code update} enforcing optimistic concurrency via {@code WHERE saga_id = ?
  *       AND version = ?} → {@link OptimisticLockingFailureException}.</li>
  * </ul>
  */
@@ -140,16 +140,39 @@ class JdbcSalesOrderFulfilmentSagaAdapterIT {
     }
 
     @Test
-    void save_enforces_optimistic_lock_via_version() {
+    void claimDue_reclaims_a_row_whose_lease_has_expired() {
+        // A worker crashed mid-step: the row still carries its lease_owner, but
+        // lease_expires_at is in the past. claimDue must reclaim it (the
+        // `lease_owner IS NULL OR lease_expires_at < now()` branch) — the
+        // crashed-worker auto-recovery the disaster-recovery doc claims.
+        SalesOrderFulfilmentSaga abandoned = new SalesOrderFulfilmentSaga(
+            UUID.randomUUID(), UUID.randomUUID(), SalesOrderFulfilmentSaga.STARTED,
+            "started", null, 0, Instant.now().minusSeconds(1),
+            "dead-worker", Instant.now().minus(Duration.ofMinutes(1)),
+            0L, "{}", Instant.now(), Instant.now(), null);
+        ADAPTER.insert(abandoned);
+
+        List<SalesOrderFulfilmentSaga> claimed = ADAPTER.claimDue(
+            10, Set.of(SalesOrderFulfilmentSaga.STARTED), "worker-2", Duration.ofSeconds(30));
+
+        assertThat(claimed).hasSize(1)
+            .first().satisfies(s -> {
+                assertThat(s.sagaId()).isEqualTo(abandoned.sagaId());
+                assertThat(s.leaseOwner()).isEqualTo("worker-2");
+            });
+    }
+
+    @Test
+    void update_enforces_optimistic_lock_via_version() {
         UUID salesOrderId = UUID.randomUUID();
         ADAPTER.insert(SalesOrderFulfilmentSaga.started(salesOrderId, "{}"));
 
         SalesOrderFulfilmentSaga loadedA = ADAPTER.findBySalesOrderId(salesOrderId).orElseThrow();
         SalesOrderFulfilmentSaga loadedB = ADAPTER.findBySalesOrderId(salesOrderId).orElseThrow();
 
-        ADAPTER.save(loadedA); // version 1 → 2
+        ADAPTER.update(loadedA); // version 1 → 2
 
-        assertThatThrownBy(() -> ADAPTER.save(loadedB))
+        assertThatThrownBy(() -> ADAPTER.update(loadedB))
             .isInstanceOf(OptimisticLockingFailureException.class);
     }
 }

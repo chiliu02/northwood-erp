@@ -4,6 +4,7 @@ import com.northwood.sales.application.dto.CustomerView;
 import com.northwood.sales.domain.Customer;
 import com.northwood.sales.domain.CustomerId;
 import com.northwood.sales.domain.CustomerRepository;
+import com.northwood.sales.domain.PaymentTerms;
 import com.northwood.shared.application.exception.ConflictException;
 import com.northwood.shared.application.exception.NotFoundException;
 import java.util.List;
@@ -59,10 +60,16 @@ public class CustomerService {
     public CustomerView registerCustomer(
         String customerCode, String name,
         String email, String phone,
-        String billingAddress, String shippingAddress
+        String billingAddress, String shippingAddress,
+        String defaultPaymentTerms
     ) {
+        // Parse the wire-format term here so the controller (api/) stays free of
+        // the domain enum — mirrors product-service's ProductService.
+        PaymentTerms terms = defaultPaymentTerms == null
+            ? PaymentTerms.ON_SHIPMENT
+            : PaymentTerms.fromDb(defaultPaymentTerms);
         Customer customer = Customer.register(
-            customerCode, name, email, phone, billingAddress, shippingAddress
+            customerCode, name, email, phone, billingAddress, shippingAddress, terms
         );
         customers.save(customer);
         return CustomerView.from(customer);

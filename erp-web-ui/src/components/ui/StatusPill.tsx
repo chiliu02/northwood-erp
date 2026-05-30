@@ -50,13 +50,17 @@ export function statusForOrder(status: string | null | undefined): { label: stri
     case "partially_received":
     case "partially_invoiced":
     case "partially_paid":
+    case "partially_reserved":
       return { label: titleCase(status!), tone: "warn" };
     case "shipped":
     case "completed":
     case "received":
     case "invoiced":
     case "paid":
+    case "reserved":
       return { label: titleCase(status!), tone: "success" };
+    case "not_required":
+      return { label: titleCase(status!), tone: "neutral" };
     case "cancelled":
     case "rejected":
     case "failed":

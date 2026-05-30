@@ -1,0 +1,93 @@
+package com.northwood.finance.application.inbox;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+import com.northwood.finance.application.CustomerInvoiceService;
+import com.northwood.sales.domain.SalesAggregateTypes;
+import com.northwood.sales.domain.events.PrepaymentInvoiceRequested;
+import com.northwood.shared.application.inbox.InboxPort;
+import com.northwood.shared.application.messaging.EventEnvelope;
+import com.northwood.shared.domain.Currencies;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import tools.jackson.databind.ObjectMapper;
+
+@ExtendWith(MockitoExtension.class)
+class PrepaymentInvoiceRequestedHandlerTest {
+
+    private static final UUID SO = UUID.randomUUID();
+
+    @Mock InboxPort inbox;
+    @Mock CustomerInvoiceService invoices;
+
+    private final ObjectMapper json = new ObjectMapper();
+    private PrepaymentInvoiceRequestedHandler handler;
+
+    @BeforeEach
+    void setUp() {
+        handler = new PrepaymentInvoiceRequestedHandler(inbox, invoices, json);
+    }
+
+    private EventEnvelope event() {
+        UUID eventId = UUID.randomUUID();
+        PrepaymentInvoiceRequested payload = new PrepaymentInvoiceRequested(
+            eventId, SO, "SO-001",
+            UUID.randomUUID(), "CUST-001", "Acme",
+            Currencies.AUD,
+            List.of(new PrepaymentInvoiceRequested.RequestedLine(
+                UUID.randomUUID(), 10, UUID.randomUUID(), "SKU", "Product",
+                new BigDecimal("2"), new BigDecimal("100.00"), new BigDecimal("0.10")
+            )),
+            Instant.now()
+        );
+        return new EventEnvelope(
+            eventId, SalesAggregateTypes.SALES_ORDER_FULFILMENT_SAGA, SO,
+            PrepaymentInvoiceRequested.EVENT_TYPE, 1,
+            json.writeValueAsString(payload),
+            null, null, null, null, Instant.now()
+        );
+    }
+
+    @Test void delegates_to_invoice_service_and_records_processed() {
+        handler.handle(event());
+
+        verify(invoices).createFromPrepaymentRequest(any(PrepaymentInvoiceRequested.class));
+        verify(inbox).recordProcessed(any());
+    }
+
+    @Test void already_processed_short_circuits() {
+        EventEnvelope envelope = event();
+        when(inbox.alreadyProcessed(eq(envelope.eventId()),
+            eq(PrepaymentInvoiceRequestedHandler.CONSUMER_NAME))).thenReturn(true);
+
+        handler.handle(envelope);
+
+        verifyNoInteractions(invoices);
+        verify(inbox, never()).recordProcessed(any());
+    }
+
+    @Test void wrong_event_type_is_no_op() {
+        EventEnvelope wrong = new EventEnvelope(
+            UUID.randomUUID(), SalesAggregateTypes.SALES_ORDER_FULFILMENT_SAGA, UUID.randomUUID(),
+            "sales.SomethingElse", 1, "{}",
+            null, null, null, null, Instant.now()
+        );
+
+        handler.handle(wrong);
+
+        verify(inbox, never()).alreadyProcessed(any(), any());
+        verifyNoInteractions(invoices);
+    }
+}

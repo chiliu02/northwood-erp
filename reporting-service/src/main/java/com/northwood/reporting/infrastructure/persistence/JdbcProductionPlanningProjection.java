@@ -148,29 +148,6 @@ public class JdbcProductionPlanningProjection implements ProductionPlanningProje
 
     @Override
     @Transactional
-    public void recordWorkOrderCancelled(UUID workOrderId, Instant occurredAt) {
-        jdbc.update("""
-            INSERT INTO reporting.production_planning_board (
-                work_order_id, work_order_number,
-                finished_product_id, finished_product_sku, finished_product_name,
-                planned_quantity, completed_quantity,
-                work_order_status, material_status,
-                shortage_materials_count, open_purchase_orders_count,
-                priority, updated_at
-            ) VALUES (?, '(pending)', ?, '(pending)', '(pending)',
-                      0, 0, ?, 'pending',
-                      0, 0, 'normal', now())
-            ON CONFLICT (work_order_id) DO UPDATE SET
-                work_order_status = ?,
-                updated_at = now()
-            """,
-            workOrderId, STUB_PRODUCT_ID,
-            WorkOrderStatuses.CANCELLED, WorkOrderStatuses.CANCELLED
-        );
-    }
-
-    @Override
-    @Transactional
     public void recordRawMaterialsReserved(
         UUID workOrderId,
         String reservationStatus,

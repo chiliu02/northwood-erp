@@ -4,6 +4,8 @@ import com.northwood.inventory.application.dto.PostShipmentCommand;
 import com.northwood.inventory.application.dto.ShipmentLineRequest;
 import com.northwood.inventory.application.dto.ShipmentView;
 import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection;
+import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection.UpfrontPaymentGate;
+import com.northwood.sales.domain.PaymentTerms;
 import com.northwood.inventory.domain.Shipment;
 import com.northwood.inventory.domain.ShipmentId;
 import com.northwood.inventory.domain.ShipmentLine;
@@ -13,6 +15,7 @@ import com.northwood.inventory.domain.StockMovementSourceTypes;
 import com.northwood.inventory.domain.StockMovementType;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.shared.application.exception.BadRequestException;
+import com.northwood.shared.application.exception.ConflictException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -83,6 +86,28 @@ public class ShipmentService {
         }
     }
 
+    /**
+     * §2.31 Slice C / §2.32 Slice C. Thrown when {@code ShipmentService.post} is
+     * asked to dispatch a prepayment- or deposit-terms sales order whose
+     * up-front payment hasn't landed yet. Mapped to HTTP 409. Inventory reads
+     * {@code inventory.sales_order_line_facts.upfront_settled} (flipped true by
+     * {@code sales.SalesOrderUpfrontPaymentSettled}) — no cross-context read
+     * into sales' saga.
+     */
+    public static class UnpaidUpfrontOrderException extends ConflictException {
+        public static final String CODE = "UNPAID_UPFRONT_ORDER";
+        private final UUID salesOrderHeaderId;
+        public UnpaidUpfrontOrderException(UUID salesOrderHeaderId, String paymentTerms) {
+            super(CODE, "Cannot ship sales_order=%s — payment_terms='%s' and the up-front payment is not yet fully settled"
+                .formatted(salesOrderHeaderId, paymentTerms));
+            this.salesOrderHeaderId = salesOrderHeaderId;
+        }
+        public UUID salesOrderHeaderId() { return salesOrderHeaderId; }
+        @Override public Map<String, Object> params() {
+            return Map.of("salesOrderHeaderId", salesOrderHeaderId);
+        }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(ShipmentService.class);
 
     private final ShipmentRepository shipments;
@@ -90,19 +115,22 @@ public class ShipmentService {
     private final StockMovementWriter movements;
     private final WarehouseLookup warehouses;
     private final SalesOrderLineFactsProjection salesOrderLineFacts;
+    private final ReplenishmentDetectionService replenishmentDetection;
 
     public ShipmentService(
         ShipmentRepository shipments,
         StockBalanceWriter stockBalances,
         StockMovementWriter movements,
         WarehouseLookup warehouses,
-        SalesOrderLineFactsProjection salesOrderLineFacts
+        SalesOrderLineFactsProjection salesOrderLineFacts,
+        ReplenishmentDetectionService replenishmentDetection
     ) {
         this.shipments = shipments;
         this.stockBalances = stockBalances;
         this.movements = movements;
         this.warehouses = warehouses;
         this.salesOrderLineFacts = salesOrderLineFacts;
+        this.replenishmentDetection = replenishmentDetection;
     }
 
     @Transactional(readOnly = true)
@@ -119,6 +147,21 @@ public class ShipmentService {
     public ShipmentView post(PostShipmentCommand command) {
         String warehouseCode = command.warehouseCode() == null ? WarehouseCodes.MAIN : command.warehouseCode();
         UUID warehouseId = warehouses.findIdByCode(warehouseCode);
+
+        // §2.31 / §2.32 Slice C: gate prepayment + deposit orders on
+        // upfront_settled. The header-level facts are denormalised onto each
+        // line of sales_order_line_facts (one query for both validations). Skip
+        // when no sales_order_header_id is supplied — unlinked manual shipments
+        // are an existing affordance.
+        if (command.salesOrderHeaderId() != null) {
+            Optional<UpfrontPaymentGate> gate = salesOrderLineFacts.findUpfrontPaymentGate(command.salesOrderHeaderId());
+            if (gate.isPresent() && !gate.get().upfrontSettled()) {
+                String pt = gate.get().paymentTerms();
+                if (PaymentTerms.PREPAYMENT.dbValue().equals(pt) || PaymentTerms.DEPOSIT.dbValue().equals(pt)) {
+                    throw new UnpaidUpfrontOrderException(command.salesOrderHeaderId(), pt);
+                }
+            }
+        }
 
         // Defence-in-depth: reject if any line's productId doesn't match the
         // projected sales_order_line_facts for the named sales_order_line_id.
@@ -171,6 +214,11 @@ public class ShipmentService {
                 l.shippedQuantity(), l.unitCost(),
                 StockMovementSourceTypes.SHIPMENT, shipment.id().value(), l.id()
             );
+            // §2.35 Slice B: if this decrement brings on_hand below reorder_point,
+            // raise an inventory.ReplenishmentRequest (routed by make-vs-buy).
+            // Same @Transactional boundary → outbox event lands atomically with
+            // the balance write.
+            replenishmentDetection.checkAfterOnHandDecrement(warehouseId, l.productId());
         }
 
         log.info("posted shipment {} for sales_order={} ({} line(s)) at warehouse={}",

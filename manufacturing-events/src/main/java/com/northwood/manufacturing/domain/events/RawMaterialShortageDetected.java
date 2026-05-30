@@ -8,7 +8,7 @@ import java.util.UUID;
 
 /**
  * Raw-material reservation came back as {@code partially_reserved} or
- * {@code failed} for a work order, and the make-to-order saga has parked at
+ * {@code failed} for a work order, and the work-order saga has parked at
  * {@code raw_material_shortage}. Carries the unfulfilled components so
  * purchasing can spawn a requisition for the missing quantities.
  *

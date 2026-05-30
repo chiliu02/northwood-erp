@@ -14,10 +14,14 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.DockerImageName;
@@ -35,7 +39,11 @@ import tools.jackson.databind.ObjectMapper;
  *       seen by a different consumer is still "unprocessed" for that consumer
  *       (the property that lets every service consume the same event);</li>
  *   <li>{@code recordProcessed} persists all columns and casts {@code payload}
- *       via {@code ?::jsonb}.</li>
+ *       via {@code ?::jsonb};</li>
+ *   <li>the default {@link AdvisoryLockInboxDedupStrategy} actually serializes a
+ *       concurrent duplicate — two real transactions racing the same
+ *       {@code (message_id, consumer_name)} can't both observe "not processed"
+ *       (the race the in-process test harness can't exercise).</li>
  * </ul>
  *
  * <p>Runs against the {@code product} schema; the adapter is service-agnostic
@@ -65,7 +73,7 @@ class JdbcInboxAdapterIT {
         DATA_SOURCE.setPassword(POSTGRES.getPassword());
         DATA_SOURCE.setConnectionInitSql("SET search_path = product, shared");
         JDBC = new JdbcTemplate(DATA_SOURCE);
-        ADAPTER = new JdbcInboxAdapter(JDBC);
+        ADAPTER = new JdbcInboxAdapter(JDBC, new AdvisoryLockInboxDedupStrategy(JDBC));
     }
 
     private static void applySqlFile(Path file) {
@@ -146,5 +154,89 @@ class JdbcInboxAdapterIT {
         assertThat(row.get("status")).isEqualTo("processed");
         assertThat(row.get("processed_at")).isNotNull();
         assertThat(JSON.readTree((String) row.get("payload_text"))).isEqualTo(JSON.readTree(payload));
+    }
+
+    /**
+     * Two transactions race to process the same {@code (message_id, consumer_name)}.
+     * {@code first} acquires the advisory lock and records the row but does <em>not</em>
+     * commit; {@code second} then calls {@code alreadyProcessed} — which must block on
+     * the lock until {@code first} commits, and only then read a fresh snapshot showing
+     * the row. The proof is {@code second} observing {@code true}: without the lock, its
+     * {@code EXISTS} would run against {@code first}'s uncommitted insert and return
+     * {@code false}, double-applying the event.
+     */
+    @Test
+    void advisory_lock_serializes_a_concurrent_duplicate() throws Exception {
+        UUID messageId = UUID.randomUUID();
+        String consumer = "product.RaceHandler";
+
+        CountDownLatch firstRecorded = new CountDownLatch(1);   // first inserted (uncommitted), holds the lock
+        CountDownLatch secondAttempting = new CountDownLatch(1); // second is about to block on the lock
+        CountDownLatch releaseFirst = new CountDownLatch(1);     // main → first may commit
+        AtomicReference<Boolean> firstSaw = new AtomicReference<>();
+        AtomicReference<Boolean> secondSaw = new AtomicReference<>();
+        AtomicReference<Throwable> error = new AtomicReference<>();
+
+        Thread first = new Thread(() -> {
+            try (var conn = newTxnConnection()) {
+                JdbcInboxAdapter adapter = adapterOn(conn);
+                firstSaw.set(adapter.alreadyProcessed(messageId, consumer)); // false; takes the lock
+                adapter.recordProcessed(InboxRow.processed(
+                    UUID.randomUUID(), messageId, consumer, "product.SomeEvent", 1, null, "{}"));
+                firstRecorded.countDown();
+                await(releaseFirst);
+                conn.commit(); // releases the advisory lock
+            } catch (Throwable t) {
+                error.compareAndSet(null, t);
+                firstRecorded.countDown(); // don't strand the other threads on failure
+            }
+        });
+
+        Thread second = new Thread(() -> {
+            try (var conn = newTxnConnection()) {
+                JdbcInboxAdapter adapter = adapterOn(conn);
+                await(firstRecorded);          // first holds the lock with an uncommitted row
+                secondAttempting.countDown();
+                secondSaw.set(adapter.alreadyProcessed(messageId, consumer)); // blocks, then true
+                conn.commit();
+            } catch (Throwable t) {
+                error.compareAndSet(null, t);
+            }
+        });
+
+        first.start();
+        second.start();
+        await(secondAttempting);
+        releaseFirst.countDown();
+        first.join(10_000);
+        second.join(10_000);
+
+        assertThat(error.get()).withFailMessage("worker failed: %s", error.get()).isNull();
+        assertThat(firstSaw.get()).isFalse();
+        assertThat(secondSaw.get()).isTrue();
+    }
+
+    private static java.sql.Connection newTxnConnection() throws SQLException {
+        java.sql.Connection c = DriverManager.getConnection(
+            POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        c.setAutoCommit(false);
+        return c;
+    }
+
+    private static JdbcInboxAdapter adapterOn(java.sql.Connection conn) {
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource(conn, true));
+        jdbc.execute("SET search_path = product, shared");
+        return new JdbcInboxAdapter(jdbc, new AdvisoryLockInboxDedupStrategy(jdbc));
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting on latch");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted waiting on latch", e);
+        }
     }
 }

@@ -71,7 +71,7 @@ class JdbcPurchaseToPaySagaManagerTest {
             String state = manager.approve(PO);
 
             assertThat(state).isEqualTo(PURCHASE_ORDER_APPROVED);
-            verify(sagas).save(saga);
+            verify(sagas).update(saga);
         }
 
         @Test void approve_idempotent_on_already_approved() {
@@ -81,7 +81,7 @@ class JdbcPurchaseToPaySagaManagerTest {
             String state = manager.approve(PO);
 
             assertThat(state).isEqualTo(PURCHASE_ORDER_APPROVED);
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
 
         @Test void approve_returns_null_when_no_saga() {
@@ -90,7 +90,7 @@ class JdbcPurchaseToPaySagaManagerTest {
             String state = manager.approve(PO);
 
             assertThat(state).isNull();
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
     }
 
@@ -103,7 +103,7 @@ class JdbcPurchaseToPaySagaManagerTest {
             String state = manager.applyGoodsReceived(PO, true);
 
             assertThat(state).isEqualTo(GOODS_RECEIVED);
-            verify(sagas).save(saga);
+            verify(sagas).update(saga);
         }
 
         @Test void partial_receipt_stays_at_waiting_for_goods() {
@@ -113,7 +113,7 @@ class JdbcPurchaseToPaySagaManagerTest {
             String state = manager.applyGoodsReceived(PO, false);
 
             assertThat(state).isEqualTo(WAITING_FOR_GOODS);
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
 
         @Test void no_saga_throws() {
@@ -143,7 +143,7 @@ class JdbcPurchaseToPaySagaManagerTest {
             String state = manager.applySupplierInvoiceApproved(PO);
 
             assertThat(state).isEqualTo(WAITING_FOR_GOODS);
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
     }
 
@@ -157,7 +157,7 @@ class JdbcPurchaseToPaySagaManagerTest {
 
             assertThat(state).isEqualTo(FAILED);
             assertThat(saga.currentStep()).isEqualTo("supplier_invoice_rejected");
-            verify(sagas).save(saga);
+            verify(sagas).update(saga);
         }
 
         @Test void unrelated_state_returns_unchanged() {
@@ -167,7 +167,7 @@ class JdbcPurchaseToPaySagaManagerTest {
             String state = manager.applySupplierInvoiceRejected(PO);
 
             assertThat(state).isEqualTo(SUPPLIER_INVOICE_APPROVED);
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
 
         @Test void no_saga_throws() {
@@ -190,17 +190,17 @@ class JdbcPurchaseToPaySagaManagerTest {
             assertThat(state).isEqualTo(COMPLETED);
         }
 
-        @Test void partial_settlement_transitions_to_supplier_payment_made() {
+        @Test void partial_settlement_transitions_to_supplier_partially_paid() {
             PurchaseToPaySaga saga = sagaInState(SUPPLIER_INVOICE_APPROVED);
             when(sagas.findByPurchaseOrderId(PO)).thenReturn(Optional.of(saga));
 
             String state = manager.applySupplierPaymentMade(PO, false);
 
-            assertThat(state).isEqualTo(SUPPLIER_PAYMENT_MADE);
+            assertThat(state).isEqualTo(SUPPLIER_PARTIALLY_PAID);
         }
 
-        @Test void from_supplier_payment_made_full_completes() {
-            PurchaseToPaySaga saga = sagaInState(SUPPLIER_PAYMENT_MADE);
+        @Test void from_supplier_partially_paid_full_completes() {
+            PurchaseToPaySaga saga = sagaInState(SUPPLIER_PARTIALLY_PAID);
             when(sagas.findByPurchaseOrderId(PO)).thenReturn(Optional.of(saga));
 
             String state = manager.applySupplierPaymentMade(PO, true);
@@ -215,7 +215,7 @@ class JdbcPurchaseToPaySagaManagerTest {
             String state = manager.applySupplierPaymentMade(PO, true);
 
             assertThat(state).isEqualTo(WAITING_FOR_GOODS);
-            verify(sagas, never()).save(any());
+            verify(sagas, never()).update(any());
         }
     }
 }

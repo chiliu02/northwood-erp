@@ -23,7 +23,9 @@ public final class InMemoryOutboxPort implements OutboxPort {
     public synchronized List<OutboxRow> findPending(int limit) {
         List<OutboxRow> out = new ArrayList<>();
         for (OutboxRow r : rows) {
-            if ("pending".equals(r.getStatus())) {
+            // Mirror JdbcOutboxAdapter's WHERE status IN ('pending', 'failed') —
+            // failed rows are re-surfaced for retry, not dropped.
+            if (OutboxRow.PENDING.equals(r.getStatus()) || OutboxRow.FAILED.equals(r.getStatus())) {
                 out.add(r);
                 if (out.size() >= limit) break;
             }
@@ -32,9 +34,9 @@ public final class InMemoryOutboxPort implements OutboxPort {
     }
 
     @Override
-    public synchronized void save(OutboxRow row) {
+    public synchronized void update(OutboxRow row) {
         // Treat as in-place update — the row reference came from findPending
-        // and the publisher mutated it via markPublished/markFailed.
+        // and the drainer mutated it via markPublished/markFailed.
     }
 
     @Override

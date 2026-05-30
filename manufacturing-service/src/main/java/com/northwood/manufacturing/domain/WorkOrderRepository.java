@@ -40,12 +40,4 @@ public interface WorkOrderRepository {
     List<CompletedChild> findCompletedChildren(UUID parentWorkOrderId);
 
     record CompletedChild(UUID workOrderId, UUID finishedProductId, BigDecimal completedQuantity) {}
-
-    /**
-     * Return work-order ids whose {@code sales_order_header_id} matches and
-     * whose status is not yet terminal ({@code completed}, {@code closed},
-     * {@code cancelled}). Used by {@code WorkOrderCancellationService} to
-     * find what to cancel when a sales order is cancelled.
-     */
-    List<UUID> findActiveIdsForSalesOrder(UUID salesOrderHeaderId);
 }

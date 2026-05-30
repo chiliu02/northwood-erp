@@ -41,10 +41,15 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
         LocalDate requestedDeliveryDate,
         String currencyCode,
         BigDecimal totalAmount,
+        String paymentTerms,
         Instant occurredAt,
         String eventType,
         String actorUserId
     ) {
+        // §2.31 Slice A: SalesOrderPlaced events produced before this slice
+        // shipped won't carry paymentTerms — default to 'on_shipment' so the
+        // CHECK on the read-side column (and the view's NOT NULL) holds.
+        String pt = paymentTerms == null ? "on_shipment" : paymentTerms;
         jdbc.update("""
             INSERT INTO reporting.sales_order_360_view (
                 sales_order_header_id, order_number,
@@ -52,11 +57,13 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                 order_date, requested_delivery_date,
                 order_status, stock_status, manufacturing_status,
                 shipment_status, invoice_status, payment_status,
+                payment_terms,
                 currency_code, total_amount, outstanding_amount,
                 last_event_type, last_event_at,
                 last_modified_by
             ) VALUES (?, ?, ?, ?, ?, ?, 'submitted', 'pending', 'pending',
                       'pending', 'pending', 'pending',
+                      ?,
                       ?, ?, ?, ?, ?, ?)
             ON CONFLICT (sales_order_header_id) DO UPDATE SET
                 order_number = EXCLUDED.order_number,
@@ -91,6 +98,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
             customerId, customerName,
             orderDate == null ? null : Date.valueOf(orderDate),
             requestedDeliveryDate == null ? null : Date.valueOf(requestedDeliveryDate),
+            pt,
             Currencies.orBase(currencyCode),
             totalAmount == null ? BigDecimal.ZERO : totalAmount,
             totalAmount == null ? BigDecimal.ZERO : totalAmount,
@@ -98,8 +106,8 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
             Timestamp.from(occurredAt == null ? Instant.now() : occurredAt),
             actorUserId
         );
-        log.info("seeded sales_order_360 for {} ({}) total={}",
-            orderNumber, salesOrderHeaderId, totalAmount);
+        log.info("seeded sales_order_360 for {} ({}) total={} payment_terms={}",
+            orderNumber, salesOrderHeaderId, totalAmount, pt);
     }
 
     @Override
@@ -123,6 +131,118 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                       'manufacturing.WorkOrderManufacturingCompleted', ?, ?)
             ON CONFLICT (sales_order_header_id) DO UPDATE SET
                 manufacturing_status = 'completed',
+                last_event_type = CASE
+                    WHEN sales_order_360_view.last_event_at IS NULL
+                      OR EXCLUDED.last_event_at > sales_order_360_view.last_event_at
+                    THEN EXCLUDED.last_event_type
+                    ELSE sales_order_360_view.last_event_type
+                END,
+                last_event_at = CASE
+                    WHEN sales_order_360_view.last_event_at IS NULL
+                      OR EXCLUDED.last_event_at > sales_order_360_view.last_event_at
+                    THEN EXCLUDED.last_event_at
+                    ELSE sales_order_360_view.last_event_at
+                END,
+                last_modified_by = COALESCE(EXCLUDED.last_modified_by, sales_order_360_view.last_modified_by),
+                updated_at = now()
+            """,
+            salesOrderHeaderId, STUB_CUSTOMER_ID,
+            Timestamp.from(occurredAt == null ? Instant.now() : occurredAt),
+            actorUserId
+        );
+    }
+
+    @Override
+    @Transactional
+    public void recordStockReserved(UUID salesOrderHeaderId, String stockStatus, Instant occurredAt, String actorUserId) {
+        jdbc.update("""
+            INSERT INTO reporting.sales_order_360_view (
+                sales_order_header_id, order_number,
+                customer_id, customer_name,
+                order_date, order_status, stock_status,
+                manufacturing_status, shipment_status,
+                invoice_status, payment_status,
+                currency_code, total_amount, outstanding_amount,
+                last_event_type, last_event_at,
+                last_modified_by
+            ) VALUES (?, '(pending)', ?, '(pending)',
+                      CURRENT_DATE, 'pending', ?,
+                      'pending', 'pending',
+                      'pending', 'pending',
+                      'AUD', 0, 0,
+                      'inventory.StockReserved', ?, ?)
+            ON CONFLICT (sales_order_header_id) DO UPDATE SET
+                -- Reflect the reservation outcome (reserved / partially_reserved
+                -- / failed). 'reserved' (full cover) is sticky — a later partial
+                -- or stale event must not roll it back; a partial is otherwise
+                -- overwritten by a subsequent full reservation (make-to-order
+                -- re-reserves once the shortage is produced). The Stock lozenge
+                -- rests at 'reserved' rather than mirroring Shipment's 'shipped'.
+                stock_status = CASE
+                    WHEN sales_order_360_view.stock_status = 'reserved'
+                        THEN 'reserved'
+                    ELSE EXCLUDED.stock_status
+                END,
+                last_event_type = CASE
+                    WHEN sales_order_360_view.last_event_at IS NULL
+                      OR EXCLUDED.last_event_at > sales_order_360_view.last_event_at
+                    THEN EXCLUDED.last_event_type
+                    ELSE sales_order_360_view.last_event_type
+                END,
+                last_event_at = CASE
+                    WHEN sales_order_360_view.last_event_at IS NULL
+                      OR EXCLUDED.last_event_at > sales_order_360_view.last_event_at
+                    THEN EXCLUDED.last_event_at
+                    ELSE sales_order_360_view.last_event_at
+                END,
+                last_modified_by = COALESCE(EXCLUDED.last_modified_by, sales_order_360_view.last_modified_by),
+                updated_at = now()
+            """,
+            salesOrderHeaderId, STUB_CUSTOMER_ID, stockStatus,
+            Timestamp.from(occurredAt == null ? Instant.now() : occurredAt),
+            actorUserId
+        );
+    }
+
+    @Override
+    @Transactional
+    public void recordReadyToShip(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId) {
+        jdbc.update("""
+            INSERT INTO reporting.sales_order_360_view (
+                sales_order_header_id, order_number,
+                customer_id, customer_name,
+                order_date, order_status, stock_status,
+                manufacturing_status, shipment_status,
+                invoice_status, payment_status,
+                currency_code, total_amount, outstanding_amount,
+                last_event_type, last_event_at,
+                last_modified_by
+            ) VALUES (?, '(pending)', ?, '(pending)',
+                      CURRENT_DATE, 'ready_to_ship', 'pending',
+                      'not_required', 'pending',
+                      'pending', 'pending',
+                      'AUD', 0, 0,
+                      'sales.SalesOrderReadyToShip', ?, ?)
+            ON CONFLICT (sales_order_header_id) DO UPDATE SET
+                -- Forward-only: advance to ready_to_ship only from an earlier
+                -- lifecycle state. Reporting consumes several topics, so a late
+                -- event must never downgrade shipped/completed; 'cancelled'
+                -- (terminal) is preserved by falling through to ELSE.
+                order_status = CASE
+                    WHEN sales_order_360_view.order_status IN ('pending', 'submitted')
+                        THEN 'ready_to_ship'
+                    ELSE sales_order_360_view.order_status
+                END,
+                -- A stock-covered order skips manufacturing (no work order, no
+                -- completion event). Reaching ready_to_ship with manufacturing
+                -- still 'pending' means it was never needed → not_required. A
+                -- make-to-order order already had recordManufacturingCompleted
+                -- set it 'completed', which is kept here.
+                manufacturing_status = CASE
+                    WHEN sales_order_360_view.manufacturing_status = 'pending'
+                        THEN 'not_required'
+                    ELSE sales_order_360_view.manufacturing_status
+                END,
                 last_event_type = CASE
                     WHEN sales_order_360_view.last_event_at IS NULL
                       OR EXCLUDED.last_event_at > sales_order_360_view.last_event_at
@@ -200,13 +320,19 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                 last_event_type, last_event_at,
                 last_modified_by
             ) VALUES (?, '(pending)', ?, '(pending)',
-                      CURRENT_DATE, 'pending', 'pending',
+                      CURRENT_DATE, 'shipped', 'pending',
                       'pending', 'shipped',
                       'pending', 'pending',
                       'AUD', 0, 0,
                       'inventory.ShipmentPosted', ?, ?)
             ON CONFLICT (sales_order_header_id) DO UPDATE SET
                 shipment_status = 'shipped',
+                -- Forward-only advance to 'shipped'; preserves completed/cancelled.
+                order_status = CASE
+                    WHEN sales_order_360_view.order_status IN ('pending', 'submitted', 'ready_to_ship')
+                        THEN 'shipped'
+                    ELSE sales_order_360_view.order_status
+                END,
                 last_event_type = CASE
                     WHEN sales_order_360_view.last_event_at IS NULL
                       OR EXCLUDED.last_event_at > sales_order_360_view.last_event_at
@@ -304,6 +430,14 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                       'finance.CustomerPaymentReceived', ?, ?)
             ON CONFLICT (sales_order_header_id) DO UPDATE SET
                 payment_status = EXCLUDED.payment_status,
+                -- Full settlement completes the order. Forward-only and
+                -- cancelled-preserving (only advances from pre-completed states).
+                order_status = CASE
+                    WHEN EXCLUDED.payment_status = 'paid'
+                      AND sales_order_360_view.order_status IN ('pending', 'submitted', 'ready_to_ship', 'shipped')
+                        THEN 'completed'
+                    ELSE sales_order_360_view.order_status
+                END,
                 paid_amount = sales_order_360_view.paid_amount + EXCLUDED.paid_amount,
                 outstanding_amount = sales_order_360_view.total_amount - (sales_order_360_view.paid_amount + EXCLUDED.paid_amount),
                 last_event_type = CASE

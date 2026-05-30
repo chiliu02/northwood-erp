@@ -19,6 +19,7 @@ interface Customer {
   billingAddress: string | null;
   shippingAddress: string | null;
   status: string;
+  defaultPaymentTerms: string;
   version: number;
 }
 
@@ -128,6 +129,7 @@ export function CustomerDetail() {
                   <ReadOnlyField label="Code" value={<span className="font-medium tabular-nums">{data.customerCode}</span>} />
                   <ReadOnlyField label="Name" value={data.name} />
                   <ReadOnlyField label="Status" value={data.status} />
+                  <ReadOnlyField label="Default payment terms" value={<span className="font-mono text-xs">{data.defaultPaymentTerms}</span>} />
                 </FormSection>
 
                 <FormSection title="Contact">

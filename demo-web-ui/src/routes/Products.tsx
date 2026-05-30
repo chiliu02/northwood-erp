@@ -274,7 +274,7 @@ function ReorderPanel({ product, onDone }: { product: ProductRow; onDone: () => 
       </div>
       <p className="text-xs text-text-faint">
         Emits <span className="font-mono">product.ReorderPolicyChanged</span>; inventory's
-        <span className="font-mono"> stock_item</span> projection picks up the new thresholds within one outbox poll.
+        <span className="font-mono"> product_card</span> projection picks up the new thresholds within one outbox poll.
       </p>
     </div>
   );
@@ -457,7 +457,7 @@ function RegisterPanel({ onDone }: { onDone: () => void }) {
       </div>
       <p className="text-xs text-text-faint">
         Emits <span className="font-mono">product.ProductCreated</span>; five services seed read-model stubs
-        (inventory <span className="font-mono">stock_item</span>, sales <span className="font-mono">product_card</span>,
+        (inventory <span className="font-mono">product_card</span>, sales <span className="font-mono">product_card</span>,
         manufacturing <span className="font-mono">product_card</span> with type-derived make-vs-buy default,
         finance <span className="font-mono">product_card</span>, reporting ATP).
       </p>

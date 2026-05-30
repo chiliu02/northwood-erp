@@ -34,12 +34,6 @@ public interface ProductionPlanningProjection {
         BigDecimal completedQuantity,
         Instant occurredAt);
 
-    /**
-     * §3.8: flip the production-board row to {@code 'cancelled'} on
-     * {@code manufacturing.WorkOrderCancelled}.
-     */
-    void recordWorkOrderCancelled(UUID workOrderId, Instant occurredAt);
-
     void recordRawMaterialsReserved(
         UUID workOrderId,
         String reservationStatus,

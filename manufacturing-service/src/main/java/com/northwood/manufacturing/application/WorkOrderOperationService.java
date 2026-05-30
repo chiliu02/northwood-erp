@@ -1,10 +1,8 @@
 package com.northwood.manufacturing.application;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 import com.northwood.manufacturing.application.dto.CompleteOperationCommand;
 import com.northwood.manufacturing.application.dto.WorkOrderView;
-import com.northwood.manufacturing.application.saga.MakeToOrderSagaManager;
+import com.northwood.manufacturing.application.saga.WorkOrderSagaManager;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderOperation;
@@ -13,9 +11,7 @@ import com.northwood.manufacturing.domain.WorkOrderRepository.CompletedChild;
 import com.northwood.manufacturing.domain.events.SubAssembliesConsumed;
 import com.northwood.manufacturing.domain.events.SubAssembliesConsumed.ConsumedItem;
 import com.northwood.shared.application.exception.NotFoundException;
-import com.northwood.shared.application.outbox.OutboxPort;
-import com.northwood.shared.application.outbox.OutboxRow;
-import com.northwood.shared.application.security.CurrentUserAccessor;
+import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -44,7 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
  * its last child can finish in the same transaction.
  *
  * <p>Sagas: each work order in the tree owns its own
- * {@code make_to_order_saga} row. When any WO in the tree completes, its
+ * {@code work_order_saga} row. When any WO in the tree completes, its
  * saga is advanced to {@code completed} here (no self-consuming inbox loop —
  * the saga is in manufacturing's bounded context).
  *
@@ -71,23 +67,17 @@ public class WorkOrderOperationService {
     private static final Logger log = LoggerFactory.getLogger(WorkOrderOperationService.class);
 
     private final WorkOrderRepository workOrders;
-    private final MakeToOrderSagaManager sagaManager;
-    private final OutboxPort outbox;
-    private final ObjectMapper json;
-    private final CurrentUserAccessor currentUser;
+    private final WorkOrderSagaManager sagaManager;
+    private final OutboxAppender outbox;
 
     public WorkOrderOperationService(
         WorkOrderRepository workOrders,
-        MakeToOrderSagaManager sagaManager,
-        OutboxPort outbox,
-        ObjectMapper json,
-        CurrentUserAccessor currentUser
+        WorkOrderSagaManager sagaManager,
+        OutboxAppender outbox
     ) {
         this.workOrders = workOrders;
         this.sagaManager = sagaManager;
         this.outbox = outbox;
-        this.json = json;
-        this.currentUser = currentUser;
     }
 
     /**
@@ -239,20 +229,7 @@ public class WorkOrderOperationService {
             items,
             Instant.now()
         );
-        try {
-            outbox.appendPending(OutboxRow.pending(
-                event.eventId(),
-                WorkOrder.AGGREGATE_TYPE,
-                event.aggregateId(),
-                event.eventType(),
-                event.eventVersion(),
-                json.writeValueAsString(event),
-                null, null, null,
-                currentUser.currentUsername().orElse(null)
-            ));
-        } catch (JacksonException e) {
-            throw new IllegalStateException("Failed to serialise " + SubAssembliesConsumed.EVENT_TYPE, e);
-        }
+        outbox.append(event, WorkOrder.AGGREGATE_TYPE);
         log.info("emitted {} for parent work_order={} ({} child WO(s))",
             SubAssembliesConsumed.EVENT_TYPE, workOrder.id().value(), items.size());
     }

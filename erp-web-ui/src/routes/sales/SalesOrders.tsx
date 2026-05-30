@@ -20,6 +20,7 @@ interface SalesOrderRow {
   shipmentStatus: string;
   invoiceStatus: string;
   paymentStatus: string;
+  paymentTerms: string;
   currencyCode: string;
   totalAmount: string;
   outstandingAmount: string;
@@ -53,11 +54,23 @@ export function SalesOrders() {
     {
       key: "status",
       header: "Status",
-      width: "140px",
+      width: "180px",
       render: (r) => {
         const s = statusForOrder(r.orderStatus);
-        return <StatusPill label={s.label} tone={s.tone} />;
+        return (
+          <div className="flex items-center gap-1.5">
+            <StatusPill label={s.label} tone={s.tone} />
+            {isAwaitingPrepayment(r) && <StatusPill label="awaiting prepayment" tone="warn" />}
+            {isAwaitingDeposit(r) && <StatusPill label="awaiting deposit" tone="warn" />}
+          </div>
+        );
       },
+    },
+    {
+      key: "paymentTerms",
+      header: "Terms",
+      width: "120px",
+      render: (r) => <span className="font-mono text-xs text-text-muted">{r.paymentTerms}</span>,
     },
     {
       key: "fulfilment",
@@ -177,6 +190,19 @@ function FulfilmentSummary({ row }: { row: SalesOrderRow }) {
       </span>
     </div>
   );
+}
+
+// §2.31 Slice D: lozenge for prepayment orders that haven't been paid yet.
+// Goes away once the customer pays — same observable as the demo SPA.
+function isAwaitingPrepayment(r: SalesOrderRow): boolean {
+  return r.paymentTerms === "prepayment" && r.paymentStatus !== "paid";
+}
+
+// §2.32: a deposit order awaiting its up-front deposit (nothing paid yet);
+// clears once the deposit lands (partially_paid).
+function isAwaitingDeposit(r: SalesOrderRow): boolean {
+  return r.paymentTerms === "deposit"
+    && r.paymentStatus !== "paid" && r.paymentStatus !== "partially_paid";
 }
 
 function isPast(row: SalesOrderRow, after: string): boolean {

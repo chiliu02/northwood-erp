@@ -1,18 +1,30 @@
 package com.northwood.testharness.kits;
 
 import com.northwood.inventory.application.ShipmentService;
+import com.northwood.inventory.application.ReplenishmentDetectionService;
 import com.northwood.inventory.application.StockReservationService;
 import com.northwood.inventory.domain.WarehouseCodes;
+import com.northwood.inventory.application.inbox.ManufacturingReplenishmentDispatchedHandler;
+import com.northwood.inventory.application.inbox.ManufacturingReplenishmentUndispatchableHandler;
+import com.northwood.inventory.application.inbox.PurchaseOrderCreatedHandler;
+import com.northwood.inventory.application.inbox.PurchasingReplenishmentDispatchedHandler;
+import com.northwood.inventory.application.inbox.PurchasingReplenishmentUndispatchableHandler;
 import com.northwood.inventory.application.inbox.RawMaterialReservationRequestedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderCancellationRequestedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderPlacedHandler;
+import com.northwood.inventory.application.inbox.SalesOrderUpfrontPaymentSettledHandler;
 import com.northwood.inventory.application.inbox.StockReservationRequestedHandler;
 import com.northwood.inventory.application.inbox.SubAssembliesConsumedHandler;
-import com.northwood.inventory.application.inbox.WorkOrderCancelledHandler;
 import com.northwood.inventory.application.inbox.WorkOrderManufacturingCompletedHandler;
+import com.northwood.shared.application.outbox.OutboxAppender;
+import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.SynchronousBus;
+import com.northwood.testharness.inmemory.inventory.InMemoryInventoryProductCardLookup;
+import com.northwood.testharness.inmemory.inventory.InMemoryInventoryPurchaseOrderLineFactsProjection;
+import com.northwood.testharness.inmemory.inventory.InMemoryReorderPolicyLookup;
+import com.northwood.testharness.inmemory.inventory.InMemoryReplenishmentRequestRepository;
 import com.northwood.testharness.inmemory.inventory.InMemorySalesOrderLineFactsProjection;
 import com.northwood.testharness.inmemory.inventory.InMemoryShipmentRepository;
 import com.northwood.testharness.inmemory.inventory.InMemoryStockBalances;
@@ -48,30 +60,55 @@ public final class InventoryTestKit {
     public final InMemoryWipBalanceWriter wipBalances = new InMemoryWipBalanceWriter();
     public final InMemoryStockMovementWriter stockMovements = new InMemoryStockMovementWriter();
     public final InMemorySalesOrderLineFactsProjection salesOrderLineFacts = new InMemorySalesOrderLineFactsProjection();
+    // §2.35 Slice B doubles. Defaults to "no policy / no flags" so the
+    // detection service early-returns and existing scenarios stay green.
+    // Tests for the §2.35 path opt in via reorderPolicies.put + productReplenishment.put.
+    public final InMemoryReorderPolicyLookup reorderPolicies = new InMemoryReorderPolicyLookup();
+    public final InMemoryInventoryProductCardLookup productReplenishment =
+        new InMemoryInventoryProductCardLookup();
+    public final InMemoryReplenishmentRequestRepository replenishmentRequests;
+    public final InMemoryInventoryPurchaseOrderLineFactsProjection purchaseOrderLineFacts =
+        new InMemoryInventoryPurchaseOrderLineFactsProjection();
     public final StockReservationService service;
     public final ShipmentService shipmentService;
+    public final ReplenishmentDetectionService replenishmentDetection;
 
     public InventoryTestKit(SynchronousBus bus, ObjectMapper json) {
         this.reservations = new InMemoryStockReservationRepository(outbox, json);
         this.shipments = new InMemoryShipmentRepository(outbox, json);
         this.warehouses.put(WarehouseCodes.MAIN, DEFAULT_WAREHOUSE_ID);
+        OutboxAppender appender = new OutboxAppender(outbox, json, new CurrentUserAccessor());
+        this.replenishmentRequests = new InMemoryReplenishmentRequestRepository(appender, json);
+        this.replenishmentDetection = new ReplenishmentDetectionService(
+            reorderPolicies, stockBalances, productReplenishment, replenishmentRequests, appender
+        );
         this.service = new StockReservationService(
-            reservations, stockBalances, stockBalances, warehouses, outbox, json
+            reservations, stockBalances, stockBalances, warehouses, replenishmentDetection, appender
         );
         this.shipmentService = new ShipmentService(
-            shipments, stockBalances, stockMovements, warehouses, salesOrderLineFacts
+            shipments, stockBalances, stockMovements, warehouses, salesOrderLineFacts,
+            replenishmentDetection
         );
 
         bus.register(outbox);
         bus.register(new StockReservationRequestedHandler(inbox, service, json));
         bus.register(new RawMaterialReservationRequestedHandler(inbox, service, json));
         bus.register(new SalesOrderCancellationRequestedHandler(inbox, service, json));
-        bus.register(new WorkOrderCancelledHandler(inbox, service, json));
         bus.register(new WorkOrderManufacturingCompletedHandler(
-            inbox, json, stockBalances, wipBalances, warehouses, stockMovements
+            inbox, json, stockBalances, wipBalances, warehouses, stockMovements, replenishmentRequests
         ));
         bus.register(new SubAssembliesConsumedHandler(inbox, wipBalances, json));
         bus.register(new SalesOrderPlacedHandler(inbox, salesOrderLineFacts, json));
+        bus.register(new SalesOrderUpfrontPaymentSettledHandler(inbox, salesOrderLineFacts, json));
+
+        // §2.35 Slice E close-the-loop dispatch handlers.
+        bus.register(new ManufacturingReplenishmentDispatchedHandler(inbox, replenishmentRequests, json));
+        bus.register(new PurchasingReplenishmentDispatchedHandler(inbox, replenishmentRequests, json));
+        bus.register(new PurchaseOrderCreatedHandler(inbox, purchaseOrderLineFacts, replenishmentRequests, json));
+
+        // §2.37 Slice 3 cancel consumers: downstream can't source the request.
+        bus.register(new ManufacturingReplenishmentUndispatchableHandler(inbox, replenishmentRequests, json));
+        bus.register(new PurchasingReplenishmentUndispatchableHandler(inbox, replenishmentRequests, json));
     }
 
     /** Seed enough stock so a reservation will succeed. */

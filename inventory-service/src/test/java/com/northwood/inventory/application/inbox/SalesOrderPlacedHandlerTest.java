@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.northwood.sales.domain.PaymentTerms;
 import com.northwood.sales.domain.SalesAggregateTypes;
 import com.northwood.sales.domain.events.SalesOrderPlaced;
 import com.northwood.shared.application.inbox.InboxPort;
@@ -43,7 +44,10 @@ class SalesOrderPlacedHandlerTest {
         UUID eventId = UUID.randomUUID();
         SalesOrderPlaced payload = new SalesOrderPlaced(
             eventId, SO, "SO-001", UUID.randomUUID(), "CUST-001", "Acme",
-            Currencies.AUD, new BigDecimal("100.00"), lines, Instant.now()
+            Currencies.AUD, new BigDecimal("100.00"),
+            PaymentTerms.ON_SHIPMENT.dbValue(),
+            null,
+            lines, Instant.now()
         );
         return new EventEnvelope(
             eventId, SalesAggregateTypes.SALES_ORDER, SO,
@@ -66,8 +70,8 @@ class SalesOrderPlacedHandlerTest {
                 new BigDecimal("3"), new BigDecimal("20"))
         )));
 
-        verify(projection).applySalesOrderPlaced(SO, line1, prodA);
-        verify(projection).applySalesOrderPlaced(SO, line2, prodB);
+        verify(projection).applySalesOrderPlaced(SO, line1, prodA, PaymentTerms.ON_SHIPMENT.dbValue());
+        verify(projection).applySalesOrderPlaced(SO, line2, prodB, PaymentTerms.ON_SHIPMENT.dbValue());
         verify(inbox).recordProcessed(any());
     }
 

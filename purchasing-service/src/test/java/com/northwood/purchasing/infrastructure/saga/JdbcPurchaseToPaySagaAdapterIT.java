@@ -30,7 +30,7 @@ import org.testcontainers.utility.DockerImageName;
 /**
  * §2.25 Tier 3: real-Postgres test for {@link JdbcPurchaseToPaySagaAdapter} —
  * same {@code claimDue} (FOR UPDATE SKIP LOCKED + lease) + optimistic-locked
- * {@code save} surface as the sales fulfilment saga, keyed by
+ * {@code update} surface as the sales fulfilment saga, keyed by
  * {@code purchase_order_header_id}.
  */
 class JdbcPurchaseToPaySagaAdapterIT {
@@ -119,15 +119,15 @@ class JdbcPurchaseToPaySagaAdapterIT {
     }
 
     @Test
-    void save_enforces_optimistic_lock_via_version() {
+    void update_enforces_optimistic_lock_via_version() {
         UUID poId = UUID.randomUUID();
         ADAPTER.insert(PurchaseToPaySaga.started(poId));
 
         PurchaseToPaySaga loadedA = ADAPTER.findByPurchaseOrderId(poId).orElseThrow();
         PurchaseToPaySaga loadedB = ADAPTER.findByPurchaseOrderId(poId).orElseThrow();
 
-        ADAPTER.save(loadedA); // 1 → 2
-        assertThatThrownBy(() -> ADAPTER.save(loadedB))
+        ADAPTER.update(loadedA); // 1 → 2
+        assertThatThrownBy(() -> ADAPTER.update(loadedB))
             .isInstanceOf(OptimisticLockingFailureException.class);
     }
 

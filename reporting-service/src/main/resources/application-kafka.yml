@@ -9,6 +9,10 @@ spring:
       group-id: reporting-service
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # No commit settings here → Spring Kafka defaults: enable.auto.commit=false
+      # + AckMode.BATCH, so an offset commits only after the listener returns
+      # successfully (handler exception → no commit → redelivery; the inbox dedup
+      # makes that safe). Full contract: docs/messaging.md → Consumer-side idempotency.
       auto-offset-reset: earliest
     # §1D.2: turn on Spring Kafka's Micrometer observation so @KafkaListener-
     # managed containers continue the producer's trace via a consumer span.
@@ -19,8 +23,12 @@ spring:
 northwood:
   kafka:
     # Reporting subscribes to:
-    # - sales.events         for SalesOrderPlaced (creates 360 row).
-    # - inventory.events     for ShipmentPosted (sales 360 shipment_status) +
+    # - sales.events         for SalesOrderPlaced (creates 360 row),
+    #   SalesOrderReadyToShip (sales 360 order_status → ready_to_ship; the
+    #   shipment picker's filter) and SalesOrderCompensated (order_status →
+    #   cancelled).
+    # - inventory.events     for ShipmentPosted (sales 360 shipment_status),
+    #   StockReserved (sales 360 stock_status + ATP reserved-for-sales) and
     #   GoodsReceived (po_tracking received_amount + receipt_status).
     # - manufacturing.events for WorkOrderManufacturingCompleted
     #   (sales 360 manufacturing_status).
@@ -32,3 +40,8 @@ northwood:
     #                        cache, joined with ATP at snapshot time for
     #                        inventory_value).
     subscribe-topics: sales.events,inventory.events,manufacturing.events,finance.events,purchasing.events,product.events
+    dlt:
+      redrive:
+        enabled: true             # per-service DLT auto-redrive (§2.28 Tier 1.B): re-applies this
+                                  # service's own dead-lettered records, parks the unrecoverable ones
+
