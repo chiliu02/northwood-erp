@@ -40,9 +40,14 @@ management:
     sampling:
       probability: ${NORTHWOOD_TRACING_SAMPLING:1.0}  # 1.0 = capture every trace (demo); 0.1 for prod-style
   otlp:
+    metrics:
+      export:
+        enabled: false                                # metrics path is Prometheus scrape, NOT OTLP push (see note)
     tracing:
       endpoint: ${OTLP_ENDPOINT:http://localhost:4317}
 ```
+
+> **Why `otlp.metrics.export.enabled: false`.** `spring-boot-starter-opentelemetry` transitively pulls `micrometer-registry-otlp`, which Boot auto-configures to **push** metrics to `http://localhost:4318/v1/metrics` by default. In this stack metrics travel the other way — Prometheus **scrapes** `/actuator/prometheus` — and `:4318` is Tempo's OTLP HTTP receiver, which serves `/v1/traces` only. Left enabled, the OTLP meter registry logs `404 page not found` on every publish interval. Disabling it keeps OTLP for **tracing** only; metrics stay on the scrape path.
 
 Logging is in `shared/src/main/resources/logback-spring.xml` — a `CONSOLE` appender (human-readable, with `traceId`/`spanId` from MDC) and a `LOKI` appender (low-cardinality labels `service` + `level`; `traceId`/`spanId` go in the message line so Loki's index doesn't explode).
 

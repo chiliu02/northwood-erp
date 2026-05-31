@@ -19,6 +19,9 @@ management:
     sampling:
       probability: ${NORTHWOOD_TRACING_SAMPLING:1.0}
   otlp:
+    metrics:
+      export:
+        enabled: false                                # metrics go to Prometheus via scrape; don't OTLP-push them (Tempo's :4318 has no /v1/metrics → 404)
     tracing:
       endpoint: ${OTLP_ENDPOINT:http://localhost:4317}
 
