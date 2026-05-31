@@ -38,9 +38,13 @@ management:
     metrics:
       export:
         enabled: false                                # metrics go to Prometheus via scrape; don't OTLP-push them (Tempo's :4318 has no /v1/metrics → 404)
+  opentelemetry:
     tracing:
-      endpoint: ${OTLP_ENDPOINT:http://localhost:4317}
-      transport: grpc                                 # :4317 is Tempo's OTLP gRPC receiver; Boot's span exporter defaults to HTTP (→ :4318/v1/traces), so without this spans ship over HTTP to a gRPC port and are dropped
+      export:
+        otlp:
+          # Boot 4 relocated these from management.otlp.tracing.* (now deprecated-ERROR → silently ignored).
+          endpoint: ${OTLP_ENDPOINT:http://localhost:4317}
+          transport: grpc                             # :4317 = Tempo's OTLP gRPC receiver (default transport is http → :4318/v1/traces)
 
 northwood:
   outbox:

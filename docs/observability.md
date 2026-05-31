@@ -43,12 +43,17 @@ management:
     metrics:
       export:
         enabled: false                                # metrics path is Prometheus scrape, NOT OTLP push (see note)
+  opentelemetry:
     tracing:
-      endpoint: ${OTLP_ENDPOINT:http://localhost:4317}
-      transport: grpc                               # :4317 is Tempo's OTLP gRPC port; Boot's span exporter defaults to HTTP, so this must be set explicitly (see note)
+      export:
+        otlp:
+          endpoint: ${OTLP_ENDPOINT:http://localhost:4317}
+          transport: grpc                           # :4317 is Tempo's OTLP gRPC port; default transport is http → :4318/v1/traces (see note)
 ```
 
-> **Why `tracing.transport: grpc`.** Boot's OTLP **span** exporter defaults to **HTTP** transport, whose default endpoint is `http://localhost:4318/v1/traces`. With `OTLP_ENDPOINT` pinned at `:4317` (Tempo's gRPC receiver) but transport left at its HTTP default, every span is POSTed over HTTP to a port that only speaks gRPC and is silently dropped — Tempo receives nothing while logs (a separate Loki push path) keep flowing. Setting `transport: grpc` makes the exporter match the `:4317` gRPC receiver. (Alternatively, point `endpoint` at `http://localhost:4318/v1/traces` and drop `transport` — but that changes the meaning of `OTLP_ENDPOINT` everywhere, including the AWS wiring, so we pin gRPC instead.)
+> **Why the property path is `management.opentelemetry.tracing.export.otlp.*` (not `management.otlp.tracing.*`).** Spring Boot 4 relocated the OTLP **tracing** export properties: `management.otlp.tracing.endpoint` / `.transport` are now **deprecated at `error` level**, i.e. no longer bound — set them and they're *silently ignored*, so the exporter never learns where Tempo is and ships nothing. (This bit us directly: spans were generated — log lines carried real `traceId`/`spanId` — but never exported.) The live keys are `management.opentelemetry.tracing.export.otlp.{endpoint,transport}`. Note the **metrics** OTLP property (`management.otlp.metrics.export.enabled`) and the sampling property (`management.tracing.sampling.probability`) were *not* relocated and remain valid under their old paths.
+
+> **Why `transport: grpc`.** Boot's OTLP **span** exporter defaults to **HTTP** transport, whose default endpoint is `http://localhost:4318/v1/traces`. We pin `OTLP_ENDPOINT` at `:4317` (Tempo's gRPC receiver), so the transport must be set to `grpc` to match — otherwise spans would be POSTed over HTTP to a port that only speaks gRPC and dropped. (Alternatively, point `endpoint` at `http://localhost:4318/v1/traces` and drop `transport` — but that changes the meaning of `OTLP_ENDPOINT` everywhere, including the AWS wiring, so we pin gRPC instead.)
 
 > **Why `otlp.metrics.export.enabled: false`.** `spring-boot-starter-opentelemetry` transitively pulls `micrometer-registry-otlp`, which Boot auto-configures to **push** metrics to `http://localhost:4318/v1/metrics` by default. In this stack metrics travel the other way — Prometheus **scrapes** `/actuator/prometheus` — and `:4318` is Tempo's OTLP HTTP receiver, which serves `/v1/traces` only. Left enabled, the OTLP meter registry logs `404 page not found` on every publish interval. Disabling it keeps OTLP for **tracing** only; metrics stay on the scrape path.
 
