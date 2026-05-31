@@ -9,7 +9,6 @@ import static org.mockito.Mockito.when;
 
 import com.northwood.shared.application.messaging.EventEnvelope;
 import com.northwood.shared.application.messaging.EventPublisher;
-import com.northwood.shared.application.messaging.SagaTraceLinkage;
 import io.micrometer.tracing.Tracer;
 import java.util.List;
 import java.util.UUID;
@@ -51,7 +50,7 @@ class OutboxDrainerTest {
 
     @BeforeEach
     void setUp() {
-        drainer = new OutboxDrainer(outbox, bus, "sales", Tracer.NOOP, SagaTraceLinkage.OFF, new ObjectMapper());
+        drainer = new OutboxDrainer(outbox, bus, "sales", Tracer.NOOP, new ObjectMapper());
     }
 
     private static OutboxRow pendingRow(String eventType) {
@@ -150,7 +149,7 @@ class OutboxDrainerTest {
     }
 
     @Test void drain_uses_service_name_in_envelope_header() {
-        drainer = new OutboxDrainer(outbox, bus, "purchasing", Tracer.NOOP, SagaTraceLinkage.OFF, new ObjectMapper());
+        drainer = new OutboxDrainer(outbox, bus, "purchasing", Tracer.NOOP, new ObjectMapper());
         OutboxRow row = pendingRow("purchasing.PurchaseOrderCreated");
         when(outbox.findPending(Mockito.anyInt())).thenReturn(List.of(row));
 

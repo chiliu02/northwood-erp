@@ -2,7 +2,6 @@ package com.northwood.shared.application.outbox;
 
 import com.northwood.shared.application.messaging.EventEnvelope;
 import com.northwood.shared.application.messaging.EventPublisher;
-import com.northwood.shared.application.messaging.SagaTraceLinkage;
 import com.northwood.shared.application.messaging.Traceparent;
 import io.micrometer.tracing.Link;
 import io.micrometer.tracing.Span;
@@ -50,16 +49,16 @@ import tools.jackson.databind.ObjectMapper;
  * drainer and the scheduler are two beans, not one.
  *
  * <p><b>§1D.6 — saga-trace linkage.</b> Each row is published inside an
- * {@code outbox.publish} span. The trace context of the originating request was
- * captured into the row's {@code headers} ({@code traceparent}) at append time
- * (see {@code OutboxTraceHeaders}); the configured {@link SagaTraceLinkage}
- * decides how the publish span relates to it — reparent onto it
- * ({@code parent-child}), {@code Link} to it ({@code span-link}, the default),
- * both, or neither ({@code off}). Whatever span ends up current, Spring Kafka's
- * observation-enabled producer stamps its context onto the Kafka record, so the
- * consumer-side listener observation continues that trace. The envelope's
- * {@link EventEnvelope#HEADER_TRACEPARENT} carries the originating traceparent
- * for the BFF events aggregator's trace-drilldown affordance (§1D.4).
+ * {@code outbox.publish} span that carries a {@code Link} to the originating
+ * request trace — captured into the row's {@code headers} ({@code traceparent})
+ * at append time (see {@code OutboxTraceHeaders}). Spring Kafka's
+ * observation-enabled producer stamps the publish span's context onto the Kafka
+ * record, so the consumer-side listener observation continues from there; the
+ * link lets you hop from the (bounded) messaging trace back to the originating
+ * request. The envelope's {@link EventEnvelope#HEADER_TRACEPARENT} carries the
+ * originating traceparent for the BFF events aggregator's trace-drilldown
+ * affordance (§1D.4). The saga-level overview across many such hops is the
+ * separate {@code saga_id}-anchored milestone view (§1D.9).
  */
 public class OutboxDrainer {
 
@@ -71,7 +70,6 @@ public class OutboxDrainer {
     private final EventPublisher bus;
     private final String serviceName;
     private final Tracer tracer;
-    private final SagaTraceLinkage linkage;
     private final ObjectMapper json;
 
     public OutboxDrainer(
@@ -79,14 +77,12 @@ public class OutboxDrainer {
         EventPublisher bus,
         String serviceName,
         Tracer tracer,
-        SagaTraceLinkage linkage,
         ObjectMapper json
     ) {
         this.outbox = outbox;
         this.bus = bus;
         this.serviceName = serviceName;
         this.tracer = tracer == null ? Tracer.NOOP : tracer;
-        this.linkage = linkage == null ? SagaTraceLinkage.OFF : linkage;
         this.json = json;
     }
 
@@ -141,10 +137,10 @@ public class OutboxDrainer {
     }
 
     /**
-     * Open the {@code outbox.publish} span, relating it to the originating
-     * request trace per the configured {@link SagaTraceLinkage}. Falls back to a
-     * plain (drain-tick-rooted) span when no originating context was captured or
-     * linkage is {@code off}.
+     * Open the {@code outbox.publish} span, linking it to the originating
+     * request trace when one was captured into the row's headers. The publish
+     * span stays in its own (drain-tick) trace — bounded — with a link back to
+     * the origin; a plain span when no originating context is present.
      */
     private Span startPublishSpan(OutboxRow row, String originatingTraceparent) {
         Span.Builder builder = tracer.spanBuilder()
@@ -153,12 +149,7 @@ public class OutboxDrainer {
             .tag("eventType", row.getEventType());
         TraceContext originating = Traceparent.parse(tracer, originatingTraceparent);
         if (originating != null) {
-            if (linkage.restoresParent()) {
-                builder.setParent(originating);
-            }
-            if (linkage.addsLink()) {
-                builder.addLink(new Link(originating));
-            }
+            builder.addLink(new Link(originating));
         }
         return builder.start();
     }

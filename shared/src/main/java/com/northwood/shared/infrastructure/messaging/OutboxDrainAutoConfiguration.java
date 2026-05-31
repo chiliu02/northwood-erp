@@ -1,7 +1,6 @@
 package com.northwood.shared.infrastructure.messaging;
 
 import com.northwood.shared.application.messaging.EventPublisher;
-import com.northwood.shared.application.messaging.SagaTraceLinkage;
 import com.northwood.shared.application.outbox.OutboxDrainer;
 import com.northwood.shared.application.outbox.OutboxPort;
 import io.micrometer.tracing.Tracer;
@@ -50,22 +49,20 @@ public class OutboxDrainAutoConfiguration {
         OutboxPort outboxPort,
         EventPublisher eventPublisher,
         @Value("${northwood.service-name}") String serviceName,
-        @Value("${northwood.tracing.saga-linkage:${NORTHWOOD_SAGA_TRACE_LINKAGE:span-link}}") String sagaLinkage,
         ObjectProvider<Tracer> tracer,
         ObjectMapper objectMapper
     ) {
-        // §1D.6 — the drainer relates each publish span to the originating
-        // request trace per northwood.tracing.saga-linkage (default span-link).
+        // §1D.6 — the drainer links each publish span to the originating request
+        // trace (span-link; captured into each row's headers at append time).
         // Tracer is resolved via ObjectProvider so a producer that enables
         // draining without the observability stack still starts (the drainer
-        // falls back to the NOOP tracer in its constructor → OFF behaviour).
+        // falls back to the NOOP tracer in its constructor → no link).
         // ObjectMapper parses the trace context captured into each row's headers.
         return new OutboxDrainer(
             outboxPort,
             eventPublisher,
             serviceName,
             tracer.getIfAvailable(),
-            SagaTraceLinkage.fromProperty(sagaLinkage),
             objectMapper
         );
     }
