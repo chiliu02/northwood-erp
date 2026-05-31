@@ -109,7 +109,7 @@
     {
       "type": "timeseries",
       "title": "Outbox pending (per service)",
-      "description": "northwood_outbox_pending — custom gauge polled on every Prometheus scrape (§1D.5). -1 means the service has no outbox_message table (reporting).",
+      "description": "northwood_outbox_pending — custom gauge polled on every Prometheus scrape (§1D.5). Inbox-only services (reporting) have no outbox_message table and emit no series. -1 means the gauge query failed unexpectedly on a service that does have the table.",
       "gridPos": { "x": 0, "y": 8, "w": 8, "h": 7 },
       "id": 201,
       "datasource": { "type": "prometheus", "uid": "northwood-prometheus" },
