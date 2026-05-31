@@ -41,6 +41,15 @@ public abstract class SagaInstance {
     private Instant updatedAt;
     private Instant completedAt;
 
+    /**
+     * §1D.9 transient marker — set by {@link #transitionTo} and consumed by the
+     * persistence adapter ({@code consumeStateAdvanced()}) to decide whether a
+     * saga-milestone span should be recorded for this save. Defaults false on a
+     * freshly reconstituted row, so a data-only update or a retry reschedule
+     * (no {@code transitionTo}) records no milestone. Not a persisted column.
+     */
+    private boolean stateAdvanced;
+
     protected SagaInstance(
         UUID sagaId,
         String state,
@@ -81,9 +90,22 @@ public abstract class SagaInstance {
         this.lastError = null;
         this.retryCount = 0;
         this.nextRetryAt = Instant.now();
+        this.stateAdvanced = true;
         if (terminalStates().contains(newState)) {
             this.completedAt = Instant.now();
         }
+    }
+
+    /**
+     * §1D.9: returns whether a {@link #transitionTo} has occurred since this row
+     * was loaded/created, and resets the marker. Called by the persistence
+     * adapter on {@code update()} so a saga-milestone span is recorded only when
+     * the state actually advanced (not on data-only updates or retry reschedules).
+     */
+    public boolean consumeStateAdvanced() {
+        boolean advanced = this.stateAdvanced;
+        this.stateAdvanced = false;
+        return advanced;
     }
 
     /** Defer the next attempt and record the error that triggered it. */

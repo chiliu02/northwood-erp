@@ -2,6 +2,7 @@ package com.northwood.sales.infrastructure.saga;
 
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaPort;
+import com.northwood.shared.application.saga.SagaMilestone;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.TraceContext;
 import io.micrometer.tracing.Tracer;
@@ -128,6 +129,12 @@ public class JdbcSalesOrderFulfilmentSagaAdapter implements SalesOrderFulfilment
             );
         }
         saga.incrementVersion();
+        // §1D.9: record a saga-overview milestone only when this save advanced
+        // the state (transitionTo) — not on data-only updates or retry reschedules.
+        if (saga.consumeStateAdvanced()) {
+            SagaMilestone.record(tracer, SalesOrderFulfilmentSaga.AGGREGATE_TYPE,
+                saga.sagaId(), saga.state(), saga.salesOrderId());
+        }
     }
 
     @Override
@@ -147,6 +154,10 @@ public class JdbcSalesOrderFulfilmentSagaAdapter implements SalesOrderFulfilment
             currentTraceId()
         );
         saga.incrementVersion();
+        // §1D.9: creation is the saga's first milestone (its initial state).
+        SagaMilestone.record(tracer, SalesOrderFulfilmentSaga.AGGREGATE_TYPE,
+            saga.sagaId(), saga.state(), saga.salesOrderId());
+        saga.consumeStateAdvanced();
     }
 
     private static final RowMapper<SalesOrderFulfilmentSaga> ROW_MAPPER = (rs, n) -> {

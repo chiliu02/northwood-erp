@@ -2,6 +2,7 @@ package com.northwood.manufacturing.infrastructure.saga;
 
 import com.northwood.manufacturing.domain.saga.WorkOrderSaga;
 import com.northwood.manufacturing.application.saga.WorkOrderSagaPort;
+import com.northwood.shared.application.saga.SagaMilestone;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.TraceContext;
 import io.micrometer.tracing.Tracer;
@@ -120,6 +121,13 @@ public class JdbcWorkOrderSagaAdapter implements WorkOrderSagaPort {
             );
         }
         saga.incrementVersion();
+        // §1D.9: milestone only on a real state advance. salesOrderHeaderId is the
+        // cross-saga key — non-null for an SO-shortage-driven WO, null for a
+        // pool / reorder-point WO (correctly uncorrelated to any order).
+        if (saga.consumeStateAdvanced()) {
+            SagaMilestone.record(tracer, WorkOrderSaga.AGGREGATE_TYPE,
+                saga.sagaId(), saga.state(), saga.salesOrderHeaderId());
+        }
     }
 
     @Override
@@ -141,6 +149,10 @@ public class JdbcWorkOrderSagaAdapter implements WorkOrderSagaPort {
             currentTraceId()
         );
         saga.incrementVersion();
+        // §1D.9: creation is the saga's first milestone (its initial state).
+        SagaMilestone.record(tracer, WorkOrderSaga.AGGREGATE_TYPE,
+            saga.sagaId(), saga.state(), saga.salesOrderHeaderId());
+        saga.consumeStateAdvanced();
     }
 
     private static final RowMapper<WorkOrderSaga> ROW_MAPPER = (rs, n) -> {

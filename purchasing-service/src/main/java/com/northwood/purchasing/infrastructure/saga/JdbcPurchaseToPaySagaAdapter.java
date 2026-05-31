@@ -2,6 +2,7 @@ package com.northwood.purchasing.infrastructure.saga;
 
 import com.northwood.purchasing.domain.saga.PurchaseToPaySaga;
 import com.northwood.purchasing.application.saga.PurchaseToPaySagaPort;
+import com.northwood.shared.application.saga.SagaMilestone;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.TraceContext;
 import io.micrometer.tracing.Tracer;
@@ -118,6 +119,13 @@ public class JdbcPurchaseToPaySagaAdapter implements PurchaseToPaySagaPort {
             );
         }
         saga.incrementVersion();
+        // §1D.9: milestone only on a real state advance. No cross-saga sales_order
+        // key on the buy path yet (the p2p saga is keyed by PO and doesn't carry
+        // the originating order — see §1D.9 deferred follow-up in dev-todo).
+        if (saga.consumeStateAdvanced()) {
+            SagaMilestone.record(tracer, PurchaseToPaySaga.AGGREGATE_TYPE,
+                saga.sagaId(), saga.state(), null);
+        }
     }
 
     @Override
@@ -139,6 +147,10 @@ public class JdbcPurchaseToPaySagaAdapter implements PurchaseToPaySagaPort {
             currentTraceId()
         );
         saga.incrementVersion();
+        // §1D.9: creation is the saga's first milestone (its initial state).
+        SagaMilestone.record(tracer, PurchaseToPaySaga.AGGREGATE_TYPE,
+            saga.sagaId(), saga.state(), null);
+        saga.consumeStateAdvanced();
     }
 
     private static final RowMapper<PurchaseToPaySaga> ROW_MAPPER = (rs, n) -> {

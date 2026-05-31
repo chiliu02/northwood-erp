@@ -142,6 +142,17 @@ Every inbound HTTP request and outbound OTLP-instrumented call gets a span; the 
 
 A placed order produces a synchronous **request trace** (BFF → sales, ending when the 201 returns) and then an **async saga continuation** (the outbox drainer publishes `SalesOrderPlaced`; inventory/finance/… consume and emit their own events, on and on). Each cross-service hop is its **own bounded trace** carrying a **link** (↗) back to the trace that triggered it — one click to walk the chain. `OutboxDrainer` captures the originating trace context (stamped into `outbox_message.headers` at append time) and adds it as a span link on the `outbox.publish` span; Spring Kafka's observation-enabled producer then carries the context across the bus to the consumer. Bounded, OTel-idiomatic for messaging — *not* one giant waterfall. (We deliberately do **not** reparent the continuation onto the request span: that produces unbounded, long-lived traces. The whole-saga picture is the separate `saga_id`-anchored milestone view below.) Full mechanism: `docs/messaging.md` → *Saga-trace linkage*.
 
+#### Saga milestone overview (§1D.9)
+
+To see a saga **end to end** — its logical steps across all those bounded hops — query the *milestone* spans instead of one trace. Each saga transition records a standalone milestone span (named `saga.<state>`) tagged with the durable `northwood.saga_id` and linked to that step's detail trace. The "saga view" is therefore a TraceQL search, not a nested waterfall:
+
+```
+{ .northwood.saga_id = "<saga uuid>" }            # one saga's milestone timeline
+{ .northwood.sales_order_id = "<order uuid>" }    # the order + the WO sub-saga it triggered (SO→WO)
+```
+
+Each milestone links (↗) to the action/event that caused it. Anchoring on the durable `saga_id` (a saga-row column) rather than a long-lived root trace keeps this independent of Tempo's 24h block retention. The cross-saga key is the originating **sales-order id** (a dedicated span attribute — deliberately not the messaging `correlation_id`, and not the per-saga `saga_id`); it spans the SO saga and the make-side WO sub-saga. Mechanism + the SO→PO deferral: `docs/sagas.md` → *Saga observability — milestone overview*.
+
 ### Logs (Loki)
 
 Structured logs are pushed straight from each JVM via the loki4j appender, plus Promtail tails infra container logs. In Grafana Explore → **Loki**:
