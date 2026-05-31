@@ -146,7 +146,9 @@ public class OutboxDrainer {
         Span.Builder builder = tracer.spanBuilder()
             .name("outbox.publish")
             .tag("service", serviceName)
-            .tag("eventType", row.getEventType());
+            .tag("eventType", row.getEventType())
+            .tag("aggregateType", row.getAggregateType())
+            .tag("aggregateId", String.valueOf(row.getAggregateId()));
         TraceContext originating = Traceparent.parse(tracer, originatingTraceparent);
         if (originating != null) {
             builder.addLink(new Link(originating));
