@@ -1,5 +1,6 @@
 package com.northwood.shared.application.outbox;
 
+import com.northwood.shared.application.messaging.OutboxTraceHeaders;
 import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.shared.domain.DomainEvent;
 import tools.jackson.core.JacksonException;
@@ -55,7 +56,7 @@ public class OutboxAppender {
                 event.eventType(),
                 event.eventVersion(),
                 json.writeValueAsString(event),
-                null, null, null,
+                OutboxTraceHeaders.currentJson(), null, null,
                 actorUserId
             ));
         } catch (JacksonException e) {

@@ -7,6 +7,7 @@ import com.northwood.purchasing.domain.PurchaseRequisitionId;
 import com.northwood.purchasing.domain.PurchaseRequisitionLine;
 import com.northwood.purchasing.domain.PurchaseRequisitionRepository;
 import com.northwood.shared.domain.DomainEvent;
+import com.northwood.shared.application.messaging.OutboxTraceHeaders;
 import com.northwood.shared.application.security.CurrentUserAccessor;
 import java.sql.Date;
 import java.time.LocalDate;
@@ -182,15 +183,15 @@ public class JdbcPurchaseRequisitionRepository implements PurchaseRequisitionRep
             jdbc.update("""
                 INSERT INTO purchasing.outbox_message (
                     outbox_message_id, aggregate_type, aggregate_id,
-                    event_type, event_version, payload, status, actor_user_id
-                ) VALUES (?, ?, ?, ?, ?, ?::jsonb, 'pending', ?)
+                    event_type, event_version, payload, headers, status, actor_user_id
+                ) VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, 'pending', ?)
                 """,
                 event.eventId(),
                 PurchaseRequisition.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),
-                json.writeValueAsString(event),
+                json.writeValueAsString(event), OutboxTraceHeaders.currentJson(),
                 actor
             );
         } catch (JacksonException e) {

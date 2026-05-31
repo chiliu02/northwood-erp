@@ -2,8 +2,9 @@ package com.northwood.shared.application.outbox;
 
 import com.northwood.shared.application.messaging.EventEnvelope;
 import com.northwood.shared.application.messaging.EventPublisher;
-import io.micrometer.observation.Observation;
-import io.micrometer.observation.ObservationRegistry;
+import com.northwood.shared.application.messaging.SagaTraceLinkage;
+import com.northwood.shared.application.messaging.Traceparent;
+import io.micrometer.tracing.Link;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.TraceContext;
 import io.micrometer.tracing.Tracer;
@@ -13,6 +14,8 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Drains a service's outbox table and forwards pending rows to the bus — the
@@ -46,42 +49,45 @@ import org.springframework.transaction.annotation.Transactional;
  * (auto-commit), and concurrent drains can double-publish. This is why the
  * drainer and the scheduler are two beans, not one.
  *
- * <p><b>§1D.2 — trace propagation:</b> each pending row is published inside a
- * Micrometer {@link Observation} named {@code outbox.publish}. While the
- * observation is open, {@link #currentTraceparent()} reads the active span's
- * {@link TraceContext} and stamps a W3C
- * {@code 00-<traceId>-<spanId>-<flags>} string into the envelope's
- * {@link EventEnvelope#HEADER_TRACEPARENT} header — so the BFF events
- * aggregator can render a trace-drilldown affordance without parsing Kafka
- * headers. Spring Kafka's observation-enabled producer (see
- * {@code spring.kafka.template.observation-enabled} in
- * {@code application-kafka.yml}) writes the same trace context onto the Kafka
- * record headers, and the listener-side observation continues the trace in
- * the consumer service.
+ * <p><b>§1D.6 — saga-trace linkage.</b> Each row is published inside an
+ * {@code outbox.publish} span. The trace context of the originating request was
+ * captured into the row's {@code headers} ({@code traceparent}) at append time
+ * (see {@code OutboxTraceHeaders}); the configured {@link SagaTraceLinkage}
+ * decides how the publish span relates to it — reparent onto it
+ * ({@code parent-child}), {@code Link} to it ({@code span-link}, the default),
+ * both, or neither ({@code off}). Whatever span ends up current, Spring Kafka's
+ * observation-enabled producer stamps its context onto the Kafka record, so the
+ * consumer-side listener observation continues that trace. The envelope's
+ * {@link EventEnvelope#HEADER_TRACEPARENT} carries the originating traceparent
+ * for the BFF events aggregator's trace-drilldown affordance (§1D.4).
  */
 public class OutboxDrainer {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxDrainer.class);
     private static final int BATCH_SIZE = 100;
+    private static final TypeReference<Map<String, String>> HEADERS_TYPE = new TypeReference<>() {};
 
     private final OutboxPort outbox;
     private final EventPublisher bus;
     private final String serviceName;
     private final Tracer tracer;
-    private final ObservationRegistry observationRegistry;
+    private final SagaTraceLinkage linkage;
+    private final ObjectMapper json;
 
     public OutboxDrainer(
         OutboxPort outbox,
         EventPublisher bus,
         String serviceName,
         Tracer tracer,
-        ObservationRegistry observationRegistry
+        SagaTraceLinkage linkage,
+        ObjectMapper json
     ) {
         this.outbox = outbox;
         this.bus = bus;
         this.serviceName = serviceName;
         this.tracer = tracer == null ? Tracer.NOOP : tracer;
-        this.observationRegistry = observationRegistry == null ? ObservationRegistry.NOOP : observationRegistry;
+        this.linkage = linkage == null ? SagaTraceLinkage.OFF : linkage;
+        this.json = json;
     }
 
     @Transactional
@@ -98,54 +104,74 @@ public class OutboxDrainer {
     }
 
     private void publishOne(OutboxRow row) {
-        Observation.createNotStarted("outbox.publish", observationRegistry)
-            .lowCardinalityKeyValue("service", serviceName)
-            .lowCardinalityKeyValue("eventType", row.getEventType())
-            .observe(() -> {
-                try {
-                    Map<String, String> headers = new HashMap<>(2);
-                    headers.put(EventEnvelope.HEADER_SOURCE_SERVICE, serviceName);
-                    String traceparent = currentTraceparent();
-                    if (traceparent != null) {
-                        headers.put(EventEnvelope.HEADER_TRACEPARENT, traceparent);
-                    }
-                    EventEnvelope envelope = new EventEnvelope(
-                        row.getOutboxMessageId(),
-                        row.getAggregateType(),
-                        row.getAggregateId(),
-                        row.getEventType(),
-                        row.getEventVersion(),
-                        row.getPayload(),
-                        Map.copyOf(headers),
-                        row.getCorrelationId(),
-                        row.getCausationId(),
-                        row.getActorUserId(),
-                        row.getCreatedAt()
-                    );
-                    bus.publish(envelope);
-                    row.markPublished();
-                    outbox.update(row);
-                } catch (Exception ex) {
-                    log.warn("[{}] outbox row {} failed: {}",
-                        serviceName, row.getOutboxMessageId(), ex.getMessage());
-                    row.markFailed(ex.getClass().getSimpleName() + ": " + ex.getMessage());
-                    outbox.update(row);
-                    // Continue draining other rows; failed rows pick up on the next
-                    // tick if/when the bus recovers.
-                }
-            });
+        String originatingTraceparent = parseHeaders(row.getHeaders()).get(EventEnvelope.HEADER_TRACEPARENT);
+        Span span = startPublishSpan(row, originatingTraceparent);
+        try (Tracer.SpanInScope ignored = tracer.withSpan(span)) {
+            Map<String, String> headers = new HashMap<>(2);
+            headers.put(EventEnvelope.HEADER_SOURCE_SERVICE, serviceName);
+            if (originatingTraceparent != null) {
+                headers.put(EventEnvelope.HEADER_TRACEPARENT, originatingTraceparent);
+            }
+            EventEnvelope envelope = new EventEnvelope(
+                row.getOutboxMessageId(),
+                row.getAggregateType(),
+                row.getAggregateId(),
+                row.getEventType(),
+                row.getEventVersion(),
+                row.getPayload(),
+                Map.copyOf(headers),
+                row.getCorrelationId(),
+                row.getCausationId(),
+                row.getActorUserId(),
+                row.getCreatedAt()
+            );
+            bus.publish(envelope);
+            row.markPublished();
+            outbox.update(row);
+        } catch (Exception ex) {
+            log.warn("[{}] outbox row {} failed: {}",
+                serviceName, row.getOutboxMessageId(), ex.getMessage());
+            row.markFailed(ex.getClass().getSimpleName() + ": " + ex.getMessage());
+            outbox.update(row);
+            // Continue draining other rows; failed rows pick up on the next
+            // tick if/when the bus recovers.
+        } finally {
+            span.end();
+        }
     }
 
-    private String currentTraceparent() {
-        Span span = tracer.currentSpan();
-        if (span == null) {
-            return null;
+    /**
+     * Open the {@code outbox.publish} span, relating it to the originating
+     * request trace per the configured {@link SagaTraceLinkage}. Falls back to a
+     * plain (drain-tick-rooted) span when no originating context was captured or
+     * linkage is {@code off}.
+     */
+    private Span startPublishSpan(OutboxRow row, String originatingTraceparent) {
+        Span.Builder builder = tracer.spanBuilder()
+            .name("outbox.publish")
+            .tag("service", serviceName)
+            .tag("eventType", row.getEventType());
+        TraceContext originating = Traceparent.parse(tracer, originatingTraceparent);
+        if (originating != null) {
+            if (linkage.restoresParent()) {
+                builder.setParent(originating);
+            }
+            if (linkage.addsLink()) {
+                builder.addLink(new Link(originating));
+            }
         }
-        TraceContext ctx = span.context();
-        if (ctx == null || ctx.traceId() == null || ctx.spanId() == null) {
-            return null;
+        return builder.start();
+    }
+
+    private Map<String, String> parseHeaders(String headersJson) {
+        if (json == null || headersJson == null || headersJson.isBlank() || "{}".equals(headersJson)) {
+            return Map.of();
         }
-        String flags = Boolean.TRUE.equals(ctx.sampled()) ? "01" : "00";
-        return "00-" + ctx.traceId() + "-" + ctx.spanId() + "-" + flags;
+        try {
+            return json.readValue(headersJson, HEADERS_TYPE);
+        } catch (Exception ex) {
+            log.debug("[{}] ignoring unparseable outbox headers: {}", serviceName, ex.getMessage());
+            return Map.of();
+        }
     }
 }

@@ -5,6 +5,7 @@ import com.northwood.manufacturing.domain.BomId;
 import com.northwood.manufacturing.domain.BomLine;
 import com.northwood.manufacturing.domain.BomLineId;
 import com.northwood.manufacturing.domain.BomRepository;
+import com.northwood.shared.application.messaging.OutboxTraceHeaders;
 import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
@@ -201,15 +202,15 @@ public class JdbcBomRepository implements BomRepository {
             jdbc.update("""
                 INSERT INTO manufacturing.outbox_message (
                     outbox_message_id, aggregate_type, aggregate_id,
-                    event_type, event_version, payload, status, actor_user_id
-                ) VALUES (?, ?, ?, ?, ?, ?::jsonb, 'pending', ?)
+                    event_type, event_version, payload, headers, status, actor_user_id
+                ) VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, 'pending', ?)
                 """,
                 event.eventId(),
                 Bom.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),
-                json.writeValueAsString(event),
+                json.writeValueAsString(event), OutboxTraceHeaders.currentJson(),
                 actor
             );
         } catch (JacksonException e) {

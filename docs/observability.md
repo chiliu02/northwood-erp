@@ -66,6 +66,7 @@ Logging is in `shared/src/main/resources/logback-spring.xml` — a `CONSOLE` app
 | `OTLP_ENDPOINT` | `http://localhost:4317` | Tempo OTLP gRPC receiver |
 | `LOKI_URL` | `http://localhost:3100/loki/api/v1/push` | Loki push endpoint (read by logback) |
 | `NORTHWOOD_TRACING_SAMPLING` | `1.0` | Trace sample rate. Keep `1.0` locally for complete demo traces; set `0.1` to mimic prod. |
+| `NORTHWOOD_SAGA_TRACE_LINKAGE` | `span-link` | How the async saga continuation relates to the originating request trace: `span-link` \| `parent-child` \| `both` \| `off`. See *Saga-trace linkage* below. (Per-service override: `northwood.tracing.saga-linkage`.) |
 
 Locally the defaults Just Work because the compose ports are published to `localhost`. On AWS the deployment injects the observability box's private DNS into these vars (see *AWS* below).
 
@@ -137,6 +138,23 @@ Every inbound HTTP request and outbound OTLP-instrumented call gets a span; the 
 - **Search** by service name (`sales-service`), span name (`POST /api/sales-orders`), or duration.
 - **TraceQL** for targeted queries, e.g. `{ .service.name = "sales-service" && name =~ "POST /api/sales-orders" }`.
 - Click a trace to see the waterfall across services. The Tempo datasource is wired with **trace → logs** (`tracesToLogsV2` → Loki) and **trace → metrics**, so from any span you can jump to the correlated log lines or the service's RED metrics.
+
+#### Saga-trace linkage (§1D.6)
+
+A placed order produces a synchronous **request trace** (BFF → sales, ending when the 201 returns) and then an **async saga continuation** (the outbox drainer publishes `SalesOrderPlaced`; inventory/finance/… consume and emit their own events, on and on). How those relate in Tempo is a single config knob — `NORTHWOOD_SAGA_TRACE_LINKAGE` (or per-service `northwood.tracing.saga-linkage`):
+
+| Value | What you see in Tempo | Trade-off |
+|---|---|---|
+| `span-link` *(default)* | each hop is its own bounded trace, with a **link** (↗) back to the trace that triggered it — one click to walk the chain | OTel-idiomatic for messaging; no single merged waterfall |
+| `parent-child` | one **end-to-end waterfall** — the whole saga hangs off the originating request span | large, long-lived traces; the root request span ends while children keep arriving |
+| `both` | parent-child **and** the link (redundant within a trace, survives independent sampling) | largest traces |
+| `off` | independent traces, correlated only by the stamped `traceparent` header (pre-§1D.6) | no link, no waterfall |
+
+Mechanism: the originating trace context is captured into each `outbox_message.headers` at append time; `OutboxDrainer` reparents / links the `outbox.publish` span onto it per the mode (Spring Kafka's observation-enabled producer then carries it across the bus). Full detail: `docs/messaging.md` → *Saga-trace linkage*. Flip to `parent-child` for a demo where one order is a single waterfall:
+
+```powershell
+$env:NORTHWOOD_SAGA_TRACE_LINKAGE = "parent-child"   # then restart the producer services
+```
 
 ### Logs (Loki)
 

@@ -1,9 +1,9 @@
 package com.northwood.shared.infrastructure.messaging;
 
 import com.northwood.shared.application.messaging.EventPublisher;
+import com.northwood.shared.application.messaging.SagaTraceLinkage;
 import com.northwood.shared.application.outbox.OutboxDrainer;
 import com.northwood.shared.application.outbox.OutboxPort;
-import io.micrometer.observation.ObservationRegistry;
 import io.micrometer.tracing.Tracer;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,6 +11,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Wires a producer service's outbox drain — {@link OutboxDrainer} (the
@@ -49,19 +50,23 @@ public class OutboxDrainAutoConfiguration {
         OutboxPort outboxPort,
         EventPublisher eventPublisher,
         @Value("${northwood.service-name}") String serviceName,
+        @Value("${northwood.tracing.saga-linkage:${NORTHWOOD_SAGA_TRACE_LINKAGE:span-link}}") String sagaLinkage,
         ObjectProvider<Tracer> tracer,
-        ObjectProvider<ObservationRegistry> observationRegistry
+        ObjectMapper objectMapper
     ) {
-        // §1D.2 — Tracer/ObservationRegistry stamp the W3C traceparent header onto
-        // each published envelope. Resolved via ObjectProvider so a producer that
-        // enables draining without the observability stack still starts (the
-        // drainer falls back to the NOOP tracer/registry in its constructor).
+        // §1D.6 — the drainer relates each publish span to the originating
+        // request trace per northwood.tracing.saga-linkage (default span-link).
+        // Tracer is resolved via ObjectProvider so a producer that enables
+        // draining without the observability stack still starts (the drainer
+        // falls back to the NOOP tracer in its constructor → OFF behaviour).
+        // ObjectMapper parses the trace context captured into each row's headers.
         return new OutboxDrainer(
             outboxPort,
             eventPublisher,
             serviceName,
             tracer.getIfAvailable(),
-            observationRegistry.getIfAvailable()
+            SagaTraceLinkage.fromProperty(sagaLinkage),
+            objectMapper
         );
     }
 

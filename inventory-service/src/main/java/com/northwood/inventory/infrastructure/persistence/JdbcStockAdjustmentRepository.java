@@ -4,6 +4,7 @@ import com.northwood.inventory.domain.StockAdjustment;
 import com.northwood.inventory.domain.StockAdjustmentId;
 import com.northwood.inventory.domain.StockAdjustmentRepository;
 import com.northwood.inventory.domain.StockMovementDirection;
+import com.northwood.shared.application.messaging.OutboxTraceHeaders;
 import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.shared.domain.DomainEvent;
 import java.sql.Timestamp;
@@ -99,15 +100,15 @@ public class JdbcStockAdjustmentRepository implements StockAdjustmentRepository 
             jdbc.update("""
                 INSERT INTO inventory.outbox_message (
                     outbox_message_id, aggregate_type, aggregate_id,
-                    event_type, event_version, payload, status, actor_user_id
-                ) VALUES (?, ?, ?, ?, ?, ?::jsonb, 'pending', ?)
+                    event_type, event_version, payload, headers, status, actor_user_id
+                ) VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, 'pending', ?)
                 """,
                 event.eventId(),
                 StockAdjustment.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),
-                json.writeValueAsString(event),
+                json.writeValueAsString(event), OutboxTraceHeaders.currentJson(),
                 actor
             );
         } catch (JacksonException e) {

@@ -7,6 +7,7 @@ import com.northwood.inventory.domain.GoodsReceiptId;
 import com.northwood.inventory.domain.GoodsReceiptLine;
 import com.northwood.inventory.domain.GoodsReceiptRepository;
 import com.northwood.shared.domain.DomainEvent;
+import com.northwood.shared.application.messaging.OutboxTraceHeaders;
 import com.northwood.shared.application.security.CurrentUserAccessor;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -146,15 +147,15 @@ public class JdbcGoodsReceiptRepository implements GoodsReceiptRepository {
             jdbc.update("""
                 INSERT INTO inventory.outbox_message (
                     outbox_message_id, aggregate_type, aggregate_id,
-                    event_type, event_version, payload, status, actor_user_id
-                ) VALUES (?, ?, ?, ?, ?, ?::jsonb, 'pending', ?)
+                    event_type, event_version, payload, headers, status, actor_user_id
+                ) VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, 'pending', ?)
                 """,
                 event.eventId(),
                 GoodsReceipt.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),
-                json.writeValueAsString(event),
+                json.writeValueAsString(event), OutboxTraceHeaders.currentJson(),
                 actor
             );
         } catch (JacksonException e) {

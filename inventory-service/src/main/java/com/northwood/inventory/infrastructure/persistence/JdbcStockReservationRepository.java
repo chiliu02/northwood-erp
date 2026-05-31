@@ -6,6 +6,7 @@ import com.northwood.inventory.domain.StockReservation;
 import com.northwood.inventory.domain.StockReservationLine;
 import com.northwood.inventory.domain.StockReservationRepository;
 import com.northwood.shared.domain.DomainEvent;
+import com.northwood.shared.application.messaging.OutboxTraceHeaders;
 import com.northwood.shared.application.security.CurrentUserAccessor;
 import java.util.List;
 import java.util.Optional;
@@ -181,15 +182,15 @@ public class JdbcStockReservationRepository implements StockReservationRepositor
             jdbc.update("""
                 INSERT INTO inventory.outbox_message (
                     outbox_message_id, aggregate_type, aggregate_id,
-                    event_type, event_version, payload, status, actor_user_id
-                ) VALUES (?, ?, ?, ?, ?, ?::jsonb, 'pending', ?)
+                    event_type, event_version, payload, headers, status, actor_user_id
+                ) VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, 'pending', ?)
                 """,
                 event.eventId(),
                 StockReservation.AGGREGATE_TYPE,
                 event.aggregateId(),
                 event.eventType(),
                 event.eventVersion(),
-                json.writeValueAsString(event),
+                json.writeValueAsString(event), OutboxTraceHeaders.currentJson(),
                 actor
             );
         } catch (JacksonException e) {

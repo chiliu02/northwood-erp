@@ -9,10 +9,11 @@ import static org.mockito.Mockito.when;
 
 import com.northwood.shared.application.messaging.EventEnvelope;
 import com.northwood.shared.application.messaging.EventPublisher;
-import io.micrometer.observation.ObservationRegistry;
+import com.northwood.shared.application.messaging.SagaTraceLinkage;
 import io.micrometer.tracing.Tracer;
 import java.util.List;
 import java.util.UUID;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -50,13 +51,17 @@ class OutboxDrainerTest {
 
     @BeforeEach
     void setUp() {
-        drainer = new OutboxDrainer(outbox, bus, "sales", Tracer.NOOP, ObservationRegistry.NOOP);
+        drainer = new OutboxDrainer(outbox, bus, "sales", Tracer.NOOP, SagaTraceLinkage.OFF, new ObjectMapper());
     }
 
     private static OutboxRow pendingRow(String eventType) {
+        return pendingRow(eventType, null);
+    }
+
+    private static OutboxRow pendingRow(String eventType, String headersJson) {
         return OutboxRow.pending(
             UUID.randomUUID(), "SalesOrder", UUID.randomUUID(),
-            eventType, 1, "{}", null, null, null, null
+            eventType, 1, "{}", headersJson, null, null, null
         );
     }
 
@@ -145,7 +150,7 @@ class OutboxDrainerTest {
     }
 
     @Test void drain_uses_service_name_in_envelope_header() {
-        drainer = new OutboxDrainer(outbox, bus, "purchasing", Tracer.NOOP, ObservationRegistry.NOOP);
+        drainer = new OutboxDrainer(outbox, bus, "purchasing", Tracer.NOOP, SagaTraceLinkage.OFF, new ObjectMapper());
         OutboxRow row = pendingRow("purchasing.PurchaseOrderCreated");
         when(outbox.findPending(Mockito.anyInt())).thenReturn(List.of(row));
 
@@ -157,22 +162,13 @@ class OutboxDrainerTest {
             .isEqualTo("purchasing");
     }
 
-    @Test void drain_stamps_w3c_traceparent_when_tracer_has_current_span() {
-        // §1D.2: when a Tracer with an active span is supplied, the drainer
-        // serialises the trace context as a W3C traceparent string into the
-        // envelope's headers map. The BFF events aggregator (§1D.4) reads this
-        // header to render the SPA's "↗ trace" affordance.
-        Tracer tracer = Mockito.mock(Tracer.class);
-        io.micrometer.tracing.Span span = Mockito.mock(io.micrometer.tracing.Span.class);
-        io.micrometer.tracing.TraceContext ctx = Mockito.mock(io.micrometer.tracing.TraceContext.class);
-        Mockito.when(tracer.currentSpan()).thenReturn(span);
-        Mockito.when(span.context()).thenReturn(ctx);
-        Mockito.when(ctx.traceId()).thenReturn("00112233445566778899aabbccddeeff");
-        Mockito.when(ctx.spanId()).thenReturn("0011223344556677");
-        Mockito.when(ctx.sampled()).thenReturn(Boolean.TRUE);
-
-        drainer = new OutboxDrainer(outbox, bus, "sales", tracer, ObservationRegistry.NOOP);
-        OutboxRow row = pendingRow("sales.SalesOrderPlaced");
+    @Test void drain_carries_captured_traceparent_on_the_envelope() {
+        // §1D.6: the originating request's trace context is captured into the
+        // row's headers at append time (OutboxTraceHeaders); the drainer surfaces
+        // it on the envelope's traceparent header for the BFF events aggregator
+        // (§1D.4) and uses it to relate the publish span to that trace.
+        String traceparent = "00-00112233445566778899aabbccddeeff-0011223344556677-01";
+        OutboxRow row = pendingRow("sales.SalesOrderPlaced", "{\"traceparent\":\"" + traceparent + "\"}");
         when(outbox.findPending(Mockito.anyInt())).thenReturn(List.of(row));
 
         drainer.drain();
@@ -180,15 +176,12 @@ class OutboxDrainerTest {
         ArgumentCaptor<EventEnvelope> cap = ArgumentCaptor.forClass(EventEnvelope.class);
         verify(bus).publish(cap.capture());
         assertThat(cap.getValue().headers().get(EventEnvelope.HEADER_TRACEPARENT))
-            .isEqualTo("00-00112233445566778899aabbccddeeff-0011223344556677-01");
+            .isEqualTo(traceparent);
     }
 
-    @Test void drain_omits_traceparent_when_tracer_has_no_current_span() {
-        Tracer tracer = Mockito.mock(Tracer.class);
-        Mockito.when(tracer.currentSpan()).thenReturn(null);
+    @Test void drain_omits_traceparent_when_none_captured() {
+        OutboxRow row = pendingRow("sales.SalesOrderPlaced");  // null headers → nothing captured
 
-        drainer = new OutboxDrainer(outbox, bus, "sales", tracer, ObservationRegistry.NOOP);
-        OutboxRow row = pendingRow("sales.SalesOrderPlaced");
         when(outbox.findPending(Mockito.anyInt())).thenReturn(List.of(row));
 
         drainer.drain();
