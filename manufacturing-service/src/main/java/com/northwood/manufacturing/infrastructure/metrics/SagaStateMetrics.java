@@ -12,7 +12,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * §1D.5: per-state row count for make-to-order sagas. See sales-service's
+ * §1D.5: per-state row count for work-order sagas. See sales-service's
  * sibling class for the design rationale (MultiGauge, 15s poll matching
  * Prometheus scrape, GROUP BY query on the existing state index).
  */
@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
 public class SagaStateMetrics {
 
     private static final Logger log = LoggerFactory.getLogger(SagaStateMetrics.class);
-    private static final String SAGA_TYPE = "make_to_order";
+    private static final String SAGA_TYPE = "work_order";
 
     private final JdbcTemplate jdbc;
     private final MultiGauge gauge;
@@ -43,7 +43,7 @@ public class SagaStateMetrics {
     public void refresh() {
         try {
             List<MultiGauge.Row<?>> rows = jdbc.query(
-                "SELECT saga_state, COUNT(*) AS n FROM manufacturing.make_to_order_saga GROUP BY saga_state",
+                "SELECT saga_state, COUNT(*) AS n FROM manufacturing.work_order_saga GROUP BY saga_state",
                 (rs, n) -> MultiGauge.Row.of(
                     Tags.of("state", rs.getString("saga_state")),
                     rs.getLong("n")
