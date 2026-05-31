@@ -1,5 +1,8 @@
 package com.northwood.bff;
 
+import io.micrometer.tracing.TraceContext;
+import io.micrometer.tracing.Tracer;
+import io.micrometer.tracing.propagation.Propagator;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.net.URI;
@@ -49,14 +52,19 @@ public class ProxyController {
     private final RouteTable routes;
     private final BffTargets targets;
     private final BackendAuthHeader auth;
+    private final Propagator propagator;
+    private final Tracer tracer;
     private final HttpClient http = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(2))
         .build();
 
-    public ProxyController(RouteTable routes, BffTargets targets, BackendAuthHeader auth) {
+    public ProxyController(RouteTable routes, BffTargets targets, BackendAuthHeader auth,
+                           Propagator propagator, Tracer tracer) {
         this.routes = routes;
         this.targets = targets;
         this.auth = auth;
+        this.propagator = propagator;
+        this.tracer = tracer;
     }
 
     @RequestMapping("/api/**")
@@ -84,6 +92,7 @@ public class ProxyController {
             .timeout(Duration.ofSeconds(30))
             .method(method, body != null && body.length > 0 ? BodyPublishers.ofByteArray(body) : BodyPublishers.noBody());
         copyHeaders(request, builder);
+        injectTraceContext(builder);
         auth.applyTo(builder);
 
         try {
@@ -98,6 +107,21 @@ public class ProxyController {
     static String rewrite(String path, RouteTable.Route route) {
         if (route.rewrite() == null) return path;
         return route.rewrite() + path.substring(route.prefix().length());
+    }
+
+    /**
+     * Propagate the current trace context onto the upstream request. The JDK
+     * {@link HttpClient} is not auto-instrumented by Micrometer (unlike
+     * RestClient / WebClient), so without this the upstream service receives no
+     * {@code traceparent} and starts a fresh trace — the BFF hop never joins the
+     * waterfall. {@code setHeader} (not {@code header}) so a stray inbound
+     * traceparent can't produce a duplicate.
+     */
+    private void injectTraceContext(HttpRequest.Builder builder) {
+        TraceContext context = tracer.currentTraceContext().context();
+        if (context != null) {
+            propagator.inject(context, builder, HttpRequest.Builder::setHeader);
+        }
     }
 
     private static void copyHeaders(HttpServletRequest request, HttpRequest.Builder builder) {

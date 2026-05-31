@@ -51,6 +51,17 @@
             <artifactId>spring-boot-starter-kafka</artifactId>
         </dependency>
 
+        <!-- §1D tracing. Added directly (not via `shared`, deliberately omitted
+             above): without a Tracer + OTLP exporter the BFF emits no server
+             span and propagates no trace context upstream, so a placed-order
+             trace starts fresh at sales instead of the BFF. The
+             management.opentelemetry.tracing.* block in application.yml is
+             inert until this is on the classpath. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-opentelemetry</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
