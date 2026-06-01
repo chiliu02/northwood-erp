@@ -46,15 +46,15 @@ Keycloak loads the `northwood` realm from `db/keycloak/northwood-realm.json` on 
 |---|---|---|
 | emma | catalog_manager | Product master CRUD, pricing, reorder policy |
 | sarah | sales_clerk | Place orders, view sales orders, view ATP |
-| sam | sales_manager + sales_clerk | All clerk + cancel orders |
+| sam | sales_manager | Cancel orders, override pricing |
 | mike | warehouse_clerk | Stock movements, goods receipts, shipments |
-| wendy | warehouse_manager + warehouse_clerk | All clerk + force-release reservations |
+| wendy | warehouse_manager | Post stock adjustments, force-release reservations |
 | linda | production_planner | View board, set priority, complete operations, edit/activate BOM |
-| paul | production_supervisor + production_planner | All planner + cancel WO, skip operation |
+| paul | production_supervisor | Cancel WO, skip operation, force-complete |
 | tom | purchasing_clerk | Create PR/PO (draft), post goods receipts |
-| priya | purchasing_manager + purchasing_clerk | All clerk + approve PO, author supplier prices |
+| priya | purchasing_manager | Approve PO, author supplier prices, override 3-way match |
 | olivia | accountant | Record supplier invoices, record payments |
-| daniel | finance_manager + accountant | All accountant + reverse journals, manual-approve invoices |
+| daniel | finance_manager | Reverse journals, manual-approve/reject invoices |
 | aaron | auditor | Read-only on every endpoint |
 | ian | sysadmin | Keycloak admin only; no business data |
 

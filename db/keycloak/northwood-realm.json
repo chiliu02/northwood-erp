@@ -61,7 +61,7 @@
       "email": "sam@northwood.local",
       "emailVerified": true,
       "credentials": [{ "type": "password", "value": "sam", "temporary": false }],
-      "realmRoles": ["sales_manager", "sales_clerk"]
+      "realmRoles": ["sales_manager"]
     },
     {
       "username": "mike",
@@ -81,7 +81,7 @@
       "email": "wendy@northwood.local",
       "emailVerified": true,
       "credentials": [{ "type": "password", "value": "wendy", "temporary": false }],
-      "realmRoles": ["warehouse_manager", "warehouse_clerk"]
+      "realmRoles": ["warehouse_manager"]
     },
     {
       "username": "linda",
@@ -101,7 +101,7 @@
       "email": "paul@northwood.local",
       "emailVerified": true,
       "credentials": [{ "type": "password", "value": "paul", "temporary": false }],
-      "realmRoles": ["production_supervisor", "production_planner"]
+      "realmRoles": ["production_supervisor"]
     },
     {
       "username": "tom",
@@ -121,7 +121,7 @@
       "email": "priya@northwood.local",
       "emailVerified": true,
       "credentials": [{ "type": "password", "value": "priya", "temporary": false }],
-      "realmRoles": ["purchasing_manager", "purchasing_clerk"]
+      "realmRoles": ["purchasing_manager"]
     },
     {
       "username": "olivia",
@@ -141,7 +141,7 @@
       "email": "daniel@northwood.local",
       "emailVerified": true,
       "credentials": [{ "type": "password", "value": "daniel", "temporary": false }],
-      "realmRoles": ["finance_manager", "accountant"]
+      "realmRoles": ["finance_manager"]
     },
     {
       "username": "aaron",
