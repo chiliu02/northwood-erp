@@ -210,7 +210,7 @@
               "tag": "name",
               "operator": "=~",
               "value": "(?i).*post /api/sales-orders.*",
-              "scope": "span"
+              "scope": "intrinsic"
             }
           ]
         }
