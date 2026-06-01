@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Northwood ERP — AWS deployment (minimal · 3-tier)</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f4f6f9; color: #16191f;
+      font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    header { padding: 1.4rem 2rem 0.6rem; border-bottom: 1px solid #e3e7ec; background: #fff; }
+    h1 { margin: 0 0 .25rem; font-size: 1.5rem; color: #232f3e; }
+    .sub { color: #5f6b7a; font-size: .9rem; }
+    main { padding: 1.5rem 2rem 3rem; max-width: 1000px; margin: 0 auto; }
+
+    /* ---- diagram primitives ---- */
+    .diagram { background: #fff; border: 1px solid #e3e7ec; border-radius: 10px; padding: 1.4rem 1.6rem; }
+
+    .cloud { text-align: center; margin-bottom: .4rem; }
+    .cloud img { height: 34px; vertical-align: -8px; }
+    .cloud b { font-size: 1rem; }
+
+    .arrow { text-align: center; color: #6b7889; font-size: .8rem; margin: .25rem 0; }
+    .arrow::before { content: ""; display: block; width: 0; height: 0; margin: 0 auto 2px;
+      border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 7px solid #9aa7b6; }
+    .arrow.up::before { border-top: none; border-bottom: 7px solid #9aa7b6; }
+
+    /* containers (Region / VPC) */
+    .region { border: 2px solid #147eba; border-radius: 8px; padding: .6rem .8rem 1rem; position: relative; }
+    .vpc { border: 2px solid #1a8612; border-radius: 8px; padding: 1.6rem .8rem 1rem; margin-top: 1.5rem; position: relative; }
+    .lbl { position: absolute; top: -11px; left: 12px; background: #fff; padding: 0 6px; font-weight: 700; font-size: .85rem; display: flex; align-items: center; gap: 5px; }
+    .lbl img { height: 18px; }
+    .region > .lbl { color: #147eba; } .vpc > .lbl { color: #1a8612; }
+
+    .igw { display: flex; justify-content: center; margin: .2rem 0 .6rem; }
+
+    /* subnet bands — all the same (full) width, stacked */
+    .subnet { border: 2px solid; border-radius: 8px; padding: 1.5rem .8rem .8rem; position: relative; width: 100%; }
+    .subnet + .subnet { margin-top: 0; }
+    .subnet.public { border-color: #147eba; background: #f3f9fd; }
+    .subnet.app    { border-color: #7d5bbe; background: #f7f4fc; }
+    .subnet.infra  { border-color: #e8810a; background: #fff8f0; }
+    .subnet .lbl { background: inherit; }
+    .subnet.public .lbl { color: #0d5a86; } .subnet.app .lbl { color: #5b3da0; } .subnet.infra .lbl { color: #b8650a; }
+
+    /* EC2 box inside a subnet — full width */
+    .ec2 { border: 1.5px solid #e8810a; border-radius: 7px; background: #fffaf3; padding: 1.4rem .7rem .7rem; position: relative; width: 100%; }
+    .ec2 .lbl { background: #fffaf3; color: #b8650a; font-size: .8rem; font-weight: 600; }
+    .row { display: flex; flex-wrap: wrap; gap: .7rem; justify-content: center; }
+
+    /* resource card */
+    .res { background: #fff; border: 1px solid #cfd6df; border-radius: 6px; padding: .55rem .7rem;
+      min-width: 150px; text-align: center; }
+    .res img { height: 34px; width: 34px; display: block; margin: 0 auto 4px; }
+    .res b { display: block; font-size: .9rem; }
+    .res span { color: #5f6b7a; font-size: .76rem; }
+    .res.wide { min-width: 320px; }
+
+    .xref { text-align: center; color: #6b7889; font-size: .76rem; margin-top: .5rem; font-style: italic; }
+
+    .endpoints { margin-top: .9rem; display: flex; justify-content: center; }
+    .regional { display: flex; gap: .7rem; justify-content: center; flex-wrap: wrap; margin-top: 1.5rem; }
+    .regional-lbl { text-align: center; color: #8a94a3; font-size: .78rem; margin: .2rem 0 .4rem; }
+
+    h2 { font-size: 1.05rem; color: #232f3e; margin: 2rem 0 .6rem; }
+    ul { margin: .3rem 0 1rem; padding-left: 1.2rem; }
+    li { margin: .35rem 0; }
+    code { background: #eef1f5; border: 1px solid #e0e4ea; border-radius: 4px; padding: 0 .35em; font-size: .85em; }
+    footer { color: #8a94a3; font-size: .8rem; padding: 0 2rem 2rem; max-width: 1000px; margin: 0 auto; }
+    a { color: #0a7bbf; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Northwood ERP — AWS deployment <span style="color:#7aa116">(minimal · 3-tier)</span></h1>
+    <div class="sub">No ALB · no ECS/Fargate · no NAT (VPC endpoints) · 1 public subnet + 2 private subnets, 1 EC2 each, running <code>docker-compose</code>. Official AWS Architecture Icons + app logos.</div>
+  </header>
+
+  <main>
+    <div class="diagram">
+
+      <div class="cloud"><img src="https://api.iconify.design/mdi/web.svg"/> <b>Internet</b> &nbsp;<span style="color:#5f6b7a">browser</span></div>
+      <div class="arrow">HTTP&nbsp;:8089&nbsp;&nbsp;·&nbsp;&nbsp;OIDC&nbsp;:8080</div>
+
+      <div class="region">
+        <div class="lbl"><img src="aws-icons/g-region.svg"/> AWS Region · single AZ</div>
+
+        <div class="vpc">
+          <div class="lbl"><img src="aws-icons/g-vpc.svg"/> VPC</div>
+
+          <div class="igw">
+            <div class="res"><img src="aws-icons/igw.svg"/><b>Internet Gateway</b><span>ingress + egress</span></div>
+          </div>
+          <div class="arrow"></div>
+
+          <!-- ===== Band 1: public subnet ===== -->
+          <section class="subnet public">
+            <div class="lbl"><img src="aws-icons/g-subnet-pub.svg"/> Public subnet · web-sg (:8089 + :8080 from internet)</div>
+            <div class="ec2">
+              <div class="lbl"><img src="aws-icons/ec2.svg"/> EC2 · public IP · docker-compose · SSM-only shell</div>
+              <div class="row">
+                <div class="res"><img src="https://api.iconify.design/logos/spring-icon.svg"/><b>erp-web-ui-bff</b><span>:8089 · the only UI · OIDC</span></div>
+                <div class="res"><img src="https://api.iconify.design/simple-icons/keycloak.svg"/><b>Keycloak</b><span>:8080 · public (browser OIDC redirect)</span></div>
+              </div>
+            </div>
+          </section>
+
+          <div class="arrow">BFF → services · HTTP (intra-VPC)</div>
+
+          <!-- ===== Band 2: private subnet #1 (app) ===== -->
+          <section class="subnet app">
+            <div class="lbl"><img src="aws-icons/g-subnet-prv.svg"/> Private subnet #1 · app-sg (from web tier only)</div>
+            <div class="ec2">
+              <div class="lbl"><img src="aws-icons/ec2.svg"/> EC2 · no public IP · docker-compose</div>
+              <div class="row">
+                <div class="res wide"><img src="https://api.iconify.design/logos/spring-icon.svg"/><b>7 services</b><span>product 8081 · sales 8082 · inventory 8083 · manufacturing 8084<br/>purchasing 8085 · finance 8086 · reporting 8087</span></div>
+              </div>
+              <div class="xref">↑ JWT / JWKS → Keycloak (public subnet) &nbsp;·&nbsp; ↓ JDBC + Kafka → infra subnet</div>
+            </div>
+          </section>
+
+          <div class="arrow">services → PostgreSQL / Kafka · intra-VPC</div>
+
+          <!-- ===== Band 3: private subnet #2 (infra) ===== -->
+          <section class="subnet infra">
+            <div class="lbl"><img src="aws-icons/g-subnet-prv.svg"/> Private subnet #2 · infra-sg (from app tier only)</div>
+            <div class="ec2">
+              <div class="lbl"><img src="aws-icons/ec2.svg"/> EC2 · no public IP · docker-compose</div>
+              <div class="row">
+                <div class="res"><img src="https://api.iconify.design/logos/postgresql.svg"/><b>PostgreSQL</b><span>:5432</span></div>
+                <div class="res"><img src="https://api.iconify.design/simple-icons/apachekafka.svg"/><b>Kafka</b><span>:9092 · KRaft</span></div>
+                <div class="res"><img src="https://api.iconify.design/logos/grafana.svg"/><b>Observability (opt.)</b><span>Tempo · Loki · Grafana</span></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- private egress -->
+          <div class="endpoints">
+            <div class="res wide"><img src="aws-icons/endpoint.svg"/><b>VPC endpoints — no NAT</b><span>ECR (api + dkr) interface · S3 gateway — both private subnets pull images via these</span></div>
+          </div>
+        </div><!-- /vpc -->
+
+        <div class="regional-lbl">▼ egress via VPC endpoints (no NAT) — regional AWS services</div>
+        <div class="regional">
+          <div class="res"><img src="aws-icons/ecr.svg"/><b>ECR</b><span>×8 app images · pull-through cache for Docker Hub</span></div>
+          <div class="res"><img src="aws-icons/s3.svg"/><b>S3 artifacts</b><span>db SQL · realm · env (passwords) · configs</span></div>
+          <div class="res"><img src="aws-icons/ssm.svg"/><b>SSM Session Manager</b><span>shell + Grafana port-forward (all 3 EC2)</span></div>
+        </div>
+      </div><!-- /region -->
+
+    </div><!-- /diagram -->
+
+    <h2>The three tiers (stacked, 1 EC2 each)</h2>
+    <ul>
+      <li><b>Public subnet</b> — 1 EC2 (public IP), <code>web-sg</code> opens <code>:8089</code> + <code>:8080</code>: <code>erp-web-ui-bff</code> + Keycloak. The only internet-facing box; Keycloak is here so the browser can reach it for OIDC.</li>
+      <li><b>Private subnet #1 (app)</b> — 1 EC2 (no public IP), <code>app-sg</code> allows only the web tier: the 7 services.</li>
+      <li><b>Private subnet #2 (infra)</b> — 1 EC2 (no public IP), <code>infra-sg</code> allows only the app tier: Postgres + Kafka (+ optional observability). Most-protected, two hops from the internet.</li>
+    </ul>
+
+    <h2>Egress — VPC endpoints, no NAT (decided)</h2>
+    <ul>
+      <li>Both private subnets pull container images through <b>VPC endpoints</b> — interface endpoints for <code>ecr.api</code> + <code>ecr.dkr</code> (one set serves the VPC) and the free S3 <b>gateway</b> endpoint on both private route tables. No NAT Gateway.</li>
+      <li>The third-party images (Postgres / Kafka / Grafana) come from Docker Hub, which the ECR endpoints don't cover — so ECR runs as a <b>pull-through cache</b> (Docker Hub → ECR), which keeps everything flowing through the ECR endpoints with no NAT. (Alternatives: mirror them once, or pre-bake the AMI.)</li>
+    </ul>
+
+    <h2>What's gone</h2>
+    <ul>
+      <li>ALB, NAT Gateway, ECS/Fargate, Service Connect, demo-web-ui-bff, Secrets Manager, CloudWatch — replaced by 3 EC2s running <code>docker-compose</code>, passwords/configs staged in the encrypted S3 bucket and pulled by <code>user-data</code>, logs to Loki. SSM-only shell (no SSH/bastion).</li>
+      <li><b>Trade-offs:</b> no HTTPS and no HA (single instance per tier, HTTP on the public IP) — a stable address (Elastic IP / Route 53) is worth adding for the OIDC redirect URI.</li>
+    </ul>
+  </main>
+
+  <footer>
+    Proposed <b>target</b> topology — the Terraform under <code>terraform/</code> has not been refactored to match. Hand-built layered diagram (no Mermaid); AWS boxes use the official AWS Architecture Icons (<a href="https://aws.amazon.com/architecture/icons/">aws.amazon.com/architecture/icons</a>, under <code>docs/aws-icons/</code>); container logos are from iconify.
+  </footer>
+</body>
+</html>
