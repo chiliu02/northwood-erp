@@ -195,7 +195,7 @@
     {
       "type": "table",
       "title": "Recent sales-order traces",
-      "description": "TraceQL: traces containing the `http post /api/sales-orders` span (Spring Boot 4 / OTel names HTTP spans `http <lowercase-method> <route>`, not `POST …`). Click a span row to drill into Tempo; the Logs panel below renders logs for the same trace via the Loki↔Tempo correlation wired in §1D.0.",
+      "description": "Recent placed-order traces — TraceQL for the `http post /api/sales-orders` span (Spring Boot 4 / OTel names HTTP spans `http <lowercase-method> <route>`, not `POST …`). Drill-down: click a Trace ID to open these traces in Explore, or use the panel menu (⋮ top-right) → Explore, then click any Trace ID there — Tempo trace links only resolve inside Explore, not from a dashboard table cell. The Logs panel below correlates by trace id via the Loki↔Tempo wiring (§1D.0).",
       "gridPos": { "x": 0, "y": 16, "w": 24, "h": 9 },
       "id": 301,
       "datasource": { "type": "tempo", "uid": "northwood-tempo" },
@@ -217,6 +217,26 @@
           ]
         }
       ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Trace ID" },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open these traces in Explore (drill into any trace there — Tempo trace links don't work from dashboard cells)",
+                    "targetBlank": true,
+                    "url": "/explore?schemaVersion=1&panes=%7B%22tr%22%3A%7B%22datasource%22%3A%22northwood-tempo%22%2C%22queries%22%3A%5B%7B%22filters%22%3A%5B%7B%22id%22%3A%22span-name%22%2C%22operator%22%3A%22%3D%7E%22%2C%22scope%22%3A%22intrinsic%22%2C%22tag%22%3A%22name%22%2C%22value%22%3A%22%28%3Fi%29.*post+%2Fapi%2Fsales-orders.*%22%2C%22valueType%22%3A%22string%22%7D%5D%2C%22limit%22%3A20%2C%22queryType%22%3A%22traceqlSearch%22%2C%22refId%22%3A%22A%22%2C%22tableType%22%3A%22traces%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22northwood-tempo%22%7D%2C%22query%22%3A%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-30m%22%2C%22to%22%3A%22now%22%7D%7D%7D&orgId=1"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
       "options": {}
     },
     {
