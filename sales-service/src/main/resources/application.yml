@@ -28,6 +28,13 @@ management:
         # §1D.1: prometheus joined the include set so Grafana can scrape this
         # service's metrics. `health, info, metrics` predate §1D.
         include: health, info, metrics, prometheus
+  # §1D.10: suppress the @Scheduled heartbeat spans — saga poll / outbox drain
+  # tick / SSE pump fire ~1×/s whether or not there's work and swamp Tempo. The
+  # real work spans (outbox.publish, saga.<state>) are created manually only when
+  # something happens, so disabling the scheduled-task observation loses nothing.
+  observations:
+    enable:
+      tasks.scheduled.execution: false
   # §1D.1: trace + log correlation. Sampling defaults to 1.0 (rich demo data);
   # override NORTHWOOD_TRACING_SAMPLING to 0.1 for prod-style runs. OTLP_ENDPOINT
   # points at Tempo (docker-compose service published to localhost:4317).

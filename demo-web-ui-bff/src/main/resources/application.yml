@@ -15,6 +15,12 @@ management:
     web:
       exposure:
         include: health, info, metrics, prometheus
+  # §1D.10: suppress the @Scheduled heartbeat spans — the SSE pump (and, in the
+  # services, saga poll / outbox drain tick) fires ~1×/s whether or not there's
+  # work and swamps Tempo. Disabling the scheduled-task observation loses nothing.
+  observations:
+    enable:
+      tasks.scheduled.execution: false
   tracing:
     sampling:
       probability: ${NORTHWOOD_TRACING_SAMPLING:1.0}

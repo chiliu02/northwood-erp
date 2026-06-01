@@ -36,6 +36,9 @@ management:
     web:
       exposure:
         include: health, info, metrics, prometheus   # prometheus added in §1D.1
+  observations:
+    enable:
+      tasks.scheduled.execution: false              # §1D.10: drop @Scheduled heartbeat spans (see Traces below)
   tracing:
     sampling:
       probability: ${NORTHWOOD_TRACING_SAMPLING:1.0}  # 1.0 = capture every trace (demo); 0.1 for prod-style
@@ -152,6 +155,21 @@ To see a saga **end to end** — its logical steps across all those bounded hops
 ```
 
 Each milestone links (↗) to the action/event that caused it. Anchoring on the durable `saga_id` (a saga-row column) rather than a long-lived root trace keeps this independent of Tempo's 24h block retention. The cross-saga key is the originating **sales-order id** (a dedicated span attribute — deliberately not the messaging `correlation_id`, and not the per-saga `saga_id`); it spans the SO saga and the make-side WO sub-saga. Mechanism + the SO→PO deferral: `docs/sagas.md` → *Saga observability — milestone overview*.
+
+#### Scheduled-heartbeat span suppression (§1D.10)
+
+The system runs several `@Scheduled` background loops — the saga workers' `poll()` (every 1s), `OutboxDrainScheduler.tick()` (1s), the Saga-Console SSE `pump()` in each saga service + the BFF aggregator (1s), and `SagaStateMetrics` (15s). Spring's scheduled-task observation wraps **every tick** in a span (`task <bean>.<method>`) whether or not the tick did any work, so Tempo fills with empty `…poll` / `…tick` / `…pump` traces that drown the real ones.
+
+These heartbeat spans carry no information: the actual work is already span-gated by app code — `OutboxDrainer.drain()` early-returns on an empty batch (no `outbox.publish` span) and saga advances only open a `saga.<state>` milestone span when something transitions. So we disable the scheduled-task observation wholesale, in every service + both BFFs:
+
+```yaml
+management:
+  observations:
+    enable:
+      tasks.scheduled.execution: false   # the Micrometer scheduled-task observation name
+```
+
+Nothing meaningful is lost. The manually-created `outbox.publish` / `saga.<state>` spans are unaffected; with no scheduled parent they simply become trace **roots** (the publish span already keeps its own bounded trace with a link back to the originating request, per §1D.6). You can't gate the heartbeat span on "is there an event" at the source — the observation starts *before* the method knows whether there's work — so suppressing the wrapper and relying on the work-conditional manual spans is the clean equivalent. To inspect them ad-hoc without re-enabling, query Tempo directly: `{ resource.service.name = "sales-service" && name =~ "task .*" }`.
 
 ### Logs (Loki)
 
