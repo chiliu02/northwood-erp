@@ -179,7 +179,7 @@
 
     <h2>What's gone</h2>
     <ul>
-      <li>ALB, NAT Gateway, ECS/Fargate, Service Connect, demo-web-ui-bff, Secrets Manager, CloudWatch — replaced by 3 EC2s running <code>docker-compose</code>, passwords/configs staged in the encrypted S3 bucket and pulled by <code>user-data</code>, logs to Loki. SSM-only shell (no SSH/bastion).</li>
+      <li>ALB, NAT Gateway, ECS/Fargate, Service Connect, Secrets Manager, CloudWatch — replaced by 3 EC2s running <code>docker-compose</code>, passwords/configs staged in the encrypted S3 bucket and pulled by <code>user-data</code>, logs to Loki. SSM-only shell (no SSH/bastion).</li>
       <li><b>Trade-offs:</b> no HTTPS and no HA (single instance per tier, HTTP on the public IP) — a stable address (Elastic IP / Route 53) is worth adding for the OIDC redirect URI.</li>
     </ul>
   </main>

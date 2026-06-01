@@ -41,13 +41,6 @@ variable "enable_observability" {
 
 # ---- secrets knobs ---------------------------------------------------------
 
-variable "demo_bypass_token" {
-  description = "Carried for the shared SecurityConfig bean; the demo BFF is gone so this is effectively unused (set \"\" to disable the bypass filter on the services)."
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
 variable "bff_client_secret" {
   description = "Keycloak northwood-bff client secret — must match db/keycloak/northwood-realm.json."
   type        = string

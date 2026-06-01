@@ -1,10 +1,10 @@
 # Northwood ERP — Demo Script
 
-Step-by-step for getting the full stack — Postgres, the seven Spring Boot services, the BFF, and the React Web UI — up and ready to demo, plus the per-demo runbook.
+Step-by-step for getting the full stack — Postgres, the seven Spring Boot services, the ERP BFF, and the operational ERP SPA — up and ready to demo, plus the per-demo runbook.
 
-The end-state: open `http://localhost:5173`, click **🎬 Scenarios → 7.1**, and watch all three sagas drive to completion across the saga console while saying "this is what we built" out loud.
+The end-state: open `http://localhost:5174`, sign in through Keycloak as a persona (e.g. **sarah** / **sarah**), place a sales order, and watch it drive to completion across the **Sales Order detail** page and the **Inventory / Finance / Reporting** screens while saying "this is what we built" out loud.
 
-Every event name, saga state, endpoint, and request body below is verified against the codebase as of 2026-05-15. Companion docs: `CLAUDE.md` (architecture invariants), `dev-todo.md` (implementation backlog).
+Every event name, saga state, endpoint, and request body below is verified against the codebase as of 2026-06-02. Companion docs: `CLAUDE.md` (architecture invariants), `dev-todo.md` (implementation backlog).
 
 ---
 
@@ -17,7 +17,7 @@ Every event name, saga state, endpoint, and request body below is verified again
 | Docker | recent | `docker --version` |
 | Node.js | 20+ | `node --version` (Node 25 confirmed; Node 18 likely fine) |
 | npm | 10+ | bundled with Node |
-| Free ports | 5432, 5173, 8080–8087 | nothing else listening |
+| Free ports | 5432, 5174, 8081–8087, 8089, 8090 | nothing else listening |
 
 **Windows**: PowerShell is the assumed shell. If `npm` fails with `running scripts is disabled on this system`, use `npm.cmd` instead (the Vite shell scripts inside `node_modules/.bin` are unaffected).
 
@@ -30,21 +30,22 @@ Every event name, saga state, endpoint, and request body below is verified again
 # The -f docker-compose.seed.yml override pre-loads the demo fixtures (products, customers,
 # BOMs, GL chart, …) this script relies on; the base file alone comes up with an empty schema.
 docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d
-mvn install -DskipTests                             # builds all 12 modules (incl. demo-web-ui-bff + erp-web-ui-bff)
-cd demo-web-ui ; npm.cmd install ; cd ..            # one-time SPA dep install
+mvn install -DskipTests                             # builds all 11 Maven modules (incl. erp-web-ui-bff)
 cd erp-web-ui ; npm.cmd install ; cd ..             # one-time install for the operational ERP SPA
 ```
 
+The repo is **11 Maven modules + the `erp-web-ui` SPA** (shared-kernel, shared, the seven services, and `erp-web-ui-bff`).
+
 Postgres runs its init scripts once, on the first boot of a fresh data volume. The base `docker-compose.yml` mounts only the **schema baseline** (`db/northwood_erp.sql` — per-service schemas, roles, grants, the saga CHECK constraint already extended for `invoice_partially_paid`); the `docker-compose.seed.yml` override additionally mounts the **demo fixtures** (`db/northwood_erp_seed.sql` — products, customers, suppliers, BOMs, GL chart, …). This walkthrough needs the fixtures (CUST-001, the SKUs, etc.), which is why the command above layers both files with `-f`. For an empty database you populate via events from zero, drop the override and run `docker compose up -d`. To start fresh later, repeat the seeded command after a wipe: `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d`.
 
-Keycloak loads the `northwood` realm from `db/keycloak/northwood-realm.json` on first boot — 13 roles + 13 demo users (one per role, `username == password`). Admin console at `http://localhost:8090/` (`admin` / `admin`).
+Keycloak loads the `northwood` realm from `db/keycloak/northwood-realm.json` on first boot — 13 roles + 13 demo users (one per role, `username == password`). Admin console at `http://localhost:8090/` (`admin` / `admin`). The ERP SPA authenticates real users via OIDC code flow against this realm — there is no shared-secret bypass.
 
 ### The 13 demo personas (§1 Security)
 
 | Username | Role | Persona |
 |---|---|---|
 | emma | catalog_manager | Product master CRUD, pricing, reorder policy |
-| sarah | sales_clerk | Place orders, view 360, view ATP |
+| sarah | sales_clerk | Place orders, view sales orders, view ATP |
 | sales-mgr | sales_manager + sales_clerk | All clerk + cancel orders |
 | mike | warehouse_clerk | Stock movements, goods receipts, shipments |
 | warehouse-mgr | warehouse_manager + warehouse_clerk | All clerk + force-release reservations |
@@ -57,7 +58,7 @@ Keycloak loads the `northwood` realm from `db/keycloak/northwood-realm.json` on 
 | auditor | auditor | Read-only on every endpoint |
 | sysadmin | sysadmin | Keycloak admin only; no business data |
 
-**Switching personas** in the ERP Web UI: there is no in-app persona dropdown — the user chip (top-right) is a static name + avatar with a separate **Sign out** icon (simplified in commit `c409d66`). To switch persona mid-demo, click **Sign out**, then sign in on Keycloak's login form as the desired persona (password == username). The 403-tooltip behaviour on action buttons reacts to the new role automatically once you land back in the SPA.
+**Switching personas** in the ERP Web UI: there is no in-app persona dropdown — the user chip (top-right) shows the signed-in name + role and carries a **Sign out** action. To switch persona mid-demo, sign out, then sign in on Keycloak's login form as the desired persona (password == username). The 403-tooltip behaviour on action buttons reacts to the new role automatically once you land back in the SPA.
 
 ### Why Kafka is required
 
@@ -69,7 +70,7 @@ Every demo below assumes services are launched with `SPRING_PROFILES_ACTIVE=kafk
 
 ## Bringing the stack up
 
-You need **nine terminals** for a full demo: seven services + the BFF + the SPA. IntelliJ run configurations (or `tmux split-windows`) help; the simplest path is nine PowerShell windows.
+You need **nine terminals** for a full demo: seven services + the ERP BFF + the SPA. IntelliJ run configurations (or `tmux split-windows`) help; the simplest path is nine PowerShell windows.
 
 **Set the Kafka profile in each service terminal before `mvn spring-boot:run`** — without it, services use the in-JVM bus and cross-service events go nowhere. The BFF and the SPA don't need a profile.
 
@@ -87,16 +88,14 @@ $env:SPRING_PROFILES_ACTIVE = "kafka"
 | 5 | purchasing-service    | `mvn -pl purchasing-service spring-boot:run`    | `kafka` | 8085 | `Started PurchasingApplication` |
 | 6 | finance-service       | `mvn -pl finance-service spring-boot:run`       | `kafka` | 8086 | `Started FinanceApplication` |
 | 7 | reporting-service     | `mvn -pl reporting-service spring-boot:run`     | `kafka` | 8087 | `Started ReportingApplication` |
-| 8 | **demo-web-ui-bff**   | `mvn -pl demo-web-ui-bff spring-boot:run`       | (none)  | 8080 | `Started BffApplication` |
-| 9 | demo-web-ui           | `cd demo-web-ui ; npm.cmd run dev`              | (none)  | 5173 | `Local: http://localhost:5173/` |
-| 10 | **erp-web-ui-bff**   | `mvn -pl erp-web-ui-bff spring-boot:run`        | (none)  | 8089 | `Started ErpBffApplication` |
-| 11 | erp-web-ui           | `cd erp-web-ui ; npm.cmd run dev`               | (none)  | 5174 | `Local: http://localhost:5174/` |
+| 8 | **erp-web-ui-bff**    | `mvn -pl erp-web-ui-bff spring-boot:run`        | (none)  | 8089 | `Started ErpBffApplication` |
+| 9 | erp-web-ui            | `cd erp-web-ui ; npm.cmd run dev`               | (none)  | 5174 | `Local: http://localhost:5174/` |
 
-The **BFF** sits in front of the seven services and gives the SPA a single origin. Without it the SPA can't reach any service through the simplified Vite proxy. Start it after at least one of the saga-owning services (sales / manufacturing / purchasing) is up — the aggregated saga endpoint will gracefully degrade to whichever services are reachable.
+The **ERP BFF** sits in front of the seven services and gives the SPA a single origin (the fetch chain is `5174 → 8089 → backend service → postgres`). It also runs the OIDC code flow against Keycloak and holds the access token in a server-side session — no token reaches the browser. Without the BFF every `/api/*` call fails with `ECONNREFUSED` in the Vite proxy log. Start it after at least one read-side service (reporting is the minimum for most list pages) is up — it gracefully degrades to whichever services are reachable.
 
 Each service takes ~10–15 s to boot. Bringing them all up takes ~2 minutes; you can start them in parallel. Kafka itself takes ~30 s after `docker compose up` to pass its healthcheck — wait for that before launching the services or the first publish will fail.
 
-**Smoke check**: visit `http://localhost:5173` — the **Dashboard** should show "Today · AUD" with all-zero KPIs. The bottom **Event drawer** is the Phase 1 stub (synthetic events every ~2 s).
+**Smoke check**: visit `http://localhost:5174` — you should be redirected to the Keycloak login form. Sign in as `sarah` / `sarah` and land on the **Home** dashboard. The **Sales Orders** list (`/sales-orders`) should render rows from reporting's projection if the seed override is loaded.
 
 If any service fails to boot, look at the terminal that failed. Most boot failures are Postgres-not-up, Kafka-not-up, or another instance already on the port.
 
@@ -116,39 +115,26 @@ If any service fails to boot, look at the terminal that failed. Most boot failur
 
 ---
 
-## Three ways to drive the demo
+## Two ways to drive the demo
 
-You can pick one or mix. The audience-facing experience is best with **A. Scenario Runner**; the deep-dive experience is best with **B. Manual UI**; the wire-level engineering deep-dive is **C. curl + Swagger**.
+You can pick one or mix. The audience-facing experience is best with **A. ERP UI walkthrough**; the wire-level engineering deep-dive is **B. curl + Swagger**.
 
-### A. Scenario runner (recommended for live audiences)
+### A. ERP UI walkthrough (recommended for live audiences)
 
-1. Open `http://localhost:5173/saga-console` (so the audience can see the three saga columns).
-2. Click **🎬 Scenarios** in the top bar.
-3. Pick a scenario:
-   - **3.1 — Sales fulfilment (happy path)** — small order, no shortage. ~3 minutes including human steps.
-   - **5.2 — Raw material shortage** — order exceeds raw materials, drives PR/PO/receipt. ~3 minutes.
-   - **7.1 — Big order touches every service** — full end-to-end. ~6 minutes.
-4. The runner modal opens; auto steps fire immediately, human steps pause with a hint about which page to open. Click **Run step** when the human action is complete; click **Skip** to bypass; **Abort** if something goes wrong.
-5. Captured context UUIDs (sales order id, PO id, etc.) appear in the collapsible panel at the bottom of the modal — copy them into the inline forms when prompted.
+Drive the demo step by step through the operational SPA, signed in as the appropriate persona. The module-grouped sidebar (Master Data / Sales / Purchasing / Inventory / Manufacturing / Finance / Reporting / System) mirrors how a real operator thinks — "I'm working in Sales" rather than "I am persona X". Suggested run-order for the happy path:
 
-While the scenario is running, navigate to other pages with the sidebar and the runner stays alive in the background; the **Scenarios** button in the top bar pulses to show it's active.
+1. **Emma** (catalog_manager) — **Master Data → Products** → open Wooden Dining Table → change the sales price / standard cost / reorder policy via the detail page actions.
+2. **Sarah** (sales_clerk) — **Sales → Sales Orders → New** → place 1 × FG-TABLE-001 for CUST-001 → submit → land on the **Sales Order detail** page (`/sales-orders/:id`). With 2 on hand the line reserves fully, so the sales saga goes straight to `ready_to_ship` — no work order is raised (a stock-covered order skips manufacturing entirely since §2.37).
+3. **Linda** (production_planner) — *(only fires when the order is short)* — to see a work order, place a quantity above on-hand so inventory raises a make-to-stock replenishment WO. Then **Manufacturing → Production Board** → open the released WO → **Complete operation** for each op (sequence 10, 20, 30…). Each completion advances the work-order (make-to-stock) saga; when the WO completes it bumps on-hand and the parked sales order re-reserves and reaches `ready_to_ship`.
+4. **Mike** (warehouse_clerk) — **Inventory → Shipments → New** → pick the ready-to-ship order → post the shipment.
+5. Watch finance auto-create a customer invoice (the sales saga jumps to `invoice_created`); the **Sales Order detail** roll-up shows the new invoice.
+6. **Olivia** (accountant) — **Finance → Payments → New** → Customer (AR) → pick the customer invoice → record full payment. Sales saga reaches `completed`.
 
-### B. Manual UI walkthrough (deep dive)
+The **Sales Order detail** page is the headline screen: it carries the cross-context fulfilment roll-up (reservation / shipment / invoice / payment status pulled from reporting's `sales_order_360_view` projection), updating after each event. Open it on a side screen and refresh as the saga advances.
 
-Drive the demo step by step using the persona-grouped sidebar. Suggested run-order:
+### B. curl + Swagger (engineering deep dive)
 
-1. **Emma** — `/products` → click ✏ on Wooden Dining Table → change the price → confirm `product.SalesPriceChanged` (and/or `product.StandardCostChanged`) lands in the saga / event log.
-2. **Sarah** — `/sales-orders/new` → place 1 × FG-TABLE-001 → submit → land on the **Saga Console**. With 2 on hand the line reserves fully, so the sales saga goes straight to `ready_to_ship` — no work order is raised (a stock-covered order skips manufacturing entirely since §2.37).
-3. **Linda** — *(only fires when the order is short)* — to see a work order, place a quantity above on-hand so inventory raises a make-to-stock replenishment WO. Then `/production-board` → click the released WO → **Complete operation** for each op (sequence 10, 20, 30…). Each completion advances the work-order (make-to-stock) saga; when the WO completes it bumps on-hand and the parked sales order re-reserves and reaches `ready_to_ship`.
-4. **Mike** — `/shipments` → paste the SO id from the saga's `domainKey` → post the shipment.
-5. Watch finance auto-create a customer invoice (the sales saga jumps to `invoice_created`).
-6. **Olivia** — `/payments` → Customer (AR) tab → paste the customer-invoice id → Record. Sales saga reaches `completed`.
-
-For 5.2 / 7.1 manually, place a 10-quantity order to force the shortage and follow §Demo 7 from step 4 onward.
-
-### C. curl + Swagger (engineering deep dive)
-
-The `curl` bodies in §Demo 1–7 below are the canonical wire-level walkthroughs. Useful when you need to show the actual JSON, tail Postgres in parallel, or hit endpoints the UI doesn't surface (e.g. `POST /api/journal-entries/{id}/reverse`).
+The `curl` bodies in §Demo 1–7 below are the canonical wire-level walkthroughs. Useful when you need to show the actual JSON, tail Postgres in parallel, or hit endpoints the UI doesn't surface (e.g. `POST /api/journal-entries/{id}/reverse`). Note the SPA's `/api/*` calls go through the BFF on 8089 (which attaches the session's bearer token); the raw service ports below are unauthenticated only if the resource server is run without security — for the UI path the BFF supplies the JWT.
 
 Each service exposes Swagger UI at `http://localhost:808X/swagger-ui/index.html`.
 
@@ -156,16 +142,17 @@ Each service exposes Swagger UI at `http://localhost:808X/swagger-ui/index.html`
 
 ## What to point at while the audience watches
 
-| Page | URL | What's interesting |
+| Page | Sidebar path / URL | What's interesting |
 |---|---|---|
-| **Saga Console** | `/saga-console` | Three live columns, current state pulses, rows flash on `version` change. The **headline view**. |
-| **Sales Order 360** | `/sales-orders` (then click a row) | Six-stage timeline filling in left-to-right as events arrive. |
-| **PO tracking** | `/purchase-orders` | Money-flow bars (ordered / received / invoiced / paid) accumulate. |
-| **Production Board** | `/production-board` | Per-WO progress bars; shortage callouts. |
-| **ATP** | `/atp` | On-hand minus reservations + incoming. |
-| **Material Shortages** | `/material-shortages` | 4-stage walk: open → purchase_requested → purchase_ordered → resolved. |
-| **Financial Dashboard** | `/` | KPIs accumulate: revenue, COGS, gross %, open SO/PO/WO counts. |
-| **Event drawer** | bottom of every page | Phase 1 stub today (synthetic events) — real `/events` aggregator is in `dev-todo.md`. |
+| **Sales Order detail** | Sales → Sales Orders → (row) · `/sales-orders/:id` | Cross-context fulfilment roll-up filling in as events arrive — the **headline view**. |
+| **Sales Orders list** | Sales → Sales Orders · `/sales-orders` | Live status column per order. |
+| **PO Tracking** | Reporting → PO Tracking · `/purchase-orders/tracking` | Money-flow bars (ordered / received / invoiced / paid) accumulate. |
+| **Production Board** | Manufacturing → Production Board · `/production-board` | Per-WO progress; shortage callouts. |
+| **Available-to-Promise** | Reporting → Available-to-Promise · `/atp` | On-hand minus reservations + incoming. |
+| **Material Shortage** | Reporting → Material Shortage · `/material-shortages` | 4-stage walk: open → purchase_requested → purchase_ordered → resolved. |
+| **Financial Dashboard** | Reporting → Financial Dashboard · `/financial-dashboard` | KPIs accumulate: revenue, COGS, gross %, open SO/PO/WO counts. |
+| **Journal Entries** | Finance → Journal Entries · `/journal-entries` | Balanced debit/credit pairs landing per action; reverse from here. |
+| **Audit Log** | System → Audit Log · `/system/audit-log` | Cross-service, actor-stamped timeline. |
 
 ### Watching the database directly (for the wire-level deep dive)
 
@@ -185,13 +172,17 @@ SELECT purchase_order_header_id, saga_state, current_step
   FROM purchasing.purchase_to_pay_saga ORDER BY updated_at DESC;
 ```
 
+```bash
+docker exec -it northwood-postgres psql -U postgres -d northwood_erp
+```
+
 ---
 
 ## Demo 1 — CQRS: product master as the upstream Open Host
 
 The product service owns SKUs and pricing. Reorder policy is owned upstream too (Material Master / Shape A): inventory's `reorder_point` / `reorder_quantity` are projected from `product.ReorderPolicyChanged`.
 
-**UI alternative for Demo 1:** all four mutating commands have inline modals on `/products` (click ✏ on a row).
+**UI alternative for Demo 1 (as Emma):** all four mutating commands have inline actions on the **Master Data → Products** detail page.
 
 ### 1.1 — Register a new product
 
@@ -203,7 +194,7 @@ curl -X POST http://localhost:8081/api/products \
        "salesPrice":120,"standardCost":45,"currencyCode":"AUD"}'
 ```
 
-**Outbox:** `product.ProductCreated`. **Today's projections (§1F.2 / §1F.6a / §1F.6b, 2026-05-14 → 2026-05-15):** five services each seed a stub row from the event — `inventory.product_card` (§2.38 — descriptive columns + reorder + type-derived make-vs-buy default), `sales.product_card` (NULL price + currency until `SalesPriceChanged`), `manufacturing.product_card` (type-derived make-vs-buy default), `finance.product_card` (NULL `standard_cost` + `valuation_class` until the respective change event), `reporting.available_to_promise_view`. Purchasing has no product read model of its own.
+**Outbox:** `product.ProductCreated`. **Today's projections (§1F.2 / §1F.6a / §1F.6b):** five services each seed a stub row from the event — `inventory.product_card` (§2.38 — descriptive columns + reorder + type-derived make-vs-buy default), `sales.product_card` (NULL price + currency until `SalesPriceChanged`), `manufacturing.product_card` (type-derived make-vs-buy default), `finance.product_card` (NULL `standard_cost` + `valuation_class` until the respective change event), `reporting.available_to_promise_view`. Purchasing has no product read model of its own.
 
 ### 1.2 — Change pricing
 
@@ -235,7 +226,7 @@ curl -X PUT http://localhost:8081/api/products/{id}/reorder-policy \
 curl -X POST http://localhost:8081/api/products/{id}/discontinue
 ```
 
-**Outbox:** `product.ProductDiscontinued`. **Today's behaviour (§1F.1, 2026-05-14):** six services consume the event. Sales `placeOrder` rejects new lines for the SKU with `ProductDiscontinuedException`. Manufacturing flips its `product_card` make-vs-buy flags off and retires the active BOM. Purchasing's PR entry-point rejects requisitions for the SKU. Inventory + finance + reporting/atp stamp their own `discontinued_at`. Existing draft sales orders are **not** retroactively flagged; "reorder rules stop generating purchase suggestions" remains future-tense (no auto-reorder job exists today for the flag to suppress).
+**Outbox:** `product.ProductDiscontinued`. **Today's behaviour (§1F.1):** six services consume the event. Sales `placeOrder` rejects new lines for the SKU with `ProductDiscontinuedException`. Manufacturing flips its `product_card` make-vs-buy flags off and retires the active BOM. Purchasing's PR entry-point rejects requisitions for the SKU. Inventory + finance + reporting/atp stamp their own `discontinued_at`. Existing draft sales orders are **not** retroactively flagged; "reorder rules stop generating purchase suggestions" remains future-tense (no auto-reorder job exists today for the flag to suppress).
 
 ### 1.5 — Make-vs-buy classification
 
@@ -251,18 +242,20 @@ curl -X PUT http://localhost:8081/api/products/{id}/make-vs-buy \
 
 ## Demo 2 — CQRS: cross-context read models in reporting
 
-Reporting is inbox-only — no command APIs, no outbox. Six projections are wired today.
+Reporting is inbox-only — no command APIs, no outbox. Six projections are wired today, surfaced through the **Reporting** module plus the **Sales Order detail** roll-up.
 
-| Read model | Endpoint | UI page | Driven by |
+| Read model | Endpoint | UI surface | Driven by |
 |---|---|---|---|
-| `sales_order_360_view` | `GET /api/sales-orders/{id}/360` | `/sales-orders` | sales + manufacturing + inventory + finance events |
-| `purchase_order_tracking_view` | `GET /api/purchase-orders/{id}/tracking` | `/purchase-orders` | purchasing + inventory + finance events |
-| `production_planning_board` | `GET /api/work-orders/{id}/board` | `/production-board` | manufacturing + inventory events |
-| `material_shortage_view` | `GET /api/material-shortages` (list) `/{productId}` | `/material-shortages` | manufacturing + purchasing + inventory events |
-| `available_to_promise_view` | `GET /api/atp` (list) `/{productId}` | `/atp` | inventory + manufacturing + purchasing events |
-| `financial_dashboard_daily` | `GET /api/financial-dashboard` (list, AUD default) `/{date}` | `/` (Dashboard) | finance + sales + purchasing + manufacturing events |
+| `sales_order_360_view` | `GET /api/sales-orders/{id}/360` | Sales Order detail (`/sales-orders/:id`) | sales + manufacturing + inventory + finance events |
+| `purchase_order_tracking_view` | `GET /api/purchase-orders/{id}/tracking` | Reporting → PO Tracking (`/purchase-orders/tracking`) | purchasing + inventory + finance events |
+| `production_planning_board` | `GET /api/work-orders/{id}/board` | Manufacturing → Production Board (`/production-board`) | manufacturing + inventory events |
+| `material_shortage_view` | `GET /api/material-shortages` (list) `/{productId}` | Reporting → Material Shortage (`/material-shortages`) | manufacturing + purchasing + inventory events |
+| `available_to_promise_view` | `GET /api/atp` (list) `/{productId}` | Reporting → Available-to-Promise (`/atp`) | inventory + manufacturing + purchasing events |
+| `financial_dashboard_daily` | `GET /api/financial-dashboard` (list, AUD default) `/{date}` | Reporting → Financial Dashboard (`/financial-dashboard`) | finance + sales + purchasing + manufacturing events |
 
-The financial dashboard's `inventory_value`, `accounts_receivable`, and `accounts_payable` are populated via `GET /api/financial-dashboard/snapshot` (shipped 2026-05-12; reporting projects `product_card` from `StandardCostChanged` and JOINs ATP × cost; AR/AP are SUM-windows over the SO360 + PO tracking projections). Only `wip_value` is still 0 — gated on a costing decision (LIFO / FIFO / weighted-avg) for `wip_balance.average_cost`.
+The financial dashboard's `inventory_value`, `accounts_receivable`, and `accounts_payable` are populated via `GET /api/financial-dashboard/snapshot` (reporting projects `product_card` from `StandardCostChanged` and JOINs ATP × cost; AR/AP are SUM-windows over the SO360 + PO tracking projections). Only `wip_value` is still 0 — gated on a costing decision (LIFO / FIFO / weighted-avg) for `wip_balance.average_cost`.
+
+> The Sales Order detail page reads the `sales_order_360_view` projection (the standalone "360 View" page was removed; the per-order roll-up now lives on the order's own detail screen).
 
 ---
 
@@ -270,9 +263,11 @@ The financial dashboard's `inventory_value`, `accounts_receivable`, and `account
 
 **Important framing (since §2.37):** a sales order ships straight from stock whenever the line is fully reservable. Manufacturing is involved only when a line is **short** — and even then it's indirect: inventory raises a make-to-stock replenishment and the sales order parks until on-hand is topped up. The happy path below has enough stock on hand, so it never touches manufacturing.
 
-### 3.1 — Place an order; watch all three sagas drive it
+### 3.1 — Place an order; watch the saga drive it
 
 Pre-state: 2 × FG-TABLE-001 on hand, 20 × RM-LEG-001 on hand (need 4 per table = 4 ok).
+
+UI path (as Sarah): **Sales → Sales Orders → New**, pick CUST-001, add 1 × FG-TABLE-001, submit. Equivalent curl:
 
 ```bash
 curl -X POST http://localhost:8082/api/sales-orders \
@@ -301,10 +296,10 @@ curl -X POST http://localhost:8082/api/sales-orders \
 
 Partial customer payment lands on `invoice_partially_paid` instead, parking until the next allocation. (The §2.37 flip removed the old `manufacturing_requested` / `manufacturing_in_progress` / `manufacturing_completed` / `purchasing_requested` states — sales no longer drives manufacturing; inventory owns make-vs-buy and the sales order simply parks at `stock_reservation_incomplete` until replenished.)
 
-**To drive the saga to completion (UI: Scenario 3.1 does all of this):**
+**To drive the saga to completion:**
 
 1. Wait for the sales saga to reach `ready_to_ship` (auto, single tick — the line is stock-covered, so it reserves fully and never touches manufacturing). For the shortage variant, see Demo 5 / Demo 7.
-2. Post a shipment (UI: `/shipments`):
+2. Post a shipment. UI (as Mike): **Inventory → Shipments → New**, pick the ready order, confirm. Equivalent curl:
    ```bash
    curl -X POST http://localhost:8083/api/shipments \
      -H 'content-type: application/json' \
@@ -318,7 +313,7 @@ Partial customer payment lands on `invoice_partially_paid` instead, parking unti
                     "shippedQuantity":1,
                     "unitCost":150}]}'
    ```
-3. Customer invoice is auto-created from the shipment event. Pay it (UI: `/payments` → Customer tab):
+3. Customer invoice is auto-created from the shipment event. Pay it. UI (as Olivia): **Finance → Payments → New → Customer**, pick the invoice, record. Equivalent curl:
    ```bash
    curl -X POST http://localhost:8086/api/payments/customer \
      -H 'content-type: application/json' \
@@ -330,7 +325,7 @@ Partial customer payment lands on `invoice_partially_paid` instead, parking unti
 
 `paymentMethod` must be one of `bank_transfer | cash | card | cheque` — the API rejects anything else.
 
-**What the audience sees:** the sales saga row progresses through the saga console (the stock-covered happy path runs only the sales saga — no work-order or purchase-to-pay row appears); the Sales Order 360 view at `/sales-orders/{id}` updates after every event.
+**What the audience sees:** the **Sales Order detail** roll-up (`/sales-orders/:id`) progresses through reservation → shipment → invoice → payment after every event; the stock-covered happy path runs only the sales saga — no work order or PO appears.
 
 ### 3.2 — Prepayment / cash-with-order (the second AR pattern) ✅ §2.31
 
@@ -352,9 +347,9 @@ curl -X POST http://localhost:8082/api/sales-orders \
                  "unitPrice":320}]}'
 ```
 
-The order lands in the SO-360 view with an **"awaiting prepayment"** lozenge — saga is `awaiting_prepayment_invoice`. Within a tick finance creates a prepayment invoice (`invoice_type='prepayment'`) — **no GL post at creation** (Treatment A). Try posting a shipment now and the inventory service rejects with **HTTP 409 `UNPAID_PREPAYMENT_ORDER`** — the gate reads `inventory.sales_order_line_facts.prepayment_settled` (which is `false`), not sales' saga.
+The order lands on the Sales Order detail page with an **"awaiting prepayment"** lozenge — saga is `awaiting_prepayment_invoice`. Within a tick finance creates a prepayment invoice (`invoice_type='prepayment'`) — **no GL post at creation** (Treatment A). Try posting a shipment now and the inventory service rejects with **HTTP 409 `UNPAID_PREPAYMENT_ORDER`** — the gate reads `inventory.sales_order_line_facts.prepayment_settled` (which is `false`), not sales' saga.
 
-Pay the prepayment invoice (UI: `/payments` → Customer tab, or curl below). The customer payment must come from the same customer; full amount required for the saga to leave `invoice_created`:
+Pay the prepayment invoice (UI: **Finance → Payments → New → Customer**, or curl below). The customer payment must come from the same customer; full amount required for the saga to leave `invoice_created`:
 
 ```bash
 curl -X POST http://localhost:8086/api/payments/customer \
@@ -390,7 +385,7 @@ The saga walks `ready_to_ship → goods_shipped → completed` in one transactio
 
 What differs is the **path** through the chart of accounts — AR for credit terms, Customer Deposits for prepayment — and the **timing** of revenue recognition (at invoice creation vs at shipment). The audience point: the saga absorbs the two patterns without the rest of the system (inventory, manufacturing, reporting) caring which path was taken.
 
-**What the audience sees:** SO-360 lozenge transitions from "awaiting prepayment" → (paid; lozenge clears) → fulfilment progresses → completed. The saga console shows the new states (`awaiting_prepayment_invoice`, `prepaid`) light up. The journal-entries view shows the deposit→revenue reclassification at shipment with a single click into the journal lines.
+**What the audience sees:** the Sales Order detail lozenge transitions from "awaiting prepayment" → (paid; lozenge clears) → fulfilment progresses → completed. **Finance → Journal Entries** shows the deposit→revenue reclassification at shipment with a single click into the journal lines.
 
 **Try the 409 gate:**
 ```bash
@@ -408,7 +403,7 @@ curl -i -X POST http://localhost:8083/api/shipments \
 
 Place an order **as Sarah (sales_clerk)** for a short quantity so it parks at `stock_reservation_incomplete` (e.g. follow Demo 3 partway: place order → wait for `stock_reservation_incomplete` while inventory's make-to-stock replenishment is still in flight). Cancel works from any pre-shipment state.
 
-**Security demo moment.** With Sarah still logged in, hover over the **Cancel order** button on the sales-order detail page — it's disabled with a tooltip "Requires role: sales_manager". Sarah doesn't have authority to cancel; only sales-mgr does. Click **Sign out** (top-right), then sign back in as **sales-mgr**. Now the Cancel button is enabled. Click it, supply a reason, confirm. Behind the scenes Spring Security's `@PreAuthorize("hasRole('sales_manager')")` accepts the call.
+**Security demo moment.** With Sarah still signed in, open the Sales Order detail page and hover the **Cancel order** action — it's disabled with a tooltip "Requires role: sales_manager". Sarah doesn't have authority to cancel; only sales-mgr does. Sign out (top-right), then sign back in as **sales-mgr**. Now the Cancel action is enabled. Click it, supply a reason, confirm. Behind the scenes Spring Security's `@PreAuthorize("hasRole('sales_manager')")` accepts the call.
 
 ```bash
 # Equivalent curl (with Bearer token from sales-mgr's session):
@@ -427,7 +422,7 @@ Returns 200 with the order body now showing `status='cancelled'` and `cancelledA
 3. **Sales** consumes that ack. While in `compensating`, the saga advances `compensating → compensated` and emits `sales.SalesOrderCompensated`. (**§2.40:** inventory is the sole compensation ack — post-§2.37 no work order is bound to a sales order, so the manufacturing sales-cancel leg, `WorkOrder.cancel`, and `manufacturing.WorkOrderCancelled` were deleted.)
 4. **Reporting** consumes `sales.SalesOrderCompensated` and flips `sales_order_360_view.order_status` to `'cancelled'`.
 
-Watch the Saga Console UI walk `stock_reservation_incomplete → compensating → compensated`. The 360 view (`/sales-orders/{id}/360`) shows `order_status='cancelled'` afterwards.
+Watch the Sales Order detail roll-up walk `stock_reservation_incomplete → compensating → compensated`; afterwards it shows `order_status='cancelled'`.
 
 After `goods_shipped` the cancel is rejected with HTTP 409 — that path requires the credit-note / return-goods flow (out of scope, dev-todo §4.2). Hard-cancel by design: WIP from in-progress operations is written off rather than letting production finish (soft-cancel parked in dev-todo §3.7).
 
@@ -441,7 +436,7 @@ Cancel it (as sales-mgr, before shipment). On top of the §4.1 sales↔inventory
 
 - **Dr 2110 Customer Deposits / Cr 1000 Bank** for the paid amount (the exact inverse of the original receipt), and stamps `customer_invoice_header.refunded_at` (idempotent — a redelivered cancel can't refund twice).
 
-**What the audience sees:** the sales-order detail (demo-web-ui) shows a green **"refunded"** lozenge once the order is cancelled, with a Refund section linking to the journal. Open **Journal entries → "Customer refunds"** (`/journal-entries`) to see the `customer_refund` posting; 2110 Customer Deposits nets to **zero** across the deposit receipt + the refund. On-shipment and COD orders have nothing in 2110 before shipment, so cancelling them refunds nothing (finance no-ops).
+**What the audience sees:** the Sales Order detail page shows a green **"refunded"** lozenge once the order is cancelled, with a Refund section linking to the journal. Open **Finance → Journal Entries** and find the `customer_refund` posting; 2110 Customer Deposits nets to **zero** across the deposit receipt + the refund. On-shipment and COD orders have nothing in 2110 before shipment, so cancelling them refunds nothing (finance no-ops).
 
 ### 4.2 — Reservation comes back partial or failed
 
@@ -449,7 +444,7 @@ Pre-state: 0 × FG-TABLE-001 on hand. Place an order for 2 of them.
 
 The `StockReservedHandler` stashes the short line-ids on saga.data and **advances to `stock_reservation_incomplete`** (parked). Inventory — in the same transaction as the partial reservation — raises a `ReplenishmentRequest(reason=sales_order_shortage)` and, because FG-TABLE-001 is makeable, routes it to manufacturing as a make-to-stock WO. When that WO completes it bumps FG on-hand and emits `inventory.ReplenishmentFulfilled`; the parked sales order retries its reservation and reaches `ready_to_ship`. End-state is the same as 3.1, just longer.
 
-If the SKU has **no active BOM**, manufacturing emits `manufacturing.ReplenishmentUndispatchable`; inventory cancels the request and emits `inventory.ReplenishmentCancelled`, which flips the sales saga and the order header to `rejected`. (A purchased-only SKU with no vendor takes the same shape via `purchasing.ReplenishmentUndispatchable`.) To force the no-BOM branch in a demo, deactivate the BOM via `POST /api/boms/{id}/activate` with a different BOM, or use a finished-good seeded without a BOM.
+If the SKU has **no active BOM**, manufacturing emits `manufacturing.ReplenishmentUndispatchable`; inventory cancels the request and emits `inventory.ReplenishmentCancelled`, which flips the sales saga and the order header to `rejected`. (A purchased-only SKU with no vendor takes the same shape via `purchasing.ReplenishmentUndispatchable`.) To force the no-BOM branch in a demo, deactivate the BOM via the **Manufacturing → BOMs** page (or `POST /api/boms/{id}/activate` with a different BOM), or use a finished-good seeded without a BOM.
 
 ---
 
@@ -466,7 +461,7 @@ The make-to-stock state machine:
 | `work_order_created` | saga is entered here (WO created, BOM + routing snapshotted); worker emits `manufacturing.RawMaterialReservationRequested` |
 | `raw_material_reservation_requested` | inbound `inventory.RawMaterialsReserved` |
 | `raw_materials_reserved` | worker releases production |
-| (worker drives ops to completion) | `POST /api/work-orders/{id}/operations/{seq}/complete` per op |
+| (worker drives ops to completion) | `POST /api/work-orders/{id}/operations/{seq}/complete` per op (UI: Production Board → **Complete operation**) |
 | `completed` | terminal — set in the same txn as the last operation lands |
 
 Sub-assembly recursion: if a BOM line is `sub_assembly`, the release service recurses, creating a child WO with `parent_work_order_id` set, and pre-attaches a child saga at `work_order_created`. Parent holds at `in_progress` until all children finish; the operation service cascades up the parent chain in the same transaction.
@@ -481,11 +476,11 @@ Pre-state: only 2 × RM-LEG-001 on hand; ordered quantity needs 4.
 
 ## Demo 6 — Saga: purchase-to-pay
 
-`purchasing.purchase_to_pay_saga` row is inserted at `started` in the same txn as the PO is created. **PO draft/approve flow (since 2026-05-06)**: manual PRs land their PO at `'draft'` and require a human to call `POST /api/purchase-orders/{id}/approve`; replenishment-driven PRs (Demo 5.2 — `source_type='stock_replenishment'`) auto-approve when `northwood.purchasing.shortagePoAutoApprove=true` (default), so the make-to-stock saga still flows automatically. Saga walks `started → purchase_order_approved → waiting_for_goods`. `three_way_match_*` saga states stay reserved for future variance-handling workflows.
+`purchasing.purchase_to_pay_saga` row is inserted at `started` in the same txn as the PO is created. **PO draft/approve flow:** manual PRs land their PO at `'draft'` and require a human to call `POST /api/purchase-orders/{id}/approve`; replenishment-driven PRs (Demo 5.2 — `source_type='stock_replenishment'`) auto-approve when `northwood.purchasing.shortagePoAutoApprove=true` (default), so the make-to-stock saga still flows automatically. Saga walks `started → purchase_order_approved → waiting_for_goods`. `three_way_match_*` saga states stay reserved for future variance-handling workflows.
 
 ### 6.1 — Manual requisition → approve → goods receipt → invoice → payment
 
-1. Tom raises a requisition manually (UI not yet wired for PR creation; `/purchase-orders` is read-only):
+1. Tom raises a requisition. UI (as Tom): **Purchasing → Purchase Requisitions** (New). Equivalent curl:
    ```bash
    curl -X POST http://localhost:8085/api/purchase-requisitions \
      -H 'content-type: application/json' \
@@ -499,7 +494,7 @@ Pre-state: only 2 × RM-LEG-001 on hand; ordered quantity needs 4.
    ```
    The PR auto-converts to a **draft** PO inside the same txn. PO header status is `'draft'`. Saga state: `started` (parked, waiting for human approval).
 
-2. Tom approves the PO (the response from step 1 carries the PO id; or list draft POs with `GET /api/purchase-orders/{id}` after capturing the id from logs):
+2. Tom approves the PO. UI: **Purchasing → Purchase Orders** → open the draft PO → **Approve**. Equivalent curl:
    ```bash
    curl -X POST http://localhost:8085/api/purchase-orders/{poId}/approve \
      -H 'content-type: application/json' \
@@ -507,7 +502,7 @@ Pre-state: only 2 × RM-LEG-001 on hand; ordered quantity needs 4.
    ```
    PO flips to `'sent'`, emits `purchasing.PurchaseOrderApproved`. Saga: `started → purchase_order_approved` (inline, in the approve txn). Next worker tick: `purchase_order_approved → waiting_for_goods`.
 
-3. Tom posts a goods receipt (UI: `/goods-receipts`):
+3. Tom posts a goods receipt. UI: **Inventory → Goods Receipts → New** (pick the PO line from the picker). Equivalent curl:
    ```bash
    curl -X POST http://localhost:8083/api/goods-receipts \
      -H 'content-type: application/json' \
@@ -523,7 +518,7 @@ Pre-state: only 2 × RM-LEG-001 on hand; ordered quantity needs 4.
    ```
    Saga state: `waiting_for_goods` → `goods_received` (driven by `inventory.GoodsReceived` inbox).
 
-4. Olivia records the supplier invoice (UI: `/supplier-invoices`):
+4. Olivia records the supplier invoice. UI (as Olivia): **Finance → Supplier Invoices → New**. Equivalent curl:
    ```bash
    curl -X POST http://localhost:8086/api/supplier-invoices \
      -H 'content-type: application/json' \
@@ -540,11 +535,11 @@ Pre-state: only 2 × RM-LEG-001 on hand; ordered quantity needs 4.
                     "quantity":40,
                     "unitPrice":25}]}'
    ```
-   Finance runs **quantity + price-variance 3-way match** (since 2026-05-06). Per-line invoice unit price is compared against the PO line's snapshotted unit_price; relative variance > `northwood.finance.match.priceTolerancePercent` (default 2.0%) parks the invoice at `three_way_match_failed`. On match, emits `finance.SupplierInvoiceApproved`. Purchasing saga: `goods_received` → `supplier_invoice_approved`.
+   Finance runs **quantity + price-variance 3-way match**. Per-line invoice unit price is compared against the PO line's snapshotted unit_price; relative variance > `northwood.finance.match.priceTolerancePercent` (default 2.0%) parks the invoice at `three_way_match_failed`. On match, emits `finance.SupplierInvoiceApproved`. Purchasing saga: `goods_received` → `supplier_invoice_approved`.
 
-   To force a price-variance failure for the demo, post the same invoice with `unitPrice: 30` against a PO line whose unit_price is 25 — the invoice lands in `three_way_match_failed`. List the queue at `GET /api/supplier-invoices/pending-review`; resolve via `POST /api/supplier-invoices/{id}/manual-approve` (with `{reviewer, reason}`) or `POST /{id}/reject`.
+   To force a price-variance failure for the demo, post the same invoice with `unitPrice: 30` against a PO line whose unit_price is 25 — the invoice lands in `three_way_match_failed`. Review the queue at **Finance → Pending Review** (`/supplier-invoices/pending-review`); resolve via `POST /api/supplier-invoices/{id}/manual-approve` (with `{reviewer, reason}`) or `POST /{id}/reject`.
 
-5. Olivia pays (UI: `/payments` → Supplier tab):
+5. Olivia pays. UI: **Finance → Payments → New → Supplier**. Equivalent curl:
    ```bash
    curl -X POST http://localhost:8086/api/payments \
      -H 'content-type: application/json' \
@@ -560,17 +555,19 @@ Pre-state: only 2 × RM-LEG-001 on hand; ordered quantity needs 4.
    curl -X POST http://localhost:8086/api/payments/multi -H 'content-type: application/json' -d '...'
    ```
 
-GL postings (six pairs) fire alongside each step — see Demo 7's GL section.
+GL postings (six pairs) fire alongside each step — see Demo 7's GL section. Track the money flow on **Reporting → PO Tracking** (`/purchase-orders/tracking`).
 
 ---
 
 ## Demo 7 — End-to-end with all three sagas + GL posting
 
-The showcase. One sales order touches every service. **UI: Scenario 7.1 runs the auto-driven parts and prompts at each human step.**
+The showcase. One sales order touches every service.
 
 ### 7.1 — Big order with raw-material shortage
 
 Pre-state: 0 × FG-TABLE-001 on hand; 5 × RM-LEG-001 on hand; need 40 (4 × 10 tables); plenty of every other RM; one customer (Sydney Home Living); one supplier.
+
+UI path (as Sarah): **Sales → Sales Orders → New**, CUST-001, 10 × FG-TABLE-001, submit. Equivalent curl:
 
 ```bash
 curl -X POST http://localhost:8082/api/sales-orders \
@@ -590,29 +587,28 @@ curl -X POST http://localhost:8082/api/sales-orders \
 1. Sales fulfilment saga: `started` → `stock_reservation_requested` → `stock_reservation_incomplete` (the FG-TABLE line can't be reserved — 0 on hand). The saga parks here.
 2. Inventory raises a `ReplenishmentRequest(reason=sales_order_shortage)` for the FG and, because it's makeable, routes it to manufacturing as a make-to-stock WO. The make-to-stock saga is entered at `work_order_created`; releasing it hits the RM-LEG-001 shortage (short by 35) and advances to `raw_material_shortage`.
 3. `manufacturing.RawMaterialShortageDetected` fires → **inventory** raises a second `ReplenishmentRequest(reason=work_order_shortage)`, routes it to purchasing → PR + PO → P2P saga starts at `started` → `waiting_for_goods`.
-4. **Time-skip:** Tom posts a goods receipt for 35 × RM-LEG-001 (Demo 6 step 2 with `receivedQuantity:35`).
+4. **Time-skip:** Tom posts a goods receipt for 35 × RM-LEG-001 (Demo 6 step 3 with `receivedQuantity:35`).
 5. Inventory bumps `stock_balance.on_hand_quantity`. P2P saga: `waiting_for_goods` → `goods_received`.
 6. Manufacturing's `GoodsReceivedHandler` un-parks the make-to-stock saga: → `work_order_created` → re-emits reservation → `raw_materials_reserved`.
-7. Operation completion: the FG work order(s) complete. Each top-level completion bumps FG `stock_balance.on_hand_quantity` and fulfils the FG replenishment (`inventory.ReplenishmentFulfilled`).
+7. Operation completion (Linda, on the Production Board): the FG work order(s) complete. Each top-level completion bumps FG `stock_balance.on_hand_quantity` and fulfils the FG replenishment (`inventory.ReplenishmentFulfilled`).
 8. Once the FG replenishment is fulfilled, the parked sales saga retries: `stock_reservation_incomplete` → `stock_reservation_requested` → (now coverable) `ready_to_ship`.
-9. Post a shipment for 10 units. Sales: `ready_to_ship` → `goods_shipped`. Inventory decrements on-hand and releases the reservation.
+9. Post a shipment for 10 units (Mike). Sales: `ready_to_ship` → `goods_shipped`. Inventory decrements on-hand and releases the reservation.
 10. `sales.SalesOrderShipped` triggers finance to auto-create a customer invoice. Sales: `goods_shipped` → `invoice_created`.
-11. Olivia records the supplier invoice and pays it (Demo 6 steps 3 & 4). P2P saga: → `supplier_invoice_approved` → `completed`.
+11. Olivia records the supplier invoice and pays it (Demo 6 steps 4 & 5). P2P saga: → `supplier_invoice_approved` → `completed`.
 12. Olivia receives the customer's payment for the customer invoice (Demo 3 final step). Sales saga: `invoice_created` → `completed`.
 
 ### What the audience sees on screens
 
-- **Saga Console** (`/saga-console`): three columns drive in lock-step.
-- **Sales Order 360 view** (`/sales-orders/{id}`): every status column updates in real time.
-- **Purchase Order tracking** (`/purchase-orders/{id}`): received/invoiced/paid amounts accumulate.
-- **Production Planning Board** (`/production-board`): each WO walks `released → in_progress → completed`.
+- **Sales Order detail** (`/sales-orders/:id`): every status column on the fulfilment roll-up updates in real time.
+- **PO Tracking** (`/purchase-orders/tracking`): received/invoiced/paid amounts accumulate.
+- **Production Board** (`/production-board`): each WO walks `released → in_progress → completed`.
 - **Material Shortage** (`/material-shortages`): row appears at `open`, walks `purchase_requested → purchase_ordered → resolved`.
-- **ATP** (`/atp/{productId}`): on-hand drops at shipment, incoming-from-purchase rises on PO creation, drops on receipt.
-- **Financial Dashboard** (`/`): sales_revenue, COGS, gross_profit, cash_received/paid, plus open SO/PO/WO counts per day.
+- **Available-to-Promise** (`/atp`): on-hand drops at shipment, incoming-from-purchase rises on PO creation, drops on receipt.
+- **Financial Dashboard** (`/financial-dashboard`): sales_revenue, COGS, gross_profit, cash_received/paid, plus open SO/PO/WO counts per day.
 
 ### GL postings to watch in `finance.journal_entry_header` / `_line`
 
-Balanced debit/credit pairs land in the same txn as their originating action — the buy→sell cycle plus the §2.42 make cycle (perpetual WIP, fires during manufacturing replenishment):
+Balanced debit/credit pairs land in the same txn as their originating action — the buy→sell cycle plus the §2.42 make cycle (perpetual WIP, fires during manufacturing replenishment). Surface them on **Finance → Journal Entries**:
 
 | Action | Dr | Cr |
 |---|---|---|
@@ -626,7 +622,7 @@ Balanced debit/credit pairs land in the same txn as their originating action —
 | Work order completion (§2.42) | 1220 Finished Goods | 1230 WIP |
 | Sub-assemblies consumed (§2.42) | 1230 WIP | 1220 Finished Goods |
 
-Reverse a journal entry: `POST /api/journal-entries/{id}/reverse` (creates a debit/credit-flipped reversal in the same txn that flips the original from `posted` → `reversed`).
+Reverse a journal entry from **Finance → Journal Entries** (as Daniel) or via `POST /api/journal-entries/{id}/reverse` (creates a debit/credit-flipped reversal in the same txn that flips the original from `posted` → `reversed`).
 
 ### Acceptance criteria for the demo
 
@@ -643,32 +639,32 @@ Reverse a journal entry: `POST /api/journal-entries/{id}/reverse` (creates a deb
 
 ### 8.1 — Login flow
 
-Open `http://localhost:5174` cold (or click the logout button). The SPA redirects to Keycloak's login form (`http://localhost:8090/realms/northwood`). Type `sarah` / `sarah`. Land back on the SPA — top-right user chip shows "Sarah Sales · sales_clerk". The BFF holds the access token in a server-side session; no token ever reaches the browser.
+Open `http://localhost:5174` cold (or sign out). The SPA redirects to Keycloak's login form (`http://localhost:8090/realms/northwood`). Type `sarah` / `sarah`. Land back on the SPA — the top-right user chip shows "Sarah · sales_clerk". The BFF runs the OIDC code flow and holds the access token in a server-side session; no token ever reaches the browser.
 
 ### 8.2 — Role-gated mutation (the cancel-order moment)
 
-On a sales-order detail page (any order before `goods_shipped`), hover the **Cancel order** button. Sarah's `sales_clerk` doesn't include `sales_manager`, so the button is disabled with tooltip "Requires role: sales_manager".
+On a Sales Order detail page (any order before `goods_shipped`), hover the **Cancel order** action. Sarah's `sales_clerk` doesn't include `sales_manager`, so it is disabled with tooltip "Requires role: sales_manager".
 
-Click **Sign out** (top-right), then sign back in on Keycloak as **sales-mgr** (password == `sales-mgr`). The Cancel button is now enabled. Click it. Saga walks `compensating → compensated`. Audit row stamps `actor_user_id = "sales-mgr"`.
+Sign out (top-right), then sign back in on Keycloak as **sales-mgr** (password == `sales-mgr`). The Cancel action is now enabled. Click it. Saga walks `compensating → compensated`. Audit row stamps `actor_user_id = "sales-mgr"`.
 
-If you want the loud version: switch to **Auditor** first, try to click anything mutating — every mutation button is disabled with a tooltip. Read-only persona; reading works.
+If you want the loud version: switch to **Auditor** first, try to click anything mutating — every mutation action is disabled with a tooltip. Read-only persona; reading works.
 
 ### 8.3 — Audit log timeline
 
-On any sales-order detail page, click **View audit** (top-right). Lands on `/system/audit-log?aggregateId=<id>`. The BFF fans out to all 7 services and merges the timeline by occurredAt desc. Every event is labelled with its source service, event type, and actor. The cancellation row shows `actor_user_id = "sales-mgr"`; the original placement row shows `actor_user_id = "sarah"`. Saga-driven rows (e.g., `manufacturing.WorkOrderCreated`) show actor as "system".
+On any Sales Order detail page, open **View audit** (or go to **System → Audit Log** with the order's id). Lands on `/system/audit-log?aggregateId=<id>`. The BFF fans out to all 7 services and merges the timeline by occurredAt desc. Every event is labelled with its source service, event type, and actor. The cancellation row shows `actor_user_id = "sales-mgr"`; the original placement row shows `actor_user_id = "sarah"`. Saga-driven rows (e.g., `manufacturing.WorkOrderCreated`) show actor as "system".
 
-Same screen accessible directly via sidebar **System → Audit Log** with no filter — shows recent activity across the whole stack.
+The same screen accessible directly via **System → Audit Log** with no filter — shows recent activity across the whole stack.
 
 ### 8.4 — finance reverses a journal
 
 Switch to **Daniel** (finance_manager). Navigate to **Finance → Journal Entries**. Pick a posted entry. Click **Reverse**. New journal entry created with debits/credits flipped; original flips to `'reversed'`. Open the audit log for that journal — both rows have actor=`daniel`.
 
-Try the same as Olivia (accountant) — Reverse button is disabled, tooltip "Requires role: finance_manager".
+Try the same as Olivia (accountant) — Reverse is disabled, tooltip "Requires role: finance_manager".
 
 ### 8.5 — Acceptance criteria for the security demo
 
 - Login redirect works on cold-cache load.
-- Sarah cancel-order → 403 + disabled button + tooltip.
+- Sarah cancel-order → 403 + disabled action + tooltip.
 - sales-mgr cancel-order → 200 + saga compensates.
 - Auditor can read every screen but mutates nothing.
 - `actor_user_id` is non-null on all user-driven outbox rows; null on saga/system rows.
@@ -680,7 +676,7 @@ Try the same as Olivia (accountant) — Reverse button is disabled, tooltip "Req
 
 The reliability claim made visible: **kill Kafka mid-flow and nothing is lost** — the outbox holds every event durably and replays it when the broker returns, with no operator action. This is the producer-side "broker down → back" row from `docs/messaging.md` → *Disaster recovery* (✅ auto-recovered fully).
 
-**Setup:** full stack up, Saga Console open at `/saga-console`, and a psql session on a side screen:
+**Setup:** full stack up, the Sales Order detail page open for an in-flight order, and a psql session on a side screen:
 
 ```bash
 docker exec -it northwood-postgres psql -U postgres -d northwood_erp
@@ -714,7 +710,7 @@ SELECT event_type, status, retry_count, left(last_error, 40) AS err
  ORDER BY sequence_number;
 ```
 
-On the **Saga Console** the sales-order saga is stuck at `started` / `stock_reservation_requested` — its events can't reach inventory, so it can't advance. Nothing is lost; it's *parked in the outbox*.
+On the **Sales Order detail** page the order is stuck at `started` / `stock_reservation_requested` — its events can't reach inventory, so it can't advance. Nothing is lost; it's *parked in the outbox*.
 
 ### 9.3 — Bring the broker back, watch it self-heal
 
@@ -726,7 +722,7 @@ Within a tick or two — no service restart, no manual replay:
 
 - the `sales.outbox_message` rows flip `failed → published` (re-run the query above; the `pending`/`failed` set drains to empty);
 - the backlog flows to inventory / manufacturing / finance, each draining *its* outbox in turn;
-- the **Saga Console** marches the order through to `completed`, exactly as in the happy path — just delayed by the outage.
+- the **Sales Order detail** roll-up marches the order through to `completed`, exactly as in the happy path — just delayed by the outage.
 
 ### 9.4 — What this proves
 
@@ -751,13 +747,13 @@ A *consumer-dependency* outage (e.g. PostgreSQL briefly down while Kafka keeps d
 
 | Symptom | Cause / fix |
 |---|---|
-| Dashboard says "Couldn't reach reporting-service on :8087" | reporting-service or the BFF isn't running. Start them. |
-| Saga console shows "bff offline" | The BFF (port 8080) isn't running. Start `mvn -pl demo-web-ui-bff spring-boot:run`. |
-| Saga console column empty even with BFF up | The owning saga service isn't running. The aggregator gracefully degrades and logs the upstream failure once per pump cycle at DEBUG. |
-| Event drawer is empty | Phase 1 stub kicks in after ~2 s — refresh if it stays blank. Real `/events` aggregator is in `dev-todo.md`. |
+| SPA redirect loops or `/api/*` calls fail with `ECONNREFUSED` | The ERP BFF (port 8089) isn't running. Start `mvn -pl erp-web-ui-bff spring-boot:run`. |
+| Login redirect fails / Keycloak unreachable | Keycloak (port 8090) isn't up, or the realm didn't import. Check `docker compose logs keycloak` for the realm import, then retry. |
+| Sales Orders list / Reporting pages empty | reporting-service (8087) or the BFF isn't running, or the seed override wasn't loaded. Start them; for fixtures re-up with the seed override. |
+| A module page is empty even with the BFF up | The owning service isn't running. The BFF gracefully degrades and logs the upstream failure. |
 | Place order returns 400 with `Customer not found` | `CUST-001` lives in the **seed** file, so the stack came up without the seed override. Re-up with `docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d`; `docker compose logs postgres` should then show `02-northwood_erp_seed.sql ... DONE`. |
-| Goods receipt 400s | The PO id in the form must be a real PO header UUID. Either get it from the **PO tracking** view, or use the scenario runner which captures it for you. |
-| Goods receipt 400 with `Unknown purchase_order_line_id` | The receipt line names a `purchaseOrderLineId` that inventory hasn't projected yet — usually because the PO hasn't been created at all, or `PurchaseOrderCreated` hasn't reached inventory's inbox yet (cold start). Use the picker in `/goods-receipts` rather than hand-typed line ids. |
+| Goods receipt 400s | The PO id in the form must be a real PO header UUID. Get it from **Reporting → PO Tracking** or the Purchase Orders page. |
+| Goods receipt 400 with `Unknown purchase_order_line_id` | The receipt line names a `purchaseOrderLineId` that inventory hasn't projected yet — usually because the PO hasn't been created at all, or `PurchaseOrderCreated` hasn't reached inventory's inbox yet (cold start). Use the picker in **Inventory → Goods Receipts → New** rather than hand-typed line ids. |
 | Goods receipt 400 with `Product mismatch on purchase_order_line_id` | The receipt line's `productId` doesn't match the `purchase_order_line.product_id`. Defence-in-depth check against client-side picker bypass. Re-pick the line from the picker. |
 | Shipment 400 with `Unknown sales_order_line_id` / `Product mismatch on sales_order_line_id` | Same shape on the SO side. Inventory projects `sales_order_line_facts` from `SalesOrderPlaced`; the validation runs in `ShipmentService.post`. Lines without a `salesOrderLineId` (unlinked manual shipments) skip the check. |
 | Make-to-stock saga never appears (and `manufacturing.work_order_header` stays empty) on a shortage order | Manufacturing-service didn't receive inventory's `inventory.ReplenishmentRequested` event. Either manufacturing-service isn't running, **or it was launched without `SPRING_PROFILES_ACTIVE=kafka`** so it's on the in-JVM bus and never sees cross-JVM events. Set the profile and restart. |
@@ -767,7 +763,7 @@ A *consumer-dependency* outage (e.g. PostgreSQL briefly down while Kafka keeps d
 | Customer payment 400 with CHECK constraint error | Out-of-date Postgres volume from before the `2026-05-05-extend-fulfilment-saga-states.sql` migration. Either let Liquibase apply it on next sales-service boot, or wipe the volume: `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d`. |
 | Manufacturing-service fails to boot with `Unexpected formatting in formatted changelog ... line N` | A `--` comment line accidentally starts with a Liquibase keyword (`changeset`, `rollback`, etc.). See CLAUDE.md § Liquibase gotchas. |
 
-To reset and start fresh: `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d` then re-bring up the services (with `SPRING_PROFILES_ACTIVE=kafka` per terminal) + BFF + SPA.
+To reset and start fresh: `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d` then re-bring up the services (with `SPRING_PROFILES_ACTIVE=kafka` per terminal) + the ERP BFF + the SPA.
 
 ---
 
@@ -784,10 +780,8 @@ docker compose down -v              # also wipe the volume (full reset)
 ## Tests
 
 ```powershell
-mvn test                                       # all 308 backend unit tests
+mvn test                                       # all backend unit tests
 mvn -pl inventory-service verify               # Testcontainers IT (~50s)
-cd demo-web-ui ; npm.cmd run typecheck ; cd .. # technical demo SPA typecheck
-cd demo-web-ui ; npm.cmd run build ; cd ..     # technical demo SPA production bundle
 cd erp-web-ui ; npm.cmd run typecheck ; cd ..  # operational ERP SPA typecheck
 cd erp-web-ui ; npm.cmd run build ; cd ..      # operational ERP SPA production bundle
 ```
@@ -803,7 +797,6 @@ These are tracked in `dev-todo.md` (where relevant):
 - GST tax-account split (low priority)
 - `wip_value` on the financial dashboard (gated on a costing decision for `wip_balance.average_cost`)
 - Reorder-alert job that would honour the `discontinued_at` flag (today the flag is stamped but no auto-suggester reads it)
-- Real `/events` aggregator (today's bottom event drawer is a Phase 1 stub)
 
 ---
 
@@ -811,3 +804,5 @@ These are tracked in `dev-todo.md` (where relevant):
 
 - `dev-todo.md` — implementation backlog (slice-level).
 - `CLAUDE.md` — architecture invariants (read first if you're modifying the backend).
+</content>
+</invoke>

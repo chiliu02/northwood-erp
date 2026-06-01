@@ -1,6 +1,6 @@
 # Northwood ERP Web UI
 
-Operational ERP SPA for the business-user personas (Sarah / Mike / Linda / Tom / Olivia / Daniel / Emma). Sibling of `demo-web-ui/` — that one is the technical demo (Saga Console, event drawer, scenario runner); this one is the application.
+Operational ERP SPA for the business-user personas (Sarah / Mike / Linda / Tom / Olivia / Daniel / Emma).
 
 ## Running locally
 
@@ -15,7 +15,7 @@ docker compose up -d postgres
 #    For full operational flows + saga progress, run all 7 + Kafka.
 mvn -pl reporting-service spring-boot:run        # 8087
 
-# 3. The new ERP BFF (sibling of demo-web-ui-bff). Easy to forget — without
+# 3. The ERP BFF. Easy to forget — without
 #    it, every /api/* call fails with ECONNREFUSED in the Vite proxy log.
 mvn -pl erp-web-ui-bff spring-boot:run           # 8089
 
@@ -33,11 +33,7 @@ Each backend command takes its own terminal. IntelliJ run configurations are the
 |---|---|
 | ERP SPA (Vite dev server) | 5174 |
 | ERP BFF                    | 8089 |
-| Demo SPA (separate, in `demo-web-ui/`) | 5173 |
-| Demo BFF (separate, in `demo-web-ui-bff/`) | 8080 |
 | product / sales / inventory / manufacturing / purchasing / finance / reporting | 8081–8087 |
-
-The two SPAs and their two BFFs are independent — running both at once is fine.
 
 ## What's wired
 

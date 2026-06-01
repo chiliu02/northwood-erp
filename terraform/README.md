@@ -170,7 +170,6 @@ terraform destroy
   boxes come up healthy.
 ```
 
-> **Build script note:** `build/build-and-push.*` was written for the original 9
-> deployables. The demo now ships **8** images (demo-web-ui-bff is dropped) — if the
-> script still builds/pushes `demo-web-ui-bff`, that extra image is harmless (no repo
-> to receive it / simply unused), but you can trim it from the script's app list.
+> **Build script note:** `build/build-and-push.*` builds the **8** app images
+> (the 7 services + `erp-web-ui-bff`) by reading the ECR repo list from
+> `terraform output`, so it always stays in sync with the `module.ecr` repos.

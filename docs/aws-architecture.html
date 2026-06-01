@@ -156,22 +156,17 @@
       <li><code>erp-web-ui-bff/application.yml</code>: replace the <code>spring.security.oauth2.client.registration.keycloak</code> + provider with a <b>Cognito</b> registration (client-id/secret, issuer-uri = the user-pool issuer, scopes <code>openid,email,profile</code>). Cognito's logout endpoint differs from Keycloak's, so add a logout success handler pointed at the Cognito <code>/logout</code> URL. <span class="tag cfg">cfg</span> + small <span class="tag code">code</span>.</li>
     </ul>
 
-    <h3>3. Drop the demo bypass &nbsp;<span class="tag cfg">cfg</span></h3>
-    <ul>
-      <li><code>DemoBypassAuthenticationFilter</code> is already inert when <code>northwood.security.demo-bypass.token</code> is blank — set it empty in prod (no code change). Optionally delete the filter + its wiring for a clean production build.</li>
-    </ul>
-
-    <h3>4. Kafka → MSK with IAM auth &nbsp;<span class="tag dep">dep</span> <span class="tag cfg">cfg</span></h3>
+    <h3>3. Kafka → MSK with IAM auth &nbsp;<span class="tag dep">dep</span> <span class="tag cfg">cfg</span></h3>
     <ul>
       <li>Add the <code>software.amazon.msk:aws-msk-iam-auth</code> dependency and set <code>spring.kafka.properties</code>: <code>security.protocol=SASL_SSL</code>, <code>sasl.mechanism=AWS_MSK_IAM</code>, the <code>IAMLoginModule</code> jaas config + <code>IAMClientCallbackHandler</code>. The task role gets <code>kafka-cluster:*</code> IAM permissions. The Spring Kafka producer/consumer code and the outbox/inbox/saga logic are unchanged — only bootstrap + auth config. (Plaintext today → SASL_SSL/IAM.)</li>
     </ul>
 
-    <h3>5. Logging → CloudWatch &nbsp;<span class="tag code">code</span></h3>
+    <h3>4. Logging → CloudWatch &nbsp;<span class="tag code">code</span></h3>
     <ul>
       <li><code>shared/…/logback-spring.xml</code> has a <code>LOKI</code> appender. On Fargate the container's stdout goes to CloudWatch via the <code>awslogs</code> driver, so drop/gate the Loki appender and keep the <code>CONSOLE</code> appender (it already emits <code>traceId</code>/<code>spanId</code>). Amazon Managed Grafana then queries CloudWatch Logs. Small logback edit.</li>
     </ul>
 
-    <h3>6. Behind-ALB redirect URIs &nbsp;<span class="tag cfg">cfg</span></h3>
+    <h3>5. Behind-ALB redirect URIs &nbsp;<span class="tag cfg">cfg</span></h3>
     <ul>
       <li>The BFF builds OIDC redirect URIs from the request; behind the ALB add <code>server.forward-headers-strategy: framework</code> so it honours <code>X-Forwarded-Proto/Host</code> and produces correct <code>https://&lt;domain&gt;/login/oauth2/code/cognito</code> URIs (which must be registered as Cognito callback URLs).</li>
     </ul>

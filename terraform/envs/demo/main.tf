@@ -28,7 +28,7 @@ locals {
 
   bff_name = "erp-web-ui-bff"
 
-  # ECR repos: one per app image (7 services + the BFF). demo-web-ui-bff is gone.
+  # ECR repos: one per app image (the 7 services + erp-web-ui-bff).
   app_repo_names = concat([for k in keys(local.services) : "${k}-service"], [local.bff_name])
 
   ecr_registry = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com"
@@ -51,7 +51,6 @@ module "secrets" {
   name_prefix   = var.name_prefix
   service_names = keys(local.services)
 
-  demo_bypass_token = var.demo_bypass_token
   bff_client_secret = var.bff_client_secret
 }
 

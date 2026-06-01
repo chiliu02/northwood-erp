@@ -58,8 +58,6 @@ Northwood/
 ├── finance-events/
 ├── finance-service/
 ├── reporting-service/           Inbox-only — read-side projections (no events jar; reporting emits nothing)
-├── demo-web-ui-bff/             BFF for the technical demo SPA (Saga Console, event drawer)
-├── demo-web-ui/                 Demo SPA — technical-storytelling
 ├── erp-web-ui-bff/              BFF for the operational ERP SPA (port 8089)
 └── erp-web-ui/                  Operational ERP SPA — business-user personas
 ```
@@ -248,7 +246,7 @@ JDBC is chosen so aggregate boundaries are explicit — loading a Product loads 
 The codebase commits to *codes + params at the API boundary, translation SPA-side*. The backend stays locale-free: REST responses are the same byte-for-byte regardless of who's calling. Two consequences worth naming explicitly:
 
 - **No `java.util.ResourceBundle`, no Spring `MessageSource`, no `LocaleResolver` / `Accept-Language` handling anywhere in `shared` or any service.** Error responses are typed `ErrorResponse { code, params }` records (see `docs/dev-todo.md` §1H for the rollout); status enums emit their `dbValue()` wire format; logs and `Assert.*` messages stay English (operator-facing, not user-facing).
-- **SPAs own the entire translation surface.** Both `demo-web-ui` and `erp-web-ui` will adopt `react-i18next`-style message bundles (`docs/dev-todo.md` §3.5) keyed by feature namespace. The bundle holds the localised text for each backend `code` plus every JSX string.
+- **The SPA owns the entire translation surface.** `erp-web-ui` will adopt `react-i18next`-style message bundles (`docs/dev-todo.md` §3.5) keyed by feature namespace. The bundle holds the localised text for each backend `code` plus every JSX string.
 
 Why this split rather than backend-side localisation:
 

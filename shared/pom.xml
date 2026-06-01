@@ -74,10 +74,10 @@
             <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
         </dependency>
 
-        <!-- Servlet API at compile-time only (provided scope) so the shared
-             DemoBypassAuthenticationFilter can extend OncePerRequestFilter and
-             reference jakarta.servlet.http.* directly. Services that consume
-             this module bring spring-boot-starter-web which supplies the
+        <!-- Servlet API at compile-time only (provided scope) so shared classes
+             that reference jakarta.servlet.http.* directly compile — e.g.
+             ObservabilityAutoConfiguration's per-request instrumentation.
+             Consuming services bring spring-boot-starter-web, which supplies the
              runtime servlet container. -->
         <dependency>
             <groupId>jakarta.servlet</groupId>

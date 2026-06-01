@@ -32,7 +32,6 @@
         <module>finance-events</module>
         <module>finance-service</module>
         <module>reporting-service</module>
-        <module>demo-web-ui-bff</module>
         <module>erp-web-ui-bff</module>
         <module>test-harness</module>
     </modules>

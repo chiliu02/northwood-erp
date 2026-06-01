@@ -1,7 +1,6 @@
 package com.northwood.shared.infrastructure.security;
 
 import com.northwood.shared.application.security.CurrentUserAccessor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -9,7 +8,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
@@ -36,10 +34,7 @@ import org.springframework.security.web.SecurityFilterChain;
 public class OAuth2ResourceServerSecurityConfig {
 
     @Bean
-    public SecurityFilterChain northwoodResourceServerFilterChain(
-        HttpSecurity http,
-        org.springframework.beans.factory.ObjectProvider<DemoBypassAuthenticationFilter> demoBypass
-    ) throws Exception {
+    public SecurityFilterChain northwoodResourceServerFilterChain(HttpSecurity http) throws Exception {
         http
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
@@ -67,29 +62,7 @@ public class OAuth2ResourceServerSecurityConfig {
             .csrf(csrf -> csrf.disable())
             .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt ->
                 jwt.jwtAuthenticationConverter(new KeycloakRealmRoleConverter())));
-        DemoBypassAuthenticationFilter bypass = demoBypass.getIfAvailable();
-        if (bypass != null && bypass.isEnabled()) {
-            http.addFilterBefore(bypass, BearerTokenAuthenticationFilter.class);
-        }
         return http.build();
-    }
-
-    /**
-     * Demo-SPA shared-secret bypass — see {@link DemoBypassAuthenticationFilter}.
-     * The default literal ({@code "northwood-local-demo-bypass-2026"}) matches the
-     * default in demo-web-ui-bff so a fresh local checkout works without env-var
-     * setup. Override with empty string in non-dev environments to disable the
-     * bypass (the filter recognises blank as inert).
-     *
-     * <p>Bean is always created so the filter chain can interrogate
-     * {@code isEnabled()}; the per-environment behavior is driven by the property
-     * value, not by bean presence.
-     */
-    @Bean
-    public DemoBypassAuthenticationFilter demoBypassAuthenticationFilter(
-        @Value("${northwood.security.demo-bypass.token:northwood-local-demo-bypass-2026}") String token
-    ) {
-        return new DemoBypassAuthenticationFilter(token);
     }
 
     @Bean

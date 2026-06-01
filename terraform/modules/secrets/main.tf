@@ -27,16 +27,6 @@ resource "random_password" "keycloak_admin" {
   special = false
 }
 
-resource "random_password" "demo_bypass" {
-  count   = var.demo_bypass_token == "" ? 1 : 0
-  length  = 32
-  special = false
-}
-
-locals {
-  demo_bypass_token = var.demo_bypass_token != "" ? var.demo_bypass_token : random_password.demo_bypass[0].result
-}
-
 # ---- Secrets Manager entries -----------------------------------------------
 
 resource "aws_secretsmanager_secret" "service_db" {
@@ -59,16 +49,6 @@ resource "aws_secretsmanager_secret" "bff_client" {
 resource "aws_secretsmanager_secret_version" "bff_client" {
   secret_id     = aws_secretsmanager_secret.bff_client.id
   secret_string = var.bff_client_secret
-}
-
-resource "aws_secretsmanager_secret" "demo_bypass" {
-  name                    = "${var.name_prefix}/security/demo-bypass-token"
-  recovery_window_in_days = var.recovery_window_in_days
-}
-
-resource "aws_secretsmanager_secret_version" "demo_bypass" {
-  secret_id     = aws_secretsmanager_secret.demo_bypass.id
-  secret_string = local.demo_bypass_token
 }
 
 # Stored for operator retrieval / completeness — consumed by the infra EC2s via

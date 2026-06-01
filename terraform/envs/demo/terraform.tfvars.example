@@ -4,33 +4,20 @@
 # region      = "ap-southeast-2"
 # name_prefix = "northwood-demo"
 
-# Image tag the build script pushed to ECR (use a git SHA for real runs).
+# Image tag the build script pushed to ECR for the 8 app images (a git SHA for real runs).
 # image_tag = "latest"
 
 # Empty schema instead of the populated demo dataset.
 # load_seed_data = false
 
-# HTTPS: supply an ACM cert ARN (in the same region) + set keycloak_hostname.
-# Leave both empty for an HTTP-only throwaway demo on the ALB DNS name.
-# certificate_arn   = "arn:aws:acm:ap-southeast-2:123456789012:certificate/xxxx"
-# keycloak_hostname = "https://auth.demo.example.com"
+# Keycloak public address (DNS or the web EC2's public IP) used as the OIDC issuer.
+# Browser OIDC login won't work until this is set — set it after the first apply
+# once the public IP is known, or point it at an Elastic IP.
+# keycloak_hostname = "http://<web-ec2-public-ip>:8080"
 
-# Per-service scaling (defaults to 1 each). Example: 2x sales, 2x demo-bff.
-# service_desired_counts = { sales = 2 }
-# bff_desired_counts     = { "demo-web-ui-bff" = 2 }
+# Observability (§1D): run the Tempo/Loki/Prometheus/Grafana box on the data EC2
+# and point the apps at it. Set false to skip it (and its cost).
+# enable_observability = true
 
-# Sizing (Fargate units).
-# service_cpu = 512
-# service_memory = 1024
-
-# infra_instance_types = {
-#   postgres = "t3.small"
-#   kafka    = "t3.small"
-#   keycloak = "t3.small"
-# }
-
-# Observability (§1D): the LGTM box + telemetry env on all 9 apps.
-# Set false to skip it (and its cost) — apps then keep localhost defaults.
-# enable_observability        = true
-# observability_instance_type = "t3.medium"
-# tracing_sampling            = 1.0   # 0.1 for prod-style sampling
+# Keycloak northwood-bff client secret — must match db/keycloak/northwood-realm.json.
+# bff_client_secret = "northwood-bff-secret"

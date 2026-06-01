@@ -29,6 +29,6 @@ Service → port table (from `docs/demo-script.md`):
 Notes to include in the response:
 - The kafka profile is required for the cross-service event bus. Without it, services run on the in-JVM bus and never see events from other services.
 - If port is already in use, an instance is already running — `Get-Process java` to find it.
-- The BFFs (`demo-web-ui-bff` :8080, `erp-web-ui-bff` :8089) do **not** need the kafka profile, except for `demo-web-ui-bff` which needs it for the event-stream aggregator (`/api/events` SSE). Document this if the user asks for one of the BFFs.
+- The `erp-web-ui-bff` (:8089) does **not** need the kafka profile. Document this if the user asks about the BFF.
 
 If `$ARGUMENTS` is empty or doesn't match a known service, ask which service they want.

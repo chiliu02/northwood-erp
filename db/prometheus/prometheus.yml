@@ -42,7 +42,5 @@ scrape_configs:
   - job_name: northwood-bffs
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["host.docker.internal:8080"]
-        labels: { service: demo-web-ui-bff }
       - targets: ["host.docker.internal:8089"]
         labels: { service: erp-web-ui-bff }

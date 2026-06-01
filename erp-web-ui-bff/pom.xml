@@ -14,12 +14,9 @@
     <artifactId>erp-web-ui-bff</artifactId>
     <name>Northwood :: ERP Web UI BFF</name>
     <description>
-        Backend-for-Frontend for the operational ERP SPA (erp-web-ui).
-        Sibling of demo-web-ui-bff (which fronts the technical demo SPA). Same
-        proxy + events-aggregator shape; runs on its own port (8089) so the
-        two SPAs deploy independently and can carry different security
-        policies. Slice A's OAuth2 / Keycloak wiring lands here only — the
-        demo BFF stays anonymous.
+        Backend-for-Frontend for the operational ERP SPA (erp-web-ui): a proxy +
+        events aggregator running on port 8089. Slice A's OAuth2 / Keycloak
+        wiring (OIDC code flow) lands here.
     </description>
 
     <dependencies>

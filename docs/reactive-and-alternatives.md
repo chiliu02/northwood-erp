@@ -290,7 +290,7 @@ most application methods are on the path.
 | 4 | **Transactions** | 97 `@Transactional` across 26 files | Needs `R2dbcTransactionManager`, only on `Mono`/`Flux` methods, tx bound to Reactor context | High |
 | 5 | **Outbox / inbox / Saga** | `JdbcTemplate`-based; outbox INSERT shares the aggregate tx | All reactive R2DBC; reactive Kafka means `reactor-kafka` — different model | High |
 | 6 | **Hexagonal contract** (`application/` + `domain/`) | ports/aggregates return plain types | Aggregates stay sync, but 15 `*Repository` ports (in `domain/`) gain Reactor types; nearly every `application/` method rewritten. §B3, §B4 | High |
-| 7 | **Web layer** (`api/`) | servlet; `ResponseEntity`, `OncePerRequestFilter` | `ResponseEntity` survives; `DemoBypassAuthenticationFilter` → `WebFilter` | Medium |
+| 7 | **Web layer** (`api/`) | servlet; `ResponseEntity`, `OncePerRequestFilter` | `ResponseEntity` survives; any servlet `OncePerRequestFilter` → `WebFilter` | Medium |
 | 8 | **Security** | servlet `SecurityFilterChain` | → reactive `SecurityWebFilterChain` | Medium |
 | 9 | **Tests** | `MockMvc`; `Jdbc*IT` Testcontainers | `WebTestClient`; R2DBC-driver ITs + `StepVerifier`; large rewrite | Medium |
 | 10 | **springdoc** | `...-webmvc-ui` | `...-webflux-ui` | Low |

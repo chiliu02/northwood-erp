@@ -9,15 +9,11 @@ output "bff_client_secret_arn" {
   value = aws_secretsmanager_secret.bff_client.arn
 }
 
-output "demo_bypass_token_arn" {
-  value = aws_secretsmanager_secret.demo_bypass.arn
-}
-
 output "all_task_secret_arns" {
-  description = "Every ARN an ECS execution role must be allowed to read (for the pull policy)."
+  description = "Every secret ARN an instance role must be allowed to read (for the pull policy)."
   value = concat(
     [for s in aws_secretsmanager_secret.service_db : s.arn],
-    [aws_secretsmanager_secret.bff_client.arn, aws_secretsmanager_secret.demo_bypass.arn],
+    [aws_secretsmanager_secret.bff_client.arn],
   )
 }
 

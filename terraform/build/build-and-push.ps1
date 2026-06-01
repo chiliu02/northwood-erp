@@ -1,8 +1,8 @@
 #requires -Version 5.1
 <#
 .SYNOPSIS
-  Build the 9 Northwood deployables as container images via Spring Boot
-  Buildpacks (no Dockerfiles) and push them to ECR.
+  Build the 8 Northwood deployables (7 services + erp-web-ui-bff) as container
+  images via Spring Boot Buildpacks (no Dockerfiles) and push them to ECR.
 
 .DESCRIPTION
   Reads the ECR repository URLs from `terraform output` (so the ECR repos must
@@ -19,7 +19,7 @@
 param(
   [string]   $Tag = "latest",
   [string]   $TerraformDir = "$PSScriptRoot/../envs/demo",
-  [string[]] $Apps  # optional subset; default = all 9
+  [string[]] $Apps  # optional subset; default = all 8
 )
 
 $ErrorActionPreference = "Stop"

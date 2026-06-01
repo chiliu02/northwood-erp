@@ -6,8 +6,7 @@ import path from "node:path";
 // All /api, /oauth2, /login, /logout calls are proxied to the ERP BFF on
 // :8089. /api/* hits the routing table → backend services. /oauth2/*,
 // /login/*, /logout are owned by Spring Security on the BFF (OIDC code
-// flow + session lifecycle). Sibling demo SPA (web-ui) talks to its own
-// (anonymous) BFF on :8080 independently.
+// flow + session lifecycle).
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
