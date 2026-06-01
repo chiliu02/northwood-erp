@@ -165,6 +165,18 @@
       <li><b>Trade-off:</b> a NAT instance is a single, unmanaged box — fine for a demo, not HA. For production use a managed NAT Gateway (per AZ) — see <a href="aws-architecture.html">aws-architecture.html</a>.</li>
     </ul>
 
+    <h2>Accessing Grafana</h2>
+    <ul>
+      <li>Grafana runs on the <b>infra EC2</b> (<code>:3000</code>) with <b>no public IP</b>, and <code>infra-sg</code> never opens <code>:3000</code> — to the internet or even tier-to-tier — so it is <b>not browser-reachable directly</b>. Reach it over an <b>SSM port-forward</b> (no SSH, no public endpoint, nothing to open):
+        <pre><code>terraform output grafana_access_hint
+# aws ssm start-session --target &lt;data-instance-id&gt; \
+#   --document-name AWS-StartPortForwardingSession \
+#   --parameters portNumber=3000,localPortNumber=3000
+# then open http://localhost:3000</code></pre>
+      </li>
+      <li>Only present when <code>enable_observability = true</code>. The tunnelled Grafana runs <b>anonymous-admin</b> (login form disabled) — safe precisely because it is never internet-exposed; the SSM tunnel <em>is</em> the access control. Exposing it publicly would mean hardening that auth first.</li>
+    </ul>
+
     <h2>What's gone</h2>
     <ul>
       <li>ALB, NAT Gateway, ECS/Fargate, Service Connect, demo-web-ui-bff, Secrets Manager, CloudWatch — replaced by 3 EC2s running <code>docker-compose</code>, passwords/configs staged in the encrypted S3 bucket and pulled by <code>user-data</code>, logs to Loki. SSM-only shell (no SSH/bastion).</li>
@@ -173,7 +185,7 @@
   </main>
 
   <footer>
-    Proposed <b>target</b> topology — the Terraform under <code>terraform/</code> has not been refactored to match. Hand-built layered diagram (no Mermaid); AWS boxes use the official AWS Architecture Icons (<a href="https://aws.amazon.com/architecture/icons/">aws.amazon.com/architecture/icons</a>, under <code>docs/aws-icons/</code>); container logos are from iconify.
+    Demo <b>deployment</b> topology — the Terraform under <code>terraform/</code> implements this layout (<code>envs/demo</code> + the <code>network</code>/<code>infra-ec2</code> modules). Hand-built layered diagram (no Mermaid); AWS boxes use the official AWS Architecture Icons (<a href="https://aws.amazon.com/architecture/icons/">aws.amazon.com/architecture/icons</a>, under <code>docs/aws-icons/</code>); container logos are from iconify.
   </footer>
 </body>
 </html>
