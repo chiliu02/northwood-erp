@@ -23,7 +23,11 @@ management:
       tasks.scheduled.execution: false
   tracing:
     sampling:
-      probability: ${NORTHWOOD_TRACING_SAMPLING:1.0}
+      # §1D.11: the BFF emits NO spans of its own — each service roots its own
+      # trace. ProxyController no longer propagates trace context upstream
+      # (reverses §1D.5's BFF-hop join), so sampling 0 here just drops the BFF's
+      # own request spans without affecting downstream services.
+      probability: 0
   otlp:
     metrics:
       export:

@@ -39,9 +39,11 @@ management:
   observations:
     enable:
       tasks.scheduled.execution: false              # §1D.10: drop @Scheduled heartbeat spans (see Traces below)
+      spring.security: false                        # §1D.11: drop Spring Security filter-chain spans (services only)
   tracing:
     sampling:
       probability: ${NORTHWOOD_TRACING_SAMPLING:1.0}  # 1.0 = capture every trace (demo); 0.1 for prod-style
+      # BFFs override this to 0 (§1D.11) — they emit no spans; services root their own traces
   otlp:
     metrics:
       export:
@@ -171,6 +173,27 @@ management:
 ```
 
 Nothing meaningful is lost. The manually-created `outbox.publish` / `saga.<state>` spans are unaffected; with no scheduled parent they simply become trace **roots** (the publish span already keeps its own bounded trace with a link back to the originating request, per §1D.6). You can't gate the heartbeat span on "is there an event" at the source — the observation starts *before* the method knows whether there's work — so suppressing the wrapper and relying on the work-conditional manual spans is the clean equivalent. To inspect them ad-hoc without re-enabling, query Tempo directly: `{ resource.service.name = "sales-service" && name =~ "task .*" }`.
+
+#### Trace scope — services only, service-rooted (§1D.11)
+
+A trace should read as a **service request**, not infrastructure chatter. §1D.11 narrows what gets a span so every root in Tempo is a backend service, dropping three noise sources:
+
+1. **Spring Security spans** — `secured request`, `authenticate bearertoken` / `oauth2login`, `authorize request` / `method`, `security filterchain before` / `after`. These are framework filter-chain observations on every request. Disabled per service via the same `enable` map as §1D.10:
+
+   ```yaml
+   management:
+     observations:
+       enable:
+         spring.security: false   # prefix-matches all spring.security.* observations
+   ```
+
+2. **Actuator-scrape spans** — Prometheus hits `/actuator/prometheus` every few seconds, producing `http get /actuator/prometheus` root spans. A single `ObservationPredicate` bean in `shared` (`infrastructure/observability/ObservabilityAutoConfiguration`) drops the **server** observation (span + metric) for any `/actuator/**` URI. Spring Boot feeds every `ObservationPredicate` bean into the `ObservationRegistry`, so the bean is the whole wiring; it's `@AutoConfiguration`, so all services inherit it. (The actuator endpoint still serves metrics — only its *inbound request* is no longer observed.)
+
+3. **BFF spans + BFF-rooted traces** — previously (§1D.5) each BFF traced its `/api/**` hop and propagated the trace context to the upstream service, so an order trace was rooted at `erp-web-ui-bff | http post /api/**`. §1D.11 reverses that: the two `ProxyController`s **no longer inject `traceparent`** upstream, and each BFF runs at `management.tracing.sampling.probability: 0`. Result — the BFF emits no spans of its own, and each service **starts its own root trace** (`sales-service | http post /api/sales-orders`). The downstream sampler (1.0) is unaffected because no parent `sampled=0` decision is propagated (the BFF simply sends no `traceparent` at all).
+
+**Kept on purpose:** the Kafka producer/consumer spans (`sales.events send`, `inventory.events process`) — they're emitted *by the services* and are the glue that carries a trace across the outbox → Kafka → inbox hop. Dropping them would fragment the cross-service saga view. Postgres/JDBC is **not** instrumented in this stack, so there was nothing to disable.
+
+**Expect a brief `<root span not yet received>` on the newest cross-service traces.** That's Tempo assembling a trace whose spans flush from *different services* on independent batch schedules — a child (e.g. `inventory.events process`) can reach Tempo a beat before the root (`sales: outbox.publish`). It resolves within ~1–2s on refresh; it is not an orphan and not specific to §1D.11 (any multi-service async trace has this ingestion window).
 
 ### Logs (Loki)
 

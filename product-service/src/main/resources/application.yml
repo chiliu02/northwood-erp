@@ -52,6 +52,10 @@ management:
   observations:
     enable:
       tasks.scheduled.execution: false
+      # §1D.11: drop Spring Security observation spans (secured request /
+      # authenticate / authorize / security filterchain) — framework noise, not
+      # service business flow.
+      spring.security: false
   # §1D.1: trace + log correlation. Sampling defaults to 1.0 (rich demo data);
   # override NORTHWOOD_TRACING_SAMPLING to 0.1 for prod-style runs. OTLP_ENDPOINT
   # points at Tempo (docker-compose service published to localhost:4317).

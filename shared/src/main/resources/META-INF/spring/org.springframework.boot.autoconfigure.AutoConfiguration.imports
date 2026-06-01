@@ -8,3 +8,4 @@ com.northwood.shared.infrastructure.saga.SagaInvariantsAutoConfiguration
 com.northwood.shared.infrastructure.security.OAuth2ResourceServerSecurityConfig
 com.northwood.shared.infrastructure.audit.AuditAutoConfiguration
 com.northwood.shared.infrastructure.exception.DomainExceptionAutoConfiguration
+com.northwood.shared.infrastructure.observability.ObservabilityAutoConfiguration
