@@ -193,7 +193,7 @@
       "panels": []
     },
     {
-      "type": "traces",
+      "type": "table",
       "title": "Recent sales-order traces",
       "description": "TraceQL: traces containing the `http post /api/sales-orders` span (Spring Boot 4 / OTel names HTTP spans `http <lowercase-method> <route>`, not `POST …`). Click a span row to drill into Tempo; the Logs panel below renders logs for the same trace via the Loki↔Tempo correlation wired in §1D.0.",
       "gridPos": { "x": 0, "y": 16, "w": 24, "h": 9 },
@@ -204,13 +204,15 @@
           "refId": "A",
           "queryType": "traceqlSearch",
           "limit": 20,
+          "tableType": "traces",
           "filters": [
             {
-              "id": "name",
+              "id": "span-name",
               "tag": "name",
               "operator": "=~",
+              "scope": "intrinsic",
               "value": "(?i).*post /api/sales-orders.*",
-              "scope": "intrinsic"
+              "valueType": "string"
             }
           ]
         }
