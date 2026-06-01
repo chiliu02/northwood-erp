@@ -12,19 +12,19 @@ interface Persona {
 }
 
 const PERSONAS: Persona[] = [
-  { username: "emma",           fullName: "Emma Catalog",        role: "catalog_manager",       description: "Maintains the product catalogue — pricing, reorder policy, make-vs-buy, discontinue." },
-  { username: "sarah",          fullName: "Sarah Sales",         role: "sales_clerk",           description: "Registers customers and places sales orders." },
-  { username: "sales-mgr",      fullName: "Sales Manager",       role: "sales_manager",         description: "Cancels sales orders; the only role permitted to cancel." },
-  { username: "mike",           fullName: "Mike Warehouse",      role: "warehouse_clerk",       description: "Posts shipments and goods receipts; drives stock movements." },
-  { username: "warehouse-mgr",  fullName: "Warehouse Manager",   role: "warehouse_manager",     description: "Adjusts stock balances; oversees warehouse operations." },
-  { username: "linda",          fullName: "Linda Planner",       role: "production_planner",    description: "Plans work order priorities; authors BOM drafts." },
-  { username: "production-sup", fullName: "Production Supervisor", role: "production_supervisor", description: "Completes work order operations and signs off completion." },
-  { username: "tom",            fullName: "Tom Purchasing",      role: "purchasing_clerk",      description: "Creates purchase requisitions; processes receipts." },
-  { username: "purchasing-mgr", fullName: "Purchasing Manager",  role: "purchasing_manager",    description: "Approves purchase orders; authors supplier prices." },
-  { username: "olivia",         fullName: "Olivia Accountant",   role: "accountant",            description: "Records supplier invoices; processes AP and AR payments." },
-  { username: "daniel",         fullName: "Daniel Finance",      role: "finance_manager",       description: "Approves manual-review invoices; reverses journal entries." },
-  { username: "auditor",        fullName: "Auditor",             role: "auditor",               description: "Read-only access to audit logs and journals." },
-  { username: "sysadmin",       fullName: "Sysadmin",            role: "sysadmin",              description: "Keycloak realm administration only; no business data access." },
+  { username: "emma",   fullName: "Emma Doyle",     role: "catalog_manager",       description: "Maintains the product catalogue — pricing, reorder policy, make-vs-buy, discontinue." },
+  { username: "sarah",  fullName: "Sarah Bell",     role: "sales_clerk",           description: "Registers customers and places sales orders." },
+  { username: "sam",    fullName: "Sam Carter",     role: "sales_manager",         description: "Cancels sales orders; the only role permitted to cancel." },
+  { username: "mike",   fullName: "Mike Reyes",     role: "warehouse_clerk",       description: "Posts shipments and goods receipts; drives stock movements." },
+  { username: "wendy",  fullName: "Wendy Foster",   role: "warehouse_manager",     description: "Adjusts stock balances; oversees warehouse operations." },
+  { username: "linda",  fullName: "Linda Park",     role: "production_planner",    description: "Plans work order priorities; authors BOM drafts." },
+  { username: "paul",   fullName: "Paul Hayes",     role: "production_supervisor", description: "Completes work order operations and signs off completion." },
+  { username: "tom",    fullName: "Tom Walsh",      role: "purchasing_clerk",      description: "Creates purchase requisitions; processes receipts." },
+  { username: "priya",  fullName: "Priya Nair",     role: "purchasing_manager",    description: "Approves purchase orders; authors supplier prices." },
+  { username: "olivia", fullName: "Olivia Grant",   role: "accountant",            description: "Records supplier invoices; processes AP and AR payments." },
+  { username: "daniel", fullName: "Daniel Cho",     role: "finance_manager",       description: "Approves manual-review invoices; reverses journal entries." },
+  { username: "aaron",  fullName: "Aaron Bennett",  role: "auditor",               description: "Read-only access to audit logs and journals." },
+  { username: "ian",    fullName: "Ian Mitchell",   role: "sysadmin",              description: "Keycloak realm administration only; no business data access." },
 ];
 
 /**

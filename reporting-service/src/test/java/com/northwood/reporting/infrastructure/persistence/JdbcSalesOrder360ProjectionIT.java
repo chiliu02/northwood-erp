@@ -128,7 +128,7 @@ class JdbcSalesOrder360ProjectionIT {
     void cancellation_is_preserved_against_later_advances() {
         UUID id = UUID.randomUUID();
         createOrder(id);
-        PROJECTION.recordCancellation(id, Instant.now(), "sales-mgr");
+        PROJECTION.recordCancellation(id, Instant.now(), "sam");
         assertThat(orderStatus(id)).isEqualTo("cancelled");
 
         // Forward-advance attempts after cancellation are no-ops on order_status.

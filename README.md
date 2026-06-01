@@ -82,7 +82,7 @@ Everything ships with **demo-grade** credentials so the stack boots with zero se
 | Secret | Default | Override | Where |
 |---|---|---|---|
 | Keycloak BFF client secret | `northwood-bff-secret` | `KEYCLOAK_BFF_CLIENT_SECRET` | `erp-web-ui-bff` OIDC client |
-| 13 demo user passwords | password = username (e.g. `sales-clerk` / `sales-clerk`) | re-import the realm with new credentials | `db/keycloak/northwood-realm.json` |
+| 13 demo user passwords | password = username (e.g. `sarah` / `sarah`) | re-import the realm with new credentials | `db/keycloak/northwood-realm.json` |
 | Keycloak bootstrap admin | `admin` / `admin` | `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD` | `docker-compose.yml` |
 | 7 service DB passwords | `postgres` | `<SERVICE>_DB_PASSWORD` (+ `<SERVICE>_DB_USER`, `<SERVICE>_DB_URL`) | each service's `application.yml` |
 

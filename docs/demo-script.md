@@ -46,17 +46,17 @@ Keycloak loads the `northwood` realm from `db/keycloak/northwood-realm.json` on 
 |---|---|---|
 | emma | catalog_manager | Product master CRUD, pricing, reorder policy |
 | sarah | sales_clerk | Place orders, view sales orders, view ATP |
-| sales-mgr | sales_manager + sales_clerk | All clerk + cancel orders |
+| sam | sales_manager + sales_clerk | All clerk + cancel orders |
 | mike | warehouse_clerk | Stock movements, goods receipts, shipments |
-| warehouse-mgr | warehouse_manager + warehouse_clerk | All clerk + force-release reservations |
+| wendy | warehouse_manager + warehouse_clerk | All clerk + force-release reservations |
 | linda | production_planner | View board, set priority, complete operations, edit/activate BOM |
-| production-sup | production_supervisor + production_planner | All planner + cancel WO, skip operation |
+| paul | production_supervisor + production_planner | All planner + cancel WO, skip operation |
 | tom | purchasing_clerk | Create PR/PO (draft), post goods receipts |
-| purchasing-mgr | purchasing_manager + purchasing_clerk | All clerk + approve PO, author supplier prices |
+| priya | purchasing_manager + purchasing_clerk | All clerk + approve PO, author supplier prices |
 | olivia | accountant | Record supplier invoices, record payments |
 | daniel | finance_manager + accountant | All accountant + reverse journals, manual-approve invoices |
-| auditor | auditor | Read-only on every endpoint |
-| sysadmin | sysadmin | Keycloak admin only; no business data |
+| aaron | auditor | Read-only on every endpoint |
+| ian | sysadmin | Keycloak admin only; no business data |
 
 **Switching personas** in the ERP Web UI: there is no in-app persona dropdown — the user chip (top-right) shows the signed-in name + role and carries a **Sign out** action. To switch persona mid-demo, sign out, then sign in on Keycloak's login form as the desired persona (password == username). The 403-tooltip behaviour on action buttons reacts to the new role automatically once you land back in the SPA.
 
@@ -403,17 +403,17 @@ curl -i -X POST http://localhost:8083/api/shipments \
 
 Place an order **as Sarah (sales_clerk)** for a short quantity so it parks at `stock_reservation_incomplete` (e.g. follow Demo 3 partway: place order → wait for `stock_reservation_incomplete` while inventory's make-to-stock replenishment is still in flight). Cancel works from any pre-shipment state.
 
-**Security demo moment.** With Sarah still signed in, open the Sales Order detail page and hover the **Cancel order** action — it's disabled with a tooltip "Requires role: sales_manager". Sarah doesn't have authority to cancel; only sales-mgr does. Sign out (top-right), then sign back in as **sales-mgr**. Now the Cancel action is enabled. Click it, supply a reason, confirm. Behind the scenes Spring Security's `@PreAuthorize("hasRole('sales_manager')")` accepts the call.
+**Security demo moment.** With Sarah still signed in, open the Sales Order detail page and hover the **Cancel order** action — it's disabled with a tooltip "Requires role: sales_manager". Sarah doesn't have authority to cancel; only sam does. Sign out (top-right), then sign back in as **sam**. Now the Cancel action is enabled. Click it, supply a reason, confirm. Behind the scenes Spring Security's `@PreAuthorize("hasRole('sales_manager')")` accepts the call.
 
 ```bash
-# Equivalent curl (with Bearer token from sales-mgr's session):
+# Equivalent curl (with Bearer token from sam's session):
 curl -X POST http://localhost:8082/api/sales-orders/{salesOrderId}/cancel \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer <sales-mgr-token>' \
+  -H 'Authorization: Bearer <sam-token>' \
   -d '{"reason": "Customer changed mind"}'
 ```
 
-A 403 from sarah's token vs 200 from sales-mgr's is the simplest live demo of the role gate.
+A 403 from sarah's token vs 200 from sam's is the simplest live demo of the role gate.
 
 Returns 200 with the order body now showing `status='cancelled'` and `cancelledAt` set. Behind the scenes:
 
@@ -432,7 +432,7 @@ The §4.1 cancel above was an *unpaid* order — nothing had moved through the G
 
 Run Demo 3 (deposit/prepayment) partway: place a **deposit** order (e.g. `paymentTerms:"deposit"`, `depositPercent:50`), then pay the deposit invoice. The order now sits at saga `deposit_paid` with **Cr 2110 Customer Deposits** for the deposit amount — the customer's money is on the balance sheet.
 
-Cancel it (as sales-mgr, before shipment). On top of the §4.1 sales↔inventory compensation, **finance** consumes `sales.SalesOrderCancellationRequested` and — seeing a paid prepayment/deposit invoice — posts the refund:
+Cancel it (as sam, before shipment). On top of the §4.1 sales↔inventory compensation, **finance** consumes `sales.SalesOrderCancellationRequested` and — seeing a paid prepayment/deposit invoice — posts the refund:
 
 - **Dr 2110 Customer Deposits / Cr 1000 Bank** for the paid amount (the exact inverse of the original receipt), and stamps `customer_invoice_header.refunded_at` (idempotent — a redelivered cancel can't refund twice).
 
@@ -645,13 +645,13 @@ Open `http://localhost:5174` cold (or sign out). The SPA redirects to Keycloak's
 
 On a Sales Order detail page (any order before `goods_shipped`), hover the **Cancel order** action. Sarah's `sales_clerk` doesn't include `sales_manager`, so it is disabled with tooltip "Requires role: sales_manager".
 
-Sign out (top-right), then sign back in on Keycloak as **sales-mgr** (password == `sales-mgr`). The Cancel action is now enabled. Click it. Saga walks `compensating → compensated`. Audit row stamps `actor_user_id = "sales-mgr"`.
+Sign out (top-right), then sign back in on Keycloak as **sam** (password == `sam`). The Cancel action is now enabled. Click it. Saga walks `compensating → compensated`. Audit row stamps `actor_user_id = "sam"`.
 
-If you want the loud version: switch to **Auditor** first, try to click anything mutating — every mutation action is disabled with a tooltip. Read-only persona; reading works.
+If you want the loud version: switch to **Aaron** (auditor) first, try to click anything mutating — every mutation action is disabled with a tooltip. Read-only persona; reading works.
 
 ### 8.3 — Audit log timeline
 
-On any Sales Order detail page, open **View audit** (or go to **System → Audit Log** with the order's id). Lands on `/system/audit-log?aggregateId=<id>`. The BFF fans out to all 7 services and merges the timeline by occurredAt desc. Every event is labelled with its source service, event type, and actor. The cancellation row shows `actor_user_id = "sales-mgr"`; the original placement row shows `actor_user_id = "sarah"`. Saga-driven rows (e.g., `manufacturing.WorkOrderCreated`) show actor as "system".
+On any Sales Order detail page, open **View audit** (or go to **System → Audit Log** with the order's id). Lands on `/system/audit-log?aggregateId=<id>`. The BFF fans out to all 7 services and merges the timeline by occurredAt desc. Every event is labelled with its source service, event type, and actor. The cancellation row shows `actor_user_id = "sam"`; the original placement row shows `actor_user_id = "sarah"`. Saga-driven rows (e.g., `manufacturing.WorkOrderCreated`) show actor as "system".
 
 The same screen accessible directly via **System → Audit Log** with no filter — shows recent activity across the whole stack.
 
@@ -665,8 +665,8 @@ Try the same as Olivia (accountant) — Reverse is disabled, tooltip "Requires r
 
 - Login redirect works on cold-cache load.
 - Sarah cancel-order → 403 + disabled action + tooltip.
-- sales-mgr cancel-order → 200 + saga compensates.
-- Auditor can read every screen but mutates nothing.
+- sam cancel-order → 200 + saga compensates.
+- Aaron (auditor) can read every screen but mutates nothing.
 - `actor_user_id` is non-null on all user-driven outbox rows; null on saga/system rows.
 - `/system/audit-log` shows a coherent cross-service timeline within a few seconds of the action.
 

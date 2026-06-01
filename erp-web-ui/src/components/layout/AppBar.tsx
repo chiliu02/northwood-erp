@@ -12,8 +12,7 @@ export function AppBar() {
   const { me } = useCurrentUser();
 
   const initials = me?.username ? me.username.slice(0, 2).toUpperCase() : "—";
-  // First name only — the persona "surname" is just the department (Tom
-  // Purchasing, Mike Warehouse, …), which we don't need in the chip.
+  // First name only — keeps the user chip compact (e.g. "Tom" for Tom Walsh).
   const display = (me?.fullName ?? me?.username ?? "Loading…").split(" ")[0];
 
   return (
