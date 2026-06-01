@@ -1,5 +1,5 @@
 # ===========================================================================
-# Secrets — docs/aws-demo-deployment.md §10. Terraform generates the values
+# Secrets — docs/aws-deployment.html §10. Terraform generates the values
 # (so they're never the committed defaults), stores them in Secrets Manager
 # for the ECS tasks (task-def secrets[].valueFrom = ARN), and also exposes the
 # plaintext (sensitive outputs) so the infra-ec2 module can render the Postgres

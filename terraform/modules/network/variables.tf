@@ -4,43 +4,47 @@ variable "name_prefix" {
 }
 
 variable "vpc_cidr" {
-  description = "VPC CIDR. /16 leaves room for the four /24 subnets."
+  description = "VPC CIDR. /16 leaves room for the three /24 subnets."
   type        = string
   default     = "10.0.0.0/16"
 }
 
 variable "az" {
-  description = "Primary AZ — web/app/infra tiers, NAT, and all instances live here. Empty => first AZ in the region."
+  description = "Single AZ everything is pinned to (demo is single-AZ). Empty => first AZ in the region."
   type        = string
   default     = ""
 }
 
-variable "az_b" {
-  description = <<-EOT
-    Secondary AZ used ONLY for a second public subnet, because an internet-facing
-    ALB requires >=2 AZs. No workload runs here — the demo stays effectively
-    single-AZ. Empty => second AZ in the region.
-  EOT
-  type        = string
-  default     = ""
-}
-
+# ---------------------------------------------------------------------------
+# Subnets — docs/aws-deployment.html. One public + two private, single AZ:
+#   public : the web/auth EC2 (erp-bff + Keycloak), internet-facing
+#   app    : the services EC2 (7 services), private
+#   infra  : the data EC2 (Postgres + Kafka + observability), private
+# The private subnets egress via the NAT instance (see main.tf).
+# ---------------------------------------------------------------------------
 variable "subnet_cidrs" {
-  description = "Per-tier subnet CIDRs (matches docs/aws-demo-deployment.md §4; public_b added for the ALB's 2-AZ requirement)."
   type = object({
-    public   = string
-    public_b = string
-    web      = string
-    app      = string
-    infra    = string
+    public = string
+    app    = string
+    infra  = string
   })
   default = {
-    public   = "10.0.1.0/24"
-    public_b = "10.0.4.0/24"
-    web      = "10.0.2.0/24"
-    app      = "10.0.3.0/24"
-    infra    = "10.0.11.0/24"
+    public = "10.0.1.0/24"
+    app    = "10.0.2.0/24"
+    infra  = "10.0.3.0/24"
   }
+}
+
+variable "bff_port" {
+  description = "erp-web-ui-bff port, exposed to the internet on the public EC2."
+  type        = number
+  default     = 8089
+}
+
+variable "keycloak_port" {
+  description = "Keycloak port — public (browser OIDC redirect) + reachable from the app tier for JWKS."
+  type        = number
+  default     = 8080
 }
 
 variable "app_port_range" {
@@ -55,8 +59,20 @@ variable "app_port_range" {
   }
 }
 
-variable "bff_ports" {
-  description = "The two BFF ports exposed to the ALB (demo-bff 8080, erp-bff 8089)."
+variable "telemetry_ports" {
+  description = "Observability ingest ports on the data EC2 (OTLP gRPC/HTTP + Loki push)."
   type        = list(number)
-  default     = [8080, 8089]
+  default     = [4317, 4318, 3100]
+}
+
+variable "nat_instance_type" {
+  description = "NAT instance size — t3.nano is plenty for demo egress."
+  type        = string
+  default     = "t3.nano"
+}
+
+variable "nat_ami_id" {
+  description = "AMI for the NAT instance. Empty => latest Amazon Linux 2023 x86_64."
+  type        = string
+  default     = ""
 }

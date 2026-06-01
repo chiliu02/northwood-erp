@@ -1,0 +1,28 @@
+#!/bin/bash
+# App tier — the 7 services as Docker containers. Private subnet, egress via the
+# NAT instance. App images pulled from ECR; DB passwords come from the private
+# services.env (every container gets all of them via --env-file and uses its own
+# <SVC>_DB_PASSWORD). DB / Kafka / Keycloak are reached by the data + web boxes'
+# pinned private IPs.
+set -euxo pipefail
+
+dnf install -y docker
+systemctl enable --now docker
+command -v aws >/dev/null 2>&1 || dnf install -y awscli-2 || dnf install -y awscli
+
+aws s3 cp "s3://${bucket}/env/services.env" /opt/northwood/services.env --region "${region}"
+aws ecr get-login-password --region "${region}" | docker login --username AWS --password-stdin "${registry}"
+
+%{ for name, port in services ~}
+docker run -d --name ${name}-service --restart unless-stopped \
+  -p ${port}:${port} \
+  --env-file /opt/northwood/services.env \
+  -e SPRING_PROFILES_ACTIVE=kafka \
+  -e KAFKA_BOOTSTRAP_SERVERS=${kafka_boot} \
+  -e KEYCLOAK_ISSUER_URI=${kc_issuer} \
+  -e OTLP_ENDPOINT=${otlp_endpoint} \
+  -e LOKI_URL=${loki_url} \
+  -e ${upper(name)}_DB_USER=${name}_service \
+  -e "${upper(name)}_DB_URL=jdbc:postgresql://${data_ip}:5432/northwood_erp?currentSchema=${name},shared" \
+  ${registry}/${image_prefix}/${name}-service:${image_tag}
+%{ endfor ~}

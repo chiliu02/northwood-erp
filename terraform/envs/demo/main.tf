@@ -1,56 +1,44 @@
 # ===========================================================================
-# Northwood demo — root composition. docs/aws-demo-deployment.md (Part A + B).
-# Bring-up order (§8) is mostly handled by Terraform's dependency graph; the
-# build/ scripts push images to ECR between `apply` of ECR and the ECS services
-# (see terraform/README.md).
+# Northwood demo — root composition. docs/aws-deployment.html (the minimal,
+# EC2 + docker-run, 3-tier topology). No ALB, no ECS/Fargate, no managed NAT:
+#
+#   public subnet : web EC2  (erp-web-ui-bff + Keycloak)        — public IP
+#   app subnet    : app EC2  (the 7 services)                   — private
+#   infra subnet  : data EC2 (Postgres + Kafka + observability) — private
+#   + a NAT instance in the public subnet for private egress.
+#
+# Build/push the 8 app images to ECR first (see terraform/README), then apply.
 # ===========================================================================
+
+data "aws_caller_identity" "current" {}
 
 locals {
   repo_root = var.repo_root != "" ? var.repo_root : abspath("${path.root}/../../..")
 
-  # The 7 backend services, keyed by schema name. name = "<schema>-service",
-  # Service Connect alias = "<schema>", env prefix = upper(schema).
+  # The 7 backend services, keyed by schema name => listen port.
   services = {
-    product       = { port = 8081 }
-    sales         = { port = 8082 }
-    inventory     = { port = 8083 }
-    manufacturing = { port = 8084 }
-    purchasing    = { port = 8085 }
-    finance       = { port = 8086 }
-    reporting     = { port = 8087 }
+    product       = 8081
+    sales         = 8082
+    inventory     = 8083
+    manufacturing = 8084
+    purchasing    = 8085
+    finance       = 8086
+    reporting     = 8087
   }
 
-  # The 2 BFFs.
-  bffs = {
-    "demo-web-ui-bff" = { port = 8080 }
-    "erp-web-ui-bff"  = { port = 8089 }
+  bff_name = "erp-web-ui-bff"
+
+  # ECR repos: one per app image (7 services + the BFF). demo-web-ui-bff is gone.
+  app_repo_names = concat([for k in keys(local.services) : "${k}-service"], [local.bff_name])
+
+  ecr_registry = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com"
+
+  # Pinned static private IPs (must sit inside the network module's subnet CIDRs).
+  private_ips = {
+    web   = "10.0.1.10"
+    app   = "10.0.2.10"
+    infra = "10.0.3.10"
   }
-
-  all_app_names = concat(
-    [for k in keys(local.services) : "${k}-service"],
-    keys(local.bffs),
-  )
-
-  # Endpoints the apps need, resolved from the infra tier.
-  kafka_bootstrap          = "${module.infra_ec2.kafka_private_dns}:9092"
-  keycloak_issuer_internal = "http://${module.infra_ec2.keycloak_private_dns}:8080/realms/northwood"
-  postgres_dns             = module.infra_ec2.postgres_private_dns
-
-  # BFF -> service URLs via Service Connect aliases (NORTHWOOD_BFF_TARGETS_*).
-  bff_targets = {
-    for k, s in local.services : "NORTHWOOD_BFF_TARGETS_${upper(k)}" => "http://${k}:${s.port}"
-  }
-
-  # §1D telemetry — point every app at the observability box: OTLP traces to
-  # Tempo (:4317) and log push to Loki (:3100). Empty (apps keep their localhost
-  # defaults, nothing receives) when observability is disabled. Shared by the
-  # services and BFFs env blocks in services.tf.
-  obs_dns = module.infra_ec2.observability_private_dns
-  telemetry_env = var.enable_observability ? {
-    OTLP_ENDPOINT              = "http://${local.obs_dns}:4317"
-    LOKI_URL                   = "http://${local.obs_dns}:3100/loki/api/v1/push"
-    NORTHWOOD_TRACING_SAMPLING = tostring(var.tracing_sampling)
-  } : {}
 }
 
 module "network" {
@@ -70,52 +58,36 @@ module "secrets" {
 module "ecr" {
   source      = "../../modules/ecr"
   name_prefix = var.name_prefix
-  repo_names  = local.all_app_names
+  repo_names  = local.app_repo_names
 }
 
-module "infra_ec2" {
-  source      = "../../modules/infra-ec2"
+module "compute" {
+  source = "../../modules/infra-ec2"
+
   name_prefix = var.name_prefix
-  subnet_id   = module.network.subnet_ids.infra
-
+  subnet_ids  = module.network.subnet_ids
   security_group_ids = {
-    postgres = module.network.security_group_ids.postgres
-    kafka    = module.network.security_group_ids.kafka
-    keycloak = module.network.security_group_ids.keycloak
-    obs      = module.network.security_group_ids.obs
+    web   = module.network.security_group_ids.web
+    app   = module.network.security_group_ids.app
+    infra = module.network.security_group_ids.infra
   }
+  private_ips = local.private_ips
 
-  instance_types    = var.infra_instance_types
-  repo_root         = local.repo_root
-  load_seed_data    = var.load_seed_data
-  keycloak_hostname = var.keycloak_hostname
+  ecr_registry        = local.ecr_registry
+  ecr_repository_arns = [for arn in module.ecr.repository_arns : arn]
+  image_prefix        = var.name_prefix
+  image_tag           = var.image_tag
 
-  enable_observability        = var.enable_observability
-  observability_instance_type = var.observability_instance_type
+  services = local.services
+  bff_name = local.bff_name
+
+  repo_root            = local.repo_root
+  load_seed_data       = var.load_seed_data
+  keycloak_hostname    = var.keycloak_hostname
+  enable_observability = var.enable_observability
 
   postgres_superuser_password = module.secrets.postgres_superuser_password
   keycloak_admin_password     = module.secrets.keycloak_admin_password
+  bff_client_secret           = var.bff_client_secret
   service_db_passwords        = module.secrets.service_db_passwords
-}
-
-module "ecs_cluster" {
-  source           = "../../modules/ecs-cluster"
-  name_prefix      = var.name_prefix
-  task_secret_arns = module.secrets.all_task_secret_arns
-}
-
-module "alb" {
-  source            = "../../modules/alb"
-  name_prefix       = var.name_prefix
-  vpc_id            = module.network.vpc_id
-  subnet_ids        = module.network.alb_subnet_ids
-  security_group_id = module.network.security_group_ids.alb
-  certificate_arn   = var.certificate_arn
-
-  # demo-bff is the listener default; erp-bff is reached at /erp* (see the OIDC
-  # caveat in README — real erp-bff browser login wants host-based routing).
-  targets = {
-    "demo-web-ui-bff" = { port = 8080, default = true }
-    "erp-web-ui-bff"  = { port = 8089, priority = 10, path_patterns = ["/erp", "/erp/*"] }
-  }
 }

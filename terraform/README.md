@@ -1,31 +1,42 @@
-# Northwood demo — Terraform (Part A + app tier)
+# Northwood demo — Terraform
 
-Automates **docs/aws-demo-deployment.md** Part A (network + Postgres/Kafka/Keycloak
-on EC2), the app tier (ECR + Secrets Manager + ECS Fargate ×9 + ALB), and the §1D
-observability EC2 (LGTM stack). The 2 SPAs (S3/CloudFront) remain **out of scope** here.
+Automates the **docs/aws-deployment.html** topology: a minimal, single-AZ, EC2 +
+`docker run` deployment — **no ALB, no ECS/Fargate, no managed NAT Gateway**.
+Three EC2 instances across one public + two private subnets, with a small NAT
+**instance** for private egress:
+
+| Tier | Subnet | EC2 runs |
+|---|---|---|
+| web  | public (public IP, `web-sg` :8089 + :8080) | `erp-web-ui-bff` + Keycloak |
+| app  | private (`app-sg`) | the 7 services |
+| data | private (`infra-sg`) | Postgres + Kafka + (optional) LGTM observability |
+
+The 2 SPAs (S3/CloudFront) and the fully-managed **production** variant
+(ECS Fargate / Aurora / MSK / Cognito) are out of scope here — production is
+documented in **docs/aws-architecture.html**.
 
 ```
 terraform/
   bootstrap/                 # one-time: creates the S3 state bucket (local state)
   envs/demo/                 # the root config you apply
     backend.tf               # <- edit: set the state bucket name
-    main.tf                  # module wiring + the services/bffs maps
-    services.tf              # the 9 deployables (ecs-service for_each ×2)
+    main.tf                  # module wiring + the services map + static private IPs
     variables.tf / outputs.tf / terraform.tfvars.example
   modules/
-    network/                 # VPC, 5 subnets (2 public for the ALB), NAT, SGs (§4)
-    infra-ec2/               # postgres/kafka/keycloak + observability EC2 + user-data + artifacts bucket
-    ecr/ secrets/            # 9 repos; Secrets Manager (DB pwds, BFF secret, bypass token)
-    ecs-cluster/ ecs-service/# Fargate cluster + Service Connect; reusable per-app service
-    alb/                     # public ALB + BFF target groups
+    network/                 # VPC, 3 subnets, IGW, NAT instance, S3 gateway endpoint, tier SGs
+    infra-ec2/               # the 3 EC2 tiers (web/app/data) + docker user-data + IAM + artifacts bucket
+    ecr/                     # 8 app repos (7 services + erp-bff)
+    secrets/                 # Secrets Manager (DB pwds, BFF client secret, bypass token) + plaintext outputs
   build/                     # build-and-push.{ps1,sh}: buildpack images -> ECR
 ```
 
 ## Prerequisites
 
 - Terraform >= 1.10, AWS CLI v2 (authenticated), Docker daemon, Maven, Java 21.
-- An IAM principal with VPC/EC2/ECS/ECR/ELB/Secrets-Manager/IAM/S3 permissions.
-- (Optional) an ACM cert + domain for HTTPS; otherwise the demo runs HTTP on the ALB DNS.
+- An IAM principal with VPC/EC2/ECR/Secrets-Manager/IAM/S3/SSM permissions.
+- No ACM cert / domain needed — the demo serves **HTTP** on the web box's public IP.
+  (For HTTPS / a stable OIDC redirect, put the production stack in front — see
+  `docs/aws-architecture.html`.)
 
 ## Bring-up
 
@@ -41,37 +52,53 @@ terraform apply -var="state_bucket_name=northwood-tfstate-<your-account-id>"
 # 3. Init the demo env.
 cd ../envs/demo
 terraform init
-cp terraform.tfvars.example terraform.tfvars   # optional: adjust region/tag/scaling
+cp terraform.tfvars.example terraform.tfvars   # optional: adjust region/tag/etc.
 
-# 4. Create ECR repos first, so there's somewhere to push images.
+# 4. Create the ECR repos first, so there's somewhere to push the app images.
 terraform apply -target=module.ecr
 
-# 5. Build all 9 apps as images and push to ECR.
+# 5. Build the 8 app images (7 services + erp-bff) and push to ECR.
 ../../build/build-and-push.ps1 -Tag latest        #  bash: ../../build/build-and-push.sh latest
 
-# 6. Apply everything else (network, infra EC2s, secrets, ECS, ALB).
+# 6. Apply everything else (network + NAT, secrets, the 3 EC2s).
 terraform apply
+
+# 7. OIDC needs a browser-reachable Keycloak. Grab the web box's public IP and
+#    re-apply with it as the issuer hostname (see note below):
+terraform output web_public_ip
+terraform apply -var="keycloak_hostname=<that-public-ip-or-a-DNS-name>"
 ```
 
-> **Why the two-phase apply (4 → 5 → 6).** ECS tasks can't pull images that aren't in
-> ECR yet. `aws_ecs_service` doesn't block on task health (`wait_for_steady_state`
-> is off), so a single `apply` would *succeed* while every task crash-loops on
-> `CannotPullContainerError`. Creating the repos, pushing, then applying the rest
-> avoids that. If you ever change app code: rebuild/push (step 5), then
-> `aws ecs update-service --cluster <name> --service <svc> --force-new-deployment`.
+> **Why the two-phase apply (4 → 5 → 6).** Each EC2's `docker run` user-data pulls
+> the app images from ECR on first boot. If the repos are empty, the *instances*
+> still come up (so a single `apply` looks like it "succeeded") but the containers
+> crash-loop on a pull error. Create the repos, push, then apply the rest. If you
+> change app code later: rebuild/push (step 5), then recreate the affected box —
+> `terraform apply -replace=module.compute.aws_instance.app` (or `.web`).
 
-Bring-up dependency order within step 6 (Postgres → Kafka → Keycloak → services → BFFs)
-is handled by Terraform's graph + the `depends_on` on the BFF services; the EC2
-user-data pulls `db/` + the generated role-login script from the private artifacts
-bucket on first boot.
+> **Keycloak hostname is chicken-and-egg (step 7).** OIDC redirects the browser to
+> Keycloak, so `KC_HOSTNAME` / the issuer must be the web box's **public** address —
+> which you only know after the first apply. Re-applying with `keycloak_hostname`
+> set changes the web box's user-data and therefore **replaces the web EC2**. To
+> avoid the re-apply churn, attach an **Elastic IP** to the web box up front and use
+> that as `keycloak_hostname`. Until it's set, the issuer falls back to the web
+> box's private IP and browser login won't work (the rest of the stack runs fine).
 
-## Verify (mirrors §9)
+Bring-up order (data → app → web) is handled by Terraform's graph: the boxes use
+**pinned static private IPs** (`10.0.1.10 / .2.10 / .3.10`, set in `envs/demo/main.tf`)
+so cross-tier URLs (BFF→services, services→Postgres/Kafka/Keycloak) are computed at
+plan time with no instance-to-instance dependency cycle. User-data pulls `db/`,
+the Keycloak realm, the generated role-login script, and the env files from the
+private artifacts bucket on first boot.
+
+## Verify
 
 ```powershell
-terraform output alb_dns_name           # open http://<dns>/  (demo-bff)  ·  /erp (erp-bff)
-terraform output infra_instance_ids     # aws ssm start-session --target <postgres-id>
-# on the postgres box:  docker exec -it northwood-postgres psql -U postgres -d northwood_erp \
-#                         -c "select count(*) from sales.customer;"
+terraform output web_public_ip       # open http://<ip>:8089  (erp-web-ui-bff)  ·  Keycloak on :8080
+terraform output instance_ids        # aws ssm start-session --target <data-id>
+# on the data box:  docker exec -it northwood-postgres psql -U postgres -d northwood_erp \
+#                     -c "select count(*) from sales.customer;"
+terraform output grafana_access_hint # SSM port-forward 3000 to the data box, then open localhost:3000
 ```
 
 ## Teardown
@@ -80,63 +107,70 @@ terraform output infra_instance_ids     # aws ssm start-session --target <postgr
 cd terraform/envs/demo
 terraform destroy
 # The state bucket (bootstrap) has prevent_destroy = true — delete it by hand if you
-# truly want it gone. Stopping the 3 EC2s + scaling ECS to 0 is the cheaper "pause".
+# truly want it gone. Stopping the 3 EC2s + the NAT instance is the cheaper "pause"
+# (the gp3 root volumes preserve Postgres + Kafka state across stop/start).
 ```
 
 ---
 
 ## Design decisions worth knowing
 
+- **NAT *instance*, not a NAT Gateway or VPC endpoints.** The private subnets need
+  outbound internet to pull third-party images (Postgres/Kafka from Docker Hub,
+  Keycloak from quay.io) and to let the services reach the *public* Keycloak issuer.
+  A managed NAT Gateway costs ~$32/mo+; a pure VPC-endpoints route avoids NAT but
+  only covers ECR (so Docker Hub/quay would need an ECR pull-through cache + a
+  Keycloak issuer/JWKS split). For a throwaway demo we use a **`t3.nano` NAT
+  instance** (iptables masquerade, `source_dest_check` off). The free **S3 gateway
+  endpoint** still keeps S3 + ECR image-layer traffic off it. Production should use a
+  managed NAT Gateway per AZ (`docs/aws-architecture.html`).
+
+- **All app images from ECR; third-party direct.** The build script pushes the 8 app
+  images (7 `<svc>-service` + `erp-web-ui-bff`) to ECR; the boxes `docker login` ECR
+  via the instance role and pull them. Postgres/Kafka/Keycloak/LGTM are pulled
+  straight from their registries through the NAT — no mirroring.
+
+- **Keycloak is public (on the web box).** It must be browser-reachable for the OIDC
+  redirect, so it shares the public web EC2 with the BFF. Because the services reach
+  that same public issuer through the NAT, **no issuer/JWKS split is needed** — they
+  just set `KEYCLOAK_ISSUER_URI` to the public host.
+
 - **Per-service DB login roles (the load-bearing invariant, made real).** The baseline
-  `db/northwood_erp.sql` ships the `<svc>_service` roles as `NOLOGIN` (in dev every
-  service logs in as `postgres`). Terraform generates a password per service, renders an
-  `ALTER ROLE <svc>_service LOGIN PASSWORD …` init script (staged as `03-service-logins.sql`),
-  and each ECS task connects as its own role — so the schema-per-service least-privilege
-  isolation is genuinely enforced on AWS. **Fallback:** if the baseline grants turn out
-  incomplete for login-as-role and a service can't read its own tables, set that service's
-  `<SERVICE>_DB_USER` back to `postgres` in `services.tf` (and point its `_DB_PASSWORD`
-  secret at `…/db/postgres-superuser`).
+  `db/northwood_erp.sql` ships the `<svc>_service` roles as `NOLOGIN`. Terraform
+  generates a password per service, renders an `ALTER ROLE <svc>_service LOGIN
+  PASSWORD …` init script (staged as `03-service-logins.sql`), stages all of them in
+  `env/services.env`, and each service container connects as its own role — so the
+  schema-per-service least-privilege isolation is genuinely enforced on AWS.
 
-- **State holds secrets → S3 backend.** Terraform sets the Secrets Manager values, so
-  state contains them in plaintext; that's why state lives in the private+encrypted+
-  versioned bootstrap bucket, not a local file.
+- **State holds secrets → S3 backend.** Terraform sets the Secrets Manager values and
+  stages passwords into the artifacts bucket, so state contains them in plaintext;
+  that's why state lives in the private + encrypted + versioned bootstrap bucket.
 
-- **Keycloak BFF client secret is fixed, not random.** It must equal the `"secret"` baked
-  into `db/keycloak/northwood-realm.json` (`northwood-bff-secret`). Rotating it means
-  editing the realm JSON too.
+- **Keycloak BFF client secret is fixed, not random.** It must equal the `"secret"`
+  baked into `db/keycloak/northwood-realm.json` (`northwood-bff-secret`). Rotating it
+  means editing the realm JSON too.
 
-- **ALB needs 2 AZs; the demo is otherwise single-AZ.** The network module adds a second
-  *public* subnet in a second AZ purely to satisfy the ALB. No workload runs there — NAT,
-  EC2s, and all tasks stay in the primary AZ.
+- **Single Kafka broker, RF=1**, carried over from compose — recover-after-restart,
+  not failover. Same posture as the local stack; see `docs/messaging.md`.
 
-- **erp-bff is routed at `/erp*`; demo-bff is the ALB default.** Good enough to reach both
-  over HTTP. Real erp-bff **browser OIDC** wants host-based routing + a domain so the
-  redirect URI resolves at root and `KC_HOSTNAME` matches the issuer (§5.3) — set
-  `certificate_arn` + `keycloak_hostname` and switch the erp target to `host_headers`.
-  Also: both BFFs carry `spring-boot-starter-actuator`, so the ALB health check hits
-  `/actuator/health`. If erp-bff's OAuth2 login chain redirects that path (302 → Keycloak)
-  it'll read as unhealthy — permit `/actuator/health` in its security config, or relax the
-  `erp-web-ui-bff` target group matcher to `200-399`.
+- **Observability (§1D) is on the data box** (Tempo, Loki, Prometheus, Grafana as
+  containers on a shared `northwood` docker network). The app + web boxes get
+  `OTLP_ENDPOINT` (Tempo `:4317`) + `LOKI_URL` (Loki `:3100`), so **traces and logs
+  flow push-based out of the box**. Toggle the tier with `enable_observability`.
+  Reach Grafana via SSM port-forward — it has no public IP
+  (`terraform output grafana_access_hint`).
+  - **Metrics caveat** (unchanged from the §1D notes): Prometheus *scrape* of
+    `/actuator/prometheus` needs service discovery; here it self-scrapes and runs the
+    OTLP receiver, so service-metric panels stay empty until SD/OTLP-push is wired —
+    traces + logs are unaffected.
 
-- **Single Kafka broker, RF=1**, carried over from compose — recover-after-restart, not
-  failover. Same posture as the local stack; see `docs/messaging.md`.
+- **Machine-validated.** `terraform validate` passes and `terraform fmt` is applied.
+  Note that `validate` checks HCL + module wiring + template variables, **not** the
+  `docker run` user-data at runtime — a real `apply` is the only way to confirm the
+  boxes come up healthy.
+```
 
-- **Observability (§1D) is one EC2 running the LGTM stack** (Tempo, Loki, Prometheus,
-  Grafana as four containers on a shared docker network), the AWS analogue of the compose
-  observability services. All 9 apps get `OTLP_ENDPOINT` (Tempo `:4317`) + `LOKI_URL`
-  (Loki `:3100`) + `NORTHWOOD_TRACING_SAMPLING` env, so **traces and logs flow push-based
-  out of the box**. Toggle the whole tier with `enable_observability` (the SG rules for it
-  already existed). Reach Grafana via SSM port-forward — it has no public IP:
-  `terraform output grafana_access_hint`.
-  - **Metrics caveat.** §1D metrics are Prometheus **scrape** of `/actuator/prometheus`,
-    which doesn't translate to Fargate (no `host.docker.internal`, no stable task IPs). The
-    box runs Prometheus with its OTLP receiver enabled and self-scrapes, but service-metric
-    collection needs service discovery (ECS SD / Cloud Map) **or** OTLP metrics push from
-    the apps — left as a documented follow-up in the staged `prometheus.yml`. The §1D
-    Grafana metric panels stay empty on AWS until that's wired; traces + logs are unaffected.
-  - **Grafana's Postgres datasource** is templated to the Postgres box's private DNS (the
-    compose file hardcodes the `postgres` service name, which doesn't resolve on AWS).
-
-- **Not machine-validated.** Terraform wasn't installed in the authoring environment, so
-  `terraform fmt`/`validate`/`plan` have not been run against this yet. Run `terraform
-  validate` after `init` before trusting a real apply.
+> **Build script note:** `build/build-and-push.*` was written for the original 9
+> deployables. The demo now ships **8** images (demo-web-ui-bff is dropped) — if the
+> script still builds/pushes `demo-web-ui-bff`, that extra image is harmless (no repo
+> to receive it / simply unused), but you can trim it from the script's app list.

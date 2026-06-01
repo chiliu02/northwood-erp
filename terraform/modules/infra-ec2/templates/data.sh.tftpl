@@ -1,0 +1,76 @@
+#!/bin/bash
+# Data tier — Postgres + Kafka (+ optional LGTM observability). Private subnet,
+# egress via the NAT instance. Third-party images pulled straight from their
+# registries. Containers share the "northwood" docker network so Grafana's
+# provisioned datasources resolve by name; ports are also published to the host
+# so the app tier (other EC2) can reach Postgres/Kafka/OTLP/Loki by private IP.
+set -euxo pipefail
+
+dnf install -y docker
+systemctl enable --now docker
+command -v aws >/dev/null 2>&1 || dnf install -y awscli-2 || dnf install -y awscli
+
+mkdir -p /opt/northwood/initdb /data/pg /data/kafka
+docker network create northwood || true
+
+# DB init scripts (01 baseline, 02 seed?, 03 role logins) + superuser env.
+aws s3 cp "s3://${bucket}/db/" /opt/northwood/initdb/ --recursive --region "${region}" --exclude "*" --include "*.sql"
+aws s3 cp "s3://${bucket}/env/postgres.env" /opt/northwood/postgres.env --region "${region}"
+
+docker run -d --name northwood-postgres --restart unless-stopped --network northwood \
+  --env-file /opt/northwood/postgres.env \
+  -e POSTGRES_USER=postgres -e POSTGRES_DB=northwood_erp \
+  -p 5432:5432 \
+  -v /data/pg:/var/lib/postgresql/data \
+  -v /opt/northwood/initdb:/docker-entrypoint-initdb.d:ro \
+  ${postgres_image}
+
+# Kafka (KRaft single node). Advertise this box's private IP so app-tier clients
+# on the other EC2 connect back correctly.
+docker run -d --name northwood-kafka --restart unless-stopped --network northwood \
+  -p 9092:9092 \
+  -v /data/kafka:/var/lib/kafka/data \
+  -e KAFKA_NODE_ID=1 \
+  -e KAFKA_PROCESS_ROLES=broker,controller \
+  -e KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093 \
+  -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${advertise_ip}:9092 \
+  -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+  -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093 \
+  -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
+  -e KAFKA_AUTO_CREATE_TOPICS_ENABLE=true \
+  -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+  -e KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
+  -e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
+  -e KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR=1 \
+  -e KAFKA_DEFAULT_REPLICATION_FACTOR=1 \
+  -e KAFKA_MIN_INSYNC_REPLICAS=1 \
+  -e CLUSTER_ID=${kafka_cluster_id} \
+  ${kafka_image}
+
+%{ if enable_observability ~}
+# ---- LGTM stack (traces/logs/metrics + Grafana) ----------------------------
+aws s3 cp "s3://${bucket}/obs/" /opt/northwood/obs/ --recursive --region "${region}"
+
+docker run -d --name tempo --restart unless-stopped --network northwood \
+  -p 4317:4317 -p 4318:4318 -p 3200:3200 \
+  -v /opt/northwood/obs/tempo.yaml:/etc/tempo.yaml:ro -v northwood-tempo:/var/tempo \
+  ${obs_images.tempo} -config.file=/etc/tempo.yaml
+
+docker run -d --name loki --restart unless-stopped --network northwood \
+  -p 3100:3100 \
+  -v /opt/northwood/obs/loki-config.yaml:/etc/loki/local-config.yaml:ro -v northwood-loki:/loki \
+  ${obs_images.loki} -config.file=/etc/loki/local-config.yaml
+
+docker run -d --name prometheus --restart unless-stopped --network northwood \
+  -p 9090:9090 \
+  -v /opt/northwood/obs/prometheus.yml:/etc/prometheus/prometheus.yml:ro -v northwood-prometheus:/prometheus \
+  ${obs_images.prometheus} --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.retention.time=24h --web.enable-otlp-receiver
+
+docker run -d --name grafana --restart unless-stopped --network northwood \
+  -p 3000:3000 \
+  -e GF_AUTH_ANONYMOUS_ENABLED=true -e GF_AUTH_ANONYMOUS_ORG_ROLE=Admin -e GF_AUTH_DISABLE_LOGIN_FORM=true \
+  -v /opt/northwood/obs/grafana/datasources:/etc/grafana/provisioning/datasources:ro \
+  -v /opt/northwood/obs/grafana/dashboards-provisioning:/etc/grafana/provisioning/dashboards:ro \
+  -v /opt/northwood/obs/grafana/dashboards:/var/lib/grafana/dashboards:ro -v northwood-grafana:/var/lib/grafana \
+  ${obs_images.grafana}
+%{ endif ~}

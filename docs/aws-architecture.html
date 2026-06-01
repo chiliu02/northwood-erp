@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Northwood ERP — production AWS architecture (fully managed)</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f4f6f9; color: #16191f;
+      font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    header { padding: 1.4rem 2rem 0.6rem; border-bottom: 1px solid #e3e7ec; background: #fff; }
+    h1 { margin: 0 0 .25rem; font-size: 1.5rem; color: #232f3e; }
+    .sub { color: #5f6b7a; font-size: .9rem; }
+    main { padding: 1.5rem 2rem 3rem; max-width: 1080px; margin: 0 auto; }
+
+    .diagram { background: #fff; border: 1px solid #e3e7ec; border-radius: 10px; padding: 1.4rem 1.6rem; }
+    .cloud { text-align: center; margin-bottom: .3rem; }
+    .cloud img { height: 32px; vertical-align: -8px; }
+    .arrow { text-align: center; color: #6b7889; font-size: .8rem; margin: .25rem 0; }
+    .arrow::before { content: ""; display: block; width: 0; height: 0; margin: 0 auto 2px;
+      border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 7px solid #9aa7b6; }
+
+    .region { border: 2px solid #147eba; border-radius: 8px; padding: .6rem .8rem 1rem; position: relative; }
+    .vpc { border: 2px solid #1a8612; border-radius: 8px; padding: 1.6rem .8rem 1rem; margin-top: 1.5rem; position: relative; }
+    .lbl { position: absolute; top: -11px; left: 12px; background: #fff; padding: 0 6px; font-weight: 700; font-size: .85rem; display: flex; align-items: center; gap: 5px; }
+    .lbl img { height: 18px; }
+    .region > .lbl { color: #147eba; } .vpc > .lbl { color: #1a8612; }
+
+    .subnet { border: 2px solid; border-radius: 8px; padding: 1.5rem .8rem .8rem; position: relative; width: 100%; }
+    .subnet.edge  { border-color: #147eba; background: #f3f9fd; }
+    .subnet.app   { border-color: #7d5bbe; background: #f7f4fc; }
+    .subnet.data  { border-color: #e8810a; background: #fff8f0; }
+    .subnet .lbl { background: inherit; }
+    .subnet.edge .lbl { color: #0d5a86; } .subnet.app .lbl { color: #5b3da0; } .subnet.data .lbl { color: #b8650a; }
+
+    .row { display: flex; flex-wrap: wrap; gap: .7rem; justify-content: center; }
+    .res { background: #fff; border: 1px solid #cfd6df; border-radius: 6px; padding: .55rem .7rem; min-width: 150px; text-align: center; }
+    .res img { height: 34px; width: 34px; display: block; margin: 0 auto 4px; }
+    .res b { display: block; font-size: .88rem; }
+    .res span { color: #5f6b7a; font-size: .76rem; }
+    .res.wide { min-width: 300px; }
+
+    .azhint { text-align: right; color: #8a94a3; font-size: .74rem; margin-top: .3rem; }
+    .managed-lbl { text-align: center; color: #8a94a3; font-size: .78rem; margin: 1.4rem 0 .4rem; }
+    .managed { display: flex; gap: .7rem; justify-content: center; flex-wrap: wrap; }
+
+    h2 { font-size: 1.1rem; color: #232f3e; margin: 2.2rem 0 .6rem; border-bottom: 1px solid #e7ebf0; padding-bottom: .25rem; }
+    h3 { font-size: .98rem; color: #16191f; margin: 1.2rem 0 .4rem; }
+    table { border-collapse: collapse; width: 100%; font-size: .88rem; margin: .4rem 0 1rem; }
+    th, td { border: 1px solid #e0e4ea; padding: .45rem .6rem; text-align: left; vertical-align: top; }
+    th { background: #f0f3f7; }
+    ul { margin: .3rem 0 1rem; padding-left: 1.2rem; } li { margin: .35rem 0; }
+    code { background: #eef1f5; border: 1px solid #e0e4ea; border-radius: 4px; padding: 0 .35em; font-size: .85em; }
+    .tag { display: inline-block; border-radius: 4px; padding: 0 .45em; font-size: .72rem; font-weight: 700; vertical-align: 1px; }
+    .tag.code { background: #fdecea; color: #b3261e; } .tag.cfg { background: #e7f5ea; color: #1b7a33; } .tag.dep { background: #fff3df; color: #9a5b00; }
+    footer { color: #8a94a3; font-size: .8rem; padding: 0 2rem 2rem; max-width: 1080px; margin: 0 auto; }
+    a { color: #0a7bbf; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Northwood ERP — production AWS architecture <span style="color:#7aa116">(fully managed)</span></h1>
+    <div class="sub">Multi-AZ · ECS Fargate · Aurora PostgreSQL · Amazon MSK · Cognito (OIDC) · managed observability (AMP / AMG / X-Ray / CloudWatch). The demo variant lives in <a href="aws-deployment.html">aws-deployment.html</a>.</div>
+  </header>
+
+  <main>
+    <div class="diagram">
+      <div class="cloud"><img src="https://api.iconify.design/mdi/web.svg"/> <b>Internet</b> &nbsp;<span style="color:#5f6b7a">users</span></div>
+      <div class="arrow"></div>
+      <div class="row">
+        <div class="res"><img src="aws-icons/route53.svg"/><b>Route 53</b><span>DNS</span></div>
+        <div class="res"><img src="aws-icons/cloudfront.svg"/><b>CloudFront</b><span>CDN (optional)</span></div>
+        <div class="res"><img src="aws-icons/waf.svg"/><b>AWS WAF</b><span>edge filtering (optional)</span></div>
+      </div>
+      <div class="arrow">HTTPS</div>
+
+      <div class="region">
+        <div class="lbl"><img src="aws-icons/g-region.svg"/> AWS Region — multi-AZ</div>
+
+        <div class="vpc">
+          <div class="lbl"><img src="aws-icons/g-vpc.svg"/> VPC</div>
+
+          <!-- Edge -->
+          <section class="subnet edge">
+            <div class="lbl"><img src="aws-icons/g-subnet-pub.svg"/> Public subnets — internet-facing</div>
+            <div class="row">
+              <div class="res"><img src="aws-icons/elb.svg"/><b>Application Load Balancer</b><span>HTTPS · <img src="aws-icons/acm.svg" style="height:14px;width:14px;vertical-align:-2px"/> ACM cert · health checks</span></div>
+            </div>
+            <div class="azhint">spread across ≥2 Availability Zones</div>
+          </section>
+          <div class="arrow">HTTPS → BFF target group</div>
+
+          <!-- App -->
+          <section class="subnet app">
+            <div class="lbl"><img src="aws-icons/g-subnet-prv.svg"/> Private app subnets — ECS Fargate (Service Connect)</div>
+            <div class="row">
+              <div class="res"><img src="aws-icons/fargate.svg"/><b>erp-web-ui-bff</b><span>Fargate task(s) · OIDC client</span></div>
+              <div class="res wide"><img src="aws-icons/ecs.svg"/><b>7 services — ECS Fargate</b><span>product · sales · inventory · manufacturing · purchasing · finance · reporting<br/>per-service desired count · Service Connect · resource servers (JWT)</span></div>
+              <div class="res"><img src="aws-icons/nat.svg"/><b>NAT Gateway</b><span>private egress (per AZ)</span></div>
+            </div>
+            <div class="azhint">tasks balanced across ≥2 AZs</div>
+          </section>
+          <div class="arrow">JDBC (RDS Proxy) · Kafka (TLS/IAM)</div>
+
+          <!-- Data -->
+          <section class="subnet data">
+            <div class="lbl"><img src="aws-icons/g-subnet-prv.svg"/> Private data subnets</div>
+            <div class="row">
+              <div class="res"><img src="aws-icons/aurora.svg"/><b>Aurora PostgreSQL</b><span>Multi-AZ writer + reader · schema-per-service</span></div>
+              <div class="res"><img src="aws-icons/rds.svg"/><b>RDS Proxy</b><span>connection pooling</span></div>
+              <div class="res"><img src="aws-icons/msk.svg"/><b>Amazon MSK</b><span>managed Kafka (Serverless or provisioned)</span></div>
+            </div>
+            <div class="azhint">replicated across ≥2 AZs</div>
+          </section>
+        </div><!-- /vpc -->
+
+        <div class="managed-lbl">▼ managed AWS services (regional) — identity, observability, registry, secrets</div>
+        <div class="managed">
+          <div class="res"><img src="aws-icons/cognito.svg"/><b>Cognito</b><span>OIDC IdP · user pool<br/>BFF login · services verify JWT · groups→roles</span></div>
+          <div class="res"><img src="aws-icons/xray.svg"/><b>X-Ray</b><span>traces (via ADOT)</span></div>
+          <div class="res"><img src="aws-icons/amp.svg"/><b>Managed Prometheus</b><span>metrics</span></div>
+          <div class="res"><img src="aws-icons/amg.svg"/><b>Managed Grafana</b><span>dashboards</span></div>
+          <div class="res"><img src="aws-icons/cloudwatch.svg"/><b>CloudWatch Logs</b><span>app + task logs</span></div>
+          <div class="res"><img src="aws-icons/ecr.svg"/><b>ECR</b><span>container images</span></div>
+          <div class="res"><img src="aws-icons/secrets.svg"/><b>Secrets Manager</b><span>DB creds (rotated) · client secret</span></div>
+          <div class="res"><img src="aws-icons/s3.svg"/><b>S3</b><span>artifacts / static</span></div>
+        </div>
+      </div><!-- /region -->
+    </div><!-- /diagram -->
+
+    <h2>Self-hosted → AWS-managed mapping</h2>
+    <table>
+      <tr><th>Concern</th><th>Demo (self-hosted, EC2)</th><th>Production (AWS-managed)</th></tr>
+      <tr><td>Database</td><td>PostgreSQL on EC2</td><td><b>Aurora PostgreSQL</b> Multi-AZ + <b>RDS Proxy</b>; schema-per-service today, DB-per-service later. Creds in Secrets Manager (auto-rotation).</td></tr>
+      <tr><td>Event bus</td><td>Kafka (KRaft) on EC2</td><td><b>Amazon MSK</b> (Serverless or provisioned), TLS + <b>IAM</b> auth.</td></tr>
+      <tr><td>Identity / OAuth2</td><td>Keycloak on EC2</td><td><b>Amazon Cognito</b> user pool — OIDC IdP; BFF is the OIDC client, services verify JWTs; roles via <code>cognito:groups</code>.</td></tr>
+      <tr><td>Observability</td><td>Tempo / Loki / Prometheus / Grafana (LGTM) on EC2</td><td><b>X-Ray</b> (traces, via ADOT) · <b>Amazon Managed Prometheus</b> (metrics) · <b>CloudWatch Logs</b> (logs) · <b>Amazon Managed Grafana</b> (dashboards over all three).</td></tr>
+      <tr><td>Compute</td><td>docker-compose on EC2</td><td><b>ECS Fargate</b> — per-service tasks, Service Connect, per-task IAM, autoscaling.</td></tr>
+      <tr><td>Edge / TLS</td><td>public IP, HTTP</td><td><b>ALB</b> + <b>ACM</b> (HTTPS) + <b>Route 53</b>; optional <b>CloudFront</b> + <b>WAF</b>.</td></tr>
+      <tr><td>Egress / secrets</td><td>VPC endpoints, S3 env files</td><td><b>NAT Gateway</b> (per AZ) + <b>Secrets Manager</b>.</td></tr>
+    </table>
+
+    <h2>Code changes required</h2>
+    <p><span class="tag code">code</span> source change &nbsp; <span class="tag dep">dep</span> dependency add &nbsp; <span class="tag cfg">cfg</span> config / Terraform only</p>
+
+    <h3>1. Role mapping: Keycloak realm roles → Cognito groups &nbsp;<span class="tag code">code</span></h3>
+    <ul>
+      <li>Today <code>shared/…/security/KeycloakRealmRoleConverter.java</code> reads roles from the Keycloak <code>realm_access.roles</code> JSON path and prefixes <code>ROLE_</code>. Cognito puts group membership in a flat top-level <code>cognito:groups</code> array instead.</li>
+      <li><b>Change:</b> add a <code>CognitoGroupsRoleConverter</code> (read <code>cognito:groups</code> → <code>ROLE_*</code>, keep the scope-claim authorities) and swap the one line in <code>OAuth2ResourceServerSecurityConfig</code> (<code>jwt.jwtAuthenticationConverter(new …)</code>). Update <code>KeycloakRealmRoleConverterTest</code>. ~1 class + 1 line + 1 test. Your <code>@PreAuthorize("hasRole('…')")</code> annotations are unchanged — map Cognito group names to the same role names.</li>
+    </ul>
+
+    <h3>2. BFF OIDC client + role read &nbsp;<span class="tag code">code</span> <span class="tag cfg">cfg</span></h3>
+    <ul>
+      <li><code>erp-web-ui-bff/…/security/MeController.java</code> reads roles from the OIDC user's claims — repoint from <code>realm_access</code> to <code>cognito:groups</code>.</li>
+      <li><code>erp-web-ui-bff/application.yml</code>: replace the <code>spring.security.oauth2.client.registration.keycloak</code> + provider with a <b>Cognito</b> registration (client-id/secret, issuer-uri = the user-pool issuer, scopes <code>openid,email,profile</code>). Cognito's logout endpoint differs from Keycloak's, so add a logout success handler pointed at the Cognito <code>/logout</code> URL. <span class="tag cfg">cfg</span> + small <span class="tag code">code</span>.</li>
+    </ul>
+
+    <h3>3. Drop the demo bypass &nbsp;<span class="tag cfg">cfg</span></h3>
+    <ul>
+      <li><code>DemoBypassAuthenticationFilter</code> is already inert when <code>northwood.security.demo-bypass.token</code> is blank — set it empty in prod (no code change). Optionally delete the filter + its wiring for a clean production build.</li>
+    </ul>
+
+    <h3>4. Kafka → MSK with IAM auth &nbsp;<span class="tag dep">dep</span> <span class="tag cfg">cfg</span></h3>
+    <ul>
+      <li>Add the <code>software.amazon.msk:aws-msk-iam-auth</code> dependency and set <code>spring.kafka.properties</code>: <code>security.protocol=SASL_SSL</code>, <code>sasl.mechanism=AWS_MSK_IAM</code>, the <code>IAMLoginModule</code> jaas config + <code>IAMClientCallbackHandler</code>. The task role gets <code>kafka-cluster:*</code> IAM permissions. The Spring Kafka producer/consumer code and the outbox/inbox/saga logic are unchanged — only bootstrap + auth config. (Plaintext today → SASL_SSL/IAM.)</li>
+    </ul>
+
+    <h3>5. Logging → CloudWatch &nbsp;<span class="tag code">code</span></h3>
+    <ul>
+      <li><code>shared/…/logback-spring.xml</code> has a <code>LOKI</code> appender. On Fargate the container's stdout goes to CloudWatch via the <code>awslogs</code> driver, so drop/gate the Loki appender and keep the <code>CONSOLE</code> appender (it already emits <code>traceId</code>/<code>spanId</code>). Amazon Managed Grafana then queries CloudWatch Logs. Small logback edit.</li>
+    </ul>
+
+    <h3>6. Behind-ALB redirect URIs &nbsp;<span class="tag cfg">cfg</span></h3>
+    <ul>
+      <li>The BFF builds OIDC redirect URIs from the request; behind the ALB add <code>server.forward-headers-strategy: framework</code> so it honours <code>X-Forwarded-Proto/Host</code> and produces correct <code>https://&lt;domain&gt;/login/oauth2/code/cognito</code> URIs (which must be registered as Cognito callback URLs).</li>
+    </ul>
+
+    <h2>Ready without code change (config / Terraform only)</h2>
+    <ul>
+      <li><b>Database → Aurora/RDS</b> — <code>spring.datasource.url</code> is env-driven (<code>${SALES_DB_URL:…}</code>) and the per-pool <code>search_path</code> init-SQL + schema-per-service design are unchanged. Point the URL at the Aurora/RDS-Proxy endpoint — <b>zero code</b>. (This is the project's load-bearing "DB-per-service is a config change" invariant paying off.)</li>
+      <li><b>Resource-server / OIDC-client wiring</b> — Spring Security OAuth2 is fully config-driven via <code>issuer-uri</code> / client registration. Repointing the issuer to Cognito is config; only the role-claim <em>converter</em> (#1) and the BFF claim-read (#2) are code.</li>
+      <li><b>Traces → X-Ray</b> — the Micrometer→OTLP exporter just needs <code>OTLP_ENDPOINT</code> pointed at the ADOT collector (sidecar), which exports to X-Ray. No app code.</li>
+      <li><b>Metrics → AMP</b> — <code>/actuator/prometheus</code> already exists and is anonymously scrapable; ADOT/AMP scrapes + remote-writes it. No app code.</li>
+      <li><b>Compute → Fargate</b> — services are stateless and already containerized; the multi-instance-safe outbox (<code>FOR UPDATE SKIP LOCKED</code>) and saga workers (claim-and-lease + per-instance <code>workerId</code>) make N replicas safe with <b>no new coordination code</b>.</li>
+      <li><b>Messaging app logic</b> — outbox → MSK → inbox, partition-key/ordering, DLT, idempotency: all unchanged. Only Kafka bootstrap + auth config moves (#4).</li>
+      <li><b>Secrets</b> — DB password already injected via env/Secrets Manager (the original ECS task-secret path).</li>
+    </ul>
+
+    <p style="color:#5f6b7a;font-size:.88rem">In short: the only genuine source changes are the <b>Cognito group→role mapping</b> (shared + BFF), the <b>MSK IAM</b> dependency/config, the <b>Loki→CloudWatch</b> logback tweak, and the <b>forward-headers</b> setting. Everything else — datasource, tracing, metrics, compute, messaging logic, secrets — is configuration or Terraform.</p>
+  </main>
+
+  <footer>
+    Production target architecture. The runnable demo (no ALB/NAT/Fargate, Keycloak + docker-compose on EC2) is <a href="aws-deployment.html">aws-deployment.html</a>; the Terraform under <code>terraform/</code> tracks the demo. Hand-built layered diagram; official AWS Architecture Icons (<a href="https://aws.amazon.com/architecture/icons/">aws.amazon.com/architecture/icons</a>) under <code>docs/aws-icons/</code>; container logos from iconify.
+  </footer>
+</body>
+</html>

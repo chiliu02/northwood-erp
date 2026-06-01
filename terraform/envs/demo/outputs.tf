@@ -1,44 +1,40 @@
-output "alb_dns_name" {
-  description = "Public entry point. http://<this>/ = demo-bff; http://<this>/erp = erp-bff."
-  value       = module.alb.alb_dns_name
+output "web_public_ip" {
+  description = "Public entry point — open http://<this>:8089 for erp-web-ui-bff; Keycloak is on :8080."
+  value       = module.compute.web_public_ip
+}
+
+output "keycloak_hostname_hint" {
+  description = "Set -var keycloak_hostname=<web_public_ip or a DNS name> and re-apply so OIDC browser login works (the issuer must be browser-reachable)."
+  value       = var.keycloak_hostname != "" ? var.keycloak_hostname : "UNSET — using web private IP; set to ${module.compute.web_public_ip} (or a Route 53 name) and re-apply"
 }
 
 output "ecr_repository_urls" {
-  description = "Map app => ECR repo URL. The build script pushes <url>:<image_tag> here."
+  description = "Map app => ECR repo URL. The build script pushes <url>:<image_tag> here before apply."
   value       = module.ecr.repository_urls
 }
 
-output "ecs_cluster_name" {
-  value = module.ecs_cluster.cluster_name
-}
-
-output "infra_private_dns" {
-  description = "Private DNS of the three infra boxes (for psql/kafka CLI via SSM, and sanity checks)."
+output "private_ips" {
+  description = "Pinned private IPs of the three boxes (web/app/data)."
   value = {
-    postgres = module.infra_ec2.postgres_private_dns
-    kafka    = module.infra_ec2.kafka_private_dns
-    keycloak = module.infra_ec2.keycloak_private_dns
+    web  = module.compute.web_private_ip
+    app  = module.compute.app_private_ip
+    data = module.compute.data_private_ip
   }
 }
 
-output "infra_instance_ids" {
-  description = "Instance IDs — `aws ssm start-session --target <id>`, and stop/start to cut cost (§12)."
-  value       = module.infra_ec2.instance_ids
-}
-
-output "observability_private_dns" {
-  description = "Private DNS of the observability box (OTLP :4317 / Loki :3100). Empty when enable_observability = false."
-  value       = module.infra_ec2.observability_private_dns
+output "instance_ids" {
+  description = "Instance IDs — `aws ssm start-session --target <id>`; stop/start to cut cost."
+  value       = module.compute.instance_ids
 }
 
 output "grafana_access_hint" {
-  description = "How to reach Grafana — it has no public IP, so port-forward 3000 over SSM."
-  value       = var.enable_observability ? "aws ssm start-session --target ${lookup(module.infra_ec2.instance_ids, "observability", "")} --document-name AWS-StartPortForwardingSession --parameters portNumber=3000,localPortNumber=3000  # then open http://localhost:3000" : "observability disabled"
+  description = "Grafana has no public IP — port-forward 3000 over SSM to the data box."
+  value       = var.enable_observability ? "aws ssm start-session --target ${module.compute.instance_ids.data} --document-name AWS-StartPortForwardingSession --parameters portNumber=3000,localPortNumber=3000  # then open http://localhost:3000" : "observability disabled"
 }
 
 output "artifacts_bucket" {
-  description = "Private staging bucket (db/ init scripts + env files)."
-  value       = module.infra_ec2.artifacts_bucket
+  description = "Private staging bucket (db init, realm, env files, obs configs)."
+  value       = module.compute.artifacts_bucket
 }
 
 output "region" {

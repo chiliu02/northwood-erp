@@ -74,7 +74,7 @@
 <body>
   <header>
     <h1>Northwood ERP — AWS deployment <span style="color:#7aa116">(minimal · 3-tier)</span></h1>
-    <div class="sub">No ALB · no ECS/Fargate · no NAT (VPC endpoints) · 1 public subnet + 2 private subnets, 1 EC2 each, running <code>docker-compose</code>. Official AWS Architecture Icons + app logos.</div>
+    <div class="sub">No ALB · no ECS/Fargate · NAT instance (cheap) · 1 public subnet + 2 private subnets, 1 EC2 each, running <code>docker</code>. Official AWS Architecture Icons + app logos.</div>
   </header>
 
   <main>
@@ -135,15 +135,15 @@
             </div>
           </section>
 
-          <!-- private egress -->
+          <!-- private egress via a NAT instance in the public subnet -->
           <div class="endpoints">
-            <div class="res wide"><img src="aws-icons/endpoint.svg"/><b>VPC endpoints — no NAT</b><span>ECR (api + dkr) interface · S3 gateway — both private subnets pull images via these</span></div>
+            <div class="res wide"><img src="aws-icons/nat.svg"/><b>NAT instance</b> <span>(t3.nano in the public subnet)</span><span>private-subnet egress: image pulls + the public Keycloak issuer · free S3 gateway endpoint offloads S3/ECR layers</span></div>
           </div>
         </div><!-- /vpc -->
 
-        <div class="regional-lbl">▼ egress via VPC endpoints (no NAT) — regional AWS services</div>
+        <div class="regional-lbl">▼ egress via the NAT instance — regional AWS services</div>
         <div class="regional">
-          <div class="res"><img src="aws-icons/ecr.svg"/><b>ECR</b><span>×8 app images · pull-through cache for Docker Hub</span></div>
+          <div class="res"><img src="aws-icons/ecr.svg"/><b>ECR</b><span>×8 app images (3rd-party from Docker Hub/quay)</span></div>
           <div class="res"><img src="aws-icons/s3.svg"/><b>S3 artifacts</b><span>db SQL · realm · env (passwords) · configs</span></div>
           <div class="res"><img src="aws-icons/ssm.svg"/><b>SSM Session Manager</b><span>shell + Grafana port-forward (all 3 EC2)</span></div>
         </div>
@@ -158,10 +158,11 @@
       <li><b>Private subnet #2 (infra)</b> — 1 EC2 (no public IP), <code>infra-sg</code> allows only the app tier: Postgres + Kafka (+ optional observability). Most-protected, two hops from the internet.</li>
     </ul>
 
-    <h2>Egress — VPC endpoints, no NAT (decided)</h2>
+    <h2>Egress — a NAT instance (why, and the trade-off)</h2>
     <ul>
-      <li>Both private subnets pull container images through <b>VPC endpoints</b> — interface endpoints for <code>ecr.api</code> + <code>ecr.dkr</code> (one set serves the VPC) and the free S3 <b>gateway</b> endpoint on both private route tables. No NAT Gateway.</li>
-      <li>The third-party images (Postgres / Kafka / Grafana) come from Docker Hub, which the ECR endpoints don't cover — so ECR runs as a <b>pull-through cache</b> (Docker Hub → ECR), which keeps everything flowing through the ECR endpoints with no NAT. (Alternatives: mirror them once, or pre-bake the AMI.)</li>
+      <li><b>Why a NAT instance, not VPC endpoints or a NAT Gateway.</b> The two private subnets need outbound internet to (a) pull the third-party images (Postgres/Kafka from Docker&nbsp;Hub, Keycloak from quay.io) and (b) let the services reach the <em>public</em> Keycloak issuer for JWKS. A managed <b>NAT Gateway</b> would do it but costs ~$32/mo+; the pure-<b>VPC-endpoints</b> route avoids NAT but only covers ECR — Docker&nbsp;Hub/quay images would then need an ECR pull-through cache (with credentials) or pre-baking, plus a Keycloak issuer/JWKS split. For a throwaway demo that's a lot of moving parts, so we use a small <b>NAT instance</b>: a <code>t3.nano</code> EC2 in the public subnet doing <code>iptables</code> masquerade (<code>source_dest_check</code> off), with the private route tables defaulting to it.</li>
+      <li><b>What it buys:</b> private boxes pull images straight from any registry, and services reach the public Keycloak issuer through it — so <b>no ECR image-mirroring and no Keycloak issuer/JWKS split</b> (services just set <code>KEYCLOAK_ISSUER_URI</code> to the public host). The free <b>S3 gateway endpoint</b> still keeps S3 + ECR image-layer traffic off the NAT.</li>
+      <li><b>Trade-off:</b> a NAT instance is a single, unmanaged box — fine for a demo, not HA. For production use a managed NAT Gateway (per AZ) — see <a href="aws-architecture.html">aws-architecture.html</a>.</li>
     </ul>
 
     <h2>What's gone</h2>

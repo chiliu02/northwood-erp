@@ -1,0 +1,40 @@
+#!/bin/bash
+# Web tier — Keycloak (public, for browser OIDC) + erp-web-ui-bff. Public subnet,
+# public IP. Keycloak pulled from quay.io via the IGW; the BFF from ECR. The BFF
+# proxies to the services on the app box's pinned private IP.
+set -euxo pipefail
+
+dnf install -y docker
+systemctl enable --now docker
+command -v aws >/dev/null 2>&1 || dnf install -y awscli-2 || dnf install -y awscli
+
+mkdir -p /opt/northwood/import /data/keycloak
+aws s3 cp "s3://${bucket}/keycloak/northwood-realm.json" /opt/northwood/import/northwood-realm.json --region "${region}"
+aws s3 cp "s3://${bucket}/env/keycloak.env" /opt/northwood/keycloak.env --region "${region}"
+aws s3 cp "s3://${bucket}/env/bff.env" /opt/northwood/bff.env --region "${region}"
+
+# Keycloak — public hostname so the browser OIDC redirect resolves; the app tier
+# reaches the same public issuer through the NAT (no JWKS/issuer split needed).
+docker run -d --name northwood-keycloak --restart unless-stopped \
+  --env-file /opt/northwood/keycloak.env \
+  -p 8080:8080 \
+  -v /data/keycloak:/opt/keycloak/data \
+  -v /opt/northwood/import/northwood-realm.json:/opt/keycloak/data/import/northwood-realm.json:ro \
+  -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_HTTP_PORT=8080 -e KC_HEALTH_ENABLED=true \
+  -e KC_HOSTNAME_STRICT=false -e KC_HOSTNAME=${keycloak_host} \
+  ${keycloak_image} start-dev --import-realm
+
+# erp-web-ui-bff — the only UI/BFF.
+aws ecr get-login-password --region "${region}" | docker login --username AWS --password-stdin "${registry}"
+docker run -d --name ${bff_name} --restart unless-stopped \
+  -p ${bff_port}:${bff_port} \
+  --env-file /opt/northwood/bff.env \
+  -e SPRING_PROFILES_ACTIVE=kafka \
+  -e KAFKA_BOOTSTRAP_SERVERS=${kafka_boot} \
+  -e KEYCLOAK_ISSUER_URI=${kc_issuer} \
+  -e OTLP_ENDPOINT=${otlp_endpoint} \
+  -e LOKI_URL=${loki_url} \
+%{ for name, port in services ~}
+  -e NORTHWOOD_BFF_TARGETS_${upper(name)}=http://${app_ip}:${port} \
+%{ endfor ~}
+  ${registry}/${image_prefix}/${bff_name}:${image_tag}

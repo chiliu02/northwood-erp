@@ -1,11 +1,21 @@
 # ===========================================================================
-# Infra tier — docs/aws-demo-deployment.md §5.
-# Postgres / Kafka / Keycloak, each on its own EC2 in the infra subnet.
-# No SSH / no public IP — shell access is via SSM Session Manager.
+# Compute tier — docs/aws-deployment.html. Three EC2 instances, each running
+# the relevant containers via `docker run` (the demo's docker-compose-on-a-VM
+# model), no ECS/Fargate:
 #
-# db/ files + the generated per-service-login SQL + per-box env files are
-# staged in a PRIVATE, encrypted artifacts bucket; user-data pulls them. This
-# keeps passwords out of user-data (which is readable via IMDS / the console).
+#   web  (public subnet, public IP)  : erp-web-ui-bff + Keycloak
+#   app  (private subnet)            : the 7 services
+#   data (private subnet)            : Postgres + Kafka + (optional) observability
+#
+# Cross-tier URLs are wired from the pinned static private IPs (var.private_ips)
+# so user-data is computed at plan time with no instance-to-instance dependency
+# cycle. The private boxes egress through the network module's NAT instance:
+# the 8 app images come from ECR (pushed by the build script); the third-party
+# images (Postgres/Kafka/Keycloak/LGTM) are pulled straight from Docker Hub /
+# quay.io.
+#
+# No SSH / no public-key auth — shell is SSM Session Manager (the agent reaches
+# AWS through the NAT instance).
 # ===========================================================================
 
 data "aws_ssm_parameter" "al2023" {
@@ -18,21 +28,38 @@ data "aws_region" "current" {}
 locals {
   ami_id = var.ami_id != "" ? var.ami_id : data.aws_ssm_parameter.al2023[0].value
 
-  # ALTER ROLE ... LOGIN so each service authenticates as its own role.
-  # Single quotes in passwords are doubled per SQL string-literal escaping.
+  data_ip = var.private_ips.infra
+  app_ip  = var.private_ips.app
+  web_ip  = var.private_ips.web
+
+  # Keycloak's public issuer (browser OIDC). Falls back to the web box's private
+  # IP only so things resolve before a hostname is set — real OIDC login needs a
+  # real public hostname (var.keycloak_hostname).
+  kc_host       = var.keycloak_hostname != "" ? var.keycloak_hostname : local.web_ip
+  kc_issuer     = "http://${local.kc_host}:8080/realms/northwood"
+  kafka_boot    = "${local.data_ip}:9092"
+  otlp_endpoint = var.enable_observability ? "http://${local.data_ip}:4317" : ""
+  loki_url      = var.enable_observability ? "http://${local.data_ip}:3100/loki/api/v1/push" : ""
+
+  # ALTER ROLE … LOGIN so each service authenticates as its own role.
   service_logins_sql = join("\n", [
     for svc, pw in var.service_db_passwords :
     "ALTER ROLE ${svc}_service WITH LOGIN PASSWORD '${replace(pw, "'", "''")}';"
   ])
+
+  # `<SVC>_DB_PASSWORD=…` lines staged as a private env file for the app box.
+  service_db_env = join("\n", [
+    for svc, pw in var.service_db_passwords : "${upper(svc)}_DB_PASSWORD=${pw}"
+  ])
 }
 
 # --------------------------------------------------------------------------
-# Artifacts / staging bucket (private)
+# Artifacts / staging bucket (private, encrypted) — db init, realm, env files.
 # --------------------------------------------------------------------------
 
 resource "aws_s3_bucket" "artifacts" {
   bucket_prefix = "${var.name_prefix}-artifacts-"
-  force_destroy = true # demo: let `terraform destroy` empty it
+  force_destroy = true
 }
 
 resource "aws_s3_bucket_public_access_block" "artifacts" {
@@ -46,13 +73,9 @@ resource "aws_s3_bucket_public_access_block" "artifacts" {
 resource "aws_s3_bucket_server_side_encryption_configuration" "artifacts" {
   bucket = aws_s3_bucket.artifacts.id
   rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
-    }
+    apply_server_side_encryption_by_default { sse_algorithm = "AES256" }
   }
 }
-
-# ---- staged objects: db init scripts, realm, generated logins, env files ----
 
 resource "aws_s3_object" "baseline_sql" {
   bucket = aws_s3_bucket.artifacts.id
@@ -94,91 +117,36 @@ resource "aws_s3_object" "keycloak_env" {
   content = "KC_BOOTSTRAP_ADMIN_PASSWORD=${var.keycloak_admin_password}\n"
 }
 
-# ---- observability config tree (staged only when enable_observability) -------
-# Tempo + Loki configs are host-agnostic — staged verbatim from db/. The
-# Grafana datasources + Prometheus config are AWS-tailored (see below).
-
-resource "aws_s3_object" "obs_tempo" {
-  count  = var.enable_observability ? 1 : 0
-  bucket = aws_s3_bucket.artifacts.id
-  key    = "obs/tempo.yaml"
-  source = "${var.repo_root}/db/tempo/tempo.yaml"
-  etag   = filemd5("${var.repo_root}/db/tempo/tempo.yaml")
-}
-
-resource "aws_s3_object" "obs_loki" {
-  count  = var.enable_observability ? 1 : 0
-  bucket = aws_s3_bucket.artifacts.id
-  key    = "obs/loki-config.yaml"
-  source = "${var.repo_root}/db/loki/loki-config.yaml"
-  etag   = filemd5("${var.repo_root}/db/loki/loki-config.yaml")
-}
-
-# Prometheus on Fargate can't reach tasks by the compose `host.docker.internal`
-# targets, and Fargate tasks have no stable IPs — so service scraping needs
-# service discovery (ECS SD / Cloud Map, or an OTel/ADOT collector pushing OTLP
-# metrics into the receiver enabled in user-data). That's a documented follow-up;
-# traces + logs are the working push-based telemetry. This config self-scrapes
-# and leaves the SD job as a commented stub so the path is obvious.
-resource "aws_s3_object" "obs_prometheus" {
-  count   = var.enable_observability ? 1 : 0
+resource "aws_s3_object" "services_env" {
   bucket  = aws_s3_bucket.artifacts.id
-  key     = "obs/prometheus.yml"
-  content = <<-EOT
-    # Northwood Prometheus — AWS demo (generated by Terraform).
-    #
-    # Service-metric scraping on Fargate needs service discovery; it is NOT wired
-    # here. Either add an ECS SD job (`ecs_sd_configs` via the cloudwatch-agent /
-    # an ECS SD exporter), or push OTLP metrics from the apps into this server's
-    # OTLP receiver (started with --web.enable-otlp-receiver in user-data) at
-    # http://<obs-private-dns>:9090/api/v1/otlp/v1/metrics. Until then the §1D
-    # Grafana metric panels stay empty on AWS; traces + logs work out of the box.
-    global:
-      scrape_interval: 15s
-      evaluation_interval: 15s
-      external_labels:
-        cluster: northwood-demo-aws
-
-    scrape_configs:
-      - job_name: prometheus
-        static_configs:
-          - targets: ["localhost:9090"]
-
-      # --- service scraping (enable once SD is wired) --------------------------
-      # - job_name: northwood-services
-      #   metrics_path: /actuator/prometheus
-      #   ecs_sd_configs: [ ... ]   # or relabel from a Cloud Map / SD exporter
-  EOT
+  key     = "env/services.env"
+  content = "${local.service_db_env}\n"
 }
 
-resource "aws_s3_object" "obs_grafana_datasources" {
-  count  = var.enable_observability ? 1 : 0
-  bucket = aws_s3_bucket.artifacts.id
-  key    = "obs/grafana/datasources/datasources.yaml"
-  content = templatefile("${path.module}/templates/grafana-datasources.yaml.tftpl", {
-    postgres_host     = aws_instance.postgres.private_dns
-    postgres_password = var.postgres_superuser_password
-  })
+resource "aws_s3_object" "bff_env" {
+  bucket  = aws_s3_bucket.artifacts.id
+  key     = "env/bff.env"
+  content = "KEYCLOAK_BFF_CLIENT_SECRET=${var.bff_client_secret}\n"
 }
 
-resource "aws_s3_object" "obs_grafana_dashboards_provisioning" {
-  count  = var.enable_observability ? 1 : 0
+# ---- observability config tree (only when enabled) -------------------------
+resource "aws_s3_object" "obs_config" {
+  for_each = var.enable_observability ? {
+    "obs/tempo.yaml"                                      = "${var.repo_root}/db/tempo/tempo.yaml"
+    "obs/loki-config.yaml"                                = "${var.repo_root}/db/loki/loki-config.yaml"
+    "obs/prometheus.yml"                                  = "${var.repo_root}/db/prometheus/prometheus.yml"
+    "obs/grafana/datasources/datasources.yaml"            = "${var.repo_root}/db/grafana/provisioning/datasources/datasources.yaml"
+    "obs/grafana/dashboards-provisioning/dashboards.yaml" = "${var.repo_root}/db/grafana/provisioning/dashboards/dashboards.yaml"
+    "obs/grafana/dashboards/northwood-overview.json"      = "${var.repo_root}/db/grafana/dashboards/northwood-overview.json"
+  } : {}
   bucket = aws_s3_bucket.artifacts.id
-  key    = "obs/grafana/dashboards-provisioning/dashboards.yaml"
-  source = "${var.repo_root}/db/grafana/provisioning/dashboards/dashboards.yaml"
-  etag   = filemd5("${var.repo_root}/db/grafana/provisioning/dashboards/dashboards.yaml")
-}
-
-resource "aws_s3_object" "obs_grafana_dashboard_json" {
-  count  = var.enable_observability ? 1 : 0
-  bucket = aws_s3_bucket.artifacts.id
-  key    = "obs/grafana/dashboards/northwood-overview.json"
-  source = "${var.repo_root}/db/grafana/dashboards/northwood-overview.json"
-  etag   = filemd5("${var.repo_root}/db/grafana/dashboards/northwood-overview.json")
+  key    = each.key
+  source = each.value
+  etag   = filemd5(each.value)
 }
 
 # --------------------------------------------------------------------------
-# IAM: instance role with SSM + read-only on the artifacts bucket
+# IAM — instance role: SSM + read the artifacts bucket + pull from ECR.
 # --------------------------------------------------------------------------
 
 data "aws_iam_policy_document" "assume_ec2" {
@@ -191,155 +159,145 @@ data "aws_iam_policy_document" "assume_ec2" {
   }
 }
 
-resource "aws_iam_role" "infra" {
-  name               = "${var.name_prefix}-infra-ec2"
+resource "aws_iam_role" "compute" {
+  name               = "${var.name_prefix}-compute-ec2"
   assume_role_policy = data.aws_iam_policy_document.assume_ec2.json
 }
 
 resource "aws_iam_role_policy_attachment" "ssm" {
-  role       = aws_iam_role.infra.name
+  role       = aws_iam_role.compute.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-data "aws_iam_policy_document" "artifacts_read" {
+data "aws_iam_policy_document" "instance" {
   statement {
+    sid       = "ArtifactsRead"
     actions   = ["s3:GetObject"]
     resources = ["${aws_s3_bucket.artifacts.arn}/*"]
   }
   statement {
+    sid       = "ArtifactsList"
     actions   = ["s3:ListBucket"]
     resources = [aws_s3_bucket.artifacts.arn]
   }
+  statement {
+    sid       = "EcrAuth"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+  statement {
+    sid       = "EcrPull"
+    actions   = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability"]
+    resources = var.ecr_repository_arns
+  }
 }
 
-resource "aws_iam_role_policy" "artifacts_read" {
-  name   = "artifacts-read"
-  role   = aws_iam_role.infra.id
-  policy = data.aws_iam_policy_document.artifacts_read.json
+resource "aws_iam_role_policy" "instance" {
+  name   = "compute-instance"
+  role   = aws_iam_role.compute.id
+  policy = data.aws_iam_policy_document.instance.json
 }
 
-resource "aws_iam_instance_profile" "infra" {
-  name = "${var.name_prefix}-infra-ec2"
-  role = aws_iam_role.infra.name
+resource "aws_iam_instance_profile" "compute" {
+  name = "${var.name_prefix}-compute-ec2"
+  role = aws_iam_role.compute.name
 }
 
 # --------------------------------------------------------------------------
-# EC2 instances
-# Root volume is sized to hold /data (gp3) — it persists across stop/start, so
-# the demo's "stop instances to cut cost" path keeps DB + Kafka state.
+# EC2 instances — data first (no deps), then app, then web (linear refs).
 # --------------------------------------------------------------------------
 
-resource "aws_instance" "postgres" {
+resource "aws_instance" "data" {
   ami                    = local.ami_id
-  instance_type          = var.instance_types.postgres
-  subnet_id              = var.subnet_id
-  vpc_security_group_ids = [var.security_group_ids.postgres]
-  iam_instance_profile   = aws_iam_instance_profile.infra.name
+  instance_type          = var.instance_types.data
+  subnet_id              = var.subnet_ids.infra
+  private_ip             = local.data_ip
+  vpc_security_group_ids = [var.security_group_ids.infra]
+  iam_instance_profile   = aws_iam_instance_profile.compute.name
 
   root_block_device {
     volume_type = "gp3"
     volume_size = var.data_volume_size_gb + 8
   }
 
-  user_data = templatefile("${path.module}/templates/postgres.sh.tftpl", {
-    region          = data.aws_region.current.name
-    bucket          = aws_s3_bucket.artifacts.id
-    image           = var.images.postgres
-    env_key         = aws_s3_object.postgres_env.key
-    init_key_prefix = "db/"
+  user_data = templatefile("${path.module}/templates/data.sh.tftpl", {
+    region               = data.aws_region.current.name
+    bucket               = aws_s3_bucket.artifacts.id
+    registry             = var.ecr_registry
+    postgres_image       = var.images.postgres
+    kafka_image          = var.images.kafka
+    kafka_cluster_id     = var.kafka_cluster_id
+    advertise_ip         = local.data_ip
+    enable_observability = var.enable_observability
+    obs_images           = var.observability_images
   })
 
-  tags = { Name = "${var.name_prefix}-postgres" }
-  depends_on = [
-    aws_s3_object.baseline_sql,
-    aws_s3_object.seed_sql, # no-op when load_seed_data = false (count 0)
-    aws_s3_object.service_logins_sql,
-    aws_s3_object.postgres_env,
-  ]
+  tags       = { Name = "${var.name_prefix}-data" }
+  depends_on = [aws_s3_object.baseline_sql, aws_s3_object.seed_sql, aws_s3_object.service_logins_sql, aws_s3_object.postgres_env, aws_s3_object.obs_config]
 }
 
-resource "aws_instance" "kafka" {
+resource "aws_instance" "app" {
   ami                    = local.ami_id
-  instance_type          = var.instance_types.kafka
-  subnet_id              = var.subnet_id
-  vpc_security_group_ids = [var.security_group_ids.kafka]
-  iam_instance_profile   = aws_iam_instance_profile.infra.name
+  instance_type          = var.instance_types.app
+  subnet_id              = var.subnet_ids.app
+  private_ip             = local.app_ip
+  vpc_security_group_ids = [var.security_group_ids.app]
+  iam_instance_profile   = aws_iam_instance_profile.compute.name
 
   root_block_device {
     volume_type = "gp3"
-    volume_size = var.data_volume_size_gb + 8
+    volume_size = 20
   }
 
-  user_data = templatefile("${path.module}/templates/kafka.sh.tftpl", {
-    image      = var.images.kafka
-    cluster_id = var.kafka_cluster_id
+  user_data = templatefile("${path.module}/templates/app.sh.tftpl", {
+    region        = data.aws_region.current.name
+    bucket        = aws_s3_bucket.artifacts.id
+    registry      = var.ecr_registry
+    image_prefix  = var.image_prefix
+    image_tag     = var.image_tag
+    services      = var.services
+    data_ip       = local.data_ip
+    kafka_boot    = local.kafka_boot
+    kc_issuer     = local.kc_issuer
+    otlp_endpoint = local.otlp_endpoint
+    loki_url      = local.loki_url
   })
 
-  tags = { Name = "${var.name_prefix}-kafka" }
+  tags       = { Name = "${var.name_prefix}-app" }
+  depends_on = [aws_s3_object.services_env, aws_instance.data]
 }
 
-resource "aws_instance" "keycloak" {
+resource "aws_instance" "web" {
   ami                    = local.ami_id
-  instance_type          = var.instance_types.keycloak
-  subnet_id              = var.subnet_id
-  vpc_security_group_ids = [var.security_group_ids.keycloak]
-  iam_instance_profile   = aws_iam_instance_profile.infra.name
+  instance_type          = var.instance_types.web
+  subnet_id              = var.subnet_ids.public
+  private_ip             = local.web_ip
+  vpc_security_group_ids = [var.security_group_ids.web]
+  iam_instance_profile   = aws_iam_instance_profile.compute.name
 
   root_block_device {
     volume_type = "gp3"
-    volume_size = 12
+    volume_size = 16
   }
 
-  user_data = templatefile("${path.module}/templates/keycloak.sh.tftpl", {
-    region    = data.aws_region.current.name
-    bucket    = aws_s3_bucket.artifacts.id
-    image     = var.images.keycloak
-    env_key   = aws_s3_object.keycloak_env.key
-    realm_key = aws_s3_object.realm.key
-    hostname  = var.keycloak_hostname
+  user_data = templatefile("${path.module}/templates/web.sh.tftpl", {
+    region         = data.aws_region.current.name
+    bucket         = aws_s3_bucket.artifacts.id
+    registry       = var.ecr_registry
+    image_prefix   = var.image_prefix
+    image_tag      = var.image_tag
+    keycloak_image = var.images.keycloak
+    bff_name       = var.bff_name
+    bff_port       = var.bff_port
+    keycloak_host  = local.kc_host
+    kc_issuer      = local.kc_issuer
+    kafka_boot     = local.kafka_boot
+    app_ip         = local.app_ip
+    services       = var.services
+    otlp_endpoint  = local.otlp_endpoint
+    loki_url       = local.loki_url
   })
 
-  tags       = { Name = "${var.name_prefix}-keycloak" }
-  depends_on = [aws_s3_object.realm, aws_s3_object.keycloak_env]
-}
-
-# --------------------------------------------------------------------------
-# Observability box — LGTM stack (Loki/Grafana/Tempo + Prometheus).
-# Receives OTLP traces (4317/4318) and Loki log push (3100) from the app +
-# web tiers; Grafana (3000) is reached via SSM port-forward. Gated on
-# enable_observability so the box (and its cost) can be turned off.
-# --------------------------------------------------------------------------
-
-resource "aws_instance" "observability" {
-  count                  = var.enable_observability ? 1 : 0
-  ami                    = local.ami_id
-  instance_type          = var.observability_instance_type
-  subnet_id              = var.subnet_id
-  vpc_security_group_ids = [var.security_group_ids.obs]
-  iam_instance_profile   = aws_iam_instance_profile.infra.name
-
-  root_block_device {
-    volume_type = "gp3"
-    volume_size = var.data_volume_size_gb + 8
-  }
-
-  user_data = templatefile("${path.module}/templates/observability.sh.tftpl", {
-    region           = data.aws_region.current.name
-    bucket           = aws_s3_bucket.artifacts.id
-    key_prefix       = "obs/"
-    image_tempo      = var.observability_images.tempo
-    image_loki       = var.observability_images.loki
-    image_prometheus = var.observability_images.prometheus
-    image_grafana    = var.observability_images.grafana
-  })
-
-  tags = { Name = "${var.name_prefix}-observability" }
-  depends_on = [
-    aws_s3_object.obs_tempo,
-    aws_s3_object.obs_loki,
-    aws_s3_object.obs_prometheus,
-    aws_s3_object.obs_grafana_datasources,
-    aws_s3_object.obs_grafana_dashboards_provisioning,
-    aws_s3_object.obs_grafana_dashboard_json,
-  ]
+  tags       = { Name = "${var.name_prefix}-web" }
+  depends_on = [aws_s3_object.realm, aws_s3_object.keycloak_env, aws_s3_object.bff_env, aws_instance.app]
 }
