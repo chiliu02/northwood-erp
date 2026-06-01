@@ -195,7 +195,7 @@
     {
       "type": "traces",
       "title": "Recent sales-order traces",
-      "description": "TraceQL: traces named `POST /api/sales-orders`. Click a span row to drill into Tempo; the Logs panel below renders logs for the same trace via the Loki↔Tempo correlation wired in §1D.0.",
+      "description": "TraceQL: traces containing the `http post /api/sales-orders` span (Spring Boot 4 / OTel names HTTP spans `http <lowercase-method> <route>`, not `POST …`). Click a span row to drill into Tempo; the Logs panel below renders logs for the same trace via the Loki↔Tempo correlation wired in §1D.0.",
       "gridPos": { "x": 0, "y": 16, "w": 24, "h": 9 },
       "id": 301,
       "datasource": { "type": "tempo", "uid": "northwood-tempo" },
@@ -209,7 +209,7 @@
               "id": "name",
               "tag": "name",
               "operator": "=~",
-              "value": "POST /api/sales-orders.*",
+              "value": "(?i).*post /api/sales-orders.*",
               "scope": "span"
             }
           ]

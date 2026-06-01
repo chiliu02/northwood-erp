@@ -137,8 +137,9 @@ JVM/process metrics (`jvm_memory_used_bytes`, `process_cpu_usage`, etc.) come fo
 
 Every inbound HTTP request and outbound OTLP-instrumented call gets a span; the trace context propagates across the outbox → Kafka → inbox hop, so a trace started in sales continues in inventory and finance. In Grafana Explore → **Tempo**:
 
-- **Search** by service name (`sales-service`), span name (`POST /api/sales-orders`), or duration.
-- **TraceQL** for targeted queries, e.g. `{ .service.name = "sales-service" && name =~ "POST /api/sales-orders" }`.
+- **Search** by service name (`sales-service`), span name (`http post /api/sales-orders`), or duration.
+- **TraceQL** for targeted queries, e.g. `{ resource.service.name = "sales-service" && name =~ "http post /api/sales-orders" }`.
+- **Span naming gotcha:** Spring Boot 4 / OpenTelemetry names HTTP spans `http <lowercase-method> <route>` (e.g. `http post /api/sales-orders`, `http get /actuator/prometheus`) — *not* the classic Micrometer `POST /api/sales-orders`. A TraceQL `name =~ "POST …"` silently matches nothing. Match `name =~ "http post …"`, or `name =~ "(?i).*post …"` to be casing-agnostic.
 - Click a trace to see the waterfall across services. The Tempo datasource is wired with **trace → logs** (`tracesToLogsV2` → Loki) and **trace → metrics**, so from any span you can jump to the correlated log lines or the service's RED metrics.
 
 #### Saga-trace linkage (§1D.6)
@@ -235,7 +236,7 @@ Services and ports: sales **8082**, inventory **8083**, finance **8086**, report
 
 ### Observe it across the three pillars
 
-**1. Trace (Tempo).** Open Grafana → Explore → Tempo → Search for `sales-service`, span `POST /api/sales-orders`. The waterfall shows the command span in sales, then — because trace context rides the outbox → Kafka → inbox hop — child spans appearing in inventory (reserve stock, post shipment) and finance (create invoice, record payment) as each event is consumed. One trace id, the entire fulfilment.
+**1. Trace (Tempo).** Open Grafana → Explore → Tempo → Search for `sales-service`, span `http post /api/sales-orders`. The waterfall shows the command span in sales, then — because trace context rides the outbox → Kafka → inbox hop — child spans appearing in inventory (reserve stock, post shipment) and finance (create invoice, record payment) as each event is consumed. One trace id, the entire fulfilment.
 
 **2. Logs (Loki).** Copy the `traceId` from the trace (or from the sales terminal's `[traceId=…]` line) and run:
 
