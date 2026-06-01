@@ -4,7 +4,6 @@ import { Home } from "./routes/Home";
 import { SalesOrders } from "./routes/sales/SalesOrders";
 import { SalesOrderNew } from "./routes/sales/SalesOrderNew";
 import { SalesOrderDetail } from "./routes/sales/SalesOrderDetail";
-import { SalesOrder360Dashboard } from "./routes/sales/SalesOrder360Dashboard";
 import { Customers } from "./routes/sales/Customers";
 import { CustomerDetail } from "./routes/sales/CustomerDetail";
 import { CustomerNew } from "./routes/sales/CustomerNew";
@@ -66,7 +65,6 @@ export function App() {
         {/* ---- Sales ---- */}
         <Route path="/sales-orders"      element={<SalesOrders />} />
         <Route path="/sales-orders/new"  element={<SalesOrderNew />} />
-        <Route path="/sales-orders/360"  element={<SalesOrder360Dashboard />} />
         <Route path="/sales-orders/:id"  element={<SalesOrderDetail />} />
         <Route path="/customers"         element={<Customers />} />
         <Route path="/customers/new"     element={<CustomerNew />} />

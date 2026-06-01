@@ -49,7 +49,6 @@ const MODULES: NavModule[] = [
     items: [
       { label: "Customers", to: "/customers" },
       { label: "Sales Orders", to: "/sales-orders" },
-      { label: "360 View", to: "/sales-orders/360" },
     ],
   },
   {
