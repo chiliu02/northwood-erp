@@ -1,5 +1,6 @@
 package com.northwood.testharness.kits;
 
+import com.northwood.inventory.application.GoodsReceiptService;
 import com.northwood.inventory.application.ShipmentService;
 import com.northwood.inventory.application.ReplenishmentDetectionService;
 import com.northwood.inventory.application.StockReservationService;
@@ -22,6 +23,7 @@ import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.SynchronousBus;
 import com.northwood.testharness.inmemory.inventory.InMemoryInventoryProductCardLookup;
+import com.northwood.testharness.inmemory.inventory.InMemoryGoodsReceiptRepository;
 import com.northwood.testharness.inmemory.inventory.InMemoryInventoryPurchaseOrderLineFactsProjection;
 import com.northwood.testharness.inmemory.inventory.InMemoryReorderPolicyLookup;
 import com.northwood.testharness.inmemory.inventory.InMemoryReplenishmentRequestRepository;
@@ -69,13 +71,16 @@ public final class InventoryTestKit {
     public final InMemoryReplenishmentRequestRepository replenishmentRequests;
     public final InMemoryInventoryPurchaseOrderLineFactsProjection purchaseOrderLineFacts =
         new InMemoryInventoryPurchaseOrderLineFactsProjection();
+    public final InMemoryGoodsReceiptRepository goodsReceipts;
     public final StockReservationService service;
     public final ShipmentService shipmentService;
+    public final GoodsReceiptService goodsReceiptService;
     public final ReplenishmentDetectionService replenishmentDetection;
 
     public InventoryTestKit(SynchronousBus bus, ObjectMapper json) {
         this.reservations = new InMemoryStockReservationRepository(outbox, json);
         this.shipments = new InMemoryShipmentRepository(outbox, json);
+        this.goodsReceipts = new InMemoryGoodsReceiptRepository(outbox, json);
         this.warehouses.put(WarehouseCodes.MAIN, DEFAULT_WAREHOUSE_ID);
         OutboxAppender appender = new OutboxAppender(outbox, json, new CurrentUserAccessor());
         this.replenishmentRequests = new InMemoryReplenishmentRequestRepository(appender, json);
@@ -89,6 +94,10 @@ public final class InventoryTestKit {
         this.shipmentService = new ShipmentService(
             shipments, stockBalances, stockMovements, warehouses, salesOrderLineFacts,
             replenishmentDetection
+        );
+        this.goodsReceiptService = new GoodsReceiptService(
+            goodsReceipts, stockBalances, stockMovements, warehouses,
+            purchaseOrderLineFacts, replenishmentRequests
         );
 
         bus.register(outbox);
