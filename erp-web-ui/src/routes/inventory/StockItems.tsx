@@ -20,7 +20,7 @@ interface StockItem {
   available: string;
 }
 
-// §2.35 Slice F: reporting.replenishment_history_view row.
+// reporting.replenishment_history_view row.
 interface ReplenishmentHistoryRow {
   replenishmentRequestId: string;
   productId: string;
@@ -162,7 +162,7 @@ export function StockItems() {
 }
 
 /**
- * §2.35 Slice F: "Replenishment activity" widget. Lists the most recent
+ * "Replenishment activity" widget. Lists the most recent
  * auto-replenishment requests system-wide with their state. Driven by the
  * reporting.replenishment_history_view projection.
  */
@@ -234,7 +234,7 @@ function ReplenishmentActivity() {
       <div className="flex items-baseline gap-3">
         <h2 className="text-base font-semibold">Replenishment activity</h2>
         <span className="text-xs text-text-muted">
-          §2.35 — auto-raised on reorder-point breach or WO raw-material shortage. Routed by make-vs-buy.
+          Auto-raised on reorder-point breach or WO raw-material shortage. Routed by make-vs-buy.
         </span>
       </div>
       {error ? (

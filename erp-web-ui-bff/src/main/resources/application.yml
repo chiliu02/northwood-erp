@@ -27,15 +27,15 @@ spring:
 server:
   port: 8089
 
-# §1D.1: observability. spring-boot-starter-actuator is already on this
-# module's classpath; this block exposes the prometheus + metrics + health
-# endpoints and wires the OTLP tracing exporter at the Tempo gRPC port.
+# Observability. spring-boot-starter-actuator is already on this module's
+# classpath; this block exposes the prometheus + metrics + health endpoints
+# and wires the OTLP tracing exporter at the Tempo gRPC port.
 management:
   endpoints:
     web:
       exposure:
         include: health, info, metrics, prometheus
-  # §1D.10: suppress the @Scheduled heartbeat spans — the SSE pump (and, in the
+  # Suppress the @Scheduled heartbeat spans — the SSE pump (and, in the
   # services, saga poll / outbox drain tick) fires ~1×/s whether or not there's
   # work and swamps Tempo. Disabling the scheduled-task observation loses nothing.
   observations:
@@ -43,10 +43,10 @@ management:
       tasks.scheduled.execution: false
   tracing:
     sampling:
-      # §1D.11: the BFF emits NO spans of its own — each service roots its own
-      # trace. ProxyController no longer propagates trace context upstream
-      # (reverses §1D.5's BFF-hop join), so sampling 0 here just drops the BFF's
-      # own request spans without affecting downstream services.
+      # The BFF emits NO spans of its own — each service roots its own trace.
+      # ProxyController no longer propagates trace context upstream, so sampling
+      # 0 here drops the BFF's own request spans without affecting downstream
+      # services.
       probability: 0
   otlp:
     metrics:

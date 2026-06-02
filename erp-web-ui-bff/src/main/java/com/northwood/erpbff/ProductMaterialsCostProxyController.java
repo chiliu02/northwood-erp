@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * §2.8 Slice C: route {@code GET /api/products/{id}/materials-cost} to
+ * Routes {@code GET /api/products/{id}/materials-cost} to
  * manufacturing-service. The generic {@link ProxyController} matches
  * {@code /api/products} → product-service first; this more-specific
  * mapping wins over the {@code /api/**} catch-all by Spring's standard

@@ -31,7 +31,7 @@ interface CreatedAdjustment {
 
 type Mode = "DELTA" | "SET";
 
-/** Post a manual stock adjustment. Warehouse-manager path (§2.29). */
+/** Post a manual stock adjustment. Warehouse-manager path. */
 export function StockAdjustmentNew() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();

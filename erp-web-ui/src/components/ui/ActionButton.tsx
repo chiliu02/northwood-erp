@@ -8,7 +8,7 @@ interface ActionButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   icon?: ReactNode;
   /**
-   * §1.4 Slice D: when set, the button consults UserContext and renders
+   * When set, the button consults UserContext and renders
    * disabled with a "Requires role: X" tooltip when the current user lacks
    * the role. While the user is still loading (first paint), the button
    * stays enabled so the page doesn't flash all-disabled before /api/me

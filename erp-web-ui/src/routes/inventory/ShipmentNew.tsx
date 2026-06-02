@@ -97,7 +97,7 @@ export function ShipmentNew() {
   }, [readyToShip, salesOrderHeaderId]);
 
   // Fetch the picked SO's lines so the shipment lines can prefill with the
-  // correct line UUIDs — the §1B.9 backend validation rejects shipment
+  // correct line UUIDs — the backend validation rejects shipment
   // lines whose (salesOrderLineId, productId) pair doesn't match the SO.
   const { data: orderDetail } = useQuery({
     queryKey: ["sales-order-cmd-detail", salesOrderHeaderId],

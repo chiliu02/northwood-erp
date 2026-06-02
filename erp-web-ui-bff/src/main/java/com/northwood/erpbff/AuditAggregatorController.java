@@ -21,7 +21,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §1.4 Slice D: cross-service audit-log aggregator. Fans out
+ * Cross-service audit-log aggregator. Fans out
  * {@code GET /api/audit?...} to every Northwood service in parallel, merges
  * the per-service rows by {@code occurredAt} descending, returns a single
  * timeline.
@@ -133,7 +133,7 @@ public class AuditAggregatorController {
      * record local to the BFF so we don't add a Maven dep on
      * the shared module (the BFF stays light: Spring web + Kafka only).
      *
-     * <p>{@code traceId} added §1D.3. Nullable: events emitted before §1D.2,
+     * <p>{@code traceId} is nullable: events emitted before the traceId field was introduced,
      * or unit-test runs without an active span, carry null.
      */
     public record AuditRow(

@@ -43,7 +43,7 @@ interface Po {
  * PO detail. Reads from /api/purchase-orders-cmd/{id} (the alias to the
  * owning service) so we get the full aggregate, not just the projection
  * row. Approve action is visible only when status='draft' — demos the
- * §1.2 PO draft/approve workflow.
+ * PO draft/approve workflow.
  */
 export function PurchaseOrderDetail() {
   const { id } = useParams<{ id: string }>();

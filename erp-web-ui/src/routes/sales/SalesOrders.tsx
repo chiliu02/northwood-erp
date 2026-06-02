@@ -192,13 +192,13 @@ function FulfilmentSummary({ row }: { row: SalesOrderRow }) {
   );
 }
 
-// §2.31 Slice D: lozenge for prepayment orders that haven't been paid yet.
+// Lozenge for prepayment orders that haven't been paid yet.
 // Goes away once the customer pays — same observable as the demo SPA.
 function isAwaitingPrepayment(r: SalesOrderRow): boolean {
   return r.paymentTerms === "prepayment" && r.paymentStatus !== "paid";
 }
 
-// §2.32: a deposit order awaiting its up-front deposit (nothing paid yet);
+// A deposit order awaiting its up-front deposit (nothing paid yet);
 // clears once the deposit lands (partially_paid).
 function isAwaitingDeposit(r: SalesOrderRow): boolean {
   return r.paymentTerms === "deposit"

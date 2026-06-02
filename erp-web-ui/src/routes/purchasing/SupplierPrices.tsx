@@ -18,13 +18,13 @@ interface PriceRow {
 }
 
 /**
- * Supplier price authoring — Tom's screen for the §3.10 setPrice flow.
+ * Supplier price authoring — Tom's screen for the setPrice flow.
  * Two narrow workflows side by side:
  *
  *   1. List prices for a supplier (lookup by supplier id, GET
  *      /api/supplier-product-prices/by-supplier/{supplierId}).
  *   2. Author a price (PUT /api/supplier-product-prices) — submitting the
- *      same price twice triggers the §3.10 no-op suppression on the
+ *      same price twice triggers the no-op suppression on the
  *      backend (no event, no version bump). The "Saved" feedback shows
  *      regardless; the actual no-op vs change is visible in finance logs.
  */
@@ -148,7 +148,7 @@ function AuthorPriceSection() {
       unitPrice: Number(unitPrice),
     }),
     onSuccess: () => {
-      setFeedback({ type: "success", message: `Saved. (Re-submitting the same price will be a no-op on the backend per §3.10.)` });
+      setFeedback({ type: "success", message: `Saved. (Re-submitting the same price is a no-op on the backend.)` });
       queryClient.invalidateQueries({ queryKey: ["prices-by-supplier"] });
     },
     onError: (err) => {

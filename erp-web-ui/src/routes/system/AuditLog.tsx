@@ -17,7 +17,7 @@ interface AuditEntry {
 }
 
 /**
- * §1.4 Slice D: cross-service audit-log viewer. Reads the BFF's
+ * Cross-service audit-log viewer. Reads the BFF's
  * {@code /api/audit} aggregator which fans out to every Northwood service's
  * outbox in parallel and returns a single timeline ordered by
  * {@code occurredAt} desc.

@@ -30,7 +30,7 @@ interface FinancialDashboard {
  * pending-review lists for action.
  *
  * <p>Today's AR/AP figures on the dashboard are 0 (the projection columns
- * are deferred — see dev-todo §2.1). This screen still serves as the
+ * are deferred). This screen still serves as the
  * Olivia/Daniel landing page once the projection writes land; for now it
  * surfaces the placeholder zeros transparently.
  */

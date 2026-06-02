@@ -49,7 +49,7 @@ const SOURCE_DOC_TYPES = [
   "shipment",
   "customer_invoice",
   "customer_payment",
-  "customer_refund", // §2.34 refund on cancelled prepayment/deposit (Dr 2110 / Cr Bank)
+  "customer_refund", // Refund on cancelled prepayment/deposit (Dr 2110 / Cr Bank)
 ];
 
 /**

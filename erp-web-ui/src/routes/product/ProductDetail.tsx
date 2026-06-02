@@ -54,7 +54,7 @@ export function ProductDetail() {
     enabled: !!id,
   });
 
-  // §2.8 Slice C: materialsCost is owned by manufacturing-service (it's a
+  // materialsCost is owned by manufacturing-service (it's a
   // computed value, not master data). 404 means "never rolled up yet" — the
   // UI renders it the same as inputs_missing.
   const { data: materialsCost } = useQuery<MaterialsCost | null>({

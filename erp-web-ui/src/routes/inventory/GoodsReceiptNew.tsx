@@ -97,7 +97,7 @@ export function GoodsReceiptNew() {
   }, [openPOs, purchaseOrderHeaderId]);
 
   // Fetch picked PO's full detail (header + lines) so the receipt lines can
-  // prefill with the correct (poLineId, productId) pair — the §1B.9 backend
+  // prefill with the correct (poLineId, productId) pair — the backend
   // validation rejects receipt lines whose pair doesn't match the PO line.
   const { data: poDetail } = useQuery({
     queryKey: ["purchase-order-cmd-detail", purchaseOrderHeaderId],

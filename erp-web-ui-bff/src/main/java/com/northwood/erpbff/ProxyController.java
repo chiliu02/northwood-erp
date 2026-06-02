@@ -87,9 +87,9 @@ public class ProxyController {
             .timeout(Duration.ofSeconds(30))
             .method(method, body != null && body.length > 0 ? BodyPublishers.ofByteArray(body) : BodyPublishers.noBody());
         copyHeaders(request, builder);
-        // §1D.11: deliberately NO trace-context propagation upstream — each
+        // Deliberately NO trace-context propagation upstream — each
         // service starts its own root trace (the BFF runs at sampling 0 and emits
-        // no spans). Reverses §1D.5's BFF-hop join.
+        // no spans).
         String accessToken = tokens.currentAccessToken();
         if (accessToken != null) {
             builder.header("Authorization", "Bearer " + accessToken);

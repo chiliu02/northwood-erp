@@ -40,15 +40,15 @@
              Bearer token directly. The client starter authenticates the
              user, stashes the access token in the server-side session, and
              ProxyController forwards it as Bearer on every upstream call.
-             No resource-server starter on the BFF — option (a) per
-             dev-todo §1: tokens never reach the browser, and the only way
-             to talk to the BFF is via the session cookie. -->
+             No resource-server starter on the BFF: tokens never reach the
+             browser, and the only way to talk to the BFF is via the session
+             cookie. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-oauth2-client</artifactId>
         </dependency>
 
-        <!-- §1D tracing. The BFF doesn't depend on `shared` (which is where the
+        <!-- Tracing. The BFF doesn't depend on `shared` (which is where the
              seven services pick up this starter), so it gets it directly:
              without a Tracer + OTLP exporter the BFF emits no server span and,
              worse, propagates no trace context to upstream services — so a

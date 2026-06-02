@@ -8,7 +8,7 @@
  * starts the code flow against Keycloak. Once the user logs in and Keycloak
  * redirects back to /login/oauth2/code/keycloak, the BFF stamps a session
  * cookie and the SPA's next request succeeds. No tokens ever touch the
- * browser — see option (a) in dev-todo §1.
+ * browser (BFF-as-proxy: tokens never reach the browser).
  */
 export async function apiGet<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
