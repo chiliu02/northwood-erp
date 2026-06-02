@@ -90,7 +90,7 @@ Event-driven systems trade direct call graphs for decoupled producers and consum
 
 ## Events jars: producer publishes the wire schema, consumers compile against it
 
-Each producing service ships a sibling `<service>-events` Maven module containing the wire-format event records that downstream services consume. The producing service depends on its own events module; consumers depend on the events modules of every producer they subscribe to. All six events jars shipped 2026-05-10 (§1A): `product-events` (9 events + `ApprovedVendor` VO), `sales-events` (11), `inventory-events` (5), `manufacturing-events` (11), `purchasing-events` (4), `finance-events` (4). 44 cross-service events total, zero `*Payload` records remaining in the codebase.
+Each producing service ships a sibling `<service>-events` Maven module containing the wire-format event records that downstream services consume. The producing service depends on its own events module; consumers depend on the events modules of every producer they subscribe to. All six events jars shipped: `product-events` (9 events + `ApprovedVendor` VO), `sales-events` (11), `inventory-events` (5), `manufacturing-events` (11), `purchasing-events` (4), `finance-events` (4). 44 cross-service events total, zero `*Payload` records remaining in the codebase.
 
 **Why a shared jar instead of duplicated `*Payload` records on the consumer side.** The consumer always logically depends on the producer's event schema — that dep exists the moment a handler decides to consume the event. Duplicating the type on the consumer side hides the dep from build tooling without removing it; a shared schema jar makes the dep explicit and gives compile-time safety on additive *and* breaking producer changes (Jackson tolerance handles additive changes either way; breaks become compile errors at the consumer instead of runtime deserialisation failures). Schema-narrowing on the consumer side is a real benefit only when the consumer projects a strict subset; in practice the Northwood payloads were 1:1 mirrors paying duplication cost without the benefit.
 
@@ -156,7 +156,7 @@ When an event is appended to the outbox, the `aggregate_type` column (and the ma
 
 - **`ProductMaterialsCostComputed` stamped `Product`** (emitted from `MaterialsCostRollupService` in manufacturing-service). Manufacturing has the rollup inputs (vendor prices + active BOM); the conclusion is a fact about a Product. Passes all three: Product is the subject, manufacturing is uniquely positioned to compute the value, no claim on Product's lifecycle invariants.
 
-(A second example, **`ManufacturingDispatched` stamped `SalesOrder`**, was retired in §2.37 when sales stopped routing shortages through manufacturing — but it remains a clean illustration of the rule: manufacturing was the only source of the per-line accept/reject decision, the fact was what the SalesOrder needed to advance, and it claimed no ownership of SalesOrder's state machine.)
+(A second example, **`ManufacturingDispatched` stamped `SalesOrder`**, was retired in a later cleanup when sales stopped routing shortages through manufacturing — but it remains a clean illustration of the rule: manufacturing was the only source of the per-line accept/reject decision, the fact was what the SalesOrder needed to advance, and it claimed no ownership of SalesOrder's state machine.)
 
 **Northwood counter-examples that would fail.** A hypothetical "manufacturing emits `ProductDiscontinued`" would violate (b) and (c): manufacturing has no special knowledge of why a product should be discontinued, and discontinuation is a Product lifecycle decision. Same logic applies to "purchasing emits `SupplierBlocked`" — that's a Supplier-aggregate lifecycle event that purchasing observes but doesn't decide. Such cases should emit a module-A-owned event (e.g. `BlockingRecommended`) and let the aggregate's owner consume it and decide whether to flip lifecycle state.
 
@@ -214,7 +214,7 @@ The domain unit test above stops at the aggregate. The `Jdbc*` classes under `in
 
 **The recipe.** A static `PostgreSQLContainer<>("postgres:17")` + `Startables.deepStart`; apply the `db/northwood_erp.sql` baseline through a raw `DriverManager` `Statement.execute` (Testcontainers' `withInitScript` is broken on 1.20.x — see `~/.claude/notes/testcontainers.md`); a `HikariDataSource` with `connection-init-sql = SET search_path = <service>, shared`; construct the adapter directly (`new Jdbc...(jdbc, new ObjectMapper(), new CurrentUserAccessor())`); `@BeforeEach TRUNCATE <touched tables> CASCADE`. Wrap every `save()` in a `TransactionTemplate` — multi-statement saves (header + lines + outbox) need atomicity, and deferred constraint triggers only fire at COMMIT.
 
-**Gotchas, each paid for in the §2.25 build-out:**
+**Gotchas:**
 - **Seed NOT NULL FK parents in `@BeforeAll`** (`supplier`, `warehouse`, `unit_of_measure`, `customer`…). Cross-context UUID columns are deliberately *not* FKs (schema-per-service), so they need no seed.
 - **Supply an explicit `outbox_message_id`** when hand-INSERTing outbox rows — the `shared.uuid_generate_v7()` column default needs `pgcrypto`, which a bare container doesn't install. Every real writer supplies the id, so that default is effectively dead at runtime.
 - **Assert outbox _deltas_, not absolute counts**, when an aggregate's factory may also emit (e.g. `register()` *and* `updatePrice()` both emit) — count before/after the mutation and assert the difference.
@@ -245,8 +245,8 @@ JDBC is chosen so aggregate boundaries are explicit — loading a Product loads 
 
 The codebase commits to *codes + params at the API boundary, translation SPA-side*. The backend stays locale-free: REST responses are the same byte-for-byte regardless of who's calling. Two consequences worth naming explicitly:
 
-- **No `java.util.ResourceBundle`, no Spring `MessageSource`, no `LocaleResolver` / `Accept-Language` handling anywhere in `shared` or any service.** Error responses are typed `ErrorResponse { code, params }` records (see `docs/dev-todo.md` §1H for the rollout); status enums emit their `dbValue()` wire format; logs and `Assert.*` messages stay English (operator-facing, not user-facing).
-- **The SPA owns the entire translation surface.** `erp-web-ui` will adopt `react-i18next`-style message bundles (`docs/dev-todo.md` §3.5) keyed by feature namespace. The bundle holds the localised text for each backend `code` plus every JSX string.
+- **No `java.util.ResourceBundle`, no Spring `MessageSource`, no `LocaleResolver` / `Accept-Language` handling anywhere in `shared` or any service.** Error responses are typed `ErrorResponse { code, params }` records; status enums emit their `dbValue()` wire format; logs and `Assert.*` messages stay English (operator-facing, not user-facing).
+- **The SPA owns the entire translation surface.** `erp-web-ui` will adopt `react-i18next`-style message bundles keyed by feature namespace. The bundle holds the localised text for each backend `code` plus every JSX string.
 
 Why this split rather than backend-side localisation:
 

@@ -34,7 +34,7 @@ application and domain layers lean on the relational/ACID **guarantee bundle**, 
 move is to name it:
 
 - **"We need to scale"** → the *ready-to-split* invariant + read replicas + an Elasticsearch
-  read-side for reporting (`dev-todo.md` §3.9) solve that **without** abandoning ACID where it's
+  read-side for reporting solve that **without** abandoning ACID where it's
   load-bearing (the ledger). Cassandra is for write-heavy, geo-distributed,
   availability-over-consistency workloads with *known* query patterns — an ERP is almost the
   photographic negative of that profile (relational, integrity-critical money, modest volume, ad-hoc
@@ -485,9 +485,9 @@ Both are *already* defended against, because they are also Kafka's properties:
 - **Duplicates** → `AbstractInboxHandler.inbox.alreadyProcessed(eventId)`. The three replica copies
   carry the same event UUID (same mutation), so the inbox collapses them. The dedup machinery built
   for Kafka's at-least-once delivery *is* the CDC dedup layer, for free.
-- **Reordering** → this is **`dev-todo.md` §3.8**: a highest-sequence-wins guard on the ~2
+- **Reordering** → a highest-sequence-wins guard on the ~2
   order-dependent projections + the Saga's existing cross-partition-safe gate make consumers
-  order-insensitive. CDC's missing ordering is the same gap §3.8 closes for a broker swap.
+  order-insensitive. CDC's missing ordering is the same gap the ordering fix closes for a broker swap.
 
 The outbox's "never lost" guarantee survives directly: the mutation hits the commitlog *before the
 write acks*, the commitlog is the durability point, CDC reads from it.
@@ -506,13 +506,13 @@ write acks*, the commitlog is the durability point, CDC reads from it.
 ### The reframe worth keeping: the scary leak is the recoverable one
 
 The naive ranking puts the atomic outbox at #1. Worked through, it inverts: **the outbox is the
-*most* recoverable leak**, because the inbox dedup + §3.8 already compensate for exactly what CDC
+*most* recoverable leak**, because the inbox dedup and the highest-sequence-wins ordering fix already compensate for exactly what CDC
 loses. The leaks with *no* pre-built cushion are where the pain concentrates:
 
-- **Ad-hoc reporting reads** (§1 leak #6) — joins / `GROUP BY` / arbitrary `WHERE` have no Cassandra
-  answer but "a table per query shape" or Elasticsearch (`dev-todo.md` §3.9). Nothing in the codebase
+- **Ad-hoc reporting reads** — joins / `GROUP BY` / arbitrary `WHERE` have no Cassandra
+  answer but "a table per query shape" or Elasticsearch. Nothing in the codebase
   softens this.
-- **Schema-enforced constraints** (§1 leak #5) — uniqueness, FK, CHECK, `NOT NULL` migrate into app
+- **Schema-enforced constraints** — uniqueness, FK, CHECK, `NOT NULL` migrate into app
   code with race/perf caveats and no safety net.
 
 So the sharper "what happens": the headline (atomic dual-write) is cushioned by machinery already
@@ -544,8 +544,8 @@ must pick a mechanism; each fails differently.
   "processed" marker double-applies on replay. Exactly the divergence double-entry exists to prevent.
 - **LWT materialized balance (single-partition Paxos).** Keep the balance row; update via `UPDATE …
   SET qty=:new, last_seq=:seq WHERE key=:id IF last_seq=:readSeq`. Single-partition ⇒ LWT is legal;
-  conditioning on a monotonic `seq` makes it idempotent and order-insensitive (§3.8 again, now
-  doubling as concurrency control). Correct — but it's optimistic CAS with re-read-on-conflict, and
+  conditioning on a monotonic `seq` makes it idempotent and order-insensitive, now
+  doubling as concurrency control. Correct — but it's optimistic CAS with re-read-on-conflict, and
   **the hottest accounts are single rows**: a GL cash / AR-control / AP-control account hit by every
   payment becomes one hot partition serialising the system through Paxos retry storms. The busiest
   balances are precisely the ones you can't shard without destroying the "one balance" semantics.
@@ -559,7 +559,7 @@ must pick a mechanism; each fails differently.
 ### Pick per balance, by contention profile
 
 - **`stock_balance` (per SKU)** and **`paid_amount` (per invoice)** — low contention per key → LWT
-  highest-wins fits cleanly (the §3.8 pattern verbatim).
+  highest-wins fits cleanly.
 - **GL control accounts (cash, AR, AP)** — single hot rows → LWT melts down; recompute + snapshot is
   the only contention-free answer, but now you're hand-building ledger snapshotting that Postgres
   gives you with a partial index and a `SUM`.
@@ -646,7 +646,7 @@ all.
 
 Multi-tenancy is a data-isolation / deployment concern, not a reason to reach for Cassandra. The
 architecture already has a tenancy / scale story in the schema-per-service **"ready to split"**
-invariant (+ per-service scaling, `dev-todo.md` §3.7). Cassandra is a *scale* tool — justified by
+invariant (+ per-service scaling). Cassandra is a *scale* tool — justified by
 thousands of tenants, multi-region active-active, sustained write volume beyond Postgres + Kafka. ERP
 event volume doesn't approach that; reach for it when the load is real, not to acquire tenancy you
 can get structurally.

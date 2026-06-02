@@ -1,7 +1,6 @@
 # design-notes.md
 
-Durable architectural notes that don't fit `CLAUDE.md` (rules / conventions) or
-`dev-done.md` (slice changelog). Living reference — refresh entries when the
+Durable architectural notes that don't fit `CLAUDE.md` (rules / conventions). Living reference — refresh entries when the
 underlying code changes; remove entries when the underlying decision no longer
 applies.
 
@@ -31,7 +30,7 @@ purpose, today".
 | 5 | `finance-service` `JournalEntryService.inventoryAccountForProduct` / `cogsAccountForProduct` | `finance.product_card.valuation_class` is NULL for the product yet (event-stream race during burst-receive on a fresh-volume boot) | inventory → 1200 (generic Inventory), COGS → 5000 (generic COGS); also fires on unrecognised valuation_class string | **DEBUG** (designed — this is the projection-order-tolerant path) | `journal_entry_line.account_code` — generic-1200 / generic-5000 postings appear in the GL | Manual re-classification entry once the projection catches up (no automated reclassification today; would need a periodic sweep job) |
 | 7 | `finance-service` `ShipmentPostedCogsHandler.handle` (COGS standard cost) | `finance.product_card.standard_cost` is NULL for the productId (cold-start race on a fresh volume before the seed Liquibase changeset applies, or before the inbox handler catches up) | per-line `unitCost = payload.unitCost` (the warehouse clerk's value off the shipment line) | **DEBUG** (one summary line per shipment when count > 0) | `journal_entry_line.debit_amount` / `credit_amount` on the COGS pair — the GL captures the event-stamped cost rather than finance's authoritative one | The seed changeset bootstraps day-1 coverage; for new products, sequence the projection update ahead of the first ship. Tighten by throwing if coverage gaps become a real concern (would freeze the COGS posting until the projection populates). |
 | 8 | `shared-kernel` `Currencies.orBase(String)` | inbound `currencyCode` is null at any of ~21 call sites: finance / sales / purchasing domain factories (Payment, JournalEntry, SupplierInvoice, CustomerInvoice, SalesOrder, PurchaseOrder), the same services' projection writers (incl. `JdbcFinancialDashboardProjection`'s two report-rollup paths), `SupplierProductPriceService.setPrice`, and `JdbcSupplierProductPriceLookup`. Typical source: an event payload field omitted by an emitter that pre-dates the column, or a request DTO that left currency out | `Currencies.BASE_CURRENCY` (showcase base; today `AUD`) | **none** (deliberately silent — static helper has no entity-id context, see operating notes) | every consumer at the listed sites writes the substituted value into a domain/event/projection row's `currency_code` column. Downstream GL postings and reporting rollups assume the base currency when this fires | (1) throw NPE instead — feasible once every upstream caller is audited to populate currency_code; (2) take a `String contextDescription` parameter + log at DEBUG with caller context — adds verbosity but lets ops correlate the substitution to the affected row |
-| 9 | `finance-service` `StockAdjustedHandler.apply` (stock-adjustment standard cost, §2.29) | `finance.product_card.standard_cost` is empty for the productId (cold-start race before the seed / projection populates) | `amount = 0` → `JournalEntryService.postStockAdjustment` skips the GL pair entirely — unlike COGS (#7), a stock adjustment carries no event-stamped unit cost to fall back to | **DEBUG** (one line per skipped adjustment) | the inventory-adjustment GL pair (Dr/Cr inventory vs 5400 Inventory Adjustment) — not posted at all when this fires, so that adjustment is briefly off-book until reconciliation | Seed `standard_cost` day-1 (already seeded for demo products); for new products, sequence the cost projection ahead of the first adjustment. Tighten by throwing to defer the post (would surface as a redelivery/park) once the projection populates |
+| 9 | `finance-service` `StockAdjustedHandler.apply` (stock-adjustment standard cost) | `finance.product_card.standard_cost` is empty for the productId (cold-start race before the seed / projection populates) | `amount = 0` → `JournalEntryService.postStockAdjustment` skips the GL pair entirely — unlike COGS (#7), a stock adjustment carries no event-stamped unit cost to fall back to | **DEBUG** (one line per skipped adjustment) | the inventory-adjustment GL pair (Dr/Cr inventory vs 5400 Inventory Adjustment) — not posted at all when this fires, so that adjustment is briefly off-book until reconciliation | Seed `standard_cost` day-1 (already seeded for demo products); for new products, sequence the cost projection ahead of the first adjustment. Tighten by throwing to defer the post (would surface as a redelivery/park) once the projection populates |
 
 ### Operating notes
 
@@ -102,9 +101,9 @@ bug.
 
 ### Nested-event-record as transport type — only a smell when it crosses layer boundaries
 
-**From:** §2.7 (2026-05-08), where `ApprovedVendorListChanged.ApprovedVendor` (a record nested inside the event class) was used as the parameter type on `Product.emitApprovedVendorListChanged(...)`, on `ApprovedVendorRepository.findForProduct/replaceFor`, on `JdbcApprovedVendorRepository`'s row mapper, on `ProductService.setApprovedVendors`, and constructed by `ProductController.setApprovedVendors`. The event class leaked through every layer purely to thread the type. Fix: promote the nested record to a top-level domain VO at `domain.ApprovedVendor`; the event references the VO; everyone else uses the VO.
+**From:** the approved-vendor-list slice (2026-05-08), where `ApprovedVendorListChanged.ApprovedVendor` (a record nested inside the event class) was used as the parameter type on `Product.emitApprovedVendorListChanged(...)`, on `ApprovedVendorRepository.findForProduct/replaceFor`, on `JdbcApprovedVendorRepository`'s row mapper, on `ProductService.setApprovedVendors`, and constructed by `ProductController.setApprovedVendors`. The event class leaked through every layer purely to thread the type. Fix: promote the nested record to a top-level domain VO at `domain.ApprovedVendor`; the event references the VO; everyone else uses the VO.
 
-**The audit afterwards** found 14 other nested-record imports in the codebase. **None matched the §2.7 shape**, because in each case the nested record stays *local to one method*: build a `List<NestedRecord>`, populate, hand to the event constructor, no parameter / return / field exposure. Auto-promoting all 14 would add 14 record files to remove a coupling that doesn't propagate — net negative for readability.
+**The audit afterwards** found 14 other nested-record imports in the codebase. **None matched the same shape**, because in each case the nested record stays *local to one method*: build a `List<NestedRecord>`, populate, hand to the event constructor, no parameter / return / field exposure. Auto-promoting all 14 would add 14 record files to remove a coupling that doesn't propagate — net negative for readability.
 
 **The smell is layer propagation, not the import itself.** A grep for `events\.X\.Y` finds candidates; the question to ask each is:
 
@@ -115,13 +114,13 @@ bug.
 | Inbox handler / saga worker imports a nested record from its *own service's* event for direct emission via `OutboxRow.pending` | **Fine.** Sanctioned "saga-side observation" pattern (CLAUDE.md). |
 | Inbox handler imports a nested record from *another service's* event payload (`*Payload.java`) | **Different concern entirely.** Cross-service `*Payload` classes are owned by the consumer; not a smell. |
 
-**Detection heuristic for the next audit.** The grep pattern `events\.\w+\.\w+` finds the candidates. Triage by checking method signatures only — if the nested type appears in a `public` method's parameter or return type AND is used outside the file that declares the event, it's the §2.7 shape. Otherwise it's local construction.
+**Detection heuristic for the next audit.** The grep pattern `events\.\w+\.\w+` finds the candidates. Triage by checking method signatures only — if the nested type appears in a `public` method's parameter or return type AND is used outside the file that declares the event, it's the layer-propagation smell described above. Otherwise it's local construction.
 
-**Why this matters.** The original §2.7 audit (in dev-todo at the time) called out two outliers based on import lists alone. Looking at imports gives a candidate set; only signature analysis tells you whether the import is a transport leak or a local convenience. The same lesson applies to other "X imports Y from a forbidden package" rules — the import is the trigger to investigate, not the verdict.
+**Why this matters.** The original import-leak audit called out two outliers based on import lists alone. Looking at imports gives a candidate set; only signature analysis tells you whether the import is a transport leak or a local convenience. The same lesson applies to other "X imports Y from a forbidden package" rules — the import is the trigger to investigate, not the verdict.
 
 ### Computed values live with the engine that computes them, not the master aggregate
 
-**From:** §2.8 Slice C (2026-05-08), where `materialsCost` was originally proposed as a field on the `Product` aggregate (in product-service). The natural consumer for the rolled-up cost is the product detail page — same shape as `salesPrice` and `standardCost` — so putting it on the master felt right.
+**From:** the materials-cost slice (2026-05-08), where `materialsCost` was originally proposed as a field on the `Product` aggregate (in product-service). The natural consumer for the rolled-up cost is the product detail page — same shape as `salesPrice` and `standardCost` — so putting it on the master felt right.
 
 **The problem:** product-service is producer-only by architectural contract — it never consumes cross-service events. Adding `materialsCost` to `Product` would have forced product-service to subscribe to `purchasing.SupplierProductPriceChanged` (and eventually `manufacturing.ProductMaterialsCostComputed` for the BoM rollup), promoting it from upstream Open Host to a hybrid. That's a one-way ratchet — once product-service has even one inbox handler, the invariant is gone forever.
 
@@ -139,7 +138,7 @@ bug.
 
 ### Cross-context aggregate-root stamping on events
 
-**From:** the 2026-05-14 event-flow audit, which surfaced two events stamped with an `aggregateType` from a context other than the emitting service: `manufacturing.ManufacturingDispatched` stamped `SalesOrder` and `manufacturing.ProductMaterialsCostComputed` stamped `Product`. Surface reading made these look like pragmatic compromises; a closer look established they're correct modeling. (`ManufacturingDispatched` was subsequently **retired by §2.37** when the make-vs-buy decision moved into inventory — manufacturing no longer emits any `SalesOrder`-stamped event — but it remains the clearest illustration of the rule, so it's kept below as the worked example alongside the still-live `ProductMaterialsCostComputed`.)
+**From:** the 2026-05-14 event-flow audit, which surfaced two events stamped with an `aggregateType` from a context other than the emitting service: `manufacturing.ManufacturingDispatched` stamped `SalesOrder` and `manufacturing.ProductMaterialsCostComputed` stamped `Product`. Surface reading made these look like pragmatic compromises; a closer look established they're correct modeling. (`ManufacturingDispatched` was subsequently **retired** when the make-vs-buy decision moved into inventory — manufacturing no longer emits any `SalesOrder`-stamped event — but it remains the clearest illustration of the rule, so it's kept below as the worked example alongside the still-live `ProductMaterialsCostComputed`.)
 
 **The rule.** An event names the aggregate the fact is *about*, not the module that emits it. Logical ownership and physical emission are decoupled — any module that has the knowledge to assert the fact *and* the contract authority to publish under the aggregate's namespace can emit it. This is orthodox DDD properly read; the classical guidance has always been about which aggregate the event identifies, not where the emitting code physically lives.
 
@@ -151,7 +150,7 @@ bug.
 
 **Northwood passes for both events the audit examined:**
 
-- `ManufacturingDispatched` → `SalesOrder` *(retired by §2.37; preserved as the worked example)*. Manufacturing learned per-line accept/reject by joining its make-vs-buy projection + active-BOM lookup (knowledge only it had, (b)); the fact was what the SalesOrder needed to advance the fulfilment saga ((a)); manufacturing didn't claim SalesOrder state-machine authority, it just reported an outcome ((c)). After §2.37 that make-vs-buy decision moved into inventory, so this event no longer exists — but it remains the cleanest illustration of all three criteria holding for a cross-context emission.
+- `ManufacturingDispatched` → `SalesOrder` *(retired; preserved as the worked example)*. Manufacturing learned per-line accept/reject by joining its make-vs-buy projection + active-BOM lookup (knowledge only it had, (b)); the fact was what the SalesOrder needed to advance the fulfilment saga ((a)); manufacturing didn't claim SalesOrder state-machine authority, it just reported an outcome ((c)). When the make-vs-buy decision moved into inventory, this event was retired — but it remains the cleanest illustration of all three criteria holding for a cross-context emission.
 - `ProductMaterialsCostComputed` → `Product` *(still live)*. Manufacturing owns the rollup engine and has the inputs (vendor prices + active BOM), so it's the source of authority ((b)); the conclusion is a fact about a Product ((a)); manufacturing doesn't claim Product lifecycle authority ((c)).
 
 **Counter-examples that would fail.** "Manufacturing emits `ProductDiscontinued`" violates (b) and (c) — manufacturing has no special knowledge of *why* a product should be retired, and discontinuation is a Product lifecycle decision. "Purchasing emits `SupplierBlocked`" is the same shape. Such cases should emit a producer-owned event (e.g. `BlockingRecommended`) and let the aggregate's owner consume it and decide whether to flip lifecycle state.
@@ -162,15 +161,15 @@ bug.
 
 **Reference detail** lives in `architecture.md` under *Aggregate-root stamping: an event names the aggregate the fact is about*.
 
-### Vendor-flip recompute deferred (§2.8 Slice C limitation)
+### Vendor-flip recompute deferred (materials-cost Slice C limitation)
 
-**Locked 2026-05-08 as the Slice C scope.** The materialsCost rollup engine reacts only to `purchasing.SupplierProductPriceChanged`. A `product.ApprovedVendorListChanged` that flips the preferred supplier does *not* immediately trigger a recompute — the cost reflects the previous preferred supplier's price until the new preferred supplier emits its first `SupplierProductPriceChanged`.
+**Locked 2026-05-08 as the initial scope.** The materialsCost rollup engine reacts only to `purchasing.SupplierProductPriceChanged`. A `product.ApprovedVendorListChanged` that flips the preferred supplier does *not* immediately trigger a recompute — the cost reflects the previous preferred supplier's price until the new preferred supplier emits its first `SupplierProductPriceChanged`.
 
 **Why it's acceptable for the showcase.** Vendor-list edits are infrequent and supplier prices change frequently enough that the lag bound is small in practice. The alternative — recomputing on every `ApprovedVendorListChanged` — requires manufacturing to also project the supplier price list, doubling the projected state for a benefit that rarely matters. We picked the simpler path.
 
 **Tightening alternative when it matters:** add a `SupplierProductPrice` projection in manufacturing (mirroring `ApprovedVendorList`), have the rollup engine consult it on `ApprovedVendorListChanged`, and emit a recomputed `ProductMaterialsCostComputed` immediately. Estimated cost: one new projection + handler + ~30 lines in `MaterialsCostRollupService`. Don't pull this forward speculatively.
 
-### MaterialsCost rollup: routing, recursion, currency policy (§2.8 Slice D)
+### MaterialsCost rollup: routing, recursion, currency policy
 
 **Routing rule (BoM wins):** the rollup engine routes a recompute by checking active-BoM presence first. If a product has an active BoM, materialsCost is the BoM rollup — `Σ (qty * (1 + scrap%/100) * componentMaterialsCost)` across lines. Supplier prices for that *parent* product are ignored (the parent's cost is determined by its components). Supplier prices for *components* still flow: a `SupplierProductPriceChanged` on a leaf updates the leaf's cost, which walks up to recompute the parent.
 
@@ -202,7 +201,7 @@ Both BoM-activation paths call `MaterialsCostRollupService.recomputeViaBom(produ
 
 ### Consumer-side projection for write-side validation, not sync REST
 
-**From:** §1B.9 hardening #1 (2026-05-12), the shipment-line / receipt-line product validation slice.
+**From:** the shipment-line / receipt-line product validation hardening (2026-05-12).
 
 The validation needed inventory to check, on every `POST /api/shipments` and `POST /api/goods-receipts`, that each line's `(salesOrderLineId, productId)` (or `purchaseOrderLineId, productId`) pair matched the originating SO / PO. The data lived in `sales.sales_order_line.product_id` and `purchasing.purchase_order_line.product_id` — both invisible to inventory under the per-service `search_path = inventory, shared` invariant.
 

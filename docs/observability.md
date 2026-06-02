@@ -1,6 +1,6 @@
 # Observability — traces, metrics, logs
 
-How to run and use the Northwood observability tier (§1D). The stack is the **LGTM** quartet — **L**oki (logs), **G**rafana (UI), **T**empo (traces), **M**imir-equivalent Prometheus (metrics) — running as docker-compose sidecars alongside Postgres/Kafka/Keycloak, with every Spring service instrumented to push to it.
+How to run and use the Northwood observability tier. The stack is the **LGTM** quartet — **L**oki (logs), **G**rafana (UI), **T**empo (traces), **M**imir-equivalent Prometheus (metrics) — running as docker-compose sidecars alongside Postgres/Kafka/Keycloak, with every Spring service instrumented to push to it.
 
 The design goal: a single business transaction (place a sales order) produces a **distributed trace** spanning sales → inventory → finance, **RED metrics** scraped from each service, and **structured logs** carrying the same `traceId` — and Grafana lets you pivot between all three from one click. The worked example at the bottom walks the Sales-Order-fulfilment Saga end to end.
 
@@ -35,15 +35,15 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, info, metrics, prometheus   # prometheus added in §1D.1
+        include: health, info, metrics, prometheus
   observations:
     enable:
-      tasks.scheduled.execution: false              # §1D.10: drop @Scheduled heartbeat spans (see Traces below)
-      spring.security: false                        # §1D.11: drop Spring Security filter-chain spans (services only)
+      tasks.scheduled.execution: false              # drop @Scheduled heartbeat spans (see Traces below)
+      spring.security: false                        # drop Spring Security filter-chain spans (services only)
   tracing:
     sampling:
       probability: ${NORTHWOOD_TRACING_SAMPLING:1.0}  # 1.0 = capture every trace (demo); 0.1 for prod-style
-      # BFFs override this to 0 (§1D.11) — they emit no spans; services root their own traces
+      # BFFs override this to 0 — they emit no spans; services root their own traces
   otlp:
     metrics:
       export:
@@ -144,11 +144,11 @@ Every inbound HTTP request and outbound OTLP-instrumented call gets a span; the 
 - **Span naming gotcha:** Spring Boot 4 / OpenTelemetry names HTTP spans `http <lowercase-method> <route>` (e.g. `http post /api/sales-orders`, `http get /actuator/prometheus`) — *not* the classic Micrometer `POST /api/sales-orders`. A TraceQL `name =~ "POST …"` silently matches nothing. Match `name =~ "http post …"`, or `name =~ "(?i).*post …"` to be casing-agnostic.
 - Click a trace to see the waterfall across services. The Tempo datasource is wired with **trace → logs** (`tracesToLogsV2` → Loki) and **trace → metrics**, so from any span you can jump to the correlated log lines or the service's RED metrics.
 
-#### Saga-trace linkage (§1D.6)
+#### Saga-trace linkage
 
 A placed order produces a synchronous **request trace** (BFF → sales, ending when the 201 returns) and then an **async saga continuation** (the outbox drainer publishes `SalesOrderPlaced`; inventory/finance/… consume and emit their own events, on and on). Each cross-service hop is its **own bounded trace** carrying a **link** (↗) back to the trace that triggered it — one click to walk the chain. `OutboxDrainer` captures the originating trace context (stamped into `outbox_message.headers` at append time) and adds it as a span link on the `outbox.publish` span; Spring Kafka's observation-enabled producer then carries the context across the bus to the consumer. Bounded, OTel-idiomatic for messaging — *not* one giant waterfall. (We deliberately do **not** reparent the continuation onto the request span: that produces unbounded, long-lived traces. The whole-saga picture is the separate `saga_id`-anchored milestone view below.) Full mechanism: `docs/messaging.md` → *Saga-trace linkage*.
 
-#### Saga milestone overview (§1D.9)
+#### Saga milestone overview
 
 To see a saga **end to end** — its logical steps across all those bounded hops — query the *milestone* spans instead of one trace. Each saga transition records a standalone milestone span (named `saga.<state>`) tagged with the durable `northwood.saga_id` and linked to that step's detail trace. The "saga view" is therefore a TraceQL search, not a nested waterfall:
 
@@ -159,7 +159,7 @@ To see a saga **end to end** — its logical steps across all those bounded hops
 
 Each milestone links (↗) to the action/event that caused it. Anchoring on the durable `saga_id` (a saga-row column) rather than a long-lived root trace keeps this independent of Tempo's 24h block retention. The cross-saga key is the originating **sales-order id** (a dedicated span attribute — deliberately not the messaging `correlation_id`, and not the per-saga `saga_id`); it spans the SO saga and the make-side WO sub-saga. Mechanism + the SO→PO deferral: `docs/sagas.md` → *Saga observability — milestone overview*.
 
-#### Scheduled-heartbeat span suppression (§1D.10)
+#### Scheduled-heartbeat span suppression
 
 The system runs several `@Scheduled` background loops — the saga workers' `poll()` (every 1s), `OutboxDrainScheduler.tick()` (1s), the Saga-Console SSE `pump()` in each saga service + the BFF aggregator (1s), and `SagaStateMetrics` (15s). Spring's scheduled-task observation wraps **every tick** in a span (`task <bean>.<method>`) whether or not the tick did any work, so Tempo fills with empty `…poll` / `…tick` / `…pump` traces that drown the real ones.
 
@@ -172,13 +172,13 @@ management:
       tasks.scheduled.execution: false   # the Micrometer scheduled-task observation name
 ```
 
-Nothing meaningful is lost. The manually-created `outbox.publish` / `saga.<state>` spans are unaffected; with no scheduled parent they simply become trace **roots** (the publish span already keeps its own bounded trace with a link back to the originating request, per §1D.6). You can't gate the heartbeat span on "is there an event" at the source — the observation starts *before* the method knows whether there's work — so suppressing the wrapper and relying on the work-conditional manual spans is the clean equivalent. To inspect them ad-hoc without re-enabling, query Tempo directly: `{ resource.service.name = "sales-service" && name =~ "task .*" }`.
+Nothing meaningful is lost. The manually-created `outbox.publish` / `saga.<state>` spans are unaffected; with no scheduled parent they simply become trace **roots** (the publish span already keeps its own bounded trace with a link back to the originating request). You can't gate the heartbeat span on "is there an event" at the source — the observation starts *before* the method knows whether there's work — so suppressing the wrapper and relying on the work-conditional manual spans is the clean equivalent. To inspect them ad-hoc without re-enabling, query Tempo directly: `{ resource.service.name = "sales-service" && name =~ "task .*" }`.
 
-#### Trace scope — services only, service-rooted (§1D.11)
+#### Trace scope — services only, service-rooted
 
-A trace should read as a **service request**, not infrastructure chatter. §1D.11 narrows what gets a span so every root in Tempo is a backend service, dropping three noise sources:
+A trace should read as a **service request**, not infrastructure chatter. This configuration narrows what gets a span so every root in Tempo is a backend service, dropping three noise sources:
 
-1. **Spring Security spans** — `secured request`, `authenticate bearertoken` / `oauth2login`, `authorize request` / `method`, `security filterchain before` / `after`. These are framework filter-chain observations on every request. Disabled per service via the same `enable` map as §1D.10:
+1. **Spring Security spans** — `secured request`, `authenticate bearertoken` / `oauth2login`, `authorize request` / `method`, `security filterchain before` / `after`. These are framework filter-chain observations on every request. Disabled per service via the same `enable` map as the heartbeat suppression above:
 
    ```yaml
    management:
@@ -189,11 +189,11 @@ A trace should read as a **service request**, not infrastructure chatter. §1D.1
 
 2. **Actuator-scrape spans** — Prometheus hits `/actuator/prometheus` every few seconds, producing `http get /actuator/prometheus` root spans. A single `ObservationPredicate` bean in `shared` (`infrastructure/observability/ObservabilityAutoConfiguration`) drops the **server** observation (span + metric) for any `/actuator/**` URI. Spring Boot feeds every `ObservationPredicate` bean into the `ObservationRegistry`, so the bean is the whole wiring; it's `@AutoConfiguration`, so all services inherit it. (The actuator endpoint still serves metrics — only its *inbound request* is no longer observed.)
 
-3. **BFF spans + BFF-rooted traces** — previously (§1D.5) each BFF traced its `/api/**` hop and propagated the trace context to the upstream service, so an order trace was rooted at `erp-web-ui-bff | http post /api/**`. §1D.11 reverses that: the two `ProxyController`s **no longer inject `traceparent`** upstream, and each BFF runs at `management.tracing.sampling.probability: 0`. Result — the BFF emits no spans of its own, and each service **starts its own root trace** (`sales-service | http post /api/sales-orders`). The downstream sampler (1.0) is unaffected because no parent `sampled=0` decision is propagated (the BFF simply sends no `traceparent` at all).
+3. **BFF spans + BFF-rooted traces** — each BFF previously traced its `/api/**` hop and propagated the trace context to the upstream service, so an order trace was rooted at `erp-web-ui-bff | http post /api/**`. This was reversed: the two `ProxyController`s **no longer inject `traceparent`** upstream, and each BFF runs at `management.tracing.sampling.probability: 0`. Result — the BFF emits no spans of its own, and each service **starts its own root trace** (`sales-service | http post /api/sales-orders`). The downstream sampler (1.0) is unaffected because no parent `sampled=0` decision is propagated (the BFF simply sends no `traceparent` at all).
 
 **Kept on purpose:** the Kafka producer/consumer spans (`sales.events send`, `inventory.events process`) — they're emitted *by the services* and are the glue that carries a trace across the outbox → Kafka → inbox hop. Dropping them would fragment the cross-service saga view. Postgres/JDBC is **not** instrumented in this stack, so there was nothing to disable.
 
-**Expect a brief `<root span not yet received>` on the newest cross-service traces.** That's Tempo assembling a trace whose spans flush from *different services* on independent batch schedules — a child (e.g. `inventory.events process`) can reach Tempo a beat before the root (`sales: outbox.publish`). It resolves within ~1–2s on refresh; it is not an orphan and not specific to §1D.11 (any multi-service async trace has this ingestion window).
+**Expect a brief `<root span not yet received>` on the newest cross-service traces.** That's Tempo assembling a trace whose spans flush from *different services* on independent batch schedules — a child (e.g. `inventory.events process`) can reach Tempo a beat before the root (`sales: outbox.publish`). It resolves within ~1–2s on refresh; it is not an orphan and is common to any multi-service async trace (this ingestion window is not specific to any particular configuration).
 
 ### Logs (Loki)
 
@@ -220,7 +220,7 @@ This is the showcase: one `POST /api/sales-orders` fans out into a multi-service
 
 ### Trigger it
 
-Place a stock-covered order against the seeded customer/product (`docs/demo-script.md` § Demo 3.1):
+Place a stock-covered order against the seeded customer/product (Demo 3.1 in `docs/demo-script.md`):
 
 ```bash
 curl -X POST http://localhost:8082/api/sales-orders \
@@ -277,4 +277,4 @@ You get an interleaved, time-ordered log of the same transaction across sales/in
 
 ## AWS
 
-The same stack runs on a single EC2 "observability box," gated on the Terraform variable `enable_observability` (`terraform/modules/infra-ec2/`). It pulls the identical `db/{tempo,loki,prometheus,grafana}` configs from an S3 artifacts bucket and runs the same container images (pinned in `variables.tf` → `observability_images`). The box's private DNS is exported as `observability_private_dns` (`outputs.tf`); feed it into the services' `OTLP_ENDPOINT` (`:4317`) and `LOKI_URL` (`:3100`). Prometheus on AWS currently self-scrapes only, with a commented service-discovery stub for future ECS SD. See commit `589a0c8` (§1D observability tier on AWS).
+The same stack runs on a single EC2 "observability box," gated on the Terraform variable `enable_observability` (`terraform/modules/infra-ec2/`). It pulls the identical `db/{tempo,loki,prometheus,grafana}` configs from an S3 artifacts bucket and runs the same container images (pinned in `variables.tf` → `observability_images`). The box's private DNS is exported as `observability_private_dns` (`outputs.tf`); feed it into the services' `OTLP_ENDPOINT` (`:4317`) and `LOKI_URL` (`:3100`). Prometheus on AWS currently self-scrapes only, with a commented service-discovery stub for future ECS SD. See commit `589a0c8` (observability tier on AWS).

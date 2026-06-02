@@ -15,7 +15,7 @@
 # once the public IP is known, or point it at an Elastic IP.
 # keycloak_hostname = "http://<web-ec2-public-ip>:8080"
 
-# Observability (§1D): run the Tempo/Loki/Prometheus/Grafana box on the data EC2
+# Observability: run the Tempo/Loki/Prometheus/Grafana box on the data EC2
 # and point the apps at it. Set false to skip it (and its cost).
 # enable_observability = true
 

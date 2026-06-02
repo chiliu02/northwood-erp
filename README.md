@@ -95,8 +95,6 @@ The ERP SPA (`erp-web-ui`) authenticates real Keycloak users via OIDC code flow;
 | Run the ERP UI | `erp-web-ui/README.md` |
 | Run a demo end-to-end | `docs/demo-script.md` |
 | Understand the architecture before changing code | `CLAUDE.md` |
-| Pick the next thing to build | `docs/dev-todo.md` (priority-ordered backlog) |
-| See what's been shipped | `docs/dev-done.md` (append-only changelog) |
 | Deploy to AWS | `docs/aws-deployment.html` (demo) · `docs/aws-architecture.html` (production) |
 
 ## Tests

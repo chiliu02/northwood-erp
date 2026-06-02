@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <title>Northwood — System Map</title>
-<!-- §1D.6 unified cross-axis view. Composes two axes — event → consumer-handler
+<!-- Unified cross-axis view. Composes two axes — event → consumer-handler
      and event → write-target-table — into one page so "what does
      CustomerPaymentReceived touch end-to-end" stops requiring three tabs.
 
      Self-contained: the data arrays below are inlined directly into this page
      (browsers block <script src> from file://, hence an inline copy rather than
-     a shared data file). Build-time generation is the §1D.6 follow-up.
+     a shared data file). Build-time generation is a planned follow-up.
 
      Anchors: every event row has id="event-{Source}.{EventName}" so
      messaging.md / sagas.md can deep-link to a specific event's row.
@@ -428,7 +428,7 @@
 
 <h1>Northwood — System Map</h1>
 
-<p>Cross-axis composition of three axes — <strong>event-flow</strong> (event → consumer-handler), <strong>projections</strong> (event → write-target-table), and the four orchestration state machines (SalesOrderFulfilment, WorkOrder, PurchaseToPay — and ReplenishmentRequest, the §2.35 inventory-as-MRP-orchestrator aggregate). <strong>Self-contained:</strong> the event/projection index is inlined directly below — this page has no external data or link dependencies. §1D.6 pragmatic first cut. Anchors per event: <code>#event-Source.EventName</code>.</p>
+<p>Cross-axis composition of three axes — <strong>event-flow</strong> (event → consumer-handler), <strong>projections</strong> (event → write-target-table), and the four orchestration state machines (SalesOrderFulfilment, WorkOrder, PurchaseToPay — and ReplenishmentRequest, the inventory-as-MRP-orchestrator aggregate). <strong>Self-contained:</strong> the event/projection index is inlined directly below — this page has no external data or link dependencies. Anchors per event: <code>#event-Source.EventName</code>.</p>
 
 <h2>Service-level overview</h2>
 <p>Each box is a bounded context. Each arrow is "service A emits an event consumed by service B" — the number is the count of distinct event types flowing along that edge. <strong>Click one service</strong> to focus: every edge touching it stays visible, the rest dim. <strong>Click a second (or more)</strong> to narrow further: only edges <em>between</em> the focused services remain — answers "how do these talk to each other?". Click a focused service again to un-focus; click the background to clear. <strong>Click an arrow</strong> to filter the cross-axis index below.</p>
@@ -454,9 +454,9 @@
 
 <details class="saga-block">
   <summary><h3 id="saga-sales-order-fulfilment">SalesOrderFulfilmentSaga</h3></summary>
-  <p class="desc">One row per customer order. §2.31 adds the prepayment branch at <code>started</code> (snapshotted from <code>payment_terms</code> on saga.data).</p>
+  <p class="desc">One row per customer order. The prepayment branch is added at <code>started</code> (snapshotted from <code>payment_terms</code> on saga.data).</p>
   <div class="gap-callout">
-    <strong>§2.37 (2026-05-29): the flip — inventory is the single make-vs-buy decision + trigger point.</strong> Sales no longer routes shortages to manufacturing. On a partial/failed reservation, inventory raises <code>ReplenishmentRequest(reason=sales_order_shortage)</code> <em>in the same transaction</em> as the reservation (routing manufactured → manufacturing make-to-stock WO / purchased → purchasing itself) and the saga parks at <code>stock_reservation_incomplete</code>. When every short line's <code>inventory.ReplenishmentFulfilled</code> lands the saga re-enters <code>stock_reservation_requested</code> to retry; if any short line's replenishment is cancelled (<code>inventory.ReplenishmentCancelled</code> — unsourceable SKU / no active BOM / no approved vendor) the saga goes to <code>rejected</code>. The <code>manufacturing_requested</code> / <code>manufacturing_in_progress</code> / <code>manufacturing_completed</code> / <code>purchasing_requested</code> states and the make-to-order leg (and events <code>sales.ManufacturingRequested</code>, <code>manufacturing.ManufacturingDispatched</code>, <code>sales.SalesOrderPurchasingRequested</code>) were retired in Slice 3.
+    <strong>Inventory-as-MRP-orchestrator (2026-05-29): the flip — inventory is the single make-vs-buy decision + trigger point.</strong> Sales no longer routes shortages to manufacturing. On a partial/failed reservation, inventory raises <code>ReplenishmentRequest(reason=sales_order_shortage)</code> <em>in the same transaction</em> as the reservation (routing manufactured → manufacturing make-to-stock WO / purchased → purchasing itself) and the saga parks at <code>stock_reservation_incomplete</code>. When every short line's <code>inventory.ReplenishmentFulfilled</code> lands the saga re-enters <code>stock_reservation_requested</code> to retry; if any short line's replenishment is cancelled (<code>inventory.ReplenishmentCancelled</code> — unsourceable SKU / no active BOM / no approved vendor) the saga goes to <code>rejected</code>. The <code>manufacturing_requested</code> / <code>manufacturing_in_progress</code> / <code>manufacturing_completed</code> / <code>purchasing_requested</code> states and the make-to-order leg (and events <code>sales.ManufacturingRequested</code>, <code>manufacturing.ManufacturingDispatched</code>, <code>sales.SalesOrderPurchasingRequested</code>) were retired in Slice 3.
   </div>
   <div class="saga-graph"></div>
   <details class="mermaid-source">
@@ -488,7 +488,7 @@ stateDiagram-v2
 
 <details class="saga-block">
   <summary><h3 id="saga-work-order">WorkOrderSaga</h3></summary>
-  <p class="desc">One row per work order — now purely make-to-stock (§2.37 Slice 3 retired the sales-driven <code>started</code> entry; rename to a generic work-order-lifecycle saga is §2.39). Every WO is seeded directly at <code>work_order_created</code> by <code>WorkOrderReleaseService.releaseForReplenishment</code> — the root replenishment WO and each sub-assembly child; raw-material shortage parks until a covering goods-receipt arrives.</p>
+  <p class="desc">One row per work order — now purely make-to-stock (the sales-driven <code>started</code> entry was retired). Every WO is seeded directly at <code>work_order_created</code> by <code>WorkOrderReleaseService.releaseForReplenishment</code> — the root replenishment WO and each sub-assembly child; raw-material shortage parks until a covering goods-receipt arrives.</p>
   <div class="saga-graph"></div>
   <details class="mermaid-source">
     <summary>stateDiagram-v2 source</summary>
@@ -532,7 +532,7 @@ stateDiagram-v2
 
 <details class="saga-block">
   <summary><h3 id="aggregate-replenishment-request">ReplenishmentRequest (aggregate, not a Saga)</h3></summary>
-  <p class="desc">One row per (product, warehouse) replenishment cycle — partial unique index enforces one-open-per-SKU/warehouse for <code>reorder_point_breach</code> + <code>work_order_shortage</code> reasons; <strong>§2.36 Slice A</strong> excludes <code>sales_order_shortage</code> from the index so multiple SO-driven requests for the same SKU can stack (each back-referenced to a sales-order line via <code>source_sales_order_line_id</code>). Raised by the in-tx reorder-point detector on every on-hand decrement (shipment / stock-adjustment), by the inbox bridge handler on <code>manufacturing.RawMaterialShortageDetected</code>, <em>and</em> (§2.37 Slice 3) in-tx by <code>StockReservationService.reserveForSalesOrder</code> on a partial/failed sales-order reservation. <code>target_service</code> (<code>manufacturing</code> | <code>purchasing</code>) is decided in inventory by the SKU's <code>product_card.is_purchased</code> / <code>is_manufactured</code> snapshot — manufacturing and purchasing don't decide where work routes, they only receive it, and signal back <code>ReplenishmentUndispatchable</code> (no BOM / no vendor) so inventory cancels.</p>
+  <p class="desc">One row per (product, warehouse) replenishment cycle — partial unique index enforces one-open-per-SKU/warehouse for <code>reorder_point_breach</code> + <code>work_order_shortage</code> reasons; <code>sales_order_shortage</code> is excluded from the index so multiple SO-driven requests for the same SKU can stack (each back-referenced to a sales-order line via <code>source_sales_order_line_id</code>). Raised by the in-tx reorder-point detector on every on-hand decrement (shipment / stock-adjustment), by the inbox bridge handler on <code>manufacturing.RawMaterialShortageDetected</code>, <em>and</em> in-tx by <code>StockReservationService.reserveForSalesOrder</code> on a partial/failed sales-order reservation. <code>target_service</code> (<code>manufacturing</code> | <code>purchasing</code>) is decided in inventory by the SKU's <code>product_card.is_purchased</code> / <code>is_manufactured</code> snapshot — manufacturing and purchasing don't decide where work routes, they only receive it, and signal back <code>ReplenishmentUndispatchable</code> (no BOM / no vendor) so inventory cancels.</p>
   <div class="saga-graph"></div>
   <details class="mermaid-source">
     <summary>stateDiagram-v2 source</summary>
@@ -551,12 +551,12 @@ stateDiagram-v2
     cancelled --> [*]
     </pre>
   </details>
-  <p class="desc"><code>reason</code> (<code>reorder_point_breach</code> | <code>work_order_shortage</code> | <code>sales_order_shortage</code>) carries why the request was raised; <code>dispatched_aggregate_kind</code> + <code>dispatched_aggregate_id</code> identify the downstream WO / PR; <code>linked_purchase_order_id</code> stamps the PO that ends the purchasing leg so a later <code>GoodsReceived</code> can resolve back to the request. Emits <code>inventory.ReplenishmentRequested</code> on the <code>request</code> transition, <code>inventory.ReplenishmentFulfilled</code> on <code>markFulfilled</code>, and (§2.37 Slice 2/3) <code>inventory.ReplenishmentCancelled</code> on <code>markCancelled</code> — the failure counterpart, which for a <code>sales_order_shortage</code> request flips the originating sales order to <code>rejected</code>.</p>
+  <p class="desc"><code>reason</code> (<code>reorder_point_breach</code> | <code>work_order_shortage</code> | <code>sales_order_shortage</code>) carries why the request was raised; <code>dispatched_aggregate_kind</code> + <code>dispatched_aggregate_id</code> identify the downstream WO / PR; <code>linked_purchase_order_id</code> stamps the PO that ends the purchasing leg so a later <code>GoodsReceived</code> can resolve back to the request. Emits <code>inventory.ReplenishmentRequested</code> on the <code>request</code> transition, <code>inventory.ReplenishmentFulfilled</code> on <code>markFulfilled</code>, and <code>inventory.ReplenishmentCancelled</code> on <code>markCancelled</code> — the failure counterpart, which for a <code>sales_order_shortage</code> request flips the originating sales order to <code>rejected</code>.</p>
 </details>
 
 <!-- ============================================================
      Data — inlined event/projection index (browsers block <script src>
-     from file://). Build-time generation is the §1D.6 follow-up.
+     from file://). Build-time generation is a planned follow-up.
      ============================================================ -->
 
 <script>
@@ -590,7 +590,7 @@ window.NORTHWOOD_EVENTS = [
       { dest: "manufacturing", name: "manufacturing.product-replenishment-projector",
         desc: `<code>manufacturing.product_card.is_purchased</code>, <code>is_manufactured</code>` },
       { dest: "inventory", name: "inventory.product-replenishment-projector",
-        desc: `<code>inventory.product_card.is_purchased</code>, <code>is_manufactured</code> — local mirror used by inventory's make-vs-buy routing (reorder-point monitor + the §2.37 in-tx sales-order-shortage raise) to decide whether to route a replenishment to manufacturing or purchasing.` },
+        desc: `<code>inventory.product_card.is_purchased</code>, <code>is_manufactured</code> — local mirror used by inventory's make-vs-buy routing (reorder-point monitor + the in-tx sales-order-shortage raise) to decide whether to route a replenishment to manufacturing or purchasing.` },
     ]
   },
   {
@@ -626,7 +626,7 @@ window.NORTHWOOD_EVENTS = [
       { dest: "reporting", name: "reporting.atp.product-discontinued",
         desc: `<code>reporting.available_to_promise_view.discontinued_at</code> — UI consumers filter / grey-out on <code>IS NOT NULL</code>` },
       { dest: "inventory", name: "inventory.product-discontinued",
-        desc: `Stamps <code>inventory.product_card.discontinued_at</code> (placeholder for future reorder-alert suppression) AND sets <code>is_purchased=false, is_manufactured=false</code> so make-vs-buy routing classifies discontinued SKUs as unsourceable (logs + skips) rather than dispatching a replenishment. §2.38: one consolidated <code>product_card</code> projection (the former <code>stock_item</code> was folded in).` },
+        desc: `Stamps <code>inventory.product_card.discontinued_at</code> (placeholder for future reorder-alert suppression) AND sets <code>is_purchased=false, is_manufactured=false</code> so make-vs-buy routing classifies discontinued SKUs as unsourceable (logs + skips) rather than dispatching a replenishment. One consolidated <code>product_card</code> projection (the former <code>stock_item</code> was folded in).` },
     ]
   },
   {
@@ -635,7 +635,7 @@ window.NORTHWOOD_EVENTS = [
     event: "ReorderPolicyChanged",
     consumers: [
       { dest: "inventory", name: "inventory.stock-item-projector",
-        desc: `<code>inventory.product_card.reorder_point</code>, <code>reorder_quantity</code> (projection write via <code>ProductCardProjection.applyReorderPolicy</code>; §2.38 dropped the vestigial stock_item aggregate + version)` },
+        desc: `<code>inventory.product_card.reorder_point</code>, <code>reorder_quantity</code> (projection write via <code>ProductCardProjection.applyReorderPolicy</code>; the vestigial stock_item aggregate + version was dropped)` },
     ]
   },
   {
@@ -710,9 +710,9 @@ window.NORTHWOOD_EVENTS = [
     event: "SalesOrderCancellationRequested",
     consumers: [
       { dest: "inventory", name: "inventory.sales-cancel",
-        desc: `Updates <code>inventory.stock_reservation.status</code> (released), releases <code>inventory.stock_balance.reserved_quantity</code>; emits <code>inventory.SalesOrderCancellationApplied</code>. §2.40: inventory is the sole compensation <em>ack</em> — the manufacturing sales-cancel handler was deleted (post-§2.37 no work order is bound to a sales order).` },
+        desc: `Updates <code>inventory.stock_reservation.status</code> (released), releases <code>inventory.stock_balance.reserved_quantity</code>; emits <code>inventory.SalesOrderCancellationApplied</code>. Inventory is the sole compensation <em>ack</em> — the manufacturing sales-cancel handler was deleted (no work order is bound to a sales order).` },
       { dest: "finance", name: "finance.refund.sales-order-cancellation",
-        desc: `§2.34: if the cancelled order's up-front (prepayment/deposit) invoice was paid, refunds it — Dr 2110 Customer Deposits / Cr 1000 Bank, the inverse of the original receipt — and stamps <code>customer_invoice_header.refunded_at</code>. Idempotent; no-op for on-shipment/COD/unpaid. The finance-only refund arm of the cancel (no ack — additional to the inventory compensation).` },
+        desc: `If the cancelled order's up-front (prepayment/deposit) invoice was paid, refunds it — Dr 2110 Customer Deposits / Cr 1000 Bank, the inverse of the original receipt — and stamps <code>customer_invoice_header.refunded_at</code>. Idempotent; no-op for on-shipment/COD/unpaid. The finance-only refund arm of the cancel (no ack — additional to the inventory compensation).` },
     ]
   },
   {
@@ -761,7 +761,7 @@ window.NORTHWOOD_EVENTS = [
     event: "StockReservationRequested",
     consumers: [
       { dest: "inventory", name: "inventory.stock-reservation",
-        desc: `Inserts <code>inventory.stock_reservation</code> + <code>stock_reservation_line</code>; bumps <code>inventory.stock_balance.reserved_quantity</code>; emits <code>inventory.StockReserved</code>. §2.37: on any short line, raises <code>ReplenishmentRequest(reason=sales_order_shortage)</code> <strong>in the same transaction</strong> (routing make-vs-buy off the SKU's <code>product_card</code> snapshot) with the sales-order back-references stamped — or emits <code>inventory.ReplenishmentCancelled</code> directly if the SKU is unsourceable. The re-emitted retry (after replenishment) drops the prior partial reservation first.` },
+        desc: `Inserts <code>inventory.stock_reservation</code> + <code>stock_reservation_line</code>; bumps <code>inventory.stock_balance.reserved_quantity</code>; emits <code>inventory.StockReserved</code>. On any short line, raises <code>ReplenishmentRequest(reason=sales_order_shortage)</code> <strong>in the same transaction</strong> (routing make-vs-buy off the SKU's <code>product_card</code> snapshot) with the sales-order back-references stamped — or emits <code>inventory.ReplenishmentCancelled</code> directly if the SKU is unsourceable. The re-emitted retry (after replenishment) drops the prior partial reservation first.` },
     ]
   },
 
@@ -847,7 +847,7 @@ window.NORTHWOOD_EVENTS = [
       { dest: "reporting", name: "reporting.atp.raw-materials-reserved",
         desc: `<code>reporting.available_to_promise_view.production_reserved_quantity</code> (+= qty) — stub row created if product identity unknown` },
       { dest: "finance", name: "finance.wip.raw-materials-reserved",
-        desc: `§2.42 perpetual WIP: on <code>status=reserved</code>, charges <code>finance.work_order_wip</code> and posts Dr 1230 WIP / Cr 1210 Raw Materials at standard cost (materials issued into WIP). Idempotent — charge once per work order` },
+        desc: `Perpetual WIP: on <code>status=reserved</code>, charges <code>finance.work_order_wip</code> and posts Dr 1230 WIP / Cr 1210 Raw Materials at standard cost (materials issued into WIP). Idempotent — charge once per work order` },
     ]
   },
   {
@@ -856,7 +856,7 @@ window.NORTHWOOD_EVENTS = [
     event: "InventorySalesOrderCancellationApplied",
     consumers: [
       { dest: "sales", name: "sales.compensation-inventory-ack",
-        desc: `Records inventory ack on <code>sales.sales_order_fulfilment_saga</code> (§2.40: the sole compensation ack — manufacturing's was retired); flips <code>compensating → compensated</code> and emits <code>sales.SalesOrderCompensated</code> via outbox` },
+        desc: `Records inventory ack on <code>sales.sales_order_fulfilment_saga</code> (the sole compensation ack — manufacturing's was retired); flips <code>compensating → compensated</code> and emits <code>sales.SalesOrderCompensated</code> via outbox` },
     ]
   },
   {
@@ -942,7 +942,7 @@ window.NORTHWOOD_EVENTS = [
       { dest: "inventory", name: "inventory.wip-consume",
         desc: `Decrements <code>inventory.wip_balance.on_hand_quantity</code> per consumed sub-assembly product (bounded by non-negative CHECK)` },
       { dest: "finance", name: "finance.wip.sub-assemblies-consumed",
-        desc: `§2.42 perpetual WIP: rolls each consumed sub-assembly's value into the parent's <code>finance.work_order_wip</code> and posts Dr 1230 WIP / Cr 1220 Finished Goods at standard cost (multi-level cost roll-up)` },
+        desc: `Perpetual WIP: rolls each consumed sub-assembly's value into the parent's <code>finance.work_order_wip</code> and posts Dr 1230 WIP / Cr 1220 Finished Goods at standard cost (multi-level cost roll-up)` },
     ]
   },
   {
@@ -951,7 +951,7 @@ window.NORTHWOOD_EVENTS = [
     event: "WorkOrderCreated",
     consumers: [
       { dest: "reporting", name: "reporting.production-planning.work-order-created",
-        desc: `Creates <code>reporting.production_planning_board</code> row (work_order_number, sales_order_header_id, finished_product_id/sku/name, planned_quantity, work_order_status). §2.37 Slice 4: <code>sales_order_header_id</code> is now fed from the event's <code>sourceSalesOrderHeaderId</code> (the SO whose shortage triggered this make-to-stock WO) — the retired make-to-order <code>salesOrderHeaderId</code> binding is always null now. (§2.37 Slice 3 also removed the <code>sales.fulfilment-saga.work-order-created</code> consumer — sales no longer tracks WOs.)` },
+        desc: `Creates <code>reporting.production_planning_board</code> row (work_order_number, sales_order_header_id, finished_product_id/sku/name, planned_quantity, work_order_status). <code>sales_order_header_id</code> is fed from the event's <code>sourceSalesOrderHeaderId</code> (the SO whose shortage triggered this make-to-stock WO) — the retired make-to-order <code>salesOrderHeaderId</code> binding is always null now. (The <code>sales.fulfilment-saga.work-order-created</code> consumer was also removed — sales no longer tracks WOs.)` },
       { dest: "reporting", name: "reporting.atp.work-order-created",
         desc: `<code>reporting.available_to_promise_view.planned_work_order_quantity</code> (+= planned qty), <code>product_sku</code> / <code>product_name</code> backfill` },
       { dest: "reporting", name: "reporting.dashboard.work-order-created",
@@ -972,7 +972,7 @@ window.NORTHWOOD_EVENTS = [
       { dest: "reporting", name: "reporting.atp.work-order-completed",
         desc: `<code>reporting.available_to_promise_view.completed_work_order_quantity</code> (+= qty); reduces remaining planned` },
       { dest: "finance", name: "finance.wip.work-order-completed",
-        desc: `§2.42 perpetual WIP: settles <code>finance.work_order_wip</code> and posts Dr 1220 Finished Goods / Cr 1230 WIP at the finished good's standard cost (empties WIP — nets to zero at standard cost). Fires for top-level + sub-assembly children. Idempotent — complete once` },
+        desc: `Perpetual WIP: settles <code>finance.work_order_wip</code> and posts Dr 1220 Finished Goods / Cr 1230 WIP at the finished good's standard cost (empties WIP — nets to zero at standard cost). Fires for top-level + sub-assembly children. Idempotent — complete once` },
     ]
   },
   {
@@ -1057,16 +1057,16 @@ window.NORTHWOOD_EVENTS = [
     ]
   },
 
-  // === inventory — replenishment orchestrator (§2.35) ===
+  // === inventory — replenishment orchestrator ===
   {
     source: "inventory",
     aggregate: "ReplenishmentRequest",
     event: "ReplenishmentRequested",
     consumers: [
       { dest: "manufacturing", name: "manufacturing.replenishment-dispatcher",
-        desc: `Filter on <code>payload.targetService = "manufacturing"</code>. Builds a <code>ReleaseForReplenishmentCommand</code> (carrying §2.37 Slice 4's <code>sourceSalesOrderHeaderId</code> from the payload) + BOM walk; calls <code>WorkOrderReleaseService.releaseForReplenishment(...)</code>. The <code>WorkOrder</code> factory emits both <code>WorkOrderCreated</code> (with <code>replenishmentRequestId</code> + <code>sourceSalesOrderHeaderId</code>) and <code>manufacturing.ReplenishmentDispatched</code> atomically. <strong>No active BOM → emits <code>manufacturing.ReplenishmentUndispatchable</code></strong> so inventory cancels. Reason is one of <code>reorder_point_breach</code>, <code>work_order_shortage</code>, or (§2.37) <code>sales_order_shortage</code>.` },
+        desc: `Filter on <code>payload.targetService = "manufacturing"</code>. Builds a <code>ReleaseForReplenishmentCommand</code> (carrying <code>sourceSalesOrderHeaderId</code> from the payload) + BOM walk; calls <code>WorkOrderReleaseService.releaseForReplenishment(...)</code>. The <code>WorkOrder</code> factory emits both <code>WorkOrderCreated</code> (with <code>replenishmentRequestId</code> + <code>sourceSalesOrderHeaderId</code>) and <code>manufacturing.ReplenishmentDispatched</code> atomically. <strong>No active BOM → emits <code>manufacturing.ReplenishmentUndispatchable</code></strong> so inventory cancels. Reason is one of <code>reorder_point_breach</code>, <code>work_order_shortage</code>, or <code>sales_order_shortage</code>.` },
       { dest: "purchasing", name: "purchasing.replenishment-dispatcher",
-        desc: `Filter on <code>payload.targetService = "purchasing"</code>. Creates a single-line <code>PurchaseRequisition</code> via <code>PurchaseRequisitionService.createForStockReplenishment(...)</code> with <code>SourceType.STOCK_REPLENISHMENT</code> + <code>source_replenishment_request_id</code>. Emits both <code>PurchaseRequisitionCreated</code> and <code>purchasing.ReplenishmentDispatched</code>. <strong>No vendor configured → emits <code>purchasing.ReplenishmentUndispatchable</code></strong> so inventory cancels. <strong>This is the ONLY auto-PR path after §2.35</strong> — WO shortages and (§2.37) sales-order shortages all arrive here through inventory's ReplenishmentRequest.` },
+        desc: `Filter on <code>payload.targetService = "purchasing"</code>. Creates a single-line <code>PurchaseRequisition</code> via <code>PurchaseRequisitionService.createForStockReplenishment(...)</code> with <code>SourceType.STOCK_REPLENISHMENT</code> + <code>source_replenishment_request_id</code>. Emits both <code>PurchaseRequisitionCreated</code> and <code>purchasing.ReplenishmentDispatched</code>. <strong>No vendor configured → emits <code>purchasing.ReplenishmentUndispatchable</code></strong> so inventory cancels. <strong>This is the ONLY auto-PR path</strong> — WO shortages and sales-order shortages all arrive here through inventory's ReplenishmentRequest.` },
       { dest: "reporting", name: "reporting.replenishment-history.requested",
         desc: `<code>reporting.replenishment_history_view</code> — inserts a new row keyed by <code>replenishment_request_id</code>, denormalises SKU + product name from <code>reporting.product_card</code>, stamps <code>requested_at</code> and <code>status='requested'</code>.` },
     ]
@@ -1101,7 +1101,7 @@ window.NORTHWOOD_EVENTS = [
       { dest: "reporting", name: "reporting.replenishment-history.fulfilled",
         desc: `<code>reporting.replenishment_history_view.status='fulfilled'</code>, <code>fulfilled_at</code>. Terminal state on the projection.` },
       { dest: "sales", name: "sales.fulfilment-saga.replenishment-fulfilled",
-        desc: `§2.37 fan-in: when payload carries non-null <code>sourceSalesOrderHeaderId</code> + <code>sourceSalesOrderLineId</code> (sales_order_shortage reason), looks up the fulfilment saga and removes the line id from <code>saga.data.outstandingReplenishmentLineIds</code>. When the set empties, transitions <code>stock_reservation_incomplete → stock_reservation_requested</code> and re-emits <code>sales.StockReservationRequested</code> so inventory retries against the now-restocked balance. Null back-references (reorder-point or WO-shortage replenishments) are silently ignored.` },
+        desc: `Replenishment fan-in: when payload carries non-null <code>sourceSalesOrderHeaderId</code> + <code>sourceSalesOrderLineId</code> (sales_order_shortage reason), looks up the fulfilment saga and removes the line id from <code>saga.data.outstandingReplenishmentLineIds</code>. When the set empties, transitions <code>stock_reservation_incomplete → stock_reservation_requested</code> and re-emits <code>sales.StockReservationRequested</code> so inventory retries against the now-restocked balance. Null back-references (reorder-point or WO-shortage replenishments) are silently ignored.` },
     ]
   },
   {
@@ -1110,7 +1110,7 @@ window.NORTHWOOD_EVENTS = [
     event: "ReplenishmentCancelled",
     consumers: [
       { dest: "sales", name: "sales.fulfilment-saga.replenishment-cancelled",
-        desc: `§2.37 cancel fan-in (failure counterpart of replenishment-fulfilled): when payload carries non-null sales-order back-references, transitions the fulfilment saga <code>stock_reservation_incomplete → rejected</code>, flips <code>sales.sales_order_header.status → rejected</code>, and emits <code>sales.SalesOrderCancellationRequested</code> to release any partial reservation. Null back-references (reorder-point / WO-shortage) are ignored.` },
+        desc: `Replenishment cancel fan-in (failure counterpart of replenishment-fulfilled): when payload carries non-null sales-order back-references, transitions the fulfilment saga <code>stock_reservation_incomplete → rejected</code>, flips <code>sales.sales_order_header.status → rejected</code>, and emits <code>sales.SalesOrderCancellationRequested</code> to release any partial reservation. Null back-references (reorder-point / WO-shortage) are ignored.` },
       { dest: "reporting", name: "reporting.replenishment-history.cancelled",
         desc: `<code>reporting.replenishment_history_view.status='cancelled'</code>, <code>cancelled_at</code>. Terminal state on the projection.` },
     ]
@@ -1121,7 +1121,7 @@ window.NORTHWOOD_EVENTS = [
     event: "ReplenishmentUndispatchable",
     consumers: [
       { dest: "inventory", name: "inventory.replenishment.mfg-undispatchable",
-        desc: `§2.37: manufacturing has no active BOM for the product. Looks up the <code>ReplenishmentRequest</code> by <code>payload.replenishmentRequestId</code> and calls <code>markCancelled(reason)</code> → status <code>cancelled</code> + emits <code>inventory.ReplenishmentCancelled</code> (which rejects the originating sales order for a sales_order_shortage request). Stamped under <code>InventoryAggregateTypes.REPLENISHMENT_REQUEST</code>.` },
+        desc: `Manufacturing has no active BOM for the product. Looks up the <code>ReplenishmentRequest</code> by <code>payload.replenishmentRequestId</code> and calls <code>markCancelled(reason)</code> → status <code>cancelled</code> + emits <code>inventory.ReplenishmentCancelled</code> (which rejects the originating sales order for a sales_order_shortage request). Stamped under <code>InventoryAggregateTypes.REPLENISHMENT_REQUEST</code>.` },
     ]
   },
   {
@@ -1130,7 +1130,7 @@ window.NORTHWOOD_EVENTS = [
     event: "ReplenishmentUndispatchable",
     consumers: [
       { dest: "inventory", name: "inventory.replenishment.pur-undispatchable",
-        desc: `§2.37: purchasing has no vendor configured for the product. Looks up the <code>ReplenishmentRequest</code> by <code>payload.replenishmentRequestId</code> and calls <code>markCancelled(reason)</code> → status <code>cancelled</code> + emits <code>inventory.ReplenishmentCancelled</code>. Stamped under <code>InventoryAggregateTypes.REPLENISHMENT_REQUEST</code>.` },
+        desc: `Purchasing has no vendor configured for the product. Looks up the <code>ReplenishmentRequest</code> by <code>payload.replenishmentRequestId</code> and calls <code>markCancelled(reason)</code> → status <code>cancelled</code> + emits <code>inventory.ReplenishmentCancelled</code>. Stamped under <code>InventoryAggregateTypes.REPLENISHMENT_REQUEST</code>.` },
     ]
   },
 ];
@@ -1402,7 +1402,7 @@ window.NORTHWOOD_PROJECTIONS = [
     ]
   },
 
-  // === inventory.ReplenishmentRequest (§2.35, §2.37) ===
+  // === inventory.ReplenishmentRequest ===
   {
     source: "inventory",
     aggregate: "ReplenishmentRequest",
@@ -1411,7 +1411,7 @@ window.NORTHWOOD_PROJECTIONS = [
         { name: "replenishment_history_view", kind: "read-model",
           events: ["ReplenishmentRequested", "ReplenishmentFulfilled", "ReplenishmentCancelled"] },
       ]},
-      // §2.37 fan-in: ReplenishmentFulfilled (all short lines) re-enters
+      // Replenishment fan-in: ReplenishmentFulfilled (all short lines) re-enters
       // stock_reservation_requested + re-emits StockReservationRequested for
       // retry; ReplenishmentCancelled (a short line couldn't be sourced)
       // transitions stock_reservation_incomplete → rejected + flips the header.
@@ -2079,7 +2079,7 @@ window.NORTHWOOD_PROJECTIONS = [
   // SalesOrderFulfilment path filter. Each edge (keyed source||target — the
   // SO saga has no parallel same-pair edges) carries the filter conditions
   // under which it's traversed; an absent key means "any value". Routing
-  // model (§2.37): a fully-stocked order ships straight from
+  // model: a fully-stocked order ships straight from
   // stock_reservation_requested; a shortage parks at
   // stock_reservation_incomplete while inventory replenishes (make-vs-buy is
   // decided inside inventory now, not visible as a sales-saga branch). If the
@@ -2108,7 +2108,7 @@ window.NORTHWOOD_PROJECTIONS = [
     { key: 'stock',      label: 'reservation outcome',     options: ['any', 'covered', 'short'] },
     { key: 'sourceable', label: 'shortage sourceable?',    options: ['any', 'true', 'false'] }
   ];
-  const SO_NOTE = '§2.37: stocked → ships; shortage → parks at stock_reservation_incomplete while inventory replenishes (make-vs-buy decided in inventory); sourceable ⇒ retry, else ⇒ rejected';
+  const SO_NOTE = 'Stocked → ships; shortage → parks at stock_reservation_incomplete while inventory replenishes (make-vs-buy decided in inventory); sourceable ⇒ retry, else ⇒ rejected';
 
   // ReplenishmentRequest make-vs-buy path filter. The aggregate has parallel
   // same-pair edges, so its conds are keyed source||target||label (resolved

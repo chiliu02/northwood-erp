@@ -456,7 +456,7 @@ Before flipping it on, clear two caveats (§A2):
   concurrent DB *work*; the win is real only if request threads (not the Hikari
   pool) are the bottleneck.
 
-Tracked as a low-priority backlog item (`dev-todo.md` §3.8); for the showcase's
+A low-priority item; for the showcase's
 traffic, request-thread exhaustion never bites, so it's opt-in-when-measured.
 
 ---

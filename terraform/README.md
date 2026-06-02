@@ -153,13 +153,13 @@ terraform destroy
 - **Single Kafka broker, RF=1**, carried over from compose — recover-after-restart,
   not failover. Same posture as the local stack; see `docs/messaging.md`.
 
-- **Observability (§1D) is on the data box** (Tempo, Loki, Prometheus, Grafana as
+- **Observability is on the data box** (Tempo, Loki, Prometheus, Grafana as
   containers on a shared `northwood` docker network). The app + web boxes get
   `OTLP_ENDPOINT` (Tempo `:4317`) + `LOKI_URL` (Loki `:3100`), so **traces and logs
   flow push-based out of the box**. Toggle the tier with `enable_observability`.
   Reach Grafana via SSM port-forward — it has no public IP
   (`terraform output grafana_access_hint`).
-  - **Metrics caveat** (unchanged from the §1D notes): Prometheus *scrape* of
+  - **Metrics caveat:** Prometheus *scrape* of
     `/actuator/prometheus` needs service discovery; here it self-scrapes and runs the
     OTLP receiver, so service-metric panels stay empty until SD/OTLP-push is wired —
     traces + logs are unaffected.

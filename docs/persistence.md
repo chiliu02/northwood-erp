@@ -25,7 +25,7 @@ Quick-reference summary; the canonical exhaustive statement lives in `docs/conve
 
 ## Reference data and seed UUIDs
 
-The reference seed data lives in `db/northwood_erp_seed.sql`, the data-side companion to the `db/northwood_erp.sql` schema baseline (split out 2026-05-20). It uses well-known constant UUIDs (e.g. `00000000-0000-7000-8000-000000000001` for "Wooden Dining Table") so cross-context references work without joining across schemas — the registry of those UUIDs is in `northwood_erp_seed.sql` §0. Follow the same convention when adding fixtures.
+The reference seed data lives in `db/northwood_erp_seed.sql`, the data-side companion to the `db/northwood_erp.sql` schema baseline (split out 2026-05-20). It uses well-known constant UUIDs (e.g. `00000000-0000-7000-8000-000000000001` for "Wooden Dining Table") so cross-context references work without joining across schemas — the registry of those UUIDs is in the header block of `northwood_erp_seed.sql`. Follow the same convention when adding fixtures.
 
 The split lets a developer pick at infra-up time:
 - `docker compose up -d` — schema only, empty database (populate at runtime via events).

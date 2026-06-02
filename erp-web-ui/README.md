@@ -44,7 +44,7 @@ C0 (shipped 2026-05-06) — shell + one real route:
 - UI primitives (`<DataGrid>`, `<StatusPill>`, `<PageHeader>`, `<ActionButton>`, `<Breadcrumb>`).
 - `/sales-orders` — full list reading from reporting's projection. Every other module sub-page renders `<Placeholder>`.
 
-Sub-slices C1–C4 fill in the placeholders. See `docs/dev-todo.md` §1.3.
+Sub-slices C1–C4 fill in the placeholders.
 
 ## Visual identity
 
