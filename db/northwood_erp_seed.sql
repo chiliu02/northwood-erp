@@ -143,46 +143,49 @@ INSERT INTO product.product (
     product_id, sku, name, description, product_type, base_uom_id,
     is_stocked, is_purchased, is_manufactured, is_sellable,
     sales_price, standard_cost,
-    -- Reorder policy lives here on the product master (the source of truth):
-    -- inventory.product_card is a projection fed by product.ProductCreated +
-    -- ReorderPolicyChanged. The seed backfills both tables directly (day-1, no
-    -- event replay at boot), so these values must match the inventory card seed
-    -- below or the two pages disagree. Chest set (FG-CHEST/SA-FRAME/SA-PANEL)
-    -- follows the cabinet/drawer pattern; it isn't stocked, so it has no
-    -- inventory.product_card row to mirror.
-    reorder_point, reorder_quantity
+    -- Reorder policy and valuation class live here on the product master (the
+    -- source of truth); the per-service product_card projections are fed from
+    -- product events (ReorderPolicyChanged -> inventory, ValuationClassChanged
+    -- -> finance). Product.register defaults both (reorder 0/0, valuation_class
+    -- NULL) and a steward sets them post-create -- but the seed represents the
+    -- configured day-1 state, so we set them here and they must match the
+    -- inventory + finance card seeds below or the master and projections
+    -- disagree. valuation_class follows the product_type default for every
+    -- seeded SKU (finished_good -> finished_goods, raw_material -> raw_materials,
+    -- semi_finished_good -> semi_finished_goods).
+    reorder_point, reorder_quantity, valuation_class
 ) VALUES
     ('00000000-0000-7000-8000-000000000001', 'FG-TABLE-001',   'Wooden Dining Table',
      'Finished wooden dining table',  'finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  true,  650.00, 320.00,  2,  5),
+     true, false, true,  true,  650.00, 320.00,  2,  5, 'finished_goods'),
     ('00000000-0000-7000-8000-000000000002', 'RM-BOARD-001',   'Wooden Board',
      'Timber board for table top',    'raw_material',  '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false,   0.00,  80.00, 10, 20),
+     true, true,  false, false,   0.00,  80.00, 10, 20, 'raw_materials'),
     ('00000000-0000-7000-8000-000000000003', 'RM-LEG-001',     'Table Leg',
      'Timber table leg',              'raw_material',  '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false,   0.00,  25.00, 20, 40),
+     true, true,  false, false,   0.00,  25.00, 20, 40, 'raw_materials'),
     ('00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',   'Screw Pack',
      'Screw pack for one table',      'raw_material',  '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false,   0.00,   5.00, 10, 30),
+     true, true,  false, false,   0.00,   5.00, 10, 30, 'raw_materials'),
     ('00000000-0000-7000-8000-000000000005', 'RM-VARNISH-001', 'Varnish Pack',
      'Varnish portion for one table', 'raw_material',  '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false,   0.00,  12.00, 10, 30),
+     true, true,  false, false,   0.00,  12.00, 10, 30, 'raw_materials'),
     -- Sub-assembly demo set: a cabinet whose BOM has a drawer sub-assembly
     -- plus extra raw materials. Drives the sub-assembly recursion path in
     -- WorkOrderReleaseService and the BOM cycle detector's "this would close
     -- a loop" rejection path.
     ('00000000-0000-7000-8000-000000000200', 'FG-CABINET-001', 'Storage Cabinet',
      'Wooden storage cabinet with drawer', 'finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  true,  890.00, 420.00,  1,  3),
+     true, false, true,  true,  890.00, 420.00,  1,  3, 'finished_goods'),
     ('00000000-0000-7000-8000-000000000201', 'SA-DRAWER-001', 'Cabinet Drawer Sub-assembly',
      'Drawer pre-built for cabinet',       'semi_finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  false, 0.00,    65.00,  0,  0),
+     true, false, true,  false, 0.00,    65.00,  0,  0, 'semi_finished_goods'),
     ('00000000-0000-7000-8000-000000000202', 'RM-DRAWER-FRONT-001', 'Drawer Front Panel',
      'Pre-cut front panel for drawer',     'raw_material',       '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false, 0.00,    18.00,  5, 10),
+     true, true,  false, false, 0.00,    18.00,  5, 10, 'raw_materials'),
     ('00000000-0000-7000-8000-000000000203', 'RM-DRAWER-RUNNER-001', 'Drawer Runner',
      'Slide runner pair for drawer',       'raw_material',       '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false, 0.00,    14.00,  5, 10),
+     true, true,  false, false, 0.00,    14.00,  5, 10, 'raw_materials'),
     -- Multi-level BOM demo set: chest of drawers, with a frame sub-assembly
     -- that itself contains a panel sub-assembly. Exercises the §2.24.3
     -- recursive-CTE walk through 3 levels, and demonstrates the "same
@@ -190,13 +193,13 @@ INSERT INTO product.product (
     -- depth 1 (chest), depth 2 (frame + drawer), and depth 3 (panel).
     ('00000000-0000-7000-8000-000000000300', 'FG-CHEST-001', 'Chest of Drawers',
      'Wooden chest of drawers with two drawers and a panelled frame', 'finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  true,  1490.00, 720.00,  1,  3),
+     true, false, true,  true,  1490.00, 720.00,  1,  3, 'finished_goods'),
     ('00000000-0000-7000-8000-000000000301', 'SA-FRAME-001', 'Chest Frame Sub-assembly',
      'Panelled frame that holds the chest drawers',                   'semi_finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  false, 0.00,     380.00,  0,  0),
+     true, false, true,  false, 0.00,     380.00,  0,  0, 'semi_finished_goods'),
     ('00000000-0000-7000-8000-000000000302', 'SA-PANEL-001', 'Side Panel Sub-assembly',
      'Side panel built from board + varnish + screws',                'semi_finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  false, 0.00,     105.00,  0,  0),
+     true, false, true,  false, 0.00,     105.00,  0,  0, 'semi_finished_goods'),
     -- Simple FG demo set: a chair. Re-uses RM-LEG/BOARD/SCREW/VARNISH, so adds
     -- no new raws. The chair BOM (§SEED: MANUFACTURING) is the first one in
     -- the seed that carries non-zero scrap_factor_percent values — exercises
@@ -204,7 +207,7 @@ INSERT INTO product.product (
     -- realistic numbers rather than the zero-scrap default.
     ('00000000-0000-7000-8000-000000000400', 'FG-CHAIR-001', 'Wooden Dining Chair',
      'Companion chair for FG-TABLE-001',                              'finished_good',      '00000000-0000-7000-8000-000000000010',
-     true, false, true,  true,  220.00,   120.00,  5, 10)
+     true, false, true,  true,  220.00,   120.00,  5, 10, 'finished_goods')
 ON CONFLICT (sku) DO NOTHING;
 
 COMMIT;
