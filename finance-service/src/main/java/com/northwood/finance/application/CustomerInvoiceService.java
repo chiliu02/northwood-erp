@@ -76,11 +76,11 @@ public class CustomerInvoiceService {
      */
     @Transactional
     public CustomerInvoiceId createFromShippedOrder(SalesOrderShipped payload) {
-        // §2.31 Slice C: prepayment orders already have an invoice (created
-        // from PrepaymentInvoiceRequested at order placement) — finance must
-        // not create a second one when the shipment lands. The deferred-
-        // revenue Dr 2110 / Cr Revenue pair is posted by the shipment-time
-        // handler (ShipmentPostedCogsHandler) against the existing invoice.
+        // Prepayment orders already have an invoice (created from
+        // PrepaymentInvoiceRequested at order placement) — finance must not
+        // create a second one when the shipment lands. The deferred-revenue
+        // Dr 2110 / Cr Revenue pair is posted by the shipment-time handler
+        // (ShipmentPostedCogsHandler) against the existing invoice.
         java.util.Optional<CustomerInvoiceRepository.ShipmentTimeInvoice> existing =
             customerInvoices.findInvoiceForShipment(payload.aggregateId());
         if (existing.isPresent()
@@ -89,10 +89,10 @@ public class CustomerInvoiceService {
                 payload.aggregateId(), existing.get().invoiceNumber());
             return CustomerInvoiceId.of(existing.get().customerInvoiceHeaderId());
         }
-        // §2.32 Slice C: a deposit order already has a deposit invoice (the
-        // earliest invoice for the order). At shipment, create the BALANCE
-        // invoice for the remainder instead of a full commercial invoice; the
-        // deposit portion's revenue is recognised against the deposit invoice in
+        // A deposit order already has a deposit invoice (the earliest invoice
+        // for the order). At shipment, create the BALANCE invoice for the
+        // remainder instead of a full commercial invoice; the deposit portion's
+        // revenue is recognised against the deposit invoice in
         // ShipmentPostedCogsHandler.
         if (existing.isPresent()
             && existing.get().invoiceType() == CustomerInvoice.InvoiceType.DEPOSIT) {
@@ -157,7 +157,7 @@ public class CustomerInvoiceService {
     }
 
     /**
-     * §2.31 Slice B. Auto-create a <b>prepayment</b> customer invoice from a
+     * Auto-create a <b>prepayment</b> customer invoice from a
      * {@code sales.PrepaymentInvoiceRequested} event. Same line-construction
      * logic as {@link #createFromShippedOrder} (qty × unitPrice × taxRate from
      * the event payload verbatim) but stamps {@code invoice_type='prepayment'}
@@ -201,7 +201,7 @@ public class CustomerInvoiceService {
     }
 
     /**
-     * §2.32 Slice B. Auto-create a <b>deposit</b> customer invoice from a
+     * Auto-create a <b>deposit</b> customer invoice from a
      * {@code sales.DepositInvoiceRequested} event. A deposit is a part-payment
      * on account, not a line-itemised charge, so the invoice is a single
      * synthetic "deposit" line (no product) whose total is the requested
@@ -244,7 +244,7 @@ public class CustomerInvoiceService {
     }
 
     /**
-     * §2.32 Slice C. Create the <b>balance</b> invoice (order total − deposit)
+     * Create the <b>balance</b> invoice (order total − deposit)
      * for a deposit order at shipment — a single synthetic balance line, posting
      * Dr AR / Cr Revenue like a commercial invoice. The deposit portion's
      * revenue is recognised separately (Dr 2110 / Cr Revenue) against the

@@ -7,7 +7,7 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 /**
- * §3.7 bulk reversal request. Reverses every posted journal entry whose
+ * Bulk reversal request. Reverses every posted journal entry whose
  * {@code (source_document_type, source_document_id)} matches.
  */
 public record ReverseBySourceRequest(

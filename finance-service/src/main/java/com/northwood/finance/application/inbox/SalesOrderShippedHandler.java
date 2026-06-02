@@ -16,7 +16,7 @@ import tools.jackson.databind.ObjectMapper;
  * a customer invoice from the shipment's line snapshots (qty + price + tax).
  * Inbox dedupe ensures a redelivered shipment doesn't double-invoice.
  *
- * <p>§2.33 — for cash-on-delivery orders ({@code paymentTerms = cod}), payment
+ * <p>For cash-on-delivery orders ({@code paymentTerms = cod}), payment
  * lands at the goods-delivered moment, so this handler also auto-records the
  * full customer payment against the just-created invoice in the same
  * transaction (Dr Cash / Cr AR). On-shipment orders still wait for an operator

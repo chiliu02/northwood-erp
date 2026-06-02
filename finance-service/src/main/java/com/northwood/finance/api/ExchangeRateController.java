@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * §3.8: ad-hoc exchange-rate lookup. {@code GET /api/exchange-rate?from=USD&to=AUD&date=2026-05-06}
+ * Ad-hoc exchange-rate lookup. {@code GET /api/exchange-rate?from=USD&to=AUD&date=2026-05-06}
  * resolves the latest {@code effective_date <= date} pair (with inverse-rate
  * fallback when only the reverse pair is on file). Same-currency requests
  * return rate {@code 1.0} with {@code effectiveDate = date}.

@@ -33,7 +33,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.25 Tier 2: real-Postgres test for {@link JdbcSupplierInvoiceRepository} —
+ * Tier-2 real-Postgres test for {@link JdbcSupplierInvoiceRepository} —
  * a <em>mutable</em> aggregate (insert + the {@code manualApprove}/{@code manualReject}
  * status-update path). Covers the behaviour only a real DB exhibits:
  *

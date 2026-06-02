@@ -31,7 +31,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.25 Tier 2: real-Postgres test for {@link JdbcCustomerInvoiceRepository} —
+ * Tier-2 real-Postgres test for {@link JdbcCustomerInvoiceRepository} —
  * a write-once aggregate (no update path; no optimistic lock). Covers the
  * behaviour only a real DB exhibits:
  *

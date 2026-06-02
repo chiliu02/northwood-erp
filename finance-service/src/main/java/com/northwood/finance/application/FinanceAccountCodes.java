@@ -31,10 +31,10 @@ final class FinanceAccountCodes {
     static final String AP = "2100";
 
     /**
-     * 2110 — Customer Deposits (liability). §2.31 Slice B. Credited on
-     * customer-payment receipt for a {@code prepayment} invoice (Dr Cash);
-     * debited at shipment (Slice C) to reclassify the deposit against Sales
-     * Revenue once the goods-delivered performance obligation is met.
+     * 2110 — Customer Deposits (liability). Credited on customer-payment
+     * receipt for a {@code prepayment} invoice (Dr Cash); debited at shipment
+     * to reclassify the deposit against Sales Revenue once the
+     * goods-delivered performance obligation is met.
      */
     static final String CUSTOMER_DEPOSITS = "2110";
 
@@ -54,9 +54,9 @@ final class FinanceAccountCodes {
     static final String GRNI = "1300";
 
     /**
-     * 1230 — Work In Progress (§2.42). Raw materials Dr here when issued to a
-     * work order (Cr 1210); the finished good Dr's 1220 / Cr's 1230 at
-     * completion. Nets to zero per WO at standard cost (material-only cut).
+     * 1230 — Work In Progress. Raw materials Dr here when issued to a work
+     * order (Cr 1210); the finished good Dr's 1220 / Cr's 1230 at completion.
+     * Nets to zero per WO at standard cost (material-only cut).
      */
     static final String WIP = "1230";
 
@@ -69,7 +69,7 @@ final class FinanceAccountCodes {
     /** 5200 — Raw Materials COGS; per-class breakdown of {@link #COGS}. */
     static final String MATERIALS_COGS = "5200";
 
-    /** 5400 — Inventory Adjustment; the gain/loss offset for manual stock adjustments (§2.29). */
+    /** 5400 — Inventory Adjustment; the gain/loss offset for manual stock adjustments. */
     static final String INVENTORY_ADJUSTMENT = "5400";
 
     private FinanceAccountCodes() {}

@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Idempotent inbox handler for {@code inventory.StockAdjusted} (§2.29). Posts
+ * Idempotent inbox handler for {@code inventory.StockAdjusted}. Posts
  * the inventory-adjustment journal entry: an inventory gain Dr's the product's
  * inventory account / Cr's 5400 Inventory Adjustment; a loss is the reverse.
  * An inventory value change is never off-book.

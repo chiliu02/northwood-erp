@@ -10,7 +10,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * JDBC projection for {@code finance.work_order_wip} (§2.42). Each mutator is a
+ * JDBC projection for {@code finance.work_order_wip}. Each mutator is a
  * single idempotent upsert; the affected-row count drives the idempotency gate
  * the two posting handlers read (a conditional {@code ON CONFLICT … WHERE} that
  * matches no row returns 0).

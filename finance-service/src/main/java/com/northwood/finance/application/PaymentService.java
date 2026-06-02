@@ -156,8 +156,8 @@ public class PaymentService {
         );
         payments.save(payment);
 
-        // Phase 5b: GL pair in the same txn. §2.31 Slice B routes the credit
-        // side by invoice_type — commercial → Cr AR (existing); prepayment →
+        // Phase 5b: GL pair in the same txn. Routes the credit side by
+        // invoice_type — commercial → Cr AR (existing); prepayment →
         // Cr 2110 Customer Deposits.
         journalEntries.postCustomerPayment(
             payment.id().value(),
@@ -181,7 +181,7 @@ public class PaymentService {
     }
 
     /**
-     * §2.33 — auto-record the full customer payment for a cash-on-delivery
+     * Auto-records the full customer payment for a cash-on-delivery
      * order at shipment. Called by {@code SalesOrderShippedHandler} immediately
      * after it creates the COD shipment invoice (same transaction): COD settles
      * at the goods-delivered moment, so finance recognises the cash receipt
@@ -222,7 +222,7 @@ public class PaymentService {
         );
         payments.save(payment);
 
-        // GL: Dr Cash / Cr AR for a commercial invoice (§2.31 routes the credit
+        // GL: Dr Cash / Cr AR for a commercial invoice (routes the credit
         // side by invoice_type — COD invoices are commercial). Net of the
         // invoice's own Dr AR / Cr Revenue, the order books as Dr Cash / Cr Revenue.
         journalEntries.postCustomerPayment(
@@ -353,10 +353,10 @@ public class PaymentService {
                         + "(found " + inv.currencyCode() + " vs expected " + expectedCurrency + ")"
                 );
             } else if (expectedInvoiceType != inv.invoiceType()) {
-                // §2.31 Slice B. One physical receipt is one balanced
-                // journal-entry pair; mixing commercial + prepayment invoices
-                // would force two different credit accounts in the same
-                // journal. Reject — caller must split into two payments.
+                // One physical receipt is one balanced journal-entry pair;
+                // mixing commercial + prepayment invoices would force two
+                // different credit accounts in the same journal. Reject —
+                // caller must split into two payments.
                 throw new IllegalArgumentException(
                     "All invoices in a multi-allocation must share the same invoice_type "
                         + "(found " + inv.invoiceType().dbValue() + " vs expected " + expectedInvoiceType.dbValue() + ")"

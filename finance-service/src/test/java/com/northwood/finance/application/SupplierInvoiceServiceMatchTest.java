@@ -27,7 +27,7 @@ import org.mockito.Mockito;
  * Service-level tests for the 3-way match logic in
  * {@link SupplierInvoiceService#recordInvoice}. Quantity-only behaviour is
  * covered by {@code SupplierInvoiceTest} (domain). This class focuses on the
- * §1.1 price-variance extension shipped 2026-05-06.
+ * price-variance extension shipped 2026-05-06.
  */
 class SupplierInvoiceServiceMatchTest {
 

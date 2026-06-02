@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.34 Refund on a cancelled prepayment/deposit order. Idempotent inbox
+ * Refund on a cancelled prepayment/deposit order. Idempotent inbox
  * handler for {@code sales.SalesOrderCancellationRequested}: if the cancelled
  * order had an up-front (prepayment or deposit) invoice that was paid, the cash
  * sitting in 2110 Customer Deposits is returned — Dr 2110 / Cr 1000 Bank — the
@@ -31,8 +31,8 @@ import tools.jackson.databind.ObjectMapper;
  * cancellable order hasn't reached).
  *
  * <p>Idempotency: the {@code customer_invoice_header.refunded_at} gate
- * (mirroring {@code revenue_recognized_at} in §2.31 Slice C) means a redelivered
- * cancellation posts the refund at most once.
+ * (mirroring {@code revenue_recognized_at} for prepayment orders) means a
+ * redelivered cancellation posts the refund at most once.
  */
 @Component
 public class SalesOrderCancellationRefundHandler

@@ -33,7 +33,7 @@ import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * §2.25 Tier 2: real-Postgres test for {@link JdbcJournalEntryRepository} — a
+ * Tier-2 real-Postgres test for {@link JdbcJournalEntryRepository} — a
  * write-once aggregate with no outbox (ctor is {@code (JdbcTemplate,
  * CurrentUserAccessor)}). Covers the behaviour only a real DB exhibits:
  *

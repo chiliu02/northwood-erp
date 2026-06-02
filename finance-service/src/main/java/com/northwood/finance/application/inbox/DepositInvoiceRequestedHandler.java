@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.32 Slice B. Idempotent inbox handler for
+ * Idempotent inbox handler for
  * {@code sales.DepositInvoiceRequested}. Auto-creates a customer invoice with
  * {@code invoice_type='deposit'} for the up-front part-payment — a single
  * synthetic deposit line, no journal entry at creation (Treatment A; the

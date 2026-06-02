@@ -57,10 +57,9 @@ public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
             lineCosts.add(new JournalEntryService.LineCost(rl.productId(), qty.multiply(cost)));
         }
         // Perpetual-inventory GL: Dr <per-class inventory account> / Cr 1300
-        // GRNI for the receipt cost. §3.2 splits the inventory debit per
-        // valuation class (raw_materials → 1210, finished_goods → 1220).
-        // Posted in the same txn as the projection update so failures roll
-        // back together.
+        // GRNI for the receipt cost. Splits the inventory debit per valuation
+        // class (raw_materials → 1210, finished_goods → 1220). Posted in the
+        // same txn as the projection update so failures roll back together.
         LocalDate postingDate = payload.occurredAt() == null
             ? LocalDate.now()
             : payload.occurredAt().atZone(ZoneId.systemDefault()).toLocalDate();

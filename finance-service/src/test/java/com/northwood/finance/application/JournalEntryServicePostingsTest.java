@@ -152,9 +152,9 @@ class JournalEntryServicePostingsTest {
             assertThat(creditFor(entry, "2110")).isEqualByComparingTo("550.00");
         }
 
-        // §2.31 Slice C: deferred-revenue recognition at shipment for a
-        // prepayment invoice. The journal is Dr 2110 Customer Deposits / Cr
-        // 4000 Sales Revenue at total amount (tax-inclusive).
+        // Deferred-revenue recognition at shipment for a prepayment invoice.
+        // The journal is Dr 2110 Customer Deposits / Cr 4000 Sales Revenue at
+        // total amount (tax-inclusive).
         @Test void prepayment_revenue_recognition_posts_dr_customer_deposits_cr_revenue() {
             UUID invoiceId = UUID.randomUUID();
             service.postPrepaymentRevenueRecognition(
@@ -168,7 +168,7 @@ class JournalEntryServicePostingsTest {
             assertThat(creditFor(entry, "4000")).isEqualByComparingTo("550.00");
         }
 
-        // §2.34: refund on a cancelled prepayment/deposit order — the inverse
+        // Refund on a cancelled prepayment/deposit order — the inverse
         // of the original payment receipt (Dr 2110 Customer Deposits / Cr 1000 Bank).
         @Test void customer_refund_posts_dr_customer_deposits_cr_bank() {
             UUID invoiceId = UUID.randomUUID();
@@ -419,7 +419,7 @@ class JournalEntryServicePostingsTest {
         }
     }
 
-    // §2.42 Perpetual WIP — the three new legs.
+    // Perpetual WIP — the three posting legs.
     @Nested
     class WorkInProgressPostings {
 

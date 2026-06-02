@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * §2.42 Perpetual-WIP sub-ledger projection over {@code finance.work_order_wip}.
+ * Perpetual-WIP sub-ledger projection over {@code finance.work_order_wip}.
  * Written only by the three WIP inbox handlers in this package; carries the
  * running standard-cost WIP value per work order plus the idempotency gates for
  * the two posting legs (charge raw materials once; complete once).

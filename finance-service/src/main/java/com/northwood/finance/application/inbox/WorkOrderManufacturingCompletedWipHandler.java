@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.42 Perpetual WIP. Idempotent inbox handler for
+ * Perpetual WIP. Idempotent inbox handler for
  * {@code manufacturing.WorkOrderManufacturingCompleted}: posts Dr 1220 Finished
  * Goods / Cr 1230 WIP at the finished good's standard cost
  * ({@code completedQuantity * standardCost}). This is the leg that empties WIP;

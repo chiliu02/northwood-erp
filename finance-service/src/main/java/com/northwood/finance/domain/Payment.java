@@ -53,8 +53,8 @@ public final class Payment {
     /**
      * Prefix for auto-generated payment numbers (parallel to other aggregates'
      * {@code NUMBER_PREFIX}). Operator-recorded payments supply their own
-     * number via the command; system-recorded payments (the §2.33 COD
-     * auto-payment) mint one as {@code NUMBER_PREFIX + }random-suffix.
+     * number via the command; system-recorded payments (the COD auto-payment)
+     * mint one as {@code NUMBER_PREFIX + }random-suffix.
      */
     public static final String NUMBER_PREFIX = "PAY-";
 

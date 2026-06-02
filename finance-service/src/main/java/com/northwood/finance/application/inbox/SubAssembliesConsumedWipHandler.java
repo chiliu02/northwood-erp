@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.42 Perpetual WIP, multi-level. Inbox handler for
+ * Perpetual WIP, multi-level. Inbox handler for
  * {@code manufacturing.SubAssembliesConsumed}: when a parent work order consumes
  * its completed sub-assembly children, posts Dr 1230 WIP / Cr 1220 Finished
  * Goods for the sum of {@code consumedQuantity * standardCost}. Each child's

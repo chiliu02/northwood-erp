@@ -79,8 +79,8 @@ public final class CustomerInvoice {
     }
 
     /**
-     * §2.31 Slice B. Discriminator between the two AR commercial patterns —
-     * mirrors the schema CHECK on {@code finance.customer_invoice_header.invoice_type}.
+     * Discriminator between the two AR commercial patterns — mirrors the
+     * schema CHECK on {@code finance.customer_invoice_header.invoice_type}.
      * <ul>
      *   <li>{@link #COMMERCIAL} — invoice created at shipment, posts
      *       Dr AR / Cr Revenue at creation, payment posts Dr Cash / Cr AR
@@ -88,13 +88,13 @@ public final class CustomerInvoice {
      *   <li>{@link #PREPAYMENT} — invoice created at order placement, NO GL
      *       at creation; payment posts Dr Cash / Cr 2110 Customer Deposits;
      *       shipment (Slice C) reclassifies Dr 2110 / Cr Revenue.</li>
-     *   <li>{@link #DEPOSIT} — §2.32; part-payment invoice created at placement
-     *       for {@code total × deposit_percent}, NO GL at creation; payment
-     *       posts Dr Cash / Cr 2110 (same as prepayment); shipment recognises
-     *       the deposit portion and a {@link #BALANCE} invoice carries the
+     *   <li>{@link #DEPOSIT} — part-payment invoice created at placement for
+     *       {@code total × deposit_percent}, NO GL at creation; payment posts
+     *       Dr Cash / Cr 2110 (same as prepayment); shipment recognises the
+     *       deposit portion and a {@link #BALANCE} invoice carries the
      *       remainder.</li>
-     *   <li>{@link #BALANCE} — §2.32; the remaining {@code total − deposit}
-     *       invoiced at shipment, posting Dr AR / Cr Revenue (like
+     *   <li>{@link #BALANCE} — the remaining {@code total − deposit} invoiced
+     *       at shipment, posting Dr AR / Cr Revenue (like
      *       {@link #COMMERCIAL}).</li>
      * </ul>
      */
@@ -153,7 +153,7 @@ public final class CustomerInvoice {
     }
 
     /**
-     * §2.31 Slice B factory: create + auto-post a prepayment invoice from a
+     * Factory: create + auto-post a prepayment invoice from a
      * sales order at placement (no GL post at creation — Treatment A). Emits
      * the same {@link CustomerInvoiceCreated} event the on-shipment path
      * emits; downstream branching on {@link InvoiceType} happens at the
@@ -173,7 +173,7 @@ public final class CustomerInvoice {
     }
 
     /**
-     * §2.32 Slice B factory: create + auto-post a <b>deposit</b> invoice (a
+     * Factory: create + auto-post a <b>deposit</b> invoice (a
      * part-payment on account) from a single synthetic deposit line. Like
      * {@link #createPrepayment}, posts no GL at creation (Treatment A) —
      * the deposit hits the GL only when paid (Dr Cash / Cr 2110).
@@ -192,7 +192,7 @@ public final class CustomerInvoice {
     }
 
     /**
-     * §2.32 Slice C factory: create + auto-post the <b>balance</b> invoice for a
+     * Factory: create + auto-post the <b>balance</b> invoice for a
      * deposit order at shipment (the remaining {@code total − deposit}). Behaves
      * like {@link #create} (commercial) — the caller posts Dr AR / Cr Revenue
      * for the balance; the deposit portion is recognised separately against the

@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §1F.3: AR consumer of {@code sales.CustomerDeactivated}. Flags every
+ * AR consumer of {@code sales.CustomerDeactivated}. Flags every
  * outstanding {@code finance.customer_invoice_header} row for the customer
  * with {@code flagged_for_collections = true} so a future collections UI /
  * workflow can pick them up.

@@ -45,7 +45,7 @@ import org.springframework.transaction.annotation.Transactional;
  *       {@code 'three_way_match_failed'} (held for manual review; no event).</li>
  * </ul>
  *
- * <p><b>Price-variance check (§1.1, shipped 2026-05-06):</b> per line, compare
+ * <p><b>Price-variance check (shipped 2026-05-06):</b> per line, compare
  * the invoice's {@code unitPrice} against the PO line's {@code unitPrice} via
  * {@code abs(invoiceUnit - poUnit) / poUnit}. If the relative variance exceeds
  * {@code northwood.finance.match.priceTolerancePercent} (default 2.0%), match

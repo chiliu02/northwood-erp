@@ -3,7 +3,7 @@ package com.northwood.finance.application.inbox;
 import java.util.UUID;
 
 /**
- * §1F.3: flags any outstanding customer invoice for the named customer so a
+ * Flags any outstanding customer invoice for the named customer so a
  * collections workflow can pick them up. "Outstanding" means
  * {@code status IN ('posted', 'partially_paid') AND outstanding_amount > 0} —
  * a draft is not yet a real receivable, and a {@code paid} / {@code cancelled}

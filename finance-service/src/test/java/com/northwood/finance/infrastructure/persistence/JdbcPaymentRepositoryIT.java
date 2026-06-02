@@ -30,7 +30,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.25 Tier 2: real-Postgres test for {@link JdbcPaymentRepository} — a
+ * Tier-2 real-Postgres test for {@link JdbcPaymentRepository} — a
  * write-once aggregate (header + allocation lines; no update path). Covers the
  * behaviour only a real DB exhibits:
  *

@@ -27,7 +27,7 @@ import tools.jackson.databind.ObjectMapper;
  * handler subscribes to inventory's own ShipmentPosted. Both handlers fire
  * on a shipment; one drives AR/Revenue, this one drives COGS/Inventory.
  *
- * <p><b>§2.8 Slice B — cost source.</b> The line cost used for COGS comes
+ * <p><b>Cost source.</b> The line cost used for COGS comes
  * from finance's {@code product_card.standard_cost} column (fed by
  * {@code product.StandardCostChanged} via {@link StandardCostChangedHandler}).
  * That's finance's authoritative number — independent of whatever
@@ -103,7 +103,7 @@ public class ShipmentPostedCogsHandler extends AbstractInboxHandler<ShipmentPost
         log.info("[{}] posted COGS for shipment {} ({} line(s))",
             CONSUMER_NAME, payload.shipmentNumber(), lineCosts.size());
 
-        // §2.31 / §2.32 Slice C: for prepayment AND deposit orders, post the
+        // For prepayment AND deposit orders, post the
         // deferred-revenue Dr 2110 Customer Deposits / Cr Revenue pair against
         // the up-front invoice — this is when that portion's revenue is
         // recognised (the goods-delivered performance obligation). For deposit

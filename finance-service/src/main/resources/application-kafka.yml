@@ -18,10 +18,10 @@ spring:
       # successfully (handler exception → no commit → redelivery; the inbox dedup
       # makes that safe). Full contract: docs/messaging.md → Consumer-side idempotency.
       auto-offset-reset: earliest
-    # §1D.2: turn on Spring Kafka's Micrometer observation so KafkaTemplate.send
-    # creates a producer span (W3C traceparent stamped on the record headers)
-    # and @KafkaListener-managed containers continue the trace via a consumer
-    # span. Combined with OutboxPublisher's per-row Observation wrap, every
+    # Turn on Spring Kafka's Micrometer observation so KafkaTemplate.send creates
+    # a producer span (W3C traceparent stamped on the record headers) and
+    # @KafkaListener-managed containers continue the trace via a consumer span.
+    # Combined with OutboxPublisher's per-row Observation wrap, every
     # cross-service event preserves trace context through the bus.
     template:
       observation-enabled: true
@@ -39,9 +39,9 @@ northwood:
     # - purchasing.events for PurchaseOrderCreated (seeds the PO line facts).
     # - inventory.events for GoodsReceived (bumps received_quantity on the
     #   facts row; gates 3-way match on the AP side) + ShipmentPosted (COGS)
-    #   + RawMaterialsReserved (§2.42 Dr 1230 WIP / Cr 1210 Raw Materials when
+    #   + RawMaterialsReserved (Dr 1230 WIP / Cr 1210 Raw Materials when
     #   materials are issued to a work order).
-    # - manufacturing.events (§2.42 perpetual WIP): WorkOrderManufacturingCompleted
+    # - manufacturing.events (perpetual WIP): WorkOrderManufacturingCompleted
     #   (Dr 1220 Finished Goods / Cr 1230 WIP) + SubAssembliesConsumed
     #   (Dr 1230 WIP / Cr 1220 FG — roll consumed sub-assembly value into the parent).
     # - sales.events for SalesOrderShipped (auto-creates customer invoices).
@@ -53,6 +53,6 @@ northwood:
     subscribe-topics: purchasing.events,inventory.events,manufacturing.events,sales.events,product.events
     dlt:
       redrive:
-        enabled: true             # per-service DLT auto-redrive (§2.28 Tier 1.B): re-applies this
+        enabled: true             # per-service DLT auto-redrive: re-applies this
                                   # service's own dead-lettered records, parks the unrecoverable ones
 

@@ -81,7 +81,7 @@ public class JournalEntryController {
     }
 
     /**
-     * §3.7 Bulk reversal: reverse every posted journal entry whose source
+     * Bulk reversal: reverse every posted journal entry whose source
      * document matches. Useful for cancellation cascades — cancelling a
      * customer-invoice reverses the AR/Revenue entry, cancelling a
      * supplier-payment reverses the AP/Bank entry, etc. Idempotent

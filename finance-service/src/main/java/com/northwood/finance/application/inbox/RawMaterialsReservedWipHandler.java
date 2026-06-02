@@ -17,14 +17,14 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.42 Perpetual WIP. Idempotent inbox handler for
+ * Perpetual WIP. Idempotent inbox handler for
  * {@code inventory.RawMaterialsReserved}: when a work order's materials are
  * fully reserved (issued to production), posts Dr 1230 WIP / Cr 1210 Raw
  * Materials for the sum of {@code reservedQuantity * standardCost} across the
  * components — valued at finance's authoritative {@code product_card.standard_cost}.
  *
  * <p>Only {@code status = "reserved"} (fully reserved) charges WIP; partial /
- * failed reservations park, and the §2.41 shortage-recovery re-reserves once
+ * failed reservations park, and the shortage-recovery flow re-reserves once
  * goods arrive — emitting a fresh {@code reserved} event. The
  * {@link WorkOrderWipProjection#chargeRawMaterials} gate makes that re-emission
  * a no-op (charge once per work order).

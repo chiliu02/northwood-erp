@@ -9,12 +9,12 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.31 Slice B. Idempotent inbox handler for
+ * Idempotent inbox handler for
  * {@code sales.PrepaymentInvoiceRequested}. Auto-creates a customer invoice
  * with {@code invoice_type='prepayment'} from the order's line snapshots
  * (qty + price + tax) — finance posts <b>no</b> journal entry at creation
- * (Treatment A); revenue is deferred until shipment (Slice C). Inbox dedupe
- * ensures a redelivered request doesn't double-invoice.
+ * (Treatment A); revenue is deferred until shipment. Inbox dedupe ensures a
+ * redelivered request doesn't double-invoice.
  */
 @Component
 public class PrepaymentInvoiceRequestedHandler extends AbstractInboxHandler<PrepaymentInvoiceRequested> {

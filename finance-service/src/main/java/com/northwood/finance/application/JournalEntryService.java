@@ -50,7 +50,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class JournalEntryService {
 
-    /** Per-line cost attribution input for the multi-debit journals (§3.2). */
+    /** Per-line cost attribution input for the multi-debit journals. */
     public record LineCost(UUID productId, BigDecimal amount) {}
 
     private static final Logger log = LoggerFactory.getLogger(JournalEntryService.class);
@@ -293,7 +293,7 @@ public class JournalEntryService {
      * (on-hand increased) Dr's the product's inventory account (1210/1220 via
      * valuation class) / Cr's 5400; a loss Dr's 5400 / Cr's the inventory
      * account. Mirrors the perpetual-inventory goods-receipt / shipment
-     * postings — an inventory value change is never off-book (§2.29).
+     * postings — an inventory value change is never off-book.
      */
     @Transactional
     public void postStockAdjustment(
@@ -331,7 +331,7 @@ public class JournalEntryService {
     }
 
     /**
-     * §2.42 Perpetual WIP — raw materials issued to a work order:
+     * Perpetual WIP — raw materials issued to a work order:
      * Dr 1230 WIP / Cr 1210 Raw Materials (per valuation class) for the sum of
      * {@code reservedQuantity * standardCost} across the work order's materials.
      * The credit side resolves per product via {@link #inventoryAccountForProduct}
@@ -357,7 +357,7 @@ public class JournalEntryService {
     }
 
     /**
-     * §2.42 Perpetual WIP — completed sub-assemblies consumed into a parent
+     * Perpetual WIP — completed sub-assemblies consumed into a parent
      * work order: Dr 1230 WIP / Cr 1220 Finished Goods (per valuation class) for
      * the sum of {@code consumedQuantity * standardCost}. Rolls each child
      * sub-assembly's standard-cost value (which the child's completion took into
@@ -382,7 +382,7 @@ public class JournalEntryService {
     }
 
     /**
-     * §2.42 Perpetual WIP — work order completed: Dr 1220 Finished Goods (the
+     * Perpetual WIP — work order completed: Dr 1220 Finished Goods (the
      * finished good's valuation class) / Cr 1230 WIP at the finished good's
      * standard cost ({@code amount = completedQuantity * standardCost}). This is
      * the leg that empties WIP; because every charge into WIP was at standard
@@ -519,15 +519,15 @@ public class JournalEntryService {
     }
 
     /**
-     * §2.31 Slice C. Deferred-revenue recognition at shipment for a
-     * prepayment invoice: Dr 2110 Customer Deposits / Cr 4000 Sales Revenue
-     * at the invoice's total amount. Posted in addition to the existing
-     * Dr COGS / Cr Inventory pair (which fires for every shipment). The
-     * caller — {@code ShipmentPostedCogsHandler} — gates this method on
+     * Deferred-revenue recognition at shipment for a prepayment invoice:
+     * Dr 2110 Customer Deposits / Cr 4000 Sales Revenue at the invoice's
+     * total amount. Posted in addition to the existing Dr COGS / Cr Inventory
+     * pair (which fires for every shipment). The caller —
+     * {@code ShipmentPostedCogsHandler} — gates this method on
      * {@code customer_invoice_header.revenue_recognized_at} so a redelivered
-     * shipment can't post twice. Tax-inclusive — the GST split (§3.3) is
-     * deferred indefinitely; revenue absorbs tax just like the on-shipment
-     * Cr Revenue pair does today.
+     * shipment can't post twice. Tax-inclusive — the GST split is deferred
+     * indefinitely; revenue absorbs tax just like the on-shipment Cr Revenue
+     * pair does today.
      */
     @Transactional
     public void postPrepaymentRevenueRecognition(
@@ -556,7 +556,7 @@ public class JournalEntryService {
     }
 
     /**
-     * §2.31 Slice B: branches the credit side on {@code invoiceType}.
+     * Branches the credit side on {@code invoiceType}.
      * {@link CustomerInvoice.InvoiceType#COMMERCIAL} → Cr 1100 AR (the
      * existing on-shipment flow, balancing the Dr AR posted at invoice
      * creation). {@link CustomerInvoice.InvoiceType#PREPAYMENT} →
@@ -575,7 +575,7 @@ public class JournalEntryService {
         CustomerInvoice.InvoiceType invoiceType
     ) {
         Assert.notNull(invoiceType, "invoiceType");
-        // §2.31 prepayment + §2.32 deposit both park the receipt in 2110 Customer
+        // Prepayment and deposit invoices both park the receipt in 2110 Customer
         // Deposits (a liability) until shipment reclassifies it to revenue;
         // commercial + balance invoices settle the AR posted at invoice creation.
         boolean toDeposits = invoiceType == CustomerInvoice.InvoiceType.PREPAYMENT
@@ -604,7 +604,7 @@ public class JournalEntryService {
     }
 
     /**
-     * §2.34 Refund the up-front amount on a cancelled prepayment/deposit order:
+     * Refund the up-front amount on a cancelled prepayment/deposit order:
      * Dr 2110 Customer Deposits / Cr 1000 Bank at the paid amount. The exact
      * inverse of the original payment-receipt pair ({@link #postCustomerPayment}
      * posted Dr Bank / Cr 2110 for a prepayment/deposit invoice), so the deposit
@@ -644,7 +644,7 @@ public class JournalEntryService {
     }
 
     /**
-     * §3.7 Bulk reverse every posted journal entry that originated from the
+     * Bulk reverse every posted journal entry that originated from the
      * given source document. Returns the new reversal entry ids. All
      * reversals run inside this method's transaction — if any one fails the
      * whole batch rolls back.

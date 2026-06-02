@@ -22,15 +22,14 @@ public interface JournalEntryRepository {
 
     /**
      * Return ids of every {@code posted} journal entry that originated from
-     * the given source document. Used by §3.7 bulk reversal: cancelling a
+     * the given source document. Used by bulk reversal: cancelling a
      * customer-invoice or supplier-payment cascades reversals of every GL
      * entry posted from that source.
      *
      * <p>Excludes entries already in {@code 'reversed'} status (would be a
      * no-op to reverse again), and excludes entries whose
      * {@code source_document_type = 'journal_reversal'} — those are
-     * themselves reversal entries and the schema rejects reversal-of-reversal
-     * (see dev-todo §5).
+     * themselves reversal entries and the schema rejects reversal-of-reversal.
      */
     List<JournalEntryId> findPostedIdsBySource(String sourceDocumentType, UUID sourceDocumentId);
 }
