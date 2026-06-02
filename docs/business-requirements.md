@@ -72,7 +72,7 @@ Each SKU carries a reorder point (the on-hand quantity at which replenishment sh
 **REQ-PROD-021 — Reorder policy is broadcast to inventory** *(shipped, used by REQ-INV-080)*
 When the reorder policy changes, inventory snapshots the new values onto its local stock-item row so the automatic-replenishment monitor (REQ-INV-080) reads them without a cross-service call.
 
-**REQ-PROD-022 — Replenishment strategy: to-stock vs to-order** *(planned)*
+**REQ-PROD-022 — Replenishment strategy: to-stock vs to-order** *(shipped)*
 Each SKU carries a `replenishment_strategy` — `to_stock` (default) or `to_order` — **orthogonal** to make-vs-buy (REQ-PROD-010). The two axes combine into four operator-facing modes: make-to-stock, make-to-order, buy-to-stock, buy-to-order. It is a separate flag, **not** a four-value product type, so it cannot contradict the make-vs-buy flags and preserves the "both" (vertically-integrated) case of REQ-PROD-010.
 Constraints:
 - `to_order` is allowed only for **sellable** SKUs (`is_sellable`) — the order-pegged path needs a sales-order line to peg to, so raw materials and internal sub-assemblies are `to_stock`-only (the rule is keyed on `is_sellable`, not on `product_type`, so a sellable spare-part sub-assembly could be made to order without a model change).
@@ -351,7 +351,7 @@ A `ReplenishmentRequest` carries the reason it was raised. Three triggers feed t
 **REQ-INV-092 — Scope of the MRP practice modelled** *(shipped — deliberate scope)*
 The planning practice Northwood models is a **reorder-point system plus BOM explosion** — the reactive end of MRP — **not** time-phased planning (there is no netting of projected demand against projected supply over a planning horizon). For a standard-catalogue make-to-stock finished-goods business this is the appropriate level of fidelity for the showcase; time-phased MRP is out of scope.
 
-**REQ-INV-093 — Make-to-order / buy-to-order is a planned opt-in per-product extension** *(planned)*
+**REQ-INV-093 — Make-to-order / buy-to-order is an opt-in per-product extension** *(shipped)*
 REQ-INV-090's make-to-stock default stays the catalogue norm, but a SKU may be configured `to_order` (REQ-PROD-022) to opt into an **order-pegged** path: a sales-order line for a `to_order` SKU raises *dedicated* supply — a work order (make-to-order) or a purchase order (buy-to-order) — earmarked to that line rather than drawing from / building to the shared pool.
 
 - **The peg stops at the parent.** A `to_order` parent's BOM components are still satisfied per *their own* strategy (a `to_stock` component comes from the pool); `to_order`-ness does **not** cascade down the BOM. Since `to_order` requires `is_sellable` and components aren't sellable, every `to_order` origin is a sales order and BOM explosion never pegs dependent demand. A single BOM may freely mix modes.

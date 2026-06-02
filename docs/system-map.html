@@ -472,7 +472,8 @@ stateDiagram-v2
     prepaid --> stock_reservation_requested : advance (worker)
     stock_reservation_requested --> ready_to_ship : applyStockReserved [reserved]
     stock_reservation_requested --> stock_reservation_incomplete : applyStockReserved [partial/failed - inventory raised replenishment in-tx]
-    stock_reservation_incomplete --> stock_reservation_requested : applyReplenishmentFulfilled [all short lines fulfilled - retry]
+    stock_reservation_incomplete --> stock_reservation_requested : applyReplenishmentFulfilled [all short lines fulfilled, any shortage top-up - retry]
+    stock_reservation_incomplete --> ready_to_ship : applyReplenishmentFulfilled [all order-pegged, reserved on completion - §2.43]
     stock_reservation_incomplete --> rejected : applyReplenishmentCancelled [a short line could not be sourced]
     ready_to_ship --> goods_shipped : applyShipmentPosted
     ready_to_ship --> completed : applyShipmentPosted [prepayment]
@@ -591,6 +592,15 @@ window.NORTHWOOD_EVENTS = [
         desc: `<code>manufacturing.product_card.is_purchased</code>, <code>is_manufactured</code>` },
       { dest: "inventory", name: "inventory.product-replenishment-projector",
         desc: `<code>inventory.product_card.is_purchased</code>, <code>is_manufactured</code> — local mirror used by inventory's make-vs-buy routing (reorder-point monitor + the in-tx sales-order-shortage raise) to decide whether to route a replenishment to manufacturing or purchasing.` },
+    ]
+  },
+  {
+    source: "product",
+    aggregate: "Product",
+    event: "ReplenishmentStrategyChanged",
+    consumers: [
+      { dest: "sales", name: "sales.product-replenishment-strategy-projector",
+        desc: `<code>sales.product_card.replenishment_strategy</code> — <code>to_stock</code> | <code>to_order</code> (§2.43). The fulfilment saga's reserve step reads it to choose the free-stock path (<code>to_stock</code>) vs the order-pegged path (<code>to_order</code>): a <code>to_order</code> line skips free-stock reservation and raises dedicated supply (<code>ReplenishmentRequest</code> reason <code>order_pegged</code>), reserved to the line on completion (make-/buy-to-order).` },
     ]
   },
   {
@@ -1064,7 +1074,7 @@ window.NORTHWOOD_EVENTS = [
     event: "ReplenishmentRequested",
     consumers: [
       { dest: "manufacturing", name: "manufacturing.replenishment-dispatcher",
-        desc: `Filter on <code>payload.targetService = "manufacturing"</code>. Builds a <code>ReleaseForReplenishmentCommand</code> (carrying <code>sourceSalesOrderHeaderId</code> from the payload) + BOM walk; calls <code>WorkOrderReleaseService.releaseForReplenishment(...)</code>. The <code>WorkOrder</code> factory emits both <code>WorkOrderCreated</code> (with <code>replenishmentRequestId</code> + <code>sourceSalesOrderHeaderId</code>) and <code>manufacturing.ReplenishmentDispatched</code> atomically. <strong>No active BOM → emits <code>manufacturing.ReplenishmentUndispatchable</code></strong> so inventory cancels. Reason is one of <code>reorder_point_breach</code>, <code>work_order_shortage</code>, or <code>sales_order_shortage</code>.` },
+        desc: `Filter on <code>payload.targetService = "manufacturing"</code>. Builds a <code>ReleaseForReplenishmentCommand</code> (carrying <code>sourceSalesOrderHeaderId</code> from the payload) + BOM walk; calls <code>WorkOrderReleaseService.releaseForReplenishment(...)</code>. The <code>WorkOrder</code> factory emits both <code>WorkOrderCreated</code> (with <code>replenishmentRequestId</code> + <code>sourceSalesOrderHeaderId</code>) and <code>manufacturing.ReplenishmentDispatched</code> atomically. <strong>No active BOM → emits <code>manufacturing.ReplenishmentUndispatchable</code></strong> so inventory cancels. Reason is one of <code>reorder_point_breach</code>, <code>work_order_shortage</code>, <code>sales_order_shortage</code>, or <code>order_pegged</code> (§2.43 make-to-order — full line qty, reserved to the SO line on completion).` },
       { dest: "purchasing", name: "purchasing.replenishment-dispatcher",
         desc: `Filter on <code>payload.targetService = "purchasing"</code>. Creates a single-line <code>PurchaseRequisition</code> via <code>PurchaseRequisitionService.createForStockReplenishment(...)</code> with <code>SourceType.STOCK_REPLENISHMENT</code> + <code>source_replenishment_request_id</code>. Emits both <code>PurchaseRequisitionCreated</code> and <code>purchasing.ReplenishmentDispatched</code>. <strong>No vendor configured → emits <code>purchasing.ReplenishmentUndispatchable</code></strong> so inventory cancels. <strong>This is the ONLY auto-PR path</strong> — WO shortages and sales-order shortages all arrive here through inventory's ReplenishmentRequest.` },
       { dest: "reporting", name: "reporting.replenishment-history.requested",

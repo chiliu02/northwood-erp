@@ -7,7 +7,9 @@ import com.northwood.sales.domain.SalesOrderId;
 import com.northwood.sales.domain.SalesOrderLine;
 import com.northwood.sales.domain.SalesOrderRepository;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -20,8 +22,22 @@ public final class InMemorySalesOrderLineSnapshotPort implements SalesOrderLineS
 
     private final SalesOrderRepository orders;
 
+    /**
+     * Products configured order-pegged ({@code to_order}, §2.43). The aggregate
+     * doesn't carry the product-master replenishment strategy (it's projected
+     * onto {@code sales.product_card} in production), so a test opts a product in
+     * here to exercise the make-/buy-to-order fulfilment path.
+     */
+    private final Set<UUID> orderPeggedProductIds = new HashSet<>();
+
     public InMemorySalesOrderLineSnapshotPort(SalesOrderRepository orders) {
         this.orders = orders;
+    }
+
+    /** Mark a product order-pegged so its SO lines reserve dedicated supply (§2.43). */
+    public InMemorySalesOrderLineSnapshotPort markOrderPegged(UUID productId) {
+        orderPeggedProductIds.add(productId);
+        return this;
     }
 
     @Override
@@ -41,9 +57,11 @@ public final class InMemorySalesOrderLineSnapshotPort implements SalesOrderLineS
                 line.orderedQuantity(),
                 // The in-memory SalesOrder aggregate doesn't carry the product's
                 // replenishment strategy (it's a product-master facet projected
-                // onto sales.product_card); harness E2E flows are to_stock, so
-                // default it. A to_order E2E test would set this explicitly.
-                ReplenishmentStrategy.TO_STOCK.dbValue()
+                // onto sales.product_card); default to_stock unless a test opted
+                // the product into order-pegged via markOrderPegged (§2.43).
+                (orderPeggedProductIds.contains(line.productId())
+                    ? ReplenishmentStrategy.TO_ORDER
+                    : ReplenishmentStrategy.TO_STOCK).dbValue()
             ));
         }
         return out;
