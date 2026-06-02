@@ -1,5 +1,6 @@
 package com.northwood.inventory.application;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -13,6 +14,7 @@ import com.northwood.inventory.application.dto.GoodsReceiptLineRequest;
 import com.northwood.inventory.application.dto.PostGoodsReceiptCommand;
 import com.northwood.inventory.application.inbox.PurchaseOrderLineFactsProjection;
 import com.northwood.inventory.domain.GoodsReceiptRepository;
+import com.northwood.inventory.domain.ReplenishmentRequest;
 import com.northwood.inventory.domain.StockMovementDirection;
 import com.northwood.inventory.domain.StockMovementSourceTypes;
 import com.northwood.inventory.domain.StockMovementType;
@@ -145,6 +147,51 @@ class GoodsReceiptServiceTest {
 
         verify(receipts, never()).save(any());
         verify(stockBalances, never()).bump(any(), any(), any());
+    }
+
+    private static ReplenishmentRequest dispatchedForPo(ReplenishmentRequest req) {
+        req.pullPendingEvents();
+        req.markDispatched(ReplenishmentRequest.DispatchedAggregateKind.PURCHASE_REQUISITION, UUID.randomUUID());
+        req.pullPendingEvents();
+        return req;
+    }
+
+    @Test void order_pegged_linked_replenishment_pegs_then_fulfils() {
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
+        ReplenishmentRequest req = dispatchedForPo(ReplenishmentRequest.requestForOrderPegged(
+            PRODUCT_1, WAREHOUSE, new BigDecimal("100"), ReplenishmentRequest.TargetService.PURCHASING,
+            UUID.randomUUID(), UUID.randomUUID()));
+        when(replenishmentRequests.findByLinkedPurchaseOrderId(PO)).thenReturn(Optional.of(req));
+        when(stockBalances.tryReserveOnHand(WAREHOUSE, PRODUCT_1, new BigDecimal("100"))).thenReturn(true);
+
+        service.post(cmd(WarehouseCodes.MAIN, List.of(
+            new GoodsReceiptLineRequest(null, PRODUCT_1, "RM-1", "Raw 1",
+                new BigDecimal("100"), new BigDecimal("2.50"))
+        )));
+
+        // Credit then peg-reserve the received qty for the SO line, atomically.
+        verify(stockBalances).bump(WAREHOUSE, PRODUCT_1, new BigDecimal("100"));
+        verify(stockBalances).tryReserveOnHand(WAREHOUSE, PRODUCT_1, new BigDecimal("100"));
+        verify(replenishmentRequests).save(req);
+        assertThat(req.status()).isEqualTo(ReplenishmentRequest.Status.FULFILLED);
+    }
+
+    @Test void non_pegged_linked_replenishment_fulfils_without_reserving() {
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
+        ReplenishmentRequest req = dispatchedForPo(ReplenishmentRequest.requestForSalesOrderShortage(
+            PRODUCT_1, WAREHOUSE, new BigDecimal("100"), ReplenishmentRequest.TargetService.PURCHASING,
+            UUID.randomUUID(), UUID.randomUUID()));
+        when(replenishmentRequests.findByLinkedPurchaseOrderId(PO)).thenReturn(Optional.of(req));
+
+        service.post(cmd(WarehouseCodes.MAIN, List.of(
+            new GoodsReceiptLineRequest(null, PRODUCT_1, "RM-1", "Raw 1",
+                new BigDecimal("100"), new BigDecimal("2.50"))
+        )));
+
+        verify(stockBalances).bump(WAREHOUSE, PRODUCT_1, new BigDecimal("100"));
+        verify(stockBalances, never()).tryReserveOnHand(any(), any(), any());
+        verify(replenishmentRequests).save(req);
+        assertThat(req.status()).isEqualTo(ReplenishmentRequest.Status.FULFILLED);
     }
 
     @Test void linked_line_with_unknown_po_line_id_rejects_with_400_exception() {

@@ -179,6 +179,34 @@ public class GoodsReceiptService {
             replenishmentRequests.findByLinkedPurchaseOrderId(command.purchaseOrderHeaderId())
                 .filter(r -> r.status() == ReplenishmentRequest.Status.DISPATCHED)
                 .ifPresent(r -> {
+                    // Buy-to-order atomic peg (§2.43 Slice D) — symmetric to the
+                    // make-to-order WO-completion peg. The received goods for an
+                    // order-pegged request are dedicated to the originating SO
+                    // line, so reserve them in THIS transaction (right after the
+                    // on_hand credit above) so they never enter free ATP and
+                    // can't be stolen. markFulfilled then emits
+                    // ReplenishmentFulfilled(pegged=true) → sales ships off the
+                    // peg without a re-reservation retry. Releasing this peg on
+                    // cancel is Slice E's un-peg job.
+                    if (r.reason() == ReplenishmentRequest.Reason.ORDER_PEGGED) {
+                        BigDecimal receivedForProduct = lines.stream()
+                            .filter(l -> l.productId().equals(r.productId()))
+                            .map(GoodsReceiptLine::receivedQuantity)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                        if (receivedForProduct.signum() > 0) {
+                            boolean pegged = stockBalances.tryReserveOnHand(
+                                warehouseId, r.productId(), receivedForProduct);
+                            if (pegged) {
+                                log.info("pegged {} of product={} to sales_order={} sales_order_line={} (atomic receipt+reserve)",
+                                    receivedForProduct, r.productId(),
+                                    r.sourceSalesOrderHeaderId(), r.sourceSalesOrderLineId());
+                            } else {
+                                log.warn("could not peg-reserve {} of product={} for sales_order={} — free stock insufficient "
+                                    + "immediately after receipt (concurrent reservation?); SO line falls back to the retry path",
+                                    receivedForProduct, r.productId(), r.sourceSalesOrderHeaderId());
+                            }
+                        }
+                    }
                     r.markFulfilled();
                     replenishmentRequests.save(r);
                     log.info("fulfilled replenishment_request={} via goods_receipt for purchase_order={}",
