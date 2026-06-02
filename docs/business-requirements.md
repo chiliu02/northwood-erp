@@ -72,6 +72,16 @@ Each SKU carries a reorder point (the on-hand quantity at which replenishment sh
 **REQ-PROD-021 — Reorder policy is broadcast to inventory** *(shipped, used by REQ-INV-080)*
 When the reorder policy changes, inventory snapshots the new values onto its local stock-item row so the automatic-replenishment monitor (REQ-INV-080) reads them without a cross-service call.
 
+### 1.4 Replenishment strategy (to-stock vs to-order)
+
+**REQ-PROD-030 — Replenishment strategy: to-stock vs to-order** *(planned, dev-todo §2.43)*
+Each SKU carries a `replenishment_strategy` — `to_stock` (default) or `to_order` — **orthogonal** to make-vs-buy (REQ-PROD-010). The two axes combine into four operator-facing modes: make-to-stock, make-to-order, buy-to-stock, buy-to-order. It is a separate flag, **not** a four-value product type, so it cannot contradict the make-vs-buy flags and preserves the "both" (vertically-integrated) case of REQ-PROD-010.
+Constraints:
+- `to_order` is allowed only for **sellable** SKUs (`is_sellable`) — the order-pegged path needs a sales-order line to peg to, so raw materials and internal sub-assemblies are `to_stock`-only (the rule is keyed on `is_sellable`, not on `product_type`, so a sellable spare-part sub-assembly could be made to order without a model change).
+- A `to_order` SKU carries a **zero reorder policy** (REQ-PROD-020) — it has no independent reorder loop; its demand is the order.
+- `service` SKUs have no strategy (not stocked or produced).
+*Rationale:* lets the catalogue carry both stocked standard goods and order-pegged (make-to-order / buy-to-order) items without reverting REQ-INV-090's inventory-owns-make-vs-buy decoupling. Pegging + cancellation behaviour: REQ-INV-093.
+
 ### 1.4 Sales pricing
 
 **REQ-PROD-030 — Maintain a list price per SKU per currency** *(shipped)*
@@ -330,7 +340,7 @@ Every step (request raised, dispatched, fulfilled) is observable in the Replenis
 ### 3.10 Operating model: make-to-stock (MTS)
 
 **REQ-INV-090 — Northwood operates make-to-stock, not make-to-order** *(shipped — the model §2.37 settled on)*
-Northwood sells a fixed catalogue of **standard products** (REQ-PROD-001). Goods are not customised per customer: a sales order carries no design or configuration information — it is demand against a stockable SKU. Production and purchasing are therefore driven by **inventory stocking policy (the reorder point, REQ-PROD-020)**, independent of any individual customer order. Customer orders are fulfilled from on-hand stock (REQ-INV-020); a shortfall triggers **replenishment** (REQ-INV-080) rather than directly driving production. No sales order pulls a work order into existence — manufacturing is a consequence of stocking policy, never of a specific order.
+Northwood sells a fixed catalogue of **standard products** (REQ-PROD-001). Goods are not customised per customer: a sales order carries no design or configuration information — it is demand against a stockable SKU. Production and purchasing are therefore driven by **inventory stocking policy (the reorder point, REQ-PROD-020)**, independent of any individual customer order. Customer orders are fulfilled from on-hand stock (REQ-INV-020); a shortfall triggers **replenishment** (REQ-INV-080) rather than directly driving production. No sales order pulls a work order into existence — manufacturing is a consequence of stocking policy, never of a specific order. (An opt-in **per-product** exception — make-to-order / buy-to-order — is planned; it does not change this default, see REQ-INV-093.)
 *Rationale:* a make-to-stock model is what lets inventory own the make-vs-buy decision (REQ-INV-082, REQ-INV-087) and keeps the Sales Order Fulfilment Saga out of manufacturing — see `docs/sagas.md` for why the Saga waits on a replenishment delta rather than orchestrating production.
 
 **REQ-INV-091 — Replenishment is demand-source-aware** *(shipped)*
@@ -342,6 +352,15 @@ A `ReplenishmentRequest` carries the reason it was raised. Three triggers feed t
 
 **REQ-INV-092 — Scope of the MRP practice modelled** *(shipped — deliberate scope)*
 The planning practice Northwood models is a **reorder-point system plus BOM explosion** — the reactive end of MRP — **not** time-phased planning (there is no netting of projected demand against projected supply over a planning horizon). For a standard-catalogue make-to-stock finished-goods business this is the appropriate level of fidelity for the showcase; time-phased MRP is out of scope.
+
+**REQ-INV-093 — Make-to-order / buy-to-order is a planned opt-in per-product extension** *(planned, dev-todo §2.43)*
+REQ-INV-090's make-to-stock default stays the catalogue norm, but a SKU may be configured `to_order` (REQ-PROD-030) to opt into an **order-pegged** path: a sales-order line for a `to_order` SKU raises *dedicated* supply — a work order (make-to-order) or a purchase order (buy-to-order) — earmarked to that line rather than drawing from / building to the shared pool.
+
+- **The peg stops at the parent.** A `to_order` parent's BOM components are still satisfied per *their own* strategy (a `to_stock` component comes from the pool); `to_order`-ness does **not** cascade down the BOM. Since `to_order` requires `is_sellable` and components aren't sellable, every `to_order` origin is a sales order and BOM explosion never pegs dependent demand. A single BOM may freely mix modes.
+- **Pegged supply.** Dedicated output is reserved for the originating line atomically on completion and excluded from available-to-promise (REQ-RPT) until then, so a concurrent order cannot consume it.
+- **Cancellation stays permitted.** `to_order` does **not** make an order non-cancellable: cancelling a `to_order` line unwinds the pegged supply — cancel the WO/PO cleanly if not yet released, otherwise drop the peg and let in-flight output settle into the pool (or scrap + write-off for bespoke items, dev-todo §2.3).
+
+*Rationale:* matches a realistic ERP where a standard make-to-stock catalogue coexists with bespoke/custom variants and traded goods (to-order), without reverting the inventory-owns-make-vs-buy decoupling. Full design + slices: dev-todo §2.43.
 
 ---
 
