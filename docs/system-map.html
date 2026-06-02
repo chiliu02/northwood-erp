@@ -1,4 +1,4 @@
-    <!DOCTYPE html>
+    thi<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -456,7 +456,7 @@
   <summary><h3 id="saga-sales-order-fulfilment">SalesOrderFulfilmentSaga</h3></summary>
   <p class="desc">One row per customer order. The prepayment branch is added at <code>started</code> (snapshotted from <code>payment_terms</code> on saga.data).</p>
   <div class="gap-callout">
-    <strong>Inventory-as-MRP-orchestrator (2026-05-29): the flip — inventory is the single make-vs-buy decision + trigger point.</strong> Sales no longer routes shortages to manufacturing. On a partial/failed reservation, inventory raises <code>ReplenishmentRequest(reason=sales_order_shortage)</code> <em>in the same transaction</em> as the reservation (routing manufactured → manufacturing make-to-stock WO / purchased → purchasing itself) and the saga parks at <code>stock_reservation_incomplete</code>. When every short line's <code>inventory.ReplenishmentFulfilled</code> lands the saga re-enters <code>stock_reservation_requested</code> to retry; if any short line's replenishment is cancelled (<code>inventory.ReplenishmentCancelled</code> — unsourceable SKU / no active BOM / no approved vendor) the saga goes to <code>rejected</code>. The <code>manufacturing_requested</code> / <code>manufacturing_in_progress</code> / <code>manufacturing_completed</code> / <code>purchasing_requested</code> states and the make-to-order leg (and events <code>sales.ManufacturingRequested</code>, <code>manufacturing.ManufacturingDispatched</code>, <code>sales.SalesOrderPurchasingRequested</code>) were retired in Slice 3.
+    <strong>Inventory-as-MRP-orchestrator (2026-05-29): the flip — inventory is the single make-vs-buy decision + trigger point.</strong> Sales no longer routes shortages to manufacturing. On a partial/failed reservation, inventory raises <code>ReplenishmentRequest(reason=sales_order_shortage)</code> <em>in the same transaction</em> as the reservation (routing manufactured → manufacturing make-to-stock WO / purchased → purchasing itself) and the saga parks at <code>stock_reservation_incomplete</code>. When every short line's <code>inventory.ReplenishmentFulfilled</code> lands the saga re-enters <code>stock_reservation_requested</code> to retry; if any short line's replenishment is cancelled (<code>inventory.ReplenishmentCancelled</code> — unsourceable SKU / no active BOM / no approved vendor) the saga goes to <code>rejected</code>. The <code>manufacturing_requested</code> / <code>manufacturing_in_progress</code> / <code>manufacturing_completed</code> / <code>purchasing_requested</code> states and the make-to-order leg (and events <code>sales.ManufacturingRequested</code>, <code>manufacturing.ManufacturingDispatched</code>, <code>sales.SalesOrderPurchasingRequested</code>) were retired in that flip.
   </div>
   <div class="saga-graph"></div>
   <details class="mermaid-source">
@@ -473,7 +473,7 @@ stateDiagram-v2
     stock_reservation_requested --> ready_to_ship : applyStockReserved [reserved]
     stock_reservation_requested --> stock_reservation_incomplete : applyStockReserved [partial/failed - inventory raised replenishment in-tx]
     stock_reservation_incomplete --> stock_reservation_requested : applyReplenishmentFulfilled [all short lines fulfilled, any shortage top-up - retry]
-    stock_reservation_incomplete --> ready_to_ship : applyReplenishmentFulfilled [all order-pegged, reserved on completion - §2.43]
+    stock_reservation_incomplete --> ready_to_ship : applyReplenishmentFulfilled [all order-pegged, reserved on completion]
     stock_reservation_incomplete --> rejected : applyReplenishmentCancelled [a short line could not be sourced]
     ready_to_ship --> goods_shipped : applyShipmentPosted
     ready_to_ship --> completed : applyShipmentPosted [prepayment]
@@ -510,7 +510,7 @@ stateDiagram-v2
 
 <details class="saga-block">
   <summary><h3 id="saga-purchase-to-pay">PurchaseToPaySaga</h3></summary>
-  <p class="desc">One row per purchase order. No compensation flow today.</p>
+  <p class="desc">One row per purchase order. No compensation flow today. Carries a nullable <code>sales_order_header_id</code> — non-null when the PO originates from a sales-order-driven replenishment (<code>sales_order_shortage</code> or <code>order_pegged</code>), threaded in via <code>ReplenishmentRequested.sourceSalesOrderHeaderId</code> → <code>convertFromRequisition</code> → <code>started(poId, salesOrderHeaderId)</code>; every milestone span stamps <code>northwood.sales_order_id</code> so a Tempo trace from a sales order resolves its buy-side PO sub-saga (manual / reorder-point PRs carry <code>null</code>).</p>
   <div class="saga-graph"></div>
   <details class="mermaid-source">
     <summary>stateDiagram-v2 source</summary>
@@ -533,7 +533,7 @@ stateDiagram-v2
 
 <details class="saga-block">
   <summary><h3 id="aggregate-replenishment-request">ReplenishmentRequest (aggregate, not a Saga)</h3></summary>
-  <p class="desc">One row per (product, warehouse) replenishment cycle — partial unique index enforces one-open-per-SKU/warehouse for <code>reorder_point_breach</code> + <code>work_order_shortage</code> reasons; <code>sales_order_shortage</code> is excluded from the index so multiple SO-driven requests for the same SKU can stack (each back-referenced to a sales-order line via <code>source_sales_order_line_id</code>). Raised by the in-tx reorder-point detector on every on-hand decrement (shipment / stock-adjustment), by the inbox bridge handler on <code>manufacturing.RawMaterialShortageDetected</code>, <em>and</em> in-tx by <code>StockReservationService.reserveForSalesOrder</code> on a partial/failed sales-order reservation. <code>target_service</code> (<code>manufacturing</code> | <code>purchasing</code>) is decided in inventory by the SKU's <code>product_card.is_purchased</code> / <code>is_manufactured</code> snapshot — manufacturing and purchasing don't decide where work routes, they only receive it, and signal back <code>ReplenishmentUndispatchable</code> (no BOM / no vendor) so inventory cancels.</p>
+  <p class="desc">One row per (product, warehouse) replenishment cycle — partial unique index enforces one-open-per-SKU/warehouse for <code>reorder_point_breach</code> + <code>work_order_shortage</code> reasons; the per-sales-order-line reasons <code>sales_order_shortage</code> <em>and</em> <code>order_pegged</code> are excluded from the index so multiple SO-driven requests for the same SKU can stack (each back-referenced to a sales-order line via <code>source_sales_order_line_id</code>). Raised by the in-tx reorder-point detector on every on-hand decrement (shipment / stock-adjustment), by the inbox bridge handler on <code>manufacturing.RawMaterialShortageDetected</code>, <em>and</em> in-tx by <code>StockReservationService.reserveForSalesOrder</code> on a partial/failed sales-order reservation (<code>sales_order_shortage</code>) or a <code>to_order</code> line (<code>order_pegged</code>, full line qty, free-stock reservation skipped). <code>target_service</code> (<code>manufacturing</code> | <code>purchasing</code>) is decided in inventory by the SKU's <code>product_card.is_purchased</code> / <code>is_manufactured</code> snapshot — manufacturing and purchasing don't decide where work routes, they only receive it, and signal back <code>ReplenishmentUndispatchable</code> (no BOM / no vendor) so inventory cancels.</p>
   <div class="saga-graph"></div>
   <details class="mermaid-source">
     <summary>stateDiagram-v2 source</summary>
@@ -552,7 +552,7 @@ stateDiagram-v2
     cancelled --> [*]
     </pre>
   </details>
-  <p class="desc"><code>reason</code> (<code>reorder_point_breach</code> | <code>work_order_shortage</code> | <code>sales_order_shortage</code>) carries why the request was raised; <code>dispatched_aggregate_kind</code> + <code>dispatched_aggregate_id</code> identify the downstream WO / PR; <code>linked_purchase_order_id</code> stamps the PO that ends the purchasing leg so a later <code>GoodsReceived</code> can resolve back to the request. Emits <code>inventory.ReplenishmentRequested</code> on the <code>request</code> transition, <code>inventory.ReplenishmentFulfilled</code> on <code>markFulfilled</code>, and <code>inventory.ReplenishmentCancelled</code> on <code>markCancelled</code> — the failure counterpart, which for a <code>sales_order_shortage</code> request flips the originating sales order to <code>rejected</code>.</p>
+  <p class="desc"><code>reason</code> (<code>reorder_point_breach</code> | <code>work_order_shortage</code> | <code>sales_order_shortage</code> | <code>order_pegged</code>) carries why the request was raised; <code>dispatched_aggregate_kind</code> + <code>dispatched_aggregate_id</code> identify the downstream WO / PR; <code>linked_purchase_order_id</code> stamps the PO that ends the purchasing leg so a later <code>GoodsReceived</code> can resolve back to the request. Emits <code>inventory.ReplenishmentRequested</code> on the <code>request</code> transition, <code>inventory.ReplenishmentFulfilled</code> on <code>markFulfilled</code>, and <code>inventory.ReplenishmentCancelled</code> on <code>markCancelled</code> — the failure counterpart, which for a <code>sales_order_shortage</code> / <code>order_pegged</code> request flips the originating sales order to <code>rejected</code>. <code>ReplenishmentFulfilled.pegged</code> is set <code>= (reason == order_pegged)</code>: an order-pegged request's output is reserved to the originating SO line atomically with the stock credit (WO completion or goods receipt), so <code>pegged=true</code> tells sales to ship direct without a re-reservation retry.</p>
 </details>
 
 <!-- ============================================================
@@ -600,7 +600,7 @@ window.NORTHWOOD_EVENTS = [
     event: "ReplenishmentStrategyChanged",
     consumers: [
       { dest: "sales", name: "sales.product-replenishment-strategy-projector",
-        desc: `<code>sales.product_card.replenishment_strategy</code> — <code>to_stock</code> | <code>to_order</code> (§2.43). The fulfilment saga's reserve step reads it to choose the free-stock path (<code>to_stock</code>) vs the order-pegged path (<code>to_order</code>): a <code>to_order</code> line skips free-stock reservation and raises dedicated supply (<code>ReplenishmentRequest</code> reason <code>order_pegged</code>), reserved to the line on completion (make-/buy-to-order).` },
+        desc: `<code>sales.product_card.replenishment_strategy</code> — <code>to_stock</code> | <code>to_order</code>. The fulfilment saga's reserve step reads it to choose the free-stock path (<code>to_stock</code>) vs the order-pegged path (<code>to_order</code>): a <code>to_order</code> line skips free-stock reservation and raises dedicated supply (<code>ReplenishmentRequest</code> reason <code>order_pegged</code>), reserved to the line on completion (make-/buy-to-order).` },
     ]
   },
   {
@@ -842,7 +842,7 @@ window.NORTHWOOD_EVENTS = [
       { dest: "reporting", name: "reporting.material-shortage.goods-received",
         desc: `<code>reporting.material_shortage_view.received_quantity</code> (+= delta), <code>received_at</code>; refreshes <code>production_planning_board.open_purchase_orders_count</code>` },
       { dest: "inventory", name: "inventory.replenishment.goods-received (in-tx sibling, not inbox)",
-        desc: `<strong>In-tx sibling write inside <code>GoodsReceiptService.post</code>, not an inbox consumer of <code>GoodsReceived</code></strong> (same service, same transaction; runs <em>before</em> the event flushes from the outbox). Looks up the open <code>ReplenishmentRequest</code> by <code>linked_purchase_order_id = payload.purchaseOrderId</code>; if present and dispatched, calls <code>markFulfilled()</code> which flips status → <code>fulfilled</code> and emits <code>inventory.ReplenishmentFulfilled</code>. Closes the purchased-path replenishment loop.` },
+        desc: `<strong>In-tx sibling write inside <code>GoodsReceiptService.post</code>, not an inbox consumer of <code>GoodsReceived</code></strong> (same service, same transaction; runs <em>before</em> the event flushes from the outbox). Looks up the open <code>ReplenishmentRequest</code> by <code>linked_purchase_order_id = payload.purchaseOrderId</code>; if present and dispatched, calls <code>markFulfilled()</code> which flips status → <code>fulfilled</code> and emits <code>inventory.ReplenishmentFulfilled</code>. For an <code>order_pegged</code> request it first <code>tryReserveOnHand(receivedQty)</code> in the same transaction (the buy-side mirror of the WO-completion peg) so the bought stock is reserved to the originating SO line and ATP excludes it immediately, then <code>markFulfilled()</code> sets <code>pegged=true</code>. Closes the purchased-path replenishment loop.` },
     ]
   },
   {
@@ -1074,7 +1074,7 @@ window.NORTHWOOD_EVENTS = [
     event: "ReplenishmentRequested",
     consumers: [
       { dest: "manufacturing", name: "manufacturing.replenishment-dispatcher",
-        desc: `Filter on <code>payload.targetService = "manufacturing"</code>. Builds a <code>ReleaseForReplenishmentCommand</code> (carrying <code>sourceSalesOrderHeaderId</code> from the payload) + BOM walk; calls <code>WorkOrderReleaseService.releaseForReplenishment(...)</code>. The <code>WorkOrder</code> factory emits both <code>WorkOrderCreated</code> (with <code>replenishmentRequestId</code> + <code>sourceSalesOrderHeaderId</code>) and <code>manufacturing.ReplenishmentDispatched</code> atomically. <strong>No active BOM → emits <code>manufacturing.ReplenishmentUndispatchable</code></strong> so inventory cancels. Reason is one of <code>reorder_point_breach</code>, <code>work_order_shortage</code>, <code>sales_order_shortage</code>, or <code>order_pegged</code> (§2.43 make-to-order — full line qty, reserved to the SO line on completion).` },
+        desc: `Filter on <code>payload.targetService = "manufacturing"</code>. Builds a <code>ReleaseForReplenishmentCommand</code> (carrying <code>sourceSalesOrderHeaderId</code> from the payload) + BOM walk; calls <code>WorkOrderReleaseService.releaseForReplenishment(...)</code>. The <code>WorkOrder</code> factory emits both <code>WorkOrderCreated</code> (with <code>replenishmentRequestId</code> + <code>sourceSalesOrderHeaderId</code>) and <code>manufacturing.ReplenishmentDispatched</code> atomically. <strong>No active BOM → emits <code>manufacturing.ReplenishmentUndispatchable</code></strong> so inventory cancels. Reason is one of <code>reorder_point_breach</code>, <code>work_order_shortage</code>, <code>sales_order_shortage</code>, or <code>order_pegged</code> (make-to-order — full line qty, reserved to the SO line on completion).` },
       { dest: "purchasing", name: "purchasing.replenishment-dispatcher",
         desc: `Filter on <code>payload.targetService = "purchasing"</code>. Creates a single-line <code>PurchaseRequisition</code> via <code>PurchaseRequisitionService.createForStockReplenishment(...)</code> with <code>SourceType.STOCK_REPLENISHMENT</code> + <code>source_replenishment_request_id</code>. Emits both <code>PurchaseRequisitionCreated</code> and <code>purchasing.ReplenishmentDispatched</code>. <strong>No vendor configured → emits <code>purchasing.ReplenishmentUndispatchable</code></strong> so inventory cancels. <strong>This is the ONLY auto-PR path</strong> — WO shortages and sales-order shortages all arrive here through inventory's ReplenishmentRequest.` },
       { dest: "reporting", name: "reporting.replenishment-history.requested",
@@ -1111,7 +1111,7 @@ window.NORTHWOOD_EVENTS = [
       { dest: "reporting", name: "reporting.replenishment-history.fulfilled",
         desc: `<code>reporting.replenishment_history_view.status='fulfilled'</code>, <code>fulfilled_at</code>. Terminal state on the projection.` },
       { dest: "sales", name: "sales.fulfilment-saga.replenishment-fulfilled",
-        desc: `Replenishment fan-in: when payload carries non-null <code>sourceSalesOrderHeaderId</code> + <code>sourceSalesOrderLineId</code> (sales_order_shortage reason), looks up the fulfilment saga and removes the line id from <code>saga.data.outstandingReplenishmentLineIds</code>. When the set empties, transitions <code>stock_reservation_incomplete → stock_reservation_requested</code> and re-emits <code>sales.StockReservationRequested</code> so inventory retries against the now-restocked balance. Null back-references (reorder-point or WO-shortage replenishments) are silently ignored.` },
+        desc: `Replenishment fan-in: when payload carries non-null <code>sourceSalesOrderHeaderId</code> + <code>sourceSalesOrderLineId</code> (sales_order_shortage or order_pegged reason), looks up the fulfilment saga and removes the line id from <code>saga.data.outstandingReplenishmentLineIds</code>. When the set empties, the next state depends on <code>payload.pegged</code>: any shortage top-up involved (<code>pegged=false</code>) → <code>stock_reservation_incomplete → stock_reservation_requested</code> + re-emit <code>sales.StockReservationRequested</code> to retry against the now-restocked balance; all lines order-pegged (<code>pegged=true</code>, already reserved on completion) → <code>stock_reservation_incomplete → ready_to_ship</code> <strong>directly</strong>, no re-reservation. Null back-references (reorder-point or WO-shortage replenishments) are silently ignored.` },
     ]
   },
   {
@@ -2095,7 +2095,11 @@ window.NORTHWOOD_PROJECTIONS = [
   // decided inside inventory now, not visible as a sales-saga branch). If the
   // shortage is sourceable (manufactured w/ BOM, or purchased w/ vendor) every
   // line's ReplenishmentFulfilled lands and the saga retries reservation; if it
-  // can't be sourced, a ReplenishmentCancelled rejects the order.
+  // can't be sourced, a ReplenishmentCancelled rejects the order. The
+  // `strategy` axis (to_stock | to_order) splits the parked branch: a to_order
+  // line never reserves free stock — it always parks then ships direct via the
+  // stock_reservation_incomplete → ready_to_ship [pegged] edge, whereas a
+  // to_stock shortage retries via the → stock_reservation_requested edge.
   const SO_SAGA_SUMMARY_ID = 'saga-sales-order-fulfilment';
   const SO_EDGE_CONDS = {
     'started||stock_reservation_requested':              { pay: 'on_shipment' },
@@ -2103,8 +2107,10 @@ window.NORTHWOOD_PROJECTIONS = [
     'awaiting_prepayment_invoice||invoice_created':      { pay: 'prepayment' },
     'invoice_created||prepaid':                          { pay: 'prepayment' },
     'prepaid||stock_reservation_requested':              { pay: 'prepayment' },
+    'stock_reservation_requested||ready_to_ship':                 { match: { strategy: 'to_stock' }, hideWhen: { stock: 'short', sourceable: 'false' } },
     'stock_reservation_requested||stock_reservation_incomplete':  { stock: 'short' },
-    'stock_reservation_incomplete||stock_reservation_requested':  { stock: 'short', sourceable: 'true' },
+    'stock_reservation_incomplete||stock_reservation_requested':  { stock: 'short', sourceable: 'true', strategy: 'to_stock' },
+    'stock_reservation_incomplete||ready_to_ship':                { match: { stock: 'short', strategy: 'to_order' }, hideWhen: { sourceable: 'false' } },
     'stock_reservation_incomplete||rejected':            { stock: 'short', sourceable: 'false' },
     'ready_to_ship||goods_shipped':                      { pay: 'on_shipment' },
     'ready_to_ship||completed':                          { pay: 'prepayment' },
@@ -2114,11 +2120,12 @@ window.NORTHWOOD_PROJECTIONS = [
     'invoice_partially_paid||completed':                 { pay: 'on_shipment' }
   };
   const SO_FILTERS = [
-    { key: 'pay',        label: 'salesOrder.paymentTerms', options: ['any', 'on_shipment', 'prepayment'] },
-    { key: 'stock',      label: 'reservation outcome',     options: ['any', 'covered', 'short'] },
-    { key: 'sourceable', label: 'shortage sourceable?',    options: ['any', 'true', 'false'] }
+    { key: 'pay',        label: 'salesOrder.paymentTerms',     options: ['any', 'on_shipment', 'prepayment'] },
+    { key: 'strategy',   label: 'line replenishmentStrategy',  options: ['any', 'to_stock', 'to_order'] },
+    { key: 'stock',      label: 'reservation outcome',         options: ['any', 'covered', 'short'] },
+    { key: 'sourceable', label: 'shortage sourceable?',        options: ['any', 'true', 'false'] }
   ];
-  const SO_NOTE = 'Stocked → ships; shortage → parks at stock_reservation_incomplete while inventory replenishes (make-vs-buy decided in inventory); sourceable ⇒ retry, else ⇒ rejected';
+  const SO_NOTE = 'Stocked → ships; shortage → parks at stock_reservation_incomplete while inventory replenishes (make-vs-buy decided in inventory); sourceable ⇒ retry, else ⇒ rejected. replenishmentStrategy: a to_stock line covers immediately (reserved → ready_to_ship) or, on a shortage, retries after a top-up; a to_order line always parks (reserve skips free stock, raises an order_pegged replenishment for the full qty) then ships direct from stock_reservation_incomplete once the pegged supply completes — no retry. (A to_order line is never "covered" — picking covered + to_order together is contradictory and shows nothing.)';
 
   // ReplenishmentRequest make-vs-buy path filter. The aggregate has parallel
   // same-pair edges, so its conds are keyed source||target||label (resolved
@@ -2213,9 +2220,22 @@ window.NORTHWOOD_PROJECTIONS = [
         // different conds (ReplenishmentRequest has two requested→dispatched
         // and two dispatched→fulfilled edges); fall back to the bare pair key
         // (SalesOrderFulfilment has no parallel same-pair edges).
-        const cond = edgeConds[e.source + '||' + e.target + '||' + e.label]
+        const entry = edgeConds[e.source + '||' + e.target + '||' + e.label]
           || edgeConds[e.source + '||' + e.target];
-        if (cond) data.cond = cond;     // drives the path filter below
+        if (entry) {
+          // An entry is either a plain match object ({ stock: 'short' }) or the
+          // structured form { match: {...}, hideWhen: {...} }. hideWhen lists a
+          // selection that suppresses the edge even though `match` holds — e.g.
+          // srr→ready_to_ship belongs to to_stock, but a short line whose
+          // shortage can't be sourced never reserves, so it's hidden when
+          // stock=short AND sourceable=false.
+          if (entry.match || entry.hideWhen) {
+            if (entry.match) data.cond = entry.match;
+            if (entry.hideWhen) data.hideWhen = entry.hideWhen;
+          } else {
+            data.cond = entry;
+          }
+        }
       }
       return { data: data };
     });
@@ -2357,14 +2377,38 @@ window.NORTHWOOD_PROJECTIONS = [
       const tb = container.previousElementSibling;
       container.parentNode.insertBefore(bar, (tb && tb.classList.contains('saga-graph-toolbar')) ? tb : container);
 
+      // Does an edge fire under a FULLY-CONCRETE selection (no 'any')? An edge is
+      // suppressed if its hideWhen keys all match the selection (e.g. a to_stock
+      // short line that can't be sourced never reserves → ready_to_ship hidden),
+      // else kept iff every match-cond key equals the selection.
       function edgeMatches(e, sel) {
+        const hideWhen = e.data('hideWhen');
+        if (hideWhen) {
+          let allHide = true;
+          for (const k in hideWhen) { if (sel[k] !== hideWhen[k]) { allHide = false; break; } }
+          if (allHide) return false;
+        }
         const cond = e.data('cond');
         if (!cond) return true;
         for (const k in cond) {
-          if (sel[k] && sel[k] !== 'any' && sel[k] !== cond[k]) return false;
+          if (sel[k] !== cond[k]) return false;
         }
         return true;
       }
+      const bfs = function (adjacency, root) {
+        const seen = {};
+        if (cy.getElementById(root).empty()) return seen;
+        seen[root] = true;
+        const queue = [root];
+        while (queue.length) {
+          const n = queue.shift();
+          (adjacency[n] || []).forEach(function (m) {
+            if (!seen[m]) { seen[m] = true; queue.push(m); }
+          });
+        }
+        return seen;
+      };
+      const hasEnd = cy.getElementById('__end__').nonempty();
       function applyFilter() {
         const sel = {};
         opts.filters.forEach(function (f) {
@@ -2372,37 +2416,81 @@ window.NORTHWOOD_PROJECTIONS = [
         });
         const active = !opts.filters.every(function (f) { return sel[f.key] === 'any'; });
 
-        // Reachability from the start node over filter-matched edges only.
-        const adj = {};
-        cy.edges().forEach(function (e) {
-          if (!edgeMatches(e, sel)) return;
-          const s = e.data('source');
-          (adj[s] = adj[s] || []).push(e.data('target'));
+        // A dimension left on 'any' is the UNION over its concrete values, NOT
+        // "match any edge". Computing reachability per fully-concrete combination
+        // and unioning the kept sets stops a single path from mixing different
+        // values of one dimension through a shared rejoin node (e.g. the
+        // prepayment entry started→awaiting_prepayment_invoice→invoice_created
+        // splicing onto the on_shipment settlement invoice_created→completed when
+        // pay='any'). An element is kept iff it lies on a complete __start__ →
+        // __end__ path for AT LEAST ONE concrete combination consistent with the
+        // current selections; a combo with no such path (e.g. to_order+covered,
+        // which can't co-occur) contributes nothing, so it collapses to empty.
+        const candidates = opts.filters.map(function (f) {
+          return sel[f.key] === 'any'
+            ? f.options.filter(function (o) { return o !== 'any'; })
+            : [sel[f.key]];
         });
-        const reachable = {};
-        const queue = [];
-        if (cy.getElementById('__start__').nonempty()) {
-          reachable['__start__'] = true;
-          queue.push('__start__');
-        }
-        while (queue.length) {
-          const n = queue.shift();
-          (adj[n] || []).forEach(function (t) {
-            if (!reachable[t]) { reachable[t] = true; queue.push(t); }
+        const keptNodes = {}, keptEdges = {};
+        (function expand(i, concrete) {
+          if (i === opts.filters.length) {
+            const fwd = {}, rev = {};
+            cy.edges().forEach(function (e) {
+              if (!edgeMatches(e, concrete)) return;
+              const s = e.data('source'), t = e.data('target');
+              (fwd[s] = fwd[s] || []).push(t);
+              (rev[t] = rev[t] || []).push(s);
+            });
+            const fromStart = bfs(fwd, '__start__');
+            const toEnd = hasEnd ? bfs(rev, '__end__') : null;
+            const onPath = function (id) { return fromStart[id] && (!hasEnd || toEnd[id]); };
+            cy.edges().forEach(function (e) {
+              if (edgeMatches(e, concrete) && onPath(e.data('source')) && onPath(e.data('target'))) {
+                keptEdges[e.id()] = true;
+                keptNodes[e.data('source')] = true;
+                keptNodes[e.data('target')] = true;
+              }
+            });
+            return;
+          }
+          candidates[i].forEach(function (v) {
+            concrete[opts.filters[i].key] = v;
+            expand(i + 1, concrete);
           });
-        }
+        })(0, {});
 
         cy.batch(function () {
           cy.nodes().forEach(function (n) {
-            n.toggleClass('filtered-out', active && !reachable[n.id()]);
+            n.toggleClass('filtered-out', active && !keptNodes[n.id()]);
           });
           cy.edges().forEach(function (e) {
-            const keep = edgeMatches(e, sel) && reachable[e.data('source')] && reachable[e.data('target')];
-            e.toggleClass('filtered-out', active && !keep);
+            e.toggleClass('filtered-out', active && !keptEdges[e.id()]);
           });
         });
         const vis = cy.elements().not('.filtered-out');
         cy.fit(vis.nonempty() ? vis : undefined, 24);
+
+        // Empty-state hint: a contradictory combo (e.g. to_order + covered, which
+        // can't co-occur) prunes to nothing under the bidirectional reachability
+        // above. Show an explicit message instead of a blank canvas so it doesn't
+        // read as a broken graph.
+        const anyState = cy.nodes().some(function (n) {
+          return !n.hasClass('filtered-out') && !n.hasClass('pseudo');
+        });
+        let emptyMsg = container.querySelector('.saga-empty-msg');
+        if (active && !anyState) {
+          if (!emptyMsg) {
+            if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
+            emptyMsg = document.createElement('div');
+            emptyMsg.className = 'saga-empty-msg';
+            emptyMsg.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:1.5em;color:#656d76;font-size:13px;font-style:italic;pointer-events:none;';
+            container.appendChild(emptyMsg);
+          }
+          emptyMsg.textContent = 'No path matches this filter combination — these selections can’t co-occur (see the note above).';
+          emptyMsg.style.display = 'flex';
+        } else if (emptyMsg) {
+          emptyMsg.style.display = 'none';
+        }
       }
 
       bar.addEventListener('change', applyFilter);
