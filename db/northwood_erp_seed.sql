@@ -142,39 +142,47 @@ ON CONFLICT (code) DO NOTHING;
 INSERT INTO product.product (
     product_id, sku, name, description, product_type, base_uom_id,
     is_stocked, is_purchased, is_manufactured, is_sellable,
-    sales_price, standard_cost
+    sales_price, standard_cost,
+    -- Reorder policy lives here on the product master (the source of truth):
+    -- inventory.product_card is a projection fed by product.ProductCreated +
+    -- ReorderPolicyChanged. The seed backfills both tables directly (day-1, no
+    -- event replay at boot), so these values must match the inventory card seed
+    -- below or the two pages disagree. Chest set (FG-CHEST/SA-FRAME/SA-PANEL)
+    -- follows the cabinet/drawer pattern; it isn't stocked, so it has no
+    -- inventory.product_card row to mirror.
+    reorder_point, reorder_quantity
 ) VALUES
     ('00000000-0000-7000-8000-000000000001', 'FG-TABLE-001',   'Wooden Dining Table',
      'Finished wooden dining table',  'finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  true,  650.00, 320.00),
+     true, false, true,  true,  650.00, 320.00,  2,  5),
     ('00000000-0000-7000-8000-000000000002', 'RM-BOARD-001',   'Wooden Board',
      'Timber board for table top',    'raw_material',  '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false,   0.00,  80.00),
+     true, true,  false, false,   0.00,  80.00, 10, 20),
     ('00000000-0000-7000-8000-000000000003', 'RM-LEG-001',     'Table Leg',
      'Timber table leg',              'raw_material',  '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false,   0.00,  25.00),
+     true, true,  false, false,   0.00,  25.00, 20, 40),
     ('00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',   'Screw Pack',
      'Screw pack for one table',      'raw_material',  '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false,   0.00,   5.00),
+     true, true,  false, false,   0.00,   5.00, 10, 30),
     ('00000000-0000-7000-8000-000000000005', 'RM-VARNISH-001', 'Varnish Pack',
      'Varnish portion for one table', 'raw_material',  '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false,   0.00,  12.00),
+     true, true,  false, false,   0.00,  12.00, 10, 30),
     -- Sub-assembly demo set: a cabinet whose BOM has a drawer sub-assembly
     -- plus extra raw materials. Drives the sub-assembly recursion path in
     -- WorkOrderReleaseService and the BOM cycle detector's "this would close
     -- a loop" rejection path.
     ('00000000-0000-7000-8000-000000000200', 'FG-CABINET-001', 'Storage Cabinet',
      'Wooden storage cabinet with drawer', 'finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  true,  890.00, 420.00),
+     true, false, true,  true,  890.00, 420.00,  1,  3),
     ('00000000-0000-7000-8000-000000000201', 'SA-DRAWER-001', 'Cabinet Drawer Sub-assembly',
      'Drawer pre-built for cabinet',       'semi_finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  false, 0.00,    65.00),
+     true, false, true,  false, 0.00,    65.00,  0,  0),
     ('00000000-0000-7000-8000-000000000202', 'RM-DRAWER-FRONT-001', 'Drawer Front Panel',
      'Pre-cut front panel for drawer',     'raw_material',       '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false, 0.00,    18.00),
+     true, true,  false, false, 0.00,    18.00,  5, 10),
     ('00000000-0000-7000-8000-000000000203', 'RM-DRAWER-RUNNER-001', 'Drawer Runner',
      'Slide runner pair for drawer',       'raw_material',       '00000000-0000-7000-8000-000000000010',
-     true, true,  false, false, 0.00,    14.00),
+     true, true,  false, false, 0.00,    14.00,  5, 10),
     -- Multi-level BOM demo set: chest of drawers, with a frame sub-assembly
     -- that itself contains a panel sub-assembly. Exercises the §2.24.3
     -- recursive-CTE walk through 3 levels, and demonstrates the "same
@@ -182,13 +190,13 @@ INSERT INTO product.product (
     -- depth 1 (chest), depth 2 (frame + drawer), and depth 3 (panel).
     ('00000000-0000-7000-8000-000000000300', 'FG-CHEST-001', 'Chest of Drawers',
      'Wooden chest of drawers with two drawers and a panelled frame', 'finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  true,  1490.00, 720.00),
+     true, false, true,  true,  1490.00, 720.00,  1,  3),
     ('00000000-0000-7000-8000-000000000301', 'SA-FRAME-001', 'Chest Frame Sub-assembly',
      'Panelled frame that holds the chest drawers',                   'semi_finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  false, 0.00,     380.00),
+     true, false, true,  false, 0.00,     380.00,  0,  0),
     ('00000000-0000-7000-8000-000000000302', 'SA-PANEL-001', 'Side Panel Sub-assembly',
      'Side panel built from board + varnish + screws',                'semi_finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  false, 0.00,     105.00),
+     true, false, true,  false, 0.00,     105.00,  0,  0),
     -- Simple FG demo set: a chair. Re-uses RM-LEG/BOARD/SCREW/VARNISH, so adds
     -- no new raws. The chair BOM (§SEED: MANUFACTURING) is the first one in
     -- the seed that carries non-zero scrap_factor_percent values — exercises
@@ -196,7 +204,7 @@ INSERT INTO product.product (
     -- realistic numbers rather than the zero-scrap default.
     ('00000000-0000-7000-8000-000000000400', 'FG-CHAIR-001', 'Wooden Dining Chair',
      'Companion chair for FG-TABLE-001',                              'finished_good',      '00000000-0000-7000-8000-000000000010',
-     true, false, true,  true,  220.00,   120.00)
+     true, false, true,  true,  220.00,   120.00,  5, 10)
 ON CONFLICT (sku) DO NOTHING;
 
 COMMIT;
@@ -319,8 +327,8 @@ INSERT INTO inventory.stock_balance (
     ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000201',  0, 0,  65.00),
     ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000202', 10, 0,  18.00),
     ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000203', 10, 0,  14.00),
-    -- Chair in MAIN: 3 pre-built; assembled locally from existing raws.
-    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000400',  3, 0, 120.00),
+    -- Chair in MAIN: 10 pre-built; assembled locally from existing raws.
+    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000400', 10, 0, 120.00),
     -- MELB stocks: finished table + the raws needed to assemble chairs.
     -- Cabinet/chest families intentionally absent so the ATP-across-locations
     -- view has obvious 0-on-hand cells. Costs match MAIN since average_cost
@@ -766,6 +774,28 @@ VALUES
     ('00000000-0000-7000-8000-000000000302', 105.00, 'AUD'),
     ('00000000-0000-7000-8000-000000000400', 120.00, 'AUD')
 ON CONFLICT (product_id) DO NOTHING;
+
+COMMIT;
+
+
+-- ============================================================================
+-- §  SEED: AGGREGATE VERSION FIXUP
+-- Seeded aggregate-root rows must land at version 1, not the table default 0.
+-- Each Jdbc*Repository.save() uses version() == 0 as its "new, not yet
+-- persisted -> INSERT" sentinel; a seeded row left at the default 0 makes the
+-- FIRST app edit re-run the INSERT and hit a duplicate-PK error (e.g. editing
+-- FG-CHAIR-001 pricing -> "duplicate key value violates product_pkey").
+-- The INSERTs above can't carry version inline without listing it in every
+-- column tuple, so we bump it once here, idempotently. Only the three seeded
+-- tables backed by a version-sentinel repository are affected:
+-- product.product, sales.customer, purchasing.supplier_product_price.
+-- ============================================================================
+
+BEGIN;
+
+UPDATE product.product                  SET version = 1 WHERE version = 0;
+UPDATE sales.customer                   SET version = 1 WHERE version = 0;
+UPDATE purchasing.supplier_product_price SET version = 1 WHERE version = 0;
 
 COMMIT;
 
