@@ -90,6 +90,14 @@ public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestR
     }
 
     @Override
+    public List<ReplenishmentRequest> findOrderPeggedForSalesOrder(UUID salesOrderHeaderId) {
+        return jdbc.query(
+            SELECT_COLUMNS + " WHERE source_sales_order_header_id = ? AND reason = 'order_pegged'",
+            ROW_MAPPER, salesOrderHeaderId
+        );
+    }
+
+    @Override
     public Optional<ReplenishmentRequest> findByLinkedPurchaseOrderId(UUID purchaseOrderId) {
         List<ReplenishmentRequest> matches = jdbc.query(
             SELECT_COLUMNS + " WHERE linked_purchase_order_id = ?",

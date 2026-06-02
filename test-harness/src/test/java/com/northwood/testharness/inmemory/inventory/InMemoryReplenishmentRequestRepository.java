@@ -61,13 +61,26 @@ public final class InMemoryReplenishmentRequestRepository implements Replenishme
     }
 
     @Override
+    public List<ReplenishmentRequest> findOrderPeggedForSalesOrder(UUID salesOrderHeaderId) {
+        List<ReplenishmentRequest> out = new ArrayList<>();
+        for (ReplenishmentRequest r : byId.values()) {
+            if (r.reason() == ReplenishmentRequest.Reason.ORDER_PEGGED
+                && salesOrderHeaderId.equals(r.sourceSalesOrderHeaderId())) {
+                out.add(r);
+            }
+        }
+        return out;
+    }
+
+    @Override
     public void save(ReplenishmentRequest r) {
         if (r.version() == 0L && !byId.containsKey(r.id().value())) {
-            // The partial unique index excludes sales_order_shortage
-            // rows, so multiple SO-driven requests for the same SKU can co-
-            // exist (each back-referenced to its own sales-order line). Only
-            // reorder-point and WO-shortage requests collide on the index.
-            if (r.reason() != ReplenishmentRequest.Reason.SALES_ORDER_SHORTAGE
+            // The partial unique index excludes the per-line demand-driven
+            // reasons (sales_order_shortage AND order_pegged, §2.43), so multiple
+            // such requests for the same SKU can co-exist (each back-referenced to
+            // its own sales-order line). Only reorder-point and WO-shortage
+            // requests collide on the index.
+            if (participatesInOneOpen(r.reason())
                 && hasOpenFor(r.productId(), r.warehouseId())) {
                 throw new DuplicateKeyException(
                     "in-memory uq_replenishment_request_open violation for product=" + r.productId()
@@ -85,11 +98,18 @@ public final class InMemoryReplenishmentRequestRepository implements Replenishme
         }
     }
 
+    /** Mirrors the partial-index WHERE clause: per-line demand reasons are excluded. */
+    private static boolean participatesInOneOpen(ReplenishmentRequest.Reason reason) {
+        return reason != ReplenishmentRequest.Reason.SALES_ORDER_SHORTAGE
+            && reason != ReplenishmentRequest.Reason.ORDER_PEGGED;
+    }
+
     private boolean hasOpenFor(UUID productId, UUID warehouseId) {
         for (ReplenishmentRequest existing : byId.values()) {
-            // SO-shortage rows don't participate in the one-open
-            // invariant (mirrors the partial-index WHERE clause).
-            if (existing.reason() == ReplenishmentRequest.Reason.SALES_ORDER_SHORTAGE) {
+            // Per-line demand rows (sales_order_shortage / order_pegged) don't
+            // participate in the one-open invariant (mirrors the partial-index
+            // WHERE clause).
+            if (!participatesInOneOpen(existing.reason())) {
                 continue;
             }
             if (existing.productId().equals(productId)

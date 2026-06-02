@@ -2,6 +2,8 @@ package com.northwood.inventory.application;
 
 import com.northwood.manufacturing.domain.events.RawMaterialReservationRequested;
 import com.northwood.sales.domain.events.StockReservationRequested;
+import com.northwood.inventory.domain.ReplenishmentRequest;
+import com.northwood.inventory.domain.ReplenishmentRequestRepository;
 import com.northwood.inventory.domain.StockReservation;
 import com.northwood.inventory.domain.StockReservationLine;
 import com.northwood.inventory.domain.StockReservationRepository;
@@ -50,6 +52,7 @@ public class StockReservationService {
     private final StockBalanceLookup balanceLookup;
     private final WarehouseLookup warehouses;
     private final ReplenishmentDetectionService replenishmentDetection;
+    private final ReplenishmentRequestRepository replenishmentRequests;
     private final OutboxAppender outbox;
 
     public StockReservationService(
@@ -58,6 +61,7 @@ public class StockReservationService {
         StockBalanceLookup balanceLookup,
         WarehouseLookup warehouses,
         ReplenishmentDetectionService replenishmentDetection,
+        ReplenishmentRequestRepository replenishmentRequests,
         OutboxAppender outbox
     ) {
         this.stockReservations = stockReservations;
@@ -65,6 +69,7 @@ public class StockReservationService {
         this.balanceLookup = balanceLookup;
         this.warehouses = warehouses;
         this.replenishmentDetection = replenishmentDetection;
+        this.replenishmentRequests = replenishmentRequests;
         this.outbox = outbox;
     }
 
@@ -203,6 +208,8 @@ public class StockReservationService {
             log.info("no live reservation to release for sales_order={}", salesOrderHeaderId);
         }
 
+        unpegForSalesOrder(salesOrderHeaderId);
+
         InventorySalesOrderCancellationApplied ack = new InventorySalesOrderCancellationApplied(
             UUID.randomUUID(), salesOrderHeaderId, released, Instant.now()
         );
@@ -224,6 +231,47 @@ public class StockReservationService {
             stockBalances.releaseReserved(warehouseId, line.productId(), line.reservedQuantity());
         }
         stockReservations.markReleased(headerId);
+    }
+
+    /**
+     * Un-peg a cancelled sales order's order-pegged ({@code to_order}, §2.43)
+     * supply. The peg-on-completion (slices C/D) reserves the built/bought
+     * output on {@code stock_balance.reserved_quantity} — <em>outside</em> the
+     * {@code StockReservation} row {@link #unwindReservation} unwinds — so cancel
+     * must release it explicitly:
+     * <ul>
+     *   <li>{@code FULFILLED} → the peg already reserved {@code requestedQuantity};
+     *       release it so the stock returns to the free pool (un-peg → the SKU
+     *       behaves as make-to-stock from here, no write-off for standard
+     *       catalogue items);</li>
+     *   <li>{@code REQUESTED}/{@code DISPATCHED} (in-flight WO/PO) → drop the peg
+     *       by cancelling the request: nothing is reserved yet, and the eventual
+     *       completion credits stock to the pool but no longer pegs/fulfils (the
+     *       completion handlers act only on a {@code DISPATCHED} request);</li>
+     *   <li>{@code CANCELLED} → idempotent no-op (redelivered cancel).</li>
+     * </ul>
+     * Sales-order-shortage replenishments are untouched — their reserve lands in
+     * the {@code StockReservation} row and is released by {@link #unwindReservation}.
+     */
+    private void unpegForSalesOrder(UUID salesOrderHeaderId) {
+        for (ReplenishmentRequest r : replenishmentRequests.findOrderPeggedForSalesOrder(salesOrderHeaderId)) {
+            switch (r.status()) {
+                case FULFILLED -> {
+                    stockBalances.releaseReserved(r.warehouseId(), r.productId(), r.requestedQuantity());
+                    log.info("un-pegged {} of product={} for cancelled sales_order={} → returned to free pool",
+                        r.requestedQuantity(), r.productId(), salesOrderHeaderId);
+                }
+                case REQUESTED, DISPATCHED -> {
+                    String priorStatus = r.status().dbValue();
+                    r.markCancelled("sales order " + salesOrderHeaderId
+                        + " cancelled — dropping order-pegged supply (settles into free pool)");
+                    replenishmentRequests.save(r);
+                    log.info("dropped in-flight order-pegged replenishment={} (status was {}) for cancelled sales_order={}",
+                        r.id().value(), priorStatus, salesOrderHeaderId);
+                }
+                case CANCELLED -> { /* already cancelled — idempotent */ }
+            }
+        }
     }
 
     private void cancelPriorReservationFor(UUID workOrderId, UUID warehouseId) {

@@ -83,7 +83,8 @@ public final class InventoryTestKit {
             reorderPolicies, stockBalances, productReplenishment, replenishmentRequests, appender
         );
         this.service = new StockReservationService(
-            reservations, stockBalances, stockBalances, warehouses, replenishmentDetection, appender
+            reservations, stockBalances, stockBalances, warehouses, replenishmentDetection,
+            replenishmentRequests, appender
         );
         this.shipmentService = new ShipmentService(
             shipments, stockBalances, stockMovements, warehouses, salesOrderLineFacts,

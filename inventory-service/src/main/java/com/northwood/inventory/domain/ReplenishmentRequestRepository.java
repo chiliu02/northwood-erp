@@ -1,5 +1,6 @@
 package com.northwood.inventory.domain;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -9,6 +10,15 @@ import java.util.UUID;
 public interface ReplenishmentRequestRepository {
 
     Optional<ReplenishmentRequest> findById(ReplenishmentRequestId id);
+
+    /**
+     * All order-pegged ({@code reason = order_pegged}) requests raised for a
+     * sales order, any status (§2.43 Slice E). Used by the cancel/un-peg path:
+     * a fulfilled pegged request's reserve is released back to the free pool; an
+     * in-flight (requested/dispatched) one is dropped so its eventual completion
+     * credits stock to the pool without re-pegging.
+     */
+    List<ReplenishmentRequest> findOrderPeggedForSalesOrder(UUID salesOrderHeaderId);
 
     /**
      * Find an open (or dispatched) replenishment by the downstream aggregate it's

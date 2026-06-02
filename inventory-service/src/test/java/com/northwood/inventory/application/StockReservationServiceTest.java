@@ -12,6 +12,9 @@ import static org.mockito.Mockito.when;
 
 import com.northwood.manufacturing.domain.events.RawMaterialReservationRequested;
 import com.northwood.sales.domain.events.StockReservationRequested;
+import com.northwood.inventory.domain.ReplenishmentRequest;
+import com.northwood.inventory.domain.ReplenishmentRequest.DispatchedAggregateKind;
+import com.northwood.inventory.domain.ReplenishmentRequest.TargetService;
 import com.northwood.inventory.domain.StockReservation;
 import com.northwood.inventory.domain.StockReservationRepository;
 import com.northwood.inventory.domain.StockReservationRepository.ReservedLineSnapshot;
@@ -47,6 +50,7 @@ class StockReservationServiceTest {
     @Mock StockBalanceLookup balanceLookup;
     @Mock WarehouseLookup warehouses;
     @Mock ReplenishmentDetectionService replenishmentDetection;
+    @Mock com.northwood.inventory.domain.ReplenishmentRequestRepository replenishmentRequests;
     @Mock OutboxAppender outbox;
 
     private static final UUID SO_LINE_1 = UUID.randomUUID();
@@ -56,7 +60,8 @@ class StockReservationServiceTest {
     @BeforeEach
     void setUp() {
         service = new StockReservationService(
-            reservations, stockBalances, balanceLookup, warehouses, replenishmentDetection, outbox
+            reservations, stockBalances, balanceLookup, warehouses, replenishmentDetection,
+            replenishmentRequests, outbox
         );
     }
 
@@ -343,6 +348,41 @@ class StockReservationServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("disappeared mid-release");
             verify(outbox, never()).append(any(), any());
+        }
+
+        @Test void unpeg_releases_reserved_for_fulfilled_order_pegged_request() {
+            // §2.43 Slice E: the peg-on-completion reserved 10 outside the
+            // StockReservation row; cancel must release it back to the pool.
+            when(reservations.findActiveHeaderIdForSalesOrder(SO)).thenReturn(Optional.empty());
+            ReplenishmentRequest req = ReplenishmentRequest.requestForOrderPegged(
+                PRODUCT_1, WAREHOUSE, new BigDecimal("10"), TargetService.MANUFACTURING, SO, SO_LINE_1);
+            req.pullPendingEvents();
+            req.markDispatched(DispatchedAggregateKind.WORK_ORDER, UUID.randomUUID());
+            req.pullPendingEvents();
+            req.markFulfilled();
+            req.pullPendingEvents();
+            when(replenishmentRequests.findOrderPeggedForSalesOrder(SO)).thenReturn(List.of(req));
+
+            service.releaseForSalesOrder(SO);
+
+            verify(stockBalances).releaseReserved(WAREHOUSE, PRODUCT_1, new BigDecimal("10"));
+        }
+
+        @Test void unpeg_cancels_in_flight_order_pegged_request_without_releasing() {
+            when(reservations.findActiveHeaderIdForSalesOrder(SO)).thenReturn(Optional.empty());
+            ReplenishmentRequest req = ReplenishmentRequest.requestForOrderPegged(
+                PRODUCT_1, WAREHOUSE, new BigDecimal("10"), TargetService.MANUFACTURING, SO, SO_LINE_1);
+            req.pullPendingEvents();
+            req.markDispatched(DispatchedAggregateKind.WORK_ORDER, UUID.randomUUID());
+            req.pullPendingEvents();
+            when(replenishmentRequests.findOrderPeggedForSalesOrder(SO)).thenReturn(List.of(req));
+
+            service.releaseForSalesOrder(SO);
+
+            verify(replenishmentRequests).save(req);
+            assertThat(req.status()).isEqualTo(ReplenishmentRequest.Status.CANCELLED);
+            // Nothing reserved yet (WO/PO still in flight) → no release.
+            verify(stockBalances, never()).releaseReserved(any(), any(), any());
         }
     }
 
