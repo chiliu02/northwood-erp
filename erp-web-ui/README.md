@@ -37,14 +37,14 @@ Each backend command takes its own terminal. IntelliJ run configurations are the
 
 ## What's wired
 
-C0 (shipped 2026-05-06) — shell + one real route:
+Shipped 2026-05-06 — shell + one real route:
 - Module-grouped sidebar (Sales / Purchasing / Inventory / Manufacturing / Finance / Reporting / System).
-- AppBar with logo + global search + notifications + user menu (anonymous placeholder until Slice A).
+- AppBar with logo + global search + notifications + user menu (anonymous placeholder until auth lands).
 - Breadcrumb on every page.
 - UI primitives (`<DataGrid>`, `<StatusPill>`, `<PageHeader>`, `<ActionButton>`, `<Breadcrumb>`).
 - `/sales-orders` — full list reading from reporting's projection. Every other module sub-page renders `<Placeholder>`.
 
-Sub-slices C1–C4 fill in the placeholders.
+Later changes fill in the placeholders.
 
 ## Visual identity
 

@@ -25,7 +25,7 @@ import java.util.UUID;
  *
  * <p><b>Treatment A (GL):</b> finance posts <b>no</b> journal entry at invoice
  * creation — the deposit is recognised only when the customer pays (Dr Cash /
- * Cr 2110 Customer Deposits), and revenue is recognised at shipment (Slice C).
+ * Cr 2110 Customer Deposits), and revenue is recognised at shipment.
  */
 public record DepositInvoiceRequested(
     UUID eventId,

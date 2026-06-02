@@ -66,7 +66,7 @@ export function SalesOrderNew() {
   const [lines, setLines] = useState<DraftLine[]>([]);
 
   // Snapshot the selected customer's defaultPaymentTerms onto the form so the
-  // wire payload posted to /api/sales-cmd matches Slice A.1's server-side
+  // wire payload posted to /api/sales-cmd matches the server-side
   // "inherit from customer" semantic visually. The user can still override
   // before posting; an explicit override sticks across subsequent customer
   // changes.

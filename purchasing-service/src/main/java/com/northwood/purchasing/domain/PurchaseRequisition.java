@@ -213,7 +213,7 @@ public final class PurchaseRequisition {
      * shape to {@link #create} but with the {@code STOCK_REPLENISHMENT}
      * source type, the {@code sourceReplenishmentRequestId} threaded through,
      * AND a sibling {@link ReplenishmentDispatched} event emitted alongside
-     * {@code PurchaseRequisitionCreated} so inventory's Slice E
+     * {@code PurchaseRequisitionCreated} so inventory's
      * close-the-loop handler picks up the dispatch atomically.
      */
     public static PurchaseRequisition createForStockReplenishment(

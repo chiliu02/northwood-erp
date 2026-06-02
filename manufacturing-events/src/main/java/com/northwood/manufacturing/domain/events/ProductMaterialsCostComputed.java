@@ -19,8 +19,8 @@ import java.util.UUID;
  * {@code reason} is {@code "inputs_missing"}. Consumers that surface the
  * value to a human should render "—" or "n/a" in that case.
  *
- * <p>{@code reason} values for Slice C: {@code "supplier_price_change"},
- * {@code "inputs_missing"}. Slice D will add {@code "bom_activated"},
+ * <p>{@code reason} values: {@code "supplier_price_change"},
+ * {@code "inputs_missing"}. A later change adds {@code "bom_activated"},
  * {@code "bom_line_changed"}, {@code "child_materials_cost_changed"}.
  *
  * <p>Pure read-side concern — emitted directly from the service, not from

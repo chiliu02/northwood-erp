@@ -32,7 +32,7 @@ class KeycloakRealmRoleConverterTest {
 
     @Test
     void hasRole_works_against_emitted_authorities() {
-        // hasRole('catalog_manager') is the runtime expression Slice B uses;
+        // hasRole('catalog_manager') is the runtime expression role enforcement uses;
         // make sure the prefix shape matches what Spring Security expects.
         Jwt jwt = jwt(Map.of("realm_access", Map.of("roles", List.of("catalog_manager"))));
         AbstractAuthenticationToken token = converter.convert(jwt);

@@ -12,16 +12,16 @@ import org.springframework.security.oauth2.jwt.Jwt;
  * {@code actorUserId} fields).
  *
  * <p>{@link #currentUsername()} returns the Keycloak {@code preferred_username}
- * when the request carried a JWT (Slice A guarantees this for every endpoint
+ * when the request carried a JWT (security guarantees this for every endpoint
  * except the actuator allow-list). Returns {@code Optional.empty()} when no
  * authentication is in progress — applies to the actuator paths, to
  * Liquibase / outbox-publisher / saga-worker threads that run outside an HTTP
  * request, and to unit tests that don't set up a {@link SecurityContextHolder}.
  *
- * <p>Slice B2 will use this in the application layer to stamp the actor on
- * aggregate-header rows + outbox event payloads. Slice B1 only needs the
- * accessor to exist + be wired so existing code can start preparing call
- * sites.
+ * <p>The application layer uses this to stamp the actor on
+ * aggregate-header rows + outbox event payloads. At minimum the
+ * accessor only needs to exist + be wired so existing code can start
+ * preparing call sites.
  *
  * <p>Registered as a {@code @Bean} via
  * {@link OAuth2ResourceServerSecurityConfig} rather than {@code @Component}

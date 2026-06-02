@@ -105,11 +105,11 @@ public class JdbcReplenishmentHistoryProjection implements ReplenishmentHistoryP
         // target_service and reason. If we hit a true out-of-order insert
         // (dispatch before request), the CHECK rejects the placeholder INSERT
         // and the row will arrive later via the requested handler. Treat
-        // this as a known harmless gap — Slice E's same-tx producer guarantees
+        // this as a known harmless gap — the same-tx producer guarantees
         // the request event lands before the dispatch within one producer's
         // outbox; cross-producer races (purchasing dispatch + inventory
         // requested) are vanishingly rare since both originate in the same
-        // Slice B detection-tx. If observed, fallback to a SELECT-then-UPDATE
+        // detection-tx. If observed, fallback to a SELECT-then-UPDATE
         // would be the right fix.
         log.info("recorded replenishment dispatched {} → {} {} (rows={})",
             replenishmentRequestId, dispatchedAggregateKind, dispatchedAggregateId, rows);

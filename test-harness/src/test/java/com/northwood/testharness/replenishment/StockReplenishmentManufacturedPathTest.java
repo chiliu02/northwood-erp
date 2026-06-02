@@ -133,7 +133,7 @@ class StockReplenishmentManufacturedPathTest {
         // Step 2: simulate the WO completing. In production this flows through
         // operation-completion + saga-worker; the harness scenario shortcuts
         // by emitting WorkOrderManufacturingCompleted directly. inv's existing
-        // handler bumps FG stock and (Slice E extension) finds + fulfils the
+        // handler bumps FG stock and (the close-the-loop extension) finds + fulfils the
         // open replenishment whose dispatched_aggregate_id matches.
         UUID completionEventId = UUID.randomUUID();
         WorkOrderManufacturingCompleted completion = new WorkOrderManufacturingCompleted(

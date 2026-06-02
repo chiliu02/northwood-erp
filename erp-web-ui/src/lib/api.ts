@@ -3,7 +3,7 @@
  * :8089; in production the SPA is served from the BFF itself so the
  * paths still resolve. No baseURL needed.
  *
- * Slice A: a 401 from the BFF means there's no live OIDC session; we
+ * A 401 from the BFF means there's no live OIDC session; we
  * navigate the browser to /oauth2/authorization/keycloak so Spring Security
  * starts the code flow against Keycloak. Once the user logs in and Keycloak
  * redirects back to /login/oauth2/code/keycloak, the BFF stamps a session

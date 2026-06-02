@@ -161,7 +161,7 @@ bug.
 
 **Reference detail** lives in `architecture.md` under *Aggregate-root stamping: an event names the aggregate the fact is about*.
 
-### Vendor-flip recompute deferred (materials-cost Slice C limitation)
+### Vendor-flip recompute deferred (materials-cost limitation)
 
 **Locked 2026-05-08 as the initial scope.** The materialsCost rollup engine reacts only to `purchasing.SupplierProductPriceChanged`. A `product.ApprovedVendorListChanged` that flips the preferred supplier does *not* immediately trigger a recompute — the cost reflects the previous preferred supplier's price until the new preferred supplier emits its first `SupplierProductPriceChanged`.
 
@@ -183,21 +183,21 @@ bug.
 
 **Currency-mismatch policy (locked 2026-05-08):** the BoM rollup throws `IllegalStateException` when components in the same BoM are priced in different currencies. The thrown exception rolls back the whole inbox handler / activation transaction, so a single corrupted state can't half-apply. The throw is surfaced to operators rather than silenced because cross-currency rollup is a meaningful business decision (which rate? what date? whose system of record?) — defaulting to a silent conversion would hide the choice.
 
-**Locked alternative for Slice E:** add a `CurrencyConverter` (already exists in finance-service; needs a manufacturing-side instance) + a `CurrencyPolicy` parameter on the rollup. The throw becomes `convert via CurrencyPolicy.targetCurrency(productId, occurredAt)`. The default target is the company base (AUD for the showcase). Estimated cost: ~1 day for the converter wiring + tests; gated on the throw actually firing in the demo dataset (today everything is AUD).
+**Locked alternative:** add a `CurrencyConverter` (already exists in finance-service; needs a manufacturing-side instance) + a `CurrencyPolicy` parameter on the rollup. The throw becomes `convert via CurrencyPolicy.targetCurrency(productId, occurredAt)`. The default target is the company base (AUD for the showcase). Estimated cost: ~1 day for the converter wiring + tests; gated on the throw actually firing in the demo dataset (today everything is AUD).
 
-**Trigger surface (Slice D):**
+**Trigger surface:**
 
-1. `purchasing.SupplierProductPriceChanged` (Slice C trigger, BoM-aware in Slice D — see routing rule).
+1. `purchasing.SupplierProductPriceChanged` (supplier-price trigger, BoM-aware on the BoM-walk path — see routing rule).
 2. `product.ActiveBomChanged` via the inbox handler (cross-service path; manufacturing receives this when product-service's `Product.activateBom(...)` fires).
 3. `BomService.activate(...)` (in-service path; the actual code path most demos exercise — direct REST call to manufacturing).
 
 Both BoM-activation paths call `MaterialsCostRollupService.recomputeViaBom(productId, "bom_activated")` in the same transaction as the activation. BoM line edits (add/remove/change-quantity on draft) are *not* triggers — drafts don't affect active rollup; activation is the single point at which a draft's structure becomes visible.
 
-**What's intentionally not a trigger (Slice D):**
+**What's intentionally not a trigger:**
 
 - `BomDeactivated` / explicit deactivation flow — there's no deactivation command today (single-active-per-product, swap by activating a sibling draft which the partial unique index makes the old one inactive). When deactivation lands, the rollup needs a new reason `bom_deactivated` and a route that flips materialsCost back to the supplier-price path (or inputs_missing).
 - `MakeVsBuyChanged` — flipping `is_purchased` doesn't change the routing because BoM presence already decides. Re-flagging a product purchased while it has an active BoM doesn't move the cost; deactivating the BoM would (see above).
-- `ApprovedVendorListChanged` — the vendor-flip-recompute-deferred limitation above applies in Slice D too.
+- `ApprovedVendorListChanged` — the vendor-flip-recompute-deferred limitation above applies on the BoM-walk path too.
 
 ### Consumer-side projection for write-side validation, not sync REST
 

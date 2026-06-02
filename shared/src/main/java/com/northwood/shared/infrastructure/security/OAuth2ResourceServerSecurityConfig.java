@@ -13,9 +13,9 @@ import org.springframework.security.web.SecurityFilterChain;
 /**
  * Resource-server Spring Security wiring for every Northwood service.
  *
- * <p>Slice A's bar: every endpoint requires a valid Keycloak JWT, except a small
+ * <p>The bar: every endpoint requires a valid Keycloak JWT, except a small
  * allow-list of operational paths ({@code /actuator/health}, OpenAPI, Swagger
- * UI). No role enforcement yet — that lands in Slice B via {@code @PreAuthorize}
+ * UI). No role enforcement yet — that lands later via {@code @PreAuthorize}
  * on individual controller methods.
  *
  * <p>Auto-configured for any service that depends on

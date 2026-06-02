@@ -7,7 +7,7 @@ spring:
     oauth2:
       client:
         registration:
-          # Slice A: confidential code flow against the `northwood` Keycloak
+          # Confidential code flow against the `northwood` Keycloak
           # realm. The client secret is demo-grade — override
           # KEYCLOAK_BFF_CLIENT_SECRET in any environment that isn't your
           # laptop. Spring Security uses the registration name (`keycloak`)

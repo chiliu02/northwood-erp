@@ -194,7 +194,7 @@
     {
       "clientId": "northwood-spa",
       "name": "Northwood ERP SPA (reserved)",
-      "description": "PKCE public client reserved for direct SPA<->Keycloak OIDC if the BFF-as-proxy mode is ever swapped out. Not used in Slice A — the BFF holds the token.",
+      "description": "PKCE public client reserved for direct SPA<->Keycloak OIDC if the BFF-as-proxy mode is ever swapped out. Not used currently — the BFF holds the token.",
       "enabled": true,
       "publicClient": true,
       "protocol": "openid-connect",

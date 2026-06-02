@@ -15,7 +15,7 @@
     <name>Northwood :: ERP Web UI BFF</name>
     <description>
         Backend-for-Frontend for the operational ERP SPA (erp-web-ui): a proxy +
-        events aggregator running on port 8089. Slice A's OAuth2 / Keycloak
+        events aggregator running on port 8089. The OAuth2 / Keycloak
         wiring (OIDC code flow) lands here.
     </description>
 
@@ -34,7 +34,7 @@
             <artifactId>spring-kafka</artifactId>
         </dependency>
 
-        <!-- Slice A OAuth2 wiring. The BFF is the only browser-facing piece
+        <!-- OAuth2 wiring. The BFF is the only browser-facing piece
              that runs the OIDC code flow against Keycloak; the seven
              Northwood services are pure resource-servers and validate the
              Bearer token directly. The client starter authenticates the

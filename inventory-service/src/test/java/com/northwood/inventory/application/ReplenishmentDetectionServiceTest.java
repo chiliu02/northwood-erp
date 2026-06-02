@@ -265,7 +265,7 @@ class ReplenishmentDetectionServiceTest {
     }
 
     @Test void raiseIfNoneOpen_supports_work_order_shortage_path() {
-        // Slice C bridge will call raiseIfNoneOpen directly with its own
+        // The detection bridge will call raiseIfNoneOpen directly with its own
         // quantity + reason; this verifies the path is reusable for both
         // triggers and routes by make-vs-buy the same way.
         stubFlags(true, false);

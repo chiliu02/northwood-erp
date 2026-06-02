@@ -15,7 +15,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          # Slice A: every endpoint requires a valid Keycloak JWT.
+          # Every endpoint requires a valid Keycloak JWT.
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/northwood}
 
 server:

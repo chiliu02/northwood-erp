@@ -49,7 +49,7 @@ import tools.jackson.databind.ObjectMapper;
  * {@code ShipmentService.post} and {@code PaymentService.recordCustomerPayment}
  * — no event injection. The full make-to-order leg (manufacturing requested →
  * WO created → raw materials reserved → operation completed → manufacturing
- * completed) is exercised in Slice E (shortage recovery) where the
+ * completed) is exercised in the shortage-recovery path where the
  * manufacturing kit's full saga driving is the focus.
  */
 class OrderToCashHappyPathTest {

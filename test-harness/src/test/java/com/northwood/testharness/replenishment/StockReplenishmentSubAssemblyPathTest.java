@@ -22,7 +22,7 @@ import tools.jackson.databind.ObjectMapper;
  * sub-assembly now releases BOTH the top-level replenishment work order and a
  * child work order for the sub-assembly (the recursion ported from the
  * make-to-order path), and seeds a {@code work_order_saga} per work order
- * with a null sales-order pair (make-to-stock). Before Slice 1,
+ * with a null sales-order pair (make-to-stock). Before this change,
  * {@code releaseForReplenishment} skipped sub-assemblies and seeded no saga.
  *
  * <p>The release recursion runs synchronously inside the handler, so a single

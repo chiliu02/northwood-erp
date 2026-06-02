@@ -7,9 +7,9 @@ interface PlaceholderProps {
 }
 
 /**
- * Stub for routes not yet built. C0 ships only the Sales Orders list
+ * Stub for routes not yet built. Only the Sales Orders list ships
  * working end-to-end; everything else renders this placeholder until its
- * sub-slice (C1–C4) lands.
+ * own screen lands.
  */
 export function Placeholder({ title, trail }: PlaceholderProps) {
   return (
@@ -25,10 +25,10 @@ export function Placeholder({ title, trail }: PlaceholderProps) {
           </div>
           <h2 className="text-base font-medium text-text-primary">Coming soon</h2>
           <p className="mt-1 text-sm text-text-muted">
-            This screen is part of an upcoming slice. Slice C0 ships the Sales
-            Orders list as the reference look-and-feel; C1 fills in
-            Manufacturing, C2 Finance, C3 Purchasing + Product authoring,
-            C4 polish and cross-cutting components.
+            This screen is part of an upcoming slice. A later change ships the Sales
+            Orders list as the reference look-and-feel; subsequent changes fill in
+            Manufacturing, Finance, Purchasing + Product authoring, then
+            polish and cross-cutting components.
           </p>
         </div>
       </div>

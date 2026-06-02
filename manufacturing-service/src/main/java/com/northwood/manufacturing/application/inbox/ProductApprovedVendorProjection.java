@@ -13,7 +13,7 @@ import java.util.UUID;
  * <p>Read path: {@link #findPreferredSupplierId(UUID)} returns the unique
  * preferred supplier for a product, or {@link Optional#empty()} when there
  * is no preferred (no rows / zero preferred / multiple preferred). The
- * rollup engine (Slice C) treats {@code Optional.empty()} as one of the
+ * rollup engine treats {@code Optional.empty()} as one of the
  * "inputs missing" cases — see {@code MaterialsCostRollupService}.
  *
  * <p>Application-side port; JDBC implementation lives in

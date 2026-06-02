@@ -87,7 +87,7 @@ public final class CustomerInvoice {
      *       (Northwood's existing on-shipment flow).</li>
      *   <li>{@link #PREPAYMENT} — invoice created at order placement, NO GL
      *       at creation; payment posts Dr Cash / Cr 2110 Customer Deposits;
-     *       shipment (Slice C) reclassifies Dr 2110 / Cr Revenue.</li>
+     *       shipment reclassifies Dr 2110 / Cr Revenue.</li>
      *   <li>{@link #DEPOSIT} — part-payment invoice created at placement for
      *       {@code total × deposit_percent}, NO GL at creation; payment posts
      *       Dr Cash / Cr 2110 (same as prepayment); shipment recognises the

@@ -31,7 +31,7 @@ import org.springframework.kafka.support.KafkaHeaders;
  * "each service owns its own group, ready to split" invariant holds.
  *
  * <p>The DLT record's <em>key</em> stays the original {@code aggregateId} (the
- * Slice A recoverer preserves it), so partitions keep doing their real job —
+ * recoverer preserves it), so partitions keep doing their real job —
  * per-aggregate ordering + parallelism. This listener uses ordinary group
  * subscription with a configurable {@code concurrency}, so partitions are
  * consumed in parallel: a slow (blocking) redrive of one partition/topic never
@@ -50,7 +50,7 @@ import org.springframework.kafka.support.KafkaHeaders;
  * {@code max-attempts}, sleeping {@code delay} between them, then — if still
  * failing — the record is published to a terminal {@code <topic>.dlt.parked}
  * store for ops. Because the method <em>always returns normally</em> (it catches
- * every re-apply failure), the offset commits and the Slice A
+ * every re-apply failure), the offset commits and the
  * {@code DefaultErrorHandler} never fires on it — so there is no
  * {@code .dlt.dlt} recursion, and the {@code .+\.dlt} subscription pattern does
  * not match {@code .dlt.parked}, so parked records are never re-read.

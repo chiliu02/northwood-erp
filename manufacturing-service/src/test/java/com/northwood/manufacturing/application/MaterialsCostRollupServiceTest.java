@@ -309,7 +309,7 @@ class MaterialsCostRollupServiceTest {
             UUID rawMaterial = UUID.randomUUID();
             UUID parent = UUID.randomUUID();
 
-            // Slice C path for the raw material.
+            // Supplier-price path for the raw material.
             when(bomLookup.findActiveByFinishedProductId(rawMaterial)).thenReturn(Optional.empty());
             when(replenishment.findByProductId(rawMaterial))
                 .thenReturn(Optional.of(new ProductReplenishmentProjection.Replenishment(true, false)));
@@ -317,7 +317,7 @@ class MaterialsCostRollupServiceTest {
             when(materialsCosts.findByProductId(rawMaterial)).thenReturn(Optional.empty());
             when(bomLookup.findParentProductIdsByComponent(rawMaterial)).thenReturn(List.of(parent));
 
-            // Slice D BoM rollup for the parent.
+            // BoM rollup for the parent.
             when(bomLookup.findActiveByFinishedProductId(parent))
                 .thenReturn(Optional.of(new BomLookup.ActiveBom(UUID.randomUUID(), List.of(
                     new BomLookup.Component(rawMaterial, "RM", "Raw",

@@ -137,7 +137,7 @@ class SalesOrderServicePlaceOrderTest {
     /**
      * Per-order {@code payment_terms} flows from customer default through the snapshot,
      * with a command-level override that wins when supplied. No behavior
-     * change to the saga yet (Slice B+ hangs branching on it).
+     * change to the saga yet (later work branches on it).
      */
     @Nested class PaymentTermsSnapshot {
 

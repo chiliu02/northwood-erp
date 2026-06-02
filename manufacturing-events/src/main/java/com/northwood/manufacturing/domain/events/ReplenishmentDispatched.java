@@ -10,7 +10,7 @@ import java.util.UUID;
  * response to an {@code inventory.ReplenishmentRequested} event.
  *
  * <p>Carries the {@code replenishmentRequestId} so inventory's
- * close-the-loop handler (Slice E) can flip the originating
+ * close-the-loop handler can flip the originating
  * {@link com.northwood.inventory.domain.ReplenishmentRequest}
  * to {@code dispatched} and remember which WO will fulfil it.
  *
@@ -18,7 +18,7 @@ import java.util.UUID;
  * {@code WorkOrderCreated} emitted in the same transaction, so cross-event
  * ordering on the bus is guaranteed per WO.
  *
- * <p>Sibling-by-name to {@code purchasing.ReplenishmentDispatched} (Slice D);
+ * <p>Sibling-by-name to {@code purchasing.ReplenishmentDispatched};
  * the two events carry distinct {@code EVENT_TYPE} strings and aggregate
  * semantics — inventory consumes both through dedicated handlers.
  */

@@ -162,7 +162,7 @@ public class CustomerInvoiceService {
      * logic as {@link #createFromShippedOrder} (qty × unitPrice × taxRate from
      * the event payload verbatim) but stamps {@code invoice_type='prepayment'}
      * on the header and does <b>not</b> post a journal entry — Treatment A:
-     * revenue is deferred until shipment (Slice C), and the payment receipt
+     * revenue is deferred until shipment, and the payment receipt
      * (Cr {@code 2110 Customer Deposits}) is what touches the GL.
      */
     @Transactional

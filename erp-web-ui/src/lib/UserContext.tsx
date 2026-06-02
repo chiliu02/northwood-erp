@@ -21,7 +21,7 @@ const UserContext = createContext<UserContextValue>({
 
 /**
  * Loads {@code /api/me} once on mount and provides {@code hasRole(role)} to
- * descendants. Slice D: action buttons read this to gate themselves with a
+ * descendants. Action buttons read this to gate themselves with a
  * "requires role: X" tooltip when the current persona lacks the role.
  */
 export function UserProvider({ children }: { children: ReactNode }) {

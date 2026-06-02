@@ -8,7 +8,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 /**
  * Backend-for-Frontend for the operational ERP SPA (erp-web-ui).
  * Sibling of {@code web-ui-bff}; runs on port 8089 so the two SPAs deploy
- * independently. Slice A's OAuth2 / Keycloak wiring lands here only — the
+ * independently. The OAuth2 / Keycloak wiring lands here only — the
  * demo BFF stays anonymous.
  */
 @SpringBootApplication

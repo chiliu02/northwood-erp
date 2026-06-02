@@ -45,16 +45,16 @@ import { FinancialDashboard } from "./routes/reporting/FinancialDashboard";
 import { PurchaseOrderTracking } from "./routes/reporting/PurchaseOrderTracking";
 
 /**
- * C0 ships:
+ * This shell ships:
  *   - the full module-grouped sidebar with placeholders for every page
  *   - the Sales Orders list as the one fully wired route (look-and-feel
- *     reference for C1–C4)
+ *     reference for the remaining pages)
  *
- * Subsequent sub-slices replace placeholders in this order:
- *   C1 → Manufacturing (work orders + production board write actions)
- *   C2 → Finance (pending review, journal viewer + reverse, payments)
- *   C3 → Purchasing + Product authoring
- *   C4 → Sales cancel + cross-cutting polish
+ * Remaining pages replace placeholders in this order:
+ *   - Manufacturing (work orders + production board write actions)
+ *   - Finance (pending review, journal viewer + reverse, payments)
+ *   - Purchasing + Product authoring
+ *   - Sales cancel + cross-cutting polish
  */
 export function App() {
   return (

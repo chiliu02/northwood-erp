@@ -38,7 +38,7 @@ import tools.jackson.databind.ObjectMapper;
  *   <li>Inventory's {@code PurchasingReplenishmentDispatchedHandler}
  *       consumes the dispatch event and flips the request to
  *       {@code dispatched} (kind=purchase_requisition, id=prId).</li>
- *   <li>Inventory's {@code PurchaseOrderCreatedHandler} (Slice E extension)
+ *   <li>Inventory's {@code PurchaseOrderCreatedHandler} (the close-the-loop extension)
  *       finds the open replenishment by
  *       {@code dispatched_aggregate_id = sourcePurchaseRequisitionId} and
  *       stamps {@code linked_purchase_order_id = poId}.</li>

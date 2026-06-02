@@ -11,7 +11,7 @@ import java.util.UUID;
  * {@code targetService = "purchasing"}.
  *
  * <p>Carries the {@code replenishmentRequestId} so inventory's
- * close-the-loop handler (Slice E) can flip the originating
+ * close-the-loop handler can flip the originating
  * {@code ReplenishmentRequest} to {@code dispatched} and remember which PR
  * will fulfil it. Inventory then bridges PR → PO via the existing
  * {@code purchasing.PurchaseOrderCreated} so the eventual
@@ -21,8 +21,8 @@ import java.util.UUID;
  * as the {@code PurchaseRequisitionCreated} emitted in the same transaction,
  * so cross-event ordering on the bus is guaranteed per PR.
  *
- * <p>Sibling-by-name to {@code manufacturing.ReplenishmentDispatched}
- * (Slice C); the two events carry distinct {@code EVENT_TYPE} strings and
+ * <p>Sibling-by-name to {@code manufacturing.ReplenishmentDispatched};
+ * the two events carry distinct {@code EVENT_TYPE} strings and
  * aggregate semantics — inventory consumes both through dedicated handlers.
  */
 public record ReplenishmentDispatched(

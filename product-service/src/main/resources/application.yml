@@ -26,7 +26,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          # Slice A: every endpoint requires a valid Keycloak JWT. The shared
+          # Every endpoint requires a valid Keycloak JWT. The shared
           # SecurityConfig in the shared module activates whenever this
           # property is set; leaving it unset disables auth entirely (e.g.
           # for pure unit-test runs that don't boot Spring).

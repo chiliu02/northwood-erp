@@ -19,9 +19,9 @@ import java.util.UUID;
  * suffix is correct because the table is a read model, not aggregate state
  * (no invariants live here; it's a denormalised snapshot of compute).
  *
- * <p>{@code reason} encodes why the latest write happened — values for
- * Slice C: {@code 'supplier_price_change'}, {@code 'inputs_missing'}.
- * Slice D will add {@code 'bom_activated'}, {@code 'bom_line_changed'},
+ * <p>{@code reason} encodes why the latest write happened — values:
+ * {@code 'supplier_price_change'}, {@code 'inputs_missing'}.
+ * A later change adds {@code 'bom_activated'}, {@code 'bom_line_changed'},
  * {@code 'child_materials_cost_changed'}.
  */
 public interface ProductMaterialsCostProjection {

@@ -15,7 +15,7 @@ import java.util.UUID;
  * causation_id, actor_user_id.
  *
  * <p>{@code actorUserId} is the Keycloak {@code preferred_username} of the
- * user whose action emitted the event (Slice B2). Nullable: saga-driven
+ * user whose action emitted the event. Nullable: saga-driven
  * events created without an HTTP request context (outbox publisher,
  * polling worker, GL-posting side effects) carry null. Reporting projections
  * read this field and project it as {@code last_modified_by}; consumers

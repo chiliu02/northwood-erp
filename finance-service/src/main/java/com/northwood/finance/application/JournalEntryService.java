@@ -561,7 +561,7 @@ public class JournalEntryService {
      * existing on-shipment flow, balancing the Dr AR posted at invoice
      * creation). {@link CustomerInvoice.InvoiceType#PREPAYMENT} →
      * Cr 2110 Customer Deposits (the liability we owe the customer until
-     * shipment; reclassified to revenue at shipment in Slice C). The debit
+     * shipment; reclassified to revenue at shipment). The debit
      * side (Dr Cash) is the same regardless.
      */
     @Transactional

@@ -28,7 +28,7 @@ import tools.jackson.databind.ObjectMapper;
  * emits BOTH {@code manufacturing.WorkOrderCreated} (with the new
  * {@code replenishmentRequestId} field populated) and
  * {@code manufacturing.ReplenishmentDispatched} atomically, so inventory's
- * close-the-loop handler (Slice E) sees the dispatch and can flip the
+ * close-the-loop handler sees the dispatch and can flip the
  * originating request to {@code dispatched}.
  *
  * <p>If the SKU has no active BOM at handler time (a buyable-only SKU was

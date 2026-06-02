@@ -31,7 +31,7 @@ import org.springframework.stereotype.Service;
  * approved vendors, so it owns the rollup. (See design-notes.md →
  * "Computed values live with the engine that computes them".)
  *
- * <h3>Routing rules (Slice C + Slice D combined)</h3>
+ * <h3>Routing rules</h3>
  * <ol>
  *   <li><b>Active BoM wins.</b> If a product has an active BoM (per the
  *       {@code product_card.active_bom_header_id} / {@code bom_header.status='active'}
@@ -53,7 +53,7 @@ import org.springframework.stereotype.Service;
  *       missing input kills the parent's cost.</li>
  * </ol>
  *
- * <h3>Parent recursion (Slice D)</h3>
+ * <h3>Parent recursion</h3>
  * After {@link #applyAndWalk} writes a product's new cost, every product
  * whose active BoM lists it as a line is recomputed in the same transaction,
  * recursively. A {@link Set} of visited ids guards against the (impossible
@@ -62,7 +62,7 @@ import org.springframework.stereotype.Service;
  *
  * <h3>Currency policy (locked 2026-05-08)</h3>
  * The BoM rollup throws {@link IllegalStateException} on cross-currency
- * combinations. Slice E adds {@code CurrencyConverter} integration when the
+ * combinations. A later change adds {@code CurrencyConverter} integration when the
  * showcase needs it; today the supplier price-list is single-currency in
  * practice (AUD for the demo dataset) so the throw is defensive.
  *
@@ -101,7 +101,7 @@ public class MaterialsCostRollupService {
     }
 
     /**
-     * Slice C entry: an inbound supplier price changed. If the product has
+     * Supplier-price-change entry: an inbound supplier price changed. If the product has
      * an active BoM, the BoM is authoritative — this event doesn't change
      * the parent's materialsCost (children's events do that via the parent
      * walk). Otherwise routes through the supplier-price path.
@@ -147,7 +147,7 @@ public class MaterialsCostRollupService {
     }
 
     /**
-     * Slice D entry: recompute via BoM walk. Called from
+     * BoM-walk entry: recompute via BoM walk. Called from
      * {@code ActiveBomChangedHandler} after the active-BoM projection is updated,
      * and from the parent-walk when a child's cost changes.
      *
@@ -170,9 +170,9 @@ public class MaterialsCostRollupService {
 
         Optional<BomLookup.ActiveBom> activeBomOpt = boms.findActiveByFinishedProductId(productId);
         if (activeBomOpt.isEmpty()) {
-            // No active BoM — this should never happen for a valid Slice D
+            // No active BoM — this should never happen for a valid BoM-walk
             // trigger. Defensive: leave existing cost alone (don't blow away
-            // a Slice C supplier-price-derived row by writing inputs_missing).
+            // a supplier-price-derived row by writing inputs_missing).
             log.debug("recomputeViaBom: product={} has no active BoM, skipping", productId);
             return;
         }
@@ -210,7 +210,7 @@ public class MaterialsCostRollupService {
                         + ": already accumulating in " + currency
                         + " but component " + line.componentProductId()
                         + " has currency " + cc.currencyCode()
-                        + ". Slice E will resolve via CurrencyConverter; for now the rollup throws."
+                        + ". A future change will resolve via CurrencyConverter; for now the rollup throws."
                 );
             }
 
