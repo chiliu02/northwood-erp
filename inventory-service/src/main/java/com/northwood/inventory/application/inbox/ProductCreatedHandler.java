@@ -9,15 +9,14 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Idempotent inbox handler for {@code product.ProductCreated}. Seeds inventory's
- * consolidated {@code inventory.product_card} row (§2.38) so subsequent
- * product-master events for the SKU ({@code ReorderPolicyChanged},
- * {@code MakeVsBuyChanged}, {@code ProductDiscontinued}) have a row to project
- * onto. The seed carries the descriptive columns (sku/name/type/uom) and
- * derives the make-vs-buy defaults from the product type so the §2.35 detection
- * service has non-empty flags for day-zero SKUs before any
- * {@code MakeVsBuyChanged} arrives. §1F.2: closes the race where a product
- * registered after boot would have its {@code ReorderPolicyChanged} arrive
- * before a row exists and silently no-op.
+ * consolidated {@code inventory.product_card} row so subsequent product-master
+ * events for the SKU ({@code ReorderPolicyChanged}, {@code MakeVsBuyChanged},
+ * {@code ProductDiscontinued}) have a row to project onto. The seed carries the
+ * descriptive columns (sku/name/type/uom) and derives the make-vs-buy defaults
+ * from the product type so the detection service has non-empty flags for
+ * day-zero SKUs before any {@code MakeVsBuyChanged} arrives. Closes the race
+ * where a product registered after boot would have its
+ * {@code ReorderPolicyChanged} arrive before a row exists and silently no-op.
  */
 @Component
 public class ProductCreatedHandler extends AbstractInboxHandler<ProductCreated> {

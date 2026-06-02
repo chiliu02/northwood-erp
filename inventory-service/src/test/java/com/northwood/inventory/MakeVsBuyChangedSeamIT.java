@@ -31,13 +31,13 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.35 Slice A seam test for the inventory-side projection of
- * {@code product.MakeVsBuyChanged}. Mirrors {@link ReorderPolicyChangedSeamIT}
- * — drives a Kafka envelope onto {@code product.events} and asserts that
- * inventory's {@code @KafkaListener}, dispatcher, and
+ * Seam test for the inventory-side projection of {@code product.MakeVsBuyChanged}.
+ * Mirrors {@link ReorderPolicyChangedSeamIT} — drives a Kafka envelope onto
+ * {@code product.events} and asserts that inventory's {@code @KafkaListener},
+ * dispatcher, and
  * {@link com.northwood.inventory.application.inbox.MakeVsBuyChangedHandler}
- * land the new flags on {@code inventory.product_card}, and that
- * the inbox row records the message_id for redelivery dedup.
+ * land the new flags on {@code inventory.product_card}, and that the inbox row
+ * records the message_id for redelivery dedup.
  *
  * <p>Container lifecycle + bootstrap rationale: see
  * {@link ReorderPolicyChangedSeamIT} class Javadoc.

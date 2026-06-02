@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * Request to adjust on-hand stock for a single product (§2.29).
+ * Request to adjust on-hand stock for a single product.
  *
  * <p>{@link Mode} chooses how {@code value} is read; either way the service
  * persists the resulting {@code (N − current)} signed delta as a positive

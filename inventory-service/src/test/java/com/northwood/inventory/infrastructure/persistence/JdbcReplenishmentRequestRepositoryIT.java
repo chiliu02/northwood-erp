@@ -33,7 +33,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.35 Slice B: real-Postgres test for {@link JdbcReplenishmentRequestRepository}.
+ * Real-Postgres test for {@link JdbcReplenishmentRequestRepository}.
  * Covers the {@code save → findById} round-trip with all three enum columns
  * (status / target_service / reason), the outbox row, and the one-open-per-
  * (product, warehouse) partial unique index (the load-bearing safety net for

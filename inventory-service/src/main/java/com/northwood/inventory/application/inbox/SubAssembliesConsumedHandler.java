@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §3.3: handler for {@code manufacturing.SubAssembliesConsumed}. Decrements
+ * Handler for {@code manufacturing.SubAssembliesConsumed}. Decrements
  * {@code wip_balance.on_hand_quantity} per sub-assembly product — pairing
  * with the WIP bumps that fire on each child WO's completion.
  *

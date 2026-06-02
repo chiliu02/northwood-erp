@@ -31,7 +31,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.29: real-Postgres test for {@link JdbcStockAdjustmentRepository}
+ * Real-Postgres test for {@link JdbcStockAdjustmentRepository}
  * (post-only header aggregate). Covers the {@code save}→{@code findById}
  * round-trip incl. the {@code direction}/{@code status} {@code dbValue()}, the
  * {@code StockAdjusted} outbox row, and the post-only guard.

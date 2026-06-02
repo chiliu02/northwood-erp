@@ -11,7 +11,7 @@ import java.util.UUID;
 
 /**
  * Aggregate root for a stock adjustment: a manual inventory gain or loss for a
- * single product (cycle-count correction, damage, shrinkage, demo setup). §2.29.
+ * single product (cycle-count correction, damage, shrinkage, demo setup).
  *
  * <p>Post-only, single creation path {@link #post}: it records the change as a
  * positive {@code quantity} magnitude + a {@link StockMovementDirection}

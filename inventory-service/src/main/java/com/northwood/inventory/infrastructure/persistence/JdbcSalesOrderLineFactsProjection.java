@@ -23,10 +23,10 @@ public class JdbcSalesOrderLineFactsProjection implements SalesOrderLineFactsPro
     @Override
     @Transactional
     public void applySalesOrderPlaced(UUID salesOrderHeaderId, UUID salesOrderLineId, UUID productId, String paymentTerms) {
-        // §2.31 Slice C: paymentTerms is null on events emitted before Slice A
-        // shipped — let the column DEFAULT 'on_shipment' apply by passing null
-        // through the COALESCE on conflict and binding 'on_shipment' on the
-        // initial INSERT.
+        // paymentTerms is null on legacy events emitted before payment-terms
+        // support shipped — let the column DEFAULT 'on_shipment' apply by
+        // passing null through the COALESCE on conflict and binding 'on_shipment'
+        // on the initial INSERT.
         String pt = paymentTerms == null ? "on_shipment" : paymentTerms;
         jdbc.update("""
             INSERT INTO inventory.sales_order_line_facts (

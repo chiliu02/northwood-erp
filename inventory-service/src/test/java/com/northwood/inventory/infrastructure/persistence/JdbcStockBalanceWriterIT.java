@@ -29,7 +29,7 @@ import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * §2.5 Phase C: real-Postgres test for the stock-balance writer. The schema
+ * Real-Postgres test for the stock-balance writer. The schema
  * has three CHECK constraints on {@code inventory.stock_balance}:
  *
  * <ul>
@@ -200,9 +200,9 @@ class JdbcStockBalanceWriterIT {
         TX.executeWithoutResult(s -> WRITER.bump(SEED_WAREHOUSE_ID, productId, new BigDecimal("2")));
 
         // Trying to ship more than on_hand violates CHECK (on_hand_quantity >= 0).
-        // This is the failure mode that the §1B.9 shipment-line product
-        // validation defends against — if a buggy client mismatches productId,
-        // the shipment hits this CHECK eventually.
+        // This is the failure mode that the shipment-line product-validation
+        // defends against — if a buggy client mismatches productId, the shipment
+        // hits this CHECK eventually.
         assertThatThrownBy(() ->
             TX.executeWithoutResult(s -> WRITER.decrementOnHandAndReleaseReserved(
                 SEED_WAREHOUSE_ID, productId, new BigDecimal("5")))
@@ -233,7 +233,7 @@ class JdbcStockBalanceWriterIT {
     }
 
     // ------------------------------------------------------------------
-    // §2.29 stock-adjustment additions: decrementOnHand + findBalance
+    // Stock-adjustment additions: decrementOnHand + findBalance
     // ------------------------------------------------------------------
 
     @Test

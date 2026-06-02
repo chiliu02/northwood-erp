@@ -115,8 +115,8 @@ class StockReservationServiceTest {
             assertThat(saved.lines().get(0).shortageQuantity()).isEqualByComparingTo("6");
             assertThat(saved.lines().get(0).status()).isEqualTo(StockReservation.Status.PARTIALLY_RESERVED);
 
-            // §2.37 Slice 3: inventory raises the replenishment in the same
-            // transaction for the short line, with the sales-order back-reference.
+            // Inventory raises the replenishment in the same transaction for the
+            // short line, with the sales-order back-reference.
             verify(replenishmentDetection).raiseForSalesOrderShortage(
                 eq(PRODUCT_1), eq(WAREHOUSE), eq(new BigDecimal("6")), eq(SO), eq(SO_LINE_1));
         }
@@ -138,8 +138,8 @@ class StockReservationServiceTest {
         }
 
         @Test void try_reserve_race_loss_exhausts_retries_then_falls_back_to_failed() {
-            // §2.14: tryReserveOnHand always loses the race; bounded retry
-            // exhausts after RESERVE_MAX_ATTEMPTS and falls back to FAILED.
+            // tryReserveOnHand always loses the race; bounded retry exhausts
+            // after RESERVE_MAX_ATTEMPTS and falls back to FAILED.
             when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
             when(balanceLookup.findAvailableQuantity(WAREHOUSE, PRODUCT_1)).thenReturn(new BigDecimal("10"));
             when(stockBalances.tryReserveOnHand(WAREHOUSE, PRODUCT_1, new BigDecimal("10"))).thenReturn(false);
@@ -157,9 +157,9 @@ class StockReservationServiceTest {
         }
 
         @Test void try_reserve_recovers_on_retry_after_one_race_loss() {
-            // §2.14: first attempt loses the race; second attempt succeeds at
-            // the original quantity (the winner released some stock back, or
-            // a tight transient race that resolved in our favour on retry).
+            // First attempt loses the race; second attempt succeeds at the
+            // original quantity (the winner released some stock back, or a
+            // tight transient race that resolved in our favour on retry).
             when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
             when(balanceLookup.findAvailableQuantity(WAREHOUSE, PRODUCT_1)).thenReturn(new BigDecimal("10"));
             when(stockBalances.tryReserveOnHand(WAREHOUSE, PRODUCT_1, new BigDecimal("10")))
@@ -178,9 +178,9 @@ class StockReservationServiceTest {
         }
 
         @Test void try_reserve_retry_clamps_to_shrunk_availability_partial_reserved() {
-            // §2.14: first attempt loses the race; on re-read the winner has
-            // consumed 3 units so only 7 are available — retry succeeds at
-            // the clamped 7, lands PARTIALLY_RESERVED with shortage 3.
+            // First attempt loses the race; on re-read the winner has consumed
+            // 3 units so only 7 are available — retry succeeds at the clamped
+            // 7, lands PARTIALLY_RESERVED with shortage 3.
             when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
             when(balanceLookup.findAvailableQuantity(WAREHOUSE, PRODUCT_1))
                 .thenReturn(new BigDecimal("10"), new BigDecimal("7"));
@@ -198,8 +198,8 @@ class StockReservationServiceTest {
         }
 
         @Test void try_reserve_retry_aborts_early_when_availability_drops_to_zero() {
-            // §2.14: first attempt loses the race; on re-read the winner has
-            // consumed everything — no point retrying further. Loop exits with
+            // First attempt loses the race; on re-read the winner has consumed
+            // everything — no point retrying further. Loop exits with
             // reserved=0, status FAILED. Only ONE tryReserveOnHand call (the
             // first), because the re-read short-circuits before attempt 2.
             when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);

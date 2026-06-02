@@ -64,7 +64,7 @@ class StockAdjustmentServiceTest {
             eq(new BigDecimal("25")), isNull(),
             eq(StockMovementSourceTypes.STOCK_ADJUSTMENT), any(), isNull()
         );
-        // §2.35 Slice B: upward adjustments don't breach the reorder point.
+        // Upward adjustments don't breach the reorder point.
         verify(replenishmentDetection, never()).checkAfterOnHandDecrement(any(), any());
     }
 
@@ -81,7 +81,7 @@ class StockAdjustmentServiceTest {
             eq(new BigDecimal("10")), isNull(),
             eq(StockMovementSourceTypes.STOCK_ADJUSTMENT), any(), isNull()
         );
-        // §2.35 Slice B: downward adjustment must trigger the detection check.
+        // Downward adjustment must trigger the detection check.
         verify(replenishmentDetection).checkAfterOnHandDecrement(WAREHOUSE, PRODUCT);
     }
 

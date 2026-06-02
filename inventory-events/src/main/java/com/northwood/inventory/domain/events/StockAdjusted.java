@@ -7,7 +7,7 @@ import java.util.UUID;
 
 /**
  * A warehouse stock adjustment has been posted — a manual inventory gain or
- * loss (cycle-count correction, damage, shrinkage, demo setup). §2.29.
+ * loss (cycle-count correction, damage, shrinkage, demo setup).
  *
  * <p>The change is carried as a positive {@code quantity} magnitude plus a
  * {@code direction} ({@code in} = stock gain, {@code out} = stock loss), so

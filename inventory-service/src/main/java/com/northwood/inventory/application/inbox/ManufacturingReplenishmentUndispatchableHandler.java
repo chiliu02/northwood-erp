@@ -12,10 +12,9 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.37 Slice 3: idempotent inbox handler for
- * {@code manufacturing.ReplenishmentUndispatchable} — manufacturing couldn't
- * release a work order for the request (no active BOM). Looks up the
- * originating {@link ReplenishmentRequest} and cancels it
+ * Idempotent inbox handler for {@code manufacturing.ReplenishmentUndispatchable}
+ * — manufacturing couldn't release a work order for the request (no active BOM).
+ * Looks up the originating {@link ReplenishmentRequest} and cancels it
  * ({@code markCancelled}), which emits {@code inventory.ReplenishmentCancelled};
  * for a {@code sales_order_shortage} request that flips the sales order to
  * {@code rejected} via sales' fan-in.

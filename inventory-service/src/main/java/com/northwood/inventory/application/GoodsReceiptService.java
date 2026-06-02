@@ -172,9 +172,9 @@ public class GoodsReceiptService {
             );
         }
 
-        // §2.35 Slice E: if this receipt is for a PO linked to a replenishment,
-        // fulfil the replenishment (emits inventory.ReplenishmentFulfilled).
-        // Linked at PurchaseOrderCreated time by PurchaseOrderCreatedHandler.
+        // If this receipt is for a PO linked to a replenishment, fulfil the
+        // replenishment (emits inventory.ReplenishmentFulfilled). Linked at
+        // PurchaseOrderCreated time by PurchaseOrderCreatedHandler.
         if (command.purchaseOrderHeaderId() != null) {
             replenishmentRequests.findByLinkedPurchaseOrderId(command.purchaseOrderHeaderId())
                 .filter(r -> r.status() == ReplenishmentRequest.Status.DISPATCHED)

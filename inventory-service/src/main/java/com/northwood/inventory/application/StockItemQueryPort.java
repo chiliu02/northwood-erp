@@ -6,11 +6,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Read-side query port over {@code inventory.product_card} (§2.38 — the
- * consolidated stock_item + product_card). Returns {@link StockItemView}
- * directly — the table is a snapshot projection of upstream product-master
- * facts, never an aggregate, so no domain root sits in between. Keyed by
- * {@code productId} (the card's primary key).
+ * Read-side query port over {@code inventory.product_card} (the consolidated
+ * stock_item + product_card). Returns {@link StockItemView} directly — the
+ * table is a snapshot projection of upstream product-master facts, never an
+ * aggregate, so no domain root sits in between. Keyed by {@code productId}
+ * (the card's primary key).
  *
  * <p>Lives in {@code application/} per the {@code *QueryPort} convention.
  * JDBC implementation lives in

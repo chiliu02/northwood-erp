@@ -12,22 +12,20 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.35 Slice C — the manufacturing↔purchasing decoupling bridge.
+ * The manufacturing↔purchasing decoupling bridge.
  *
- * <p>Pre-§2.35, {@code manufacturing.RawMaterialShortageDetected} was consumed
+ * <p>Previously, {@code manufacturing.RawMaterialShortageDetected} was consumed
  * directly by purchasing's {@code RawMaterialShortageDetectedHandler}, which
  * created a {@code PurchaseRequisition} with
  * {@code source_type='work_order_shortage'}. That was the only direct
  * operational edge between manufacturing and purchasing in the codebase.
  *
- * <p>§2.35 reroutes it through inventory: this handler converts each shortage
- * component into an {@link com.northwood.inventory.domain.ReplenishmentRequest}
+ * <p>This handler reroutes it through inventory: each shortage component is
+ * converted into a {@link com.northwood.inventory.domain.ReplenishmentRequest}
  * with {@code reason='work_order_shortage'} via
  * {@link ReplenishmentDetectionService#raiseIfNoneOpen(UUID, UUID, java.math.BigDecimal, Reason)}.
  * The downstream routing (manufacturing or purchasing, by make-vs-buy) is
  * identical to the reorder-point path — one channel handles both triggers.
- * Slice D deletes the purchasing-side handler entirely; this handler is the
- * other side of that swap.
  *
  * <p>Raw materials are typically buy-only ({@code is_purchased=true},
  * {@code is_manufactured=false}), so the per-component

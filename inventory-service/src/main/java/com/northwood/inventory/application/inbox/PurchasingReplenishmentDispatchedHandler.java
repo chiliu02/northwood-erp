@@ -13,10 +13,9 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.35 Slice E: idempotent inbox handler for
- * {@code purchasing.ReplenishmentDispatched}. Sibling of
- * {@link ManufacturingReplenishmentDispatchedHandler} — flips the originating
- * {@link ReplenishmentRequest} to {@code dispatched} and records the
+ * Idempotent inbox handler for {@code purchasing.ReplenishmentDispatched}.
+ * Sibling of {@link ManufacturingReplenishmentDispatchedHandler} — flips the
+ * originating {@link ReplenishmentRequest} to {@code dispatched} and records the
  * purchase-requisition id so the PR→PO bridge ({@code PurchaseOrderCreatedHandler})
  * can later link the resulting PO.
  *

@@ -34,8 +34,8 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Consumer-idempotency e2e for the inbox dedup gate (dev-todo §2.27 item 1;
- * {@code docs/messaging.md} → <em>Reliability &amp; idempotency</em> →
+ * Consumer-idempotency e2e for the inbox dedup gate
+ * ({@code docs/messaging.md} → <em>Reliability &amp; idempotency</em> →
  * "Duplicate delivery … applied exactly once"): a redelivery carrying the same
  * {@code eventId} is applied once.
  *

@@ -22,13 +22,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Application service for manual stock adjustments (§2.29). Resolves the
- * requested change to a signed delta, persists a {@link StockAdjustment}
- * aggregate (which emits {@code inventory.StockAdjusted} for finance to post
- * the GL entry), moves {@code stock_balance.on_hand_quantity} via
- * {@link StockBalanceWriter}, and records the {@code stock_movement} audit row
- * — all in one transaction. The balance is always derived from the movement;
- * it is never set directly.
+ * Application service for manual stock adjustments. Resolves the requested
+ * change to a signed delta, persists a {@link StockAdjustment} aggregate (which
+ * emits {@code inventory.StockAdjusted} for finance to post the GL entry), moves
+ * {@code stock_balance.on_hand_quantity} via {@link StockBalanceWriter}, and
+ * records the {@code stock_movement} audit row — all in one transaction. The
+ * balance is always derived from the movement; it is never set directly.
  *
  * <p>Public methods return {@link StockAdjustmentView} rather than the
  * aggregate.
@@ -127,10 +126,10 @@ public class StockAdjustmentService {
                     .formatted(magnitude.toPlainString()));
         }
 
-        // §2.35 Slice B: if this decrement brings on_hand below reorder_point,
-        // raise an inventory.ReplenishmentRequest. Only the OUT path can
-        // breach the threshold — an upward adjustment never triggers
-        // automatic replenishment.
+        // If this decrement brings on_hand below reorder_point, raise an
+        // inventory.ReplenishmentRequest. Only the OUT path can breach the
+        // threshold — an upward adjustment never triggers automatic
+        // replenishment.
         if (direction == StockMovementDirection.OUT) {
             replenishmentDetection.checkAfterOnHandDecrement(warehouseId, command.productId());
         }

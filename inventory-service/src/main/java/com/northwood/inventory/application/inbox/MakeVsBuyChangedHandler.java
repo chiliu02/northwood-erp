@@ -8,10 +8,10 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.35 Slice A: idempotent inbox handler for {@code product.MakeVsBuyChanged}.
- * Updates the {@code inventory.product_card} projection so the §2.35
- * reorder-point detection service (Slice B) reads make-vs-buy locally rather
- * than across schemas. Mirrors manufacturing's own
+ * Idempotent inbox handler for {@code product.MakeVsBuyChanged}. Updates the
+ * {@code inventory.product_card} projection so the reorder-point detection
+ * service reads make-vs-buy locally rather than across schemas. Mirrors
+ * manufacturing's own
  * {@link com.northwood.manufacturing.application.inbox.MakeVsBuyChangedHandler}
  * — both treat product as the master and project per-facet outcomes locally.
  */

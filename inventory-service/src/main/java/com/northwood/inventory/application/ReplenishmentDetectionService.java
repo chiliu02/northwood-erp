@@ -23,7 +23,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * §2.35 Slice B: the reorder-point monitor.
+ * The reorder-point monitor.
  *
  * <p>Single entry point: {@link #checkAfterOnHandDecrement(UUID, UUID)}.
  * Called by every application service that decrements
@@ -42,13 +42,12 @@ import org.springframework.transaction.annotation.Transactional;
  * first is still open"; both threads observe the breach, both attempt to
  * raise, exactly one succeeds).
  *
- * <p>The §2.35 second trigger source ({@code RawMaterialShortageDetected} →
- * inventory bridge, Slice C) does NOT call this method — it builds the
- * request directly with {@code reason = WORK_ORDER_SHORTAGE} and a quantity
- * derived from the shortage, then calls
- * {@link #raiseIfNoneOpen(UUID, UUID, BigDecimal, Reason)} (split off so the
- * Slice-C bridge can supply its own quantity and reason while reusing the
- * routing + invariant-handling).
+ * <p>The second trigger source ({@code RawMaterialShortageDetected} → inventory
+ * bridge) does NOT call this method — it builds the request directly with
+ * {@code reason = WORK_ORDER_SHORTAGE} and a quantity derived from the shortage,
+ * then calls {@link #raiseIfNoneOpen(UUID, UUID, BigDecimal, Reason)} (split off
+ * so the bridge can supply its own quantity and reason while reusing the routing
+ * + invariant-handling).
  */
 @Service
 public class ReplenishmentDetectionService {
@@ -159,7 +158,7 @@ public class ReplenishmentDetectionService {
     }
 
     /**
-     * §2.36 Trigger C — sales-order partial-reservation shortage. Called by
+     * Sales-order partial-reservation shortage trigger. Called by
      * {@code SalesOrderPurchasingRequestedHandler} per shortage line.
      * Routes via make-vs-buy (same classifier as
      * {@link #raiseIfNoneOpen(UUID, UUID, BigDecimal, Reason)}) but always
@@ -168,12 +167,12 @@ public class ReplenishmentDetectionService {
      * can un-park the originating fulfilment saga.
      *
      * <p>Crucially, SO-shortage requests are EXCLUDED from the one-open-per-
-     * (product, warehouse) partial unique index (§2.36 Slice A schema-prep) —
-     * multiple sales orders short on the same SKU each get their own request,
-     * each back-referenced to a distinct line. No {@code DuplicateKeyException}
-     * swallow needed: the schema permits the multiplicity.
+     * (product, warehouse) partial unique index — multiple sales orders short on
+     * the same SKU each get their own request, each back-referenced to a distinct
+     * line. No {@code DuplicateKeyException} swallow needed: the schema permits
+     * the multiplicity.
      *
-     * <p>§2.37 Slice 3: unsourceable SKUs (no {@code product_card} row, or
+     * <p>Unsourceable SKUs (no {@code product_card} row, or
      * {@code is_purchased=false AND is_manufactured=false}) no longer skip
      * silently — inventory emits {@code ReplenishmentCancelled} (carrying the
      * sales-order back-reference) so sales' fan-in flips the order to
@@ -224,10 +223,10 @@ public class ReplenishmentDetectionService {
     }
 
     /**
-     * §2.37 Slice 3: a sales-order line is short on stock but the SKU can't be
-     * sourced (no make-vs-buy snapshot, or neither purchased nor manufactured).
-     * No {@link ReplenishmentRequest} can be raised — {@code target_service} is
-     * NOT NULL and there is no target — so we emit {@code ReplenishmentCancelled}
+     * A sales-order line is short on stock but the SKU can't be sourced (no
+     * make-vs-buy snapshot, or neither purchased nor manufactured). No
+     * {@link ReplenishmentRequest} can be raised — {@code target_service} is NOT
+     * NULL and there is no target — so we emit {@code ReplenishmentCancelled}
      * straight to the outbox (no aggregate to mutate). It carries the sales-order
      * back-reference so sales' {@code ReplenishmentCancelledHandler} flips the
      * order to {@code rejected}. {@code aggregateId} is a fresh id (no persisted

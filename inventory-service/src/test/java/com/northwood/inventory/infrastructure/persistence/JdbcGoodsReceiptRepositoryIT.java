@@ -32,7 +32,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.25 Tier 2: real-Postgres test for {@link JdbcGoodsReceiptRepository}
+ * Real-Postgres test for {@link JdbcGoodsReceiptRepository}
  * (post-only header+line aggregate). Covers: {@code post}→{@code findById}
  * round-trip of header + lines incl. the {@code status} {@code dbValue()} +
  * the {@code warehouse_id} FK; the {@code GoodsReceived} outbox row; and the

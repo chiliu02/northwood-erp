@@ -9,11 +9,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Application service over the {@code inventory.product_card} read-model
- * (§2.38 — the consolidated stock_item + product_card). Read-only — every
- * column is projected from product master (sku, name, type, base UoM,
- * make-vs-buy, reorder policy via Shape A) or carries a schema default
- * (tracking mode). No inventory-originated write paths exist; the table is a
- * snapshot projection.
+ * (the consolidated stock_item + product_card). Read-only — every column is
+ * projected from product master (sku, name, type, base UoM, make-vs-buy,
+ * reorder policy) or carries a schema default (tracking mode). No
+ * inventory-originated write paths exist; the table is a snapshot projection.
  *
  * <p>The controller depends on this service rather than reaching into
  * {@link StockItemQueryPort} so the application layer stays the single

@@ -6,10 +6,10 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * §2.35 Slice B: a replenishment has been requested for a SKU at a warehouse.
- * Raised by inventory's reorder-point detection service (on-hand decrement
- * paths) and by inventory's shortage-to-replenishment bridge (Slice C, driven
- * by {@code manufacturing.RawMaterialShortageDetected}).
+ * A replenishment has been requested for a SKU at a warehouse. Raised by
+ * inventory's reorder-point detection service (on-hand decrement paths) and by
+ * inventory's shortage-to-replenishment bridge (driven by
+ * {@code manufacturing.RawMaterialShortageDetected}).
  *
  * <p>Routed downstream by {@code targetService}: manufacturing's
  * {@code ReplenishmentRequestedHandler} releases a stock work order;
@@ -19,8 +19,8 @@ import java.util.UUID;
  *
  * <p>{@code aggregateId} is the replenishment_request_id.
  *
- * <p>{@code sourceSalesOrderHeaderId} (§2.37 Slice 4) is the sales order whose
- * shortage triggered this replenishment — non-null only for
+ * <p>{@code sourceSalesOrderHeaderId} is the sales order whose shortage
+ * triggered this replenishment — non-null only for
  * {@code reason = sales_order_shortage}. Manufacturing threads it onto the
  * make-to-stock {@code WorkOrderCreated} so reporting's production-planning
  * board keeps the SO↔WO link the make-to-order path used to carry directly.

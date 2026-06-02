@@ -36,12 +36,12 @@ import tools.jackson.databind.ObjectMapper;
  * model "where was this WO physically built" — manufacturing seeded a single
  * work centre under that warehouse.
  *
- * <p>§2.35 Slice E extension: if this WO was the dispatch target of a
- * {@link ReplenishmentRequest}, also flip the request to {@code fulfilled}
- * (which emits {@code inventory.ReplenishmentFulfilled} via the outbox).
- * Sub-assembly children aren't checked — replenishment WOs don't recurse
- * sub-assemblies today (see {@code WorkOrderReleaseService.releaseForReplenishment}'s
- * Javadoc on the sub-assembly skip).
+ * <p>If this WO was the dispatch target of a {@link ReplenishmentRequest}, also
+ * flip the request to {@code fulfilled} (which emits
+ * {@code inventory.ReplenishmentFulfilled} via the outbox). Sub-assembly
+ * children aren't checked — replenishment WOs don't recurse sub-assemblies
+ * today (see {@code WorkOrderReleaseService.releaseForReplenishment}'s Javadoc
+ * on the sub-assembly skip).
  */
 @Component
 public class WorkOrderManufacturingCompletedHandler extends AbstractInboxHandler<WorkOrderManufacturingCompleted> {
@@ -97,8 +97,8 @@ public class WorkOrderManufacturingCompletedHandler extends AbstractInboxHandler
                 CONSUMER_NAME, payload.finishedProductSku(), payload.finishedProductId(),
                 payload.completedQuantity(), payload.aggregateId());
 
-            // §2.35 Slice E: if this WO is the dispatch target of a
-            // ReplenishmentRequest, fulfil it (emits ReplenishmentFulfilled).
+            // If this WO is the dispatch target of a ReplenishmentRequest,
+            // fulfil it (emits ReplenishmentFulfilled).
             Optional<ReplenishmentRequest> r =
                 replenishmentRequests.findByDispatchedAggregateId(payload.aggregateId());
             if (r.isPresent()

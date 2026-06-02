@@ -87,9 +87,9 @@ public class ShipmentService {
     }
 
     /**
-     * §2.31 Slice C / §2.32 Slice C. Thrown when {@code ShipmentService.post} is
-     * asked to dispatch a prepayment- or deposit-terms sales order whose
-     * up-front payment hasn't landed yet. Mapped to HTTP 409. Inventory reads
+     * Thrown when {@code ShipmentService.post} is asked to dispatch a prepayment-
+     * or deposit-terms sales order whose up-front payment hasn't landed yet.
+     * Mapped to HTTP 409. Inventory reads
      * {@code inventory.sales_order_line_facts.upfront_settled} (flipped true by
      * {@code sales.SalesOrderUpfrontPaymentSettled}) — no cross-context read
      * into sales' saga.
@@ -148,11 +148,10 @@ public class ShipmentService {
         String warehouseCode = command.warehouseCode() == null ? WarehouseCodes.MAIN : command.warehouseCode();
         UUID warehouseId = warehouses.findIdByCode(warehouseCode);
 
-        // §2.31 / §2.32 Slice C: gate prepayment + deposit orders on
-        // upfront_settled. The header-level facts are denormalised onto each
-        // line of sales_order_line_facts (one query for both validations). Skip
-        // when no sales_order_header_id is supplied — unlinked manual shipments
-        // are an existing affordance.
+        // Gate prepayment + deposit orders on upfront_settled. The header-level
+        // facts are denormalised onto each line of sales_order_line_facts (one
+        // query for both validations). Skip when no sales_order_header_id is
+        // supplied — unlinked manual shipments are an existing affordance.
         if (command.salesOrderHeaderId() != null) {
             Optional<UpfrontPaymentGate> gate = salesOrderLineFacts.findUpfrontPaymentGate(command.salesOrderHeaderId());
             if (gate.isPresent() && !gate.get().upfrontSettled()) {
@@ -214,10 +213,10 @@ public class ShipmentService {
                 l.shippedQuantity(), l.unitCost(),
                 StockMovementSourceTypes.SHIPMENT, shipment.id().value(), l.id()
             );
-            // §2.35 Slice B: if this decrement brings on_hand below reorder_point,
-            // raise an inventory.ReplenishmentRequest (routed by make-vs-buy).
-            // Same @Transactional boundary → outbox event lands atomically with
-            // the balance write.
+            // If this decrement brings on_hand below reorder_point, raise an
+            // inventory.ReplenishmentRequest (routed by make-vs-buy). Same
+            // @Transactional boundary → outbox event lands atomically with the
+            // balance write.
             replenishmentDetection.checkAfterOnHandDecrement(warehouseId, l.productId());
         }
 

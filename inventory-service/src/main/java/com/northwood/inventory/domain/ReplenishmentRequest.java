@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * §2.35 Slice B: aggregate root for an inventory-orchestrated replenishment.
+ * Aggregate root for an inventory-orchestrated replenishment.
  * One row per request; lifecycle is linear:
  *
  * <pre>
@@ -108,15 +108,14 @@ public final class ReplenishmentRequest {
     public enum Reason {
         /** On-hand crossed below the reorder point at a balance-decrement site. */
         REORDER_POINT_BREACH("reorder_point_breach"),
-        /** §2.35 Slice C bridge — WO release found short raw materials, routed via inventory. */
+        /** WO release found short raw materials, routed via inventory. */
         WORK_ORDER_SHORTAGE("work_order_shortage"),
         /**
-         * §2.36: a sales order line is short on stock — the saga's
-         * partial-reservation path now routes purchased-only shortages through
-         * inventory (symmetric to the manufacturing branch). The
-         * {@code source_sales_order_line_id} column carries the back-reference
-         * so the eventual {@code ReplenishmentFulfilled} can un-park the
-         * fulfilment saga.
+         * A sales order line is short on stock — the saga's partial-reservation
+         * path routes purchased-only shortages through inventory (symmetric to
+         * the manufacturing branch). The {@code source_sales_order_line_id}
+         * column carries the back-reference so the eventual
+         * {@code ReplenishmentFulfilled} can un-park the fulfilment saga.
          */
         SALES_ORDER_SHORTAGE("sales_order_shortage");
 
@@ -173,7 +172,7 @@ public final class ReplenishmentRequest {
     private final TargetService targetService;
     private final Reason reason;
     /**
-     * §2.36 back-reference (saga key). Non-null iff
+     * Sales-order back-reference (saga key). Non-null iff
      * {@code reason == SALES_ORDER_SHORTAGE} — identifies the sales-order
      * header whose fulfilment saga is awaiting this replenishment. Sales is
      * keyed by header id, not line id, so this is what the fan-in handler
@@ -182,7 +181,7 @@ public final class ReplenishmentRequest {
      */
     private final UUID sourceSalesOrderHeaderId;
     /**
-     * §2.36 back-reference (line within the saga). Non-null iff
+     * Sales-order back-reference (line within the saga). Non-null iff
      * {@code reason == SALES_ORDER_SHORTAGE} — identifies the specific
      * sales-order line on the addressed saga so the fan-in handler can
      * remove just that line's entry from the saga's
@@ -217,11 +216,11 @@ public final class ReplenishmentRequest {
     }
 
     /**
-     * §2.36 factory: raise a new replenishment for a sales-order partial-
-     * reservation shortfall. Stamps both {@code sourceSalesOrderHeaderId}
-     * (saga key) and {@code sourceSalesOrderLineId} (line within saga) so
-     * the eventual {@code ReplenishmentFulfilled} carries the full address
-     * needed by sales' fan-in handler. Emits {@link ReplenishmentRequested}.
+     * Factory: raise a new replenishment for a sales-order partial-reservation
+     * shortfall. Stamps both {@code sourceSalesOrderHeaderId} (saga key) and
+     * {@code sourceSalesOrderLineId} (line within saga) so the eventual
+     * {@code ReplenishmentFulfilled} carries the full address needed by sales'
+     * fan-in handler. Emits {@link ReplenishmentRequested}.
      */
     public static ReplenishmentRequest requestForSalesOrderShortage(
         UUID productId,
@@ -406,10 +405,10 @@ public final class ReplenishmentRequest {
                 + " — only DISPATCHED requests can fulfil");
         this.status = Status.FULFILLED;
         this.fulfilledAt = Instant.now();
-        // §2.36 Slice E: payload denormalises productId + propagates the
-        // sales-order back-reference (header + line) so consumers (notably
-        // sales' new fulfilment-saga fan-in handler) can route the event
-        // without a join back to inventory.replenishment_request.
+        // Payload denormalises productId + propagates the sales-order
+        // back-reference (header + line) so consumers (notably sales' fulfilment-
+        // saga fan-in handler) can route the event without a join back to
+        // inventory.replenishment_request.
         pendingEvents.add(new ReplenishmentFulfilled(
             UUID.randomUUID(),
             id.value(),
@@ -421,14 +420,13 @@ public final class ReplenishmentRequest {
     }
 
     /**
-     * §2.37 Slice 2: cancel this request — the downstream service couldn't
-     * source it (no active BOM / no supplier / discontinued) or inventory
-     * classified the SKU as unsourceable. Emits {@link ReplenishmentCancelled}
-     * carrying the sales-order back-reference (non-null only for
-     * {@code sales_order_shortage}) so sales' fan-in (§2.37 Slice 3) can reject
-     * the originating order. Idempotent against the already-cancelled state.
-     * Valid only from {@code REQUESTED} or {@code DISPATCHED}; a fulfilled
-     * request can't be cancelled.
+     * Cancel this request — the downstream service couldn't source it (no active
+     * BOM / no supplier / discontinued) or inventory classified the SKU as
+     * unsourceable. Emits {@link ReplenishmentCancelled} carrying the sales-order
+     * back-reference (non-null only for {@code sales_order_shortage}) so sales'
+     * fan-in can reject the originating order. Idempotent against the
+     * already-cancelled state. Valid only from {@code REQUESTED} or
+     * {@code DISPATCHED}; a fulfilled request can't be cancelled.
      */
     public void markCancelled(String reason) {
         if (status == Status.CANCELLED) {

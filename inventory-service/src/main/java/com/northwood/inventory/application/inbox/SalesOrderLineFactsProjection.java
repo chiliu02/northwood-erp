@@ -7,8 +7,8 @@ import java.util.UUID;
  * Maintains {@code inventory.sales_order_line_facts}. Seeded by
  * {@link SalesOrderPlacedHandler} when {@code sales.SalesOrderPlaced} arrives;
  * read by {@code ShipmentService.post} to validate that each posted line's
- * {@code product_id} matches the originating sales-order line, and (§2.31
- * Slice C) to refuse unpaid prepayment orders with HTTP 409.
+ * {@code product_id} matches the originating sales-order line, and to refuse
+ * unpaid prepayment orders with HTTP 409.
  *
  * <p>Defence-in-depth: without this check a buggy / malicious client could
  * decrement stock against the wrong product (no constraint catches it on the
@@ -22,9 +22,9 @@ public interface SalesOrderLineFactsProjection {
 
     /**
      * Upsert one row keyed on {@code sales_order_line_id}. ON CONFLICT-safe so
-     * a redelivered {@code SalesOrderPlaced} is a no-op. §2.31 Slice C:
-     * {@code paymentTerms} is snapshotted onto every line of the order; null
-     * (legacy events) falls back to {@code on_shipment} via the column DEFAULT.
+     * a redelivered {@code SalesOrderPlaced} is a no-op. {@code paymentTerms}
+     * is snapshotted onto every line of the order; null (legacy events) falls
+     * back to {@code on_shipment} via the column DEFAULT.
      */
     void applySalesOrderPlaced(
         UUID salesOrderHeaderId,
@@ -34,11 +34,11 @@ public interface SalesOrderLineFactsProjection {
     );
 
     /**
-     * §2.31 Slice C / §2.32 Slice C. Flip {@code upfront_settled = true} on
-     * every line of the order. Driven by {@code sales.SalesOrderUpfrontPaymentSettled}
-     * (emitted when the fulfilment saga settles the up-front payment —
-     * {@code prepaid} for prepayment, {@code deposit_paid} for deposit).
-     * Idempotent — the UPDATE is a no-op once the flag is already true.
+     * Flip {@code upfront_settled = true} on every line of the order. Driven by
+     * {@code sales.SalesOrderUpfrontPaymentSettled} (emitted when the fulfilment
+     * saga settles the up-front payment — {@code prepaid} for prepayment,
+     * {@code deposit_paid} for deposit). Idempotent — the UPDATE is a no-op once
+     * the flag is already true.
      */
     void applyUpfrontPaymentSettled(UUID salesOrderHeaderId);
 
@@ -50,10 +50,10 @@ public interface SalesOrderLineFactsProjection {
     Optional<UUID> findProductIdForLine(UUID salesOrderLineId);
 
     /**
-     * §2.31 Slice C / §2.32 Slice C. Returns the (paymentTerms, upfrontSettled)
-     * pair for any line of the order, or empty when no line-facts row exists yet
-     * (e.g. SalesOrderPlaced hasn't been consumed). Used by ShipmentService to
-     * gate up-front-payment orders: (prepayment | deposit) + !settled → HTTP 409.
+     * Returns the (paymentTerms, upfrontSettled) pair for any line of the order,
+     * or empty when no line-facts row exists yet (e.g. SalesOrderPlaced hasn't
+     * been consumed). Used by ShipmentService to gate up-front-payment orders:
+     * (prepayment | deposit) + !settled → HTTP 409.
      */
     Optional<UpfrontPaymentGate> findUpfrontPaymentGate(UUID salesOrderHeaderId);
 

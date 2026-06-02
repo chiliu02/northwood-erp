@@ -5,7 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * §2.35 Slice B: narrow read-side lookup for a SKU's reorder policy.
+ * Narrow read-side lookup for a SKU's reorder policy.
  * Per-product (not per-warehouse) — the policy is a catalogue parameter; the
  * trigger fires when ANY warehouse's on-hand drops below it.
  *

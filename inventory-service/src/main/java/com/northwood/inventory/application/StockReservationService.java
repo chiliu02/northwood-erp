@@ -72,14 +72,14 @@ public class StockReservationService {
     public void reserveForSalesOrder(StockReservationRequested payload) {
         UUID warehouseId = warehouses.findIdByCode(payload.warehouseCode() == null ? WarehouseCodes.MAIN : payload.warehouseCode());
 
-        // §2.36 Slice E retry support: a SO saga that landed at
-        // purchasing_requested and was un-parked by a ReplenishmentFulfilled
-        // re-emits StockReservationRequested to retry reservation against the
+        // SO saga retry support: a SO saga that landed at purchasing_requested
+        // and was un-parked by a ReplenishmentFulfilled re-emits
+        // StockReservationRequested to retry reservation against the
         // now-restocked inventory. The schema's UNIQUE on
         // stock_reservation_header.sales_order_header_id blocks a second
         // insert, so drop any prior reservation for this SO and roll back the
         // reserved_quantity bumps it made before creating the new one. Mirror
-        // of the work-order retry path that's been in place since the §2.9
+        // of the work-order retry path that's been in place since the
         // shortage-recovery work.
         cancelPriorSalesOrderReservation(payload.salesOrderId(), warehouseId);
 
@@ -93,12 +93,12 @@ public class StockReservationService {
             );
             lines.add(line);
 
-            // §2.37 Slice 3: inventory is the single make-vs-buy decision +
-            // trigger point. Any line short on stock raises its replenishment
-            // in THIS transaction (routing manufactured → manufacturing /
-            // purchased → purchasing itself) with the sales-order back-reference
-            // stamped, so the eventual ReplenishmentFulfilled un-parks the saga
-            // (retry reservation) and ReplenishmentCancelled rejects the order.
+            // Inventory is the single make-vs-buy decision + trigger point.
+            // Any line short on stock raises its replenishment in THIS
+            // transaction (routing manufactured → manufacturing / purchased →
+            // purchasing itself) with the sales-order back-reference stamped,
+            // so the eventual ReplenishmentFulfilled un-parks the saga (retry
+            // reservation) and ReplenishmentCancelled rejects the order.
             // Sales no longer drives manufacturing first — it just waits.
             if (line.shortageQuantity().signum() > 0) {
                 replenishmentDetection.raiseForSalesOrderShortage(
@@ -219,11 +219,11 @@ public class StockReservationService {
     }
 
     /**
-     * §2.36 Slice E: sibling of {@link #cancelPriorReservationFor(UUID, UUID)}
-     * for the sales-order retry case. Removes any earlier-attempt reservation
-     * for the same SO (e.g. the partial reservation from before the saga
-     * rerouted to {@code purchasing_requested}) so the new attempt can claim
-     * the now-restocked balance cleanly.
+     * Sibling of {@link #cancelPriorReservationFor(UUID, UUID)} for the
+     * sales-order retry case. Removes any earlier-attempt reservation for the
+     * same SO (e.g. the partial reservation from before the saga rerouted to
+     * {@code purchasing_requested}) so the new attempt can claim the
+     * now-restocked balance cleanly.
      */
     private void cancelPriorSalesOrderReservation(UUID salesOrderId, UUID warehouseId) {
         Optional<UUID> priorHeaderId = stockReservations.findAnyHeaderIdForSalesOrder(salesOrderId);
@@ -239,11 +239,11 @@ public class StockReservationService {
     }
 
     /**
-     * §2.14: retry budget for a single line's reservation attempt against a
-     * concurrent winner. Demo workload is single-tenant so the race window is
-     * effectively never hit — values are sized for "make a reasonable effort
-     * to recover from a brief race" rather than for production contention,
-     * where they'd likely be tuned via {@code @Value} configuration.
+     * Retry budget for a single line's reservation attempt against a concurrent
+     * winner. Demo workload is single-tenant so the race window is effectively
+     * never hit — values are sized for "make a reasonable effort to recover from
+     * a brief race" rather than for production contention, where they'd likely be
+     * tuned via {@code @Value} configuration.
      */
     static final int RESERVE_MAX_ATTEMPTS = 3;
     static final long[] RESERVE_BACKOFF_MS = { 10L, 40L, 160L };
@@ -256,18 +256,17 @@ public class StockReservationService {
         String productName,
         BigDecimal requested
     ) {
-        // §2.14: bounded retry with exponential backoff on lost-race against
-        // a concurrent reservation. Each attempt re-reads available stock
-        // and clamps the request to it — the winner of a race shrinks
-        // (or zeroes) what's left on the next read, and we accept whatever
-        // residual the retry can still secure.
+        // Bounded retry with exponential backoff on lost-race against a
+        // concurrent reservation. Each attempt re-reads available stock and
+        // clamps the request to it — the winner of a race shrinks (or zeroes)
+        // what's left on the next read, and we accept whatever residual the
+        // retry can still secure.
         //
         // Termination paths:
         //   - tryReserveOnHand returns true → loop exits with that quantity.
         //   - available reads as zero (no stock left) → no point retrying; exit.
         //   - all RESERVE_MAX_ATTEMPTS exhausted → reserved stays at 0, status
-        //     becomes FAILED below (same outcome as the pre-§2.14 single-shot
-        //     code on race-loss).
+        //     becomes FAILED below.
         BigDecimal reserved = BigDecimal.ZERO;
         for (int attempt = 0; attempt < RESERVE_MAX_ATTEMPTS; attempt++) {
             BigDecimal available = balanceLookup.findAvailableQuantity(warehouseId, productId);

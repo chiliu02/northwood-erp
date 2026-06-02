@@ -30,7 +30,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.25 Tier 2: real-Postgres test for {@link JdbcStockReservationRepository}
+ * Real-Postgres test for {@link JdbcStockReservationRepository}
  * (insert-only, saga-driven; no full-aggregate read). Covers: {@code save}
  * persisting header + lines + the {@code StockReserved}/{@code
  * RawMaterialsReserved} outbox row; the sales-order vs work-order XOR source +

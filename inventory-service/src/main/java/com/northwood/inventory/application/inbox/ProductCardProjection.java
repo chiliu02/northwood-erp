@@ -9,11 +9,11 @@ import java.util.UUID;
  * Write port for inventory's consolidated {@code inventory.product_card}
  * projection — inventory's consumer-side denormalized record per Product (the
  * {@code _card} convention, {@code docs/conventions.md} → *Consumer-side
- * denormalized tables*). §2.38 merged the former {@code stock_item}
+ * denormalized tables*). The former {@code stock_item}
  * (sku/name/type/uom/tracking + reorder policy) and {@code product_card}
- * (make-vs-buy flags) into one row whose lifetime mirrors the Product
- * aggregate's: seeded on {@code product.ProductCreated}, maintained by
- * attribute-change events, stamped on {@code product.ProductDiscontinued}.
+ * (make-vs-buy flags) are merged into one row whose lifetime mirrors the
+ * Product aggregate's: seeded on {@code product.ProductCreated}, maintained
+ * by attribute-change events, stamped on {@code product.ProductDiscontinued}.
  *
  * <p>Inventory holds no invariants over any column; every value is projected
  * from upstream product-master events. Pure upsert on write — the inbox dedupes
@@ -33,7 +33,7 @@ public interface ProductCardProjection {
     /**
      * Seed a stub row at product registration from {@code product.ProductCreated}.
      * Carries the descriptive columns (sku/name/type) and derives the make-vs-buy
-     * defaults from the product type (via {@link #defaultsFor}) so the §2.35
+     * defaults from the product type (via {@link #defaultsFor}) so the
      * detection service has non-empty flags for day-zero SKUs before any
      * {@code MakeVsBuyChanged} arrives. Base UOM defaults to {@code 'EA'}
      * (ProductCreated doesn't carry it); tracking-mode + reorder default at the
@@ -58,7 +58,7 @@ public interface ProductCardProjection {
 
     /**
      * Retire the product. Flips both make-vs-buy flags to {@code false} so the
-     * §2.35 detection service classifies the SKU as unsourceable (logs + skips)
+     * The detection service classifies the SKU as unsourceable (logs + skips)
      * rather than dispatching a replenishment, and stamps {@code discontinued_at}
      * as the authoritative retirement signal — flags-pair {@code (false, false)}
      * is ambiguous with a never-classified row, so consumers that need to

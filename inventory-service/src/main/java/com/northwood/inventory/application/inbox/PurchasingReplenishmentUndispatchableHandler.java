@@ -12,12 +12,11 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.37 Slice 3: idempotent inbox handler for
- * {@code purchasing.ReplenishmentUndispatchable} — purchasing couldn't raise a
- * requisition for the request (no approved vendor). Looks up the originating
- * {@link ReplenishmentRequest} and cancels it ({@code markCancelled}), which
- * emits {@code inventory.ReplenishmentCancelled}; for a
- * {@code sales_order_shortage} request that flips the sales order to
+ * Idempotent inbox handler for {@code purchasing.ReplenishmentUndispatchable}
+ * — purchasing couldn't raise a requisition for the request (no approved
+ * vendor). Looks up the originating {@link ReplenishmentRequest} and cancels it
+ * ({@code markCancelled}), which emits {@code inventory.ReplenishmentCancelled};
+ * for a {@code sales_order_shortage} request that flips the sales order to
  * {@code rejected} via sales' fan-in.
  *
  * <p>Failure counterpart of {@link PurchasingReplenishmentDispatchedHandler}.

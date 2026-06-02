@@ -16,9 +16,9 @@ import tools.jackson.databind.ObjectMapper;
  * goods-receipt write path has somewhere to validate
  * {@code (purchase_order_line_id, product_id)} against.
  *
- * <p>§2.35 Slice E extension: also bridges the PR→PO link. When the
- * originating PR was raised by purchasing's {@code ReplenishmentRequestedHandler}
- * (i.e. {@code payload.purchaseRequisitionHeaderId()} matches a
+ * <p>Also bridges the PR→PO link. When the originating PR was raised by
+ * purchasing's {@code ReplenishmentRequestedHandler} (i.e.
+ * {@code payload.purchaseRequisitionHeaderId()} matches a
  * {@link ReplenishmentRequest} dispatched to that PR), stamps
  * {@code linked_purchase_order_id} so the eventual
  * {@code inventory.GoodsReceived} can resolve back to the replenishment via
@@ -62,7 +62,7 @@ public class PurchaseOrderCreatedHandler extends AbstractInboxHandler<PurchaseOr
             );
         }
 
-        // §2.35 Slice E: bridge the PR→PO link for replenishment-driven PRs.
+        // Bridge the PR→PO link for replenishment-driven PRs.
         if (payload.purchaseRequisitionHeaderId() != null) {
             Optional<ReplenishmentRequest> r =
                 replenishmentRequests.findByDispatchedAggregateId(payload.purchaseRequisitionHeaderId());

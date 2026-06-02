@@ -8,9 +8,8 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.31 Slice C / §2.32 Slice C. Idempotent inbox handler for
- * {@code sales.SalesOrderUpfrontPaymentSettled}. Flips
- * {@code upfront_settled = true} on every line of the order so
+ * Idempotent inbox handler for {@code sales.SalesOrderUpfrontPaymentSettled}.
+ * Flips {@code upfront_settled = true} on every line of the order so
  * {@code ShipmentService.post} accepts the next shipment for it (the up-front
  * payment — prepayment or deposit — has landed). Inbox dedupe + the UPDATE's
  * {@code WHERE upfront_settled = false} guard make redelivery a clean no-op.

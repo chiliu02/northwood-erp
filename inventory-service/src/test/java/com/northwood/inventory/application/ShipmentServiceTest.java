@@ -179,7 +179,7 @@ class ShipmentServiceTest {
         verify(stockBalances, never()).decrementOnHandAndReleaseReserved(any(), any(), any());
     }
 
-    // §2.31 Slice C: prepayment shipment gate.
+    // Prepayment shipment gate.
 
     @Test void prepayment_order_not_yet_settled_rejects_with_409_exception() {
         when(salesOrderLineFacts.findUpfrontPaymentGate(SO))

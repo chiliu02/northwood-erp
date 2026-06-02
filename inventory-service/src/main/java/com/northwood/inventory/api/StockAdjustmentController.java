@@ -19,9 +19,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Manual stock-adjustment API (§2.29). Posting requires the
- * {@code warehouse_manager} role. The {@code /balance} read backs the screen's
- * before→after preview (on-hand / reserved / available for a product).
+ * Manual stock-adjustment API. Posting requires the {@code warehouse_manager}
+ * role. The {@code /balance} read backs the screen's before→after preview
+ * (on-hand / reserved / available for a product).
  */
 @RestController
 @RequestMapping("/api/stock-adjustments")

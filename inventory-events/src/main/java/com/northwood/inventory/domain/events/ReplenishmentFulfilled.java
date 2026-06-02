@@ -5,16 +5,16 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * §2.35 Slice E: a replenishment has been fulfilled. Emitted by inventory's
- * close-the-loop handlers when the downstream WO completes (manufactured
- * path) or the linked PO's goods receipt lands (purchased path).
+ * A replenishment has been fulfilled. Emitted by inventory's close-the-loop
+ * handlers when the downstream WO completes (manufactured path) or the linked
+ * PO's goods receipt lands (purchased path).
  *
  * <p>{@code aggregateId} is the replenishment_request_id. Reporting's
- * {@code reporting.replenishment_history_view} (Slice F) consumes this to
- * flip the row's status to {@code 'fulfilled'} and stamp {@code fulfilled_at}.
+ * {@code reporting.replenishment_history_view} consumes this to flip the row's
+ * status to {@code 'fulfilled'} and stamp {@code fulfilled_at}.
  *
- * <p>§2.36 Slice E extension: payload gains three fields needed by sales' new
- * fulfilment-saga fan-in handler:
+ * <p>The payload carries three fields needed by sales' fulfilment-saga fan-in
+ * handler:
  * <ul>
  *   <li>{@code productId} — denormalises the SKU so a consumer can decide
  *       whether the fulfilment is relevant to a saga it's tracking, without
@@ -29,10 +29,10 @@ import java.util.UUID;
  *       as the header id.</li>
  * </ul>
  *
- * <p>Backward compatibility: pre-§2.36 reporting consumer ignores the new
- * fields (Jackson tolerates extra fields). Old events redelivered post-§2.36
- * deserialise with the new fields as null — only the §2.36 sales-fulfilment
- * handler reads them, and it treats null as "not for me, skip".
+ * <p>Backward compatibility: older reporting consumers ignore the added fields
+ * (Jackson tolerates extra fields). Old events redelivered later deserialise
+ * with the new fields as null — the sales-fulfilment handler treats null as
+ * "not for me, skip".
  */
 public record ReplenishmentFulfilled(
     UUID eventId,

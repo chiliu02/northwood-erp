@@ -63,9 +63,9 @@ CREATE TABLE inventory.warehouse (
 INSERT INTO inventory.warehouse (warehouse_id, warehouse_code, name)
 VALUES ('00000000-0000-7000-8000-000000000020', 'WH-MAIN', 'Main Warehouse');
 
--- §2.38: inventory's single consumer-side product-master projection — the
--- merged stock_item + product_card (sku/name/type/uom/tracking + make-vs-buy
--- flags + reorder policy + discontinued_at). Only product_id is NOT NULL.
+-- Inventory's single consumer-side product-master projection — the merged
+-- stock_item + product_card (sku/name/type/uom/tracking + make-vs-buy flags +
+-- reorder policy + discontinued_at). Only product_id is NOT NULL.
 CREATE TABLE inventory.product_card (
     product_id          UUID PRIMARY KEY,
     product_sku         VARCHAR(50),
@@ -81,7 +81,7 @@ CREATE TABLE inventory.product_card (
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- §2.35 Slice B: inventory-orchestrated replenishment requests.
+-- Inventory-orchestrated replenishment requests.
 CREATE TABLE inventory.replenishment_request (
     replenishment_request_id    UUID PRIMARY KEY,
     product_id                  UUID NOT NULL,

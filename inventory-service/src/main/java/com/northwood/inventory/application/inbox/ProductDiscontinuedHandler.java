@@ -11,7 +11,7 @@ import tools.jackson.databind.ObjectMapper;
  * Idempotent inbox handler for {@code product.ProductDiscontinued}. Stamps
  * {@code inventory.product_card.discontinued_at} so reorder-alert logic can
  * suppress alerts for retired SKUs, and flips {@code is_purchased = false,
- * is_manufactured = false} so the §2.35 detection service classifies the SKU as
+ * is_manufactured = false} so the detection service classifies the SKU as
  * unsourceable (logs + skips) rather than dispatching a replenishment.
  */
 @Component

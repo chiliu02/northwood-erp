@@ -41,11 +41,11 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Consumer-atomicity e2e for the inbox {@code @Transactional} boundary
- * (dev-todo §2.27 item 1; {@code docs/messaging.md} → <em>Reliability &amp;
- * idempotency</em> → "{@code apply} + {@code recordProcessed} atomic"): when a
- * handler's {@code apply} throws after a partial write, the whole
- * {@code handle()} transaction rolls back — neither the partial projection
- * write nor an inbox row survives — and the redelivery applies it exactly once.
+ * ({@code docs/messaging.md} → <em>Reliability &amp; idempotency</em> →
+ * "{@code apply} + {@code recordProcessed} atomic"): when a handler's
+ * {@code apply} throws after a partial write, the whole {@code handle()}
+ * transaction rolls back — neither the partial projection write nor an inbox
+ * row survives — and the redelivery applies it exactly once.
  *
  * <p>A test-only {@link RollbackProbeHandler} (registered via the nested
  * {@link ProbeConfig}) handles a private {@code test.RollbackProbe} event type
@@ -56,9 +56,9 @@ import tools.jackson.databind.ObjectMapper;
  * {@code AbstractInboxHandler.handle} records the inbox row.
  *
  * <p>The probe's first-attempt failure throws a <em>retryable</em>
- * {@code RuntimeException} so the §2.28 Tier 1.A classify-and-backoff error
- * handler re-seeks (redelivers) it — a non-retryable (poison) exception would
- * correctly dead-letter instead, and this test is about reprocess-on-redelivery.
+ * {@code RuntimeException} so the classify-and-backoff error handler re-seeks
+ * (redelivers) it — a non-retryable (poison) exception would correctly
+ * dead-letter instead, and this test is about reprocess-on-redelivery.
  *
  * <p>Two {@link CountDownLatch}es make the rollback observable deterministically
  * (the error handler redelivers after its backoff, so without gating the
@@ -256,10 +256,11 @@ class InboxApplyRollbackAtomicityIT {
                     SENTINEL_VALUE, payload.aggregateId()
                 );
                 state.firstAttemptFailed.countDown();
-                // Must be a RETRYABLE exception so the §2.28 Tier 1.A error handler
-                // re-seeks (redelivers) rather than dead-letters it — a non-retryable
-                // (poison) exception like IllegalStateException would correctly go
-                // straight to the DLT, and this test is about reprocess-on-redelivery.
+                // Must be a RETRYABLE exception so the classify-and-backoff error
+                // handler re-seeks (redelivers) rather than dead-letters it — a
+                // non-retryable (poison) exception like IllegalStateException would
+                // correctly go straight to the DLT, and this test is about
+                // reprocess-on-redelivery.
                 throw new RuntimeException("simulated transient mid-apply failure after a partial write");
             }
             // Redelivery: block until the test has asserted the post-rollback state.

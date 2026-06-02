@@ -13,11 +13,11 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.35 Slice E: idempotent inbox handler for
- * {@code manufacturing.ReplenishmentDispatched}. Looks up the originating
- * {@link ReplenishmentRequest} by {@code replenishmentRequestId} and flips
- * it to {@code dispatched}, recording the work-order id so a later
- * {@code WorkOrderManufacturingCompleted} can resolve back to it.
+ * Idempotent inbox handler for {@code manufacturing.ReplenishmentDispatched}.
+ * Looks up the originating {@link ReplenishmentRequest} by
+ * {@code replenishmentRequestId} and flips it to {@code dispatched}, recording
+ * the work-order id so a later {@code WorkOrderManufacturingCompleted} can
+ * resolve back to it.
  *
  * <p>If the request can't be found (orphan dispatch event for a
  * never-recorded request — e.g. someone hand-emitted the event for testing,
