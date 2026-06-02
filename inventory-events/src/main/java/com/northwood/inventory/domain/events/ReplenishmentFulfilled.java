@@ -28,7 +28,7 @@ import java.util.UUID;
  *       {@code outstandingReplenishmentLineIds} set. Same nullable semantic
  *       as the header id.</li>
  *   <li>{@code pegged} — true when this was an order-pegged ({@code to_order})
- *       request (§2.43): inventory already reserved the output for the SO line
+ *       request: inventory already reserved the output for the SO line
  *       atomically with the stock credit, so sales marks the line reserved and
  *       ships WITHOUT a re-reservation retry. False for shortage top-ups, where
  *       the pool was merely restocked and sales must retry the reservation.</li>

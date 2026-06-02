@@ -92,7 +92,7 @@ public interface SalesOrderFulfilmentSagaManager {
      * to a specific sales-order line. Removes the line id from the saga's
      * {@code outstandingReplenishmentLineIds} set. When the set empties:
      * <ul>
-     *   <li>if every fulfilment was order-pegged ({@code pegged=true}, §2.43) the
+     *   <li>if every fulfilment was order-pegged ({@code pegged=true}) the
      *       output was already reserved on completion, so the saga goes straight
      *       to {@code ready_to_ship} — no re-reservation;</li>
      *   <li>otherwise (any shortage top-up) it transitions back to

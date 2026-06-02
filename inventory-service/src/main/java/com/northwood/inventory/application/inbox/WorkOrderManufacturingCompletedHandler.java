@@ -105,13 +105,13 @@ public class WorkOrderManufacturingCompletedHandler extends AbstractInboxHandler
                 && r.get().dispatchedAggregateKind() == ReplenishmentRequest.DispatchedAggregateKind.WORK_ORDER
                 && r.get().status() == ReplenishmentRequest.Status.DISPATCHED) {
                 ReplenishmentRequest req = r.get();
-                // Atomic peg (§2.43 Slice C): an order-pegged replenishment's
+                // Atomic peg: an order-pegged replenishment's
                 // output is dedicated to the originating SO line. Reserve it in
                 // THIS transaction (right after the on_hand credit) so it never
                 // enters free ATP and can't be stolen by a concurrent order. The
                 // generated available_quantity (on_hand - reserved) stays flat, so
                 // reporting's ATP view excludes it automatically. Releasing this
-                // peg on cancel is Slice E's un-peg job.
+                // peg on cancel is the un-peg job.
                 if (req.reason() == ReplenishmentRequest.Reason.ORDER_PEGGED) {
                     boolean pegged = stockBalances.tryReserveOnHand(
                         warehouseId, payload.finishedProductId(), payload.completedQuantity());

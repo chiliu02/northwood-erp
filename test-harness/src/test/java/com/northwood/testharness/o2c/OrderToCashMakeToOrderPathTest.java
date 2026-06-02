@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * End-to-end proof of the §2.43 <b>make-to-order</b> path: a sales order for a
+ * End-to-end proof of the <b>make-to-order</b> path: a sales order for a
  * {@code to_order} manufactured SKU raises dedicated order-pegged supply rather
  * than drawing from / building to the shared pool, and on work-order completion
  * the output is reserved (pegged) to the originating SO line atomically with the
@@ -69,7 +69,7 @@ class OrderToCashMakeToOrderPathTest {
         UUID bomHeaderId = UUID.randomUUID();
 
         sales.productCards.put(fgProductId, new BigDecimal("250.00"), Currencies.AUD);
-        sales.lineSnapshots.markOrderPegged(fgProductId);   // §2.43 to_order
+        sales.lineSnapshots.markOrderPegged(fgProductId);   // to_order
 
         inventory.productReplenishment.put(fgProductId, /*purchased=*/false, /*manufactured=*/true);
         manufacturing.replenishment.put(fgProductId, /*purchased=*/false, /*manufactured=*/true);

@@ -36,13 +36,13 @@ import org.springframework.transaction.annotation.Transactional;
  *       {@code sourceType='stock_replenishment'} + the
  *       {@code sourceReplenishmentRequestId} field populated) AND
  *       {@code purchasing.ReplenishmentDispatched} to the outbox in the
- *       same transaction so inventory's Slice E close-the-loop handler
+ *       same transaction so inventory's close-the-loop handler
  *       picks up the dispatch atomically.</li>
  * </ul>
  *
  * <p>The retired {@code createForWorkOrderShortage} path is now subsumed by the stock-replenishment path: manufacturing's
  * {@code RawMaterialShortageDetected} flows through inventory's bridge
- * (Slice C) which raises a {@code ReplenishmentRequest} that arrives here
+ * which raises a {@code ReplenishmentRequest} that arrives here
  * the same way as a reorder-point breach.
  *
  * <p>Both paths persist via {@link PurchaseRequisitionRepository#save},
@@ -114,7 +114,7 @@ public class PurchaseRequisitionService {
 
         // Manual PRs always land at draft — a human must approve via
         // POST /api/purchase-orders/{id}/approve. autoApprove=false. No
-        // originating sales order (§1J): manual requisitions aren't order-driven.
+        // originating sales order: manual requisitions aren't order-driven.
         purchaseOrders.convertFromRequisition(pr.id(), false, null);
         // Reload to capture the side effects of conversion (status update etc.)
         return purchaseRequisitions.findById(pr.id())
@@ -163,7 +163,7 @@ public class PurchaseRequisitionService {
         // Same auto-approve policy as the retired WO-shortage path
         // (northwood.purchasing.shortagePoAutoApprove, default true) — the
         // replenishment loop flows without a human in the demo path. Thread the
-        // originating sales order (§1J) into the P2P saga for the cross-saga
+        // originating sales order into the P2P saga for the cross-saga
         // trace key (null for reorder-point-driven replenishments).
         purchaseOrders.convertFromRequisition(pr.id(), shortagePoAutoApprove, command.sourceSalesOrderHeaderId());
         return Optional.of(pr.id().value());

@@ -163,7 +163,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
         FulfilmentSagaData updated = data.withReplenishmentLineFulfilled(salesOrderLineId, pegged);
         if (updated.allReplenishmentLinesFulfilled()) {
             if (!updated.requiresReservationRetry()) {
-                // §2.43 make-/buy-to-order: every outstanding line was an
+                // make-/buy-to-order: every outstanding line was an
                 // order-pegged completion — inventory already reserved each
                 // output for its SO line atomically with the stock credit. Ship
                 // straight off the peg, no re-reservation (which would re-peg).

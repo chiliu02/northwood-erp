@@ -115,7 +115,7 @@ public class ReplenishmentDetectionService {
 
     /**
      * Shared inner path used by both triggers: routes via make-vs-buy, applies
-     * the one-open invariant, persists. Public for the Slice C bridge to call.
+     * the one-open invariant, persists. Public for the peg bridge to call.
      */
     @Transactional(propagation = Propagation.REQUIRED)
     public void raiseIfNoneOpen(UUID productId, UUID warehouseId, BigDecimal quantity, Reason reason) {
@@ -194,7 +194,7 @@ public class ReplenishmentDetectionService {
     }
 
     /**
-     * Order-pegged ({@code to_order}) trigger (§2.43). Called by
+     * Order-pegged ({@code to_order}) trigger. Called by
      * {@link StockReservationService#reserveForSalesOrder} for each pegged line
      * <em>instead of</em> the free-stock reservation: the line never draws from
      * the shared pool, so this raises dedicated supply for the FULL line

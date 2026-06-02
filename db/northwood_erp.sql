@@ -419,7 +419,7 @@ CREATE TABLE sales.product_card (
     product_id UUID PRIMARY KEY,
     sales_price NUMERIC(18, 6),
     currency_code CHAR(3),
-    -- Projected from product.ReplenishmentStrategyChanged (§2.43). The fulfilment
+    -- Projected from product.ReplenishmentStrategyChanged. The fulfilment
     -- saga reads it to choose the free-stock reservation path ('to_stock') vs the
     -- order-pegged supply path ('to_order'). Seeded 'to_stock' on ProductCreated;
     -- never null (services are never sold). Light CHECK only — projections cache
@@ -764,7 +764,7 @@ CREATE TRIGGER trg_product_card_updated_at
 -- the PG unique-violation and converts it to a debug-logged no-op.
 --
 -- dispatched_aggregate_kind / dispatched_aggregate_id are populated by
--- Slice E's close-the-loop handlers when the downstream WO or PR receives
+-- the close-the-loop handlers when the downstream WO or PR receives
 -- the request. linked_purchase_order_id is stamped when the PR converts to
 -- a PO (so GoodsReceived can resolve to this request).
 CREATE TABLE inventory.replenishment_request (
@@ -774,10 +774,10 @@ CREATE TABLE inventory.replenishment_request (
     requested_quantity          NUMERIC(18, 4) NOT NULL CHECK (requested_quantity > 0),
     target_service              VARCHAR(20) NOT NULL CHECK (target_service IN ('manufacturing', 'purchasing')),
     -- sales_order_shortage is a sales order line short on stock for a SKU that
-    -- builds/buys to stock. order_pegged (§2.43) is the to_order sibling: the
+    -- builds/buys to stock. order_pegged is the to_order sibling: the
     -- line never draws from the shared pool — sales raises dedicated supply for
-    -- the FULL line qty, earmarked to that line (peg-on-completion in slices
-    -- C/D). Both carry a source-line back-reference so the sales saga can
+    -- the FULL line qty, earmarked to that line (peg-on-completion). Both carry
+    -- a source-line back-reference so the sales saga can
     -- un-park on fulfilment; distinct from reorder_point_breach (proactive
     -- policy-driven) and work_order_shortage (manufacturing's raw-material bridge).
     reason                      VARCHAR(40) NOT NULL CHECK (reason IN ('reorder_point_breach', 'work_order_shortage', 'sales_order_shortage', 'order_pegged')),
@@ -807,7 +807,7 @@ CREATE TABLE inventory.replenishment_request (
 -- One-open invariant: at most one open (requested / dispatched) request
 -- per (product, warehouse) for the proactive policy-driven and WO-shortage
 -- paths — re-triggering while a request is pending is a no-op. Demand-driven
--- per-line requests (sales_order_shortage AND order_pegged, §2.43) are
+-- per-line requests (sales_order_shortage AND order_pegged) are
 -- EXCLUDED: every such SO line raises its own request (back-referenced to the
 -- line) so the sales saga can wait for ITS specific replenishment to land,
 -- even when multiple sales orders demand the same SKU.
@@ -1880,9 +1880,9 @@ CREATE INDEX idx_purchase_order_line_product_id ON purchasing.purchase_order_lin
 CREATE TABLE purchasing.purchase_to_pay_saga (
     saga_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     purchase_order_header_id UUID NOT NULL UNIQUE,
-    -- Originating sales order (§1J cross-saga key). Non-null only when the PO
+    -- Originating sales order (cross-saga key). Non-null only when the PO
     -- traces back to a sales-order-driven replenishment (sales_order_shortage
-    -- or §2.43 order_pegged); null for manual / reorder-point PRs. Set once at
+    -- or order_pegged); null for manual / reorder-point PRs. Set once at
     -- saga creation and stamped onto every saga-milestone span as
     -- northwood.sales_order_id so a Tempo TraceQL `{ .northwood.sales_order_id
     -- = "…" }` returns the buy-side PO sub-saga alongside the order + its WO.

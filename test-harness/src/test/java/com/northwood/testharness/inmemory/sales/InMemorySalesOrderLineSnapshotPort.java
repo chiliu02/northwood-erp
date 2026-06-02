@@ -23,7 +23,7 @@ public final class InMemorySalesOrderLineSnapshotPort implements SalesOrderLineS
     private final SalesOrderRepository orders;
 
     /**
-     * Products configured order-pegged ({@code to_order}, §2.43). The aggregate
+     * Products configured order-pegged ({@code to_order}). The aggregate
      * doesn't carry the product-master replenishment strategy (it's projected
      * onto {@code sales.product_card} in production), so a test opts a product in
      * here to exercise the make-/buy-to-order fulfilment path.
@@ -34,7 +34,7 @@ public final class InMemorySalesOrderLineSnapshotPort implements SalesOrderLineS
         this.orders = orders;
     }
 
-    /** Mark a product order-pegged so its SO lines reserve dedicated supply (§2.43). */
+    /** Mark a product order-pegged so its SO lines reserve dedicated supply. */
     public InMemorySalesOrderLineSnapshotPort markOrderPegged(UUID productId) {
         orderPeggedProductIds.add(productId);
         return this;
@@ -58,7 +58,7 @@ public final class InMemorySalesOrderLineSnapshotPort implements SalesOrderLineS
                 // The in-memory SalesOrder aggregate doesn't carry the product's
                 // replenishment strategy (it's a product-master facet projected
                 // onto sales.product_card); default to_stock unless a test opted
-                // the product into order-pegged via markOrderPegged (§2.43).
+                // the product into order-pegged via markOrderPegged.
                 (orderPeggedProductIds.contains(line.productId())
                     ? ReplenishmentStrategy.TO_ORDER
                     : ReplenishmentStrategy.TO_STOCK).dbValue()

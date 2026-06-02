@@ -93,7 +93,7 @@ class ReplenishmentRequestedHandlerTest {
     }
 
     @Test void threads_source_sales_order_id_into_the_command() {
-        // §1J: a sales-order-driven replenishment carries the originating SO id
+        // A sales-order-driven replenishment carries the originating SO id
         // onto the command so it reaches the purchase_to_pay_saga's trace key.
         UUID salesOrderId = UUID.randomUUID();
         when(requisitions.createForStockReplenishment(any())).thenReturn(Optional.of(UUID.randomUUID()));

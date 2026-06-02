@@ -89,7 +89,7 @@ class JdbcPurchaseToPaySagaAdapterIT {
         PurchaseToPaySaga r = ADAPTER.findByPurchaseOrderId(poId).orElseThrow();
         assertThat(r.sagaId()).isEqualTo(saga.sagaId());
         assertThat(r.purchaseOrderHeaderId()).isEqualTo(poId);
-        assertThat(r.salesOrderHeaderId()).isEqualTo(salesOrderId);   // §1J cross-saga key round-trips
+        assertThat(r.salesOrderHeaderId()).isEqualTo(salesOrderId);   // cross-saga key round-trips
         assertThat(r.state()).isEqualTo(PurchaseToPaySaga.STARTED);
         assertThat(r.version()).isEqualTo(1L);
         assertThat(ADAPTER.findBySagaId(saga.sagaId())).isPresent();

@@ -22,20 +22,20 @@ import tools.jackson.databind.ObjectMapper;
  * Idempotent inbox handler for
  * {@code inventory.ReplenishmentRequested}. Filters on
  * {@code targetService = "purchasing"}; for manufacturing-routed requests
- * this is a no-op (manufacturing has its own sibling handler from Slice C).
+ * this is a no-op (manufacturing has its own sibling handler).
  *
  * <p>Builds a single-line {@link StockReplenishmentCommand} and calls
  * {@link PurchaseRequisitionService#createForStockReplenishment}. The
  * aggregate emits BOTH {@code purchasing.PurchaseRequisitionCreated} (with
  * the new {@code sourceReplenishmentRequestId} field) AND
  * {@code purchasing.ReplenishmentDispatched} atomically, so inventory's
- * close-the-loop handler (Slice E) picks up the dispatch and can flip the
+ * close-the-loop handler picks up the dispatch and can flip the
  * originating request to {@code dispatched}.
  *
  * <p>This handler subsumes the retired
  * {@code purchasing.RawMaterialShortageDetectedHandler}: both reorder-point
  * breaches AND ex-WO-shortage triggers now flow through this single
- * channel. The WO-shortage path arrives through inventory's Slice C bridge.
+ * channel. The WO-shortage path arrives through inventory's bridge.
  *
  * <p>The {@link ReplenishmentRequested} event carries only product_id (not
  * SKU/name) — purchasing's existing {@code RequisitionLineRequest} expects
@@ -85,7 +85,7 @@ public class ReplenishmentRequestedHandler extends AbstractInboxHandler<Replenis
         Optional<UUID> prId = requisitions.createForStockReplenishment(new StockReplenishmentCommand(
             requisitionNumber,
             payload.aggregateId(),
-            // §1J: carry the originating sales order (non-null for
+            // Carry the originating sales order (non-null for
             // sales_order_shortage / order_pegged) into the P2P saga's trace key.
             payload.sourceSalesOrderHeaderId(),
             List.of(new RequisitionLineRequest(

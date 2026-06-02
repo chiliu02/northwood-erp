@@ -91,10 +91,10 @@ public class StockReservationService {
         List<StockReservationLine> lines = new ArrayList<>();
         for (StockReservationRequested.RequestedLine req : payload.lines()) {
             if (req.pegged()) {
-                // Order-pegged (to_order, §2.43): the line NEVER draws from the
+                // Order-pegged (to_order): the line NEVER draws from the
                 // shared pool. Record it as a full-shortage (zero-reserved) line
                 // and raise a dedicated, order-pegged replenishment for the FULL
-                // line qty, routed by make-vs-buy. Peg-on-completion (slices C/D)
+                // line qty, routed by make-vs-buy. Peg-on-completion
                 // reserves the eventual output for this SO line; until then the
                 // line behaves to sales exactly like an awaiting-replenishment
                 // shortage line (parks the saga at stock_reservation_incomplete).
@@ -234,8 +234,8 @@ public class StockReservationService {
     }
 
     /**
-     * Un-peg a cancelled sales order's order-pegged ({@code to_order}, §2.43)
-     * supply. The peg-on-completion (slices C/D) reserves the built/bought
+     * Un-peg a cancelled sales order's order-pegged ({@code to_order})
+     * supply. The peg-on-completion reserves the built/bought
      * output on {@code stock_balance.reserved_quantity} — <em>outside</em> the
      * {@code StockReservation} row {@link #unwindReservation} unwinds — so cancel
      * must release it explicitly:

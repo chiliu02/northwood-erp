@@ -147,7 +147,7 @@ class StockReservationServiceTest {
         }
 
         @Test void pegged_line_skips_free_stock_and_raises_order_pegged_replenishment() {
-            // to_order (§2.43): no reserve attempt at all; raise dedicated supply
+            // to_order: no reserve attempt at all; raise dedicated supply
             // for the FULL line qty via raiseForOrderPegged.
             when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
 
@@ -351,7 +351,7 @@ class StockReservationServiceTest {
         }
 
         @Test void unpeg_releases_reserved_for_fulfilled_order_pegged_request() {
-            // §2.43 Slice E: the peg-on-completion reserved 10 outside the
+            // The peg-on-completion reserved 10 outside the
             // StockReservation row; cancel must release it back to the pool.
             when(reservations.findActiveHeaderIdForSalesOrder(SO)).thenReturn(Optional.empty());
             ReplenishmentRequest req = ReplenishmentRequest.requestForOrderPegged(

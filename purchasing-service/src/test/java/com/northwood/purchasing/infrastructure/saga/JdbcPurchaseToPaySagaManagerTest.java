@@ -63,7 +63,7 @@ class JdbcPurchaseToPaySagaManagerTest {
             verify(sagas).insert(cap.capture());
             assertThat(cap.getValue().state()).isEqualTo(STARTED);
             assertThat(cap.getValue().purchaseOrderHeaderId()).isEqualTo(PO);
-            assertThat(cap.getValue().salesOrderHeaderId()).isEqualTo(salesOrderId);   // §1J
+            assertThat(cap.getValue().salesOrderHeaderId()).isEqualTo(salesOrderId);   // cross-saga key
         }
 
         @Test void insertStarted_allows_null_sales_order_key_for_manual_po() {

@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * End-to-end proof of the §2.43 <b>buy-to-order</b> path — the symmetric
+ * End-to-end proof of the <b>buy-to-order</b> path — the symmetric
  * purchasing mirror of {@link OrderToCashMakeToOrderPathTest}. A sales order for
  * a {@code to_order} <em>purchased</em> SKU raises a dedicated, order-pegged
  * <b>purchase order</b>; on goods receipt the bought stock is reserved (pegged)
@@ -66,7 +66,7 @@ class OrderToCashBuyToOrderPathTest {
         sales.customers.put("CUST-001", "Acme Corp", Customer.Status.ACTIVE);
         UUID carpetId = UUID.randomUUID();
         sales.productCards.put(carpetId, new BigDecimal("1200.00"), Currencies.AUD);
-        sales.lineSnapshots.markOrderPegged(carpetId);   // §2.43 to_order
+        sales.lineSnapshots.markOrderPegged(carpetId);   // to_order
 
         inventory.productReplenishment.put(carpetId, /*purchased=*/true, /*manufactured=*/false);
         // Purchasing must be able to source it (default supplier price list).

@@ -70,8 +70,8 @@
 --     FG-CABINET-001  00000000-0000-7000-8000-000000000200
 --     FG-CHEST-001    00000000-0000-7000-8000-000000000300
 --     FG-CHAIR-001    00000000-0000-7000-8000-000000000400
---     FG-RUG-001      00000000-0000-7000-8000-000000000500  (purchased; buy-to-stock — §2.43)
---     FG-CARPET-001   00000000-0000-7000-8000-000000000501  (purchased; buy-to-order, to_order — §2.43)
+--     FG-RUG-001      00000000-0000-7000-8000-000000000500  (purchased; buy-to-stock)
+--     FG-CARPET-001   00000000-0000-7000-8000-000000000501  (purchased; buy-to-order, to_order)
 --
 --   Products (raw materials):
 --     RM-BOARD-001         00000000-0000-7000-8000-000000000002
@@ -108,7 +108,7 @@
 --     SUP-003 finishing       00000000-0000-7000-8000-000000000042  (active)
 --     SUP-004 alt-timber      00000000-0000-7000-8000-000000000043  (active; multi-source vs SUP-001)
 --     SUP-005 discontinued    00000000-0000-7000-8000-000000000044  (blocked — corner case)
---     SUP-006 floor-coverings 00000000-0000-7000-8000-000000000045  (active; sources FG-RUG / FG-CARPET — §2.43)
+--     SUP-006 floor-coverings 00000000-0000-7000-8000-000000000045  (active; sources FG-RUG / FG-CARPET)
 --
 --   BOMs (manufacturing.bom_header):
 --     Wooden Table    00000000-0000-7000-8000-000000000100
@@ -802,7 +802,7 @@ COMMIT;
 
 
 -- ============================================================================
--- SEED: FLOOR COVERINGS — buy-side make/buy-to-order demo pair (§2.43)
+-- SEED: FLOOR COVERINGS — buy-side make/buy-to-order demo pair
 -- Two purchased, sellable finished goods that contrast the two buy-side
 -- replenishment modes within one product family:
 --   FG-RUG-001    — buy-to-stock:    replenishment_strategy = to_stock, a normal
@@ -813,7 +813,7 @@ COMMIT;
 --                   dedicated, order-pegged PO, reserved to the SO line on
 --                   goods receipt (REQ-PROD-022 / REQ-INV-093).
 -- Both purchased from a new floor-coverings supplier (SUP-006). The seed
--- hand-maintains every per-service *_card projection + stock_balance (§3.13),
+-- hand-maintains every per-service *_card projection + stock_balance,
 -- so all are written here too — skipping any repeats the chest-family gap.
 -- ============================================================================
 

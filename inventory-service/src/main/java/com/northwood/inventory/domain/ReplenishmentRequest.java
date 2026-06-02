@@ -16,10 +16,10 @@ import java.util.UUID;
  * One row per request; lifecycle is linear:
  *
  * <pre>
- *   requested  ──(Slice E: ReplenishmentDispatched)──▶  dispatched
+ *   requested  ──(ReplenishmentDispatched)──▶  dispatched
  *      │                                                    │
  *      │                                                    ▼
- *      │                                  (Slice E: WorkOrderManufacturingCompleted
+ *      │                                  (WorkOrderManufacturingCompleted
  *      │                                          or GoodsReceived match)
  *      │                                                    │
  *      ▼                                                    ▼
@@ -33,9 +33,9 @@ import java.util.UUID;
  * service treats it as a debug-logged no-op, matching the semantic intent of
  * "ignore the second trigger while the first is open").
  *
- * <p>Status transitions: this slice ships {@code requested} and {@code cancelled}.
- * Slice E adds {@code markDispatched} + {@code linkPurchaseOrder} +
- * {@code markFulfilled} when the close-the-loop handlers land.
+ * <p>Status transitions cover {@code requested}, {@code cancelled},
+ * {@code dispatched}, and {@code fulfilled} via {@code markDispatched} +
+ * {@code linkPurchaseOrder} + {@code markFulfilled} on the close-the-loop path.
  */
 public final class ReplenishmentRequest {
 
@@ -77,7 +77,7 @@ public final class ReplenishmentRequest {
     /**
      * Which downstream service handles the request. Derived by the detection
      * service from the SKU's make-vs-buy classification (snapshotted into
-     * inventory by Slice A's {@code ProductCardProjection}).
+     * inventory by the {@code ProductCardProjection}).
      */
     public enum TargetService {
         MANUFACTURING("manufacturing"),
@@ -119,11 +119,11 @@ public final class ReplenishmentRequest {
          */
         SALES_ORDER_SHORTAGE("sales_order_shortage"),
         /**
-         * An order-pegged ({@code to_order}) sales-order line (§2.43). Unlike
+         * An order-pegged ({@code to_order}) sales-order line. Unlike
          * {@link #SALES_ORDER_SHORTAGE}, the line never draws from the shared
          * pool: sales raises dedicated supply for the FULL line quantity,
          * earmarked to that line. Same back-reference + per-line multiplicity as
-         * sales_order_shortage; the peg-on-completion step (slices C/D) reserves
+         * sales_order_shortage; the peg-on-completion step reserves
          * the eventual output for the SO line.
          */
         ORDER_PEGGED("order_pegged");
@@ -149,7 +149,7 @@ public final class ReplenishmentRequest {
     /**
      * Which kind of downstream aggregate is fulfilling this replenishment.
      * Populated by {@link #markDispatched(DispatchedAggregateKind, UUID)} when
-     * Slice E's close-the-loop handler receives the corresponding
+     * the close-the-loop handler receives the corresponding
      * {@code ReplenishmentDispatched} event.
      */
     public enum DispatchedAggregateKind {
@@ -247,10 +247,10 @@ public final class ReplenishmentRequest {
 
     /**
      * Factory: raise a dedicated, order-pegged replenishment for a {@code to_order}
-     * sales-order line (§2.43). Same shape + back-references as
+     * sales-order line. Same shape + back-references as
      * {@link #requestForSalesOrderShortage} but {@code reason = ORDER_PEGGED} —
      * the request is for the FULL line quantity and the eventual output is
-     * pegged to the SO line on completion (slices C/D). Emits
+     * pegged to the SO line on completion. Emits
      * {@link ReplenishmentRequested}.
      */
     public static ReplenishmentRequest requestForOrderPegged(
@@ -439,7 +439,7 @@ public final class ReplenishmentRequest {
         // Payload denormalises productId + propagates the sales-order
         // back-reference (header + line) so consumers (notably sales' fulfilment-
         // saga fan-in handler) can route the event without a join back to
-        // inventory.replenishment_request. pegged = ORDER_PEGGED (§2.43): the
+        // inventory.replenishment_request. pegged = ORDER_PEGGED: the
         // output was reserved for the SO line on completion, so sales ships
         // without a re-reservation retry.
         pendingEvents.add(new ReplenishmentFulfilled(

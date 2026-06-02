@@ -4,7 +4,7 @@ import java.util.UUID;
 
 /**
  * Populates {@code sales.product_card.replenishment_strategy} from
- * {@code product.ReplenishmentStrategyChanged} (§2.43). The fulfilment saga's
+ * {@code product.ReplenishmentStrategyChanged}. The fulfilment saga's
  * reserve step reads it to choose the free-stock path ({@code to_stock}) vs the
  * order-pegged supply path ({@code to_order}). Plain UPDATE — the row is seeded
  * on {@code ProductCreated} by {@link ProductCreatedProjection} (default

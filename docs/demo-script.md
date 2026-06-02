@@ -748,7 +748,7 @@ A *consumer-dependency* outage (e.g. PostgreSQL briefly down while Kafka keeps d
 
 ## Demo 10 — Make-to-order / buy-to-order (order-pegged supply)
 
-The fourth axis of the catalogue: alongside make-vs-buy, each SKU carries a `replenishment_strategy` — `to_stock` (the default; reorder-point driven) or `to_order` (order-pegged). The two axes combine into four operator modes, and the seed ships one SKU per buy-side mode in a single product family (floor coverings) so the contrast is one screen apart (REQ-PROD-022 / REQ-INV-093, §2.43).
+The fourth axis of the catalogue: alongside make-vs-buy, each SKU carries a `replenishment_strategy` — `to_stock` (the default; reorder-point driven) or `to_order` (order-pegged). The two axes combine into four operator modes, and the seed ships one SKU per buy-side mode in a single product family (floor coverings) so the contrast is one screen apart (REQ-PROD-022 / REQ-INV-093).
 
 **Framing:** a `to_order` line never draws from / builds to the shared pool. It raises **dedicated** supply — a work order (make-to-order) or a purchase order (buy-to-order) — sized to the line qty and **earmarked** to that SO line. On completion the output is reserved to the line atomically with the stock credit, so it never enters available-to-promise and a concurrent order can't steal it. The order ships straight off that peg — no re-reservation retry.
 

@@ -13,7 +13,7 @@ public interface ReplenishmentRequestRepository {
 
     /**
      * All order-pegged ({@code reason = order_pegged}) requests raised for a
-     * sales order, any status (§2.43 Slice E). Used by the cancel/un-peg path:
+     * sales order, any status. Used by the cancel/un-peg path:
      * a fulfilled pegged request's reserve is released back to the free pool; an
      * in-flight (requested/dispatched) one is dropped so its eventual completion
      * credits stock to the pool without re-pegging.

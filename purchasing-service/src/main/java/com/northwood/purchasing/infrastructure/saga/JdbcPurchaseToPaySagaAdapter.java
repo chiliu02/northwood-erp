@@ -119,7 +119,7 @@ public class JdbcPurchaseToPaySagaAdapter implements PurchaseToPaySagaPort {
             );
         }
         saga.incrementVersion();
-        // Milestone only on a real state advance. §1J: stamp the originating
+        // Milestone only on a real state advance. Stamp the originating
         // sales order (carried on the saga since creation; null for manual /
         // reorder-point PRs) so every buy-side milestone joins the order's trace.
         if (saga.consumeStateAdvanced()) {
@@ -147,7 +147,7 @@ public class JdbcPurchaseToPaySagaAdapter implements PurchaseToPaySagaPort {
             currentTraceId()
         );
         saga.incrementVersion();
-        // Creation is the saga's first milestone (its initial state). §1J: stamp
+        // Creation is the saga's first milestone (its initial state). Stamp
         // the originating sales order (null for manual / reorder-point PRs).
         SagaMilestone.record(tracer, PurchaseToPaySaga.AGGREGATE_TYPE,
             saga.sagaId(), saga.state(), saga.salesOrderHeaderId());

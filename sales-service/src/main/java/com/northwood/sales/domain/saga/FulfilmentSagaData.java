@@ -56,7 +56,7 @@ public record FulfilmentSagaData(
         outstandingReplenishmentLineIds = outstandingReplenishmentLineIds == null
             ? Set.of()
             : outstandingReplenishmentLineIds;
-        // §2.43: true once any non-pegged (shortage top-up) replenishment has
+        // true once any non-pegged (shortage top-up) replenishment has
         // been fulfilled, meaning the saga must retry reservation rather than
         // ship straight off the order-pegged peg. Legacy/missing → false.
         sawNonPeggedReplenishment = sawNonPeggedReplenishment != null && sawNonPeggedReplenishment;
@@ -103,7 +103,7 @@ public record FulfilmentSagaData(
     /**
      * Remove a single line id from the outstanding-replenishment set when its
      * {@code ReplenishmentFulfilled} arrives. Idempotent on a line id that's
-     * already absent (redelivery). {@code pegged} (§2.43) records whether this
+     * already absent (redelivery). {@code pegged} records whether this
      * was an order-pegged completion (already reserved → ship without retry) or
      * a shortage top-up (pool restocked → must retry reservation); a single
      * non-pegged fulfilment latches {@link #sawNonPeggedReplenishment()}.

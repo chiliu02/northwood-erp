@@ -36,8 +36,8 @@ import tools.jackson.databind.ObjectMapper;
  * handler emits a fresh {@code sales.StockReservationRequested} so inventory
  * will retry the reservation against the now-restocked inventory (mirrors the
  * work-order retry pattern — {@code reserveForSalesOrder} cancels the prior
- * partial reservation first). When all lines were order-pegged completions
- * (§2.43), the manager returns {@code ready_to_ship} instead — the output was
+ * partial reservation first). When all lines were order-pegged completions,
+ * the manager returns {@code ready_to_ship} instead — the output was
  * already reserved on completion, so no retry is emitted.
  *
  * <p>Idempotent against duplicate deliveries: the manager treats a missing
@@ -86,7 +86,7 @@ public class ReplenishmentFulfilledHandler extends AbstractInboxHandler<Replenis
             // against the now-restocked pool. inventory.StockReservationService
             // .reserveForSalesOrder drops any prior partial reservation first
             // (mirrors the work-order retry pattern). Order-pegged completions
-            // (§2.43) instead return ready_to_ship — already reserved on
+            // instead return ready_to_ship — already reserved on
             // completion, no retry needed.
             emitRetryStockReservation(salesOrderHeaderId);
             log.info("[{}] sales_order={} → stock_reservation_requested; re-emitting {} to retry reservation",

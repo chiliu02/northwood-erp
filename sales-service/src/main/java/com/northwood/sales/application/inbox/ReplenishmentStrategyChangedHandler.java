@@ -8,8 +8,8 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Idempotent inbox handler for {@code product.ReplenishmentStrategyChanged}
- * (§2.43). Projects the new strategy onto the {@code sales.product_card} row so
+ * Idempotent inbox handler for {@code product.ReplenishmentStrategyChanged}.
+ * Projects the new strategy onto the {@code sales.product_card} row so
  * the fulfilment saga reads make-to-order vs make-to-stock locally rather than
  * across schemas — the per-service search_path blocks cross-schema queries
  * anyway, and a denormalised projection is the established Shape A pattern for

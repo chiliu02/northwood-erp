@@ -166,7 +166,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
         }
 
         @Test void all_pegged_lines_go_straight_to_ready_to_ship() {
-            // §2.43: order-pegged completions are reserved on completion, so the
+            // order-pegged completions are reserved on completion, so the
             // saga ships without a re-reservation retry.
             SalesOrderFulfilmentSaga saga = sagaInState(STOCK_RESERVATION_INCOMPLETE,
                 FulfilmentSagaData.none().withOutstandingReplenishmentLineIds(Set.of(LINE_1)));

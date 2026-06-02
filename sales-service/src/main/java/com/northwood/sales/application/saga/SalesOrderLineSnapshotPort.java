@@ -26,7 +26,7 @@ public interface SalesOrderLineSnapshotPort {
 
     /**
      * @param replenishmentStrategy the product's {@code to_stock} | {@code to_order}
-     *     strategy, projected onto {@code sales.product_card} (§2.43). Drives the
+     *     strategy, projected onto {@code sales.product_card}. Drives the
      *     reserve-step branch via {@link #pegged()}.
      */
     record LineSnapshot(

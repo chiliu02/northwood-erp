@@ -76,7 +76,7 @@ public final class InMemoryReplenishmentRequestRepository implements Replenishme
     public void save(ReplenishmentRequest r) {
         if (r.version() == 0L && !byId.containsKey(r.id().value())) {
             // The partial unique index excludes the per-line demand-driven
-            // reasons (sales_order_shortage AND order_pegged, §2.43), so multiple
+            // reasons (sales_order_shortage AND order_pegged), so multiple
             // such requests for the same SKU can co-exist (each back-referenced to
             // its own sales-order line). Only reorder-point and WO-shortage
             // requests collide on the index.
@@ -88,7 +88,7 @@ public final class InMemoryReplenishmentRequestRepository implements Replenishme
                 );
             }
         }
-        // Slice E: updates land via mutator → save (mark dispatched / link PO /
+        // Updates land via mutator → save (mark dispatched / link PO /
         // mark fulfilled). The in-memory double trusts the aggregate's state
         // machine; the JdbcReplenishmentRequestRepository does an OCC version
         // check (modelled here as last-writer-wins for simplicity).

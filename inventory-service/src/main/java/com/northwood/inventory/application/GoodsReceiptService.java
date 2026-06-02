@@ -179,7 +179,7 @@ public class GoodsReceiptService {
             replenishmentRequests.findByLinkedPurchaseOrderId(command.purchaseOrderHeaderId())
                 .filter(r -> r.status() == ReplenishmentRequest.Status.DISPATCHED)
                 .ifPresent(r -> {
-                    // Buy-to-order atomic peg (§2.43 Slice D) — symmetric to the
+                    // Buy-to-order atomic peg — symmetric to the
                     // make-to-order WO-completion peg. The received goods for an
                     // order-pegged request are dedicated to the originating SO
                     // line, so reserve them in THIS transaction (right after the
@@ -187,7 +187,7 @@ public class GoodsReceiptService {
                     // can't be stolen. markFulfilled then emits
                     // ReplenishmentFulfilled(pegged=true) → sales ships off the
                     // peg without a re-reservation retry. Releasing this peg on
-                    // cancel is Slice E's un-peg job.
+                    // cancel is the un-peg job.
                     if (r.reason() == ReplenishmentRequest.Reason.ORDER_PEGGED) {
                         BigDecimal receivedForProduct = lines.stream()
                             .filter(l -> l.productId().equals(r.productId()))
