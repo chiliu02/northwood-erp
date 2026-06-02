@@ -1,0 +1,2491 @@
+    <!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Northwood — System Map</title>
+<!-- §1D.6 unified cross-axis view. Composes two axes — event → consumer-handler
+     and event → write-target-table — into one page so "what does
+     CustomerPaymentReceived touch end-to-end" stops requiring three tabs.
+
+     Self-contained: the data arrays below are inlined directly into this page
+     (browsers block <script src> from file://, hence an inline copy rather than
+     a shared data file). Build-time generation is the §1D.6 follow-up.
+
+     Anchors: every event row has id="event-{Source}.{EventName}" so
+     messaging.md / sagas.md can deep-link to a specific event's row.
+
+     CDN: cytoscape (+ dagre / cytoscape-dagre for the saga state-machine
+     layout) load via HTTPS — modern browsers permit this from file://.
+     Offline viewers without prior cache fall back to the textual sections
+     (the service graph just doesn't render, and each saga shows its
+     stateDiagram-v2 source text instead of the interactive graph). The
+     saga state machines used to be static Mermaid SVGs; they're now
+     interactive Cytoscape graphs (drag a state to rearrange) built by
+     parsing the same stateDiagram-v2 source — that source is retained,
+     collapsed, under each graph as the single source of truth + fallback. -->
+<style>
+  :root {
+    --border: #d0d7de;
+    --border-strong: #8c959f;
+    --bg: #ffffff;
+    --bg-alt: #f6f8fa;
+    --bg-merged: #eef4f9;
+    --code-bg: #eff1f3;
+    --text: #1f2328;
+    --muted: #57606a;
+    --accent: #0969da;
+    --critical: #cf222e;
+    --staleness: #9a6700;
+    --deferred: #57606a;
+    --saga: #8250df;
+    --aggregate: #1a7f37;
+    --readmodel: #0969da;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    margin: 0;
+    padding: 2rem 3rem 4rem;
+    line-height: 1.55;
+    max-width: 1700px;
+  }
+  h1 { font-size: 1.85rem; margin: 0 0 0.5rem; }
+  h2 {
+    font-size: 1.35rem;
+    margin: 2.25rem 0 0.75rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--border);
+  }
+  h3 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; }
+  h4 { font-size: 1rem; margin: 1.1rem 0 0.4rem; }
+  p { margin: 0.5rem 0 0.8rem; }
+  code {
+    background: var(--code-bg);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+    font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.88em;
+  }
+  a { color: var(--accent); }
+
+  /* Top-level service overview */
+  #service-graph {
+    width: 100%;
+    height: 540px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-alt);
+    margin: 1rem 0 1.5rem;
+  }
+  #graph-legend {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin: -0.4rem 0 1rem;
+  }
+  #graph-legend .swatch {
+    display: inline-block;
+    width: 1em; height: 1em;
+    vertical-align: -2px;
+    border-radius: 3px;
+    margin-right: 0.3em;
+  }
+
+  /* Filter bar */
+  .filter-bar {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    margin: 1rem 0 0.6rem;
+    flex-wrap: wrap;
+  }
+  .filter-bar input[type="search"] {
+    flex: 1 1 auto;
+    min-width: 240px;
+    height: 2rem;
+    padding: 0 0.6rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
+    font-size: 0.92rem;
+  }
+  .filter-bar .meta {
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+  .filter-bar button {
+    height: 2rem;
+    padding: 0 0.8rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.82rem;
+  }
+  .filter-bar button:hover { background: var(--bg-alt); }
+
+  /* Cross-axis tree: source service → aggregate → event row */
+  .tree-wrap { margin: 0.6rem 0 1.5rem; font-size: 0.88rem; }
+  details { margin: 0; }
+  summary {
+    cursor: pointer;
+    padding: 0.4rem 0.75rem;
+    list-style: none;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    user-select: none;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before {
+    content: "▸";
+    display: inline-block;
+    width: 1em;
+    color: var(--muted);
+    margin-right: 0.3rem;
+    transition: transform 120ms;
+  }
+  details[open] > summary::before {
+    transform: rotate(90deg);
+  }
+  .service-section { margin-bottom: 0.5rem; }
+  .service-section > summary {
+    background: var(--bg-merged);
+    font-weight: 600;
+    border-color: var(--border-strong);
+  }
+  .agg-section { margin: 0.35rem 0 0.35rem 1.25rem; }
+  .agg-section > summary {
+    background: var(--bg-alt);
+    font-weight: 500;
+  }
+  .event-row {
+    margin: 0.35rem 0 0.35rem 2.5rem;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--bg);
+    padding: 0.55rem 0.75rem;
+    scroll-margin-top: 1rem;
+  }
+  .event-row.highlight {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.15);
+  }
+  .event-row .ev-name {
+    font-family: "SF Mono", Consolas, monospace;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .event-row .ev-name .anchor {
+    text-decoration: none;
+    color: var(--muted);
+    margin-left: 0.3em;
+    visibility: hidden;
+  }
+  .event-row:hover .ev-name .anchor { visibility: visible; }
+  .event-row .ev-pill {
+    display: inline-block;
+    font-size: 0.72rem;
+    padding: 0.05em 0.45em;
+    margin-left: 0.5em;
+    border-radius: 8px;
+    background: var(--code-bg);
+    color: var(--muted);
+    vertical-align: 2px;
+  }
+  .event-row .ev-pill.saga-driver { background: #f3eaff; color: var(--saga); }
+  /* Known-gap callout — flags an architectural asymmetry that the
+     code currently doesn't fix. */
+  .gap-callout {
+    background: #fdf6e3;
+    border: 1px solid #d4a72c;
+    border-left: 4px solid #d4a72c;
+    border-radius: 5px;
+    padding: 0.6rem 0.85rem;
+    margin: 0.6rem 0 1rem;
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+  .gap-callout strong { color: #9a6700; }
+  .event-row .panes {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.6rem;
+    margin-top: 0.4rem;
+  }
+  .event-row .pane {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.4rem 0.6rem;
+    background: var(--bg-alt);
+    font-size: 0.82rem;
+  }
+  .event-row .pane h5 {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin: 0 0 0.35rem;
+  }
+  .event-row .pane ul { margin: 0; padding-left: 1rem; }
+  .event-row .pane li { margin: 0.15rem 0; }
+  .event-row .pane .empty {
+    color: var(--muted);
+    font-style: italic;
+  }
+  .table-kind {
+    display: inline-block;
+    font-size: 0.68rem;
+    padding: 0.05em 0.3em;
+    border-radius: 3px;
+    margin-right: 0.3em;
+    vertical-align: 1px;
+    color: #fff;
+  }
+  .table-kind.read-model { background: var(--readmodel); }
+  .table-kind.saga      { background: var(--saga); }
+  .table-kind.aggregate { background: var(--aggregate); }
+  .saga-driver-line {
+    color: var(--saga);
+    font-size: 0.82rem;
+    margin-top: 0.35rem;
+  }
+  .saga-driver-line code { background: rgba(130, 80, 223, 0.08); }
+
+  /* Saga state-machine sections — each is its own <details> so they
+     collapse independently of the cross-axis tree. The toggle-all button
+     up top is scoped to .tree-wrap and does NOT touch these. */
+  .saga-block {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 0.8rem 0 1.4rem;
+    background: var(--bg-alt);
+  }
+  .saga-block > summary {
+    /* Override the tree-style summary; saga summaries look like a clickable
+       heading band, not a bordered tree row. */
+    background: none;
+    border: none;
+    border-radius: 5px 5px 0 0;
+    padding: 0.8rem 1rem 0.4rem;
+    list-style: none;
+  }
+  .saga-block > summary::before {
+    /* Bigger triangle that doubles as the heading bullet. */
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-right: 0.4rem;
+  }
+  .saga-block:not([open]) > summary { padding-bottom: 0.8rem; }
+  .saga-block > summary > h3 {
+    display: inline;
+    margin: 0;
+    font-size: 1.1rem;
+    scroll-margin-top: 1rem;
+  }
+  .saga-block > .desc,
+  .saga-block > .gap-callout,
+  .saga-block > .saga-graph-toolbar,
+  .saga-block > .saga-graph,
+  .saga-block > .mermaid-source {
+    margin-left: 1rem;
+    margin-right: 1rem;
+  }
+  .saga-block > :last-child { margin-bottom: 0.8rem; }
+  .saga-block .desc {
+    font-size: 0.88rem;
+    color: var(--muted);
+    margin-bottom: 0.4rem;
+  }
+  /* Interactive saga state-machine graph (Cytoscape). Each state is
+     draggable — same affordance as the service graph. The box is
+     user-resizable (drag the bottom edge): the taller state machines (e.g.
+     SalesOrderFulfilment) need the extra height so the auto-fit doesn't
+     shrink the edge labels past legibility. A ResizeObserver re-fits the
+     graph into whatever height the user drags to. `resize` needs a non-
+     visible `overflow`, which `hidden` satisfies. */
+  .saga-graph {
+    height: 600px;
+    min-height: 320px;
+    resize: vertical;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .saga-graph-toolbar {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    margin: 0.2rem 1rem 0.4rem;
+  }
+  .saga-graph-toolbar button {
+    height: 1.7rem;
+    padding: 0 0.7rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.78rem;
+  }
+  .saga-graph-toolbar button:hover { background: var(--bg-alt); }
+  .saga-graph-toolbar .hint { font-size: 0.78rem; color: var(--muted); }
+  /* Path filter (SalesOrderFulfilment only) — prune the graph to the path a
+     single-line order with the chosen attributes would traverse. */
+  .saga-filter-bar {
+    display: flex;
+    gap: 0.8rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 0.4rem 1rem 0.1rem;
+    font-size: 0.8rem;
+  }
+  .saga-filter-bar .flabel { font-weight: 600; }
+  .saga-filter-bar label {
+    color: var(--muted);
+    display: inline-flex;
+    gap: 0.3rem;
+    align-items: center;
+  }
+  .saga-filter-bar select {
+    height: 1.7rem;
+    padding: 0 0.3rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
+    background: var(--bg);
+    font-size: 0.8rem;
+  }
+  .saga-filter-bar button.reset {
+    height: 1.7rem;
+    padding: 0 0.7rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.78rem;
+  }
+  .saga-filter-bar button.reset:hover { background: var(--bg-alt); }
+  .saga-filter-bar .note { font-size: 0.76rem; color: var(--muted); font-style: italic; }
+  /* Shown inside .saga-graph when Cytoscape / dagre fail to load. */
+  .saga-graph .graph-fallback {
+    padding: 1rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  .saga-block .mermaid-source {
+    margin-top: 0.4rem;
+  }
+  .saga-block .mermaid-source summary {
+    background: none;
+    border: none;
+    padding: 0.2rem 0;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+  .saga-block .mermaid-source pre {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.5rem;
+    font-size: 0.78rem;
+    overflow-x: auto;
+  }
+
+  .hidden { display: none !important; }
+
+  /* Edge hover tooltip — Cytoscape draws to canvas, so no native `title`
+     tooltip is possible. We position a fixed-position div from
+     cy.on('mouseover edge') / mousemove / mouseout instead. */
+  .edge-tooltip {
+    position: fixed;
+    pointer-events: none;
+    z-index: 1000;
+    max-width: 380px;
+    background: #1f2328;
+    color: #f0f3f6;
+    border-radius: 5px;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+    display: none;
+  }
+  .edge-tooltip .head {
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+    font-size: 0.82rem;
+    color: #fff;
+  }
+  .edge-tooltip ul { margin: 0; padding-left: 1rem; }
+  .edge-tooltip li {
+    font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.75rem;
+  }
+</style>
+</head>
+<body>
+
+<h1>Northwood — System Map</h1>
+
+<p>Cross-axis composition of three axes — <strong>event-flow</strong> (event → consumer-handler), <strong>projections</strong> (event → write-target-table), and the four orchestration state machines (SalesOrderFulfilment, WorkOrder, PurchaseToPay — and ReplenishmentRequest, the §2.35 inventory-as-MRP-orchestrator aggregate). <strong>Self-contained:</strong> the event/projection index is inlined directly below — this page has no external data or link dependencies. §1D.6 pragmatic first cut. Anchors per event: <code>#event-Source.EventName</code>.</p>
+
+<h2>Service-level overview</h2>
+<p>Each box is a bounded context. Each arrow is "service A emits an event consumed by service B" — the number is the count of distinct event types flowing along that edge. <strong>Click one service</strong> to focus: every edge touching it stays visible, the rest dim. <strong>Click a second (or more)</strong> to narrow further: only edges <em>between</em> the focused services remain — answers "how do these talk to each other?". Click a focused service again to un-focus; click the background to clear. <strong>Click an arrow</strong> to filter the cross-axis index below.</p>
+<div id="service-graph"></div>
+<div id="edge-tooltip" class="edge-tooltip" role="tooltip" aria-hidden="true"></div>
+<div id="graph-legend">
+  <span><span class="swatch" style="background:#4a8fe7;"></span>service</span>
+  <span><span class="swatch" style="background:#999;"></span>event-flow edge (label = event count)</span>
+  <span><span class="swatch" style="background:#cf222e;"></span>compensation / cancel</span>
+</div>
+
+<h2>Cross-axis index</h2>
+<p>For each event: who emits it, who consumes it (the consumer-handler), what tables get written (the write-target table), and which saga state machines are driven by it (derived). One row per event class.</p>
+<div class="filter-bar">
+  <input type="search" id="filter-input" placeholder="Filter by event / aggregate / handler / table name…" autocomplete="off">
+  <span class="meta" id="filter-count"></span>
+  <button id="toggle-all" data-state="collapsed">expand all</button>
+</div>
+<div class="tree-wrap" id="event-tree"></div>
+
+<h2>Orchestration state machines</h2>
+<p>Embedded forward-flow diagrams. Three are Sagas (SO fulfilment, make-to-order, purchase-to-pay); the fourth is the <code>ReplenishmentRequest</code> aggregate — a saga-shaped orchestrator that's a regular domain aggregate, deliberately not a Saga (no sales-order line to attach a child saga to — see <code>WorkOrderReleaseService.releaseForReplenishment</code> Javadoc). This page embeds only the forward flow; the full source-of-truth diagrams and their compensation views live in the per-saga design docs. <strong>Each diagram is interactive</strong> — like the service overview above, <strong>drag a state</strong> to rearrange it, scroll to zoom, drag the canvas to pan, and hit <em>Re-layout</em> to snap back to the auto-arranged flow. The graphs are built by parsing the <code>stateDiagram-v2</code> source kept (collapsed) under each one.</p>
+
+<details class="saga-block">
+  <summary><h3 id="saga-sales-order-fulfilment">SalesOrderFulfilmentSaga</h3></summary>
+  <p class="desc">One row per customer order. §2.31 adds the prepayment branch at <code>started</code> (snapshotted from <code>payment_terms</code> on saga.data).</p>
+  <div class="gap-callout">
+    <strong>§2.37 (2026-05-29): the flip — inventory is the single make-vs-buy decision + trigger point.</strong> Sales no longer routes shortages to manufacturing. On a partial/failed reservation, inventory raises <code>ReplenishmentRequest(reason=sales_order_shortage)</code> <em>in the same transaction</em> as the reservation (routing manufactured → manufacturing make-to-stock WO / purchased → purchasing itself) and the saga parks at <code>stock_reservation_incomplete</code>. When every short line's <code>inventory.ReplenishmentFulfilled</code> lands the saga re-enters <code>stock_reservation_requested</code> to retry; if any short line's replenishment is cancelled (<code>inventory.ReplenishmentCancelled</code> — unsourceable SKU / no active BOM / no approved vendor) the saga goes to <code>rejected</code>. The <code>manufacturing_requested</code> / <code>manufacturing_in_progress</code> / <code>manufacturing_completed</code> / <code>purchasing_requested</code> states and the make-to-order leg (and events <code>sales.ManufacturingRequested</code>, <code>manufacturing.ManufacturingDispatched</code>, <code>sales.SalesOrderPurchasingRequested</code>) were retired in Slice 3.
+  </div>
+  <div class="saga-graph"></div>
+  <details class="mermaid-source">
+    <summary>stateDiagram-v2 source</summary>
+    <pre class="saga-src">
+stateDiagram-v2
+    direction TB
+    [*] --> started : placeOrder
+    started --> stock_reservation_requested : advance (worker) [on_shipment]
+    started --> awaiting_prepayment_invoice : advance (worker) [prepayment]
+    awaiting_prepayment_invoice --> invoice_created : applyCustomerInvoiceCreated [prepayment]
+    invoice_created --> prepaid : applyCustomerPaymentReceived [prepayment, fullySettled]
+    prepaid --> stock_reservation_requested : advance (worker)
+    stock_reservation_requested --> ready_to_ship : applyStockReserved [reserved]
+    stock_reservation_requested --> stock_reservation_incomplete : applyStockReserved [partial/failed - inventory raised replenishment in-tx]
+    stock_reservation_incomplete --> stock_reservation_requested : applyReplenishmentFulfilled [all short lines fulfilled - retry]
+    stock_reservation_incomplete --> rejected : applyReplenishmentCancelled [a short line could not be sourced]
+    ready_to_ship --> goods_shipped : applyShipmentPosted
+    ready_to_ship --> completed : applyShipmentPosted [prepayment]
+    goods_shipped --> invoice_created : applyCustomerInvoiceCreated [on_shipment]
+    invoice_created --> invoice_partially_paid : applyCustomerPaymentReceived [!fullySettled]
+    invoice_created --> completed : applyCustomerPaymentReceived [on_shipment, fullySettled]
+    invoice_partially_paid --> completed : applyCustomerPaymentReceived [fullySettled]
+    completed --> [*]
+    rejected --> [*]
+    </pre>
+  </details>
+</details>
+
+<details class="saga-block">
+  <summary><h3 id="saga-work-order">WorkOrderSaga</h3></summary>
+  <p class="desc">One row per work order — now purely make-to-stock (§2.37 Slice 3 retired the sales-driven <code>started</code> entry; rename to a generic work-order-lifecycle saga is §2.39). Every WO is seeded directly at <code>work_order_created</code> by <code>WorkOrderReleaseService.releaseForReplenishment</code> — the root replenishment WO and each sub-assembly child; raw-material shortage parks until a covering goods-receipt arrives.</p>
+  <div class="saga-graph"></div>
+  <details class="mermaid-source">
+    <summary>stateDiagram-v2 source</summary>
+    <pre class="saga-src">
+stateDiagram-v2
+    direction TB
+    [*] --> work_order_created : releaseForReplenishment (root + sub-assembly children)
+    work_order_created --> raw_material_reservation_requested : requestRawMaterialReservation (worker)
+    raw_material_reservation_requested --> raw_materials_reserved : applyRawMaterialsReserved [reserved]
+    raw_material_reservation_requested --> raw_material_shortage : applyRawMaterialsReserved [shortage]
+    raw_material_shortage --> raw_material_shortage : unparkOrNarrowShortage [partial cover]
+    raw_material_shortage --> raw_material_reservation_requested : unparkOrNarrowShortage [fully covered]
+    raw_materials_reserved --> completed : applyManufacturingCompleted [last op]
+    completed --> [*]
+    </pre>
+  </details>
+</details>
+
+<details class="saga-block">
+  <summary><h3 id="saga-purchase-to-pay">PurchaseToPaySaga</h3></summary>
+  <p class="desc">One row per purchase order. No compensation flow today.</p>
+  <div class="saga-graph"></div>
+  <details class="mermaid-source">
+    <summary>stateDiagram-v2 source</summary>
+    <pre class="saga-src">
+stateDiagram-v2
+    [*] --> started : PO created (createManual / convertFromRequisition)
+    started --> purchase_order_approved : approve (auto-approve or manual REST)
+    purchase_order_approved --> waiting_for_goods : advance (worker)
+    waiting_for_goods --> goods_received : applyGoodsReceived [fully received]
+    goods_received --> supplier_invoice_approved : applySupplierInvoiceApproved
+    supplier_invoice_approved --> completed : applySupplierPaymentMade [fullySettled]
+    completed --> [*]
+    supplier_invoice_approved --> supplier_partially_paid : applySupplierPaymentMade [!fullySettled]
+    supplier_partially_paid --> completed : applySupplierPaymentMade [fullySettled]
+    goods_received --> failed : applySupplierInvoiceRejected
+    failed --> [*]
+    </pre>
+  </details>
+</details>
+
+<details class="saga-block">
+  <summary><h3 id="aggregate-replenishment-request">ReplenishmentRequest (aggregate, not a Saga)</h3></summary>
+  <p class="desc">One row per (product, warehouse) replenishment cycle — partial unique index enforces one-open-per-SKU/warehouse for <code>reorder_point_breach</code> + <code>work_order_shortage</code> reasons; <strong>§2.36 Slice A</strong> excludes <code>sales_order_shortage</code> from the index so multiple SO-driven requests for the same SKU can stack (each back-referenced to a sales-order line via <code>source_sales_order_line_id</code>). Raised by the in-tx reorder-point detector on every on-hand decrement (shipment / stock-adjustment), by the inbox bridge handler on <code>manufacturing.RawMaterialShortageDetected</code>, <em>and</em> (§2.37 Slice 3) in-tx by <code>StockReservationService.reserveForSalesOrder</code> on a partial/failed sales-order reservation. <code>target_service</code> (<code>manufacturing</code> | <code>purchasing</code>) is decided in inventory by the SKU's <code>product_card.is_purchased</code> / <code>is_manufactured</code> snapshot — manufacturing and purchasing don't decide where work routes, they only receive it, and signal back <code>ReplenishmentUndispatchable</code> (no BOM / no vendor) so inventory cancels.</p>
+  <div class="saga-graph"></div>
+  <details class="mermaid-source">
+    <summary>stateDiagram-v2 source</summary>
+    <pre class="saga-src">
+stateDiagram-v2
+    direction TB
+    [*] --> requested : request (ReplenishmentDetectionService)
+    requested --> dispatched : markDispatched [WORK_ORDER]
+    requested --> dispatched : markDispatched [PURCHASE_REQUISITION]
+    dispatched --> dispatched : linkPurchaseOrder (on PurchaseOrderCreated)
+    dispatched --> fulfilled : markFulfilled [WORK_ORDER kind]
+    dispatched --> fulfilled : markFulfilled [PURCHASE_REQUISITION kind, on GoodsReceived]
+    requested --> cancelled : markCancelled [unsourceable / no BOM / no vendor]
+    dispatched --> cancelled : markCancelled
+    fulfilled --> [*]
+    cancelled --> [*]
+    </pre>
+  </details>
+  <p class="desc"><code>reason</code> (<code>reorder_point_breach</code> | <code>work_order_shortage</code> | <code>sales_order_shortage</code>) carries why the request was raised; <code>dispatched_aggregate_kind</code> + <code>dispatched_aggregate_id</code> identify the downstream WO / PR; <code>linked_purchase_order_id</code> stamps the PO that ends the purchasing leg so a later <code>GoodsReceived</code> can resolve back to the request. Emits <code>inventory.ReplenishmentRequested</code> on the <code>request</code> transition, <code>inventory.ReplenishmentFulfilled</code> on <code>markFulfilled</code>, and (§2.37 Slice 2/3) <code>inventory.ReplenishmentCancelled</code> on <code>markCancelled</code> — the failure counterpart, which for a <code>sales_order_shortage</code> request flips the originating sales order to <code>rejected</code>.</p>
+</details>
+
+<!-- ============================================================
+     Data — inlined event/projection index (browsers block <script src>
+     from file://). Build-time generation is the §1D.6 follow-up.
+     ============================================================ -->
+
+<script>
+window.NORTHWOOD_EVENTS = [
+  // === product ===
+  {
+    source: "product",
+    aggregate: "Product",
+    event: "ApprovedVendorListChanged",
+    consumers: [
+      { dest: "manufacturing", name: "manufacturing.approved-vendor-projector",
+        desc: `<code>manufacturing.product_approved_vendor</code> — replace-all rows for the product (supplier_id, is_preferred, …)` },
+      { dest: "purchasing", name: "purchasing.approved-vendor-projector",
+        desc: `<code>purchasing.product_approved_vendor</code> — replace-all rows for the product (supplier_id, is_preferred, …)` },
+    ]
+  },
+  {
+    source: "product",
+    aggregate: "Product",
+    event: "ActiveBomChanged",
+    consumers: [
+      { dest: "manufacturing", name: "manufacturing.product-active-bom-projector",
+        desc: `<code>manufacturing.product_card</code> — upserts (product_id, active_bom_id); <code>null</code> newBomHeaderId path retires the active BOM (see <code>ActiveBomChanged</code> Javadoc)` },
+    ]
+  },
+  {
+    source: "product",
+    aggregate: "Product",
+    event: "MakeVsBuyChanged",
+    consumers: [
+      { dest: "manufacturing", name: "manufacturing.product-replenishment-projector",
+        desc: `<code>manufacturing.product_card.is_purchased</code>, <code>is_manufactured</code>` },
+      { dest: "inventory", name: "inventory.product-replenishment-projector",
+        desc: `<code>inventory.product_card.is_purchased</code>, <code>is_manufactured</code> — local mirror used by inventory's make-vs-buy routing (reorder-point monitor + the §2.37 in-tx sales-order-shortage raise) to decide whether to route a replenishment to manufacturing or purchasing.` },
+    ]
+  },
+  {
+    source: "product",
+    aggregate: "Product",
+    event: "ProductCreated",
+    consumers: [
+      { dest: "sales", name: "sales.product-created",
+        desc: `<code>sales.product_card</code> — seeds a stub row with <code>sales_price=NULL</code>, <code>currency_code=NULL</code> so subsequent <code>SalesPriceChanged</code> + <code>ProductDiscontinued</code> have a row to <code>UPDATE</code> (<code>ON CONFLICT DO NOTHING</code>). NULL <code>sales_price</code> = "unsellable until priced" — <code>placeOrder</code> rejects identically to discontinued` },
+      { dest: "inventory", name: "inventory.product-created",
+        desc: `Writes TWO tables in one handler: <code>inventory.stock_item</code> — seeds a stub row (default UOM <code>'EA'</code>, tracking <code>'tracked'</code>, reorder 0/0) so subsequent <code>ReorderPolicyChanged</code> has a row to update (<code>ON CONFLICT DO NOTHING</code>); AND <code>inventory.product_card</code> — seeds default <code>is_purchased</code>/<code>is_manufactured</code> from <code>product_type</code> (<code>ON CONFLICT DO NOTHING</code>) so inventory's make-vs-buy routing has a non-empty default for day-zero SKUs before any <code>MakeVsBuyChanged</code> event arrives.` },
+      { dest: "manufacturing", name: "manufacturing.product-replenishment-seeder",
+        desc: `<code>manufacturing.product_card</code> — seeds default <code>is_purchased</code> / <code>is_manufactured</code> from <code>product_type</code> (ON CONFLICT DO NOTHING)` },
+      { dest: "finance", name: "finance.product-created",
+        desc: `<code>finance.product_card</code> — seeds a stub row with <code>standard_cost=NULL</code>, <code>currency_code=NULL</code>, <code>valuation_class=NULL</code> so subsequent <code>StandardCostChanged</code> + <code>ValuationClassChanged</code> + <code>ProductDiscontinued</code> have a row to <code>UPDATE</code> (<code>ON CONFLICT DO NOTHING</code>). Consolidates the previous <code>product_standard_cost</code> + <code>product_valuation_class</code> tables — see <code>docs/conventions.md</code> → consumer-side projection tables` },
+      { dest: "reporting", name: "reporting.atp.product-created",
+        desc: `<code>reporting.available_to_promise_view.product_sku</code>, <code>product_name</code> — backfills identity onto pending-stub rows` },
+    ]
+  },
+  {
+    source: "product",
+    aggregate: "Product",
+    event: "ProductDiscontinued",
+    consumers: [
+      { dest: "sales", name: "sales.product-discontinued",
+        desc: `<code>sales.product_card.discontinued_at</code> — read by <code>SalesOrderService.placeOrder</code> to reject lines for retired SKUs (HTTP 409)` },
+      { dest: "manufacturing", name: "manufacturing.product-discontinued",
+        desc: `<code>manufacturing.product_card.is_purchased=false, is_manufactured=false</code> (existing <code>!isManufactured()</code> guard then rejects new sales-lines); <code>manufacturing.product_card.active_bom_header_id=null</code>` },
+      { dest: "purchasing", name: "purchasing.product-discontinued",
+        desc: `<code>purchasing.product_card (product_id, discontinued_at)</code> — read by <code>PurchaseRequisitionService.buildLines</code> to reject new PRs / shortage-driven POs (HTTP 409)` },
+      { dest: "finance", name: "finance.product-discontinued",
+        desc: `<code>finance.product_card.discontinued_at</code> — stamps the consolidated finance projection so future audits can flag GL activity for retired SKUs` },
+      { dest: "reporting", name: "reporting.atp.product-discontinued",
+        desc: `<code>reporting.available_to_promise_view.discontinued_at</code> — UI consumers filter / grey-out on <code>IS NOT NULL</code>` },
+      { dest: "inventory", name: "inventory.product-discontinued",
+        desc: `Stamps <code>inventory.product_card.discontinued_at</code> (placeholder for future reorder-alert suppression) AND sets <code>is_purchased=false, is_manufactured=false</code> so make-vs-buy routing classifies discontinued SKUs as unsourceable (logs + skips) rather than dispatching a replenishment. §2.38: one consolidated <code>product_card</code> projection (the former <code>stock_item</code> was folded in).` },
+    ]
+  },
+  {
+    source: "product",
+    aggregate: "Product",
+    event: "ReorderPolicyChanged",
+    consumers: [
+      { dest: "inventory", name: "inventory.stock-item-projector",
+        desc: `<code>inventory.product_card.reorder_point</code>, <code>reorder_quantity</code> (projection write via <code>ProductCardProjection.applyReorderPolicy</code>; §2.38 dropped the vestigial stock_item aggregate + version)` },
+    ]
+  },
+  {
+    source: "product",
+    aggregate: "Product",
+    event: "SalesPriceChanged",
+    consumers: [
+      { dest: "sales", name: "sales.product-pricing-projector",
+        desc: `<code>sales.product_card.sales_price</code>, <code>currency_code</code>` },
+    ]
+  },
+  {
+    source: "product",
+    aggregate: "Product",
+    event: "StandardCostChanged",
+    consumers: [
+      { dest: "finance", name: "finance.product-standard-cost-projector",
+        desc: `<code>finance.product_card.standard_cost</code>, <code>currency_code</code> — plain <code>UPDATE</code> on the consolidated projection (row guaranteed to exist by <code>finance.product-created</code> seed)` },
+      { dest: "reporting", name: "reporting.product-standard-cost-projector",
+        desc: `<code>reporting.product_card.standard_cost</code>, <code>currency_code</code>` },
+    ]
+  },
+  {
+    source: "product",
+    aggregate: "Product",
+    event: "ValuationClassChanged",
+    consumers: [
+      { dest: "finance", name: "finance.product-valuation-class-projector",
+        desc: `<code>finance.product_card.valuation_class</code> — plain <code>UPDATE</code> on the consolidated projection (row guaranteed to exist by <code>finance.product-created</code> seed)` },
+    ]
+  },
+
+  // === sales ===
+  {
+    source: "sales",
+    aggregate: "Customer",
+    event: "CustomerAddressChanged",
+    consumers: []
+  },
+  {
+    source: "sales",
+    aggregate: "Customer",
+    event: "CustomerContactChanged",
+    consumers: []
+  },
+  {
+    source: "sales",
+    aggregate: "Customer",
+    event: "CustomerDeactivated",
+    consumers: [
+      { dest: "reporting", name: "reporting.dashboard.customer-deactivated",
+        desc: `<code>reporting.customer_dashboard_status (customer_id, status='inactive', deactivated_at)</code> — per-customer row upserted so dashboard widgets stop counting them in active totals` },
+      { dest: "finance", name: "finance.ar.customer-deactivated",
+        desc: `<code>finance.customer_invoice_header.flagged_for_collections=true</code> for every outstanding invoice (status IN <code>posted</code>/<code>partially_paid</code> AND <code>outstanding_amount &gt; 0</code>) — picked up by a future collections UI / workflow` },
+    ]
+  },
+  {
+    source: "sales",
+    aggregate: "Customer",
+    event: "CustomerNameChanged",
+    consumers: []
+  },
+  {
+    source: "sales",
+    aggregate: "Customer",
+    event: "CustomerRegistered",
+    consumers: []
+  },
+  {
+    source: "sales",
+    aggregate: "SalesOrder",
+    event: "SalesOrderCancellationRequested",
+    consumers: [
+      { dest: "inventory", name: "inventory.sales-cancel",
+        desc: `Updates <code>inventory.stock_reservation.status</code> (released), releases <code>inventory.stock_balance.reserved_quantity</code>; emits <code>inventory.SalesOrderCancellationApplied</code>. §2.40: inventory is the sole compensation <em>ack</em> — the manufacturing sales-cancel handler was deleted (post-§2.37 no work order is bound to a sales order).` },
+      { dest: "finance", name: "finance.refund.sales-order-cancellation",
+        desc: `§2.34: if the cancelled order's up-front (prepayment/deposit) invoice was paid, refunds it — Dr 2110 Customer Deposits / Cr 1000 Bank, the inverse of the original receipt — and stamps <code>customer_invoice_header.refunded_at</code>. Idempotent; no-op for on-shipment/COD/unpaid. The finance-only refund arm of the cancel (no ack — additional to the inventory compensation).` },
+    ]
+  },
+  {
+    source: "sales",
+    aggregate: "SalesOrder",
+    event: "SalesOrderCompensated",
+    consumers: [
+      { dest: "reporting", name: "reporting.sales-order-360.compensated",
+        desc: `<code>reporting.sales_order_360_view.order_status</code> → <code>cancelled</code> (plus <code>last_event_at</code>, <code>last_event_type</code>, <code>last_actor_user_id</code>)` },
+    ]
+  },
+  {
+    source: "sales",
+    aggregate: "SalesOrder",
+    event: "SalesOrderPlaced",
+    consumers: [
+      { dest: "inventory", name: "inventory.sales-order-line-facts",
+        desc: `Seeds <code>inventory.sales_order_line_facts</code> (sales_order_header_id, sales_order_line_id, product_id) — used by shipment-line validation` },
+      { dest: "reporting", name: "reporting.sales-order-360.order-placed",
+        desc: `Creates <code>reporting.sales_order_360_view</code> row (order_number, customer_id, customer_name, order_date, requested_delivery_date, currency_code, total_amount, order_status, payment_terms)` },
+      { dest: "reporting", name: "reporting.dashboard.sales-order-placed",
+        desc: `<code>reporting.financial_dashboard_daily.sales_orders_placed_count</code> (per dashboard_date, currency_code)` },
+    ]
+  },
+  {
+    source: "sales",
+    aggregate: "SalesOrder",
+    event: "SalesOrderReadyToShip",
+    consumers: [
+      { dest: "reporting", name: "reporting.sales-order-360.ready-to-ship",
+        desc: `<code>reporting.sales_order_360_view.order_status</code> → <code>ready_to_ship</code> (forward-only from <code>pending</code>/<code>submitted</code>; preserves terminal <code>cancelled</code>) — the value the shipment UI's order picker filters on. Also flips <code>manufacturing_status</code> <code>pending</code> → <code>not_required</code> (a stock-covered order skipped manufacturing — no work order, no completion event). Emitted by the saga's full-reservation shortcut <em>and</em> final work-order completion via a shared <code>SalesOrderReadyToShipEmitter</code>` },
+    ]
+  },
+  {
+    source: "sales",
+    aggregate: "SalesOrder",
+    event: "SalesOrderShipped",
+    consumers: [
+      { dest: "finance", name: "finance.customer-invoice.shipped-order",
+        desc: `Creates <code>finance.customer_invoice_header</code> + <code>customer_invoice_line</code> rows from shipped lines (qty × price + tax); emits <code>finance.CustomerInvoiceCreated</code> via outbox` },
+    ]
+  },
+  {
+    source: "sales",
+    aggregate: "SalesOrder",
+    event: "StockReservationRequested",
+    consumers: [
+      { dest: "inventory", name: "inventory.stock-reservation",
+        desc: `Inserts <code>inventory.stock_reservation</code> + <code>stock_reservation_line</code>; bumps <code>inventory.stock_balance.reserved_quantity</code>; emits <code>inventory.StockReserved</code>. §2.37: on any short line, raises <code>ReplenishmentRequest(reason=sales_order_shortage)</code> <strong>in the same transaction</strong> (routing make-vs-buy off the SKU's <code>product_card</code> snapshot) with the sales-order back-references stamped — or emits <code>inventory.ReplenishmentCancelled</code> directly if the SKU is unsourceable. The re-emitted retry (after replenishment) drops the prior partial reservation first.` },
+    ]
+  },
+
+  // === purchasing ===
+  {
+    source: "purchasing",
+    aggregate: "PurchaseOrder",
+    event: "PurchaseOrderApproved",
+    consumers: [
+      { dest: "reporting", name: "reporting.po-tracking.po-approved",
+        desc: `<code>reporting.purchase_order_tracking_view.po_status</code> flipped <code>'draft' → 'sent'</code>, <code>approved_at</code> stamped (the manual-approval path; auto-approve already lands as <code>'sent'</code> via po-created)` },
+    ]
+  },
+  {
+    source: "purchasing",
+    aggregate: "PurchaseOrder",
+    event: "PurchaseOrderCreated",
+    consumers: [
+      { dest: "finance", name: "finance.po-line-facts.po-created",
+        desc: `Inserts <code>finance.purchase_order_line_facts</code> rows (supplier_id, supplier_name, currency_code, product_id, product_sku, product_name, ordered_quantity, unit_price) — 3-way-match source` },
+      { dest: "inventory", name: "inventory.purchase-order-line-facts",
+        desc: `Writes TWO tables in one handler: <code>inventory.purchase_order_line_facts</code> (purchase_order_header_id, purchase_order_line_id, product_id) — used by goods-receipt validation; AND <code>inventory.replenishment_request.linked_purchase_order_id</code> — if <code>payload.sourcePurchaseRequisitionId</code> matches an open request's <code>dispatched_aggregate_id</code> (kind = <code>purchase_requisition</code>), stamps the link so the future <code>GoodsReceived</code> on this PO can resolve back to the replenishment.` },
+      { dest: "reporting", name: "reporting.po-tracking.po-created",
+        desc: `Creates <code>reporting.purchase_order_tracking_view</code> row (po_number, supplier_id/name, po_status, currency_code, ordered_amount, source_work_order_id)` },
+      { dest: "reporting", name: "reporting.atp.po-created",
+        desc: `<code>reporting.available_to_promise_view.ordered_quantity</code> (+= line qty), <code>product_sku</code> / <code>product_name</code> backfill` },
+      { dest: "reporting", name: "reporting.dashboard.po-created",
+        desc: `<code>reporting.financial_dashboard_daily.purchase_orders_created_count</code> (per dashboard_date, currency_code)` },
+      { dest: "reporting", name: "reporting.material-shortage.po-created",
+        desc: `<code>reporting.material_shortage_view.po_ordered_quantity</code>, <code>po_created_at</code> per matching material line; also updates <code>production_planning_board.open_purchase_orders_count</code>` },
+    ]
+  },
+  {
+    source: "purchasing",
+    aggregate: "PurchaseRequisition",
+    event: "PurchaseRequisitionCreated",
+    consumers: [
+      { dest: "reporting", name: "reporting.material-shortage.pr-created",
+        desc: `<code>reporting.material_shortage_view.requisition_created_at</code> (per requested line, product_sku/name backfill)` },
+    ]
+  },
+  {
+    source: "purchasing",
+    aggregate: "SupplierProductPrice",
+    event: "SupplierProductPriceChanged",
+    consumers: [
+      { dest: "manufacturing", name: "manufacturing.materials-cost-rollup",
+        desc: `<code>manufacturing.product_card.materials_cost</code>, <code>currency_code</code>, <code>materials_cost_reason</code>, <code>materials_cost_captured_at</code> — rerun for every product whose preferred supplier matches` },
+    ]
+  },
+
+  // === inventory ===
+  {
+    source: "inventory",
+    aggregate: "GoodsReceipt",
+    event: "GoodsReceived",
+    consumers: [
+      { dest: "finance", name: "finance.po-line-facts.goods-received",
+        desc: `Bumps <code>finance.purchase_order_line_facts.received_quantity</code> per receipt line (additive)` },
+      { dest: "manufacturing", name: "manufacturing.make-to-order.goods-received",
+        desc: `Reads shortage-parked sagas; updates <code>manufacturing.work_order_saga.current_state</code> (un-parked back to <code>work_order_created</code>) or narrows stashed <code>shortage_data</code> JSON` },
+      { dest: "purchasing", name: "purchasing.p2p.goods-received",
+        desc: `Bumps <code>purchasing.purchase_order_line.received_quantity</code>; flips <code>purchase_order_header.status</code> → <code>partially_received</code> / <code>received</code>; advances <code>purchasing.purchase_to_pay_saga.current_state</code>` },
+      { dest: "reporting", name: "reporting.po-tracking.goods-received",
+        desc: `<code>reporting.purchase_order_tracking_view.received_amount</code> (+= delta), <code>goods_receipt_header_id</code>, <code>received_at</code>` },
+      { dest: "reporting", name: "reporting.atp.goods-received",
+        desc: `<code>reporting.available_to_promise_view.received_quantity</code> (+= qty)` },
+      { dest: "reporting", name: "reporting.material-shortage.goods-received",
+        desc: `<code>reporting.material_shortage_view.received_quantity</code> (+= delta), <code>received_at</code>; refreshes <code>production_planning_board.open_purchase_orders_count</code>` },
+      { dest: "inventory", name: "inventory.replenishment.goods-received (in-tx sibling, not inbox)",
+        desc: `<strong>In-tx sibling write inside <code>GoodsReceiptService.post</code>, not an inbox consumer of <code>GoodsReceived</code></strong> (same service, same transaction; runs <em>before</em> the event flushes from the outbox). Looks up the open <code>ReplenishmentRequest</code> by <code>linked_purchase_order_id = payload.purchaseOrderId</code>; if present and dispatched, calls <code>markFulfilled()</code> which flips status → <code>fulfilled</code> and emits <code>inventory.ReplenishmentFulfilled</code>. Closes the purchased-path replenishment loop.` },
+    ]
+  },
+  {
+    source: "inventory",
+    aggregate: "StockReservation",
+    event: "RawMaterialsReserved",
+    consumers: [
+      { dest: "manufacturing", name: "manufacturing.make-to-order.raw-materials-reserved",
+        desc: `Advances <code>manufacturing.work_order_saga.current_state</code> → <code>raw_materials_reserved</code> / <code>raw_material_shortage</code>; sets <code>manufacturing.work_order_header.material_status</code>; on shortage, emits <code>manufacturing.RawMaterialShortageDetected</code> via outbox` },
+      { dest: "reporting", name: "reporting.production-planning.raw-materials-reserved",
+        desc: `<code>reporting.production_planning_board.reservation_status</code>, <code>last_event_at</code>` },
+      { dest: "reporting", name: "reporting.atp.raw-materials-reserved",
+        desc: `<code>reporting.available_to_promise_view.production_reserved_quantity</code> (+= qty) — stub row created if product identity unknown` },
+      { dest: "finance", name: "finance.wip.raw-materials-reserved",
+        desc: `§2.42 perpetual WIP: on <code>status=reserved</code>, charges <code>finance.work_order_wip</code> and posts Dr 1230 WIP / Cr 1210 Raw Materials at standard cost (materials issued into WIP). Idempotent — charge once per work order` },
+    ]
+  },
+  {
+    source: "inventory",
+    aggregate: "StockReservation",
+    event: "InventorySalesOrderCancellationApplied",
+    consumers: [
+      { dest: "sales", name: "sales.compensation-inventory-ack",
+        desc: `Records inventory ack on <code>sales.sales_order_fulfilment_saga</code> (§2.40: the sole compensation ack — manufacturing's was retired); flips <code>compensating → compensated</code> and emits <code>sales.SalesOrderCompensated</code> via outbox` },
+    ]
+  },
+  {
+    source: "inventory",
+    aggregate: "StockReservation",
+    event: "StockReserved",
+    consumers: [
+      { dest: "sales", name: "sales.fulfilment-saga",
+        desc: `Advances <code>sales.sales_order_fulfilment_saga.current_state</code> — full reservation → <code>ready_to_ship</code>; partial/failed → parks at <code>stock_reservation_incomplete</code> recording the short line-ids (inventory raised their replenishment in-tx). Flips <code>sales.sales_order_header.status</code> → <code>in_fulfilment</code>` },
+      { dest: "reporting", name: "reporting.atp.stock-reserved",
+        desc: `<code>reporting.available_to_promise_view.sales_reserved_quantity</code> (+= qty) — stub row created with <code>product_sku='(pending)'</code> if product identity unknown` },
+      { dest: "reporting", name: "reporting.sales-order-360.stock-reserved",
+        desc: `<code>reporting.sales_order_360_view.stock_status</code> → reservation outcome (<code>reserved</code> / <code>partially_reserved</code> / <code>failed</code>); a full <code>reserved</code> is sticky — a later partial/stale event can't roll it back. Distinct from <code>reporting.atp.stock-reserved</code>: the inbox dispatcher fans the event to both, each dedup'd by consumer name` },
+    ]
+  },
+  {
+    source: "inventory",
+    aggregate: "Shipment",
+    event: "ShipmentPosted",
+    consumers: [
+      { dest: "finance", name: "finance.cogs.shipment-posted",
+        desc: `Posts perpetual-inventory COGS pair into <code>finance.journal_entry_header</code> + <code>journal_entry_line</code> (Dr 5000 COGS / Cr 1200 Inventory) — line cost from <code>finance.product_card</code> projection` },
+      { dest: "sales", name: "sales.fulfilment-saga.shipment-posted",
+        desc: `Advances <code>sales.sales_order_fulfilment_saga.current_state</code> → <code>goods_shipped</code>; flips <code>sales.sales_order_header.status</code> → <code>shipped</code> (+ <code>version+1</code>); emits <code>sales.SalesOrderShipped</code> via outbox` },
+      { dest: "reporting", name: "reporting.sales-order-360.shipment-posted",
+        desc: `<code>reporting.sales_order_360_view.shipment_status</code> → <code>shipped</code>; also advances <code>order_status</code> → <code>shipped</code> (forward-only; preserves <code>completed</code>/<code>cancelled</code>)` },
+      { dest: "reporting", name: "reporting.atp.shipment-posted",
+        desc: `<code>reporting.available_to_promise_view.shipped_quantity</code> (+= qty)` },
+      { dest: "inventory", name: "inventory.replenishment-detector.on-hand-decrement (in-tx sibling, not inbox)",
+        desc: `<strong>In-tx sibling write inside <code>ShipmentService.post</code>, not an inbox consumer of <code>ShipmentPosted</code></strong>. <code>ReplenishmentDetectionService</code> runs per shipped line: if <code>on_hand &lt; reorder_point</code> and no open request exists for the (product, warehouse), raises a new <code>ReplenishmentRequest</code> which emits <code>inventory.ReplenishmentRequested</code>. <code>target_service</code> (manufacturing | purchasing) is decided from the SKU's <code>product_card</code> make-vs-buy snapshot — inventory owns the routing decision. One-open-per-SKU/warehouse invariant enforced via partial unique index.` },
+    ]
+  },
+
+  {
+    source: "inventory",
+    aggregate: "StockAdjustment",
+    event: "StockAdjusted",
+    consumers: [
+      { dest: "finance", name: "finance.gl.stock-adjusted",
+        desc: `Posts the inventory-adjustment GL pair into <code>finance.journal_entry_header</code> + <code>journal_entry_line</code> — a gain Dr's the product's inventory account / Cr's <code>5400 Inventory Adjustment</code>, a loss reverses it. Delta valued at finance's authoritative <code>finance.product_card.standard_cost</code> (like COGS); on projection cold-start (no standard cost yet) the amount is zero and the GL post is skipped with a DEBUG log — see <code>design-notes.md</code> → stock-adjustment standard cost. The inventory move still stands; GL reconciles on re-drive once the projection populates` },
+      { dest: "inventory", name: "inventory.replenishment-detector.on-hand-decrement (in-tx sibling, not inbox)",
+        desc: `<strong>In-tx sibling write inside <code>StockAdjustmentService.adjust</code>, not an inbox consumer of <code>StockAdjusted</code></strong>. Same trigger as on shipment, but only on net-negative adjustments (write-offs, breakages). Net-positive adjustments are no-ops for replenishment.` },
+    ]
+  },
+
+  // === manufacturing ===
+  {
+    source: "manufacturing",
+    aggregate: "WorkOrder",
+    event: "OperationCompleted",
+    consumers: [
+      { dest: "reporting", name: "reporting.production-planning.operation-completed",
+        desc: `<code>reporting.production_planning_board.completed_operations_count</code>, <code>last_event_at</code>` },
+    ]
+  },
+  {
+    source: "manufacturing",
+    aggregate: "WorkOrder",
+    event: "RawMaterialReservationRequested",
+    consumers: [
+      { dest: "inventory", name: "inventory.raw-material-reservation",
+        desc: `Inserts <code>inventory.stock_reservation</code> + <code>stock_reservation_line</code> (work-order kind); bumps <code>inventory.stock_balance.reserved_quantity</code> per material; emits <code>inventory.RawMaterialsReserved</code>` },
+    ]
+  },
+  {
+    source: "manufacturing",
+    aggregate: "WorkOrder",
+    event: "RawMaterialShortageDetected",
+    consumers: [
+      { dest: "inventory", name: "inventory.shortage-to-replenishment",
+        desc: `Raises one <code>ReplenishmentRequest</code> per shortage component with <code>reason='work_order_shortage'</code> and <code>target_service</code> derived from inventory's make-vs-buy snapshot (typically <code>purchasing</code> for raw materials). Routes through the same generic <code>inventory.ReplenishmentRequested</code> channel as reorder-point-driven requests — manufacturing no longer talks to purchasing directly. The historical direct <code>purchasing.shortage-to-requisition</code> consumer + <code>PurchaseRequisitionService.createForWorkOrderShortage</code> + <code>SourceType.WORK_ORDER_SHORTAGE</code> path is retired (the enum value remains as schema-prep for already-stored rows; Javadoc-tagged historical).` },
+      { dest: "reporting", name: "reporting.production-planning.shortage-detected",
+        desc: `<code>reporting.production_planning_board.shortage_count</code>, <code>shortage_summary</code>, <code>last_event_at</code>` },
+      { dest: "reporting", name: "reporting.material-shortage.shortage-detected",
+        desc: `Upserts <code>reporting.material_shortage_view</code> per component (material_sku, material_name, shortage_quantity, detected_at)` },
+    ]
+  },
+  {
+    source: "manufacturing",
+    aggregate: "WorkOrder",
+    event: "SubAssembliesConsumed",
+    consumers: [
+      { dest: "inventory", name: "inventory.wip-consume",
+        desc: `Decrements <code>inventory.wip_balance.on_hand_quantity</code> per consumed sub-assembly product (bounded by non-negative CHECK)` },
+      { dest: "finance", name: "finance.wip.sub-assemblies-consumed",
+        desc: `§2.42 perpetual WIP: rolls each consumed sub-assembly's value into the parent's <code>finance.work_order_wip</code> and posts Dr 1230 WIP / Cr 1220 Finished Goods at standard cost (multi-level cost roll-up)` },
+    ]
+  },
+  {
+    source: "manufacturing",
+    aggregate: "WorkOrder",
+    event: "WorkOrderCreated",
+    consumers: [
+      { dest: "reporting", name: "reporting.production-planning.work-order-created",
+        desc: `Creates <code>reporting.production_planning_board</code> row (work_order_number, sales_order_header_id, finished_product_id/sku/name, planned_quantity, work_order_status). §2.37 Slice 4: <code>sales_order_header_id</code> is now fed from the event's <code>sourceSalesOrderHeaderId</code> (the SO whose shortage triggered this make-to-stock WO) — the retired make-to-order <code>salesOrderHeaderId</code> binding is always null now. (§2.37 Slice 3 also removed the <code>sales.fulfilment-saga.work-order-created</code> consumer — sales no longer tracks WOs.)` },
+      { dest: "reporting", name: "reporting.atp.work-order-created",
+        desc: `<code>reporting.available_to_promise_view.planned_work_order_quantity</code> (+= planned qty), <code>product_sku</code> / <code>product_name</code> backfill` },
+      { dest: "reporting", name: "reporting.dashboard.work-order-created",
+        desc: `<code>reporting.financial_dashboard_daily.work_orders_created_count</code> (per dashboard_date, currency_code)` },
+    ]
+  },
+  {
+    source: "manufacturing",
+    aggregate: "WorkOrder",
+    event: "WorkOrderManufacturingCompleted",
+    consumers: [
+      { dest: "inventory", name: "inventory.production-confirmation",
+        desc: `Writes multiple tables in one handler. Top-level WO: bumps <code>inventory.stock_balance.on_hand_quantity</code> for the finished good (warehouse MAIN) + audit row in <code>inventory.stock_movement</code>; sub-assembly child: bumps <code>inventory.wip_balance.on_hand_quantity</code> only. Additionally for top-level WOs that fulfil a manufacturing-routed replenishment: looks up open <code>ReplenishmentRequest</code> by <code>dispatched_aggregate_id = payload.workOrderId</code>; if present and <code>dispatched</code>, calls <code>markFulfilled()</code> which flips status → <code>fulfilled</code> and emits <code>inventory.ReplenishmentFulfilled</code> (which for a sales-order-shortage replenishment un-parks the sales saga). Closes the manufactured-path replenishment loop.` },
+      { dest: "reporting", name: "reporting.sales-order-360.manufacturing-completed",
+        desc: `<code>reporting.sales_order_360_view.manufacturing_status</code> → <code>completed</code>` },
+      { dest: "reporting", name: "reporting.production-planning.work-order-completed",
+        desc: `<code>reporting.production_planning_board.work_order_status</code> → <code>completed</code>, <code>completed_quantity</code>, <code>last_event_at</code>` },
+      { dest: "reporting", name: "reporting.atp.work-order-completed",
+        desc: `<code>reporting.available_to_promise_view.completed_work_order_quantity</code> (+= qty); reduces remaining planned` },
+      { dest: "finance", name: "finance.wip.work-order-completed",
+        desc: `§2.42 perpetual WIP: settles <code>finance.work_order_wip</code> and posts Dr 1220 Finished Goods / Cr 1230 WIP at the finished good's standard cost (empties WIP — nets to zero at standard cost). Fires for top-level + sub-assembly children. Idempotent — complete once` },
+    ]
+  },
+  {
+    source: "manufacturing",
+    aggregate: "WorkOrder",
+    event: "WorkOrderPriorityChanged",
+    consumers: [
+      { dest: "reporting", name: "reporting.production-planning.work-order-priority-changed",
+        desc: `<code>reporting.production_planning_board.priority</code>, <code>last_event_at</code>` },
+    ]
+  },
+  {
+    source: "manufacturing",
+    aggregate: "Product",
+    event: "ProductMaterialsCostComputed",
+    consumers: [
+      { dest: "product", name: "product.materials-cost-rebased",
+        desc: `Calls <code>ProductService.changeStandardCost</code> to stamp the rolled-up materials cost onto product master's <code>standard_cost</code>; the aggregate then emits <code>product.StandardCostChanged</code>, which finance + reporting already consume — closes the cost-rollup feedback loop` },
+    ]
+  },
+
+  // === finance ===
+  {
+    source: "finance",
+    aggregate: "CustomerInvoice",
+    event: "CustomerInvoiceCreated",
+    consumers: [
+      { dest: "sales", name: "sales.fulfilment-saga.customer-invoice-created",
+        desc: `Advances <code>sales.sales_order_fulfilment_saga.current_state</code> → <code>invoice_created</code>` },
+      { dest: "reporting", name: "reporting.sales-order-360.invoice-created",
+        desc: `<code>reporting.sales_order_360_view.invoiced_amount</code>, <code>invoiced_at</code>` },
+      { dest: "reporting", name: "reporting.dashboard.customer-invoice-created",
+        desc: `<code>reporting.financial_dashboard_daily.customer_invoices_amount</code> (+= amount, per currency)` },
+    ]
+  },
+  {
+    source: "finance",
+    aggregate: "Payment",
+    event: "CustomerPaymentReceived",
+    consumers: [
+      { dest: "sales", name: "sales.fulfilment-saga.customer-payment-received",
+        desc: `Advances <code>sales.sales_order_fulfilment_saga.current_state</code>; on full settlement, flips <code>sales.sales_order_header.status</code> → <code>completed</code>` },
+      { dest: "reporting", name: "reporting.sales-order-360.payment-received",
+        desc: `<code>reporting.sales_order_360_view.paid_amount</code> (+= alloc), <code>outstanding_amount</code>, <code>payment_status</code>; on full settlement advances <code>order_status</code> → <code>completed</code> (forward-only; preserves <code>cancelled</code>)` },
+      { dest: "reporting", name: "reporting.dashboard.customer-payment-received",
+        desc: `<code>reporting.financial_dashboard_daily.customer_payments_amount</code> (+= amount, per currency)` },
+    ]
+  },
+  {
+    source: "finance",
+    aggregate: "Payment",
+    event: "SupplierPaymentMade",
+    consumers: [
+      { dest: "purchasing", name: "purchasing.p2p.supplier-payment-made",
+        desc: `Advances <code>purchasing.purchase_to_pay_saga.current_state</code>; on full settlement flips <code>purchase_order_header.status</code> → <code>paid</code> and sets <code>paid_amount = total_amount</code>; partial payment bumps <code>paid_amount</code>` },
+      { dest: "reporting", name: "reporting.po-tracking.supplier-payment-made",
+        desc: `<code>reporting.purchase_order_tracking_view.paid_amount</code>, <code>payment_id</code>, <code>invoice_status_after</code>` },
+      { dest: "reporting", name: "reporting.dashboard.supplier-payment-made",
+        desc: `<code>reporting.financial_dashboard_daily.supplier_payments_amount</code> (+= amount, per currency)` },
+    ]
+  },
+  {
+    source: "finance",
+    aggregate: "SupplierInvoice",
+    event: "SupplierInvoiceApproved",
+    consumers: [
+      { dest: "purchasing", name: "purchasing.p2p.supplier-invoice-approved",
+        desc: `Advances <code>purchasing.purchase_to_pay_saga.current_state</code> → <code>supplier_invoice_approved</code>; bumps <code>purchasing.purchase_order_header.invoiced_amount</code> and flips <code>status</code> → <code>partially_invoiced</code> / <code>invoiced</code>` },
+      { dest: "reporting", name: "reporting.po-tracking.invoice-approved",
+        desc: `<code>reporting.purchase_order_tracking_view.invoice_amount</code>, <code>supplier_invoice_header_id</code>, <code>invoiced_at</code>` },
+      { dest: "reporting", name: "reporting.dashboard.supplier-invoice-approved",
+        desc: `<code>reporting.financial_dashboard_daily.supplier_invoices_amount</code> (+= amount, per currency)` },
+    ]
+  },
+  {
+    source: "finance",
+    aggregate: "SupplierInvoice",
+    event: "SupplierInvoiceRejected",
+    consumers: [
+      { dest: "purchasing", name: "purchasing.p2p.supplier-invoice-rejected",
+        desc: `Advances <code>purchasing.purchase_to_pay_saga.saga_state</code> <code>goods_received</code> → <code>failed</code> (terminal). No PO header writeback — PO-cancellation is a separate deferred concern.` },
+    ]
+  },
+
+  // === inventory — replenishment orchestrator (§2.35) ===
+  {
+    source: "inventory",
+    aggregate: "ReplenishmentRequest",
+    event: "ReplenishmentRequested",
+    consumers: [
+      { dest: "manufacturing", name: "manufacturing.replenishment-dispatcher",
+        desc: `Filter on <code>payload.targetService = "manufacturing"</code>. Builds a <code>ReleaseForReplenishmentCommand</code> (carrying §2.37 Slice 4's <code>sourceSalesOrderHeaderId</code> from the payload) + BOM walk; calls <code>WorkOrderReleaseService.releaseForReplenishment(...)</code>. The <code>WorkOrder</code> factory emits both <code>WorkOrderCreated</code> (with <code>replenishmentRequestId</code> + <code>sourceSalesOrderHeaderId</code>) and <code>manufacturing.ReplenishmentDispatched</code> atomically. <strong>No active BOM → emits <code>manufacturing.ReplenishmentUndispatchable</code></strong> so inventory cancels. Reason is one of <code>reorder_point_breach</code>, <code>work_order_shortage</code>, or (§2.37) <code>sales_order_shortage</code>.` },
+      { dest: "purchasing", name: "purchasing.replenishment-dispatcher",
+        desc: `Filter on <code>payload.targetService = "purchasing"</code>. Creates a single-line <code>PurchaseRequisition</code> via <code>PurchaseRequisitionService.createForStockReplenishment(...)</code> with <code>SourceType.STOCK_REPLENISHMENT</code> + <code>source_replenishment_request_id</code>. Emits both <code>PurchaseRequisitionCreated</code> and <code>purchasing.ReplenishmentDispatched</code>. <strong>No vendor configured → emits <code>purchasing.ReplenishmentUndispatchable</code></strong> so inventory cancels. <strong>This is the ONLY auto-PR path after §2.35</strong> — WO shortages and (§2.37) sales-order shortages all arrive here through inventory's ReplenishmentRequest.` },
+      { dest: "reporting", name: "reporting.replenishment-history.requested",
+        desc: `<code>reporting.replenishment_history_view</code> — inserts a new row keyed by <code>replenishment_request_id</code>, denormalises SKU + product name from <code>reporting.product_card</code>, stamps <code>requested_at</code> and <code>status='requested'</code>.` },
+    ]
+  },
+  {
+    source: "manufacturing",
+    aggregate: "WorkOrder",
+    event: "ReplenishmentDispatched",
+    consumers: [
+      { dest: "inventory", name: "inventory.replenishment.mfg-dispatched",
+        desc: `Looks up <code>ReplenishmentRequest</code> by <code>payload.replenishmentRequestId</code>; calls <code>markDispatched(WORK_ORDER, payload.workOrderId)</code>; status → <code>dispatched</code>, <code>dispatched_aggregate_kind='work_order'</code>, <code>dispatched_aggregate_id</code>, <code>dispatched_at</code>.` },
+      { dest: "reporting", name: "reporting.replenishment-history.mfg-dispatched",
+        desc: `<code>reporting.replenishment_history_view.dispatched_aggregate_kind='work_order'</code>, <code>dispatched_aggregate_id</code>, <code>dispatched_at</code>; status → <code>dispatched</code>.` },
+    ]
+  },
+  {
+    source: "purchasing",
+    aggregate: "PurchaseRequisition",
+    event: "ReplenishmentDispatched",
+    consumers: [
+      { dest: "inventory", name: "inventory.replenishment.pur-dispatched",
+        desc: `Looks up <code>ReplenishmentRequest</code> by <code>payload.replenishmentRequestId</code>; calls <code>markDispatched(PURCHASE_REQUISITION, payload.purchaseRequisitionId)</code>. The PR→PO link is observed later via <code>PurchaseOrderCreated.sourcePurchaseRequisitionId</code> — see the <code>inventory.purchase-order-line-facts</code> consumer on that event.` },
+      { dest: "reporting", name: "reporting.replenishment-history.pur-dispatched",
+        desc: `<code>reporting.replenishment_history_view.dispatched_aggregate_kind='purchase_requisition'</code>, <code>dispatched_aggregate_id</code>, <code>dispatched_at</code>; status → <code>dispatched</code>.` },
+    ]
+  },
+  {
+    source: "inventory",
+    aggregate: "ReplenishmentRequest",
+    event: "ReplenishmentFulfilled",
+    consumers: [
+      { dest: "reporting", name: "reporting.replenishment-history.fulfilled",
+        desc: `<code>reporting.replenishment_history_view.status='fulfilled'</code>, <code>fulfilled_at</code>. Terminal state on the projection.` },
+      { dest: "sales", name: "sales.fulfilment-saga.replenishment-fulfilled",
+        desc: `§2.37 fan-in: when payload carries non-null <code>sourceSalesOrderHeaderId</code> + <code>sourceSalesOrderLineId</code> (sales_order_shortage reason), looks up the fulfilment saga and removes the line id from <code>saga.data.outstandingReplenishmentLineIds</code>. When the set empties, transitions <code>stock_reservation_incomplete → stock_reservation_requested</code> and re-emits <code>sales.StockReservationRequested</code> so inventory retries against the now-restocked balance. Null back-references (reorder-point or WO-shortage replenishments) are silently ignored.` },
+    ]
+  },
+  {
+    source: "inventory",
+    aggregate: "ReplenishmentRequest",
+    event: "ReplenishmentCancelled",
+    consumers: [
+      { dest: "sales", name: "sales.fulfilment-saga.replenishment-cancelled",
+        desc: `§2.37 cancel fan-in (failure counterpart of replenishment-fulfilled): when payload carries non-null sales-order back-references, transitions the fulfilment saga <code>stock_reservation_incomplete → rejected</code>, flips <code>sales.sales_order_header.status → rejected</code>, and emits <code>sales.SalesOrderCancellationRequested</code> to release any partial reservation. Null back-references (reorder-point / WO-shortage) are ignored.` },
+      { dest: "reporting", name: "reporting.replenishment-history.cancelled",
+        desc: `<code>reporting.replenishment_history_view.status='cancelled'</code>, <code>cancelled_at</code>. Terminal state on the projection.` },
+    ]
+  },
+  {
+    source: "manufacturing",
+    aggregate: "ReplenishmentRequest",
+    event: "ReplenishmentUndispatchable",
+    consumers: [
+      { dest: "inventory", name: "inventory.replenishment.mfg-undispatchable",
+        desc: `§2.37: manufacturing has no active BOM for the product. Looks up the <code>ReplenishmentRequest</code> by <code>payload.replenishmentRequestId</code> and calls <code>markCancelled(reason)</code> → status <code>cancelled</code> + emits <code>inventory.ReplenishmentCancelled</code> (which rejects the originating sales order for a sales_order_shortage request). Stamped under <code>InventoryAggregateTypes.REPLENISHMENT_REQUEST</code>.` },
+    ]
+  },
+  {
+    source: "purchasing",
+    aggregate: "ReplenishmentRequest",
+    event: "ReplenishmentUndispatchable",
+    consumers: [
+      { dest: "inventory", name: "inventory.replenishment.pur-undispatchable",
+        desc: `§2.37: purchasing has no vendor configured for the product. Looks up the <code>ReplenishmentRequest</code> by <code>payload.replenishmentRequestId</code> and calls <code>markCancelled(reason)</code> → status <code>cancelled</code> + emits <code>inventory.ReplenishmentCancelled</code>. Stamped under <code>InventoryAggregateTypes.REPLENISHMENT_REQUEST</code>.` },
+    ]
+  },
+];
+</script>
+<script>
+window.NORTHWOOD_PROJECTIONS = [
+  // ============================================================
+  // product
+  // ============================================================
+  {
+    source: "product",
+    aggregate: "Product",
+    destinations: [
+      { dest: "sales", tables: [
+        { name: "product_card", kind: "read-model",
+          events: ["ProductCreated", "SalesPriceChanged", "ProductDiscontinued"] },
+      ]},
+      { dest: "inventory", tables: [
+        { name: "product_card", kind: "read-model",
+          events: ["ProductCreated", "MakeVsBuyChanged", "ReorderPolicyChanged", "ProductDiscontinued"] },
+      ]},
+      { dest: "manufacturing", tables: [
+        { name: "product_card", kind: "read-model",
+          events: ["ProductCreated", "MakeVsBuyChanged", "ProductDiscontinued"] },
+        { name: "product_active_bom", kind: "read-model",
+          events: ["ActiveBomChanged", "ProductDiscontinued"] },
+        { name: "product_approved_vendor", kind: "read-model",
+          events: ["ApprovedVendorListChanged"] },
+      ]},
+      { dest: "purchasing", tables: [
+        { name: "product_approved_vendor", kind: "read-model",
+          events: ["ApprovedVendorListChanged"] },
+        { name: "product_card", kind: "read-model",
+          events: ["ProductDiscontinued"] },
+      ]},
+      { dest: "finance", tables: [
+        { name: "product_card", kind: "read-model",
+          events: ["ProductCreated", "StandardCostChanged", "ValuationClassChanged", "ProductDiscontinued"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "available_to_promise_view", kind: "read-model",
+          events: ["ProductCreated", "ProductDiscontinued"] },
+        { name: "product_card", kind: "read-model",
+          events: ["StandardCostChanged"] },
+      ]},
+    ]
+  },
+
+  // ============================================================
+  // sales
+  // ============================================================
+  {
+    source: "sales",
+    aggregate: "Customer",
+    destinations: [
+      { dest: "reporting", tables: [
+        { name: "customer_dashboard_status", kind: "read-model",
+          events: ["CustomerDeactivated"] },
+      ]},
+      { dest: "finance", tables: [
+        { name: "customer_invoice_header", kind: "aggregate",
+          events: ["CustomerDeactivated"] },
+      ]},
+    ]
+  },
+  {
+    source: "sales",
+    aggregate: "SalesOrder",
+    destinations: [
+      { dest: "inventory", tables: [
+        { name: "sales_order_line_facts", kind: "read-model",
+          events: ["SalesOrderPlaced"] },
+        { name: "stock_reservation", kind: "aggregate",
+          events: ["StockReservationRequested", "SalesOrderCancellationRequested"] },
+        { name: "stock_reservation_line", kind: "aggregate",
+          events: ["StockReservationRequested"] },
+        { name: "stock_balance", kind: "aggregate",
+          events: ["StockReservationRequested", "SalesOrderCancellationRequested"] },
+        { name: "replenishment_request", kind: "aggregate",
+          events: ["StockReservationRequested"] },
+      ]},
+      { dest: "finance", tables: [
+        { name: "customer_invoice_header", kind: "aggregate",
+          events: ["SalesOrderShipped", "SalesOrderCancellationRequested"] },
+        { name: "customer_invoice_line", kind: "aggregate",
+          events: ["SalesOrderShipped"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "sales_order_360_view", kind: "read-model",
+          events: ["SalesOrderPlaced", "SalesOrderReadyToShip", "SalesOrderCompensated"] },
+        { name: "financial_dashboard_daily", kind: "read-model",
+          events: ["SalesOrderPlaced"] },
+      ]},
+    ]
+  },
+
+  // ============================================================
+  // purchasing
+  // ============================================================
+  {
+    source: "purchasing",
+    aggregate: "PurchaseOrder",
+    destinations: [
+      { dest: "finance", tables: [
+        { name: "purchase_order_line_facts", kind: "read-model",
+          events: ["PurchaseOrderCreated"] },
+      ]},
+      { dest: "inventory", tables: [
+        { name: "purchase_order_line_facts", kind: "read-model",
+          events: ["PurchaseOrderCreated"] },
+        { name: "replenishment_request", kind: "aggregate",
+          events: ["PurchaseOrderCreated"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "purchase_order_tracking_view", kind: "read-model",
+          events: ["PurchaseOrderCreated", "PurchaseOrderApproved"] },
+        { name: "available_to_promise_view", kind: "read-model",
+          events: ["PurchaseOrderCreated"] },
+        { name: "financial_dashboard_daily", kind: "read-model",
+          events: ["PurchaseOrderCreated"] },
+        { name: "material_shortage_view", kind: "read-model",
+          events: ["PurchaseOrderCreated"] },
+        { name: "production_planning_board", kind: "read-model",
+          events: ["PurchaseOrderCreated"] },
+      ]},
+    ]
+  },
+  {
+    source: "purchasing",
+    aggregate: "PurchaseRequisition",
+    destinations: [
+      { dest: "reporting", tables: [
+        { name: "material_shortage_view", kind: "read-model",
+          events: ["PurchaseRequisitionCreated"] },
+        { name: "replenishment_history_view", kind: "read-model",
+          events: ["ReplenishmentDispatched"] },
+      ]},
+      { dest: "inventory", tables: [
+        { name: "replenishment_request", kind: "aggregate",
+          events: ["ReplenishmentDispatched", "ReplenishmentUndispatchable"] },
+      ]},
+    ]
+  },
+  {
+    source: "purchasing",
+    aggregate: "SupplierProductPrice",
+    destinations: [
+      { dest: "manufacturing", tables: [
+        { name: "product_materials_cost", kind: "read-model",
+          events: ["SupplierProductPriceChanged"] },
+      ]},
+    ]
+  },
+
+  // ============================================================
+  // inventory
+  // ============================================================
+  {
+    source: "inventory",
+    aggregate: "GoodsReceipt",
+    destinations: [
+      { dest: "finance", tables: [
+        { name: "purchase_order_line_facts", kind: "read-model",
+          events: ["GoodsReceived"] },
+      ]},
+      { dest: "manufacturing", tables: [
+        { name: "work_order_saga", kind: "saga",
+          events: ["GoodsReceived"] },
+      ]},
+      { dest: "purchasing", tables: [
+        { name: "purchase_order_line", kind: "aggregate",
+          events: ["GoodsReceived"] },
+        { name: "purchase_order_header", kind: "aggregate",
+          events: ["GoodsReceived"] },
+        { name: "purchase_to_pay_saga", kind: "saga",
+          events: ["GoodsReceived"] },
+      ]},
+      { dest: "inventory", tables: [
+        { name: "replenishment_request", kind: "aggregate",
+          events: ["GoodsReceived"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "purchase_order_tracking_view", kind: "read-model",
+          events: ["GoodsReceived"] },
+        { name: "available_to_promise_view", kind: "read-model",
+          events: ["GoodsReceived"] },
+        { name: "material_shortage_view", kind: "read-model",
+          events: ["GoodsReceived"] },
+        { name: "production_planning_board", kind: "read-model",
+          events: ["GoodsReceived"] },
+        { name: "replenishment_history_view", kind: "read-model",
+          events: ["GoodsReceived"] },
+      ]},
+    ]
+  },
+  {
+    source: "inventory",
+    aggregate: "StockReservation",
+    destinations: [
+      { dest: "sales", tables: [
+        { name: "sales_order_fulfilment_saga", kind: "saga",
+          events: ["StockReserved", "InventorySalesOrderCancellationApplied"] },
+        { name: "sales_order_header", kind: "aggregate",
+          events: ["StockReserved"] },
+      ]},
+      { dest: "manufacturing", tables: [
+        { name: "work_order_saga", kind: "saga",
+          events: ["RawMaterialsReserved"] },
+        { name: "work_order_header", kind: "aggregate",
+          events: ["RawMaterialsReserved"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "production_planning_board", kind: "read-model",
+          events: ["RawMaterialsReserved"] },
+        { name: "available_to_promise_view", kind: "read-model",
+          events: ["RawMaterialsReserved", "StockReserved"] },
+        { name: "sales_order_360_view", kind: "read-model",
+          events: ["StockReserved"] },
+      ]},
+      { dest: "finance", tables: [
+        { name: "work_order_wip", kind: "read-model",
+          events: ["RawMaterialsReserved"] },
+      ]},
+    ]
+  },
+  {
+    source: "inventory",
+    aggregate: "Shipment",
+    destinations: [
+      { dest: "finance", tables: [
+        { name: "journal_entry_header", kind: "aggregate",
+          events: ["ShipmentPosted"] },
+        { name: "journal_entry_line", kind: "aggregate",
+          events: ["ShipmentPosted"] },
+      ]},
+      { dest: "sales", tables: [
+        { name: "sales_order_fulfilment_saga", kind: "saga",
+          events: ["ShipmentPosted"] },
+        { name: "sales_order_header", kind: "aggregate",
+          events: ["ShipmentPosted"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "sales_order_360_view", kind: "read-model",
+          events: ["ShipmentPosted"] },
+        { name: "available_to_promise_view", kind: "read-model",
+          events: ["ShipmentPosted"] },
+      ]},
+      { dest: "inventory", tables: [
+        { name: "replenishment_request", kind: "aggregate",
+          events: ["ShipmentPosted"] },
+      ]},
+    ]
+  },
+
+  {
+    source: "inventory",
+    aggregate: "StockAdjustment",
+    destinations: [
+      { dest: "finance", tables: [
+        { name: "journal_entry_header", kind: "aggregate",
+          events: ["StockAdjusted"] },
+        { name: "journal_entry_line", kind: "aggregate",
+          events: ["StockAdjusted"] },
+      ]},
+      { dest: "inventory", tables: [
+        { name: "replenishment_request", kind: "aggregate",
+          events: ["StockAdjusted"] },
+      ]},
+    ]
+  },
+
+  // === inventory.ReplenishmentRequest (§2.35, §2.37) ===
+  {
+    source: "inventory",
+    aggregate: "ReplenishmentRequest",
+    destinations: [
+      { dest: "reporting", tables: [
+        { name: "replenishment_history_view", kind: "read-model",
+          events: ["ReplenishmentRequested", "ReplenishmentFulfilled", "ReplenishmentCancelled"] },
+      ]},
+      // §2.37 fan-in: ReplenishmentFulfilled (all short lines) re-enters
+      // stock_reservation_requested + re-emits StockReservationRequested for
+      // retry; ReplenishmentCancelled (a short line couldn't be sourced)
+      // transitions stock_reservation_incomplete → rejected + flips the header.
+      { dest: "sales", tables: [
+        { name: "sales_order_fulfilment_saga", kind: "saga",
+          events: ["ReplenishmentFulfilled", "ReplenishmentCancelled"] },
+        { name: "sales_order_header", kind: "aggregate",
+          events: ["ReplenishmentCancelled"] },
+      ]},
+    ]
+  },
+
+  // ============================================================
+  // manufacturing
+  // ============================================================
+  {
+    source: "manufacturing",
+    aggregate: "WorkOrder",
+    destinations: [
+      { dest: "inventory", tables: [
+        { name: "stock_reservation", kind: "aggregate",
+          events: ["RawMaterialReservationRequested"] },
+        { name: "stock_reservation_line", kind: "aggregate",
+          events: ["RawMaterialReservationRequested"] },
+        { name: "stock_balance", kind: "aggregate",
+          events: ["RawMaterialReservationRequested", "WorkOrderManufacturingCompleted"] },
+        { name: "stock_movement", kind: "aggregate",
+          events: ["WorkOrderManufacturingCompleted"] },
+        { name: "wip_balance", kind: "aggregate",
+          events: ["SubAssembliesConsumed", "WorkOrderManufacturingCompleted"] },
+        { name: "replenishment_request", kind: "aggregate",
+          events: ["ReplenishmentDispatched", "ReplenishmentUndispatchable", "WorkOrderManufacturingCompleted", "RawMaterialShortageDetected"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "production_planning_board", kind: "read-model",
+          events: ["WorkOrderCreated", "OperationCompleted", "RawMaterialShortageDetected", "WorkOrderManufacturingCompleted", "WorkOrderPriorityChanged"] },
+        { name: "available_to_promise_view", kind: "read-model",
+          events: ["WorkOrderCreated", "WorkOrderManufacturingCompleted"] },
+        { name: "financial_dashboard_daily", kind: "read-model",
+          events: ["WorkOrderCreated"] },
+        { name: "material_shortage_view", kind: "read-model",
+          events: ["RawMaterialShortageDetected"] },
+        { name: "sales_order_360_view", kind: "read-model",
+          events: ["WorkOrderManufacturingCompleted"] },
+        { name: "replenishment_history_view", kind: "read-model",
+          events: ["ReplenishmentDispatched"] },
+      ]},
+      { dest: "finance", tables: [
+        { name: "work_order_wip", kind: "read-model",
+          events: ["WorkOrderManufacturingCompleted", "SubAssembliesConsumed"] },
+      ]},
+    ]
+  },
+  {
+    source: "manufacturing",
+    aggregate: "Product",
+    destinations: [
+      { dest: "product", tables: [
+        { name: "product", kind: "aggregate",
+          events: ["ProductMaterialsCostComputed"] },
+      ]},
+    ]
+  },
+
+  // ============================================================
+  // finance
+  // ============================================================
+  {
+    source: "finance",
+    aggregate: "CustomerInvoice",
+    destinations: [
+      { dest: "sales", tables: [
+        { name: "sales_order_fulfilment_saga", kind: "saga",
+          events: ["CustomerInvoiceCreated"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "sales_order_360_view", kind: "read-model",
+          events: ["CustomerInvoiceCreated"] },
+        { name: "financial_dashboard_daily", kind: "read-model",
+          events: ["CustomerInvoiceCreated"] },
+      ]},
+    ]
+  },
+  {
+    source: "finance",
+    aggregate: "Payment",
+    destinations: [
+      { dest: "sales", tables: [
+        { name: "sales_order_fulfilment_saga", kind: "saga",
+          events: ["CustomerPaymentReceived"] },
+        { name: "sales_order_header", kind: "aggregate",
+          events: ["CustomerPaymentReceived"] },
+      ]},
+      { dest: "purchasing", tables: [
+        { name: "purchase_to_pay_saga", kind: "saga",
+          events: ["SupplierPaymentMade"] },
+        { name: "purchase_order_header", kind: "aggregate",
+          events: ["SupplierPaymentMade"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "sales_order_360_view", kind: "read-model",
+          events: ["CustomerPaymentReceived"] },
+        { name: "purchase_order_tracking_view", kind: "read-model",
+          events: ["SupplierPaymentMade"] },
+        { name: "financial_dashboard_daily", kind: "read-model",
+          events: ["CustomerPaymentReceived", "SupplierPaymentMade"] },
+      ]},
+    ]
+  },
+  {
+    source: "finance",
+    aggregate: "SupplierInvoice",
+    destinations: [
+      { dest: "purchasing", tables: [
+        { name: "purchase_to_pay_saga", kind: "saga",
+          events: ["SupplierInvoiceApproved"] },
+        { name: "purchase_order_header", kind: "aggregate",
+          events: ["SupplierInvoiceApproved"] },
+      ]},
+      { dest: "reporting", tables: [
+        { name: "purchase_order_tracking_view", kind: "read-model",
+          events: ["SupplierInvoiceApproved"] },
+        { name: "financial_dashboard_daily", kind: "read-model",
+          events: ["SupplierInvoiceApproved"] },
+      ]},
+    ]
+  },
+];
+</script>
+
+<!-- ============================================================
+     CDN libraries — load via HTTPS so file:// works in modern
+     browsers; offline-without-cache falls back gracefully (the service
+     graph doesn't render, each saga shows its stateDiagram-v2 source
+     text, and the cross-axis tree still works).
+
+     cytoscape powers both the service overview and the four saga
+     state-machine graphs. dagre + cytoscape-dagre give the sagas an
+     automatic top-to-bottom hierarchical layout (the job Mermaid used
+     to do); load order matters — cytoscape, then dagre, then the
+     cytoscape-dagre adapter that bridges the two.
+     ============================================================ -->
+<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.0/dist/cytoscape.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const events = window.NORTHWOOD_EVENTS;
+    const projections = window.NORTHWOOD_PROJECTIONS;
+    if (!Array.isArray(events) || !Array.isArray(projections)) {
+      document.getElementById('event-tree').textContent =
+        'Data missing — window.NORTHWOOD_EVENTS / NORTHWOOD_PROJECTIONS not arrays.';
+      return;
+    }
+
+    // index: event name -> list of projection write targets that read it.
+    // Source code: an event from service X may also be projected onto a
+    // table in service Y; the projection dataset is keyed by the EMITTER
+    // (source + aggregate) + lists the destination tables + the event(s)
+    // that trigger each write. We invert it here keyed by event name only,
+    // accepting the rare ambiguity where two services emit an event with
+    // the same name (none in the current dataset).
+    const projByEvent = invertProjections(projections);
+
+    renderTree(events, projByEvent);
+    wireFilter();
+    wireExpandCollapse();
+    renderServiceGraph(events);
+    renderSagaGraphs();
+  });
+
+  // =====================================================
+  // Cross-axis tree
+  // =====================================================
+
+  function renderTree(events, projByEvent) {
+    // Group by source service → aggregate.
+    const byService = {};
+    events.forEach(function (e) {
+      if (!byService[e.source]) byService[e.source] = {};
+      if (!byService[e.source][e.aggregate]) byService[e.source][e.aggregate] = [];
+      byService[e.source][e.aggregate].push(e);
+    });
+
+    const services = Object.keys(byService).sort(serviceOrder);
+    const root = document.getElementById('event-tree');
+    let totalEvents = 0;
+    let html = '';
+    services.forEach(function (svc) {
+      const aggregates = Object.keys(byService[svc]).sort();
+      let svcEventCount = 0;
+      aggregates.forEach(function (a) { svcEventCount += byService[svc][a].length; });
+      totalEvents += svcEventCount;
+      html += '<details class="service-section">';
+      html += '<summary><strong>' + svc + '</strong> <span class="meta" style="color:var(--muted);font-weight:normal;font-size:0.82rem;">' + aggregates.length + ' aggregate(s), ' + svcEventCount + ' event(s)</span></summary>';
+      aggregates.forEach(function (agg) {
+        const events = byService[svc][agg];
+        html += '<details class="agg-section">';
+        html += '<summary>' + agg + ' <span class="meta" style="color:var(--muted);font-weight:normal;font-size:0.82rem;">(' + events.length + ' event' + (events.length === 1 ? '' : 's') + ')</span></summary>';
+        events.forEach(function (e) {
+          html += renderEventRow(e, projByEvent[e.event] || []);
+        });
+        html += '</details>';
+      });
+      html += '</details>';
+    });
+    root.innerHTML = html;
+
+    const filterCount = document.getElementById('filter-count');
+    if (filterCount) {
+      filterCount.textContent = totalEvents + ' event(s) across ' + services.length + ' service(s)';
+    }
+  }
+
+  function renderEventRow(e, projTargets) {
+    const anchor = 'event-' + e.source + '.' + e.event;
+    const consumers = e.consumers || [];
+    // Saga drivers: any projection target where kind=saga.
+    const sagaDrivers = projTargets.filter(function (t) { return t.kind === 'saga'; });
+    const nonSagaTargets = projTargets.filter(function (t) { return t.kind !== 'saga'; });
+
+    let html = '<div class="event-row" id="' + anchor + '" data-search="' +
+      escAttr((e.event + ' ' + e.aggregate + ' ' + e.source + ' ' +
+        consumers.map(function (c) { return c.name + ' ' + c.dest; }).join(' ') + ' ' +
+        projTargets.map(function (t) { return t.dest + '.' + t.name; }).join(' ')).toLowerCase()) + '">';
+    html += '<div><span class="ev-name">' + e.event;
+    html += '<a class="anchor" href="#' + anchor + '" title="permalink">#</a></span>';
+    if (sagaDrivers.length > 0) {
+      html += '<span class="ev-pill saga-driver">drives ' + sagaDrivers.length + ' saga(s)</span>';
+    }
+    if (consumers.length === 0) {
+      html += '<span class="ev-pill">no current consumer</span>';
+    }
+    html += '</div>';
+
+    html += '<div class="panes">';
+    // Consumers pane
+    html += '<div class="pane"><h5>Consumers (handlers)</h5>';
+    if (consumers.length === 0) {
+      html += '<p class="empty">No consumers yet.</p>';
+    } else {
+      html += '<ul>';
+      consumers.forEach(function (c) {
+        html += '<li><strong>' + c.dest + '</strong> · <code>' + c.name + '</code>';
+        html += '<br><span style="color:var(--muted);">' + (c.desc || '') + '</span></li>';
+      });
+      html += '</ul>';
+    }
+    html += '</div>';
+
+    // Projection writes pane
+    html += '<div class="pane"><h5>Projection writes (tables)</h5>';
+    if (nonSagaTargets.length === 0) {
+      html += '<p class="empty">No read-model / aggregate writes.</p>';
+    } else {
+      html += '<ul>';
+      nonSagaTargets.forEach(function (t) {
+        html += '<li><span class="table-kind ' + t.kind + '">' + t.kind + '</span><strong>' + t.dest + '.</strong><code>' + t.name + '</code>';
+        html += '</li>';
+      });
+      html += '</ul>';
+    }
+    html += '</div>';
+
+    // Saga drivers pane
+    html += '<div class="pane"><h5>Saga transitions driven</h5>';
+    if (sagaDrivers.length === 0) {
+      html += '<p class="empty">No saga transitions.</p>';
+    } else {
+      html += '<ul>';
+      sagaDrivers.forEach(function (t) {
+        const sagaAnchor = sagaAnchorFor(t.dest, t.name);
+        html += '<li><span class="table-kind saga">saga</span><strong>' + t.dest + '.</strong>';
+        if (sagaAnchor) {
+          html += '<a href="#' + sagaAnchor + '"><code>' + t.name + '</code></a>';
+        } else {
+          html += '<code>' + t.name + '</code>';
+        }
+        html += '</li>';
+      });
+      html += '</ul>';
+    }
+    html += '</div>';
+
+    html += '</div>'; // panes
+    html += '</div>'; // event-row
+    return html;
+  }
+
+  function sagaAnchorFor(dest, table) {
+    if (dest === 'sales' && table === 'sales_order_fulfilment_saga') return 'saga-sales-order-fulfilment';
+    if (dest === 'manufacturing' && table === 'work_order_saga') return 'saga-work-order';
+    if (dest === 'purchasing' && table === 'purchase_to_pay_saga') return 'saga-purchase-to-pay';
+    return null;
+  }
+
+  // =====================================================
+  // Projections inversion: event -> [target tables]
+  // =====================================================
+
+  function invertProjections(projections) {
+    const out = {};
+    projections.forEach(function (entry) {
+      (entry.destinations || []).forEach(function (d) {
+        (d.tables || []).forEach(function (t) {
+          (t.events || []).forEach(function (evName) {
+            if (!out[evName]) out[evName] = [];
+            // De-dupe (some projection rows list the same event twice
+            // across different tables — we want each (dest,name) once).
+            const key = d.dest + '/' + t.name + '/' + t.kind;
+            if (!out[evName].some(function (x) { return (x.dest + '/' + x.name + '/' + x.kind) === key; })) {
+              out[evName].push({ dest: d.dest, name: t.name, kind: t.kind });
+            }
+          });
+        });
+      });
+    });
+    return out;
+  }
+
+  // =====================================================
+  // Filter bar
+  // =====================================================
+
+  function wireFilter() {
+    const input = document.getElementById('filter-input');
+    if (!input) return;
+    input.addEventListener('input', function () {
+      const q = input.value.trim().toLowerCase();
+      const rows = document.querySelectorAll('.event-row');
+      let shown = 0;
+      rows.forEach(function (r) {
+        const haystack = r.getAttribute('data-search') || '';
+        const match = q === '' || haystack.indexOf(q) !== -1;
+        r.classList.toggle('hidden', !match);
+        if (match) shown++;
+      });
+      // Hide aggregate / service summaries that contain no visible rows.
+      document.querySelectorAll('.agg-section').forEach(function (s) {
+        const anyVisible = s.querySelector('.event-row:not(.hidden)');
+        s.classList.toggle('hidden', !anyVisible);
+      });
+      document.querySelectorAll('.service-section').forEach(function (s) {
+        const anyVisible = s.querySelector('.event-row:not(.hidden)');
+        s.classList.toggle('hidden', !anyVisible);
+      });
+      const filterCount = document.getElementById('filter-count');
+      if (filterCount) {
+        filterCount.textContent = q === ''
+          ? rows.length + ' event(s)'
+          : shown + ' / ' + rows.length + ' event(s)';
+      }
+    });
+  }
+
+  function wireExpandCollapse() {
+    // Single toggle: button label reflects the NEXT action. data-state holds
+    // the current bulk-state ("expanded" / "collapsed") so the toggle stays
+    // sticky across user clicks; manual <details> toggling by the user
+    // doesn't flip the bulk-state — the next bulk click still does what the
+    // label says.
+    //
+    // Scoped to the cross-axis tree (the filter-bar this button sits in
+    // belongs to that section). The saga blocks below are <details> too
+    // but each one has its own independent collapse — this button leaves
+    // them alone.
+    const btn = document.getElementById('toggle-all');
+    btn.addEventListener('click', function () {
+      const expanding = btn.getAttribute('data-state') === 'collapsed';
+      document.querySelectorAll('#event-tree details').forEach(function (d) { d.open = expanding; });
+      btn.setAttribute('data-state', expanding ? 'expanded' : 'collapsed');
+      btn.textContent = expanding ? 'collapse all' : 'expand all';
+    });
+  }
+
+  // =====================================================
+  // Cytoscape service-level graph
+  // =====================================================
+
+  function renderServiceGraph(events) {
+    if (typeof cytoscape !== 'function') {
+      const el = document.getElementById('service-graph');
+      el.innerHTML = '<div style="padding:1rem;color:var(--muted);">Cytoscape failed to load (offline + no CDN cache?). Graph hidden; cross-axis tree below still works.</div>';
+      return;
+    }
+    // Aggregate edges: (source service, dest service, kind) -> distinct
+    // event count. kind=compensation when the event name matches
+    // /Cancel|Compens/i (the compensating-transaction events) — those get
+    // their own red-dashed edge so the legend stays honest. Regular flows
+    // stay on a grey edge. A service pair that has both kinds of traffic
+    // (e.g. sales → inventory has StockReservationRequested + Sales-
+    // OrderCancellationRequested) shows TWO arrows between the boxes —
+    // one grey labelled "1", one red labelled "1" — rather than one red
+    // labelled "2" with a misleading colour.
+    const COMPENSATION_RE = /Cancel|Compens/i;
+    function kindOf(eventName) {
+      return COMPENSATION_RE.test(eventName) ? 'compensation' : 'flow';
+    }
+    const edgeMap = {};
+    const services = new Set();
+    events.forEach(function (e) {
+      services.add(e.source);
+      (e.consumers || []).forEach(function (c) {
+        services.add(c.dest);
+        const kind = kindOf(e.event);
+        const key = e.source + '||' + c.dest + '||' + kind;
+        if (!edgeMap[key]) edgeMap[key] = { source: e.source, dest: c.dest, kind: kind, events: new Set() };
+        edgeMap[key].events.add(e.event);
+      });
+    });
+
+    // Hand-tuned positions captured from the live graph after dragging into
+    // a layout that reads well (sales on the left, inventory in the middle,
+    // manufacturing/purchasing on the right, finance/reporting at the bottom,
+    // product up top). Used by layout: { name: 'preset' } below. To recapture
+    // after re-tuning: run in the browser console:
+    //   copy(JSON.stringify(cy.nodes().map(n => ({id: n.id(), x: Math.round(n.position().x), y: Math.round(n.position().y)})), null, 2))
+    const SERVICE_POSITIONS = {
+      product:       { x: 641, y: -18 },
+      sales:         { x: 433, y: 215 },
+      inventory:     { x: 815, y: 212 },
+      manufacturing: { x: 1113, y: 56 },
+      purchasing:    { x: 1120, y: 360 },
+      finance:       { x: 650, y: 547 },
+      reporting:     { x: 902, y: 542 }
+    };
+    const nodes = Array.from(services).map(function (s) {
+      const pos = SERVICE_POSITIONS[s];
+      const node = { data: { id: s, label: s } };
+      if (pos) node.position = { x: pos.x, y: pos.y };
+      return node;
+    });
+    const edges = Object.values(edgeMap).map(function (e, i) {
+      return {
+        data: {
+          id: 'e' + i,
+          source: e.source,
+          target: e.dest,
+          label: '' + e.events.size,
+          eventsCsv: Array.from(e.events).sort().join(', '),
+          compensation: e.kind === 'compensation'
+        }
+      };
+    });
+
+    const cy = window.cy = cytoscape({
+      container: document.getElementById('service-graph'),
+      elements: { nodes: nodes, edges: edges },
+      style: [
+        {
+          selector: 'node',
+          style: {
+            'background-color': '#4a8fe7',
+            'label': 'data(label)',
+            'color': '#fff',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'font-size': '14px',
+            'font-weight': 600,
+            'width': 90,
+            'height': 50,
+            'shape': 'round-rectangle',
+            'border-width': 1,
+            'border-color': '#2962b3'
+          }
+        },
+        {
+          selector: 'edge',
+          style: {
+            // Bidirectional pairs of edges between two services get
+            // separated into two curves so the labels don't stack.
+            'curve-style': 'bezier',
+            'control-point-step-size': 60,
+            'target-arrow-shape': 'triangle',
+            'arrow-scale': 1.4,
+            'line-color': '#9aa0a6',
+            'target-arrow-color': '#9aa0a6',
+            'opacity': 0.85,
+            'width': 2.0,
+            'label': 'data(label)',
+            'font-size': '11px',
+            'font-weight': 600,
+            'color': '#444',
+            'text-background-color': '#fff',
+            'text-background-opacity': 0.9,
+            'text-background-padding': '3px',
+            'text-background-shape': 'round-rectangle'
+          }
+        },
+        {
+          selector: 'edge[?compensation]',
+          style: {
+            'line-color': '#cf222e',
+            'target-arrow-color': '#cf222e',
+            'line-style': 'dashed',
+            'opacity': 0.6
+          }
+        },
+        {
+          selector: 'edge:selected',
+          style: { 'line-color': '#0969da', 'target-arrow-color': '#0969da' }
+        },
+        // Focus mode: click a service node to add it to the focused set.
+        // Focused nodes get a stronger border; nodes / edges not touching
+        // the focused set dim to ~15% opacity (still visible as topology
+        // backdrop, not a hard hide). Click background or click the focused
+        // node again to clear.
+        {
+          selector: 'node.focused',
+          style: {
+            'background-color': '#0969da',
+            'border-color': '#053974',
+            'border-width': 3
+          }
+        },
+        {
+          // Dim the fill + border but keep the label readable. Whole-node
+          // opacity at 0.18 made the white label vanish against the faded
+          // blue fill; splitting the channels lets us fade the chrome while
+          // flipping the text to dark for legibility.
+          selector: 'node.dimmed',
+          style: {
+            'background-opacity': 0.12,
+            'border-opacity': 0.25,
+            'color': '#57606a',
+            'text-opacity': 1
+          }
+        },
+        {
+          selector: 'edge.dimmed',
+          style: { 'opacity': 0.08, 'text-opacity': 0 }
+        }
+      ],
+      layout: {
+        // Preset layout — positions hand-tuned in the browser then captured
+        // back into SERVICE_POSITIONS above. Replaces the prior circle
+        // layout (force-directed cose was too crowded with 7 services + ~30
+        // edges, and circle didn't reflect the actual conceptual grouping).
+        name: 'preset',
+        animate: false,
+        padding: 40,
+        fit: true
+      }
+    });
+
+    // Focus mode: track the set of services the user has clicked. Empty
+    // set = "show all" default. Non-focused nodes always dim. Edge keep
+    // rule depends on focused-set size:
+    //   1 focused service → keep every edge touching it (incoming + outgoing
+    //     fan-out for the single service the user is investigating).
+    //   2+ focused services → keep ONLY edges WITHIN the focused subgraph
+    //     (both endpoints focused). Once the user picks multiple services
+    //     they're asking "how do these talk to each other"; showing every
+    //     edge that touches any one of them re-clutters the view.
+    // Clicking a node toggles its membership; clicking the empty background
+    // clears the whole set.
+    const focused = new Set();
+    function applyFocus() {
+      cy.nodes().removeClass('focused dimmed');
+      cy.edges().removeClass('dimmed');
+      if (focused.size === 0) return;
+      cy.nodes().forEach(function (n) {
+        if (focused.has(n.id())) {
+          n.addClass('focused');
+        } else {
+          n.addClass('dimmed');
+        }
+      });
+      const requireBoth = focused.size >= 2;
+      cy.edges().forEach(function (e) {
+        const srcFocused = focused.has(e.source().id());
+        const tgtFocused = focused.has(e.target().id());
+        const keep = requireBoth ? (srcFocused && tgtFocused) : (srcFocused || tgtFocused);
+        if (!keep) e.addClass('dimmed');
+      });
+    }
+    cy.on('tap', 'node', function (evt) {
+      const id = evt.target.id();
+      if (focused.has(id)) focused.delete(id); else focused.add(id);
+      applyFocus();
+    });
+    cy.on('tap', 'edge', function (evt) {
+      const e = evt.target;
+      const csv = e.data('eventsCsv');
+      const input = document.getElementById('filter-input');
+      // Filter the tree to the first event in this pair (cheap signal).
+      input.value = csv.split(',')[0].trim();
+      input.dispatchEvent(new Event('input'));
+    });
+
+    // Hover tooltip — canvas-drawn edges can't carry a DOM `title`, so we
+    // position a fixed-position div from mouseover/mousemove/mouseout.
+    const tooltip = document.getElementById('edge-tooltip');
+    function showTooltip(evt) {
+      const e = evt.target;
+      const csv = e.data('eventsCsv') || '';
+      const evList = csv.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+      const src = e.source().id();
+      const tgt = e.target().id();
+      let tag = '';
+      if (e.data('compensation')) tag = ' <span style="color:#ff7b85;">(compensation)</span>';
+      tooltip.innerHTML =
+        '<div class="head">' + escAttr(src) + ' → ' + escAttr(tgt) + ' · ' + evList.length + ' event' + (evList.length === 1 ? '' : 's') + tag + '</div>' +
+        '<ul>' + evList.map(function (n) { return '<li>' + escAttr(n) + '</li>'; }).join('') + '</ul>';
+      tooltip.style.display = 'block';
+      tooltip.setAttribute('aria-hidden', 'false');
+      positionTooltip(evt);
+    }
+    function positionTooltip(evt) {
+      const oe = evt.originalEvent;
+      if (!oe) return;
+      // Offset from cursor + clamp to viewport so it doesn't run off the edge.
+      const pad = 14;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const rect = tooltip.getBoundingClientRect();
+      let x = oe.clientX + pad;
+      let y = oe.clientY + pad;
+      if (x + rect.width  > vw - 8) x = oe.clientX - rect.width  - pad;
+      if (y + rect.height > vh - 8) y = oe.clientY - rect.height - pad;
+      tooltip.style.left = x + 'px';
+      tooltip.style.top  = y + 'px';
+    }
+    function hideTooltip() {
+      tooltip.style.display = 'none';
+      tooltip.setAttribute('aria-hidden', 'true');
+    }
+    cy.on('mouseover', 'edge', showTooltip);
+    cy.on('mousemove', 'edge', positionTooltip);
+    cy.on('mouseout',  'edge', hideTooltip);
+    // Belt-and-braces: hide if cursor leaves the graph container entirely
+    // (mouseout on edge doesn't always fire if you exit fast across the
+    // node/edge boundary).
+    document.getElementById('service-graph').addEventListener('mouseleave', hideTooltip);
+    cy.on('tap', function (evt) {
+      // Background tap (target === cy) clears the focus set.
+      if (evt.target === cy) {
+        focused.clear();
+        applyFocus();
+      }
+    });
+  }
+
+  // =====================================================
+  // Cytoscape saga state-machine graphs
+  // =====================================================
+  //
+  // The four orchestration diagrams used to be static Mermaid SVGs. They're
+  // now interactive Cytoscape graphs (drag a state to rearrange) — same
+  // affordance as the service overview. Rather than maintain a second copy
+  // of each state machine, we PARSE the stateDiagram-v2 source still sitting
+  // (collapsed) under each graph: states become nodes, transitions become
+  // labelled edges, `[*]` becomes a single start pseudo-node (source side)
+  // or end pseudo-node (target side). dagre lays them out top-to-bottom; if
+  // the dagre adapter didn't load we fall back to cytoscape's built-in
+  // breadthfirst layout (still draggable, just less tidy).
+  //
+  // Each graph is built lazily the first time its <details> opens — a
+  // Cytoscape instance can't lay out into a collapsed (0×0) container.
+
+  // SalesOrderFulfilment path filter. Each edge (keyed source||target — the
+  // SO saga has no parallel same-pair edges) carries the filter conditions
+  // under which it's traversed; an absent key means "any value". Routing
+  // model (§2.37): a fully-stocked order ships straight from
+  // stock_reservation_requested; a shortage parks at
+  // stock_reservation_incomplete while inventory replenishes (make-vs-buy is
+  // decided inside inventory now, not visible as a sales-saga branch). If the
+  // shortage is sourceable (manufactured w/ BOM, or purchased w/ vendor) every
+  // line's ReplenishmentFulfilled lands and the saga retries reservation; if it
+  // can't be sourced, a ReplenishmentCancelled rejects the order.
+  const SO_SAGA_SUMMARY_ID = 'saga-sales-order-fulfilment';
+  const SO_EDGE_CONDS = {
+    'started||stock_reservation_requested':              { pay: 'on_shipment' },
+    'started||awaiting_prepayment_invoice':              { pay: 'prepayment' },
+    'awaiting_prepayment_invoice||invoice_created':      { pay: 'prepayment' },
+    'invoice_created||prepaid':                          { pay: 'prepayment' },
+    'prepaid||stock_reservation_requested':              { pay: 'prepayment' },
+    'stock_reservation_requested||stock_reservation_incomplete':  { stock: 'short' },
+    'stock_reservation_incomplete||stock_reservation_requested':  { stock: 'short', sourceable: 'true' },
+    'stock_reservation_incomplete||rejected':            { stock: 'short', sourceable: 'false' },
+    'ready_to_ship||goods_shipped':                      { pay: 'on_shipment' },
+    'ready_to_ship||completed':                          { pay: 'prepayment' },
+    'goods_shipped||invoice_created':                    { pay: 'on_shipment' },
+    'invoice_created||invoice_partially_paid':           { pay: 'on_shipment' },
+    'invoice_created||completed':                        { pay: 'on_shipment' },
+    'invoice_partially_paid||completed':                 { pay: 'on_shipment' }
+  };
+  const SO_FILTERS = [
+    { key: 'pay',        label: 'salesOrder.paymentTerms', options: ['any', 'on_shipment', 'prepayment'] },
+    { key: 'stock',      label: 'reservation outcome',     options: ['any', 'covered', 'short'] },
+    { key: 'sourceable', label: 'shortage sourceable?',    options: ['any', 'true', 'false'] }
+  ];
+  const SO_NOTE = '§2.37: stocked → ships; shortage → parks at stock_reservation_incomplete while inventory replenishes (make-vs-buy decided in inventory); sourceable ⇒ retry, else ⇒ rejected';
+
+  // ReplenishmentRequest make-vs-buy path filter. The aggregate has parallel
+  // same-pair edges, so its conds are keyed source||target||label (resolved
+  // ahead of the bare pair key in buildSagaGraph). target_service is fixed at
+  // request time from the SKU's product_card make/buy snapshot and is 1:1 with
+  // dispatched_aggregate_kind (manufacturing ⇒ WORK_ORDER, purchasing ⇒
+  // PURCHASE_REQUISITION — see ReplenishmentRequest.matchesTargetService).
+  const RR_SAGA_SUMMARY_ID = 'aggregate-replenishment-request';
+  const RR_EDGE_CONDS = {
+    'requested||dispatched||markDispatched [WORK_ORDER]':                            { svc: 'manufacturing' },
+    'dispatched||fulfilled||markFulfilled [WORK_ORDER kind]':                        { svc: 'manufacturing' },
+    'requested||dispatched||markDispatched [PURCHASE_REQUISITION]':                  { svc: 'purchasing' },
+    'dispatched||dispatched||linkPurchaseOrder (on PurchaseOrderCreated)':           { svc: 'purchasing' },
+    'dispatched||fulfilled||markFulfilled [PURCHASE_REQUISITION kind, on GoodsReceived]': { svc: 'purchasing' }
+  };
+  const RR_FILTERS = [
+    { key: 'svc', label: 'targetService', options: ['any', 'manufacturing', 'purchasing'] }
+  ];
+  const RR_NOTE = 'target_service is fixed at request time from the SKU\'s product_card make/buy snapshot. manufacturing ⇒ dispatch to a work order; purchasing ⇒ dispatch to a purchase requisition, link the PO, fulfil on goods receipt. The [*]→requested, →cancelled and →[*] edges are shared by both paths.';
+
+  function renderSagaGraphs() {
+    const blocks = document.querySelectorAll('.saga-block');
+    if (typeof cytoscape !== 'function') {
+      blocks.forEach(function (b) {
+        const c = b.querySelector('.saga-graph');
+        if (c) c.innerHTML = '<div class="graph-fallback">Cytoscape failed to load (offline + no CDN cache?). Interactive graph hidden — expand the stateDiagram-v2 source below to read the flow.</div>';
+      });
+      return;
+    }
+    // Register the dagre layout adapter once. If either dagre or the adapter
+    // is missing we degrade to breadthfirst (set below per-graph).
+    let dagreAvailable = false;
+    if (window.cytoscapeDagre) {
+      try {
+        cytoscape.use(window.cytoscapeDagre);
+        dagreAvailable = !!window.dagre;
+      } catch (e) {
+        dagreAvailable = false;
+      }
+    }
+
+    blocks.forEach(function (block) {
+      const container = block.querySelector('.saga-graph');
+      const srcEl = block.querySelector('.saga-src');
+      if (!container || !srcEl) return;
+      const src = srcEl.textContent || '';
+      // Path filter: SalesOrderFulfilment (make-vs-buy + payment-terms) and
+      // ReplenishmentRequest (targetService). The others have no filter.
+      let sagaOpts = null;
+      if (block.querySelector('#' + SO_SAGA_SUMMARY_ID)) {
+        sagaOpts = { edgeConds: SO_EDGE_CONDS, filters: SO_FILTERS, note: SO_NOTE };
+      } else if (block.querySelector('#' + RR_SAGA_SUMMARY_ID)) {
+        sagaOpts = { edgeConds: RR_EDGE_CONDS, filters: RR_FILTERS, note: RR_NOTE };
+      }
+      let inst = null;
+      block.addEventListener('toggle', function () {
+        if (!block.open) return;
+        // Defer a frame so the just-expanded container has real dimensions.
+        requestAnimationFrame(function () {
+          if (!inst) {
+            inst = buildSagaGraph(container, src, dagreAvailable, sagaOpts);
+          } else {
+            inst.cy.resize();
+            inst.cy.fit(undefined, 24);
+          }
+        });
+      });
+    });
+  }
+
+  function buildSagaGraph(container, src, dagreAvailable, opts) {
+    const parsed = parseStateDiagram(src);
+    const edgeConds = (opts && opts.edgeConds) || null;
+
+    const nodes = [];
+    if (parsed.hasStart) nodes.push({ data: { id: '__start__', label: '' }, classes: 'pseudo start' });
+    parsed.order.forEach(function (id) {
+      let cls = 'state';
+      if (parsed.finals[id]) cls += ' final';      // has a transition to [*]
+      // Size each node to its label up front (data-driven width) — cytoscape
+      // 3.30 deprecates the `width: 'label'` auto-fit, so we estimate it from
+      // the label length (11px bold ≈ 6.6px/char) with horizontal padding.
+      const w = Math.max(54, Math.round(id.length * 6.6 + 22));
+      nodes.push({ data: { id: id, label: id, w: w }, classes: cls });
+    });
+    if (parsed.hasEnd) nodes.push({ data: { id: '__end__', label: '' }, classes: 'pseudo end' });
+
+    const edges = parsed.edges.map(function (e, i) {
+      const data = { id: 'se' + i, source: e.source, target: e.target, label: e.label };
+      if (edgeConds) {
+        // Label-qualified key first so parallel same-pair edges can carry
+        // different conds (ReplenishmentRequest has two requested→dispatched
+        // and two dispatched→fulfilled edges); fall back to the bare pair key
+        // (SalesOrderFulfilment has no parallel same-pair edges).
+        const cond = edgeConds[e.source + '||' + e.target + '||' + e.label]
+          || edgeConds[e.source + '||' + e.target];
+        if (cond) data.cond = cond;     // drives the path filter below
+      }
+      return { data: data };
+    });
+
+    const layoutOpts = dagreAvailable
+      ? { name: 'dagre', rankDir: 'TB', nodeSep: 35, rankSep: 55, edgeSep: 12, fit: true, padding: 24 }
+      : { name: 'breadthfirst', directed: true, spacingFactor: 1.15, fit: true, padding: 24 };
+
+    const cy = cytoscape({
+      container: container,
+      elements: { nodes: nodes, edges: edges },
+      style: [
+        {
+          selector: 'node.state',
+          style: {
+            'background-color': '#4a8fe7',
+            'label': 'data(label)',
+            'color': '#fff',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'font-size': '11px',
+            'font-weight': 600,
+            'shape': 'round-rectangle',
+            'width': 'data(w)',
+            'height': 26,
+            'border-width': 1,
+            'border-color': '#2962b3'
+          }
+        },
+        {
+          // Final states (those with an edge to the end pseudo-node) get the
+          // green used elsewhere on the page for aggregate / terminal facts.
+          selector: 'node.final',
+          style: { 'background-color': '#1a7f37', 'border-color': '#0f5c27' }
+        },
+        {
+          selector: 'node.pseudo',
+          style: {
+            'background-color': '#1f2328',
+            'shape': 'ellipse',
+            'width': 16,
+            'height': 16,
+            'label': ''
+          }
+        },
+        {
+          // End pseudo-node drawn as a ring to echo the UML "final state".
+          selector: 'node.end',
+          style: { 'border-width': 3, 'border-color': '#9aa0a6' }
+        },
+        {
+          selector: 'edge',
+          style: {
+            // bezier auto-separates the parallel transitions (e.g. the two
+            // requested → dispatched edges in ReplenishmentRequest) and draws
+            // self-loops (raw_material_shortage → itself) without extra config.
+            'curve-style': 'bezier',
+            'control-point-step-size': 45,
+            'target-arrow-shape': 'triangle',
+            'arrow-scale': 1.1,
+            'line-color': '#9aa0a6',
+            'target-arrow-color': '#9aa0a6',
+            'width': 1.6,
+            'label': 'data(label)',
+            'font-size': '9px',
+            'color': '#444',
+            'text-background-color': '#fff',
+            'text-background-opacity': 0.9,
+            'text-background-padding': '2px',
+            'text-background-shape': 'round-rectangle',
+            'text-wrap': 'wrap',
+            'text-max-width': '170px'
+          }
+        },
+        {
+          selector: 'edge:selected',
+          style: { 'line-color': '#0969da', 'target-arrow-color': '#0969da', 'width': 2.4 }
+        },
+        {
+          // Path filter hides non-matching nodes/edges outright (rather than
+          // dimming) so the remaining flow reads as a clean single path.
+          selector: '.filtered-out',
+          style: { 'display': 'none' }
+        }
+      ],
+      layout: layoutOpts
+    });
+
+    // Re-fit when the user drags the box taller / shorter (the .saga-graph
+    // has `resize: vertical`). Cytoscape sizes its canvas to the container,
+    // so it needs an explicit resize()+fit() when the container changes —
+    // coalesced to one call per frame. This is what lets a taller frame
+    // actually enlarge the diagram (and its labels) rather than just pad it.
+    if (typeof ResizeObserver === 'function') {
+      let raf = 0;
+      const ro = new ResizeObserver(function () {
+        if (raf) cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(function () {
+          cy.resize();
+          cy.fit(undefined, 24);
+        });
+      });
+      ro.observe(container);
+    }
+
+    // Toolbar (added once, just above the graph): a Re-layout button to snap
+    // the auto-arranged flow back after dragging, plus an interaction hint.
+    const prev = container.previousElementSibling;
+    if (!prev || !prev.classList.contains('saga-graph-toolbar')) {
+      const bar = document.createElement('div');
+      bar.className = 'saga-graph-toolbar';
+      bar.innerHTML = '<button type="button">Re-layout</button>' +
+        '<span class="hint">drag a state to rearrange · scroll to zoom · drag the canvas to pan · drag the bottom edge to resize</span>';
+      container.parentNode.insertBefore(bar, container);
+      bar.querySelector('button').addEventListener('click', function () {
+        // Re-arrange only what's currently visible (a path filter may be on).
+        const vis = cy.elements().not('.filtered-out');
+        (vis.nonempty() ? vis : cy.elements()).layout(layoutOpts).run();
+      });
+    }
+
+    // Path filter (SalesOrderFulfilment + ReplenishmentRequest): keep the
+    // edges whose `cond` matches the current selections (a dimension left on
+    // "any" matches anything), hide every node/edge not reachable from the
+    // start state under those edges, then re-fit to what remains.
+    if (opts && opts.filters && edgeConds) {
+      const bar = document.createElement('div');
+      bar.className = 'saga-filter-bar';
+      let inner = '<span class="flabel">Filter path</span>';
+      opts.filters.forEach(function (f) {
+        inner += '<label><code>' + f.label + '</code> <select data-fkey="' + f.key + '">' +
+          f.options.map(function (o) { return '<option value="' + o + '">' + o + '</option>'; }).join('') +
+          '</select></label>';
+      });
+      inner += '<button type="button" class="reset">reset</button>';
+      if (opts.note) inner += '<span class="note">' + opts.note + '</span>';
+      bar.innerHTML = inner;
+      // Sit above the toolbar (which is the element immediately above container).
+      const tb = container.previousElementSibling;
+      container.parentNode.insertBefore(bar, (tb && tb.classList.contains('saga-graph-toolbar')) ? tb : container);
+
+      function edgeMatches(e, sel) {
+        const cond = e.data('cond');
+        if (!cond) return true;
+        for (const k in cond) {
+          if (sel[k] && sel[k] !== 'any' && sel[k] !== cond[k]) return false;
+        }
+        return true;
+      }
+      function applyFilter() {
+        const sel = {};
+        opts.filters.forEach(function (f) {
+          sel[f.key] = bar.querySelector('[data-fkey="' + f.key + '"]').value;
+        });
+        const active = !opts.filters.every(function (f) { return sel[f.key] === 'any'; });
+
+        // Reachability from the start node over filter-matched edges only.
+        const adj = {};
+        cy.edges().forEach(function (e) {
+          if (!edgeMatches(e, sel)) return;
+          const s = e.data('source');
+          (adj[s] = adj[s] || []).push(e.data('target'));
+        });
+        const reachable = {};
+        const queue = [];
+        if (cy.getElementById('__start__').nonempty()) {
+          reachable['__start__'] = true;
+          queue.push('__start__');
+        }
+        while (queue.length) {
+          const n = queue.shift();
+          (adj[n] || []).forEach(function (t) {
+            if (!reachable[t]) { reachable[t] = true; queue.push(t); }
+          });
+        }
+
+        cy.batch(function () {
+          cy.nodes().forEach(function (n) {
+            n.toggleClass('filtered-out', active && !reachable[n.id()]);
+          });
+          cy.edges().forEach(function (e) {
+            const keep = edgeMatches(e, sel) && reachable[e.data('source')] && reachable[e.data('target')];
+            e.toggleClass('filtered-out', active && !keep);
+          });
+        });
+        const vis = cy.elements().not('.filtered-out');
+        cy.fit(vis.nonempty() ? vis : undefined, 24);
+      }
+
+      bar.addEventListener('change', applyFilter);
+      bar.querySelector('.reset').addEventListener('click', function () {
+        opts.filters.forEach(function (f) {
+          bar.querySelector('[data-fkey="' + f.key + '"]').value = 'any';
+        });
+        applyFilter();
+      });
+    }
+
+    return { cy: cy, layoutOpts: layoutOpts };
+  }
+
+  // Parse the subset of Mermaid stateDiagram-v2 syntax this page uses:
+  //   stateDiagram-v2 / direction TB   -> ignored
+  //   A --> B : label                  -> edge A→B with label
+  //   [*] --> A                        -> edge start→A
+  //   A --> [*]                        -> edge A→end
+  // Returns ordered state ids (insertion order), edges, and which states are
+  // initial / final + whether start/end pseudo-nodes are needed.
+  function parseStateDiagram(src) {
+    const stateLabels = {};
+    const order = [];
+    const edges = [];
+    const finals = {};
+    let hasStart = false;
+    let hasEnd = false;
+
+    function ensureState(id) {
+      if (id === '__start__' || id === '__end__') return;
+      if (!(id in stateLabels)) {
+        stateLabels[id] = id;
+        order.push(id);
+      }
+    }
+    function refToId(tok, side) {
+      if (tok === '[*]') {
+        if (side === 'src') { hasStart = true; return '__start__'; }
+        hasEnd = true;
+        return '__end__';
+      }
+      return tok;
+    }
+
+    src.split('\n').forEach(function (raw) {
+      const line = raw.trim();
+      if (!line || line === 'stateDiagram-v2' || line.indexOf('direction') === 0) return;
+      const m = line.match(/^(.+?)-->(.+)$/);
+      if (!m) return;
+      const leftTok = m[1].trim();
+      let rest = m[2].trim();
+      let label = '';
+      const ci = rest.indexOf(':');
+      let rightTok;
+      if (ci !== -1) {
+        rightTok = rest.slice(0, ci).trim();
+        label = rest.slice(ci + 1).trim();
+      } else {
+        rightTok = rest;
+      }
+      const from = refToId(leftTok, 'src');
+      const to = refToId(rightTok, 'tgt');
+      ensureState(from);
+      ensureState(to);
+      if (to === '__end__' && from !== '__start__') finals[from] = true;
+      edges.push({ source: from, target: to, label: label });
+    });
+
+    return {
+      stateLabels: stateLabels,
+      order: order,
+      edges: edges,
+      finals: finals,
+      hasStart: hasStart,
+      hasEnd: hasEnd
+    };
+  }
+
+  // =====================================================
+  // Helpers
+  // =====================================================
+
+  function serviceOrder(a, b) {
+    const order = ['product', 'sales', 'inventory', 'manufacturing', 'purchasing', 'finance', 'reporting'];
+    return order.indexOf(a) - order.indexOf(b);
+  }
+
+  function escAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+})();
+</script>
+
+</body>
+</html>

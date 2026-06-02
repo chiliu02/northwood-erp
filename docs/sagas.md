@@ -9,7 +9,7 @@ Both an aggregate and a Saga can carry a state machine, so they look alike on a 
 - An **aggregate with a state machine** (e.g. `inventory.ReplenishmentRequest`: `requested → dispatched → fulfilled`/`cancelled`) is a **thing** — one business fact with identity, inside **one** consistency boundary, and the source of truth for that fact. Each transition is one local ACID transaction (mutate the row + drain `pendingEvents` to the outbox in the same `save()`), and the aggregate enforces its own invariants (`markFulfilled()` throws unless `status == dispatched`).
 - A **Saga** (e.g. `sales.sales_order_fulfilment_saga`) is a **process** — progress markers for a workflow that spans **many** boundaries (aggregates / services / external systems) that cannot be committed atomically together. It owns no business fact; it coordinates the things that do.
 
-The notation is shared; the semantics are not. `t3/docs/system-map.html` deliberately titles the inventory diagram *"ReplenishmentRequest (aggregate, not a Saga)"* for exactly this reason. This is the same instinct as `docs/conventions.md` → *deltas get aggregates, totals get projections*, applied to processes.
+The notation is shared; the semantics are not. `docs/system-map.html` deliberately titles the inventory diagram *"ReplenishmentRequest (aggregate, not a Saga)"* for exactly this reason. This is the same instinct as `docs/conventions.md` → *deltas get aggregates, totals get projections*, applied to processes.
 
 | | Aggregate (state machine) | Saga (process manager) |
 |---|---|---|
