@@ -112,6 +112,20 @@ class SupplierInvoiceTest {
             assertThat(si.totalAmount()).isEqualByComparingTo(new BigDecimal("400.00"));
         }
 
+        @Test void zero_total_matched_is_not_auto_approved_and_parks_for_review() {
+            // A zero-value matched invoice must NOT auto-approve + post a zero GL
+            // entry; it lands at three_way_match_failed for manual review (where
+            // assertApprovable then blocks approval until it's priced).
+            SupplierInvoice si = SupplierInvoice.record(
+                "INT", "SUP", PO_HEADER, GR_HEADER,
+                SUPPLIER, "A", "A", Currencies.AUD,
+                List.of(line(new BigDecimal("5"), BigDecimal.ZERO)),
+                SupplierInvoice.MatchStatus.MATCHED
+            );
+            assertThat(si.status()).isEqualTo(SupplierInvoice.Status.THREE_WAY_MATCH_FAILED);
+            assertThat(si.pullPendingEvents()).isEmpty();   // no SupplierInvoiceApproved / GL post
+        }
+
         @Test void emitted_event_carries_total_amount() {
             SupplierInvoice si = record(SupplierInvoice.MatchStatus.MATCHED);
             SupplierInvoiceApproved e = (SupplierInvoiceApproved) si.pullPendingEvents().get(0);
@@ -144,6 +158,43 @@ class SupplierInvoiceTest {
             SupplierInvoiceApproved e = (SupplierInvoiceApproved) si.pullPendingEvents().get(0);
             assertThat(e.purchaseOrderHeaderId()).isEqualTo(PO_HEADER);
             assertThat(e.totalAmount()).isEqualByComparingTo(new BigDecimal("400.00"));
+        }
+    }
+
+    @Nested
+    class AssertConsistent {
+        private SupplierInvoice failed(BigDecimal subtotal, BigDecimal tax, BigDecimal total, List<SupplierInvoiceLine> lines) {
+            return SupplierInvoice.reconstitute(
+                SupplierInvoiceId.newId(), "INT-001", "SUP-001",
+                PO_HEADER, GR_HEADER, SUPPLIER, "ACME", "Acme Co",
+                Currencies.AUD, subtotal, tax, total,
+                SupplierInvoice.Status.THREE_WAY_MATCH_FAILED, SupplierInvoice.MatchStatus.FAILED,
+                lines, 0L
+            );
+        }
+
+        @Test void manual_approve_rejects_zero_total_without_posting() {
+            SupplierInvoice si = failed(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                List.of(line(new BigDecimal("5"), BigDecimal.ZERO)));
+            assertThatThrownBy(() -> si.manualApprove("override"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("total amount is");
+            assertThat(si.pullPendingEvents()).isEmpty();   // no SupplierInvoiceApproved / GL post
+        }
+
+        @Test void manual_approve_rejects_subtotal_drifted_from_lines() {
+            // Lines sum to 400 but header subtotal says 0 — the stale-header shape.
+            SupplierInvoice si = failed(BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("400.00"),
+                List.of(line(new BigDecimal("5"), new BigDecimal("80"))));
+            assertThatThrownBy(() -> si.manualApprove("override"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("sum of line totals");
+        }
+
+        @Test void passes_for_a_consistent_invoice() {
+            SupplierInvoice si = failed(new BigDecimal("400.00"), BigDecimal.ZERO, new BigDecimal("400.00"),
+                List.of(line(new BigDecimal("5"), new BigDecimal("80"))));
+            org.assertj.core.api.Assertions.assertThatCode(si::assertConsistent).doesNotThrowAnyException();
         }
     }
 

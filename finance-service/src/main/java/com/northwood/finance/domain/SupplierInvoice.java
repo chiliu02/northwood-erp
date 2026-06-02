@@ -161,8 +161,15 @@ public final class SupplierInvoice {
         BigDecimal total = subtotal.add(tax);
 
         Assert.notNull(matchOutcome, "matchOutcome");
-        boolean matched = matchOutcome == MatchStatus.MATCHED;
-        Status status = matched ? Status.APPROVED : Status.THREE_WAY_MATCH_FAILED;
+        // A zero-value invoice is never auto-approved even if the 3-way match
+        // passed: auto-approval emits SupplierInvoiceApproved and posts the GL
+        // (Dr GRNI / Cr AP), so a non-positive total would post a junk ledger
+        // entry. Route it to manual review instead — manualApprove's
+        // assertApprovable then blocks it until the value is corrected. (Header
+        // totals are summed from the lines just above, so consistency holds by
+        // construction here; only positivity needs guarding on this path.)
+        boolean autoApprove = matchOutcome == MatchStatus.MATCHED && total.signum() > 0;
+        Status status = autoApprove ? Status.APPROVED : Status.THREE_WAY_MATCH_FAILED;
         MatchStatus matchStatus = matchOutcome;
 
         SupplierInvoiceId id = SupplierInvoiceId.newId();
@@ -178,7 +185,7 @@ public final class SupplierInvoice {
             new ArrayList<>(lines),
             0L
         );
-        if (matched) {
+        if (autoApprove) {
             si.pendingEvents.add(new SupplierInvoiceApproved(
                 UUID.randomUUID(),
                 id.value(),
@@ -244,19 +251,65 @@ public final class SupplierInvoice {
     }
 
     /**
+     * Assert the invoice's header totals are internally consistent before it is
+     * approved into the ledger: positive total, {@code total == subtotal + tax},
+     * and {@code subtotal}/{@code tax} equal to the line sums. A reconstituted
+     * invoice whose denormalised header has drifted from its lines (or is zero)
+     * would otherwise post a bad GL entry (Dr GRNI / Cr AP) on the stored
+     * {@code totalAmount} and feed the P2P {@code paid_amount <= total_amount}
+     * chain. Pure read — mirrors purchasing's {@code PurchaseOrder.assertApprovable}
+     * consistency block (the supplier-side twin).
+     */
+    public void assertConsistent() {
+        BigDecimal lineSubtotal = BigDecimal.ZERO;
+        BigDecimal lineTax = BigDecimal.ZERO;
+        for (SupplierInvoiceLine l : lines) {
+            lineSubtotal = lineSubtotal.add(l.lineTotal());
+            lineTax = lineTax.add(l.taxAmount() == null ? BigDecimal.ZERO : l.taxAmount());
+        }
+        lineSubtotal = lineSubtotal.setScale(2, RoundingMode.HALF_UP);
+        lineTax = lineTax.setScale(2, RoundingMode.HALF_UP);
+        Assert.state(totalAmount != null && totalAmount.signum() > 0,
+            "Supplier invoice " + id.value() + " total amount is "
+                + (totalAmount == null ? "unset" : totalAmount.toPlainString())
+                + " — cannot approve a zero-value invoice");
+        Assert.state(subtotalAmount != null && subtotalAmount.compareTo(lineSubtotal) == 0,
+            "Supplier invoice " + id.value() + " subtotal " + subtotalAmount
+                + " does not equal the sum of line totals " + lineSubtotal.toPlainString());
+        Assert.state(taxAmount != null && taxAmount.compareTo(lineTax) == 0,
+            "Supplier invoice " + id.value() + " tax " + taxAmount
+                + " does not equal the sum of line tax " + lineTax.toPlainString());
+        BigDecimal expectedTotal = subtotalAmount.add(taxAmount).setScale(2, RoundingMode.HALF_UP);
+        Assert.state(totalAmount.compareTo(expectedTotal) == 0,
+            "Supplier invoice " + id.value() + " total " + totalAmount.toPlainString()
+                + " does not equal subtotal + tax " + expectedTotal.toPlainString());
+    }
+
+    /**
+     * Assert this invoice may be manually approved: status precondition
+     * (parked at {@code three_way_match_failed}) AND internal consistency
+     * ({@link #assertConsistent}). Pure read — the supplier-side twin of
+     * purchasing's {@code PurchaseOrder.assertApprovable}, so the API can
+     * fail fast (wrong status OR drifted totals) before any write transaction
+     * or GL posting; {@link #manualApprove} calls it as the in-tx backstop.
+     */
+    public void assertApprovable() {
+        Assert.state(status == Status.THREE_WAY_MATCH_FAILED, "Cannot manually approve invoice " + id.value()
+                    + " in status=" + status.dbValue() + " (must be " + Status.THREE_WAY_MATCH_FAILED.dbValue() + ")");
+        assertConsistent();
+    }
+
+    /**
      * Manually approve an invoice that's parked at
      * {@code 'three_way_match_failed'}. The reviewer has decided the
      * variance is acceptable (e.g. agreed price tolerance) and overrides
-     * the automated reject. Emits {@link SupplierInvoiceApproved} so the
-     * existing P2P saga consumer advances unchanged.
-     *
-     * <p>Strict precondition: only allowed from
-     * {@code three_way_match_failed}. Manually approving an already-approved
-     * (or paid, or cancelled) invoice is rejected.
+     * the automated reject. Validated by {@link #assertApprovable} (status
+     * precondition + header/line consistency); emits {@link SupplierInvoiceApproved}
+     * so the existing P2P saga consumer advances unchanged. Approving an
+     * already-approved/paid/cancelled or inconsistent invoice is rejected.
      */
     public void manualApprove(String reason) {
-        Assert.state(status == Status.THREE_WAY_MATCH_FAILED, "Cannot manually approve invoice " + id.value()
-                    + " in status=" + status.dbValue() + " (must be " + Status.THREE_WAY_MATCH_FAILED.dbValue() + ")");
+        assertApprovable();
         this.status = Status.APPROVED;
         this.matchStatus = MatchStatus.MATCHED;
         pendingEvents.add(new SupplierInvoiceApproved(

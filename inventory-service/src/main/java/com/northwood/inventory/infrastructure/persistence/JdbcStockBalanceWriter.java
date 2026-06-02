@@ -101,14 +101,23 @@ public class JdbcStockBalanceWriter implements StockBalanceWriter {
         if (quantity == null || quantity.signum() <= 0) {
             return;
         }
-        jdbc.update("""
+        // Guard the subtraction so a duplicate / over-release can't drive
+        // reserved_quantity below 0 (CHECK reserved_quantity >= 0) — which would
+        // surface as a 23514 at write time and wedge the consumer. A breach
+        // matches 0 rows and is logged, mirroring the predicate-guarded
+        // decrementOnHand / tryReserveOnHand above (no-op rather than throw).
+        int rows = jdbc.update("""
             UPDATE inventory.stock_balance
                SET reserved_quantity = reserved_quantity - ?,
                    version = version + 1
-             WHERE warehouse_id = ? AND product_id = ?
+             WHERE warehouse_id = ? AND product_id = ? AND reserved_quantity >= ?
             """,
-            quantity, warehouseId, productId
+            quantity, warehouseId, productId, quantity
         );
+        if (rows == 0) {
+            log.warn("releaseReserved no-op: releasing {} but reserved_quantity is lower (or no balance row) "
+                + "for warehouse={} product={}", quantity, warehouseId, productId);
+        }
     }
 
     @Override

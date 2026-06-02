@@ -3,6 +3,8 @@ package com.northwood.inventory.infrastructure.persistence;
 import com.northwood.inventory.application.WipBalanceWriter;
 import java.math.BigDecimal;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
@@ -21,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Repository
 public class JdbcWipBalanceWriter implements WipBalanceWriter {
+
+    private static final Logger log = LoggerFactory.getLogger(JdbcWipBalanceWriter.class);
 
     private final JdbcTemplate jdbc;
 
@@ -60,13 +64,20 @@ public class JdbcWipBalanceWriter implements WipBalanceWriter {
         if (quantity == null || quantity.signum() <= 0) {
             return;
         }
-        jdbc.update("""
+        // Guard the subtraction so a duplicate / over-consume can't drive WIP
+        // on_hand_quantity below 0 (CHECK on_hand_quantity >= 0) and wedge the
+        // consumer with a 23514. A breach matches 0 rows and is logged.
+        int rows = jdbc.update("""
             UPDATE inventory.wip_balance
                SET on_hand_quantity = on_hand_quantity - ?,
                    version = version + 1
-             WHERE product_id = ?
+             WHERE product_id = ? AND on_hand_quantity >= ?
             """,
-            quantity, productId
+            quantity, productId, quantity
         );
+        if (rows == 0) {
+            log.warn("wip decrement no-op: consuming {} but WIP on_hand_quantity is lower (or no row) "
+                + "for product={}", quantity, productId);
+        }
     }
 }

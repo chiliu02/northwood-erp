@@ -215,6 +215,21 @@ public class SupplierInvoiceService {
     }
 
     /**
+     * Validate that an invoice may be manually approved <em>without</em> mutating
+     * it or posting to the GL — loads the aggregate and runs
+     * {@link SupplierInvoice#assertApprovable} (status precondition + header/line
+     * consistency). Exposed so the API fails fast on a wrong-status or
+     * drifted/zero-total invoice before any write transaction or ledger posting;
+     * {@link #manualApprove} re-checks it as the in-transaction backstop.
+     */
+    @Transactional(readOnly = true)
+    public void assertApprovable(UUID supplierInvoiceHeaderId) {
+        SupplierInvoice invoice = supplierInvoices.findById(SupplierInvoiceId.of(supplierInvoiceHeaderId))
+            .orElseThrow(() -> new IllegalArgumentException("No supplier invoice " + supplierInvoiceHeaderId));
+        invoice.assertApprovable();
+    }
+
+    /**
      * Manually approve an invoice that's parked at
      * {@code 'three_way_match_failed'}. Emits {@code SupplierInvoiceApproved}
      * (P2P saga consumer reacts unchanged), runs the GL posting (Dr GRNI /

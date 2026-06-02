@@ -26,6 +26,9 @@ public class JdbcPurchaseOrderReceiptProjection implements PurchaseOrderReceiptP
             if (rl.purchaseOrderLineId() == null) {
                 continue;
             }
+            // CHECK (received_quantity <= ordered_quantity) is an intentional
+            // backstop: an over-receipt is a real anomaly that must fail loudly
+            // (now parked, not looped, by DltRedriver), not be silently capped.
             jdbc.update("""
                 UPDATE purchasing.purchase_order_line
                    SET received_quantity = received_quantity + ?

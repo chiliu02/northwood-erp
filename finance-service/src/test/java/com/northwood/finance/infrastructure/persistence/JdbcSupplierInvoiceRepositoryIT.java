@@ -172,12 +172,19 @@ class JdbcSupplierInvoiceRepositoryIT {
         // WHERE supplier_invoice_header_id=? matches 0 rows. The repo guards
         // that with Assert.state, so it surfaces as IllegalStateException — the
         // aggregate carries no optimistic-lock WHERE version=? clause.
+        // Consistent line (5 × 20 = 100) so manualApprove's assertApprovable passes
+        // and we actually reach the repo update (the path under test), rather than
+        // tripping the header/line consistency guard first.
+        SupplierInvoiceLine line = new SupplierInvoiceLine(
+            UUID.randomUUID(), 1, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+            "RAW-IT-1", "Raw 1", new BigDecimal("5"), new BigDecimal("20.000000"),
+            BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("100.00"));
         SupplierInvoice stale = SupplierInvoice.reconstitute(
             SupplierInvoiceId.newId(), "SINV-MISSING", "SUP-MISSING",
             UUID.randomUUID(), null, UUID.randomUUID(), "SUP-IT", "Supplier IT",
             "AUD", new BigDecimal("100.00"), BigDecimal.ZERO, new BigDecimal("100.00"),
             SupplierInvoice.Status.THREE_WAY_MATCH_FAILED, SupplierInvoice.MatchStatus.FAILED,
-            List.of(), 1L);
+            List.of(line), 1L);
         stale.manualApprove("ok");
 
         assertThatThrownBy(() -> save(stale))

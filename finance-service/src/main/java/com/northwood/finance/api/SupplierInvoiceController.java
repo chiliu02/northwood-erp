@@ -78,6 +78,13 @@ public class SupplierInvoiceController {
         @PathVariable UUID id,
         @Valid @RequestBody ManualReviewRequest request
     ) {
+        // 404 for an unknown invoice, then fail fast on an inconsistent / zero
+        // one BEFORE the write transaction + GL posting — assertApprovable is
+        // read-only and throws if the header totals have drifted from the lines.
+        if (service.findById(id).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        service.assertApprovable(id);
         service.manualApprove(id, request.reviewer(), request.reason());
         SupplierInvoiceView body = service.findById(id).orElseThrow();
         return ResponseEntity.ok(body);
