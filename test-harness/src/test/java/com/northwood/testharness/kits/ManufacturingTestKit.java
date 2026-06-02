@@ -112,15 +112,15 @@ public final class ManufacturingTestKit {
         bus.register(new SupplierProductPriceChangedHandler(inbox, rollupService, json));
         bus.register(new ApprovedVendorListChangedHandler(inbox, approvedVendors, json));
 
-        // §2.35 Slice C: manufacturing's dispatcher for stock-replenishment
-        // requests routed by inventory's detection-trigger.
+        // Manufacturing's dispatcher for stock-replenishment requests routed by
+        // inventory's detection-trigger.
         bus.register(new ReplenishmentRequestedHandler(inbox, releaseService, bomLookup, appender, json));
     }
 
     /**
      * Drive the work-order saga worker through one drain pass. Picks up
      * sagas in {@code work_order_created} (advancing each by one transition).
-     * §2.37 Slice 3 removed the {@code started} entry — every saga is now
+     * The {@code started} entry state was removed — every saga is now
      * seeded directly at {@code work_order_created} by the release service.
      */
     public void advanceSagaWorker() {

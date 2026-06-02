@@ -109,8 +109,8 @@ public final class SalesTestKit {
     /**
      * Drive the sales fulfilment saga worker through one drain pass. Picks up
      * sagas in {@code started} or {@code prepaid} and advances each by one
-     * transition (emitting StockReservationRequested). §2.37 Slice 3 removed the
-     * worker's {@code stock_reservation_incomplete} leg — replenishment is now
+     * transition (emitting StockReservationRequested). The worker's
+     * {@code stock_reservation_incomplete} leg was removed — replenishment is now
      * inbox-driven (ReplenishmentFulfilled / ReplenishmentCancelled).
      */
     public void advanceSagaWorker() {

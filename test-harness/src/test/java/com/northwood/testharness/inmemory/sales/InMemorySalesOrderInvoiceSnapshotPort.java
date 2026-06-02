@@ -11,7 +11,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * §2.31 Slice B. Reads the sales-order header + per-line pricing straight
+ * Reads the sales-order header + per-line pricing straight
  * from the in-memory aggregate store. Production has the JDBC variant that
  * reads {@code sales.sales_order_header} + {@code sales.sales_order_line}
  * directly; the harness has the aggregate already in memory.

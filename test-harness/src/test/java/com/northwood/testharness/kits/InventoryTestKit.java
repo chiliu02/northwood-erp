@@ -60,9 +60,9 @@ public final class InventoryTestKit {
     public final InMemoryWipBalanceWriter wipBalances = new InMemoryWipBalanceWriter();
     public final InMemoryStockMovementWriter stockMovements = new InMemoryStockMovementWriter();
     public final InMemorySalesOrderLineFactsProjection salesOrderLineFacts = new InMemorySalesOrderLineFactsProjection();
-    // §2.35 Slice B doubles. Defaults to "no policy / no flags" so the
+    // Replenishment doubles. Defaults to "no policy / no flags" so the
     // detection service early-returns and existing scenarios stay green.
-    // Tests for the §2.35 path opt in via reorderPolicies.put + productReplenishment.put.
+    // Tests for the replenishment path opt in via reorderPolicies.put + productReplenishment.put.
     public final InMemoryReorderPolicyLookup reorderPolicies = new InMemoryReorderPolicyLookup();
     public final InMemoryInventoryProductCardLookup productReplenishment =
         new InMemoryInventoryProductCardLookup();
@@ -101,12 +101,12 @@ public final class InventoryTestKit {
         bus.register(new SalesOrderPlacedHandler(inbox, salesOrderLineFacts, json));
         bus.register(new SalesOrderUpfrontPaymentSettledHandler(inbox, salesOrderLineFacts, json));
 
-        // §2.35 Slice E close-the-loop dispatch handlers.
+        // Close-the-loop replenishment dispatch handlers.
         bus.register(new ManufacturingReplenishmentDispatchedHandler(inbox, replenishmentRequests, json));
         bus.register(new PurchasingReplenishmentDispatchedHandler(inbox, replenishmentRequests, json));
         bus.register(new PurchaseOrderCreatedHandler(inbox, purchaseOrderLineFacts, replenishmentRequests, json));
 
-        // §2.37 Slice 3 cancel consumers: downstream can't source the request.
+        // Replenishment cancellation consumers: downstream can't source the request.
         bus.register(new ManufacturingReplenishmentUndispatchableHandler(inbox, replenishmentRequests, json));
         bus.register(new PurchasingReplenishmentUndispatchableHandler(inbox, replenishmentRequests, json));
     }

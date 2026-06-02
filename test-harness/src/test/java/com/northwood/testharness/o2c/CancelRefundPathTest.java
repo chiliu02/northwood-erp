@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.34 — refund on a cancelled deposit order. Place a 50%-deposit order, pay
+ * Refund on a cancelled deposit order. Place a 50%-deposit order, pay
  * the deposit (Cr 2110 Customer Deposits), then cancel before shipment. Finance's
  * refund handler reverses the deposit (Dr 2110 / Cr 1000 Bank) so 2110 nets to
  * zero, while the existing sales↔inventory compensation completes the saga.

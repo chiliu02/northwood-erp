@@ -7,10 +7,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * In-memory double of inventory-side {@link ProductCardLookup} (the §2.35
- * make-vs-buy snapshot inventory owns locally on its {@code product_card},
- * §2.38-consolidated). Defaults to empty — tests seed via {@link #put}, which
- * the §2.35 {@code ReplenishmentDetectionService} reads to route make-vs-buy.
+ * In-memory double of inventory-side {@link ProductCardLookup} (the
+ * make-vs-buy snapshot inventory owns locally on its {@code product_card}).
+ * Defaults to empty — tests seed via {@link #put}, which
+ * the {@code ReplenishmentDetectionService} reads to route make-vs-buy.
  *
  * <p>Sibling to the manufacturing-side
  * {@code InMemoryProductReplenishmentProjection} in

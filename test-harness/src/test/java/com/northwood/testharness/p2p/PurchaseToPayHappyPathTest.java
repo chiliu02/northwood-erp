@@ -37,7 +37,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.5.1 Slice F — purchase-to-pay happy path E2E test.
+ * Purchase-to-pay happy path E2E test.
  *
  * <p>Manual PR → auto-converts to PO at {@code draft} → buyer approves →
  * saga → {@code purchase_order_approved} → worker → {@code waiting_for_goods}

@@ -36,11 +36,11 @@ public final class InMemoryBomLookup implements BomLookup {
     }
 
     /**
-     * §2.35 Slice F support: seed the SKU + name of a finished product so the
+     * Seed the SKU + name of a finished product so the
      * {@code findActiveBomIdentity} read used by manufacturing's
      * {@code ReplenishmentRequestedHandler} returns a value. The harness
      * scenarios call this alongside {@link #put(UUID, ActiveBom)} when they
-     * exercise the §2.35 stock-replenishment path.
+     * exercise the stock-replenishment path.
      */
     public InMemoryBomLookup putIdentity(UUID finishedProductId, String productSku, String productName) {
         identityByProductId.put(finishedProductId, new BomHeaderIdentity(productSku, productName));

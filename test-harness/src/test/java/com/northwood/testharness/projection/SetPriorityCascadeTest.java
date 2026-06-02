@@ -23,8 +23,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.5.1 Phase D — setPriority projection cascade. Subsumes §2.6 setPriority
- * smoke test. Single-event flow, no saga: the manufacturing service writes
+ * SetPriority projection cascade. Single-event flow, no saga: the manufacturing service writes
  * {@code WorkOrderPriorityChanged} straight to the outbox; reporting's
  * handler updates the production_planning_board projection.
  *

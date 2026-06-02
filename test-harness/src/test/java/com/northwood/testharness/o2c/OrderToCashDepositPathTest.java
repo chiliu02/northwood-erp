@@ -39,7 +39,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.32 — order-to-cash for a deposit (part-payment) order. The richest AR
+ * Order-to-cash for a deposit (part-payment) order. The richest AR
  * pattern: two invoices (deposit at placement, balance at shipment) and two
  * customer payments, with Customer Deposits (2110) carrying the deposit on the
  * balance sheet between them.

@@ -15,8 +15,8 @@
     <name>Northwood :: Test Harness</name>
     <description>
         In-memory end-to-end test harness — adapters per port + synchronous bus
-        + per-service test kits. §2.5.1 Phase D: makes saga lifecycles
-        unit-testable in memory with no Postgres, Kafka, or Spring context.
+        + per-service test kits. Makes saga lifecycles unit-testable in memory
+        with no Postgres, Kafka, or Spring context.
     </description>
 
     <dependencies>

@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.5.1 Phase D — proof-of-pattern E2E test for the order-to-cash flow's
+ * Proof-of-pattern E2E test for the order-to-cash flow's
  * first leg, now driven by the authentic sales saga worker:
  * {@code placeOrder} → outbox emits {@code SalesOrderPlaced} → worker drains
  * {@code started → stock_reservation_requested} (emitting

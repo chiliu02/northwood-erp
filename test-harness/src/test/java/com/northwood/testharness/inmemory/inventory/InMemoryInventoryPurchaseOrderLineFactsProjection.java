@@ -7,11 +7,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * §2.35 Slice F: in-memory double of inventory's
- * {@link PurchaseOrderLineFactsProjection} for the harness scenarios. Backs
- * {@code PurchaseOrderCreatedHandler} so it can be wired in
- * {@code InventoryTestKit} (the handler's other responsibility — bridging
- * the PR→PO link to the §2.35 ReplenishmentRequest — is what the harness
+ * In-memory double of inventory's {@link PurchaseOrderLineFactsProjection}
+ * for the harness scenarios. Backs {@code PurchaseOrderCreatedHandler} so it
+ * can be wired in {@code InventoryTestKit} (the handler's other responsibility
+ * — bridging the PR→PO link to the replenishment request — is what the harness
  * tests exercise).
  *
  * <p>Sibling to {@code testharness.inmemory.finance.InMemoryPurchaseOrderLineFactsProjection}

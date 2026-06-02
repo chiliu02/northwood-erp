@@ -21,9 +21,9 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.35 Slice F — manufactured-path replenishment, end-to-end.
+ * Manufactured-path replenishment, end-to-end.
  *
- * <p>Drives the full §2.35 lifecycle for a finished-good replenishment:
+ * <p>Drives the full replenishment lifecycle for a finished-good replenishment:
  * <ol>
  *   <li>Inventory's reorder-point detection trigger raises a
  *       {@code ReplenishmentRequest(status=requested,
@@ -41,8 +41,8 @@ import tools.jackson.databind.ObjectMapper;
  *       (the WO would otherwise complete via the operation-completion flow,
  *       out of scope for this scenario).</li>
  *   <li>Inventory's existing
- *       {@code WorkOrderManufacturingCompletedHandler} (with the §2.35 Slice
- *       E extension) bumps FG stock, finds the open replenishment by
+ *       {@code WorkOrderManufacturingCompletedHandler} bumps FG stock, finds
+ *       the open replenishment by
  *       {@code dispatched_aggregate_id = workOrderId}, and calls
  *       {@code markFulfilled()} — emitting
  *       {@code inventory.ReplenishmentFulfilled}.</li>

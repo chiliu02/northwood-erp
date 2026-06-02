@@ -9,9 +9,9 @@ import java.util.UUID;
 
 /**
  * In-memory double of {@link ReorderPolicyLookup} for the test-harness.
- * Defaults to "no policy" for every product — so the §2.35
+ * Defaults to "no policy" for every product — so the
  * {@code ReplenishmentDetectionService} early-returns without raising a
- * request in tests that haven't opted in. Tests for the §2.35 replenishment
+ * request in tests that haven't opted in. Tests for the replenishment
  * loop seed via {@link #put}.
  */
 public final class InMemoryReorderPolicyLookup implements ReorderPolicyLookup {

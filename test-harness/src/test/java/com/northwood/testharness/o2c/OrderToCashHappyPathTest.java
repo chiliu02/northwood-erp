@@ -37,7 +37,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.5.1 Slice D — order-to-cash happy path through the saga state machine.
+ * Order-to-cash happy path through the saga state machine.
  *
  * <p>Walks {@code placeOrder → ready_to_ship (full reservation shortcut) →
  * goods_shipped → invoice_created → completed}. With enough on-hand stock

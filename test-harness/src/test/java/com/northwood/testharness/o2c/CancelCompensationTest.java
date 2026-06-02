@@ -23,16 +23,14 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.5.1 Phase D — O2C cancel-compensation E2E test.
- *
- * <p>Subsumes the §2.6 cancel-order smoke test: walks the saga from
+ * O2C cancel-compensation E2E test. Walks the saga from
  * {@code placeOrder → cancel → compensating → (inventory ack) → compensated}
  * entirely through the harness, asserting that {@code sales.SalesOrderCompensated}
  * fires once inventory acks the cancel.
  *
- * <p>§2.40 retired the manufacturing leg of the compensation gate (no work order
- * is bound to a sales order post-§2.37), so inventory is the sole compensation
- * ack — its arrival completes the compensation outright.
+ * <p>The manufacturing leg of the compensation gate was retired (no work order
+ * is bound to a sales order once make-vs-buy moved to inventory), so inventory
+ * is the sole compensation ack — its arrival completes the compensation outright.
  */
 class CancelCompensationTest {
 

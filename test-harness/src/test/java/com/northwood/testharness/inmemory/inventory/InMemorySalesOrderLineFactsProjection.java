@@ -9,7 +9,7 @@ import java.util.UUID;
 /**
  * In-memory backing for {@link SalesOrderLineFactsProjection}. Map keyed on
  * {@code sales_order_line_id}; redelivery is idempotent (put overwrites with
- * the same value). §2.31 / §2.32 Slice C: per-header payment_terms +
+ * the same value). Per-header payment_terms +
  * upfront_settled are stashed in a parallel map keyed on
  * {@code sales_order_header_id} so the gate check matches the production semantic.
  */

@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.37 Slice 3 — end-to-end proof of the flip: a sales order short on a
+ * End-to-end proof that a sales order short on a
  * purchased-only SKU re-enters the reservation cycle once the replenishment
  * lands, with <b>inventory</b> the single make-vs-buy decision point — sales
  * never touches manufacturing.
@@ -48,10 +48,10 @@ import tools.jackson.databind.ObjectMapper;
  *       to {@code ready_to_ship}.</li>
  * </ol>
  *
- * <p>The §2.35 PR → PO → goods-receipt machinery is exercised by
+ * <p>The PR → PO → goods-receipt machinery is exercised by
  * {@code StockReplenishmentPurchasedPathTest}; this test shortcuts it by
  * directly calling {@code markDispatched} + {@code markFulfilled} on the
- * replenishment-request aggregate to keep the §2.37 fan-in under test.
+ * replenishment-request aggregate to keep the fan-in under test.
  */
 class OrderToCashPurchasedShortagePathTest {
 
@@ -112,7 +112,7 @@ class OrderToCashPurchasedShortagePathTest {
         assertThat(rr.status()).isEqualTo(ReplenishmentRequest.Status.REQUESTED);
 
         // Step 4: simulate PR-dispatch + goods-receipt by directly driving the
-        // aggregate. (The full §2.35 PR→PO→GR path is covered by
+        // aggregate. (The full PR→PO→GR path is covered by
         // StockReplenishmentPurchasedPathTest; this test focuses on the fan-in.)
         UUID fakePurchaseRequisitionId = UUID.randomUUID();
         rr.markDispatched(ReplenishmentRequest.DispatchedAggregateKind.PURCHASE_REQUISITION,

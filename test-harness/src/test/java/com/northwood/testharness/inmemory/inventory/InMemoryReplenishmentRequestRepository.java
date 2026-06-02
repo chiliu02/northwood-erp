@@ -15,8 +15,8 @@ import org.springframework.dao.DuplicateKeyException;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * In-memory double of {@link ReplenishmentRequestRepository}. Backs the §2.35
- * Slice B detection-trigger path in the test-harness scenarios. Enforces the
+ * In-memory double of {@link ReplenishmentRequestRepository}. Backs the
+ * reorder-point detection-trigger path in the test-harness scenarios. Enforces the
  * one-open-per-(product, warehouse) invariant in memory (mirrors the
  * Postgres partial unique index — throws {@link DuplicateKeyException} on
  * conflict so the detection service's swallow path is exercised end-to-end).
@@ -63,7 +63,7 @@ public final class InMemoryReplenishmentRequestRepository implements Replenishme
     @Override
     public void save(ReplenishmentRequest r) {
         if (r.version() == 0L && !byId.containsKey(r.id().value())) {
-            // §2.36: the partial unique index excludes sales_order_shortage
+            // The partial unique index excludes sales_order_shortage
             // rows, so multiple SO-driven requests for the same SKU can co-
             // exist (each back-referenced to its own sales-order line). Only
             // reorder-point and WO-shortage requests collide on the index.
@@ -87,7 +87,7 @@ public final class InMemoryReplenishmentRequestRepository implements Replenishme
 
     private boolean hasOpenFor(UUID productId, UUID warehouseId) {
         for (ReplenishmentRequest existing : byId.values()) {
-            // §2.36: SO-shortage rows don't participate in the one-open
+            // SO-shortage rows don't participate in the one-open
             // invariant (mirrors the partial-index WHERE clause).
             if (existing.reason() == ReplenishmentRequest.Reason.SALES_ORDER_SHORTAGE) {
                 continue;

@@ -92,7 +92,7 @@ public final class FinanceTestKit {
         bus.register(outbox);
         bus.register(new SalesOrderShippedHandler(inbox, customerInvoiceService, paymentService, json));
         bus.register(new DepositInvoiceRequestedHandler(inbox, customerInvoiceService, json));
-        // §2.34: refund the up-front amount (Dr 2110 / Cr Bank) when a paid
+        // Refund the up-front amount (Dr 2110 / Cr Bank) when a paid
         // prepayment/deposit order is cancelled pre-shipment.
         bus.register(new SalesOrderCancellationRefundHandler(inbox, journalService, customerInvoices, json));
         bus.register(new ShipmentPostedCogsHandler(inbox, journalService, productCards, customerInvoices, json));
@@ -102,7 +102,7 @@ public final class FinanceTestKit {
         bus.register(new ProductDiscontinuedHandler(inbox, productCards, json));
         bus.register(new StandardCostChangedHandler(inbox, productCards, json));
         bus.register(new ValuationClassChangedHandler(inbox, productCards, json));
-        // §2.42 perpetual WIP: raw materials issued → WIP, sub-assemblies rolled in,
+        // Perpetual WIP: raw materials issued → WIP, sub-assemblies rolled in,
         // finished goods settled out of WIP at completion.
         bus.register(new RawMaterialsReservedWipHandler(inbox, journalService, productCards, workOrderWip, json));
         bus.register(new WorkOrderManufacturingCompletedWipHandler(inbox, journalService, productCards, workOrderWip, json));

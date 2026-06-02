@@ -16,7 +16,7 @@ public final class InMemoryCustomerLookup implements CustomerLookup {
         return put(customerCode, customerName, status, PaymentTerms.ON_SHIPMENT);
     }
 
-    /** §2.31 Slice A: overload that lets tests seed a customer with explicit payment terms. */
+    /** Overload that lets tests seed a customer with explicit payment terms. */
     public InMemoryCustomerLookup put(String customerCode, String customerName, Customer.Status status, PaymentTerms defaultPaymentTerms) {
         byCode.put(customerCode, new CustomerSummary(UUID.randomUUID(), customerCode, customerName, status, defaultPaymentTerms));
         return this;

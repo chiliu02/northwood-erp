@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.37 Slice 1 — multi-level (sub-assembly) make-to-stock replenishment.
+ * Multi-level (sub-assembly) make-to-stock replenishment.
  *
  * <p>A reorder-point breach on a finished good whose BOM contains a
  * sub-assembly now releases BOTH the top-level replenishment work order and a

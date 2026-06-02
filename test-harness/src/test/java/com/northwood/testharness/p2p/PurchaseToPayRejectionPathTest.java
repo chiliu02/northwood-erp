@@ -30,7 +30,7 @@ import tools.jackson.databind.ObjectMapper;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * §6.B23 — purchase-to-pay rejection path E2E test.
+ * Purchase-to-pay rejection path E2E test.
  *
  * <p>Walks the saga to {@code goods_received}, then submits a supplier
  * invoice with a per-line unit price outside the 2% variance tolerance.

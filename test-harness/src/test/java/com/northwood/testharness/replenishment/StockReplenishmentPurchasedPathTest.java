@@ -21,9 +21,9 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.35 Slice F — purchased-path replenishment, end-to-end.
+ * Purchased-path replenishment, end-to-end.
  *
- * <p>Drives the full §2.35 lifecycle for a purchasable raw-material
+ * <p>Drives the full replenishment lifecycle for a purchasable raw-material
  * replenishment:
  * <ol>
  *   <li>Inventory's reorder-point detection trigger raises a

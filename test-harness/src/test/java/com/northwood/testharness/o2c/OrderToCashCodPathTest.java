@@ -37,7 +37,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.33 — order-to-cash for a cash-on-delivery (COD) order.
+ * Order-to-cash for a cash-on-delivery (COD) order.
  *
  * <p>COD settles at the goods-delivered moment: the saga walks
  * {@code placeOrder -> ready_to_ship -> goods_shipped -> invoice_created ->
