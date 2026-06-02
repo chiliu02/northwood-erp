@@ -7,8 +7,8 @@
 # workflow assumes `docker compose down -v` on schema changes.
 #
 # All prior changesets (2026-05-14 through 2026-05-19) were folded into the
-# baseline and removed in the consolidation slice (see docs/dev-todo.md for
-# the planned re-enable criteria).
+# baseline and removed in the consolidation slice (see docs/persistence.md for
+# the re-enable criteria).
 #
 # To re-enable migrations later:
 #   1. Flip `northwood.liquibase.enabled: true` in application.yml.

@@ -173,7 +173,7 @@ class JdbcPurchaseOrderPaymentProjectionIT {
 
     @Test
     void markFullyPaid_without_prior_invoice_violates_schema_CHECK() {
-        // This is the exact bug class from dev-done.md 2026-05-12 — paid_amount
+        // This is the exact bug class fixed 2026-05-12 — paid_amount
         // would be set to total_amount (1000) but invoiced_amount is still 0,
         // violating CHECK (paid_amount <= invoiced_amount). Hardcoded against
         // any future drift in markFullyPaid's SQL.

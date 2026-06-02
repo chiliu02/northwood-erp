@@ -23,7 +23,7 @@ import org.springframework.kafka.core.KafkaTemplate;
  * <p>Topic derivation: {@link EventEnvelope#headers()} carries
  * {@code source-service} (set by {@link com.northwood.shared.application.outbox.OutboxDrainer}).
  * Topics are per-aggregate-context — {@code product.events}, {@code inventory.events},
- * {@code sales.events}, etc. — never per-event-type. See dev-todo.md decision 3.
+ * {@code sales.events}, etc. — never per-event-type.
  */
 public class KafkaEventPublisher implements EventPublisher {
 

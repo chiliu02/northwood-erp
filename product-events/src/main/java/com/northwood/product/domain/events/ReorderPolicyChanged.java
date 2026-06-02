@@ -9,7 +9,7 @@ import java.util.UUID;
  * Reorder policy facet event. Product master (R&D / planning steward) is the
  * data of record; downstream services (inventory in particular) keep their
  * stock_item.reorder_point / reorder_quantity columns in sync from this event.
- * One event per facet — see Shape A in dev-todo.md.
+ * One event per facet.
  */
 public record ReorderPolicyChanged(
     UUID eventId,

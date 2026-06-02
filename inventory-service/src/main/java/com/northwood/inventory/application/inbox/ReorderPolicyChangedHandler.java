@@ -12,8 +12,8 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Calling {@link #handle(EventEnvelope)} is the single entry point used by
  * whichever bus delivery wiring is active — the in-process bus today, the
- * Kafka {@code @KafkaListener} adapter once the kafka profile is wired in
- * step 6 of the dev-todo. The handler is bus-agnostic by design.
+ * Kafka {@code @KafkaListener} adapter once the kafka profile is wired in.
+ * The handler is bus-agnostic by design.
  *
  * <p>Idempotency: the inbox row is INSERTed inside the same transaction as the
  * projection update, keyed on {@code (message_id, consumer_name)}. A redelivery

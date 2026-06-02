@@ -68,8 +68,7 @@ public class KafkaInboxDispatcher {
             // Malformed envelope on the topic — log and return normally, which
             // commits (skips) the offset rather than blocking the partition on a
             // poison message. This is the one failure path that does NOT
-            // redeliver. (A dedicated DLQ for malformed payloads is deferred in
-            // dev-todo.md.)
+            // redeliver. (A dedicated DLQ for malformed payloads is deferred.)
             log.error(
                 "Skipping malformed envelope on {}-{}@{}: {}",
                 record.topic(), record.partition(), record.offset(), e.getMessage()

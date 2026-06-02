@@ -53,7 +53,7 @@ public class JdbcCurrencyConverter implements CurrencyConverter {
         }
 
         // Inverse rate fallback: if AUD→USD is missing but USD→AUD is on file,
-        // use 1/rate. Half-rate-load shorthand documented in dev-todo.
+        // use 1/rate.
         List<RateSnapshot> inverse = jdbc.query("""
             SELECT rate, effective_date
             FROM finance.exchange_rate
