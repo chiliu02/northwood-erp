@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §1F.5: product-service's consumer of {@code manufacturing.ProductMaterialsCostComputed}.
+ * Product-service's consumer of {@code manufacturing.ProductMaterialsCostComputed}.
  * Closes the cost-rollup feedback loop — when manufacturing rolls up a
  * product's materials cost (typically because a supplier price changed or
  * a BOM-component cost changed), this handler stamps the rolled-up value
@@ -18,8 +18,8 @@ import tools.jackson.databind.ObjectMapper;
  * {@code product.StandardCostChanged}, which the already-wired finance
  * and reporting consumers pick up to refresh their projections.
  *
- * <p>This is the first inbox handler in product-service — until §1F.5,
- * product was a pure Open Host (publisher only). The class is the
+ * <p>This is the first inbox handler in product-service — product was previously
+ * a pure Open Host (publisher only). The class is the
  * minimum-viable cost-loop closure; future product-service consumers
  * extend the same package.
  *

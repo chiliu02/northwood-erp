@@ -317,7 +317,7 @@ public class Product {
      * {@link #pullApprovedVendorsDirty()}. No-op suppression compares as a set
      * (order doesn't matter) so re-saving the same set is a true no-op.
      *
-     * <p>Promoted from a row-level write port 2026-05-16 (§2.17). Previously
+     * <p>Promoted from a row-level write port 2026-05-16. Previously
      * the application service hand-rolled the no-op check + persistence via
      * {@code ApprovedVendorRepository}; now the aggregate owns both.
      */

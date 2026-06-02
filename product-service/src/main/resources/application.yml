@@ -39,24 +39,23 @@ management:
   endpoints:
     web:
       exposure:
-        # §1D.1: prometheus joined the include set so Grafana can scrape this
-        # service's metrics. `health, info, metrics` predate §1D.
+        # Prometheus joined the include set so Grafana can scrape this service's
+        # metrics. `health, info, metrics` were present before observability.
         include: health, info, metrics, prometheus
   endpoint:
     health:
       show-details: when-authorized
-  # §1D.10: suppress the @Scheduled heartbeat spans — saga poll / outbox drain
-  # tick / SSE pump fire ~1×/s whether or not there's work and swamp Tempo. The
-  # real work spans (outbox.publish, saga.<state>) are created manually only when
+  # Suppress the @Scheduled heartbeat spans — saga poll / outbox drain tick /
+  # SSE pump fire ~1×/s whether or not there's work and swamp Tempo. The real
+  # work spans (outbox.publish, saga.<state>) are created manually only when
   # something happens, so disabling the scheduled-task observation loses nothing.
   observations:
     enable:
       tasks.scheduled.execution: false
-      # §1D.11: drop Spring Security observation spans (secured request /
-      # authenticate / authorize / security filterchain) — framework noise, not
-      # service business flow.
+      # Drop Spring Security observation spans (secured request / authenticate /
+      # authorize / security filterchain) — framework noise, not service flow.
       spring.security: false
-  # §1D.1: trace + log correlation. Sampling defaults to 1.0 (rich demo data);
+  # Trace + log correlation. Sampling defaults to 1.0 (rich demo data);
   # override NORTHWOOD_TRACING_SAMPLING to 0.1 for prod-style runs. OTLP_ENDPOINT
   # points at Tempo (docker-compose service published to localhost:4317).
   tracing:
@@ -78,9 +77,9 @@ northwood:
   outbox:
     poll-interval: 1000  # ms
   liquibase:
-    # Disabled — see docs/dev-todo.md for re-enable criteria. The baseline
-    # db/northwood_erp.sql is the single source of truth while the schema
-    # is in showcase-flux.
+    # Disabled during showcase development (see docs/persistence.md). The
+    # baseline db/northwood_erp.sql is the single source of truth while the
+    # schema is in showcase-flux.
     enabled: false
     default-schema: product
     change-log: classpath:db/changelog/db.changelog-master.yaml

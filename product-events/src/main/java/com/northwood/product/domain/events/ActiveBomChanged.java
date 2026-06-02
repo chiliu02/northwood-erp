@@ -30,7 +30,7 @@ import java.util.UUID;
  *       Javadoc. {@code JdbcProductActiveBomProjection.apply} stores the
  *       null through; {@code findActiveBomId} then returns
  *       {@link java.util.Optional#empty()}. Downstream consumers (e.g. the
- *       §2.8 Slice C / D materials-cost rollup) treat the empty active BoM
+ *       materials-cost rollup) treat the empty active BoM
  *       as "manufactured-without-BoM" and skip cost rollup with
  *       {@code reason="inputs_missing"}.</li>
  * </ul>
@@ -43,7 +43,7 @@ import java.util.UUID;
  * the migration period — both can co-exist until the manufacturing side
  * switches fully to projecting product's authoritative pointer.
  *
- * <p><b>Renamed from {@code BomActivated} 2026-05-14 (§2.13).</b> The old
+ * <p><b>Renamed from {@code BomActivated} 2026-05-14.</b> The old
  * name implied activation only and read as a misnomer for the
  * {@code newBomHeaderId=null} retirement path. Wire format updated
  * alongside the Java class — no external subscribers existed at rename

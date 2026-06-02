@@ -37,7 +37,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.25 Tier 2: real-Postgres test for {@link JdbcProductRepository}. Covers the
+ * Real-Postgres test for {@link JdbcProductRepository}. Covers the
  * branches a mocked-{@code JdbcTemplate} unit test cannot reach:
  *
  * <ul>

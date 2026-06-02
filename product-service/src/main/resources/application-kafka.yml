@@ -17,8 +17,8 @@ spring:
       group-id: product-service
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-    # §1D.2: turn on Spring Kafka's Micrometer observation so KafkaTemplate.send
-    # creates a producer span (W3C traceparent stamped on the record headers).
+    # Turn on Spring Kafka's Micrometer observation so KafkaTemplate.send creates
+    # a producer span (W3C traceparent stamped on the record headers).
     # product-service is producer-only — no listener observation needed today.
     template:
       observation-enabled: true

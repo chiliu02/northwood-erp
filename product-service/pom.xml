@@ -33,10 +33,10 @@
             <groupId>com.northwood</groupId>
             <artifactId>product-events</artifactId>
         </dependency>
-        <!-- §1F.5: consume manufacturing.ProductMaterialsCostComputed to
-             close the cost loop (rolled-up materials cost feeds back into
-             product master's standard_cost, which then re-emits
-             StandardCostChanged for finance + reporting). -->
+        <!-- Consume manufacturing.ProductMaterialsCostComputed to close the cost
+             loop (rolled-up materials cost feeds back into product master's
+             standard_cost, which then re-emits StandardCostChanged for finance
+             + reporting). -->
         <dependency>
             <groupId>com.northwood</groupId>
             <artifactId>manufacturing-events</artifactId>
