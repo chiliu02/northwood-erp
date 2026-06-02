@@ -29,14 +29,14 @@
 -- ----------------------------------------------------------------------------
 --
 --   * Organised as one self-contained section per service, mirroring the
---     §2..§8 layout in northwood_erp.sql. Each section is wrapped in
+--     section layout in northwood_erp.sql. Each section is wrapped in
 --     BEGIN/COMMIT and contains only its service's INSERT statements.
 --     Lifting any one section out into its own services/<name>/seed.sql
 --     produces a working seed file for that service against its own database.
 --
 --   * Cross-context fixture data (the wooden table BOM that joins product,
 --     inventory, and manufacturing) uses well-known constant UUIDs declared
---     once in §0 below. Each service's seed references the constants directly
+--     once in the fixture UUID registry below. Each service's seed references the constants directly
 --     — no joins across schemas. This is the load-bearing design decision
 --     that keeps the seed file lift-and-shift portable for the eventual
 --     database-per-service split.
@@ -55,7 +55,7 @@
 -- ============================================================================
 
 -- ============================================================================
--- §0  WELL-KNOWN FIXTURE UUIDs
+-- WELL-KNOWN FIXTURE UUIDs
 -- ----------------------------------------------------------------------------
 -- These constants let each service's seed reference cross-context entities
 -- (product, BOMs, warehouse, customer, supplier) by literal UUID without
@@ -128,7 +128,7 @@
 
 
 -- ============================================================================
--- §  SEED: PRODUCT
+-- SEED: PRODUCT
 -- ============================================================================
 
 BEGIN;
@@ -187,10 +187,10 @@ INSERT INTO product.product (
      'Slide runner pair for drawer',       'raw_material',       '00000000-0000-7000-8000-000000000010',
      true, true,  false, false, 0.00,    14.00,  5, 10, 'raw_materials'),
     -- Multi-level BOM demo set: chest of drawers, with a frame sub-assembly
-    -- that itself contains a panel sub-assembly. Exercises the §2.24.3
-    -- recursive-CTE walk through 3 levels, and demonstrates the "same
-    -- component used at multiple depths" case — RM-SCREW-001 appears at
-    -- depth 1 (chest), depth 2 (frame + drawer), and depth 3 (panel).
+    -- that itself contains a panel sub-assembly. Exercises the recursive-CTE
+    -- walk through 3 levels, and demonstrates the "same component used at
+    -- multiple depths" case — RM-SCREW-001 appears at depth 1 (chest), depth 2
+    -- (frame + drawer), and depth 3 (panel).
     ('00000000-0000-7000-8000-000000000300', 'FG-CHEST-001', 'Chest of Drawers',
      'Wooden chest of drawers with two drawers and a panelled frame', 'finished_good', '00000000-0000-7000-8000-000000000010',
      true, false, true,  true,  1490.00, 720.00,  1,  3, 'finished_goods'),
@@ -201,7 +201,7 @@ INSERT INTO product.product (
      'Side panel built from board + varnish + screws',                'semi_finished_good', '00000000-0000-7000-8000-000000000010',
      true, false, true,  false, 0.00,     105.00,  0,  0, 'semi_finished_goods'),
     -- Simple FG demo set: a chair. Re-uses RM-LEG/BOARD/SCREW/VARNISH, so adds
-    -- no new raws. The chair BOM (§SEED: MANUFACTURING) is the first one in
+    -- no new raws. The chair BOM (in SEED: MANUFACTURING) is the first one in
     -- the seed that carries non-zero scrap_factor_percent values — exercises
     -- the requirement = qty_per_unit × (1 + scrap/100) planning path with
     -- realistic numbers rather than the zero-scrap default.
@@ -214,7 +214,7 @@ COMMIT;
 
 
 -- ============================================================================
--- §  SEED: SALES
+-- SEED: SALES
 -- ============================================================================
 
 BEGIN;
@@ -276,14 +276,14 @@ COMMIT;
 
 
 -- ============================================================================
--- §  SEED: INVENTORY
--- Uses fixture UUIDs from §0; no cross-schema joins.
+-- SEED: INVENTORY
+-- Uses fixture UUIDs from the registry above; no cross-schema joins.
 -- The product_card table is inventory's local projection of product master
--- (§2.38 — consolidates the former stock_item + product_card); in production
--- it would be populated by consuming ProductCreated / MakeVsBuyChanged events.
--- is_purchased/is_manufactured are seeded here so the §2.35 reorder-point
--- detection service can route make-vs-buy for SQL-seeded demo SKUs (which
--- never emit a runtime MakeVsBuyChanged).
+-- (consolidates the former stock_item + product_card); in production it would
+-- be populated by consuming ProductCreated / MakeVsBuyChanged events.
+-- is_purchased/is_manufactured are seeded here so the reorder-point detection
+-- service can route make-vs-buy for SQL-seeded demo SKUs (which never emit a
+-- runtime MakeVsBuyChanged).
 -- ============================================================================
 
 BEGIN;
@@ -370,8 +370,8 @@ COMMIT;
 
 
 -- ============================================================================
--- §  SEED: MANUFACTURING
--- Wooden Table BOM. Fixture UUIDs from §0; no cross-schema joins.
+-- SEED: MANUFACTURING
+-- Wooden Table BOM. Fixture UUIDs from the registry above; no cross-schema joins.
 -- ============================================================================
 
 BEGIN;
@@ -446,7 +446,7 @@ ON CONFLICT (bom_header_id, line_number) DO NOTHING;
 
 -- Multi-level demo: a chest of drawers whose BOM nests two sub-assemblies
 -- deep (chest → frame → panel) and uses RM-SCREW-001 at four positions
--- across three depths. Exercises the §2.24.3 recursive-CTE walk in
+-- across three depths. Exercises the recursive-CTE walk in
 -- BomLookup.findActiveBomTreeRows and the flat-view's "same component
 -- at multiple paths" case in the SPAs.
 INSERT INTO manufacturing.bom_header (
@@ -581,7 +581,7 @@ COMMIT;
 
 
 -- ============================================================================
--- §  SEED: PURCHASING
+-- SEED: PURCHASING
 -- ============================================================================
 
 BEGIN;
@@ -684,7 +684,7 @@ COMMIT;
 
 
 -- ============================================================================
--- §  SEED: FINANCE
+-- SEED: FINANCE
 -- ============================================================================
 
 BEGIN;
@@ -699,21 +699,20 @@ INSERT INTO finance.gl_account (account_code, account_name, account_type) VALUES
     ('1200', 'Inventory',                     'asset'),
     ('1210', 'Raw Materials Inventory',       'asset'),
     ('1220', 'Finished Goods Inventory',      'asset'),
-    -- §2.42 Perpetual WIP. Raw materials Dr here when issued to a work order
-    -- (Cr 1210); the finished good Dr's 1220 / Cr's 1230 at completion. Nets to
-    -- zero per WO at standard cost (no variance accounts in the material-only cut).
+    -- Perpetual WIP. Raw materials Dr here when issued to a work order (Cr 1210);
+    -- the finished good Dr's 1220 / Cr's 1230 at completion. Nets to zero per WO
+    -- at standard cost (no variance accounts in the material-only cut).
     ('1230', 'Work In Progress',              'asset'),
     -- 1300 is the GRNI clearing account that finance posts against (see
     -- FinanceAccountCodes.GRNI = "1300"): Cr at goods receipt, Dr at invoice
-    -- approval. §2.42 corrected its label from the misleading "Work In Progress"
-    -- (that name now belongs to 1230) and dropped the unused 2200 duplicate.
+    -- approval. Its label was corrected from the misleading "Work In Progress"
+    -- (that name now belongs to 1230) and the unused 2200 duplicate was dropped.
     ('1300', 'Goods Received Not Invoiced',   'asset'),
     ('2100', 'Accounts Payable',              'liability'),
-    -- §2.31 Slice B: liability for cash received on prepayment orders before
-    -- goods are delivered. Credited at payment receipt for prepayment
-    -- invoices; debited at shipment (Slice C) to reclassify the deposit
-    -- against Sales Revenue once the goods-delivered performance obligation
-    -- is met.
+    -- Liability for cash received on prepayment orders before goods are
+    -- delivered. Credited at payment receipt for prepayment invoices; debited
+    -- at shipment to reclassify the deposit against Sales Revenue once the
+    -- goods-delivered performance obligation is met.
     ('2110', 'Customer Deposits',             'liability'),
     ('3000', 'Owner''s Equity',               'equity'),
     ('3100', 'Retained Earnings',             'equity'),
@@ -727,9 +726,9 @@ INSERT INTO finance.gl_account (account_code, account_name, account_type) VALUES
 ON CONFLICT (account_code) DO NOTHING;
 
 -- Tax codes. GST_NZ_15 is schema-prep — no Java code path produces or
--- consumes it today (per dev-todo: multi-currency GL consolidation is
--- deprioritised). Carrying the row lets a future NZ-customer scenario
--- post against it without needing a CoA addition first.
+-- consumes it today (multi-currency GL consolidation is deprioritised).
+-- Carrying the row lets a future NZ-customer scenario post against it
+-- without needing a CoA addition first.
 INSERT INTO finance.tax_code (tax_code, description, rate) VALUES
     ('GST_AU_10', 'Australian GST 10%',       0.10),
     ('GST_NZ_15', 'New Zealand GST 15%',      0.15),
@@ -769,7 +768,7 @@ COMMIT;
 
 
 -- ============================================================================
--- §  SEED: REPORTING
+-- SEED: REPORTING
 -- Read models are otherwise populated by projection consumers draining
 -- events from the bus into reporting.inbox_message and applying them to
 -- the read tables. The product_card cache is seeded here so that
@@ -800,7 +799,7 @@ COMMIT;
 
 
 -- ============================================================================
--- §  SEED: AGGREGATE VERSION FIXUP
+-- SEED: AGGREGATE VERSION FIXUP
 -- Seeded aggregate-root rows must land at version 1, not the table default 0.
 -- Each Jdbc*Repository.save() uses version() == 0 as its "new, not yet
 -- persisted -> INSERT" sentinel; a seeded row left at the default 0 makes the

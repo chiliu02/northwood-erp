@@ -82,9 +82,9 @@ services:
       retries: 12
       start_period: 30s
 
-  # Identity provider for the §1 Security slice. Realm `northwood` carries
-  # the 13 roles + 13 demo users + two clients (northwood-bff for the
-  # confidential code flow, northwood-spa reserved for direct PKCE later).
+  # Identity provider. Realm `northwood` carries the 13 roles + 13 demo users
+  # + two clients (northwood-bff for the confidential code flow, northwood-spa
+  # reserved for direct PKCE later).
   # Realm import runs once on first start of a fresh data volume; to re-seed,
   # `docker compose down -v` then `up -d keycloak`. Dev mode (`start-dev`)
   # disables HTTPS — fine for the local showcase, never production.
@@ -127,8 +127,8 @@ services:
 
   # -------- Observability: LGTM stack (Loki / Grafana / Tempo / Prometheus) --------
   #
-  # Wired in §1D.0. Phase-1 showcase posture: 100% trace sampling, single-instance
-  # everything, no auth on Grafana (anonymous Admin). Containers run on the host
+  # Phase-1 showcase posture: 100% trace sampling, single-instance everything,
+  # no auth on Grafana (anonymous Admin). Containers run on the host
   # docker bridge; Spring services run on the Windows host and reach this stack
   # via localhost:<port>. Prometheus reaches the host services through
   # `host.docker.internal:<service-port>` — that DNS name is Docker-Desktop's
