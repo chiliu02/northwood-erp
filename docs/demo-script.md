@@ -211,7 +211,7 @@ curl -X PUT http://localhost:8081/api/products/{id}/standard-cost \
   -d '{"standardCost":50,"currencyCode":"AUD"}'
 ```
 
-**Outbox:** `product.SalesPriceChanged` from the first call; `product.StandardCostChanged` from the second. **Projections:** sales-service consumes `SalesPriceChanged` via `SalesPriceChangedHandler` (new orders quote the new price; existing lines are price-denormalised at order time). Finance consumes `StandardCostChanged` via `StandardCostChangedHandler` → writes `finance.product_card.standard_cost`; `ShipmentPostedCogsHandler` reads that column to drive COGS (shipment-line-stamped `unitCost` is only a documented cold-start fallback).
+**Outbox:** `product.SalesPriceChanged` from the first call; `product.StandardCostChanged` from the second. **Projections:** sales-service consumes `SalesPriceChanged` via `SalesPriceChangedHandler` (new orders quote the new price; existing lines are price-denormalised at order time). Finance consumes `StandardCostChanged` via `StandardCostChangedHandler` → writes `finance.product_card.standard_cost`; `SalesOrderShippedHandler` reads that column to drive COGS (shipment-line-stamped `unitCost` is only a documented cold-start fallback).
 
 ### 1.3 — Set reorder policy
 

@@ -17,7 +17,7 @@ The discipline in one sentence: *the journal is the system of record; the ledger
 | **Audit trail** | `shared.audit_entry` is itself a meta-journal of API calls — same shape one layer up. Who did what to which aggregate when, with full reconstruction. |
 | **Trial balance / reconciliation** | The deltas/totals invariant in operation: any projection must be reproducible by replaying its source events. If it isn't, you don't trust the books. The inbox + projection-handler design is exactly this reconciliation guarantee. |
 
-Read this way, only the `finance` schema is "the accounting service" because it speaks in money. **Every other service is keeping the books on something else** — inventory on physical units, manufacturing on WIP and labour, sales on customer commitments, purchasing on supplier obligations. At the boundary they post to finance's books (`ShipmentPostedCogsHandler`, `SupplierInvoiceApprovedHandler`, etc.), which is the one set of books that has to balance in currency. SAP people say *"everything is a posting"* — they aren't being cute, they mean it literally.
+Read this way, only the `finance` schema is "the accounting service" because it speaks in money. **Every other service is keeping the books on something else** — inventory on physical units, manufacturing on WIP and labour, sales on customer commitments, purchasing on supplier obligations. At the boundary they post to finance's books (`SalesOrderShippedHandler`, `SupplierInvoiceApprovedHandler`, etc.), which is the one set of books that has to balance in currency. SAP people say *"everything is a posting"* — they aren't being cute, they mean it literally.
 
 **Where the analogy stops.** ERP also has coordination concerns that aren't accounting:
 

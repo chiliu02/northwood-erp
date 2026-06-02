@@ -12,7 +12,7 @@ import com.northwood.finance.application.inbox.PurchaseOrderCreatedHandler;
 import com.northwood.finance.application.inbox.RawMaterialsReservedWipHandler;
 import com.northwood.finance.application.inbox.SalesOrderCancellationRefundHandler;
 import com.northwood.finance.application.inbox.SalesOrderShippedHandler;
-import com.northwood.finance.application.inbox.ShipmentPostedCogsHandler;
+import com.northwood.finance.application.inbox.ShipmentDeferredRevenueHandler;
 import com.northwood.finance.application.inbox.StandardCostChangedHandler;
 import com.northwood.finance.application.inbox.SubAssembliesConsumedWipHandler;
 import com.northwood.finance.application.inbox.ValuationClassChangedHandler;
@@ -90,12 +90,12 @@ public final class FinanceTestKit {
         );
 
         bus.register(outbox);
-        bus.register(new SalesOrderShippedHandler(inbox, customerInvoiceService, paymentService, json));
+        bus.register(new SalesOrderShippedHandler(inbox, customerInvoiceService, paymentService, journalService, productCards, json));
         bus.register(new DepositInvoiceRequestedHandler(inbox, customerInvoiceService, json));
         // Refund the up-front amount (Dr 2110 / Cr Bank) when a paid
         // prepayment/deposit order is cancelled pre-shipment.
         bus.register(new SalesOrderCancellationRefundHandler(inbox, journalService, customerInvoices, json));
-        bus.register(new ShipmentPostedCogsHandler(inbox, journalService, productCards, customerInvoices, json));
+        bus.register(new ShipmentDeferredRevenueHandler(inbox, journalService, customerInvoices, json));
         bus.register(new GoodsReceivedHandler(inbox, purchaseOrderLineFacts, journalService, json));
         bus.register(new PurchaseOrderCreatedHandler(inbox, purchaseOrderLineFacts, json));
         bus.register(new ProductCreatedHandler(inbox, productCards, json));

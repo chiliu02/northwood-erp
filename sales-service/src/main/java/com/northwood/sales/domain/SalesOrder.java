@@ -39,7 +39,8 @@ public final class SalesOrder {
         UUID productId,
         String productSku,
         String productName,
-        BigDecimal shippedQuantity
+        BigDecimal shippedQuantity,
+        BigDecimal unitCost
     ) {}
 
     /**
@@ -337,7 +338,11 @@ public final class SalesOrder {
             eventLines.add(new ShippedLine(
                 sl.salesOrderLineId(), lineNumber,
                 sl.productId(), sl.productSku(), sl.productName(),
-                sl.shippedQuantity(), unitPrice, taxRate
+                sl.shippedQuantity(), unitPrice, taxRate,
+                // Cost is the shipment line's own value (independent of the price
+                // match) — finance routes it to COGS, or to Promotions when the
+                // line shipped free-of-charge (unitPrice == 0).
+                sl.unitCost()
             ));
         }
         this.pendingEvents.add(new SalesOrderShipped(

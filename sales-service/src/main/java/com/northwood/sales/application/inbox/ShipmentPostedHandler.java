@@ -60,7 +60,8 @@ public class ShipmentPostedHandler extends AbstractInboxHandler<ShipmentPosted> 
             List<ShippedLineInput> shippedLines = new ArrayList<>();
             for (ShipmentPosted.ShippedLine sl : payload.lines()) {
                 shippedLines.add(new ShippedLineInput(
-                    sl.salesOrderLineId(), sl.productId(), sl.productSku(), sl.productName(), sl.shippedQuantity()
+                    sl.salesOrderLineId(), sl.productId(), sl.productSku(), sl.productName(),
+                    sl.shippedQuantity(), sl.unitCost()
                 ));
             }
             salesOrders.recordShipped(

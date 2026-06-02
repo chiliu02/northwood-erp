@@ -72,5 +72,14 @@ final class FinanceAccountCodes {
     /** 5400 — Inventory Adjustment; the gain/loss offset for manual stock adjustments. */
     static final String INVENTORY_ADJUSTMENT = "5400";
 
+    /**
+     * 5500 — Promotions / Samples Expense. The cost (NOT price) of goods shipped
+     * free-of-charge (a zero-price sales line: free sample, promotion, warranty
+     * replacement, 100%-discount). Routed here instead of {@link #COGS} so the
+     * P&amp;L separates "cost of giveaways" from cost-of-actual-sales — the credit
+     * side is still the inventory account (the goods left stock at cost either way).
+     */
+    static final String PROMOTIONS_EXPENSE = "5500";
+
     private FinanceAccountCodes() {}
 }

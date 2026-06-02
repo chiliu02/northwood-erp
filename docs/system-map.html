@@ -762,7 +762,7 @@ window.NORTHWOOD_EVENTS = [
     event: "SalesOrderShipped",
     consumers: [
       { dest: "finance", name: "finance.customer-invoice.shipped-order",
-        desc: `Creates <code>finance.customer_invoice_header</code> + <code>customer_invoice_line</code> rows from shipped lines (qty × price + tax); emits <code>finance.CustomerInvoiceCreated</code> via outbox` },
+        desc: `Creates <code>finance.customer_invoice_header</code> + <code>customer_invoice_line</code> rows from shipped lines (qty × price + tax); emits <code>finance.CustomerInvoiceCreated</code> via outbox. <strong>Also posts perpetual-inventory COGS</strong> in the same handler: Dr 5000 COGS / Cr 1220 Inventory at standard cost (<code>finance.product_card</code>; shipment-stamped <code>unitCost</code> is the cold-start fallback) — but a free-of-charge line (zero sale price) debits <strong>5500 Promotions &amp; Samples Expense</strong> instead of COGS. COGS lives here, not on <code>ShipmentPosted</code>, because this is the only event carrying both the per-line cost and the sale price the free-of-charge split needs (matching principle: cost recognised with revenue)` },
     ]
   },
   {
@@ -887,8 +887,8 @@ window.NORTHWOOD_EVENTS = [
     aggregate: "Shipment",
     event: "ShipmentPosted",
     consumers: [
-      { dest: "finance", name: "finance.cogs.shipment-posted",
-        desc: `Posts perpetual-inventory COGS pair into <code>finance.journal_entry_header</code> + <code>journal_entry_line</code> (Dr 5000 COGS / Cr 1200 Inventory) — line cost from <code>finance.product_card</code> projection` },
+      { dest: "finance", name: "finance.deferred-revenue.shipment-posted",
+        desc: `Recognises <strong>deferred revenue</strong> for prepayment / deposit orders at goods-delivered: Dr 2110 Customer Deposits / Cr 4000 Revenue against the up-front invoice (idempotent via <code>markRevenueRecognized</code>). <strong>COGS is no longer posted here</strong> — it moved to <code>finance.customer-invoice.shipped-order</code> on <code>sales.SalesOrderShipped</code>, the only event carrying the sale price the free-of-charge → 5500 Promotions split needs` },
       { dest: "sales", name: "sales.fulfilment-saga.shipment-posted",
         desc: `Advances <code>sales.sales_order_fulfilment_saga.current_state</code> → <code>goods_shipped</code>; flips <code>sales.sales_order_header.status</code> → <code>shipped</code> (+ <code>version+1</code>); emits <code>sales.SalesOrderShipped</code> via outbox` },
       { dest: "reporting", name: "reporting.sales-order-360.shipment-posted",
@@ -1226,6 +1226,10 @@ window.NORTHWOOD_PROJECTIONS = [
         { name: "customer_invoice_header", kind: "aggregate",
           events: ["SalesOrderShipped", "SalesOrderCancellationRequested"] },
         { name: "customer_invoice_line", kind: "aggregate",
+          events: ["SalesOrderShipped"] },
+        { name: "journal_entry_header", kind: "aggregate",
+          events: ["SalesOrderShipped"] },
+        { name: "journal_entry_line", kind: "aggregate",
           events: ["SalesOrderShipped"] },
       ]},
       { dest: "reporting", tables: [

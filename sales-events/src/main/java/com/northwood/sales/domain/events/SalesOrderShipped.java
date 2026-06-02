@@ -51,6 +51,7 @@ public record SalesOrderShipped(
         String productName,
         BigDecimal shippedQuantity,
         BigDecimal unitPrice,
-        BigDecimal taxRate
+        BigDecimal taxRate,
+        BigDecimal unitCost
     ) {}
 }

@@ -50,8 +50,17 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class JournalEntryService {
 
-    /** Per-line cost attribution input for the multi-debit journals. */
-    public record LineCost(UUID productId, BigDecimal amount) {}
+    /**
+     * Per-line cost attribution input for the multi-debit journals.
+     * {@code freeOfCharge} routes a zero-price (giveaway) shipment line's cost to
+     * {@code 5500 Promotions Expense} instead of COGS — see {@link #postShipmentCost}.
+     */
+    public record LineCost(UUID productId, BigDecimal amount, boolean freeOfCharge) {
+        /** Convenience: a normal (charged) line — {@code freeOfCharge = false}. */
+        public LineCost(UUID productId, BigDecimal amount) {
+            this(productId, amount, false);
+        }
+    }
 
     private static final Logger log = LoggerFactory.getLogger(JournalEntryService.class);
 
@@ -261,13 +270,21 @@ public class JournalEntryService {
         // class. Each pair is independently balanced; the journal as a whole
         // remains balanced because every line has its match. Most shipments
         // are single-class.
-        java.util.Map<String, BigDecimal> cogsByAccount = new java.util.LinkedHashMap<>();
+        //
+        // A free-of-charge line (zero sale price — free sample / promotion /
+        // 100%-discount) debits 5500 Promotions Expense instead of COGS: the
+        // goods still left stock at cost (same Cr Inventory), but the P&L
+        // separates the cost of giveaways from cost-of-actual-sales. The split
+        // is purely on the debit account; the credit side is unchanged.
+        java.util.Map<String, BigDecimal> debitByAccount = new java.util.LinkedHashMap<>();
         java.util.Map<String, BigDecimal> inventoryByAccount = new java.util.LinkedHashMap<>();
         for (LineCost lc : lineCosts) {
             if (lc.amount().signum() <= 0) continue;
-            String cogsCode = cogsAccountForProduct(lc.productId());
+            String debitCode = lc.freeOfCharge()
+                ? FinanceAccountCodes.PROMOTIONS_EXPENSE
+                : cogsAccountForProduct(lc.productId());
             String invCode = inventoryAccountForProduct(lc.productId());
-            cogsByAccount.merge(cogsCode, lc.amount(), BigDecimal::add);
+            debitByAccount.merge(debitCode, lc.amount(), BigDecimal::add);
             inventoryByAccount.merge(invCode, lc.amount(), BigDecimal::add);
         }
 
@@ -277,10 +294,10 @@ public class JournalEntryService {
             JournalEntry.SourceModule.FINANCE,
             JournalEntry.SourceDocumentType.SHIPMENT_COST,
             shipmentHeaderId,
-            "Shipment " + shipmentNumber + " — cost of goods sold",
+            "Shipment " + shipmentNumber + " — cost of goods sold / promotions",
             currencyCode,
-            cogsByAccount,
-            "COGS for " + shipmentNumber,
+            debitByAccount,
+            "Cost of goods issued via " + shipmentNumber,
             inventoryByAccount,
             "Stock issued via " + shipmentNumber
         );

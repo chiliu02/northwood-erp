@@ -725,7 +725,8 @@ INSERT INTO finance.gl_account (account_code, account_name, account_type) VALUES
     ('5100', 'Production Variance',           'expense'),
     ('5200', 'Materials Cost',                'expense'),
     ('5300', 'Freight Expense',               'expense'),
-    ('5400', 'Inventory Adjustment',          'expense')
+    ('5400', 'Inventory Adjustment',          'expense'),
+    ('5500', 'Promotions & Samples Expense',  'expense')
 ON CONFLICT (account_code) DO NOTHING;
 
 -- Tax codes. GST_NZ_15 is schema-prep — no Java code path produces or
