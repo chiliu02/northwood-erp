@@ -71,7 +71,7 @@ class FulfilmentSagaDataTest {
     @Nested
     class CompensationAcks {
         @Test void inventory_ack_satisfies_the_gate() {
-            // §2.40: inventory is the sole compensation ack (manufacturing leg retired).
+            // Inventory is the sole compensation ack (manufacturing leg retired).
             FulfilmentSagaData none = FulfilmentSagaData.none();
             assertThat(none.cancellationAcked()).isFalse();
 

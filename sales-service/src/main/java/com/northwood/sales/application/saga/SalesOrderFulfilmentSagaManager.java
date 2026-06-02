@@ -74,7 +74,7 @@ public interface SalesOrderFulfilmentSagaManager {
      *       {@code shortageLineIds} must be non-empty (throws
      *       {@link IllegalStateException} otherwise — inventory has nothing
      *       meaningful to say about a non-success outcome without per-line
-     *       shortages). §2.37 Slice 3: inventory has already raised the
+     *       shortages). Inventory has already raised the
      *       {@code ReplenishmentRequest} for each short line in the same
      *       transaction, so sales just records the outstanding line ids on
      *       {@code saga.data} and parks at {@code stock_reservation_incomplete}
@@ -88,7 +88,7 @@ public interface SalesOrderFulfilmentSagaManager {
     );
 
     /**
-     * §2.37 Slice 3: apply {@code inventory.ReplenishmentFulfilled} addressed
+     * Apply {@code inventory.ReplenishmentFulfilled} addressed
      * to a specific sales-order line. Removes the line id from the saga's
      * {@code outstandingReplenishmentLineIds} set. When the set empties and the
      * saga is still in {@code stock_reservation_incomplete}, transitions back to
@@ -106,12 +106,12 @@ public interface SalesOrderFulfilmentSagaManager {
     String applyReplenishmentFulfilled(UUID salesOrderHeaderId, UUID salesOrderLineId);
 
     /**
-     * §2.37 Slice 3: apply {@code inventory.ReplenishmentCancelled} addressed
+     * Apply {@code inventory.ReplenishmentCancelled} addressed
      * to a specific sales-order line — the replenishment couldn't be sourced
      * (unsourceable SKU, no active BOM, no approved vendor). A short line that
      * can never be replenished means the order can't be fulfilled, so the saga
      * transitions {@code stock_reservation_incomplete → rejected} (any one
-     * cancelled line rejects the whole order — the §4.2 closure policy).
+     * cancelled line rejects the whole order).
      * Returns {@code "rejected"} so the handler can flip the order header +
      * request compensation. No-op (returns current state) if the saga has
      * already left {@code stock_reservation_incomplete}.
@@ -133,7 +133,7 @@ public interface SalesOrderFulfilmentSagaManager {
 
     /**
      * Apply {@code inventory.SalesOrderCancellationApplied} — the sole
-     * compensation ack since §2.40 retired the manufacturing leg. Records the
+     * compensation ack (the manufacturing leg was retired). Records the
      * inventory ack on saga data and, when in {@code compensating}, transitions
      * {@code compensating → compensated} and returns {@code "compensated"} so the
      * caller can emit {@code sales.SalesOrderCompensated}.

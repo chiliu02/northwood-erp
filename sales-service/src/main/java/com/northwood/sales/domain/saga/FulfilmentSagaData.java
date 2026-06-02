@@ -7,15 +7,15 @@ import java.util.UUID;
 /**
  * Shape of the JSON blob stored in {@code sales.sales_order_fulfilment_saga.data}.
  *
- * <p>§2.37 Slice 3 slimmed this record when the make-vs-buy decision moved into
- * inventory. Sales no longer drives manufacturing, so the work-order tracking
- * fields ({@code expectedWorkOrderCount} / {@code outstandingWorkOrderIds} /
+ * <p>Slimmed when the make-vs-buy decision moved into inventory. Sales no longer
+ * drives manufacturing, so the work-order tracking fields
+ * ({@code expectedWorkOrderCount} / {@code outstandingWorkOrderIds} /
  * {@code completedWorkOrderIds}) and the manufacturing-shortage forwarding map
  * ({@code shortageByLineNumber}) are gone. What remains:
  *
  * <ul>
- *   <li>{@link #paymentTerms} — §2.31 Slice B. The order's snapshotted
- *       commercial terms ({@code on_shipment} / {@code prepayment}), stashed at
+ *   <li>{@link #paymentTerms} — the order's snapshotted commercial terms
+ *       ({@code on_shipment} / {@code prepayment}), stashed at
  *       saga creation so the worker can branch at {@code started} and
  *       {@code applyCustomerPaymentReceived} can route full settlement to
  *       {@code completed} (on-shipment) or {@code prepaid} (prepayment). Null on
@@ -31,9 +31,9 @@ import java.util.UUID;
  *       these lines rejects the order outright.</li>
  *   <li>{@link #inventoryCancellationAcked} — the compensation ack; the saga
  *       advances to {@code compensated} once inventory confirms the cancel.
- *       §2.40 retired the manufacturing leg of the compensation gate (no work
- *       order is bound to a sales order post-§2.37), so inventory is now the
- *       sole compensation contract.</li>
+ *       The manufacturing leg of the compensation gate was retired — no work
+ *       order is bound to a sales order — so inventory is now the sole
+ *       compensation contract.</li>
  * </ul>
  *
  * <p>The compact constructor defaults null fields so saga rows written before a
@@ -51,7 +51,7 @@ public record FulfilmentSagaData(
         // FAIL_ON_NULL_FOR_PRIMITIVES; the compact constructor unboxes to false.
         inventoryCancellationAcked = inventoryCancellationAcked != null && inventoryCancellationAcked;
         // paymentTerms stays null on legacy rows; consumers fall back to the
-        // on-shipment path (the only path that existed pre-§2.31 Slice B).
+        // on-shipment path.
         outstandingReplenishmentLineIds = outstandingReplenishmentLineIds == null
             ? Set.of()
             : outstandingReplenishmentLineIds;

@@ -11,7 +11,7 @@ package com.northwood.sales.domain;
  * directly from this class — the {@code sales-events} jar is the only
  * cross-service contract surface for sales' wire constants.
  *
- * <p>Convention introduced 2026-05-16 (§2.20).
+ * <p>Convention introduced 2026-05-16.
  */
 public final class SalesAggregateTypes {
 

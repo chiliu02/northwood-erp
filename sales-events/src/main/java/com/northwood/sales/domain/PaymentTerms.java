@@ -21,11 +21,11 @@ import com.northwood.shared.domain.Assert;
  * <ul>
  *   <li>{@link #ON_SHIPMENT} — credit terms; invoice created from the shipment,
  *       customer pays against it (Northwood's existing AR flow; the default).</li>
- *   <li>{@link #PREPAYMENT} — cash-with-order (§2.31); invoiced at placement,
+ *   <li>{@link #PREPAYMENT} — cash-with-order; invoiced at placement,
  *       shipment gated on full payment.</li>
- *   <li>{@link #CASH_ON_DELIVERY} — cash-on-delivery (§2.33); invoice + full
+ *   <li>{@link #CASH_ON_DELIVERY} — cash-on-delivery; invoice + full
  *       payment auto-recorded at shipment.</li>
- *   <li>{@link #DEPOSIT} — deposit / part-payment (§2.32); a per-order
+ *   <li>{@link #DEPOSIT} — deposit / part-payment; a per-order
  *       {@code deposit_percent} is invoiced + paid up front, the balance is
  *       invoiced at shipment.</li>
  * </ul>

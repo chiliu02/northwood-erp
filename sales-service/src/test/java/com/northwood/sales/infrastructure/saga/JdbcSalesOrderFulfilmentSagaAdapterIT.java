@@ -29,7 +29,7 @@ import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * §2.25 Tier 3: real-Postgres test for {@link JdbcSalesOrderFulfilmentSagaAdapter}
+ * Real-Postgres test for {@link JdbcSalesOrderFulfilmentSagaAdapter}
  * — the saga-state port whose {@code claimDue} routine is the architectural twin
  * of the outbox's {@code FOR UPDATE SKIP LOCKED} drain. Covers what only a real
  * DB exhibits:

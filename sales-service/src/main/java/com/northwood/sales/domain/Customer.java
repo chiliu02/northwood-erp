@@ -78,12 +78,10 @@ public class Customer {
     private Status status;
     /**
      * Default commercial {@link PaymentTerms} for this customer. Snapshotted
-     * onto each sales order at placement time (overridable per order). §2.31
-     * Slice A — currently inert beyond the snapshot; the saga doesn't branch
-     * on it yet (that lands in §2.31 Slice B). No mutator on Slice A:
-     * customer's terms are set at registration. If post-registration changes
+     * onto each sales order at placement time (overridable per order).
+     * Customer's terms are set at registration. If post-registration changes
      * become a real demand, add {@code changeDefaultPaymentTerms} + a
-     * {@code CustomerDefaultPaymentTermsChanged} event in a later slice.
+     * {@code CustomerDefaultPaymentTermsChanged} event.
      */
     private final PaymentTerms defaultPaymentTerms;
     private final long version;

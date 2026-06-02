@@ -23,8 +23,8 @@ public record PlaceOrderCommand(
      */
     String paymentTerms,
     /**
-     * §2.32: up-front fraction (0,100] for {@code deposit} orders. Null = use
-     * the default 50% when {@code paymentTerms = "deposit"}; ignored (must stay
+     * Up-front fraction (0,100] for {@code deposit} orders. Null = use the
+     * default 50% when {@code paymentTerms = "deposit"}; ignored (must stay
      * null) for every other term. Validated in {@code SalesOrderService.placeOrder}.
      */
     BigDecimal depositPercent,
@@ -32,7 +32,7 @@ public record PlaceOrderCommand(
 ) {
     /**
      * Convenience for the common non-deposit case — no up-front
-     * {@code depositPercent} (preserves call sites that predate §2.32).
+     * {@code depositPercent}.
      */
     public PlaceOrderCommand(
         String orderNumber, String customerCode, LocalDate requestedDeliveryDate,

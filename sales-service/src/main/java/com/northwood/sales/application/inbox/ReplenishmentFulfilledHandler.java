@@ -21,14 +21,13 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.36 Slice E / §2.37 Slice 3: sales-side fan-in for
- * {@code inventory.ReplenishmentFulfilled}.
+ * Sales-side fan-in for {@code inventory.ReplenishmentFulfilled}.
  *
  * <p>Only fires when the event carries the sales-order back-reference fields
  * ({@code sourceSalesOrderHeaderId} + {@code sourceSalesOrderLineId} both
  * non-null) — fulfilments triggered by reorder-point breach or WO-shortage
- * carry null back-references and are silently ignored here (the existing
- * §2.35 consumers in reporting handle them).
+ * carry null back-references and are silently ignored here (the replenishment
+ * history consumers in reporting handle them).
  *
  * <p>Delegates the state machine work to
  * {@link SalesOrderFulfilmentSagaManager#applyReplenishmentFulfilled(UUID, UUID)}.
@@ -36,7 +35,7 @@ import tools.jackson.databind.ObjectMapper;
  * outstanding short line has been replenished), this handler emits a
  * fresh {@code sales.StockReservationRequested} so inventory will retry the
  * reservation against the now-restocked inventory. The work the inventory
- * service does on that second emission mirrors the §2.9 work-order retry
+ * service does on that second emission mirrors the work-order retry
  * pattern — {@code reserveForSalesOrder} cancels the prior partial
  * reservation before creating the new one.
  *
@@ -83,8 +82,8 @@ public class ReplenishmentFulfilledHandler extends AbstractInboxHandler<Replenis
             // All outstanding purchasing-line replenishments have landed — re-
             // emit StockReservationRequested so inventory tries the reservation
             // again. inventory.StockReservationService.reserveForSalesOrder
-            // drops any prior partial reservation first (§2.36 mirrors the
-            // §2.9 work-order retry pattern).
+            // drops any prior partial reservation first (mirrors the work-order
+            // retry pattern).
             emitRetryStockReservation(salesOrderHeaderId);
             log.info("[{}] sales_order={} → stock_reservation_requested; re-emitting {} to retry reservation",
                 CONSUMER_NAME, salesOrderHeaderId, StockReservationRequested.EVENT_TYPE);

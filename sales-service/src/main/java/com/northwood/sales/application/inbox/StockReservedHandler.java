@@ -26,9 +26,9 @@ import tools.jackson.databind.ObjectMapper;
  * {@code sales.SalesOrderReadyToShip} so reporting can advance
  * {@code order_status} (the shipment picker's filter).
  *
- * <p>§2.37 Slice 3: a partial/failed reservation no longer forwards anything to
- * manufacturing — inventory has already raised the {@code ReplenishmentRequest}
- * for each short line in the same transaction. This handler just hands the
+ * <p>A partial/failed reservation no longer forwards anything to manufacturing —
+ * inventory has already raised the {@code ReplenishmentRequest} for each short
+ * line in the same transaction. This handler just hands the
  * short sales-order-line ids to the saga so it can park awaiting their
  * {@code ReplenishmentFulfilled} / {@code ReplenishmentCancelled}. The reply
  * carries per-line {@code lineNumber}; the line ids are resolved from the

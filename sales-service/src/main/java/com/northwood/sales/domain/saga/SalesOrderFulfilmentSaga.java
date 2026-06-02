@@ -16,16 +16,16 @@ import java.util.UUID;
  *  → invoice_created → completed}.
  * Fully-reserved orders take that happy path straight through. A partial/failed
  * reservation parks at {@code stock_reservation_incomplete} while inventory
- * replenishes (§2.37 Slice 3 made inventory the single make-vs-buy decision +
- * trigger point — it raises the {@code ReplenishmentRequest} in the same
- * transaction as the reservation); once every short line's
+ * replenishes (inventory is the single make-vs-buy decision + trigger point —
+ * it raises the {@code ReplenishmentRequest} in the same transaction as the
+ * reservation); once every short line's
  * {@code inventory.ReplenishmentFulfilled} has landed the saga re-enters
  * {@code stock_reservation_requested} to retry. Side rails: {@code rejected}
  * (a short line's replenishment was cancelled — unsourceable / no BOM / no
  * vendor), {@code compensating}, {@code compensated}, {@code failed}.
  *
  * <p>The {@code manufacturing_*} / {@code purchasing_requested} states were
- * retired in §2.37 Slice 3 when sales stopped driving manufacturing directly.
+ * retired when sales stopped driving manufacturing directly.
  * The DB CHECK constraint still lists them (a fresh-volume migration concern,
  * not a code one); the {@code SagaStateInvariantChecker} only fails if code
  * writes a state the DB rejects, so dropping them here is safe.
@@ -56,9 +56,9 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
      * {@code inventory.ReplenishmentFulfilled} — at which point it re-enters
      * {@link #STOCK_RESERVATION_REQUESTED} to retry reservation against the
      * now-restocked inventory. A {@code ReplenishmentCancelled} for any short
-     * line moves the saga to {@link #REJECTED} instead. (§2.37 Slice 3 removed
-     * the worker's old {@code stock_reservation_incomplete → manufacturing_requested}
-     * leg; the worker no longer acts on this state.)
+     * line moves the saga to {@link #REJECTED} instead. The worker no longer
+     * acts on this state (the old {@code stock_reservation_incomplete →
+     * manufacturing_requested} leg was retired).
      */
     public static final String STOCK_RESERVATION_INCOMPLETE = "stock_reservation_incomplete";
     public static final String REJECTED = "rejected";
@@ -67,15 +67,14 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
     public static final String INVOICE_REQUESTED = "invoice_requested";
     public static final String INVOICE_CREATED = "invoice_created";
     public static final String INVOICE_PARTIALLY_PAID = "invoice_partially_paid";
-    // §2.31 Slice B: prepayment branch states. AWAITING_PREPAYMENT_INVOICE
-    // parks the saga after PrepaymentInvoiceRequested until finance acks with
-    // CustomerInvoiceCreated. PREPAID is the active worker-pickup checkpoint
-    // between full payment receipt and stock reservation request (the saga
-    // continues from PREPAID into the same stock-reservation path as the
-    // on-shipment flow).
+    // Prepayment branch states. AWAITING_PREPAYMENT_INVOICE parks the saga
+    // after PrepaymentInvoiceRequested until finance acks with CustomerInvoiceCreated.
+    // PREPAID is the active worker-pickup checkpoint between full payment receipt
+    // and stock reservation request (the saga continues from PREPAID into the
+    // same stock-reservation path as the on-shipment flow).
     public static final String AWAITING_PREPAYMENT_INVOICE = "awaiting_prepayment_invoice";
     public static final String PREPAID = "prepaid";
-    // §2.32 deposit branch: AWAITING_DEPOSIT_INVOICE parks after
+    // Deposit branch states: AWAITING_DEPOSIT_INVOICE parks after
     // DepositInvoiceRequested until finance acks with CustomerInvoiceCreated;
     // DEPOSIT_INVOICED waits for the deposit payment; DEPOSIT_PAID is the active
     // worker-pickup checkpoint (like PREPAID) between deposit settlement and the

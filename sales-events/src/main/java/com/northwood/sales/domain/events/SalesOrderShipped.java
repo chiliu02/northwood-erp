@@ -19,8 +19,8 @@ import java.util.UUID;
  * <p>{@code paymentTerms} is the order's commercial terms — a
  * {@link com.northwood.sales.domain.PaymentTerms} {@code dbValue()}. Finance
  * branches on it at shipment: a {@code cash_on_delivery} order has its customer
- * payment auto-recorded the moment the invoice is created (§2.33). Nullable for
- * backward compatibility with in-flight messages produced before §2.33 —
+ * payment auto-recorded the moment the invoice is created (cash-on-delivery). Nullable for
+ * backward compatibility with in-flight messages produced by older versions —
  * consumers treat null as {@code on_shipment}.
  */
 public record SalesOrderShipped(

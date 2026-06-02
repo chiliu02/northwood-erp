@@ -196,12 +196,12 @@ public class SalesOrderService {
      * {@code sales.SalesOrderCancellationRequested} event is written to the
      * outbox. The fulfilment saga is moved to {@code 'compensating'}; inventory
      * acks via {@code InventorySalesOrderCancellationApplied} (the sole
-     * compensation ack since §2.40), after which the saga advances to
+     * compensation ack), after which the saga advances to
      * {@code 'compensated'}.
      *
      * <p>Cancellable up to (and including) {@code ready_to_ship}; once
      * {@code goods_shipped} or beyond, the credit-note / return-goods flow
-     * applies (out of scope — dev-todo §4.2).
+     * applies (out of scope).
      *
      * @throws OrderNotFoundException if no order with this id exists.
      * @throws OrderNotCancellableException if header status is past cancellation point.
@@ -261,15 +261,15 @@ public class SalesOrderService {
             lineNumber += LineNumbering.STEP;
         }
 
-        // §2.31 Slice A: per-order override falls back to customer's default
-        // when omitted (the common case). Validated against the enum so a typo
-        // on the API surfaces as 400, not a CHECK violation at INSERT time.
+        // Per-order override falls back to customer's default when omitted (the
+        // common case). Validated against the enum so a typo on the API surfaces
+        // as 400, not a CHECK violation at INSERT time.
         PaymentTerms paymentTerms = command.paymentTerms() == null
             ? customer.defaultPaymentTerms()
             : PaymentTerms.fromDb(command.paymentTerms());
 
-        // §2.32: deposit orders carry an up-front percent (default 50%); every
-        // other term must not carry one. Validated here so a bad value is a 400,
+        // Deposit orders carry an up-front percent (default 50%); every other
+        // term must not carry one. Validated here so a bad value is a 400,
         // not a CHECK violation at INSERT time.
         BigDecimal depositPercent = resolveDepositPercent(paymentTerms, command.depositPercent());
 
@@ -288,14 +288,13 @@ public class SalesOrderService {
 
         salesOrders.save(order);
 
-        // §2.31 Slice B: stash payment_terms onto saga.data so the worker can
-        // branch at started (on_shipment → existing StockReservationRequested
-        // path; prepayment → PrepaymentInvoiceRequested) and so
-        // applyCustomerPaymentReceived can route full settlement to the right
-        // terminal (completed vs prepaid). Inline JSON to keep ObjectMapper
-        // out of this service for a single field; matches FulfilmentSagaData's
-        // wire shape. dbValue() is "on_shipment" / "prepayment" — no quoting
-        // concerns.
+        // Stash payment_terms onto saga.data so the worker can branch at started
+        // (on_shipment → existing StockReservationRequested path; prepayment →
+        // PrepaymentInvoiceRequested) and so applyCustomerPaymentReceived can
+        // route full settlement to the right terminal (completed vs prepaid).
+        // Inline JSON to keep ObjectMapper out of this service for a single
+        // field; matches FulfilmentSagaData's wire shape. dbValue() is
+        // "on_shipment" / "prepayment" — no quoting concerns.
         String dataJson = "{\"paymentTerms\":\"" + paymentTerms.dbValue() + "\"}";
         sagaManager.insertStarted(order.id().value(), dataJson);
 
@@ -303,9 +302,9 @@ public class SalesOrderService {
     }
 
     /**
-     * §2.32: resolve + validate the up-front deposit fraction. Deposit orders
-     * default to 50% when none is supplied; the value must be in (0, 100]. Any
-     * other payment term must not carry a percent (a provided one is a 400).
+     * Resolve + validate the up-front deposit fraction. Deposit orders default
+     * to 50% when none is supplied; the value must be in (0, 100]. Any other
+     * payment term must not carry a percent (a provided one is a 400).
      */
     private static BigDecimal resolveDepositPercent(PaymentTerms terms, BigDecimal requested) {
         if (terms != PaymentTerms.DEPOSIT) {

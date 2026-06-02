@@ -10,7 +10,7 @@ import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Component;
 
 /**
- * §2.31 Slice B. JDBC adapter for {@link SalesOrderInvoiceSnapshotPort}.
+ * JDBC adapter for {@link SalesOrderInvoiceSnapshotPort}.
  * Reads from {@code sales.sales_order_header} + {@code sales.sales_order_line}
  * — fields needed to build a {@code PrepaymentInvoiceRequested} payload.
  */

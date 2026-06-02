@@ -18,12 +18,12 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.37 Slice 3: inbox handler for {@code inventory.ReplenishmentCancelled}.
+ * Inbox handler for {@code inventory.ReplenishmentCancelled}.
  * The failure counterpart of {@link ReplenishmentFulfilledHandler}: a short
  * sales-order line's replenishment couldn't be sourced (unsourceable SKU, no
  * active BOM, no approved vendor), so the order can't be fulfilled. The saga
  * transitions {@code stock_reservation_incomplete → rejected} (any one
- * un-fulfillable line rejects the whole order — the §4.2 closure policy), the
+ * un-fulfillable line rejects the whole order), the
  * order header flips to {@code rejected}, and {@code SalesOrderCancellationRequested}
  * is emitted so inventory releases any partial reservation.
  *

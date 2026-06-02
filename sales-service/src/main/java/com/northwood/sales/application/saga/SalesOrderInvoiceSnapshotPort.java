@@ -6,9 +6,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * §2.31 Slice B. Read-side snapshot of a sales order's header + line pricing,
- * scoped to what the fulfilment saga worker needs to build a
- * {@code PrepaymentInvoiceRequested} payload. Distinct from
+ * Read-side snapshot of a sales order's header + line pricing, scoped to what
+ * the fulfilment saga worker needs to build a {@code PrepaymentInvoiceRequested}
+ * payload. Distinct from
  * {@link SalesOrderLineSnapshotPort} — the existing port returns only
  * fulfilment-relevant line fields (qty, sku); this one carries the customer
  * header + per-line pricing (unitPrice, taxRate) that finance needs to build
@@ -33,7 +33,7 @@ public interface SalesOrderInvoiceSnapshotPort {
         String customerCode,
         String customerName,
         String currencyCode,
-        /** §2.32: the order's deposit percent (0,100]; non-null only for deposit orders. */
+        /** The order's deposit percent (0,100]; non-null only for deposit orders. */
         BigDecimal depositPercent,
         List<PricedLine> lines
     ) {}

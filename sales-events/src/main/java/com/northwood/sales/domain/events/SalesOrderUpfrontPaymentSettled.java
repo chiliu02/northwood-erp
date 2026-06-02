@@ -5,7 +5,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * §2.31 Slice C / §2.32 Slice C. The sales fulfilment saga emits this when an
+ * The sales fulfilment saga emits this when an
  * order's <b>up-front payment</b> is fully settled before shipment — either a
  * {@code prepayment}-terms order reaching {@code prepaid}, or a {@code deposit}
  * -terms order reaching {@code deposit_paid}. Inventory consumes it to flip

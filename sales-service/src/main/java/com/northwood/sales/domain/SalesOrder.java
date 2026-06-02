@@ -130,7 +130,7 @@ public final class SalesOrder {
 
     private final SalesOrderId id;
     private final String orderNumber;
-    // §2026-05-08 (Customer aggregate slice): customerId, customerCode,
+    // Customer aggregate slice (2026-05-08): customerId, customerCode,
     // customerName are snapshotted at place-order time and never refreshed.
     // Subsequent CustomerNameChanged events do NOT update existing orders or
     // reporting's sales_order_360_view.customer_name — the order shows the
@@ -145,14 +145,12 @@ public final class SalesOrder {
     private Status status;
     /**
      * Commercial {@link PaymentTerms} snapshotted from the customer at
-     * placement (overridable per-order). §2.31 Slice A — currently inert
-     * beyond the snapshot; the saga doesn't branch on it yet (that lands in
-     * Slice B). Immutable on the order — change it via cancel + replace, not
-     * a mutator.
+     * placement (overridable per-order). Immutable on the order — change it
+     * via cancel + replace, not a mutator.
      */
     private final PaymentTerms paymentTerms;
     /**
-     * §2.32: up-front fraction (0,100] for {@link PaymentTerms#DEPOSIT} orders;
+     * Up-front fraction (0,100] for {@link PaymentTerms#DEPOSIT} orders;
      * null for every other term. Immutable, like {@link #paymentTerms}.
      */
     private final BigDecimal depositPercent;
@@ -362,7 +360,7 @@ public final class SalesOrder {
     /**
      * Cancel this order. Allowed only while the header status is in a
      * pre-shipped state — once goods have shipped, cancellation requires the
-     * credit-note / return-goods flow which is out of scope (dev-todo §4.2).
+     * credit-note / return-goods flow which is out of scope.
      *
      * <p>Idempotent in the sense that calling cancel on an already-cancelled
      * order throws — the application service translates this to HTTP 409. If

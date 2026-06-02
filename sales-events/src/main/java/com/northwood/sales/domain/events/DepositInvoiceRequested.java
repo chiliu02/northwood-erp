@@ -6,7 +6,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * §2.32 Slice B. The sales fulfilment saga emits this from {@code started}
+ * The sales fulfilment saga emits this from {@code started}
  * when the order's {@code payment_terms = 'deposit'} — finance consumes it and
  * creates a {@code CustomerInvoice} with {@code invoice_type='deposit'}
  * <b>before</b> any stock reservation or shipment.

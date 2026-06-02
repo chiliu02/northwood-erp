@@ -46,13 +46,13 @@ import org.springframework.stereotype.Component;
  *   <li>{@code started → stock_reservation_requested}: read sales-order
  *       lines, emit {@code StockReservationRequested}, transition saga.</li>
  *   <li>{@code prepaid → stock_reservation_requested}: same, after a
- *       prepayment invoice has been fully paid (§2.31 Slice B).</li>
+ *       prepayment invoice has been fully paid.</li>
  * </ul>
  *
- * <p>§2.37 Slice 3 removed the {@code stock_reservation_incomplete →
- * manufacturing_requested} leg: inventory now raises the
- * {@code ReplenishmentRequest} in the same transaction as the partial
- * reservation, so the worker no longer forwards shortages to manufacturing.
+ * <p>The {@code stock_reservation_incomplete → manufacturing_requested} leg
+ * has been removed: inventory now raises the {@code ReplenishmentRequest} in
+ * the same transaction as the partial reservation, so the worker no longer
+ * forwards shortages to manufacturing.
  * The saga parks at {@code stock_reservation_incomplete} until an
  * {@code inventory.ReplenishmentFulfilled} / {@code ReplenishmentCancelled}
  * drives it via the inbox.
@@ -109,17 +109,16 @@ public class SalesOrderFulfilmentSagaWorker {
     }
 
     /**
-     * §2.31 Slice B. Branch at {@code started} on the order's payment terms
-     * (snapshotted onto saga.data at saga creation). {@code on_shipment} →
-     * existing stock-reservation request. {@code prepayment} → emit
+     * Branch at {@code started} on the order's payment terms (snapshotted onto
+     * saga.data at saga creation). {@code on_shipment} → existing
+     * stock-reservation request. {@code prepayment} → emit
      * {@code PrepaymentInvoiceRequested}, park at
      * {@code awaiting_prepayment_invoice} until finance acks with
      * {@code CustomerInvoiceCreated}; the worker picks the saga back up after
      * payment receipt flips it to {@code prepaid}, at which point we walk
      * the same {@link #requestStockReservation} path as the on-shipment flow.
      *
-     * <p>Legacy sagas (paymentTerms unset) take the on-shipment path — the
-     * only flow that existed pre-§2.31 Slice B.
+     * <p>Legacy sagas (paymentTerms unset) take the on-shipment path.
      */
     private void advanceFromStarted(SalesOrderFulfilmentSaga saga) {
         String pt = readData(saga).paymentTerms();
@@ -133,7 +132,7 @@ public class SalesOrderFulfilmentSagaWorker {
     }
 
     /**
-     * §2.32. Branch at {@code started} for deposit orders: compute the up-front
+     * Branch at {@code started} for deposit orders: compute the up-front
      * deposit ({@code total × deposit_percent / 100}) and emit
      * {@code DepositInvoiceRequested}, parking at {@code awaiting_deposit_invoice}
      * until finance acks with {@code CustomerInvoiceCreated}. The worker picks

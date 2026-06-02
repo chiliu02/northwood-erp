@@ -30,7 +30,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.25 Tier 2: real-Postgres test for {@link JdbcCustomerRepository}, covering
+ * Real-Postgres test for {@link JdbcCustomerRepository}, covering
  * the branches a mocked unit test can't: insert→findById/findByCode round-trip
  * incl. the {@code status} {@code dbValue()}/{@code fromDb()} mapping + the
  * outbox row drained on save; a status-changing mutator persisted via the

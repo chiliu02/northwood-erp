@@ -17,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Application service for the {@link Customer} aggregate. Thin pass-through
  * to the aggregate's intent-named methods. No-op suppression lives on the
- * aggregate itself (consistent with the §2.9 pattern across the codebase).
+ * aggregate itself (consistent with the no-op-on-aggregate pattern across the codebase).
  */
 @Service
 public class CustomerService {

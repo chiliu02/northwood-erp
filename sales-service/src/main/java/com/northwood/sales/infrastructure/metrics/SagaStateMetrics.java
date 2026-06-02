@@ -12,7 +12,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * §1D.5: per-state row count for sales-order fulfilment sagas, exposed as
+ * Per-state row count for sales-order fulfilment sagas, exposed as
  * {@code northwood.saga.count{type="sales_order_fulfilment", state="..."}}.
  * The Grafana showcase board's "bus health" row uses this to render a
  * saga-state bar chart.

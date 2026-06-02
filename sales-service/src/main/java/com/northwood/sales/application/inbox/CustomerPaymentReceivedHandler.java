@@ -17,9 +17,9 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Inbox handler for {@code finance.CustomerPaymentReceived}. Asks the manager
  * to apply the payment outcome; if the saga reaches {@code 'completed'},
- * projects the order header to {@code 'completed'}. §2.31 Slice C: if the
- * saga reaches {@code 'prepaid'} (full settlement of a prepayment invoice),
- * emit {@code sales.SalesOrderPrepaymentSettled} so inventory can flip the
+ * projects the order header to {@code 'completed'}. If the saga reaches
+ * {@code 'prepaid'} (full settlement of a prepayment invoice), emit
+ * {@code sales.SalesOrderPrepaymentSettled} so inventory can flip the
  * shipment-gate flag.
  */
 @Component
@@ -51,7 +51,7 @@ public class CustomerPaymentReceivedHandler extends AbstractInboxHandler<Custome
         if (COMPLETED.equals(newState)) {
             statusProjection.markStatus(payload.salesOrderHeaderId(), SalesOrder.Status.COMPLETED);
         } else if (PREPAID.equals(newState) || DEPOSIT_PAID.equals(newState)) {
-            // §2.31 prepaid + §2.32 deposit_paid both settle the up-front payment
+            // prepaid + deposit_paid both settle the up-front payment
             // → tell inventory to lift the shipment gate.
             upfrontSettledEmitter.emitUpfrontPaymentSettled(payload.salesOrderHeaderId());
         }

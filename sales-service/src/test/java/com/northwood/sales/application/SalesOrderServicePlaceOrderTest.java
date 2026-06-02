@@ -135,8 +135,7 @@ class SalesOrderServicePlaceOrderTest {
     }
 
     /**
-     * §2.31 Slice A.1 — the foundation slice's whole point: per-order
-     * {@code payment_terms} flows from customer default through the snapshot,
+     * Per-order {@code payment_terms} flows from customer default through the snapshot,
      * with a command-level override that wins when supplied. No behavior
      * change to the saga yet (Slice B+ hangs branching on it).
      */

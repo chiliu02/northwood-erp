@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * §2.31 Slice B. The sales fulfilment saga emits this from {@code started}
+ * The sales fulfilment saga emits this from {@code started}
  * when the order's {@code payment_terms = 'prepayment'} — finance consumes it
  * and creates a {@code CustomerInvoice} with {@code invoice_type='prepayment'}
  * <b>before</b> any stock reservation or shipment.

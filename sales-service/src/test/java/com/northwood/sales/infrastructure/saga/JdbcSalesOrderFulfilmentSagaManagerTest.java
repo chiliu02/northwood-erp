@@ -310,7 +310,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
 
     @Nested
     class ApplyCancellationApplied {
-        // §2.40: inventory is the sole compensation ack (manufacturing leg retired),
+        // Inventory is the sole compensation ack (manufacturing leg retired),
         // so an inventory ack from compensating completes the compensation outright.
         @Test void inventory_ack_from_compensating_completes_to_compensated() {
             SalesOrderFulfilmentSaga saga = sagaInState(COMPENSATING);

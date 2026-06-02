@@ -52,7 +52,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
     /**
      * Lease + backoff durations are overridable via
      * {@code northwood.saga.lease-ttl-seconds} (default 30s) and
-     * {@code northwood.saga.retry-backoff-seconds} (default 15s) — §2.13.
+     * {@code northwood.saga.retry-backoff-seconds} (default 15s).
      * Same defaults across all three saga managers; the per-service override
      * exists so a single saga family can be tuned without touching siblings.
      */
@@ -71,12 +71,11 @@ public class JdbcSalesOrderFulfilmentSagaManager
     protected Set<String> activeStates() {
         // Worker-pickup checkpoints, each requiring the worker to emit an event
         // and transition forward. STARTED → stock-reservation / prepayment /
-        // deposit request; PREPAID (§2.31) + DEPOSIT_PAID (§2.32) → stock-
-        // reservation request after the up-front payment settles.
-        // §2.37 Slice 3 removed STOCK_RESERVATION_INCOMPLETE from this set —
-        // inventory now raises the replenishment in-tx, so the worker has
-        // nothing to do there; the saga parks until ReplenishmentFulfilled /
-        // ReplenishmentCancelled drives it via the inbox.
+        // deposit request; PREPAID + DEPOSIT_PAID → stock-reservation request
+        // after the up-front payment settles. STOCK_RESERVATION_INCOMPLETE is
+        // not in this set — inventory raises the replenishment in-tx, so the
+        // worker has nothing to do there; the saga parks until
+        // ReplenishmentFulfilled / ReplenishmentCancelled drives it via the inbox.
         return Set.of(STARTED, PREPAID, DEPOSIT_PAID);
     }
 
@@ -123,9 +122,9 @@ public class JdbcSalesOrderFulfilmentSagaManager
             // partially_reserved / failed must carry the short line ids — the
             // inventory side has nothing meaningful to say otherwise. Fail
             // loudly rather than park an empty outstanding set that would never
-            // un-park. §2.37 Slice 3: inventory has already raised the
-            // replenishment for each short line in the same transaction; sales
-            // just records which lines it's waiting on and parks.
+            // un-park. Inventory has already raised the replenishment for each
+            // short line in the same transaction; sales just records which lines
+            // it's waiting on and parks.
             Assert.stateNotEmpty(shortageLineIds, StockReserved.EVENT_TYPE + " status=" + reservationStatus
                 + " for sales_order=" + salesOrderHeaderId + " arrived without any short line ids. "
                 + "Inventory must report the per-line shortage for partially_reserved / failed outcomes.");
@@ -190,8 +189,8 @@ public class JdbcSalesOrderFulfilmentSagaManager
         SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, ReplenishmentCancelled.EVENT_TYPE);
 
         // A short line whose replenishment was cancelled (unsourceable / no BOM
-        // / no vendor) can never be fulfilled — reject the whole order (§4.2
-        // closure: any one un-fulfillable line rejects it). Only valid while
+        // / no vendor) can never be fulfilled — reject the whole order (any one
+        // un-fulfillable line rejects it). Only valid while
         // parked awaiting replenishment; late deliveries are no-ops.
         if (!STOCK_RESERVATION_INCOMPLETE.equals(saga.state())) {
             log.debug("saga {} sales_order={} ignoring replenishment-cancelled (state={}, line={})",
@@ -215,16 +214,16 @@ public class JdbcSalesOrderFulfilmentSagaManager
                 saga.sagaId(), salesOrderHeaderId, saga.state());
             return saga.state();
         }
-        // §2.31 Slice C: for prepayment orders, the invoice was created at
-        // placement and paid before shipment — there's no invoice / payment
-        // event still to wait for. Walk goods_shipped → completed in this same
-        // transaction so the saga lands on the right terminal without an
-        // active state hop the worker would otherwise pick up.
+        // For prepayment orders, the invoice was created at placement and paid
+        // before shipment — there's no invoice / payment event still to wait
+        // for. Walk goods_shipped → completed in this same transaction so the
+        // saga lands on the right terminal without an active state hop the
+        // worker would otherwise pick up.
         //
-        // §2.33: COD orders settle AT shipment — finance auto-creates the
-        // invoice and auto-records the full customer payment the moment the
-        // SalesOrderShipped lands. So the saga is self-contained: walk
-        // goods_shipped → invoice_created → completed in this transaction
+        // COD orders settle AT shipment — finance auto-creates the invoice and
+        // auto-records the full customer payment the moment the SalesOrderShipped
+        // lands. So the saga is self-contained: walk goods_shipped →
+        // invoice_created → completed in this transaction
         // rather than wait for finance's CustomerInvoiceCreated /
         // CustomerPaymentReceived (which would otherwise race — they carry
         // different aggregate-ids / partition keys, so out-of-order delivery
@@ -257,14 +256,14 @@ public class JdbcSalesOrderFulfilmentSagaManager
     @Transactional
     public String applyCustomerInvoiceCreated(UUID salesOrderHeaderId) {
         SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, CustomerInvoiceCreated.EVENT_TYPE);
-        // §2.31 Slice B: two source states converge on invoice_created.
-        // On-shipment path: goods_shipped → invoice_created (finance auto-
-        // created the invoice from SalesOrderShipped). Prepayment path:
-        // awaiting_prepayment_invoice → invoice_created (finance built the
-        // invoice from PrepaymentInvoiceRequested before any stock movement).
-        // §2.32: the deposit invoice (created from DepositInvoiceRequested at
-        // placement) parks the saga at deposit_invoiced awaiting the deposit
-        // payment — distinct from the on-shipment / prepayment invoice cycle.
+        // Two source states converge on invoice_created. On-shipment path:
+        // goods_shipped → invoice_created (finance auto-created the invoice
+        // from SalesOrderShipped). Prepayment path: awaiting_prepayment_invoice
+        // → invoice_created (finance built the invoice from
+        // PrepaymentInvoiceRequested before any stock movement). The deposit
+        // invoice (created from DepositInvoiceRequested at placement) parks the
+        // saga at deposit_invoiced awaiting the deposit payment — distinct from
+        // the on-shipment / prepayment invoice cycle.
         if (AWAITING_DEPOSIT_INVOICE.equals(saga.state())) {
             saga.transitionTo(DEPOSIT_INVOICED, "wait_for_deposit_payment");
             sagaPort.update(saga);
@@ -288,11 +287,11 @@ public class JdbcSalesOrderFulfilmentSagaManager
     public String applyCustomerPaymentReceived(UUID salesOrderHeaderId, boolean fullySettled) {
         SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, CustomerPaymentReceived.EVENT_TYPE);
 
-        // §2.32: a payment against the DEPOSIT invoice (saga parked at
-        // deposit_invoiced) settles the up-front portion. Full settlement →
-        // deposit_paid (an ACTIVE checkpoint, like prepaid: the worker picks the
-        // saga up to request stock reservation). The balance invoice/payment
-        // cycle after shipment is the on-shipment tail handled below.
+        // A payment against the DEPOSIT invoice (saga parked at deposit_invoiced)
+        // settles the up-front portion. Full settlement → deposit_paid (an ACTIVE
+        // checkpoint, like prepaid: the worker picks the saga up to request stock
+        // reservation). The balance invoice/payment cycle after shipment is the
+        // on-shipment tail handled below.
         if (DEPOSIT_INVOICED.equals(saga.state())) {
             if (fullySettled) {
                 saga.transitionTo(DEPOSIT_PAID, "wait_for_worker_pickup");
@@ -311,12 +310,11 @@ public class JdbcSalesOrderFulfilmentSagaManager
             log.debug("saga {} sales_order={} not in payment-receivable state (state={}); ignoring",
                 saga.sagaId(), salesOrderHeaderId, saga.state());
         } else if (fullySettled) {
-            // §2.31 Slice B: full settlement routes by payment_terms.
-            // on_shipment → completed (the existing happy-path terminal — the
-            //   invoice was created after shipment, so payment closes O2C).
-            // prepayment → prepaid (an ACTIVE checkpoint; the worker picks
-            //   the saga up from prepaid to emit StockReservationRequested
-            //   and walk the rest of the fulfilment path).
+            // Full settlement routes by payment_terms. on_shipment → completed
+            // (the existing happy-path terminal — the invoice was created after
+            // shipment, so payment closes O2C). prepayment → prepaid (an ACTIVE
+            // checkpoint; the worker picks the saga up from prepaid to emit
+            // StockReservationRequested and walk the rest of the fulfilment path).
             // Legacy sagas (paymentTerms null) fall back to on_shipment.
             String pt = readData(saga).paymentTerms();
             boolean isPrepayment = PaymentTerms.PREPAYMENT.dbValue().equals(pt);

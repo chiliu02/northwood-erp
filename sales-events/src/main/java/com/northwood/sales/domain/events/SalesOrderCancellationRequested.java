@@ -11,9 +11,9 @@ import java.util.UUID;
  *
  * <p>Inventory acks with {@code InventorySalesOrderCancellationApplied}; the
  * sales fulfilment saga waits in {@code compensating} until that ack lands,
- * then transitions to {@code compensated}. (§2.40 retired the manufacturing
- * leg — post-§2.37 no work order is bound to a sales order, so inventory is
- * the sole compensation contract.)
+ * then transitions to {@code compensated}. The manufacturing leg has been
+ * retired — no work order is bound to a sales order, so inventory is
+ * the sole compensation contract.
  */
 public record SalesOrderCancellationRequested(
     UUID eventId,

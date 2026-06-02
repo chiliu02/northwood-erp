@@ -17,9 +17,9 @@ import org.springframework.stereotype.Service;
  * {@code SalesOrder.cancelledAt} for the event's {@code cancelledAt} field and
  * hands the event to {@link OutboxAppender}. Encapsulates the construction +
  * its silent-fallback contract; the mechanical serialise-and-append lives in
- * {@code OutboxAppender}. (§2.40 retired the second consumer,
- * {@code ManufacturingCancellationAppliedHandler}, when manufacturing dropped
- * out of the compensation gate — inventory is now the sole ack.)
+ * {@code OutboxAppender}. The second consumer
+ * ({@code ManufacturingCancellationAppliedHandler}) was retired when manufacturing
+ * dropped out of the compensation gate — inventory is now the sole ack.
  *
  * <p><b>Silent-fallback contract on {@code cancelledAt}.</b> Sourced from
  * {@code SalesOrder.cancelledAt} (set when the user invoked {@code cancel}).

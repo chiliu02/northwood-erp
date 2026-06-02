@@ -38,7 +38,7 @@ public class JdbcSalesOrderFulfilmentSagaAdapter implements SalesOrderFulfilment
     }
 
     /**
-     * Returns the current span's trace ID (32 hex chars) for §1D.3's
+     * Returns the current span's trace ID (32 hex chars) for the
      * {@code trace_id} column, or {@code null} when no span is active (unit
      * tests, dev profile without Kafka). Captured at INSERT only — saga
      * transitions never overwrite the original trace.
@@ -129,8 +129,8 @@ public class JdbcSalesOrderFulfilmentSagaAdapter implements SalesOrderFulfilment
             );
         }
         saga.incrementVersion();
-        // §1D.9: record a saga-overview milestone only when this save advanced
-        // the state (transitionTo) — not on data-only updates or retry reschedules.
+        // Record a saga-overview milestone only when this save advanced the
+        // state (transitionTo) — not on data-only updates or retry reschedules.
         if (saga.consumeStateAdvanced()) {
             SagaMilestone.record(tracer, SalesOrderFulfilmentSaga.AGGREGATE_TYPE,
                 saga.sagaId(), saga.state(), saga.salesOrderId());
@@ -154,7 +154,7 @@ public class JdbcSalesOrderFulfilmentSagaAdapter implements SalesOrderFulfilment
             currentTraceId()
         );
         saga.incrementVersion();
-        // §1D.9: creation is the saga's first milestone (its initial state).
+        // Creation is the saga's first milestone (its initial state).
         SagaMilestone.record(tracer, SalesOrderFulfilmentSaga.AGGREGATE_TYPE,
             saga.sagaId(), saga.state(), saga.salesOrderId());
         saga.consumeStateAdvanced();

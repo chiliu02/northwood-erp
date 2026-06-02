@@ -47,10 +47,10 @@ public class ShipmentPostedHandler extends AbstractInboxHandler<ShipmentPosted> 
         this.statusProjection = statusProjection;
     }
 
-    // §2.31 Slice C: prepayment orders walk ready_to_ship → goods_shipped →
-    // completed inside applyShipmentPosted (invoice + payment already settled).
-    // recordShipped must still run for those — both states indicate a real
-    // shipment transition this call (inbox dedup catches redelivery upstream).
+    // Prepayment orders walk ready_to_ship → goods_shipped → completed inside
+    // applyShipmentPosted (invoice + payment already settled). recordShipped
+    // must still run for those — both states indicate a real shipment transition
+    // this call (inbox dedup catches redelivery upstream).
     private static final Set<String> POST_SHIPMENT_STATES = Set.of(GOODS_SHIPPED, COMPLETED);
 
     @Override
@@ -70,9 +70,9 @@ public class ShipmentPostedHandler extends AbstractInboxHandler<ShipmentPosted> 
                 LocalDate.now(),
                 shippedLines
             );
-            // §2.31 / §2.33: prepayment + COD complete the saga at shipment, so
-            // mark the header completed here (the payment-received handler that
-            // normally does it never fires the completing transition for them).
+            // Prepayment + COD complete the saga at shipment, so mark the header
+            // completed here (the payment-received handler that normally does it
+            // never fires the completing transition for them).
             if (COMPLETED.equals(newState)) {
                 statusProjection.markStatus(payload.salesOrderHeaderId(), SalesOrder.Status.COMPLETED);
             }

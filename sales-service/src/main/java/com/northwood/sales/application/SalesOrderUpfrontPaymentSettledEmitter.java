@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * §2.31 Slice C / §2.32 Slice C. Emits {@code sales.SalesOrderUpfrontPaymentSettled}
+ * Emits {@code sales.SalesOrderUpfrontPaymentSettled}
  * when the fulfilment saga settles an order's up-front payment before shipment —
  * a prepayment-terms invoice fully paid ({@code prepaid}) or a deposit-terms
  * deposit fully paid ({@code deposit_paid}). Inventory consumes this to flip
