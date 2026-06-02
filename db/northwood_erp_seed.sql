@@ -337,12 +337,20 @@ INSERT INTO inventory.stock_balance (
     ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000201',  0, 0,  65.00),
     ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000202', 10, 0,  18.00),
     ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000203', 10, 0,  14.00),
+    -- Multi-level BOM demo set: chest + frame/panel sub-assemblies. Like the
+    -- cabinet set, the assembled items are made on demand (not pre-stocked);
+    -- the 0-qty rows give the ATP-across-locations view explicit cells rather
+    -- than gaps. Chest raws are the shared RM-* already stocked above.
+    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000300',  0, 0, 720.00),
+    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000301',  0, 0, 380.00),
+    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000302',  0, 0, 105.00),
     -- Chair in MAIN: 10 pre-built; assembled locally from existing raws.
     ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000400', 10, 0, 120.00),
-    -- MELB stocks: finished table + the raws needed to assemble chairs.
-    -- Cabinet/chest families intentionally absent so the ATP-across-locations
-    -- view has obvious 0-on-hand cells. Costs match MAIN since average_cost
-    -- is per (warehouse, product) but seeded identically at day-1.
+    -- MELB stocks: finished table + the raws needed to assemble chairs locally.
+    -- The cabinet and chest families carry 0-qty rows here (assembled on demand,
+    -- not pre-stocked at a regional hub) so the ATP-across-locations view shows
+    -- explicit 0-on-hand cells rather than gaps. Costs match MAIN since
+    -- average_cost is per (warehouse, product) but seeded identically at day-1.
     ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000001',  1, 0, 320.00),
     ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000002',  3, 0,  80.00),
     ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000003',  8, 0,  25.00),
@@ -352,6 +360,9 @@ INSERT INTO inventory.stock_balance (
     ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000201',  0, 0,  65.00),
     ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000202',  0, 0,  18.00),
     ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000203',  0, 0,  14.00),
+    ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000300',  0, 0, 720.00),
+    ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000301',  0, 0, 380.00),
+    ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000302',  0, 0, 105.00),
     ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000400',  0, 0, 120.00)
 ON CONFLICT (warehouse_id, product_id) DO NOTHING;
 
