@@ -85,6 +85,9 @@ public class ReplenishmentRequestedHandler extends AbstractInboxHandler<Replenis
         Optional<UUID> prId = requisitions.createForStockReplenishment(new StockReplenishmentCommand(
             requisitionNumber,
             payload.aggregateId(),
+            // §1J: carry the originating sales order (non-null for
+            // sales_order_shortage / order_pegged) into the P2P saga's trace key.
+            payload.sourceSalesOrderHeaderId(),
             List.of(new RequisitionLineRequest(
                 payload.productId(),
                 placeholderSku,

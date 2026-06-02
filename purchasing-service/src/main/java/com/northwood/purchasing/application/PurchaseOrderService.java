@@ -105,7 +105,7 @@ public class PurchaseOrderService {
      * </ul>
      */
     @Transactional
-    public PurchaseOrderId convertFromRequisition(PurchaseRequisitionId prId, boolean autoApprove) {
+    public PurchaseOrderId convertFromRequisition(PurchaseRequisitionId prId, boolean autoApprove, UUID salesOrderHeaderId) {
         PurchaseRequisition pr = purchaseRequisitions.findById(prId)
             .orElseThrow(() -> new IllegalArgumentException("No requisition " + prId.value()));
         if (pr.status() == PurchaseRequisition.Status.CONVERTED) {
@@ -135,7 +135,7 @@ public class PurchaseOrderService {
         // to 'purchase_order_approved' so the worker's next tick takes it to
         // 'waiting_for_goods'. Manual flow: saga sits at 'started' until a
         // human calls approve().
-        sagaManager.insertStarted(po.id().value());
+        sagaManager.insertStarted(po.id().value(), salesOrderHeaderId);
         if (autoApprove) {
             sagaManager.approve(po.id().value());
         }

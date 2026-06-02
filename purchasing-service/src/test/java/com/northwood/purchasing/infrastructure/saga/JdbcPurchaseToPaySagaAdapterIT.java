@@ -82,12 +82,14 @@ class JdbcPurchaseToPaySagaAdapterIT {
     @Test
     void insert_then_find_round_trips() {
         UUID poId = UUID.randomUUID();
-        PurchaseToPaySaga saga = PurchaseToPaySaga.started(poId);
+        UUID salesOrderId = UUID.randomUUID();
+        PurchaseToPaySaga saga = PurchaseToPaySaga.started(poId, salesOrderId);
         ADAPTER.insert(saga);
 
         PurchaseToPaySaga r = ADAPTER.findByPurchaseOrderId(poId).orElseThrow();
         assertThat(r.sagaId()).isEqualTo(saga.sagaId());
         assertThat(r.purchaseOrderHeaderId()).isEqualTo(poId);
+        assertThat(r.salesOrderHeaderId()).isEqualTo(salesOrderId);   // §1J cross-saga key round-trips
         assertThat(r.state()).isEqualTo(PurchaseToPaySaga.STARTED);
         assertThat(r.version()).isEqualTo(1L);
         assertThat(ADAPTER.findBySagaId(saga.sagaId())).isPresent();
@@ -121,7 +123,7 @@ class JdbcPurchaseToPaySagaAdapterIT {
     @Test
     void update_enforces_optimistic_lock_via_version() {
         UUID poId = UUID.randomUUID();
-        ADAPTER.insert(PurchaseToPaySaga.started(poId));
+        ADAPTER.insert(PurchaseToPaySaga.started(poId, null));
 
         PurchaseToPaySaga loadedA = ADAPTER.findByPurchaseOrderId(poId).orElseThrow();
         PurchaseToPaySaga loadedB = ADAPTER.findByPurchaseOrderId(poId).orElseThrow();
@@ -134,7 +136,7 @@ class JdbcPurchaseToPaySagaAdapterIT {
     private static PurchaseToPaySaga approvedDue(UUID poId, Instant nextRetryAt) {
         Instant now = Instant.now();
         return new PurchaseToPaySaga(
-            UUID.randomUUID(), poId, PurchaseToPaySaga.PURCHASE_ORDER_APPROVED,
+            UUID.randomUUID(), poId, null, PurchaseToPaySaga.PURCHASE_ORDER_APPROVED,
             "wait_for_goods", null, 0, nextRetryAt, null, null, 0L, "{}", now, now, null);
     }
 }

@@ -57,8 +57,8 @@ public class JdbcPurchaseToPaySagaManager
 
     @Override
     @Transactional
-    public void insertStarted(UUID purchaseOrderHeaderId) {
-        sagaPort.insert(PurchaseToPaySaga.started(purchaseOrderHeaderId));
+    public void insertStarted(UUID purchaseOrderHeaderId, UUID salesOrderHeaderId) {
+        sagaPort.insert(PurchaseToPaySaga.started(purchaseOrderHeaderId, salesOrderHeaderId));
     }
 
     @Override

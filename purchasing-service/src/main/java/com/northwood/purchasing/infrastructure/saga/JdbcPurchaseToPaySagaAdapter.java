@@ -52,7 +52,7 @@ public class JdbcPurchaseToPaySagaAdapter implements PurchaseToPaySagaPort {
         try {
             return Optional.ofNullable(jdbc.queryForObject(
                 """
-                SELECT saga_id, purchase_order_header_id,
+                SELECT saga_id, purchase_order_header_id, sales_order_header_id,
                        saga_state, current_step, last_error, retry_count, next_retry_at,
                        lease_owner, lease_expires_at, version, data,
                        created_at, updated_at, completed_at
@@ -85,7 +85,7 @@ public class JdbcPurchaseToPaySagaAdapter implements PurchaseToPaySagaPort {
                 LIMIT ?
                 FOR UPDATE SKIP LOCKED
             )
-            RETURNING saga_id, purchase_order_header_id,
+            RETURNING saga_id, purchase_order_header_id, sales_order_header_id,
                       saga_state, current_step, last_error, retry_count, next_retry_at,
                       lease_owner, lease_expires_at, version, data,
                       created_at, updated_at, completed_at
@@ -119,12 +119,12 @@ public class JdbcPurchaseToPaySagaAdapter implements PurchaseToPaySagaPort {
             );
         }
         saga.incrementVersion();
-        // Milestone only on a real state advance. No cross-saga sales_order
-        // key on the buy path yet (the p2p saga is keyed by PO and doesn't carry
-        // the originating order).
+        // Milestone only on a real state advance. §1J: stamp the originating
+        // sales order (carried on the saga since creation; null for manual /
+        // reorder-point PRs) so every buy-side milestone joins the order's trace.
         if (saga.consumeStateAdvanced()) {
             SagaMilestone.record(tracer, PurchaseToPaySaga.AGGREGATE_TYPE,
-                saga.sagaId(), saga.state(), null);
+                saga.sagaId(), saga.state(), saga.salesOrderHeaderId());
         }
     }
 
@@ -132,13 +132,13 @@ public class JdbcPurchaseToPaySagaAdapter implements PurchaseToPaySagaPort {
     public void insert(PurchaseToPaySaga saga) {
         jdbc.update("""
             INSERT INTO purchasing.purchase_to_pay_saga (
-                saga_id, purchase_order_header_id,
+                saga_id, purchase_order_header_id, sales_order_header_id,
                 saga_state, current_step, last_error,
                 retry_count, next_retry_at, lease_owner, lease_expires_at,
                 version, data, trace_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
             """,
-            saga.sagaId(), saga.purchaseOrderHeaderId(),
+            saga.sagaId(), saga.purchaseOrderHeaderId(), saga.salesOrderHeaderId(),
             saga.state(), saga.currentStep(), saga.lastError(),
             saga.retryCount(), Timestamp.from(saga.nextRetryAt()),
             saga.leaseOwner(), saga.leaseExpiresAt() == null ? null : Timestamp.from(saga.leaseExpiresAt()),
@@ -147,9 +147,10 @@ public class JdbcPurchaseToPaySagaAdapter implements PurchaseToPaySagaPort {
             currentTraceId()
         );
         saga.incrementVersion();
-        // Creation is the saga's first milestone (its initial state).
+        // Creation is the saga's first milestone (its initial state). §1J: stamp
+        // the originating sales order (null for manual / reorder-point PRs).
         SagaMilestone.record(tracer, PurchaseToPaySaga.AGGREGATE_TYPE,
-            saga.sagaId(), saga.state(), null);
+            saga.sagaId(), saga.state(), saga.salesOrderHeaderId());
         saga.consumeStateAdvanced();
     }
 
@@ -159,6 +160,7 @@ public class JdbcPurchaseToPaySagaAdapter implements PurchaseToPaySagaPort {
         return new PurchaseToPaySaga(
             rs.getObject("saga_id", UUID.class),
             rs.getObject("purchase_order_header_id", UUID.class),
+            rs.getObject("sales_order_header_id", UUID.class),
             rs.getString("saga_state"),
             rs.getString("current_step"),
             rs.getString("last_error"),

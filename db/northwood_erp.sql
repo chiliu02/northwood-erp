@@ -1880,6 +1880,13 @@ CREATE INDEX idx_purchase_order_line_product_id ON purchasing.purchase_order_lin
 CREATE TABLE purchasing.purchase_to_pay_saga (
     saga_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     purchase_order_header_id UUID NOT NULL UNIQUE,
+    -- Originating sales order (§1J cross-saga key). Non-null only when the PO
+    -- traces back to a sales-order-driven replenishment (sales_order_shortage
+    -- or §2.43 order_pegged); null for manual / reorder-point PRs. Set once at
+    -- saga creation and stamped onto every saga-milestone span as
+    -- northwood.sales_order_id so a Tempo TraceQL `{ .northwood.sales_order_id
+    -- = "…" }` returns the buy-side PO sub-saga alongside the order + its WO.
+    sales_order_header_id UUID,
     saga_state VARCHAR(50) NOT NULL CHECK (
         saga_state IN (
             'started', 'purchase_order_approved', 'waiting_for_goods', 'goods_received',

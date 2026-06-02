@@ -113,8 +113,9 @@ public class PurchaseRequisitionService {
         log.info("created manual requisition {} ({} line(s))", pr.requisitionNumber(), lines.size());
 
         // Manual PRs always land at draft — a human must approve via
-        // POST /api/purchase-orders/{id}/approve. autoApprove=false.
-        purchaseOrders.convertFromRequisition(pr.id(), false);
+        // POST /api/purchase-orders/{id}/approve. autoApprove=false. No
+        // originating sales order (§1J): manual requisitions aren't order-driven.
+        purchaseOrders.convertFromRequisition(pr.id(), false, null);
         // Reload to capture the side effects of conversion (status update etc.)
         return purchaseRequisitions.findById(pr.id())
             .map(PurchaseRequisitionView::from)
@@ -161,8 +162,10 @@ public class PurchaseRequisitionService {
 
         // Same auto-approve policy as the retired WO-shortage path
         // (northwood.purchasing.shortagePoAutoApprove, default true) — the
-        // replenishment loop flows without a human in the demo path.
-        purchaseOrders.convertFromRequisition(pr.id(), shortagePoAutoApprove);
+        // replenishment loop flows without a human in the demo path. Thread the
+        // originating sales order (§1J) into the P2P saga for the cross-saga
+        // trace key (null for reorder-point-driven replenishments).
+        purchaseOrders.convertFromRequisition(pr.id(), shortagePoAutoApprove, command.sourceSalesOrderHeaderId());
         return Optional.of(pr.id().value());
     }
 

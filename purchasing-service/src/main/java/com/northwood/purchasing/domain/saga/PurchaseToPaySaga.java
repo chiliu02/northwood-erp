@@ -69,10 +69,19 @@ public final class PurchaseToPaySaga extends SagaInstance {
     );
 
     private final UUID purchaseOrderHeaderId;
+    /**
+     * Originating sales order (§1J cross-saga key). Non-null only when the PO
+     * traces back to a sales-order-driven replenishment ({@code
+     * sales_order_shortage} or §2.43 {@code order_pegged}); null for manual /
+     * reorder-point PRs. Set once at creation, immutable, and stamped onto every
+     * saga-milestone span as {@code northwood.sales_order_id}.
+     */
+    private final UUID salesOrderHeaderId;
 
     public PurchaseToPaySaga(
         UUID sagaId,
         UUID purchaseOrderHeaderId,
+        UUID salesOrderHeaderId,
         String state,
         String currentStep,
         String lastError,
@@ -89,14 +98,20 @@ public final class PurchaseToPaySaga extends SagaInstance {
         super(sagaId, state, currentStep, lastError, retryCount, nextRetryAt,
               leaseOwner, leaseExpiresAt, version, dataJson, createdAt, updatedAt, completedAt);
         this.purchaseOrderHeaderId = purchaseOrderHeaderId;
+        this.salesOrderHeaderId = salesOrderHeaderId;
     }
 
-    /** Factory: a fresh saga for a newly-created PO. */
-    public static PurchaseToPaySaga started(UUID purchaseOrderHeaderId) {
+    /**
+     * Factory: a fresh saga for a newly-created PO. {@code salesOrderHeaderId}
+     * is the §1J cross-saga key — non-null when the PO traces back to a
+     * sales-order-driven replenishment, null otherwise.
+     */
+    public static PurchaseToPaySaga started(UUID purchaseOrderHeaderId, UUID salesOrderHeaderId) {
         Instant now = Instant.now();
         return new PurchaseToPaySaga(
             UUID.randomUUID(),
             purchaseOrderHeaderId,
+            salesOrderHeaderId,
             STARTED,
             "wait_for_worker_pickup",
             null,
@@ -118,4 +133,5 @@ public final class PurchaseToPaySaga extends SagaInstance {
     }
 
     public UUID purchaseOrderHeaderId() { return purchaseOrderHeaderId; }
+    public UUID salesOrderHeaderId() { return salesOrderHeaderId; }
 }

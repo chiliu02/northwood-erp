@@ -48,11 +48,15 @@ class ReplenishmentRequestedHandlerTest {
     }
 
     private EventEnvelope event(String targetService) {
+        return event(targetService, null);
+    }
+
+    private EventEnvelope event(String targetService, UUID sourceSalesOrderHeaderId) {
         UUID eventId = UUID.randomUUID();
         ReplenishmentRequested payload = new ReplenishmentRequested(
             eventId, REPLENISHMENT_REQUEST, PRODUCT, WAREHOUSE, QTY,
             targetService, ReplenishmentRequested.REASON_REORDER_POINT_BREACH,
-            /* sourceSalesOrderHeaderId */ null,
+            sourceSalesOrderHeaderId,
             Instant.now()
         );
         return new EventEnvelope(
@@ -84,7 +88,22 @@ class ReplenishmentRequestedHandlerTest {
         assertThat(cmd.lines().get(0).productId()).isEqualTo(PRODUCT);
         assertThat(cmd.lines().get(0).requestedQuantity()).isEqualByComparingTo(QTY);
         assertThat(cmd.requisitionNumber()).startsWith("PR-");
+        assertThat(cmd.sourceSalesOrderHeaderId()).isNull();   // reorder-point breach → no originating SO
         verify(outbox, never()).append(any(), any(), any());
+    }
+
+    @Test void threads_source_sales_order_id_into_the_command() {
+        // §1J: a sales-order-driven replenishment carries the originating SO id
+        // onto the command so it reaches the purchase_to_pay_saga's trace key.
+        UUID salesOrderId = UUID.randomUUID();
+        when(requisitions.createForStockReplenishment(any())).thenReturn(Optional.of(UUID.randomUUID()));
+
+        handler.handle(event(ReplenishmentRequested.TARGET_SERVICE_PURCHASING, salesOrderId));
+
+        ArgumentCaptor<StockReplenishmentCommand> captor =
+            ArgumentCaptor.forClass(StockReplenishmentCommand.class);
+        verify(requisitions).createForStockReplenishment(captor.capture());
+        assertThat(captor.getValue().sourceSalesOrderHeaderId()).isEqualTo(salesOrderId);
     }
 
     @Test void no_vendor_emits_undispatchable_and_raises_no_PR() {

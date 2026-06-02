@@ -29,8 +29,10 @@ public interface PurchaseToPaySagaManager {
      * Insert a fresh saga at {@code started}. Called from
      * {@code PurchaseOrderService.convertFromRequisition} (and any other PO
      * creation path) in the same transaction as the PO insert.
+     * {@code salesOrderHeaderId} is the §1J cross-saga key — non-null when the
+     * PO traces back to a sales-order-driven replenishment, null otherwise.
      */
-    void insertStarted(UUID purchaseOrderHeaderId);
+    void insertStarted(UUID purchaseOrderHeaderId, UUID salesOrderHeaderId);
 
     /**
      * Flip {@code started → purchase_order_approved}. Idempotent: a saga

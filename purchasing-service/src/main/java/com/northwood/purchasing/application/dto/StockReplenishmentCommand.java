@@ -15,5 +15,11 @@ import java.util.UUID;
 public record StockReplenishmentCommand(
     String requisitionNumber,
     UUID replenishmentRequestId,
+    // §1J cross-saga key: the sales order whose demand triggered this
+    // replenishment (carried on the consumed inventory.ReplenishmentRequested
+    // for sales_order_shortage / order_pegged reasons). Null for reorder-point
+    // breaches. Threaded into the purchase_to_pay_saga so its milestones stamp
+    // northwood.sales_order_id; NOT persisted on the requisition / PO.
+    UUID sourceSalesOrderHeaderId,
     List<RequisitionLineRequest> lines
 ) {}

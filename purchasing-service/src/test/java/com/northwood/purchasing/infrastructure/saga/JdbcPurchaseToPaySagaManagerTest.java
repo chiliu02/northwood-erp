@@ -47,7 +47,7 @@ class JdbcPurchaseToPaySagaManagerTest {
     private PurchaseToPaySaga sagaInState(String state) {
         Instant now = Instant.now();
         return new PurchaseToPaySaga(
-            UUID.randomUUID(), PO,
+            UUID.randomUUID(), PO, null,
             state, "step", null, 0, now, null, null,
             0L, "{}", now, now, null
         );
@@ -55,13 +55,23 @@ class JdbcPurchaseToPaySagaManagerTest {
 
     @Nested
     class Lifecycle {
-        @Test void insertStarted_inserts_at_started() {
-            manager.insertStarted(PO);
+        @Test void insertStarted_inserts_at_started_with_sales_order_key() {
+            UUID salesOrderId = UUID.randomUUID();
+            manager.insertStarted(PO, salesOrderId);
 
             ArgumentCaptor<PurchaseToPaySaga> cap = ArgumentCaptor.forClass(PurchaseToPaySaga.class);
             verify(sagas).insert(cap.capture());
             assertThat(cap.getValue().state()).isEqualTo(STARTED);
             assertThat(cap.getValue().purchaseOrderHeaderId()).isEqualTo(PO);
+            assertThat(cap.getValue().salesOrderHeaderId()).isEqualTo(salesOrderId);   // §1J
+        }
+
+        @Test void insertStarted_allows_null_sales_order_key_for_manual_po() {
+            manager.insertStarted(PO, null);
+
+            ArgumentCaptor<PurchaseToPaySaga> cap = ArgumentCaptor.forClass(PurchaseToPaySaga.class);
+            verify(sagas).insert(cap.capture());
+            assertThat(cap.getValue().salesOrderHeaderId()).isNull();
         }
 
         @Test void approve_flips_started_to_purchase_order_approved() {
