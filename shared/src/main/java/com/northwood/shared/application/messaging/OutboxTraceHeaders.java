@@ -6,7 +6,7 @@ import io.opentelemetry.api.trace.SpanContext;
 /**
  * Captures the current trace context as an {@code outbox_message.headers} JSON
  * value at append time, so {@code OutboxDrainer} can reparent / link the async
- * saga continuation onto the originating request trace later (§1D.6, see
+ * saga continuation onto the originating request trace later (see
  * {@link SagaTraceLinkage}).
  *
  * <p><b>Why the raw OTel API rather than a Micrometer {@code Tracer}.</b> The

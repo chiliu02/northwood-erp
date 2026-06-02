@@ -47,7 +47,7 @@ public record EventEnvelope(
      * W3C trace-context header carrying the current trace's
      * {@code 00-<traceId>-<spanId>-<flags>} string. Stamped by
      * {@code OutboxPublisher} inside the per-row Micrometer observation so it
-     * captures the publish-side span. Read by the BFF events aggregator (§1D.4)
+     * captures the publish-side span. Read by the BFF events aggregator
      * to surface a trace-drilldown affordance in the SPA Event Log / Saga
      * Console — without that consumer having to crack the Kafka record headers
      * separately. The corresponding header on the Kafka record itself is

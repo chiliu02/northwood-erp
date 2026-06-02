@@ -162,10 +162,10 @@ class OutboxDrainerTest {
     }
 
     @Test void drain_carries_captured_traceparent_on_the_envelope() {
-        // §1D.6: the originating request's trace context is captured into the
+        // The originating request's trace context is captured into the
         // row's headers at append time (OutboxTraceHeaders); the drainer surfaces
         // it on the envelope's traceparent header for the BFF events aggregator
-        // (§1D.4) and uses it to relate the publish span to that trace.
+        // and uses it to relate the publish span to that trace.
         String traceparent = "00-00112233445566778899aabbccddeeff-0011223344556677-01";
         OutboxRow row = pendingRow("sales.SalesOrderPlaced", "{\"traceparent\":\"" + traceparent + "\"}");
         when(outbox.findPending(Mockito.anyInt())).thenReturn(List.of(row));

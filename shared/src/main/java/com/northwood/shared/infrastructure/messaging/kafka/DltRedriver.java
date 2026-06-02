@@ -11,7 +11,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.KafkaHeaders;
 
 /**
- * Per-service auto-redrive for dead-lettered records (§2.28 Tier 1.B). Turns a
+ * Per-service auto-redrive for dead-lettered records. Turns a
  * {@code <topic>.dlt} from a manual graveyard into an auto-retry tier: each
  * consuming service runs <em>its own</em> redriver (consumer group
  * {@code <service>-dlt-redriver}) that re-applies only the records <em>it</em>

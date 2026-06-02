@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.http.server.observation.ServerRequestObservationContext;
 
 /**
- * §1D.11 — trims observation/trace noise that isn't service business flow, so a
+ * Trims observation/trace noise that isn't service business flow, so a
  * trace in Tempo reflects a service request, not infrastructure chatter.
  *
  * <p>Drops the HTTP-server observation (span <em>and</em> metric) for any
@@ -18,7 +18,7 @@ import org.springframework.http.server.observation.ServerRequestObservationConte
  * bean into the {@code ObservationRegistry}, so publishing this bean is all the
  * wiring required.
  *
- * <p>Companion §1D.11 levers (in {@code application.yml}, not here):
+ * <p>Companion levers (in {@code application.yml}, not here):
  * {@code management.observations.enable.spring.security=false} drops the Spring
  * Security filter-chain / authentication / authorization observation spans, and
  * the two BFFs run at {@code management.tracing.sampling.probability=0} (plus

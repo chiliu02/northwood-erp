@@ -48,7 +48,7 @@ import tools.jackson.databind.ObjectMapper;
  * (auto-commit), and concurrent drains can double-publish. This is why the
  * drainer and the scheduler are two beans, not one.
  *
- * <p><b>§1D.6 — saga-trace linkage.</b> Each row is published inside an
+ * <p><b>Saga-trace linkage.</b> Each row is published inside an
  * {@code outbox.publish} span that carries a {@code Link} to the originating
  * request trace — captured into the row's {@code headers} ({@code traceparent})
  * at append time (see {@code OutboxTraceHeaders}). Spring Kafka's
@@ -57,8 +57,8 @@ import tools.jackson.databind.ObjectMapper;
  * link lets you hop from the (bounded) messaging trace back to the originating
  * request. The envelope's {@link EventEnvelope#HEADER_TRACEPARENT} carries the
  * originating traceparent for the BFF events aggregator's trace-drilldown
- * affordance (§1D.4). The saga-level overview across many such hops is the
- * separate {@code saga_id}-anchored milestone view (§1D.9).
+ * affordance. The saga-level overview across many such hops is the
+ * separate {@code saga_id}-anchored milestone view.
  */
 public class OutboxDrainer {
 

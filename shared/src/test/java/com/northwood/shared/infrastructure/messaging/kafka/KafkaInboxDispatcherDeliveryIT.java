@@ -60,8 +60,7 @@ import tools.jackson.databind.ObjectMapper;
  *       offset committed, so the consumer is not stuck looping forever;</li>
  *   <li><b>non-retryable failure is dead-lettered without retry</b> — a poison
  *       exception in {@link KafkaMessagingAutoConfiguration#NOT_RETRYABLE} skips
- *       the backoff entirely and dead-letters on the first failure (§2.28 Tier
- *       1.A classification).</li>
+ *       the backoff entirely and dead-letters on the first failure.</li>
  * </ul>
  *
  * <p><strong>Fidelity.</strong> Production uses Spring Boot's auto-configured

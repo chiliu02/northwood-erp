@@ -12,7 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * §1.4 Slice D: wires the audit-log endpoint into every service. The
+ * Wires the audit-log endpoint into every service. The
  * controller queries the per-service {@code outbox_message} table — same
  * unqualified-name + search_path pattern as the inbox/outbox adapters.
  *

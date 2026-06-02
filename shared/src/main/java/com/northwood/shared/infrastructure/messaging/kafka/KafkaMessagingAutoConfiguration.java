@@ -36,7 +36,7 @@ import org.springframework.util.backoff.ExponentialBackOff;
  * (product-service today) do not register a {@code @KafkaListener} and stay
  * silent on the consumer side.
  *
- * <p><b>Error handling (§2.28 Tier 1.A, 2026-05-27):</b> the
+ * <p><b>Error handling (2026-05-27):</b> the
  * {@link DefaultErrorHandler} bean below is auto-picked up by Spring Boot's
  * container factory and applied to every {@code @KafkaListener}. It splits
  * failures by cause instead of treating them all alike:
@@ -57,8 +57,8 @@ import org.springframework.util.backoff.ExponentialBackOff;
  * {@link DeadLetterPublishingRecoverer} once retries are exhausted (or skipped),
  * and the source offset commits so the partition is never blocked. The DLT
  * topic is auto-created by Kafka on first publish (broker has
- * {@code auto.create.topics.enable=true} in the docker-compose); §2.28 Tier 1.B
- * adds the auto-redrive that drains it back to the source. Inbox idempotency
+ * {@code auto.create.topics.enable=true} in the docker-compose); the
+ * auto-redrive drains it back to the source. Inbox idempotency
  * means a successful retry (or a later redrive) sees the already-processed
  * message and short-circuits via the inbox dedupe.
  */
@@ -122,7 +122,7 @@ public class KafkaMessagingAutoConfiguration {
     }
 
     /**
-     * Per-service DLT auto-redriver (§2.28 Tier 1.B). Registered only when
+     * Per-service DLT auto-redriver. Registered only when
      * {@code northwood.kafka.dlt.redrive.enabled=true} (set by consuming services
      * in {@code application-kafka.yml}); re-applies the records <em>this</em>
      * service dead-lettered (filtered by the {@code kafka_dlt-original-consumer-group}

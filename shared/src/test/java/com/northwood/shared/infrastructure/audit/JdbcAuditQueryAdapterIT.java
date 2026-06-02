@@ -26,7 +26,7 @@ import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * §2.25 Tier 1: real-Postgres test for {@link JdbcAuditQueryAdapter}, the shared
+ * Real-Postgres test for {@link JdbcAuditQueryAdapter}, the shared
  * read-side adapter behind every service's audit-log endpoint. It reads
  * {@code outbox_message}; this IT seeds rows directly and exercises the
  * dynamically-assembled WHERE clause that a mocked unit test cannot:

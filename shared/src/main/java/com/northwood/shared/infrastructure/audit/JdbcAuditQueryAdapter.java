@@ -36,8 +36,8 @@ public class JdbcAuditQueryAdapter implements AuditQueryPort {
         StringBuilder sql = new StringBuilder("""
             SELECT outbox_message_id, sequence_number, aggregate_type, aggregate_id,
                    event_type, actor_user_id, correlation_id, created_at,
-                   -- §1D.3: surface the W3C trace ID stamped by OutboxPublisher
-                   -- (§1D.2) as a dedicated column on the API row. SUBSTRING
+                   -- Surface the W3C trace ID stamped by OutboxPublisher
+                   -- as a dedicated column on the API row. SUBSTRING
                    -- extracts the 32-char traceId out of the
                    -- "00-<traceId>-<spanId>-<flags>" header value, or NULL if
                    -- the header is absent or malformed.

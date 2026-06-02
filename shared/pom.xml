@@ -91,14 +91,14 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- §1D.1: observability. Lets every service expose Prometheus
-             metrics, emit OTLP traces to Tempo, and push structured logs to
-             Loki. Centralised here so every consuming service inherits the
-             same instrumentation without duplicating the dep list — matches
-             the existing shared-module pattern for actuator + security +
-             persistence machinery. Versions for the Micrometer + OpenTelemetry
-             deps are BOM-managed; loki4j and logstash-encoder pin explicit
-             versions because Spring Boot's BOM doesn't cover them.
+        <!-- Observability. Lets every service expose Prometheus metrics, emit
+             OTLP traces to Tempo, and push structured logs to Loki. Centralised
+             here so every consuming service inherits the same instrumentation
+             without duplicating the dep list — matches the existing
+             shared-module pattern for actuator + security + persistence
+             machinery. Versions for the Micrometer + OpenTelemetry deps are
+             BOM-managed; loki4j and logstash-encoder pin explicit versions
+             because Spring Boot's BOM doesn't cover them.
 
              Spring Boot 4 split tracer auto-config out of actuator into its
              own starter — without `spring-boot-starter-opentelemetry` the

@@ -2,11 +2,11 @@
 <!--
   Northwood shared logback configuration.
 
-  Wired in §1D.1. Every service that depends on the shared module picks this
-  up because Spring Boot resolves `logback-spring.xml` from the classpath at
-  boot, and only this jar declares one. Service-specific level overrides
-  still come from each application.yml `logging.level.*` block — that
-  mechanism layers on top of this file.
+  Every service that depends on the shared module picks this up because Spring
+  Boot resolves `logback-spring.xml` from the classpath at boot, and only this
+  jar declares one. Service-specific level overrides still come from each
+  application.yml `logging.level.*` block — that mechanism layers on top of
+  this file.
 
   Two appenders:
 

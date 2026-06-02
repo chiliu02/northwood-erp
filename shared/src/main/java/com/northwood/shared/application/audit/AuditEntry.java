@@ -9,11 +9,11 @@ import java.util.UUID;
  * way out so a merged timeline can label which service emitted each row.
  *
  * <p>{@code traceId} is the W3C trace ID extracted from
- * {@code outbox_message.headers->>'traceparent'} (set by {@code OutboxPublisher}
- * in §1D.2). Surfaced here so the §1D.4 SPA audit / event log can render a
+ * {@code outbox_message.headers->>'traceparent'} (set by {@code OutboxPublisher}).
+ * Surfaced here so the SPA audit / event log can render a
  * {@code ↗ trace} affordance per row without joining or re-parsing the headers
- * JSONB on the client. Nullable: rows written before §1D.2, or in test runs
- * where no Micrometer Tracer was active, carry null.
+ * JSONB on the client. Nullable: rows written before trace capture was wired,
+ * or in test runs where no Micrometer Tracer was active, carry null.
  */
 public record AuditEntry(
     UUID outboxMessageId,

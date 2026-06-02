@@ -28,7 +28,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.25 Tier 1: real-Postgres test for {@link JdbcInboxAdapter}, the shared
+ * Real-Postgres test for {@link JdbcInboxAdapter}, the shared
  * idempotency-dedup adapter reused by all 7 services. Covers what a mocked
  * unit test cannot:
  *

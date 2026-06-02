@@ -26,7 +26,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.25 Tier 1: real-Postgres test for {@link JdbcOutboxAdapter}, the shared
+ * Real-Postgres test for {@link JdbcOutboxAdapter}, the shared
  * outbox adapter reused by all 7 services. Covers what a mocked-{@code
  * JdbcTemplate} unit test structurally cannot:
  *

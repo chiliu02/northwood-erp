@@ -42,7 +42,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Real-broker tests for the §2.28 Tier 1.B {@link DltRedriver}. Pin the three
+ * Real-broker tests for the {@link DltRedriver}. Pin the three
  * behaviours the per-service auto-redrive contract rests on:
  *
  * <ul>

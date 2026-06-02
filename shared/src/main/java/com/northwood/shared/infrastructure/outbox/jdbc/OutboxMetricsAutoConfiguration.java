@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
- * §1D.5: registers a {@code northwood.outbox.pending{service="..."}} gauge so
+ * Registers a {@code northwood.outbox.pending{service="..."}} gauge so
  * the showcase Grafana dashboard's "bus health" row can plot per-service
  * outbox backpressure. The gauge runs a {@code SELECT COUNT(*)} on every
  * Prometheus scrape (~15s, see {@code db/prometheus/prometheus.yml}). Cheap
@@ -19,7 +19,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * sub-millisecond on a healthy box.
  *
  * <p>Auto-configured for any service that depends on the shared module and
- * has Micrometer on the classpath (Boot 4 + §1D.1 deps make that universal
+ * has Micrometer on the classpath (Boot 4 deps make that universal
  * across the 7 Northwood services). {@code outbox_message} is a per-service
  * table, so inbox-only services (reporting today) have none on their
  * {@code search_path}. Those services <b>skip the gauge entirely</b> — the

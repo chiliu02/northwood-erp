@@ -52,7 +52,7 @@ public class OutboxDrainAutoConfiguration {
         ObjectProvider<Tracer> tracer,
         ObjectMapper objectMapper
     ) {
-        // §1D.6 — the drainer links each publish span to the originating request
+        // The drainer links each publish span to the originating request
         // trace (span-link; captured into each row's headers at append time).
         // Tracer is resolved via ObjectProvider so a producer that enables
         // draining without the observability stack still starts (the drainer

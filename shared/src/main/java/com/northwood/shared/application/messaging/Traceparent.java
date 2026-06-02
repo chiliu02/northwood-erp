@@ -7,7 +7,7 @@ import io.micrometer.tracing.Tracer;
  * W3C {@code traceparent} helpers shared by the outbox publish path: format the
  * active span as a {@code 00-<traceId>-<spanId>-<flags>} string, and parse a
  * stored one back into a Micrometer {@link TraceContext} (for reparenting /
- * linking in {@code OutboxDrainer}, §1D.6).
+ * linking in {@code OutboxDrainer}).
  *
  * <p>Append-side capture lives in {@link OutboxTraceHeaders} instead — it reads
  * the OTel current span statically so it needs no {@link Tracer} injected into

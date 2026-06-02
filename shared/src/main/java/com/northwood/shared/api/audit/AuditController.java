@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * §1.4 Slice D: audit-log endpoint backed by the local
+ * Audit-log endpoint backed by the local
  * {@code outbox_message} table. Every service exposes
  * {@code GET /api/audit?aggregateId=&from=&to=&limit=} with the same shape
  * since the controller lives in the shared module and is auto-configured

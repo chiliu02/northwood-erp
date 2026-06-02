@@ -42,7 +42,7 @@ public abstract class SagaInstance {
     private Instant completedAt;
 
     /**
-     * §1D.9 transient marker — set by {@link #transitionTo} and consumed by the
+     * Transient marker — set by {@link #transitionTo} and consumed by the
      * persistence adapter ({@code consumeStateAdvanced()}) to decide whether a
      * saga-milestone span should be recorded for this save. Defaults false on a
      * freshly reconstituted row, so a data-only update or a retry reschedule
@@ -97,7 +97,7 @@ public abstract class SagaInstance {
     }
 
     /**
-     * §1D.9: returns whether a {@link #transitionTo} has occurred since this row
+     * Returns whether a {@link #transitionTo} has occurred since this row
      * was loaded/created, and resets the marker. Called by the persistence
      * adapter on {@code update()} so a saga-milestone span is recorded only when
      * the state actually advanced (not on data-only updates or retry reschedules).

@@ -6,7 +6,7 @@ import io.micrometer.tracing.Tracer;
 import java.util.UUID;
 
 /**
- * §1D.9 — records one **milestone span** per saga transition, building the
+ * Records one **milestone span** per saga transition, building the
  * saga's end-to-end overview without a long-lived root span.
  *
  * <p>Each milestone is a standalone span (its own one-span trace,
