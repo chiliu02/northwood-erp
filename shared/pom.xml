@@ -18,7 +18,7 @@
         holds framework-free ports + DTOs + abstract orchestration bases (outbox/inbox
         ports, event envelope, saga manager base, audit entry, current-user accessor);
         `shared.infrastructure.*` holds the concrete JDBC + Kafka adapters, Spring
-        `@AutoConfiguration` classes, the `@Scheduled` outbox publisher, Liquibase, and
+        auto-configuration classes, the scheduled outbox publisher, Liquibase, and
         OAuth2 resource-server wiring; `shared.api.audit` exposes the generic audit-log
         REST endpoint each service inherits. Each service brings its own outbox table
         (schema is per-context) but the polling/publishing logic is here. Sibling
