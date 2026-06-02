@@ -140,7 +140,12 @@ public class CustomerInvoiceService {
         );
         customerInvoices.save(invoice);
 
-        // Phase 5b: post the GL pair (Dr AR, Cr Revenue) in the same txn.
+        // Phase 5b: post the GL pair (Dr AR, Cr Revenue) in the same txn. A
+        // zero-total invoice (a legitimate free-of-charge / 100%-discount order
+        // in a mainstream ERP) records the invoice document but posts NO journal
+        // entry — JournalEntryService.post skips a zero/negative amount (see its
+        // documented silent-fallback; a 0 Dr/Cr pair would violate the
+        // journal_entry_line debit>0-OR-credit>0 CHECK).
         journalEntries.postCustomerInvoiceCreation(
             invoice.id().value(),
             invoice.customerName(),

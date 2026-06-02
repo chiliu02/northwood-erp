@@ -124,6 +124,17 @@ class JournalEntryServicePostingsTest {
             assertThat(creditFor(entry, "4000")).isEqualByComparingTo("550.00");
         }
 
+        @Test void zero_total_customer_invoice_posts_no_journal() {
+            // Mainstream-ERP free-of-charge / 100%-discount order → zero invoice:
+            // allowed, but posts no GL entry (a 0 Dr/Cr pair would violate the
+            // journal_entry_line debit>0-OR-credit>0 CHECK). See design-notes #10.
+            service.postCustomerInvoiceCreation(
+                UUID.randomUUID(), "Globex Ltd", "CINV-FREE",
+                BigDecimal.ZERO, Currencies.AUD, POSTING_DATE
+            );
+            verify(journals, never()).save(any());
+        }
+
         @Test void customer_payment_commercial_posts_dr_bank_cr_ar() {
             UUID paymentId = UUID.randomUUID();
             service.postCustomerPayment(

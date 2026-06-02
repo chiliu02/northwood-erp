@@ -702,6 +702,26 @@ public class JournalEntryService {
         return reversal.id().value();
     }
 
+    /**
+     * Post a single balanced Dr/Cr pair for {@code amount}.
+     *
+     * <p><b>Documented silent fallback — zero/negative amount posts no journal.</b>
+     * A single Dr/Cr pair at {@code 0} has no financial meaning and would violate
+     * the {@code journal_entry_line} CHECK {@code (debit_amount > 0 OR credit_amount > 0)}.
+     * Zero-value source documents are legitimate in a mainstream ERP — free
+     * samples, promotions, warranty replacements, 100%-discount lines — so a
+     * zero-total customer invoice (or its payment) is allowed; there is simply no
+     * GL movement to record, and the document is captured by its own module. Rather
+     * than throw (which would wedge the invoice/shipment flow), this skips the
+     * posting and emits an INFO log naming the document and stating it is treated
+     * as a zero-value / free-of-charge document (no GL movement). Trigger:
+     * {@code amount <= 0} (or null). Value:
+     * no {@code JournalEntry} is written. Tightening alternative: if zero-value
+     * documents must be auditable in the GL, post a memo/statistical entry instead.
+     * Mirrors the {@code signum() <= 0} skip already used by the multi-debit
+     * posting helpers ({@link #postGoodsReceived}, {@link #postShipmentCost}, …).
+     * Indexed in {@code docs/design-notes.md} → <i>Documented silent fallbacks</i>.
+     */
     private void post(
         String journalNumber,
         LocalDate postingDate,
@@ -717,6 +737,12 @@ public class JournalEntryService {
         BigDecimal amount,
         LocalDate linePostingDate
     ) {
+        if (amount == null || amount.signum() <= 0) {
+            log.info("{} doc={} has amount={} {} — treated as a zero-value / free-of-charge document: "
+                    + "no GL journal posted (no financial movement to record)",
+                sourceDocumentType, sourceDocumentId, amount, currencyCode);
+            return;
+        }
         GlAccount debitAccount = glAccounts.byCode(debitAccountCode);
         GlAccount creditAccount = glAccounts.byCode(creditAccountCode);
 
