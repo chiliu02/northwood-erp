@@ -38,7 +38,7 @@ public class PurchaseOrderController {
     }
 
     /**
-     * §1.2 Approve a draft PO. Flips status to {@code 'sent'}, emits
+     * Approve a draft PO. Flips status to {@code 'sent'}, emits
      * {@code purchasing.PurchaseOrderApproved}, and advances the P2P saga
      * from {@code started → purchase_order_approved}.
      */

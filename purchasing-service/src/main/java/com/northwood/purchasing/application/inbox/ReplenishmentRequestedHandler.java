@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.35 Slice D: idempotent inbox handler for
+ * Idempotent inbox handler for
  * {@code inventory.ReplenishmentRequested}. Filters on
  * {@code targetService = "purchasing"}; for manufacturing-routed requests
  * this is a no-op (manufacturing has its own sibling handler from Slice C).
@@ -95,7 +95,7 @@ public class ReplenishmentRequestedHandler extends AbstractInboxHandler<Replenis
         ));
 
         if (prId.isEmpty()) {
-            // §2.37 Slice 3: no vendor to source from. Tell inventory so it
+            // No vendor to source from. Tell inventory so it
             // cancels the request (ReplenishmentCancelled) — which for a
             // sales_order_shortage request rejects the originating sales order.
             String reason = "no approved vendor / supplier for product " + payload.productId()

@@ -20,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
  * state machine (registration, price-change emission, no-op suppression) and
  * the repository drains {@code pendingEvents} to the outbox on save.
  *
- * <p>Promoted from a row-shaped service 2026-05-16 (§2.17). Previously this
+ * <p>Promoted from a row-shaped service 2026-05-16. Previously this
  * class hand-rolled the outbox event; now the aggregate emits and the
  * repository persists in one transaction.
  */

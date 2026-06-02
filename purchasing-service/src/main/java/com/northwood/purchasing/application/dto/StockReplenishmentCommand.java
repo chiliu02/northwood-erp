@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * §2.35 Slice D: command to create a purchase requisition in response to an
+ * Command to create a purchase requisition in response to an
  * {@code inventory.ReplenishmentRequested} event with
  * {@code targetService = "purchasing"}. Replaces the retired
  * {@code WorkOrderShortageCommand} — the manufacturing↔purchasing

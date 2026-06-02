@@ -33,7 +33,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.25 Tier 2: real-Postgres test for {@link JdbcPurchaseOrderRepository}
+ * Real-Postgres test for {@link JdbcPurchaseOrderRepository}
  * (header + lines). Seeded via {@code reconstitute(DRAFT, version=0)} (avoids the
  * {@code fromRequisition} factory's {@code Supplier} dependency). Covers:
  * insert→findById round-trip of header + line incl. enum dbValue()/fromDb();

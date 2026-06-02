@@ -30,7 +30,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.25 Tier 2: real-Postgres test for {@link JdbcSupplierProductPriceRepository}
+ * Real-Postgres test for {@link JdbcSupplierProductPriceRepository}
  * (single-row aggregate). Covers: insert→{@code findByKey} round-trip incl. the
  * {@code version DEFAULT 1} on insert; {@code updatePrice} via the update path,
  * version bump, and the {@code SupplierProductPriceChanged} outbox row;

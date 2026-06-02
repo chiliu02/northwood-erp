@@ -29,8 +29,8 @@ import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * §2.5 Phase C: real-Postgres test for the JDBC adapter that hosted today's
- * {@code invoiced_amount} bug (dev-done.md 2026-05-12). The in-memory test
+ * Real-Postgres test for the JDBC adapter that hosted the
+ * {@code invoiced_amount} bug (2026-05-12). The in-memory test
  * harness used by {@code PurchaseToPayHappyPathTest} doesn't have schema CHECK
  * constraints — only a real Postgres exercises the
  * {@code paid_amount &lt;= invoiced_amount} guard that broke saga completion

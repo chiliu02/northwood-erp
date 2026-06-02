@@ -12,7 +12,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * §1D.5: per-state row count for purchase-to-pay sagas. See sales-service's
+ * Per-state row count for purchase-to-pay sagas. See sales-service's
  * sibling class for the design rationale (MultiGauge, 15s poll matching
  * Prometheus scrape, GROUP BY query on the existing state index).
  */

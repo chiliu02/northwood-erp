@@ -7,7 +7,7 @@ import java.util.UUID;
 /**
  * Repository for the {@link SupplierProductPrice} aggregate root — the data
  * of record for the per-supplier price list. Promoted from a row-level write
- * port 2026-05-16 (§2.17).
+ * port 2026-05-16.
  *
  * <p>{@link #save} drains the aggregate's {@code pendingEvents} to the outbox
  * in the same transaction; emit events on the aggregate, never hand-rolled in

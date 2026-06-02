@@ -10,7 +10,7 @@ package com.northwood.purchasing.domain;
  * stamping) import directly from this class — the {@code purchasing-events}
  * jar is the only cross-service contract surface for purchasing's wire constants.
  *
- * <p>Convention introduced 2026-05-16 (§2.20).
+ * <p>Convention introduced 2026-05-16.
  */
 public final class PurchasingAggregateTypes {
 

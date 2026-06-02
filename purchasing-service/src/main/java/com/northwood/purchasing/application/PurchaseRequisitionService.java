@@ -28,7 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
  * <ul>
  *   <li>{@link #createManual} — REST entry point for buyers (phase 1
  *       sanity-check).</li>
- *   <li>{@link #createForStockReplenishment} — §2.35 Slice D. Called by
+ *   <li>{@link #createForStockReplenishment} — called by
  *       purchasing's {@code ReplenishmentRequestedHandler} when inventory
  *       emits an {@code inventory.ReplenishmentRequested} with
  *       {@code targetService = "purchasing"}. Auto-attaches the default
@@ -40,8 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
  *       picks up the dispatch atomically.</li>
  * </ul>
  *
- * <p>The retired {@code createForWorkOrderShortage} path (removed in §2.35
- * Slice D) is now subsumed by the stock-replenishment path: manufacturing's
+ * <p>The retired {@code createForWorkOrderShortage} path is now subsumed by the stock-replenishment path: manufacturing's
  * {@code RawMaterialShortageDetected} flows through inventory's bridge
  * (Slice C) which raises a {@code ReplenishmentRequest} that arrives here
  * the same way as a reorder-point breach.
@@ -123,14 +122,14 @@ public class PurchaseRequisitionService {
     }
 
     /**
-     * §2.35 Slice D: create a purchase requisition in response to inventory's
+     * Create a purchase requisition in response to inventory's
      * {@code ReplenishmentRequested} (targetService=purchasing). Auto-attaches
      * the default supplier, emits PurchaseRequisitionCreated +
      * purchasing.ReplenishmentDispatched, and auto-converts to a PO using
      * the same {@code shortagePoAutoApprove} policy that applied to the
      * retired WO-shortage path.
      *
-     * <p>§2.37 Slice 3: returns {@link Optional#empty()} when purchasing has no
+     * <p>Returns {@link Optional#empty()} when purchasing has no
      * vendor to source from — no supplier is configured, so neither an approved
      * vendor nor the default-supplier fallback can attach to the line. The
      * caller ({@code ReplenishmentRequestedHandler}) then emits
@@ -162,7 +161,7 @@ public class PurchaseRequisitionService {
 
         // Same auto-approve policy as the retired WO-shortage path
         // (northwood.purchasing.shortagePoAutoApprove, default true) — the
-        // §2.35 loop flows without a human in the demo path.
+        // replenishment loop flows without a human in the demo path.
         purchaseOrders.convertFromRequisition(pr.id(), shortagePoAutoApprove);
         return Optional.of(pr.id().value());
     }
@@ -171,7 +170,7 @@ public class PurchaseRequisitionService {
         List<RequisitionLineRequest> requested,
         Supplier defaultSupplier
     ) {
-        // §1F.1: reject upfront if any line names a product product-service
+        // Reject upfront if any line names a product product-service
         // has discontinued. Same idempotent-projection lookup is used by both
         // manual and shortage-driven PR paths so the shortage detector also
         // gets the rejection (manufacturing emitted the shortage before

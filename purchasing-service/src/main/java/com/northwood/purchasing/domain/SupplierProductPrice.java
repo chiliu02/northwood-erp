@@ -22,7 +22,7 @@ import java.util.UUID;
  *       (via {@link BigDecimal#compareTo}) — no version bump, no event.</li>
  * </ul>
  *
- * <p>Promoted from a row-level write port 2026-05-16 (§2.17). Previously the
+ * <p>Promoted from a row-level write port 2026-05-16. Previously the
  * port {@code SupplierProductPriceRepository} carried row-shaped methods
  * ({@code insert}, {@code updatePrice}) and the application service hand-rolled
  * the outbox event — now the aggregate owns the state machine and the repository

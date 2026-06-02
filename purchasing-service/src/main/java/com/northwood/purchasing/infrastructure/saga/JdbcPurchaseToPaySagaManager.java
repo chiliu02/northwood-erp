@@ -33,7 +33,7 @@ public class JdbcPurchaseToPaySagaManager
     /**
      * Lease + backoff durations are overridable via
      * {@code northwood.saga.lease-ttl-seconds} (default 30s) and
-     * {@code northwood.saga.retry-backoff-seconds} (default 15s) — §2.13.
+     * {@code northwood.saga.retry-backoff-seconds} (default 15s).
      */
     public JdbcPurchaseToPaySagaManager(
         PurchaseToPaySagaPort sagaPort,

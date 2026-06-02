@@ -20,7 +20,7 @@ import java.util.UUID;
  * fires {@link PurchaseOrderApproved} immediately) or {@code 'draft'}
  * (waits for {@link #approve} from a human).
  *
- * <p>Approval policy (§1.2 PO draft / approve, shipped 2026-05-06):
+ * <p>Approval policy (PO draft / approve, shipped 2026-05-06):
  * <ul>
  *   <li>Shortage-driven auto-PR: {@code autoApprove} reflects
  *       {@code northwood.purchasing.shortagePoAutoApprove} (default

@@ -11,7 +11,7 @@ import java.util.UUID;
  * downstream consumer (e.g. a future approval workflow, a supplier-facing
  * notification) to act without having to query purchasing's schema.
  *
- * <p>§2.35: the {@code sourceReplenishmentRequestId} field is populated when
+ * <p>The {@code sourceReplenishmentRequestId} field is populated when
  * the PR was raised by purchasing's {@code ReplenishmentRequestedHandler} in
  * response to an {@code inventory.ReplenishmentRequested} event
  * ({@code sourceType = 'stock_replenishment'}). Null for the other source
@@ -42,7 +42,7 @@ public record PurchaseRequisitionCreated(
      *
      * <p>{@code SOURCE_TYPE_WORK_ORDER_SHORTAGE} is retained for historical
      * rows; new rows from Java are emitted with {@link #SOURCE_TYPE_STOCK_REPLENISHMENT}
-     * after the §2.35 decoupling. See {@code project_235_mfg_pur_decoupling}
+     * after the manufacturing-purchasing decoupling. See {@code project_235_mfg_pur_decoupling}
      * for the rationale.
      */
     public static final String SOURCE_TYPE_MANUAL = "manual";

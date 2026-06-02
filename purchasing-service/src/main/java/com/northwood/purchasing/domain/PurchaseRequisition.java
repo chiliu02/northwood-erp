@@ -63,14 +63,14 @@ public final class PurchaseRequisition {
         LOW_STOCK("low_stock"),
         /**
          * Historical — was the WO-shortage auto-requisition source until
-         * §2.35 retired the producer. Historical rows keep this value; new
+         * the manufacturing-purchasing decoupling retired the producer. Historical rows keep this value; new
          * Java-emitted rows use {@link #STOCK_REPLENISHMENT} instead, with
          * the WO shortage now routed through inventory's
          * {@code ReplenishmentRequest} (see {@code project_235_mfg_pur_decoupling}).
          */
         WORK_ORDER_SHORTAGE("work_order_shortage"),
         /**
-         * §2.35: created by purchasing's {@code ReplenishmentRequestedHandler}
+         * Created by purchasing's {@code ReplenishmentRequestedHandler}
          * in response to {@code inventory.ReplenishmentRequested} with
          * {@code targetService = "purchasing"}. Carries
          * {@code sourceReplenishmentRequestId}.
@@ -176,7 +176,7 @@ public final class PurchaseRequisition {
      * Factory: a new requisition. Auto-approves at creation (phase 1). Used
      * for {@link SourceType#MANUAL} + {@link SourceType#LOW_STOCK} +
      * {@link SourceType#WORK_ORDER_SHORTAGE} (historical) paths. The
-     * §2.35 {@link SourceType#STOCK_REPLENISHMENT} path goes through
+     * {@link SourceType#STOCK_REPLENISHMENT} path goes through
      * {@link #createForStockReplenishment} instead — that factory also
      * emits a sibling {@code purchasing.ReplenishmentDispatched}.
      */
@@ -209,7 +209,7 @@ public final class PurchaseRequisition {
     }
 
     /**
-     * §2.35 Slice D: factory for a stock-replenishment requisition. Identical
+     * Factory for a stock-replenishment requisition. Identical
      * shape to {@link #create} but with the {@code STOCK_REPLENISHMENT}
      * source type, the {@code sourceReplenishmentRequestId} threaded through,
      * AND a sibling {@link ReplenishmentDispatched} event emitted alongside

@@ -5,7 +5,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * §2.35 Slice D: emitted alongside {@link PurchaseRequisitionCreated} when
+ * Emitted alongside {@link PurchaseRequisitionCreated} when
  * purchasing's {@code ReplenishmentRequestedHandler} creates a PR in response
  * to an {@code inventory.ReplenishmentRequested} event with
  * {@code targetService = "purchasing"}.

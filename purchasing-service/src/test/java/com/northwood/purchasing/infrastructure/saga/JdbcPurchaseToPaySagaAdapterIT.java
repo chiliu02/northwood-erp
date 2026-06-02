@@ -28,7 +28,7 @@ import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * §2.25 Tier 3: real-Postgres test for {@link JdbcPurchaseToPaySagaAdapter} —
+ * Real-Postgres test for {@link JdbcPurchaseToPaySagaAdapter} —
  * same {@code claimDue} (FOR UPDATE SKIP LOCKED + lease) + optimistic-locked
  * {@code update} surface as the sales fulfilment saga, keyed by
  * {@code purchase_order_header_id}.

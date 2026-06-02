@@ -5,7 +5,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * §2.37 Slice 3: purchasing could not raise a stock-replenishment requisition
+ * Purchasing could not raise a stock-replenishment requisition
  * for the {@code inventory.ReplenishmentRequest} it was dispatched — the
  * product has no approved vendor. Inventory consumes this and cancels the
  * originating request ({@code ReplenishmentRequest.markCancelled}, emitting

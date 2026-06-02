@@ -30,7 +30,7 @@ public class JdbcPurchaseToPaySagaAdapter implements PurchaseToPaySagaPort {
         this.tracer = tracer == null ? Tracer.NOOP : tracer;
     }
 
-    /** §1D.3: returns current span's trace ID for the trace_id column on INSERT, or null. */
+    /** Returns current span's trace ID for the trace_id column on INSERT, or null. */
     private String currentTraceId() {
         Span span = tracer.currentSpan();
         if (span == null) return null;
@@ -119,9 +119,9 @@ public class JdbcPurchaseToPaySagaAdapter implements PurchaseToPaySagaPort {
             );
         }
         saga.incrementVersion();
-        // §1D.9: milestone only on a real state advance. No cross-saga sales_order
+        // Milestone only on a real state advance. No cross-saga sales_order
         // key on the buy path yet (the p2p saga is keyed by PO and doesn't carry
-        // the originating order — see §1D.9 deferred follow-up in dev-todo).
+        // the originating order).
         if (saga.consumeStateAdvanced()) {
             SagaMilestone.record(tracer, PurchaseToPaySaga.AGGREGATE_TYPE,
                 saga.sagaId(), saga.state(), null);
@@ -147,7 +147,7 @@ public class JdbcPurchaseToPaySagaAdapter implements PurchaseToPaySagaPort {
             currentTraceId()
         );
         saga.incrementVersion();
-        // §1D.9: creation is the saga's first milestone (its initial state).
+        // Creation is the saga's first milestone (its initial state).
         SagaMilestone.record(tracer, PurchaseToPaySaga.AGGREGATE_TYPE,
             saga.sagaId(), saga.state(), null);
         saga.consumeStateAdvanced();
