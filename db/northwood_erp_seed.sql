@@ -70,6 +70,8 @@
 --     FG-CABINET-001  00000000-0000-7000-8000-000000000200
 --     FG-CHEST-001    00000000-0000-7000-8000-000000000300
 --     FG-CHAIR-001    00000000-0000-7000-8000-000000000400
+--     FG-RUG-001      00000000-0000-7000-8000-000000000500  (purchased; buy-to-stock — §2.43)
+--     FG-CARPET-001   00000000-0000-7000-8000-000000000501  (purchased; buy-to-order, to_order — §2.43)
 --
 --   Products (raw materials):
 --     RM-BOARD-001         00000000-0000-7000-8000-000000000002
@@ -106,6 +108,7 @@
 --     SUP-003 finishing       00000000-0000-7000-8000-000000000042  (active)
 --     SUP-004 alt-timber      00000000-0000-7000-8000-000000000043  (active; multi-source vs SUP-001)
 --     SUP-005 discontinued    00000000-0000-7000-8000-000000000044  (blocked — corner case)
+--     SUP-006 floor-coverings 00000000-0000-7000-8000-000000000045  (active; sources FG-RUG / FG-CARPET — §2.43)
 --
 --   BOMs (manufacturing.bom_header):
 --     Wooden Table    00000000-0000-7000-8000-000000000100
@@ -793,6 +796,117 @@ VALUES
     ('00000000-0000-7000-8000-000000000301', 380.00, 'AUD'),
     ('00000000-0000-7000-8000-000000000302', 105.00, 'AUD'),
     ('00000000-0000-7000-8000-000000000400', 120.00, 'AUD')
+ON CONFLICT (product_id) DO NOTHING;
+
+COMMIT;
+
+
+-- ============================================================================
+-- SEED: FLOOR COVERINGS — buy-side make/buy-to-order demo pair (§2.43)
+-- Two purchased, sellable finished goods that contrast the two buy-side
+-- replenishment modes within one product family:
+--   FG-RUG-001    — buy-to-stock:    replenishment_strategy = to_stock, a normal
+--                   reorder point/qty so it replenishes the shared pool (the
+--                   off-the-shelf baseline / contrast partner).
+--   FG-CARPET-001 — buy-to-order:    replenishment_strategy = to_order, reorder
+--                   0/0 (per the to_order invariant) — each sales order raises a
+--                   dedicated, order-pegged PO, reserved to the SO line on
+--                   goods receipt (REQ-PROD-022 / REQ-INV-093).
+-- Both purchased from a new floor-coverings supplier (SUP-006). The seed
+-- hand-maintains every per-service *_card projection + stock_balance (§3.13),
+-- so all are written here too — skipping any repeats the chest-family gap.
+-- ============================================================================
+
+BEGIN;
+
+-- Source of truth. Listing replenishment_strategy explicitly (the existing
+-- product INSERT omits it and relies on the column DEFAULT 'to_stock'); CARPET
+-- must be 'to_order'. The three to_order CHECK invariants hold: is_sellable=true,
+-- reorder 0/0, and (non-service) strategy in (to_stock, to_order).
+INSERT INTO product.product (
+    product_id, sku, name, description, product_type, base_uom_id,
+    is_stocked, is_purchased, is_manufactured, is_sellable,
+    sales_price, standard_cost,
+    reorder_point, reorder_quantity, valuation_class, replenishment_strategy
+) VALUES
+    ('00000000-0000-7000-8000-000000000500', 'FG-RUG-001',    'Woven Floor Rug',
+     'Off-the-shelf woven floor rug',          'finished_good', '00000000-0000-7000-8000-000000000010',
+     true, true, false, true,  180.00,  95.00,  4,  8, 'finished_goods', 'to_stock'),
+    ('00000000-0000-7000-8000-000000000501', 'FG-CARPET-001', 'Custom-design Carpet',
+     'Customised carpet — cut + finished per order', 'finished_good', '00000000-0000-7000-8000-000000000010',
+     true, true, false, true, 1200.00, 700.00,  0,  0, 'finished_goods', 'to_order')
+ON CONFLICT (sku) DO NOTHING;
+
+-- Floor-coverings supplier + price list (mirrors the timber-supplier rows).
+INSERT INTO purchasing.supplier (
+    supplier_id, supplier_code, name, email, phone, address, status
+) VALUES
+    ('00000000-0000-7000-8000-000000000045',
+     'SUP-006', 'Floor Coverings Direct',
+     'sales@floorcoverings.example', '+61 2 9000 1006',
+     'Sydney NSW', 'active')
+ON CONFLICT (supplier_code) DO NOTHING;
+
+INSERT INTO purchasing.supplier_product_price
+    (supplier_product_price_id, supplier_id, product_id, currency_code, unit_price)
+VALUES
+    ('00000000-0000-7000-8000-000000000613',
+     '00000000-0000-7000-8000-000000000045',
+     '00000000-0000-7000-8000-000000000500', 'AUD',  95.000000),
+    ('00000000-0000-7000-8000-000000000614',
+     '00000000-0000-7000-8000-000000000045',
+     '00000000-0000-7000-8000-000000000501', 'AUD', 700.000000)
+ON CONFLICT (supplier_id, product_id, currency_code, effective_from, min_quantity)
+    DO NOTHING;
+
+-- sales.product_card — both sellable + priced. Listing replenishment_strategy
+-- explicitly (the existing sales card INSERT relies on the DEFAULT 'to_stock');
+-- CARPET must be 'to_order' so the fulfilment saga's reserve step pegs it.
+INSERT INTO sales.product_card (product_id, sales_price, currency_code, replenishment_strategy)
+VALUES
+    ('00000000-0000-7000-8000-000000000500', 180.00,  'AUD', 'to_stock'),
+    ('00000000-0000-7000-8000-000000000501', 1200.00, 'AUD', 'to_order')
+ON CONFLICT (product_id) DO NOTHING;
+
+-- inventory.product_card — purchased, not manufactured; RUG carries a reorder
+-- policy (buy-to-stock), CARPET is 0/0 (buy-to-order, no independent loop).
+INSERT INTO inventory.product_card (
+    product_id, product_sku, product_name, product_type, base_uom_code, stock_tracking_mode,
+    is_purchased, is_manufactured, reorder_point, reorder_quantity
+) VALUES
+    ('00000000-0000-7000-8000-000000000500', 'FG-RUG-001',    'Woven Floor Rug',     'finished_good', 'EA', 'tracked', true, false, 4, 8),
+    ('00000000-0000-7000-8000-000000000501', 'FG-CARPET-001', 'Custom-design Carpet', 'finished_good', 'EA', 'tracked', true, false, 0, 0)
+ON CONFLICT (product_id) DO NOTHING;
+
+-- inventory.stock_balance — RUG carries an off-the-shelf MAIN baseline (sells
+-- from the pool); CARPET is 0 everywhere (built per order, pegged on receipt).
+INSERT INTO inventory.stock_balance (
+    warehouse_id, product_id, on_hand_quantity, reserved_quantity, average_cost
+) VALUES
+    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000500', 6, 0,  95.00),
+    ('00000000-0000-7000-8000-000000000020', '00000000-0000-7000-8000-000000000501', 0, 0, 700.00),
+    ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000500', 0, 0,  95.00),
+    ('00000000-0000-7000-8000-000000000021', '00000000-0000-7000-8000-000000000501', 0, 0, 700.00)
+ON CONFLICT (warehouse_id, product_id) DO NOTHING;
+
+-- manufacturing.product_card — purchased (not made), but the card exists per the
+-- one-card-per-product projection-completeness rule.
+INSERT INTO manufacturing.product_card (product_id, is_purchased, is_manufactured)
+VALUES
+    ('00000000-0000-7000-8000-000000000500', true, false),
+    ('00000000-0000-7000-8000-000000000501', true, false)
+ON CONFLICT (product_id) DO NOTHING;
+
+INSERT INTO finance.product_card (product_id, standard_cost, currency_code, valuation_class)
+VALUES
+    ('00000000-0000-7000-8000-000000000500',  95.00, 'AUD', 'finished_goods'),
+    ('00000000-0000-7000-8000-000000000501', 700.00, 'AUD', 'finished_goods')
+ON CONFLICT (product_id) DO NOTHING;
+
+INSERT INTO reporting.product_card (product_id, standard_cost, currency_code)
+VALUES
+    ('00000000-0000-7000-8000-000000000500',  95.00, 'AUD'),
+    ('00000000-0000-7000-8000-000000000501', 700.00, 'AUD')
 ON CONFLICT (product_id) DO NOTHING;
 
 COMMIT;

@@ -112,6 +112,9 @@ If any service fails to boot, look at the terminal that failed. Most boot failur
 | Product **FG-CABINET-001** Storage Cabinet | `00000000-0000-7000-8000-000000000200` | sub-assembly demo set |
 | Warehouse **MAIN** | `00000000-0000-7000-8000-000000000020` | |
 | Supplier **Pinewood Supplies** | seeded; check `purchasing.supplier` for id | used for shortage requisitions |
+| Product **FG-RUG-001** Woven Floor Rug | `00000000-0000-7000-8000-000000000500` | purchased + sellable; **buy-to-stock** (`to_stock`, reorder 4/8); 6 on hand at MAIN — Demo 9 contrast partner |
+| Product **FG-CARPET-001** Custom-design Carpet | `00000000-0000-7000-8000-000000000501` | purchased + sellable; **buy-to-order** (`to_order`, reorder 0/0); 0 on hand — each order raises a dedicated pegged PO (Demo 9) |
+| Supplier **Floor Coverings Direct** | code `SUP-006` · id `00000000-0000-7000-8000-000000000045` | sources FG-RUG-001 + FG-CARPET-001 |
 
 ---
 
@@ -740,6 +743,78 @@ The outbox pattern's whole point: **Kafka is the transport, not the system of re
 ### 9.5 — Not demoed (and why)
 
 A *consumer-dependency* outage (e.g. PostgreSQL briefly down while Kafka keeps delivering) is now **also auto-recovering**: the consumer error handler rides out the blip with an `ExponentialBackOff` (default 5-min budget) instead of dead-lettering in milliseconds — the old `FixedBackOff(0,3)` is fixed — and anything that *does* reach a `<topic>.dlt` is auto-redriven by each service's `DltRedriver` (re-applied once the dependency is back, or parked in `<topic>.dlt.parked` after the cap if genuinely unrecoverable). It isn't staged as a separate live beat because the timing (a sub-5-minute outage) is awkward to demo by hand — it's pinned by `KafkaInboxDispatcherDeliveryIT` + `DltRedriverIT`. See `docs/messaging.md` → *Disaster recovery*.
+
+---
+
+## Demo 10 — Make-to-order / buy-to-order (order-pegged supply)
+
+The fourth axis of the catalogue: alongside make-vs-buy, each SKU carries a `replenishment_strategy` — `to_stock` (the default; reorder-point driven) or `to_order` (order-pegged). The two axes combine into four operator modes, and the seed ships one SKU per buy-side mode in a single product family (floor coverings) so the contrast is one screen apart (REQ-PROD-022 / REQ-INV-093, §2.43).
+
+**Framing:** a `to_order` line never draws from / builds to the shared pool. It raises **dedicated** supply — a work order (make-to-order) or a purchase order (buy-to-order) — sized to the line qty and **earmarked** to that SO line. On completion the output is reserved to the line atomically with the stock credit, so it never enters available-to-promise and a concurrent order can't steal it. The order ships straight off that peg — no re-reservation retry.
+
+### 10.1 — Buy-to-stock baseline (the contrast partner)
+
+Place an order **as Sarah** for **FG-RUG-001** (`00000000-0000-7000-8000-000000000500`), qty 1. The rug has 6 on hand at MAIN, so it reserves from the shared pool and goes straight to `ready_to_ship` — exactly the Demo 3 happy path. No PO, no peg. This is the off-the-shelf mode; keep it on screen as the contrast for 10.2.
+
+### 10.2 — Buy-to-order (the pegged PO)
+
+Place an order **as Sarah** for **FG-CARPET-001** (`00000000-0000-7000-8000-000000000501`), qty 1. The carpet has 0 on hand and is `to_order`:
+
+```bash
+curl -X POST http://localhost:8082/api/sales-orders \
+  -H 'content-type: application/json' \
+  -d '{"orderNumber":"SO-DEMO-10-CARPET","customerCode":"CUST-001","currencyCode":"AUD",
+       "lines":[{"productId":"00000000-0000-7000-8000-000000000501",
+                 "productSku":"FG-CARPET-001","productName":"Custom-design Carpet",
+                 "orderedQuantity":1,"unitPrice":1200}]}'
+```
+
+Watch it flow:
+1. The fulfilment saga's reserve step reads `sales.product_card.replenishment_strategy = 'to_order'` and **skips free-stock reservation**. Inventory raises a dedicated replenishment for the **full** line qty, routed by make-vs-buy to purchasing:
+   ```sql
+   SELECT reason, target_service, requested_quantity, status, source_sales_order_header_id
+     FROM inventory.replenishment_request WHERE product_id = '00000000-0000-7000-8000-000000000501';
+   -- reason = 'order_pegged', target_service = 'purchasing', requested_quantity = 1
+   ```
+   The saga parks at `stock_reservation_incomplete` (no shortage top-up — this is a dedicated build).
+2. Purchasing creates a PR → **Priya** approves it → it becomes a PO against **Floor Coverings Direct** (SUP-006). (Same PR→PO→GR machinery as Demo 6.)
+3. **Wendy** posts the goods receipt for the PO (**Inventory → Goods Receipts → New**). Inventory credits on-hand **and**, because the linked request is `order_pegged`, **reserves the received qty for the SO line in the same transaction**:
+   ```sql
+   SELECT on_hand_quantity, reserved_quantity, available_quantity
+     FROM inventory.stock_balance WHERE product_id = '00000000-0000-7000-8000-000000000501';
+   -- on_hand = 1, reserved = 1, available = 0  ← pegged; excluded from ATP
+   ```
+4. `inventory.ReplenishmentFulfilled(pegged=true)` reaches sales; the saga goes **`stock_reservation_incomplete → ready_to_ship` directly** — no re-reservation. **Wendy** ships it; the cycle completes exactly like Demo 7.
+
+### 10.3 — Make-to-order (configure an existing SKU live)
+
+Make-to-order reuses an existing manufactured SKU rather than a dedicated seed. **As Emma (catalog_manager)**, configure a manufactured FG (e.g. **FG-CHAIR-001**) order-pegged — the invariants require a sellable SKU with a zero reorder policy first:
+
+```bash
+# zero the reorder policy (to_order has no independent reorder loop), then flip the strategy
+curl -X PUT http://localhost:8081/api/products/00000000-0000-7000-8000-000000000400/reorder-policy \
+  -H 'content-type: application/json' -d '{"reorderPoint":0,"reorderQuantity":0}'
+curl -X PUT http://localhost:8081/api/products/00000000-0000-7000-8000-000000000400/replenishment-strategy \
+  -H 'content-type: application/json' -d '{"replenishmentStrategy":"to_order"}'
+```
+
+Then place an order for the chair beyond on-hand. Same pegged flow as 10.2, but the dedicated supply is a **work order** (target_service = `manufacturing`): **Linda** completes its operations on the Production Board; on completion inventory credits FG **and** pegs it to the SO line, and the saga reaches `ready_to_ship` without a retry. (This is the path pinned by `OrderToCashMakeToOrderPathTest`.)
+
+> Try setting `replenishment-strategy` to `to_order` on a SKU that still has a non-zero reorder policy, or on a non-sellable raw material — the request is rejected (the aggregate enforces the three invariants, mirrored by the schema CHECKs).
+
+### 10.4 — Cancel a pegged order (un-peg)
+
+`to_order` does **not** block cancel. Cancel the carpet order from 10.2 **as Sam** (any pre-shipment state). The compensation un-pegs: if the PO already received (peg reserved), inventory releases the reserve so the carpet returns to the free pool (it behaves as make-to-stock from there); if the PO is still in flight, the peg is dropped and the eventual receipt settles into the pool. Re-run the `stock_balance` query — `reserved` drops back, `available` rises.
+
+### 10.5 — What this proves
+
+| Claim | What the audience saw |
+|---|---|
+| Strategy is orthogonal to make-vs-buy | one floor-coverings family shows buy-to-stock (rug) next to buy-to-order (carpet) |
+| `to_order` raises dedicated, full-qty supply | `replenishment_request.reason = 'order_pegged'`, qty = line qty, back-referenced to the SO |
+| Pegged output is earmarked, not pooled | on completion `reserved` rises with `on_hand`; `available` (ATP) stays 0 |
+| Ships off the peg, no double-reserve | saga `stock_reservation_incomplete → ready_to_ship` with no second `StockReservationRequested` |
+| Cancel stays permitted | un-peg releases / drops the dedicated supply back to the pool |
 
 ---
 
