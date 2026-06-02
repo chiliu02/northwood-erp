@@ -48,6 +48,15 @@ public class PurchaseOrderController {
         @PathVariable UUID id,
         @Valid @RequestBody ApprovePurchaseOrderRequest request
     ) {
+        // 404 for an unknown PO, then fail-fast on an unapprovable one (zero /
+        // inconsistent header totals) BEFORE the write transaction is opened —
+        // assertApprovable is read-only and throws PoNotApprovableException (409)
+        // so an invalid request never reaches the mutating service.approve().
+        // The domain re-checks inside approve() as the in-transaction backstop.
+        if (service.findById(id).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        service.assertApprovable(id);
         service.approve(id, request.approver(), request.reason());
         PurchaseOrderView body = service.findById(id).orElseThrow();
         return ResponseEntity.ok(body);

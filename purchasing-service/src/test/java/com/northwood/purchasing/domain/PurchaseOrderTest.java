@@ -125,6 +125,20 @@ class PurchaseOrderTest {
             );
             assertThat(po.currencyCode()).isEqualTo(Currencies.AUD);
         }
+
+        @Test void zero_total_is_not_auto_approved_and_lands_draft() {
+            // Every line fell back to a missing supplier price → total 0. Even with
+            // autoApprove=true the PO must land at 'draft' (no PurchaseOrderApproved),
+            // not auto-send a zero-value PO that would wedge the to-pay flow.
+            PurchaseOrder po = PurchaseOrder.fromRequisition(
+                "PO-001", supplier(), PR_HEADER, null, Currencies.AUD,
+                List.of(line(BigDecimal.TEN, BigDecimal.ZERO)), true
+            );
+            assertThat(po.status()).isEqualTo(PurchaseOrder.Status.DRAFT);
+            List<DomainEvent> events = po.pullPendingEvents();
+            assertThat(events).hasSize(1).first().isInstanceOf(PurchaseOrderCreated.class);
+            assertThat(((PurchaseOrderCreated) events.get(0)).status()).isEqualTo("draft");
+        }
     }
 
     @Nested
@@ -176,6 +190,59 @@ class PurchaseOrderTest {
             assertThatThrownBy(() -> po.approve("alice", "double-approve"))
                 .isInstanceOf(PurchaseOrder.PoNotApprovableException.class)
                 .hasMessageContaining("'sent'");
+        }
+    }
+
+    /**
+     * Consistency guard: a draft PO is only approvable when it has a positive
+     * total that equals subtotal + tax, with subtotal/tax equal to the line sums.
+     * Uses {@link PurchaseOrder#reconstitute} to inject drifted header totals (the
+     * shape produced by editing a line price without recomputing the header).
+     */
+    @Nested
+    class AssertApprovable {
+        private PurchaseOrder draft(BigDecimal subtotal, BigDecimal tax, BigDecimal total, java.util.List<PurchaseOrderLine> lines) {
+            return PurchaseOrder.reconstitute(
+                PurchaseOrderId.of(UUID.randomUUID()), "PO-001",
+                UUID.randomUUID(), "SUP-001", "Acme Co",
+                PR_HEADER, Currencies.AUD,
+                subtotal, tax, total,
+                PurchaseOrder.Status.DRAFT,
+                lines, 0L
+            );
+        }
+
+        @Test void passes_when_consistent() {
+            PurchaseOrder po = draft(new BigDecimal("800.00"), BigDecimal.ZERO, new BigDecimal("800.00"),
+                List.of(line(BigDecimal.TEN, new BigDecimal("80"))));   // 10 × 80 = 800
+            org.assertj.core.api.Assertions.assertThatCode(po::assertApprovable).doesNotThrowAnyException();
+        }
+
+        @Test void rejects_zero_total() {
+            // The reported bug: header total 0 (supplier price defaulted to 0),
+            // line later priced by hand. Approval must be blocked.
+            PurchaseOrder po = draft(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                List.of(line(BigDecimal.TEN, BigDecimal.ZERO)));
+            assertThatThrownBy(po::assertApprovable)
+                .isInstanceOf(PurchaseOrder.PoNotApprovableException.class)
+                .hasMessageContaining("total amount is");
+        }
+
+        @Test void rejects_subtotal_drifted_from_lines() {
+            // Lines sum to 800 but header subtotal says 0 — the stale-header shape.
+            PurchaseOrder po = draft(BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("800.00"),
+                List.of(line(BigDecimal.TEN, new BigDecimal("80"))));
+            assertThatThrownBy(po::assertApprovable)
+                .isInstanceOf(PurchaseOrder.PoNotApprovableException.class)
+                .hasMessageContaining("sum of line totals");
+        }
+
+        @Test void rejects_total_not_equal_subtotal_plus_tax() {
+            PurchaseOrder po = draft(new BigDecimal("800.00"), BigDecimal.ZERO, new BigDecimal("999.00"),
+                List.of(line(BigDecimal.TEN, new BigDecimal("80"))));
+            assertThatThrownBy(po::assertApprovable)
+                .isInstanceOf(PurchaseOrder.PoNotApprovableException.class)
+                .hasMessageContaining("does not equal subtotal + tax");
         }
     }
 }

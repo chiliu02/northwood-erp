@@ -113,10 +113,12 @@ public class DltRedriver {
         }
 
         RuntimeException last = null;
+        int attemptsMade = 0;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             if (attempt > 1) {
                 sleep(delayMs);
             }
+            attemptsMade = attempt;
             try {
                 // Re-apply via the live fan-out: already-succeeded handlers
                 // dedup-skip, the failed one retries. Throws iff it fails again.
@@ -126,15 +128,75 @@ public class DltRedriver {
                 return;
             } catch (RuntimeException e) {
                 last = e;
+                // A deterministic failure (the record itself violates an invariant
+                // — a CHECK constraint, a malformed payload, a type bug) cannot
+                // change on re-apply of the identical record, so burning the rest
+                // of the redrive budget is pointless: park it now. Crucially this
+                // is NARROWER than the consumer's NOT_RETRYABLE set — redrive is
+                // exactly the recovery tier for transient-looking DataIntegrity
+                // failures (an FK violation because a prerequisite projection row
+                // hasn't arrived yet succeeds on a later attempt), so those keep
+                // retrying. See isDeterministic for the CHECK-vs-FK split.
+                if (isDeterministic(e)) {
+                    log.warn("redrive of {}-{}@{} (group {}) failed deterministically on attempt {}/{}; "
+                            + "parking without further retries: {}",
+                        record.topic(), record.partition(), record.offset(), origGroup,
+                        attempt, maxAttempts, e.toString());
+                    break;
+                }
                 log.warn("redrive attempt {}/{} of {}-{}@{} (group {}) failed: {}",
                     attempt, maxAttempts, record.topic(), record.partition(), record.offset(),
                     origGroup, e.toString());
             }
         }
-        park(record, last);
+        park(record, last, attemptsMade);
     }
 
-    private void park(ConsumerRecord<String, String> record, RuntimeException lastError) {
+    /**
+     * Is this failure deterministic — guaranteed to recur on a re-apply of the
+     * identical record, so not worth the rest of the redrive budget? Walks the
+     * cause chain and treats as deterministic:
+     *
+     * <ul>
+     *   <li>a {@link java.sql.SQLException} whose SQLState is a CHECK violation
+     *       ({@code 23514}), NOT-NULL violation ({@code 23502}), exclusion
+     *       violation ({@code 23P01}), or any data-exception ({@code 22*}, e.g.
+     *       numeric overflow / bad text) — the row itself breaks an invariant;</li>
+     *   <li>a malformed-payload ({@link tools.jackson.core.JacksonException}) or
+     *       a programming-shape bug ({@link NullPointerException} /
+     *       {@link ClassCastException}).</li>
+     * </ul>
+     *
+     * <p>Deliberately NOT deterministic (keep retrying — these are the cases the
+     * redrive tier exists to recover): FK violations ({@code 23503}) and unique
+     * violations ({@code 23505}) — typically a prerequisite/ordering timing issue
+     * that resolves once the awaited row arrives; and {@link IllegalStateException}
+     * (the {@code Assert.state} idiom covers both genuine invariant breaks and
+     * "no saga row yet" prerequisite-timing, so it stays retryable rather than
+     * risk parking a recoverable record).
+     */
+    static boolean isDeterministic(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            if (c instanceof java.sql.SQLException sql) {
+                String state = sql.getSQLState();
+                if (state != null && (state.equals("23514") || state.equals("23502")
+                    || state.equals("23P01") || state.startsWith("22"))) {
+                    return true;
+                }
+            }
+            if (c instanceof tools.jackson.core.JacksonException
+                || c instanceof NullPointerException
+                || c instanceof ClassCastException) {
+                return true;
+            }
+            if (c.getCause() == c) {
+                break;   // guard against a self-referential cause chain
+            }
+        }
+        return false;
+    }
+
+    private void park(ConsumerRecord<String, String> record, RuntimeException lastError, int attemptsMade) {
         String parkedTopic = record.topic() + PARKED_SUFFIX;
         ProducerRecord<String, String> parked =
             new ProducerRecord<>(parkedTopic, null, record.key(), record.value());
@@ -142,15 +204,16 @@ public class DltRedriver {
         // exception fqcn/message, original topic/offset) so a parked record is
         // self-describing for ops.
         record.headers().forEach(h -> parked.headers().add(h));
+        // Actual attempts made (1 for a deterministic park, up to maxAttempts otherwise).
         parked.headers().add(HEADER_REDRIVE_ATTEMPTS,
-            String.valueOf(maxAttempts).getBytes(StandardCharsets.UTF_8));
+            String.valueOf(attemptsMade).getBytes(StandardCharsets.UTF_8));
         if (lastError != null) {
             parked.headers().add(HEADER_REDRIVE_LAST_ERROR,
                 lastError.toString().getBytes(StandardCharsets.UTF_8));
         }
         kafkaTemplate.send(parked).join();
-        log.error("redrive of {}-{}@{} exhausted {} attempts; parked in {} (last error: {})",
-            record.topic(), record.partition(), record.offset(), maxAttempts, parkedTopic,
+        log.error("redrive of {}-{}@{} gave up after {} attempt(s); parked in {} (last error: {})",
+            record.topic(), record.partition(), record.offset(), attemptsMade, parkedTopic,
             lastError == null ? "n/a" : lastError.toString());
     }
 

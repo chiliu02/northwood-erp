@@ -191,7 +191,12 @@ public final class PurchaseOrder {
         tax = tax.setScale(2, RoundingMode.HALF_UP);
         BigDecimal total = subtotal.add(tax);
 
-        Status initialStatus = autoApprove ? Status.SENT : Status.DRAFT;
+        // A zero-total PO (every line fell back to a missing supplier price) is
+        // never auto-approved/sent — it would only wedge the to-pay flow at
+        // invoice time (invoiced_amount > total_amount = 0). It lands at 'draft'
+        // for manual pricing + approval, where assertApprovable() gates it.
+        boolean autoApproveAllowed = autoApprove && total.signum() > 0;
+        Status initialStatus = autoApproveAllowed ? Status.SENT : Status.DRAFT;
         PurchaseOrderId id = PurchaseOrderId.newId();
         PurchaseOrder po = new PurchaseOrder(
             id, purchaseOrderNumber,
@@ -224,7 +229,7 @@ public final class PurchaseOrder {
             wireLines,
             Instant.now()
         ));
-        if (autoApprove) {
+        if (autoApproveAllowed) {
             po.pendingEvents.add(new PurchaseOrderApproved(
                 UUID.randomUUID(),
                 id.value(),
@@ -241,14 +246,63 @@ public final class PurchaseOrder {
     }
 
     /**
-     * Approve a PO sitting at {@code 'draft'}. Flips to {@code 'sent'} and
-     * emits {@link PurchaseOrderApproved}. Rejects with
-     * {@link PoNotApprovableException} if the status is anything else.
+     * Assert this PO may be approved. Two classes of guard:
+     * <ul>
+     *   <li><b>status</b> — must be {@code 'draft'};</li>
+     *   <li><b>internal consistency</b> — a positive {@code totalAmount} that
+     *       equals {@code subtotalAmount + taxAmount}, with {@code subtotalAmount}
+     *       and {@code taxAmount} equal to the sums across the lines.</li>
+     * </ul>
+     * Catches a zero-value PO (a line that fell back to a missing supplier price)
+     * <em>and</em> a PO whose denormalised header totals have drifted from its
+     * lines (e.g. a line {@code unit_price} edited without recomputing the
+     * header — which later trips the {@code invoiced_amount <= total_amount}
+     * CHECK at invoice time). Throws {@link PoNotApprovableException} on any
+     * violation. Pure read — no mutation, no events — so it is safe to call from
+     * a pre-transaction check at the API edge as well as from {@link #approve}.
      */
-    public void approve(String approver, String reason) {
+    public void assertApprovable() {
         if (status != Status.DRAFT) {
             throw new PoNotApprovableException(id, status);
         }
+        BigDecimal lineSubtotal = BigDecimal.ZERO;
+        BigDecimal lineTax = BigDecimal.ZERO;
+        for (PurchaseOrderLine l : lines) {
+            lineSubtotal = lineSubtotal.add(l.lineTotal());
+            lineTax = lineTax.add(l.taxAmount() == null ? BigDecimal.ZERO : l.taxAmount());
+        }
+        lineSubtotal = lineSubtotal.setScale(2, RoundingMode.HALF_UP);
+        lineTax = lineTax.setScale(2, RoundingMode.HALF_UP);
+        if (totalAmount == null || totalAmount.signum() <= 0) {
+            throw new PoNotApprovableException(id, status,
+                "total amount is " + (totalAmount == null ? "unset" : totalAmount.toPlainString())
+                    + " — price the lines before approving");
+        }
+        if (subtotalAmount == null || subtotalAmount.compareTo(lineSubtotal) != 0) {
+            throw new PoNotApprovableException(id, status,
+                "subtotal " + subtotalAmount + " does not equal the sum of line totals "
+                    + lineSubtotal.toPlainString());
+        }
+        if (taxAmount == null || taxAmount.compareTo(lineTax) != 0) {
+            throw new PoNotApprovableException(id, status,
+                "tax " + taxAmount + " does not equal the sum of line tax " + lineTax.toPlainString());
+        }
+        BigDecimal expectedTotal = subtotalAmount.add(taxAmount).setScale(2, RoundingMode.HALF_UP);
+        if (totalAmount.compareTo(expectedTotal) != 0) {
+            throw new PoNotApprovableException(id, status,
+                "total " + totalAmount.toPlainString() + " does not equal subtotal + tax "
+                    + expectedTotal.toPlainString());
+        }
+    }
+
+    /**
+     * Approve a PO sitting at {@code 'draft'}. Flips to {@code 'sent'} and
+     * emits {@link PurchaseOrderApproved}. Rejects with
+     * {@link PoNotApprovableException} via {@link #assertApprovable} if the
+     * status is anything else, or the header totals are inconsistent / zero.
+     */
+    public void approve(String approver, String reason) {
+        assertApprovable();
         this.status = Status.SENT;
         pendingEvents.add(new PurchaseOrderApproved(
             UUID.randomUUID(),
@@ -328,7 +382,7 @@ public final class PurchaseOrder {
     public List<PurchaseOrderLine> lines()                 { return List.copyOf(lines); }
     public long version()                                  { return version; }
 
-    /** Thrown by {@link #approve} when the PO isn't in {@code 'draft'} status. */
+    /** Thrown by {@link #approve} / {@link #assertApprovable} when the PO isn't in {@code 'draft'} status or its header totals are zero / inconsistent. */
     public static final class PoNotApprovableException extends RuntimeException {
         private final PurchaseOrderId orderId;
         private final Status currentStatus;
@@ -336,6 +390,13 @@ public final class PurchaseOrder {
         public PoNotApprovableException(PurchaseOrderId orderId, Status currentStatus) {
             super("Purchase order " + orderId.value() + " is in status '" + currentStatus.dbValue()
                 + "' and cannot be approved (must be 'draft')");
+            this.orderId = orderId;
+            this.currentStatus = currentStatus;
+        }
+
+        /** Consistency / value violation (zero or drifted header totals) with a specific detail. */
+        public PoNotApprovableException(PurchaseOrderId orderId, Status currentStatus, String detail) {
+            super("Purchase order " + orderId.value() + " cannot be approved: " + detail);
             this.orderId = orderId;
             this.currentStatus = currentStatus;
         }

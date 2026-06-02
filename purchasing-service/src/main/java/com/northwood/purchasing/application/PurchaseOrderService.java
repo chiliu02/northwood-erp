@@ -131,13 +131,20 @@ public class PurchaseOrderService {
         pr.markConverted();
         purchaseRequisitions.save(pr);
 
-        // Insert saga at 'started'. Auto-approve: immediately advance inline
-        // to 'purchase_order_approved' so the worker's next tick takes it to
-        // 'waiting_for_goods'. Manual flow: saga sits at 'started' until a
-        // human calls approve().
+        // Insert saga at 'started'. Advance inline to 'purchase_order_approved'
+        // only when the PO actually landed at 'sent' — the factory declines
+        // auto-approve for a zero-total PO (missing supplier price), leaving it
+        // 'draft' for manual pricing + approval. Manual flow: saga sits at
+        // 'started' until a human calls approve(). Gating on po.status() keeps
+        // the saga aligned with the PO it tracks.
         sagaManager.insertStarted(po.id().value(), salesOrderHeaderId);
-        if (autoApprove) {
+        if (po.status() == PurchaseOrder.Status.SENT) {
             sagaManager.approve(po.id().value());
+        } else if (autoApprove) {
+            log.warn("purchase_order {} requested auto-approve but has total {} (a line is missing a "
+                    + "supplier price); left at 'draft' for manual pricing + approval rather than "
+                    + "auto-sending a zero-value PO",
+                po.purchaseOrderNumber(), po.totalAmount().toPlainString());
         }
 
         log.info("converted requisition {} → purchase_order {} (status={}, supplier={}, {} line(s))",
@@ -150,6 +157,26 @@ public class PurchaseOrderService {
     public Optional<PurchaseOrderView> findById(UUID purchaseOrderHeaderId) {
         return purchaseOrders.findById(PurchaseOrderId.of(purchaseOrderHeaderId))
             .map(PurchaseOrderView::from);
+    }
+
+    /**
+     * Validate that a PO may be approved <em>without</em> mutating it — loads the
+     * aggregate and runs its consistency invariant ({@link PurchaseOrder#assertApprovable}:
+     * draft status, positive total, header totals equal to the line sums). Exposed
+     * so the API can fail-fast on an invalid request <b>before any write
+     * transaction is opened</b>; {@link #approve} re-checks it as the in-transaction
+     * backstop. Throws {@link PoNotApprovableException} (HTTP 409) on a
+     * status/consistency violation, or {@link IllegalArgumentException} if unknown.
+     */
+    @Transactional(readOnly = true)
+    public void assertApprovable(UUID purchaseOrderHeaderId) {
+        PurchaseOrder po = purchaseOrders.findById(PurchaseOrderId.of(purchaseOrderHeaderId))
+            .orElseThrow(() -> new IllegalArgumentException("No purchase order " + purchaseOrderHeaderId));
+        try {
+            po.assertApprovable();
+        } catch (PurchaseOrder.PoNotApprovableException e) {
+            throw new PoNotApprovableException(e);
+        }
     }
 
     /**

@@ -4,6 +4,8 @@ import io.micrometer.tracing.Link;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
 import java.util.UUID;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * Records one **milestone span** per saga transition, building the
@@ -15,7 +17,9 @@ import java.util.UUID;
  * and {@code northwood.sales_order_id} as the cross-saga key when an originating
  * order is known), and carrying a {@code Link} to the trace that was current at
  * the transition — the detail trace of the triggering action/event. The span is
- * started and ended immediately.
+ * started and ended immediately, but only <em>after the surrounding transaction
+ * commits</em> (deferred via a transaction synchronization) so a rolled-back
+ * transition never emits a phantom milestone.
  *
  * <p>The "saga view" is then a TraceQL search, not a single nested trace:
  * {@code { .northwood.saga_id = "…" }} for one saga's milestone timeline, or
@@ -49,6 +53,28 @@ public final class SagaMilestone {
         if (tracer == null || state == null) {
             return;
         }
+        // A milestone must mark a transition that actually COMMITTED. The callers
+        // record it mid-transaction (inside the saga adapter's insert/update, which
+        // runs within the inbox-handler / worker transaction); emitting the span
+        // there directly would also emit it for a transition that later rolls back
+        // — telemetry isn't enrolled in the DB transaction. A rolled-back+redelivered
+        // handler then re-emits on every attempt, producing phantom milestone traces
+        // for a saga that never advanced. So when a transaction is active, defer the
+        // span to afterCommit; with no active transaction (e.g. a direct unit/IT
+        // call) emit immediately, preserving the old behaviour.
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    emit(tracer, sagaType, sagaId, state, salesOrderId);
+                }
+            });
+        } else {
+            emit(tracer, sagaType, sagaId, state, salesOrderId);
+        }
+    }
+
+    private static void emit(Tracer tracer, String sagaType, UUID sagaId, String state, UUID salesOrderId) {
         Span.Builder builder = tracer.spanBuilder()
             .name("saga." + state)
             .setNoParent()
