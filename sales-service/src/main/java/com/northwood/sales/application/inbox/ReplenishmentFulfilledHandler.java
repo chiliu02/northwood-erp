@@ -30,14 +30,15 @@ import tools.jackson.databind.ObjectMapper;
  * history consumers in reporting handle them).
  *
  * <p>Delegates the state machine work to
- * {@link SalesOrderFulfilmentSagaManager#applyReplenishmentFulfilled(UUID, UUID)}.
+ * {@link SalesOrderFulfilmentSagaManager#applyReplenishmentFulfilled(UUID, UUID, boolean)}.
  * When the manager returns {@code stock_reservation_requested} (every
- * outstanding short line has been replenished), this handler emits a
- * fresh {@code sales.StockReservationRequested} so inventory will retry the
- * reservation against the now-restocked inventory. The work the inventory
- * service does on that second emission mirrors the work-order retry
- * pattern — {@code reserveForSalesOrder} cancels the prior partial
- * reservation before creating the new one.
+ * outstanding line replenished and at least one was a shortage top-up), this
+ * handler emits a fresh {@code sales.StockReservationRequested} so inventory
+ * will retry the reservation against the now-restocked inventory (mirrors the
+ * work-order retry pattern — {@code reserveForSalesOrder} cancels the prior
+ * partial reservation first). When all lines were order-pegged completions
+ * (§2.43), the manager returns {@code ready_to_ship} instead — the output was
+ * already reserved on completion, so no retry is emitted.
  *
  * <p>Idempotent against duplicate deliveries: the manager treats a missing
  * line id (already removed from the outstanding set) as a no-op.
@@ -77,13 +78,16 @@ public class ReplenishmentFulfilledHandler extends AbstractInboxHandler<Replenis
             return;
         }
 
-        String newState = sagaManager.applyReplenishmentFulfilled(salesOrderHeaderId, salesOrderLineId);
+        String newState = sagaManager.applyReplenishmentFulfilled(
+            salesOrderHeaderId, salesOrderLineId, payload.pegged());
         if (STOCK_RESERVATION_REQUESTED.equals(newState)) {
-            // All outstanding purchasing-line replenishments have landed — re-
-            // emit StockReservationRequested so inventory tries the reservation
-            // again. inventory.StockReservationService.reserveForSalesOrder
-            // drops any prior partial reservation first (mirrors the work-order
-            // retry pattern).
+            // At least one outstanding line was a shortage top-up — re-emit
+            // StockReservationRequested so inventory tries the reservation again
+            // against the now-restocked pool. inventory.StockReservationService
+            // .reserveForSalesOrder drops any prior partial reservation first
+            // (mirrors the work-order retry pattern). Order-pegged completions
+            // (§2.43) instead return ready_to_ship — already reserved on
+            // completion, no retry needed.
             emitRetryStockReservation(salesOrderHeaderId);
             log.info("[{}] sales_order={} → stock_reservation_requested; re-emitting {} to retry reservation",
                 CONSUMER_NAME, salesOrderHeaderId, StockReservationRequested.EVENT_TYPE);

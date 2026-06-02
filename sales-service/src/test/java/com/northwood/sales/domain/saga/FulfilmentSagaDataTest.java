@@ -12,10 +12,11 @@ class FulfilmentSagaDataTest {
     @Nested
     class CompactConstructor {
         @Test void defaults_null_fields() {
-            FulfilmentSagaData d = new FulfilmentSagaData(null, null, null);
+            FulfilmentSagaData d = new FulfilmentSagaData(null, null, null, null);
             assertThat(d.inventoryCancellationAcked()).isFalse();
             assertThat(d.paymentTerms()).isNull();                       // null = legacy fallback (on_shipment)
             assertThat(d.outstandingReplenishmentLineIds()).isEmpty();
+            assertThat(d.sawNonPeggedReplenishment()).isFalse();
         }
 
         @Test void none_factory_yields_empty_data() {
@@ -50,11 +51,11 @@ class FulfilmentSagaDataTest {
             UUID b = UUID.randomUUID();
             FulfilmentSagaData d = FulfilmentSagaData.none()
                 .withOutstandingReplenishmentLineIds(Set.of(a, b))
-                .withReplenishmentLineFulfilled(a);
+                .withReplenishmentLineFulfilled(a, false);
             assertThat(d.outstandingReplenishmentLineIds()).containsExactly(b);
             assertThat(d.allReplenishmentLinesFulfilled()).isFalse();
 
-            d = d.withReplenishmentLineFulfilled(b);
+            d = d.withReplenishmentLineFulfilled(b, false);
             assertThat(d.outstandingReplenishmentLineIds()).isEmpty();
             assertThat(d.allReplenishmentLinesFulfilled()).isTrue();
         }
@@ -63,8 +64,29 @@ class FulfilmentSagaDataTest {
             UUID a = UUID.randomUUID();
             FulfilmentSagaData d = FulfilmentSagaData.none()
                 .withOutstandingReplenishmentLineIds(Set.of(a))
-                .withReplenishmentLineFulfilled(UUID.randomUUID());   // not in the set
+                .withReplenishmentLineFulfilled(UUID.randomUUID(), false);   // not in the set
             assertThat(d.outstandingReplenishmentLineIds()).containsExactly(a);
+        }
+
+        @Test void pegged_fulfilment_does_not_latch_saw_non_pegged() {
+            UUID a = UUID.randomUUID();
+            UUID b = UUID.randomUUID();
+            FulfilmentSagaData d = FulfilmentSagaData.none()
+                .withOutstandingReplenishmentLineIds(Set.of(a, b))
+                .withReplenishmentLineFulfilled(a, true)
+                .withReplenishmentLineFulfilled(b, true);
+            assertThat(d.allReplenishmentLinesFulfilled()).isTrue();
+            assertThat(d.sawNonPeggedReplenishment()).isFalse();
+        }
+
+        @Test void one_non_pegged_fulfilment_latches_saw_non_pegged() {
+            UUID a = UUID.randomUUID();
+            UUID b = UUID.randomUUID();
+            FulfilmentSagaData d = FulfilmentSagaData.none()
+                .withOutstandingReplenishmentLineIds(Set.of(a, b))
+                .withReplenishmentLineFulfilled(a, true)
+                .withReplenishmentLineFulfilled(b, false);
+            assertThat(d.sawNonPeggedReplenishment()).isTrue();
         }
     }
 

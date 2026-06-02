@@ -90,20 +90,26 @@ public interface SalesOrderFulfilmentSagaManager {
     /**
      * Apply {@code inventory.ReplenishmentFulfilled} addressed
      * to a specific sales-order line. Removes the line id from the saga's
-     * {@code outstandingReplenishmentLineIds} set. When the set empties and the
-     * saga is still in {@code stock_reservation_incomplete}, transitions back to
-     * {@code stock_reservation_requested} so the worker re-tries reservation
-     * against the now-restocked inventory.
+     * {@code outstandingReplenishmentLineIds} set. When the set empties:
+     * <ul>
+     *   <li>if every fulfilment was order-pegged ({@code pegged=true}, §2.43) the
+     *       output was already reserved on completion, so the saga goes straight
+     *       to {@code ready_to_ship} — no re-reservation;</li>
+     *   <li>otherwise (any shortage top-up) it transitions back to
+     *       {@code stock_reservation_requested} so the worker re-tries
+     *       reservation against the now-restocked pool.</li>
+     * </ul>
      *
      * <p>Returns the saga's new state (or current state for a no-op). Callers
      * gate on {@code "stock_reservation_requested"} to know that re-reservation
-     * is required — the handler re-emits {@code StockReservationRequested}.
+     * is required — the handler re-emits {@code StockReservationRequested};
+     * {@code "ready_to_ship"} needs no follow-up.
      *
      * <p>Idempotent against duplicate fulfilment events (line already absent
      * from the set) and against late deliveries (saga no longer in
      * {@code stock_reservation_incomplete}).
      */
-    String applyReplenishmentFulfilled(UUID salesOrderHeaderId, UUID salesOrderLineId);
+    String applyReplenishmentFulfilled(UUID salesOrderHeaderId, UUID salesOrderLineId, boolean pegged);
 
     /**
      * Apply {@code inventory.ReplenishmentCancelled} addressed

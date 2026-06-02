@@ -141,7 +141,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
 
     @Override
     @Transactional
-    public String applyReplenishmentFulfilled(UUID salesOrderHeaderId, UUID salesOrderLineId) {
+    public String applyReplenishmentFulfilled(UUID salesOrderHeaderId, UUID salesOrderLineId, boolean pegged) {
         SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, ReplenishmentFulfilled.EVENT_TYPE);
 
         // Only meaningful while parked awaiting replenishment. Late deliveries
@@ -160,10 +160,23 @@ public class JdbcSalesOrderFulfilmentSagaManager
             return saga.state();
         }
 
-        FulfilmentSagaData updated = data.withReplenishmentLineFulfilled(salesOrderLineId);
+        FulfilmentSagaData updated = data.withReplenishmentLineFulfilled(salesOrderLineId, pegged);
         if (updated.allReplenishmentLinesFulfilled()) {
-            // Every outstanding line has been replenished — re-enter the
-            // reservation cycle. The caller re-emits StockReservationRequested.
+            if (!updated.requiresReservationRetry()) {
+                // §2.43 make-/buy-to-order: every outstanding line was an
+                // order-pegged completion — inventory already reserved each
+                // output for its SO line atomically with the stock credit. Ship
+                // straight off the peg, no re-reservation (which would re-peg).
+                writeData(saga, updated);
+                saga.transitionTo(READY_TO_SHIP, "wait_for_shipment");
+                sagaPort.update(saga);
+                log.info("saga {} sales_order={} → ready_to_ship (all {} line(s) order-pegged + reserved on completion)",
+                    saga.sagaId(), salesOrderHeaderId, data.outstandingReplenishmentLineIds().size());
+                return READY_TO_SHIP;
+            }
+            // Every outstanding line has been replenished and at least one was a
+            // shortage top-up — re-enter the reservation cycle. The caller
+            // re-emits StockReservationRequested.
             writeData(saga, updated);
             saga.transitionTo(STOCK_RESERVATION_REQUESTED, "retry_reservation_after_replenishment");
             saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));

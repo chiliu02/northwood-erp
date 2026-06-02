@@ -105,6 +105,27 @@ public class WorkOrderManufacturingCompletedHandler extends AbstractInboxHandler
                 && r.get().dispatchedAggregateKind() == ReplenishmentRequest.DispatchedAggregateKind.WORK_ORDER
                 && r.get().status() == ReplenishmentRequest.Status.DISPATCHED) {
                 ReplenishmentRequest req = r.get();
+                // Atomic peg (§2.43 Slice C): an order-pegged replenishment's
+                // output is dedicated to the originating SO line. Reserve it in
+                // THIS transaction (right after the on_hand credit) so it never
+                // enters free ATP and can't be stolen by a concurrent order. The
+                // generated available_quantity (on_hand - reserved) stays flat, so
+                // reporting's ATP view excludes it automatically. Releasing this
+                // peg on cancel is Slice E's un-peg job.
+                if (req.reason() == ReplenishmentRequest.Reason.ORDER_PEGGED) {
+                    boolean pegged = stockBalances.tryReserveOnHand(
+                        warehouseId, payload.finishedProductId(), payload.completedQuantity());
+                    if (pegged) {
+                        log.info("[{}] pegged {} of {} ({}) to sales_order={} sales_order_line={} (atomic credit+reserve)",
+                            CONSUMER_NAME, payload.completedQuantity(), payload.finishedProductSku(),
+                            payload.finishedProductId(), req.sourceSalesOrderHeaderId(), req.sourceSalesOrderLineId());
+                    } else {
+                        log.warn("[{}] could not peg-reserve {} of {} for sales_order={} — free stock insufficient "
+                            + "immediately after credit (concurrent reservation?); SO line falls back to the retry path",
+                            CONSUMER_NAME, payload.completedQuantity(), payload.finishedProductId(),
+                            req.sourceSalesOrderHeaderId());
+                    }
+                }
                 req.markFulfilled();
                 replenishmentRequests.save(req);
                 log.info("[{}] fulfilled replenishment_request={} via work_order={}",

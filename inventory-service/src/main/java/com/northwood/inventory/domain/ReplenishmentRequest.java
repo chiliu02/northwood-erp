@@ -439,13 +439,16 @@ public final class ReplenishmentRequest {
         // Payload denormalises productId + propagates the sales-order
         // back-reference (header + line) so consumers (notably sales' fulfilment-
         // saga fan-in handler) can route the event without a join back to
-        // inventory.replenishment_request.
+        // inventory.replenishment_request. pegged = ORDER_PEGGED (§2.43): the
+        // output was reserved for the SO line on completion, so sales ships
+        // without a re-reservation retry.
         pendingEvents.add(new ReplenishmentFulfilled(
             UUID.randomUUID(),
             id.value(),
             productId,
             sourceSalesOrderHeaderId,
             sourceSalesOrderLineId,
+            reason == Reason.ORDER_PEGGED,
             Instant.now()
         ));
     }

@@ -159,10 +159,36 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
                 FulfilmentSagaData.none().withOutstandingReplenishmentLineIds(Set.of(LINE_1)));
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyReplenishmentFulfilled(SO, LINE_1);
+            String state = manager.applyReplenishmentFulfilled(SO, LINE_1, false);   // shortage top-up
 
             assertThat(state).isEqualTo(STOCK_RESERVATION_REQUESTED);
             assertThat(saga.state()).isEqualTo(STOCK_RESERVATION_REQUESTED);
+        }
+
+        @Test void all_pegged_lines_go_straight_to_ready_to_ship() {
+            // §2.43: order-pegged completions are reserved on completion, so the
+            // saga ships without a re-reservation retry.
+            SalesOrderFulfilmentSaga saga = sagaInState(STOCK_RESERVATION_INCOMPLETE,
+                FulfilmentSagaData.none().withOutstandingReplenishmentLineIds(Set.of(LINE_1)));
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyReplenishmentFulfilled(SO, LINE_1, true);   // pegged
+
+            assertThat(state).isEqualTo(READY_TO_SHIP);
+            assertThat(saga.state()).isEqualTo(READY_TO_SHIP);
+        }
+
+        @Test void mixed_pegged_and_shortage_retries_reservation() {
+            // One pegged + one shortage line: the shortage top-up latches
+            // sawNonPeggedReplenishment, so the cleared set retries (not ships).
+            SalesOrderFulfilmentSaga saga = sagaInState(STOCK_RESERVATION_INCOMPLETE,
+                FulfilmentSagaData.none().withOutstandingReplenishmentLineIds(Set.of(LINE_1, LINE_2)));
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            manager.applyReplenishmentFulfilled(SO, LINE_1, true);    // pegged
+            String state = manager.applyReplenishmentFulfilled(SO, LINE_2, false);  // shortage
+
+            assertThat(state).isEqualTo(STOCK_RESERVATION_REQUESTED);
         }
 
         @Test void partial_fulfilment_holds_and_decrements() {
@@ -170,7 +196,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
                 FulfilmentSagaData.none().withOutstandingReplenishmentLineIds(Set.of(LINE_1, LINE_2)));
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyReplenishmentFulfilled(SO, LINE_1);
+            String state = manager.applyReplenishmentFulfilled(SO, LINE_1, false);
 
             assertThat(state).isEqualTo(STOCK_RESERVATION_INCOMPLETE);
             FulfilmentSagaData data = json.readValue(saga.dataJson(), FulfilmentSagaData.class);
@@ -182,7 +208,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
                 FulfilmentSagaData.none().withOutstandingReplenishmentLineIds(Set.of(LINE_2)));
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyReplenishmentFulfilled(SO, LINE_1);   // not outstanding
+            String state = manager.applyReplenishmentFulfilled(SO, LINE_1, false);   // not outstanding
 
             assertThat(state).isEqualTo(STOCK_RESERVATION_INCOMPLETE);
             verify(sagas, never()).update(any());
@@ -192,7 +218,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyReplenishmentFulfilled(SO, LINE_1);
+            String state = manager.applyReplenishmentFulfilled(SO, LINE_1, false);
 
             assertThat(state).isEqualTo(READY_TO_SHIP);
             verify(sagas, never()).update(any());

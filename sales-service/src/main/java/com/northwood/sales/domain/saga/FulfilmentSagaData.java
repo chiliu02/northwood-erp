@@ -42,7 +42,8 @@ import java.util.UUID;
 public record FulfilmentSagaData(
     Boolean inventoryCancellationAcked,
     String paymentTerms,
-    Set<UUID> outstandingReplenishmentLineIds
+    Set<UUID> outstandingReplenishmentLineIds,
+    Boolean sawNonPeggedReplenishment
 ) {
 
     public FulfilmentSagaData {
@@ -55,10 +56,14 @@ public record FulfilmentSagaData(
         outstandingReplenishmentLineIds = outstandingReplenishmentLineIds == null
             ? Set.of()
             : outstandingReplenishmentLineIds;
+        // §2.43: true once any non-pegged (shortage top-up) replenishment has
+        // been fulfilled, meaning the saga must retry reservation rather than
+        // ship straight off the order-pegged peg. Legacy/missing → false.
+        sawNonPeggedReplenishment = sawNonPeggedReplenishment != null && sawNonPeggedReplenishment;
     }
 
     public static FulfilmentSagaData none() {
-        return new FulfilmentSagaData(false, null, Set.of());
+        return new FulfilmentSagaData(false, null, Set.of(), false);
     }
 
     /** Stamp the order's commercial payment terms at saga creation. */
@@ -66,7 +71,8 @@ public record FulfilmentSagaData(
         return new FulfilmentSagaData(
             inventoryCancellationAcked,
             paymentTerms,
-            new LinkedHashSet<>(outstandingReplenishmentLineIds)
+            new LinkedHashSet<>(outstandingReplenishmentLineIds),
+            sawNonPeggedReplenishment
         );
     }
 
@@ -75,7 +81,8 @@ public record FulfilmentSagaData(
         return new FulfilmentSagaData(
             true,
             paymentTerms,
-            new LinkedHashSet<>(outstandingReplenishmentLineIds)
+            new LinkedHashSet<>(outstandingReplenishmentLineIds),
+            sawNonPeggedReplenishment
         );
     }
 
@@ -88,16 +95,20 @@ public record FulfilmentSagaData(
         return new FulfilmentSagaData(
             inventoryCancellationAcked,
             paymentTerms,
-            lineIds == null ? Set.of() : new LinkedHashSet<>(lineIds)
+            lineIds == null ? Set.of() : new LinkedHashSet<>(lineIds),
+            sawNonPeggedReplenishment
         );
     }
 
     /**
      * Remove a single line id from the outstanding-replenishment set when its
      * {@code ReplenishmentFulfilled} arrives. Idempotent on a line id that's
-     * already absent (redelivery).
+     * already absent (redelivery). {@code pegged} (§2.43) records whether this
+     * was an order-pegged completion (already reserved → ship without retry) or
+     * a shortage top-up (pool restocked → must retry reservation); a single
+     * non-pegged fulfilment latches {@link #sawNonPeggedReplenishment()}.
      */
-    public FulfilmentSagaData withReplenishmentLineFulfilled(UUID salesOrderLineId) {
+    public FulfilmentSagaData withReplenishmentLineFulfilled(UUID salesOrderLineId, boolean pegged) {
         if (!outstandingReplenishmentLineIds.contains(salesOrderLineId)) {
             return this;
         }
@@ -106,13 +117,26 @@ public record FulfilmentSagaData(
         return new FulfilmentSagaData(
             inventoryCancellationAcked,
             paymentTerms,
-            next
+            next,
+            sawNonPeggedReplenishment || !pegged
         );
     }
 
     /** True when every outstanding replenishment has been fulfilled. */
     public boolean allReplenishmentLinesFulfilled() {
         return outstandingReplenishmentLineIds.isEmpty();
+    }
+
+    /**
+     * True once at least one fulfilled line was a non-pegged (shortage) top-up,
+     * meaning that when the outstanding set empties the saga must retry
+     * reservation to claim the restocked pool rather than ship straight off the
+     * order-pegged peg. The record's own {@link #sawNonPeggedReplenishment()}
+     * accessor (normalised non-null by the compact constructor) is the backing
+     * value; this alias reads better at the decision site.
+     */
+    public boolean requiresReservationRetry() {
+        return sawNonPeggedReplenishment;
     }
 
     /** Inventory has acked the cancel — the saga can advance to {@code compensated}. */

@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 import com.northwood.inventory.application.StockBalanceWriter;
@@ -15,12 +16,16 @@ import com.northwood.inventory.domain.StockMovementDirection;
 import com.northwood.inventory.domain.StockMovementSourceTypes;
 import com.northwood.inventory.domain.StockMovementType;
 import com.northwood.inventory.domain.WarehouseCodes;
+import com.northwood.inventory.domain.ReplenishmentRequest;
+import com.northwood.inventory.domain.ReplenishmentRequest.DispatchedAggregateKind;
+import com.northwood.inventory.domain.ReplenishmentRequest.TargetService;
 import com.northwood.manufacturing.domain.ManufacturingAggregateTypes;
 import com.northwood.manufacturing.domain.events.WorkOrderManufacturingCompleted;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -91,6 +96,45 @@ class WorkOrderManufacturingCompletedHandlerTest {
         verify(wipBalances).bump(WAREHOUSE, PRODUCT, new BigDecimal("5"));
         verifyNoInteractions(stockBalances);
         verifyNoInteractions(movements);
+    }
+
+    private static ReplenishmentRequest dispatchedRequest(ReplenishmentRequest req) {
+        req.pullPendingEvents();
+        req.markDispatched(DispatchedAggregateKind.WORK_ORDER, WO);
+        req.pullPendingEvents();
+        return req;
+    }
+
+    @Test void order_pegged_completion_atomically_reserves_then_fulfils() {
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
+        ReplenishmentRequest req = dispatchedRequest(ReplenishmentRequest.requestForOrderPegged(
+            PRODUCT, WAREHOUSE, new BigDecimal("5"), TargetService.MANUFACTURING,
+            UUID.randomUUID(), UUID.randomUUID()));
+        when(replenishmentRequests.findByDispatchedAggregateId(WO)).thenReturn(Optional.of(req));
+        when(stockBalances.tryReserveOnHand(WAREHOUSE, PRODUCT, new BigDecimal("5"))).thenReturn(true);
+
+        handler.handle(event(null));
+
+        // Credit then peg-reserve the same qty, atomically (same tx).
+        verify(stockBalances).bump(WAREHOUSE, PRODUCT, new BigDecimal("5"));
+        verify(stockBalances).tryReserveOnHand(WAREHOUSE, PRODUCT, new BigDecimal("5"));
+        verify(replenishmentRequests).save(req);
+        assertThat(req.status()).isEqualTo(ReplenishmentRequest.Status.FULFILLED);
+    }
+
+    @Test void non_pegged_completion_credits_and_fulfils_without_reserving() {
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
+        ReplenishmentRequest req = dispatchedRequest(ReplenishmentRequest.requestForSalesOrderShortage(
+            PRODUCT, WAREHOUSE, new BigDecimal("5"), TargetService.MANUFACTURING,
+            UUID.randomUUID(), UUID.randomUUID()));
+        when(replenishmentRequests.findByDispatchedAggregateId(WO)).thenReturn(Optional.of(req));
+
+        handler.handle(event(null));
+
+        verify(stockBalances).bump(WAREHOUSE, PRODUCT, new BigDecimal("5"));
+        verify(stockBalances, never()).tryReserveOnHand(any(), any(), any());
+        verify(replenishmentRequests).save(req);
+        assertThat(req.status()).isEqualTo(ReplenishmentRequest.Status.FULFILLED);
     }
 
     @Test void already_processed_short_circuits() {
