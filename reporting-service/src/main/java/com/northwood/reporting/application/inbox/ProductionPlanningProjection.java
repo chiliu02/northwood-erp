@@ -39,7 +39,7 @@ public interface ProductionPlanningProjection {
         String reservationStatus,
         Instant occurredAt);
 
-    /** §3.5: write the new priority onto the row. */
+    /** Write the new priority onto the row. */
     void recordPriorityChanged(UUID workOrderId, String priority, Instant occurredAt);
 
     void recordShortageDetected(
@@ -49,7 +49,7 @@ public interface ProductionPlanningProjection {
         Instant occurredAt);
 
     /**
-     * §2.1: write the latest open-PO count for a work order onto its
+     * Write the latest open-PO count for a work order onto its
      * planning-board row. Driven by reporting handlers for shortage-driven
      * PO lifecycle events (created / goods received / paid). The count is
      * computed by the tracking projection ({@code countOpenForWorkOrder});

@@ -46,7 +46,7 @@ public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
             payload.occurredAt(),
             envelope.actorUserId()
         );
-        // §2.1: when a PO transitions to (or away from) 'received', recompute
+        // When a PO transitions to (or away from) 'received', recompute
         // open_purchase_orders_count for the source WO. Look up the source
         // from the just-updated tracking row — null means the PO wasn't
         // shortage-driven so the planning-board count doesn't apply.

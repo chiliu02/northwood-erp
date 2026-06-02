@@ -45,7 +45,7 @@ public interface AvailableToPromiseProjection {
         BigDecimal plannedQuantity, BigDecimal completedQuantity, Instant occurredAt);
 
     /**
-     * §3.4: backfill product identity from {@code product.ProductCreated}.
+     * Backfill product identity from {@code product.ProductCreated}.
      * If a stub row already exists ({@code product_sku='(pending)'}) from
      * a reservation event arriving before the product was registered, this
      * fills in the real SKU + name without disturbing accumulator columns.
@@ -53,7 +53,7 @@ public interface AvailableToPromiseProjection {
     void recordProductCreated(UUID productId, String sku, String name, Instant occurredAt);
 
     /**
-     * §1F.1: stamp {@code discontinued_at} so UI consumers can filter or
+     * Stamp {@code discontinued_at} so UI consumers can filter or
      * grey out the row. Upsert against {@code product_id}: if no row
      * exists yet (a discontinue can race ahead of any signal that would
      * have created one), inserts a stub row with {@code product_sku='(pending)'}

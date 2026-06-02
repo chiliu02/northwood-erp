@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * §2.35 Slice F: REST surface for the replenishment history view. Powers
+ * REST surface for the replenishment history view. Powers
  * the "Replenishment activity" widget on the stock-items page in both
  * SPAs (demo + erp).
  *

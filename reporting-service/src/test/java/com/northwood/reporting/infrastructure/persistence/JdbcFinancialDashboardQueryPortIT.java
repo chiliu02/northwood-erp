@@ -25,7 +25,7 @@ import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * §2.25 Tier 3: real-Postgres test for {@link JdbcFinancialDashboardQueryPort} —
+ * Real-Postgres test for {@link JdbcFinancialDashboardQueryPort} —
  * the one reporting query port with genuine aggregation. Covers the flat
  * {@code findByDate}/{@code findByCurrency} round-trip over
  * {@code financial_dashboard_daily}, and (the meaty part) {@code findSnapshot}'s

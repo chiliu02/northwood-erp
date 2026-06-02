@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.35 Slice F: reporting consumer of {@code inventory.ReplenishmentRequested}.
+ * Reporting consumer of {@code inventory.ReplenishmentRequested}.
  * Lands a new row in {@code reporting.replenishment_history_view} in
  * {@code 'requested'} status.
  */

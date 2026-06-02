@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.35 Slice F: reporting consumer of
+ * Reporting consumer of
  * {@code purchasing.ReplenishmentDispatched}. Flips the
  * {@code reporting.replenishment_history_view} row to {@code 'dispatched'}
  * and records the purchase-requisition id.

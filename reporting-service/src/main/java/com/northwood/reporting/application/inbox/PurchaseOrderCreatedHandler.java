@@ -42,7 +42,7 @@ public class PurchaseOrderCreatedHandler extends AbstractInboxHandler<PurchaseOr
             payload.occurredAt(),
             envelope.actorUserId()
         );
-        // §2.1: shortage-driven POs increment open_purchase_orders_count on
+        // Shortage-driven POs increment open_purchase_orders_count on
         // the source WO's planning-board row. We use the payload field
         // directly (faster than a roundtrip to the just-written tracking
         // row, and it carries the same value).

@@ -5,12 +5,11 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * §2.35 Slice F: read-side view of one row in the replenishment history.
+ * Read-side view of one row in the replenishment history.
  * SKU + product name are joined at query time from
  * {@code reporting.available_to_promise_view} (which already carries them
  * keyed by product_id). Null when the join finds no matching ATP row
- * (typically a SKU never sold or stocked elsewhere, which shouldn't happen
- * once §2.35 is in production but stays null-safe).
+ * (typically a SKU never sold or stocked elsewhere; stays null-safe).
  */
 public record ReplenishmentHistoryView(
     UUID replenishmentRequestId,

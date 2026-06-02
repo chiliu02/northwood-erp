@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §1F.3: dashboard consumer of {@code sales.CustomerDeactivated}. Stamps
+ * Dashboard consumer of {@code sales.CustomerDeactivated}. Stamps
  * the customer's row in {@code reporting.customer_dashboard_status} to
  * {@code 'inactive'} so dashboard widgets stop counting them in active-
  * customer totals.

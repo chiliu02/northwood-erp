@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §1F.1: ATP consumer of {@code product.ProductDiscontinued}. Stamps
+ * ATP consumer of {@code product.ProductDiscontinued}. Stamps
  * {@code reporting.available_to_promise_view.discontinued_at} so UI
  * consumers can filter / grey out the row.
  */

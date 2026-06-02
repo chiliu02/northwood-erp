@@ -25,7 +25,7 @@ import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * §2.25 Tier 3: real-Postgres test for {@link JdbcProductionPlanningQueryPort} —
+ * Real-Postgres test for {@link JdbcProductionPlanningQueryPort} —
  * a read-only CQRS query port over the inbox-fed {@code production_planning_board}
  * read model. Covers the column/type round-trip (incl. the nullable
  * sales-order linkage, the shortage counters and the {@code priority} CHECK

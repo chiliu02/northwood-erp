@@ -46,7 +46,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
         String eventType,
         String actorUserId
     ) {
-        // §2.31 Slice A: SalesOrderPlaced events produced before this slice
+        // SalesOrderPlaced events produced before payment-terms support was
         // shipped won't carry paymentTerms — default to 'on_shipment' so the
         // CHECK on the read-side column (and the view's NOT NULL) holds.
         String pt = paymentTerms == null ? "on_shipment" : paymentTerms;

@@ -5,9 +5,9 @@ import java.util.UUID;
 
 /**
  * Maintains {@code reporting.customer_dashboard_status} — one row per
- * customer-with-known-status. §1F.3 seeds rows from
+ * customer-with-known-status. The deactivation handler seeds rows from
  * {@code sales.CustomerDeactivated} (status = {@code 'inactive'},
- * {@code deactivated_at} stamped). A future §1F.4 {@code CustomerRegistered}
+ * {@code deactivated_at} stamped). A future {@code CustomerRegistered}
  * consumer will seed {@code 'active'} rows on registration.
  *
  * <p>Per-customer rather than a counter accumulator so the projection is

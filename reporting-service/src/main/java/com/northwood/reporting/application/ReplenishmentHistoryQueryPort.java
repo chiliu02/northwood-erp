@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * §2.35 Slice F: read-side query port over
+ * Read-side query port over
  * {@code reporting.replenishment_history_view}. SKU + product name are
  * joined at query time from {@code reporting.available_to_promise_view}
  * (the existing reporting projection that already carries those facts).

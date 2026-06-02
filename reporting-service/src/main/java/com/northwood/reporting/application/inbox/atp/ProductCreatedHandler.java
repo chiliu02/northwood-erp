@@ -9,7 +9,7 @@ import com.northwood.shared.application.messaging.EventEnvelope;
 import org.springframework.stereotype.Component;
 
 /**
- * §3.4: ATP consumer of {@code product.ProductCreated}. Fills in
+ * ATP consumer of {@code product.ProductCreated}. Fills in
  * {@code product_sku} + {@code product_name} on stub rows that an earlier
  * reservation event created (reservations don't carry product identity),
  * or creates a zero-quantity row so subsequent reservations land

@@ -5,9 +5,9 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * §2.35 Slice F: maintains {@code reporting.replenishment_history_view}. One
- * row per {@code inventory.ReplenishmentRequest}, advanced by the four §2.35
- * lifecycle events.
+ * Maintains {@code reporting.replenishment_history_view}. One
+ * row per {@code inventory.ReplenishmentRequest}, advanced by the four
+ * replenishment lifecycle events.
  *
  * <p>Order-tolerant by design: events arrive on independent Kafka topics
  * (inventory + manufacturing + purchasing), and even within one producer's

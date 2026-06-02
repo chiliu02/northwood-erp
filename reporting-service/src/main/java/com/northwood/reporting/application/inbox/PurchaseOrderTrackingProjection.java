@@ -28,7 +28,7 @@ public interface PurchaseOrderTrackingProjection {
         String actorUserId);
 
     /**
-     * §2.1: look up the source work-order id stamped on a PO's tracking row.
+     * Look up the source work-order id stamped on a PO's tracking row.
      * Returns empty when (a) no row exists yet (event-arrival race), or
      * (b) the PO wasn't shortage-driven. Callers chain this with
      * {@link #countOpenForWorkOrder} to recompute the planning-board count.
@@ -36,14 +36,14 @@ public interface PurchaseOrderTrackingProjection {
     java.util.Optional<UUID> findSourceWorkOrderForPo(UUID purchaseOrderHeaderId);
 
     /**
-     * §2.1: count open POs for a given work order. "Open" = po_status NOT IN
+     * Count open POs for a given work order. "Open" = po_status NOT IN
      * ('received', 'paid', 'cancelled'). Used to drive
      * {@code production_planning_board.open_purchase_orders_count}.
      */
     int countOpenForWorkOrder(UUID workOrderId);
 
     /**
-     * §1F.4: flip {@code po_status} to {@code 'sent'} and stamp
+     * Flip {@code po_status} to {@code 'sent'} and stamp
      * {@code approved_at} when {@code purchasing.PurchaseOrderApproved}
      * lands. Idempotent — redelivery re-stamps the same timestamp. Does
      * NOT create a row: if no tracking row exists yet (po-created handler

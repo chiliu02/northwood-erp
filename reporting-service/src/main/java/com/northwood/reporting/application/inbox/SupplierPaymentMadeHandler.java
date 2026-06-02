@@ -38,7 +38,7 @@ public class SupplierPaymentMadeHandler extends AbstractInboxHandler<SupplierPay
             payload.occurredAt(),
             envelope.actorUserId()
         );
-        // §2.1: when a PO transitions to 'paid', it stops counting toward the
+        // When a PO transitions to 'paid', it stops counting toward the
         // source WO's open_purchase_orders_count. Recompute from the
         // just-updated tracking row.
         projection.findSourceWorkOrderForPo(payload.purchaseOrderHeaderId())

@@ -24,7 +24,7 @@ import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * §2.25 Tier 3: real-Postgres test for {@link JdbcMaterialShortageQueryPort} —
+ * Real-Postgres test for {@link JdbcMaterialShortageQueryPort} —
  * a read-only CQRS query port over the inbox-fed {@code material_shortage_view}
  * read model. Covers the column/type round-trip, the {@code findActive}
  * {@code status <> 'resolved'} filter, and the load-bearing CASE-based status

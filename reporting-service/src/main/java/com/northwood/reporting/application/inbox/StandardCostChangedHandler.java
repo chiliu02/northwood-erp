@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.1 Slice 2: idempotent inbox handler for
+ * Idempotent inbox handler for
  * {@code product.StandardCostChanged}. Maintains reporting's
  * {@code product_card} cache so the financial-dashboard snapshot
  * can compute {@code inventory_value} without a cross-schema read into

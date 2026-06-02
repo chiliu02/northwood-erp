@@ -9,7 +9,7 @@ import com.northwood.shared.application.messaging.AbstractInboxHandler;
 import org.springframework.stereotype.Component;
 
 /**
- * §3.5: production-planning consumer of
+ * Production-planning consumer of
  * {@code manufacturing.WorkOrderPriorityChanged}. Updates
  * {@code production_planning_board.priority}.
  */

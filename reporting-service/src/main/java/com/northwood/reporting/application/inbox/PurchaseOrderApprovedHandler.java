@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §1F.4: PO-tracking consumer of {@code purchasing.PurchaseOrderApproved}.
+ * PO-tracking consumer of {@code purchasing.PurchaseOrderApproved}.
  * Flips {@code reporting.purchase_order_tracking_view.po_status} from
  * {@code 'draft'} to {@code 'sent'} and stamps {@code approved_at} when a
  * draft PO is manually approved via {@code POST /api/purchase-orders/{id}/approve}.

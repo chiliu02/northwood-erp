@@ -26,7 +26,7 @@ import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * §2.25 Tier 3: real-Postgres test for {@link JdbcSalesOrder360QueryPort} — a
+ * Real-Postgres test for {@link JdbcSalesOrder360QueryPort} — a
  * read-only CQRS query port over the inbox-fed {@code sales_order_360_view}
  * read model. Covers the column/type round-trip the {@code RowMapper} performs
  * (incl. the {@code boolean has_shortage}, the six status mirrors, the money
