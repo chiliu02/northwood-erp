@@ -201,6 +201,28 @@ CREATE TABLE product.product (
     -- service call.
     reorder_point NUMERIC(18, 4) NOT NULL DEFAULT 0,
     reorder_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    -- Replenishment strategy (REQ-PROD-022): orthogonal to make-vs-buy. The four
+    -- operator modes (make/buy × to-stock/to-order) are the cartesian product of
+    -- is_manufactured/is_purchased and this column — a derived view, not a stored
+    -- 4-value enum. NULL for services (axis is N/A); 'to_stock' default otherwise
+    -- (REQ-INV-090). Wire-format mirrors product.domain.ReplenishmentStrategy
+    -- .dbValue() (product-events). The three CONSTRAINTs below mirror the
+    -- invariant set enforced in the Product aggregate (changeReplenishmentStrategy).
+    replenishment_strategy VARCHAR(20) DEFAULT 'to_stock',
+    -- (1) services carry no strategy; everything else carries to_stock|to_order.
+    CONSTRAINT product_replenishment_strategy_domain CHECK (
+        (product_type = 'service' AND replenishment_strategy IS NULL)
+        OR (product_type <> 'service' AND replenishment_strategy IN ('to_stock', 'to_order'))
+    ),
+    -- (2) to_order is order-pegged to a sales-order line, so it must be sellable.
+    CONSTRAINT product_to_order_requires_sellable CHECK (
+        replenishment_strategy <> 'to_order' OR is_sellable
+    ),
+    -- (3) to_order has no independent reorder loop — demand is the SO.
+    CONSTRAINT product_to_order_zero_reorder CHECK (
+        replenishment_strategy <> 'to_order'
+        OR (reorder_point = 0 AND reorder_quantity = 0)
+    ),
     -- Shape A facets: valuation class drives finance's GL account selection;
     -- active BOM is the authoritative pointer (manufacturing keeps a parallel
     -- bom_header.is_active during the migration period); approved vendors
@@ -397,6 +419,14 @@ CREATE TABLE sales.product_card (
     product_id UUID PRIMARY KEY,
     sales_price NUMERIC(18, 6),
     currency_code CHAR(3),
+    -- Projected from product.ReplenishmentStrategyChanged (§2.43). The fulfilment
+    -- saga reads it to choose the free-stock reservation path ('to_stock') vs the
+    -- order-pegged supply path ('to_order'). Seeded 'to_stock' on ProductCreated;
+    -- never null (services are never sold). Light CHECK only — projections cache
+    -- facts, the source table carries the full invariant set.
+    replenishment_strategy VARCHAR(20) NOT NULL DEFAULT 'to_stock' CHECK (
+        replenishment_strategy IN ('to_stock', 'to_order')
+    ),
     discontinued_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

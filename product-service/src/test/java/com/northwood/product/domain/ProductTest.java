@@ -9,6 +9,7 @@ import com.northwood.product.domain.events.MakeVsBuyChanged;
 import com.northwood.product.domain.events.ProductCreated;
 import com.northwood.product.domain.events.ProductDiscontinued;
 import com.northwood.product.domain.events.ReorderPolicyChanged;
+import com.northwood.product.domain.events.ReplenishmentStrategyChanged;
 import com.northwood.product.domain.events.SalesPriceChanged;
 import com.northwood.product.domain.events.StandardCostChanged;
 import com.northwood.product.domain.events.ValuationClassChanged;
@@ -75,6 +76,18 @@ class ProductTest {
             assertThat(p.isPurchased()).isFalse();
             assertThat(p.isManufactured()).isFalse();
             assertThat(p.isSellable()).isFalse();
+        }
+
+        @Test void starts_to_stock_for_non_service() {
+            assertThat(newProduct().replenishmentStrategy()).isEqualTo(ReplenishmentStrategy.TO_STOCK);
+        }
+
+        @Test void starts_with_null_strategy_for_service() {
+            Product p = Product.register(
+                new Sku("SVC-001"), "Install service", "d", ProductType.SERVICE, UOM_EACH,
+                Money.zero(Currencies.AUD), Money.zero(Currencies.AUD)
+            );
+            assertThat(p.replenishmentStrategy()).isNull();
         }
 
         @Test void rejects_null_sku() {
@@ -366,6 +379,92 @@ class ProductTest {
     }
 
     @Nested
+    class ChangeReplenishmentStrategy {
+
+        /** Sellable, zero-reorder finished good — eligible to flip to to_order. */
+        private static Product sellableToStock() {
+            return Product.reconstitute(
+                ProductId.newId(), new Sku("FG-SELL-001"), "Sellable FG", null,
+                ProductType.FINISHED_GOOD, UOM_EACH,
+                true, false, true, /* sellable */ true,
+                Money.of(new BigDecimal("100"), Currencies.AUD), Money.of(new BigDecimal("60"), Currencies.AUD),
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                ReplenishmentStrategy.TO_STOCK, null, null,
+                Product.Status.ACTIVE, 1L,
+                List.of()
+            );
+        }
+
+        @Test void flips_to_order_and_emits_event() {
+            Product p = sellableToStock();
+            p.changeReplenishmentStrategy(ReplenishmentStrategy.TO_ORDER);
+            assertThat(p.replenishmentStrategy()).isEqualTo(ReplenishmentStrategy.TO_ORDER);
+            ReplenishmentStrategyChanged e = (ReplenishmentStrategyChanged) p.pullPendingEvents().get(0);
+            assertThat(e.oldReplenishmentStrategy()).isEqualTo("to_stock");
+            assertThat(e.newReplenishmentStrategy()).isEqualTo("to_order");
+        }
+
+        @Test void to_order_rejected_when_not_sellable() {
+            Product p = newProduct();   // sellable=false
+            assertThatThrownBy(() -> p.changeReplenishmentStrategy(ReplenishmentStrategy.TO_ORDER))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test void to_order_rejected_when_reorder_nonzero() {
+            Product p = Product.reconstitute(
+                ProductId.newId(), new Sku("FG-RO-001"), "FG", null,
+                ProductType.FINISHED_GOOD, UOM_EACH,
+                true, false, true, true,
+                Money.of(new BigDecimal("100"), Currencies.AUD), Money.of(new BigDecimal("60"), Currencies.AUD),
+                new BigDecimal("5"), new BigDecimal("20"),
+                ReplenishmentStrategy.TO_STOCK, null, null,
+                Product.Status.ACTIVE, 1L, List.of()
+            );
+            assertThatThrownBy(() -> p.changeReplenishmentStrategy(ReplenishmentStrategy.TO_ORDER))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test void service_product_rejects_non_null_strategy() {
+            Product svc = Product.register(
+                new Sku("SVC-001"), "Service", "d", ProductType.SERVICE, UOM_EACH,
+                Money.zero(Currencies.AUD), Money.zero(Currencies.AUD)
+            );
+            assertThatThrownBy(() -> svc.changeReplenishmentStrategy(ReplenishmentStrategy.TO_STOCK))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test void rejects_when_discontinued() {
+            Product p = sellableToStock();
+            p.discontinue();
+            assertThatThrownBy(() -> p.changeReplenishmentStrategy(ReplenishmentStrategy.TO_ORDER))
+                .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test void no_op_emits_nothing_when_unchanged() {
+            Product p = sellableToStock();
+            p.pullPendingEvents();
+            p.changeReplenishmentStrategy(ReplenishmentStrategy.TO_STOCK);
+            assertThat(p.pullPendingEvents()).isEmpty();
+        }
+
+        @Test void reorder_policy_rejects_nonzero_on_to_order_product() {
+            Product p = sellableToStock();
+            p.changeReplenishmentStrategy(ReplenishmentStrategy.TO_ORDER);
+            p.pullPendingEvents();
+            assertThatThrownBy(() -> p.changeReorderPolicy(new BigDecimal("5"), new BigDecimal("20")))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test void reorder_policy_allows_zero_on_to_order_product() {
+            Product p = sellableToStock();
+            p.changeReplenishmentStrategy(ReplenishmentStrategy.TO_ORDER);
+            p.pullPendingEvents();
+            p.changeReorderPolicy(BigDecimal.ZERO, BigDecimal.ZERO);   // no-op, but must not throw
+            assertThat(p.reorderPoint()).isEqualByComparingTo(BigDecimal.ZERO);
+        }
+    }
+
+    @Nested
     class ChangeValuationClass {
         @Test void rejects_null_class() {
             Product p = newProduct();
@@ -485,7 +584,7 @@ class ProductTest {
                 false, false, false, false,
                 Money.of(new BigDecimal("10"), Currencies.AUD), Money.of(new BigDecimal("5"), Currencies.AUD),
                 BigDecimal.ZERO, BigDecimal.ZERO,
-                null, null,
+                ReplenishmentStrategy.TO_STOCK, null, null,
                 Product.Status.ACTIVE, 1L,
                 List.of(existing)
             );
@@ -552,7 +651,7 @@ class ProductTest {
                 Money.of(new BigDecimal("10"), Currencies.AUD),
                 Money.of(new BigDecimal("5"), Currencies.AUD),
                 BigDecimal.ZERO, BigDecimal.ZERO,
-                ValuationClass.RAW_MATERIALS, null,
+                ReplenishmentStrategy.TO_STOCK, ValuationClass.RAW_MATERIALS, null,
                 Product.Status.ACTIVE, 5L,
                 List.of()
             );

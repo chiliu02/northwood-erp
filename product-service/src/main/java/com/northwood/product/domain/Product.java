@@ -15,6 +15,7 @@ import com.northwood.product.domain.events.ActiveBomChanged;
 import com.northwood.product.domain.events.MakeVsBuyChanged;
 import com.northwood.product.domain.events.ProductCreated;
 import com.northwood.product.domain.events.ProductDiscontinued;
+import com.northwood.product.domain.events.ReplenishmentStrategyChanged;
 import com.northwood.product.domain.events.SalesPriceChanged;
 import com.northwood.product.domain.events.StandardCostChanged;
 import com.northwood.product.domain.events.ReorderPolicyChanged;
@@ -82,6 +83,7 @@ public class Product {
     private Money standardCost;
     private BigDecimal reorderPoint;
     private BigDecimal reorderQuantity;
+    private ReplenishmentStrategy replenishmentStrategy;
     private ValuationClass valuationClass;
     private UUID activeBomId;
     private Status status;
@@ -123,6 +125,11 @@ public class Product {
             // setReorderPolicy once the SKU is configured.
             BigDecimal.ZERO,
             BigDecimal.ZERO,
+            // Replenishment strategy defaults to to_stock for anything stocked
+            // or produced (REQ-INV-090); services carry no strategy (the axis
+            // is N/A). The planning steward flips it to to_order via
+            // changeReplenishmentStrategy once the SKU is configured order-pegged.
+            productType == ProductType.SERVICE ? null : ReplenishmentStrategy.TO_STOCK,
             // Shape A facets default to null/unknown; the appropriate steward
             // sets each via the dedicated REST endpoint.
             null, null,
@@ -147,6 +154,7 @@ public class Product {
         boolean stocked, boolean purchased, boolean manufactured, boolean sellable,
         Money salesPrice, Money standardCost,
         BigDecimal reorderPoint, BigDecimal reorderQuantity,
+        ReplenishmentStrategy replenishmentStrategy,
         ValuationClass valuationClass, UUID activeBomId,
         Status status, long version,
         List<ApprovedVendor> approvedVendors
@@ -155,7 +163,7 @@ public class Product {
             stocked, purchased, manufactured, sellable,
             salesPrice, standardCost,
             reorderPoint, reorderQuantity,
-            valuationClass, activeBomId,
+            replenishmentStrategy, valuationClass, activeBomId,
             status, version);
         p.approvedVendors = List.copyOf(approvedVendors);
         return p;
@@ -167,6 +175,7 @@ public class Product {
         boolean stocked, boolean purchased, boolean manufactured, boolean sellable,
         Money salesPrice, Money standardCost,
         BigDecimal reorderPoint, BigDecimal reorderQuantity,
+        ReplenishmentStrategy replenishmentStrategy,
         ValuationClass valuationClass, UUID activeBomId,
         Status status, long version
     ) {
@@ -184,6 +193,7 @@ public class Product {
         this.standardCost = standardCost;
         this.reorderPoint = reorderPoint;
         this.reorderQuantity = reorderQuantity;
+        this.replenishmentStrategy = replenishmentStrategy;
         this.valuationClass = valuationClass;
         this.activeBomId = activeBomId;
         this.status = status;
@@ -251,6 +261,13 @@ public class Product {
         Assert.notNull(newReorderQuantity, "reorderQuantity");
         Assert.argument(newReorderPoint.signum() >= 0, "reorderPoint must be >= 0");
         Assert.argument(newReorderQuantity.signum() >= 0, "reorderQuantity must be >= 0");
+        // Cross-mutator invariant (REQ-PROD-022): a to_order product's demand is
+        // the sales order, so it carries no independent reorder loop. Keep the
+        // strategy and the policy from contradicting from this direction too.
+        Assert.argument(
+            replenishmentStrategy != ReplenishmentStrategy.TO_ORDER
+                || (newReorderPoint.signum() == 0 && newReorderQuantity.signum() == 0),
+            "Cannot set a non-zero reorder policy on a to_order product (demand is the sales order)");
         if (newReorderPoint.compareTo(this.reorderPoint) == 0
             && newReorderQuantity.compareTo(this.reorderQuantity) == 0) return;
         BigDecimal oldPoint = this.reorderPoint;
@@ -264,6 +281,50 @@ public class Product {
             newReorderPoint,
             oldQuantity,
             newReorderQuantity,
+            Instant.now()
+        ));
+    }
+
+    /**
+     * Set the replenishment strategy — {@code to_stock} (reorder-point driven)
+     * vs {@code to_order} (order-pegged). Orthogonal to make-vs-buy; the two
+     * axes combine into the four operator modes. Discontinued products reject
+     * the change. Emits {@link ReplenishmentStrategyChanged} with old + new
+     * wire-format values.
+     *
+     * <p>Enforces the REQ-PROD-022 invariant set (these live on the aggregate,
+     * not one setter, because they span the strategy / sellable / reorder-policy
+     * fields):
+     * <ul>
+     *   <li>{@code product_type = service ⇒ strategy IS NULL} — services aren't
+     *       stocked or produced, so the axis is N/A.</li>
+     *   <li>{@code to_order ⇒ is_sellable} — the peg target is a sales-order
+     *       line, and only sellable items get SO lines.</li>
+     *   <li>{@code to_order ⇒ reorder_point = 0 ∧ reorder_quantity = 0} — a
+     *       to_order item has no independent reorder loop.</li>
+     * </ul>
+     * The schema CHECKs on {@code product.product} mirror the same set.
+     */
+    public void changeReplenishmentStrategy(ReplenishmentStrategy newStrategy) {
+        Assert.state(status != Status.DISCONTINUED, "Cannot change replenishment strategy on a discontinued product");
+        if (productType == ProductType.SERVICE) {
+            Assert.argument(newStrategy == null, "A service product must have no replenishment strategy");
+        } else {
+            Assert.notNull(newStrategy, "replenishmentStrategy");
+        }
+        if (newStrategy == ReplenishmentStrategy.TO_ORDER) {
+            Assert.argument(sellable, "A to_order product must be sellable (the peg target is a sales-order line)");
+            Assert.argument(reorderPoint.signum() == 0 && reorderQuantity.signum() == 0,
+                "A to_order product must have zero reorder point and quantity (demand is the sales order)");
+        }
+        if (newStrategy == this.replenishmentStrategy) return;
+        ReplenishmentStrategy oldStrategy = this.replenishmentStrategy;
+        this.replenishmentStrategy = newStrategy;
+        pendingEvents.add(new ReplenishmentStrategyChanged(
+            UUID.randomUUID(),
+            id.value(),
+            oldStrategy == null ? null : oldStrategy.dbValue(),
+            newStrategy == null ? null : newStrategy.dbValue(),
             Instant.now()
         ));
     }
@@ -388,6 +449,7 @@ public class Product {
     public Money standardCost()            { return standardCost; }
     public BigDecimal reorderPoint()       { return reorderPoint; }
     public BigDecimal reorderQuantity()    { return reorderQuantity; }
+    public ReplenishmentStrategy replenishmentStrategy() { return replenishmentStrategy; }
     public ValuationClass valuationClass() { return valuationClass; }
     public UUID activeBomId()              { return activeBomId; }
     public Status status()                 { return status; }

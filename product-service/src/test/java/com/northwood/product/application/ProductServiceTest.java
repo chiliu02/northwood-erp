@@ -14,6 +14,7 @@ import com.northwood.product.domain.Product;
 import com.northwood.product.domain.ProductId;
 import com.northwood.product.domain.ProductRepository;
 import com.northwood.product.domain.ProductType;
+import com.northwood.product.domain.ReplenishmentStrategy;
 import com.northwood.product.domain.ValuationClass;
 import com.northwood.product.domain.events.ApprovedVendorListChanged;
 import com.northwood.product.domain.events.ActiveBomChanged;
@@ -21,6 +22,7 @@ import com.northwood.product.domain.events.MakeVsBuyChanged;
 import com.northwood.product.domain.events.ProductCreated;
 import com.northwood.product.domain.events.ProductDiscontinued;
 import com.northwood.product.domain.events.ReorderPolicyChanged;
+import com.northwood.product.domain.events.ReplenishmentStrategyChanged;
 import com.northwood.product.domain.events.SalesPriceChanged;
 import com.northwood.product.domain.events.StandardCostChanged;
 import com.northwood.product.domain.events.ValuationClassChanged;
@@ -71,7 +73,7 @@ class ProductServiceTest {
             Money.of(new BigDecimal("100.00"), Currencies.AUD),
             Money.of(new BigDecimal("60.00"), Currencies.AUD),
             new BigDecimal("5"), new BigDecimal("20"),
-            ValuationClass.FINISHED_GOODS, null,
+            ReplenishmentStrategy.TO_STOCK, ValuationClass.FINISHED_GOODS, null,
             Product.Status.ACTIVE, 1L,
             List.of()
         );
@@ -86,7 +88,7 @@ class ProductServiceTest {
             Money.of(new BigDecimal("100.00"), Currencies.AUD),
             Money.of(new BigDecimal("60.00"), Currencies.AUD),
             new BigDecimal("5"), new BigDecimal("20"),
-            ValuationClass.FINISHED_GOODS, null,
+            ReplenishmentStrategy.TO_STOCK, ValuationClass.FINISHED_GOODS, null,
             Product.Status.ACTIVE, 1L,
             vendors
         );
@@ -205,6 +207,55 @@ class ProductServiceTest {
         }
     }
 
+    @Nested class ChangeReplenishmentStrategy {
+
+        private Product sellableZeroReorder() {
+            return Product.reconstitute(
+                ProductId.of(PID), new Sku("FG-001"), "FG", null,
+                ProductType.FINISHED_GOOD, UOM_EA,
+                true, false, true, true,
+                Money.of(new BigDecimal("100"), Currencies.AUD), Money.of(new BigDecimal("60"), Currencies.AUD),
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                ReplenishmentStrategy.TO_STOCK, null, null,
+                Product.Status.ACTIVE, 1L, List.of()
+            );
+        }
+
+        @Test void flips_to_order_and_emits_event() {
+            Product p = sellableZeroReorder();
+            when(repo.findById(ProductId.of(PID))).thenReturn(Optional.of(p));
+
+            service.changeReplenishmentStrategy(PID, "to_order");
+
+            assertThat(p.replenishmentStrategy()).isEqualTo(ReplenishmentStrategy.TO_ORDER);
+            List<DomainEvent> events = savedEvents();
+            assertThat(events).hasSize(1).first().isInstanceOf(ReplenishmentStrategyChanged.class);
+        }
+
+        @Test void no_op_on_unchanged_strategy() {
+            Product p = sellableZeroReorder();
+            when(repo.findById(ProductId.of(PID))).thenReturn(Optional.of(p));
+
+            service.changeReplenishmentStrategy(PID, "to_stock");
+
+            verify(repo, never()).save(org.mockito.ArgumentMatchers.any());
+        }
+
+        @Test void rejects_unknown_strategy() {
+            Product p = sellableZeroReorder();
+            when(repo.findById(ProductId.of(PID))).thenReturn(Optional.of(p));
+            assertThatThrownBy(() -> service.changeReplenishmentStrategy(PID, "to_whenever"))
+                .isInstanceOf(IllegalArgumentException.class);
+            verify(repo, never()).save(org.mockito.ArgumentMatchers.any());
+        }
+
+        @Test void rejects_when_product_not_found() {
+            when(repo.findById(ProductId.of(PID))).thenReturn(Optional.empty());
+            assertThatThrownBy(() -> service.changeReplenishmentStrategy(PID, "to_order"))
+                .isInstanceOf(ProductService.ProductNotFoundException.class);
+        }
+    }
+
     @Nested class ChangeMakeVsBuy {
 
         @Test void flips_flags_and_emits_event() {
@@ -284,7 +335,7 @@ class ProductServiceTest {
                 true, false, true, true,
                 Money.of(new BigDecimal("100"), Currencies.AUD), Money.of(new BigDecimal("60"), Currencies.AUD),
                 BigDecimal.ZERO, BigDecimal.ZERO,
-                null, bomId,
+                ReplenishmentStrategy.TO_STOCK, null, bomId,
                 Product.Status.ACTIVE, 1L,
                 List.of()
             );
@@ -341,7 +392,7 @@ class ProductServiceTest {
                 true, false, true, true,
                 Money.of(new BigDecimal("100"), Currencies.AUD), Money.of(new BigDecimal("60"), Currencies.AUD),
                 BigDecimal.ZERO, BigDecimal.ZERO,
-                null, null,
+                ReplenishmentStrategy.TO_STOCK, null, null,
                 Product.Status.DISCONTINUED, 2L,
                 List.of()
             );

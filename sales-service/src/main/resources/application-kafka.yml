@@ -44,8 +44,9 @@ northwood:
     # Sales subscribes to:
     # - product.events     for ProductCreated (seed sales.product_card
     #   stub) + SalesPriceChanged (fill in price+currency) + ProductDiscontinued
-    #   (stamp discontinued_at). The three together make every row's lifetime
-    #   mirror the Product aggregate's.
+    #   (stamp discontinued_at) + ReplenishmentStrategyChanged (project
+    #   to_stock|to_order for the fulfilment saga, §2.43). These together make
+    #   every row's lifetime mirror the Product aggregate's.
     # - inventory.events   for StockReserved + ShipmentPosted (saga advances) +
     #   ReplenishmentFulfilled (retry reservation) / ReplenishmentCancelled
     #   (reject order) plus SalesOrderCancellationApplied (compensation ack

@@ -2,6 +2,7 @@ package com.northwood.product.api;
 
 import com.northwood.product.api.dto.ActivateBomRequest;
 import com.northwood.product.api.dto.ChangeMakeVsBuyRequest;
+import com.northwood.product.api.dto.ChangeReplenishmentStrategyRequest;
 import com.northwood.product.api.dto.ChangeSalesPriceRequest;
 import com.northwood.product.api.dto.ChangeStandardCostRequest;
 import com.northwood.product.api.dto.CreateProductRequest;
@@ -110,6 +111,16 @@ public class ProductController {
     @RequireCatalogManager
     public ResponseEntity<Void> discontinue(@PathVariable UUID id) {
         service.discontinue(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}/replenishment-strategy")
+    @RequireCatalogManager
+    public ResponseEntity<Void> changeReplenishmentStrategy(
+        @PathVariable UUID id,
+        @Valid @RequestBody ChangeReplenishmentStrategyRequest request
+    ) {
+        service.changeReplenishmentStrategy(id, request.replenishmentStrategy());
         return ResponseEntity.noContent().build();
     }
 

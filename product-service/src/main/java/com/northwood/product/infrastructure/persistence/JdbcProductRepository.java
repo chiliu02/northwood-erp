@@ -7,6 +7,7 @@ import com.northwood.product.domain.Product;
 import com.northwood.product.domain.ProductId;
 import com.northwood.product.domain.ProductRepository;
 import com.northwood.product.domain.ProductType;
+import com.northwood.product.domain.ReplenishmentStrategy;
 import com.northwood.product.domain.ValuationClass;
 import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
@@ -62,7 +63,7 @@ public class JdbcProductRepository implements ProductRepository {
                    is_stocked, is_purchased, is_manufactured, is_sellable,
                    sales_price, standard_cost,
                    reorder_point, reorder_quantity,
-                   valuation_class, active_bom_id,
+                   replenishment_strategy, valuation_class, active_bom_id,
                    status, version
             FROM product.product WHERE product_id = ?
             """,
@@ -95,7 +96,7 @@ public class JdbcProductRepository implements ProductRepository {
                    is_stocked, is_purchased, is_manufactured, is_sellable,
                    sales_price, standard_cost,
                    reorder_point, reorder_quantity,
-                   valuation_class, active_bom_id,
+                   replenishment_strategy, valuation_class, active_bom_id,
                    status, version
             FROM product.product
             ORDER BY sku
@@ -108,6 +109,7 @@ public class JdbcProductRepository implements ProductRepository {
         return (rs, n) -> {
             UUID pid = rs.getObject("product_id", UUID.class);
             String valuationClassDb = rs.getString("valuation_class");
+            String replenishmentStrategyDb = rs.getString("replenishment_strategy");
             return Product.reconstitute(
                 ProductId.of(pid),
                 new Sku(rs.getString("sku")),
@@ -123,6 +125,7 @@ public class JdbcProductRepository implements ProductRepository {
                 Money.of(rs.getBigDecimal("standard_cost"), Currencies.BASE_CURRENCY),
                 rs.getBigDecimal("reorder_point"),
                 rs.getBigDecimal("reorder_quantity"),
+                replenishmentStrategyDb == null ? null : ReplenishmentStrategy.fromDb(replenishmentStrategyDb),
                 valuationClassDb == null ? null : ValuationClass.fromDb(valuationClassDb),
                 rs.getObject("active_bom_id", UUID.class),
                 Product.Status.fromDb(rs.getString("status")),
@@ -195,10 +198,10 @@ public class JdbcProductRepository implements ProductRepository {
                     is_stocked, is_purchased, is_manufactured, is_sellable,
                     sales_price, standard_cost,
                     reorder_point, reorder_quantity,
-                    valuation_class, active_bom_id,
+                    replenishment_strategy, valuation_class, active_bom_id,
                     status, version,
                     created_by, last_modified_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 p.id().value(),
                 p.sku().value(),
@@ -209,6 +212,7 @@ public class JdbcProductRepository implements ProductRepository {
                 p.isStocked(), p.isPurchased(), p.isManufactured(), p.isSellable(),
                 p.salesPrice().amount(), p.standardCost().amount(),
                 p.reorderPoint(), p.reorderQuantity(),
+                p.replenishmentStrategy() == null ? null : p.replenishmentStrategy().dbValue(),
                 p.valuationClass() == null ? null : p.valuationClass().dbValue(),
                 p.activeBomId(),
                 p.status().dbValue(),
@@ -227,7 +231,7 @@ public class JdbcProductRepository implements ProductRepository {
                 is_stocked = ?, is_purchased = ?, is_manufactured = ?, is_sellable = ?,
                 sales_price = ?, standard_cost = ?,
                 reorder_point = ?, reorder_quantity = ?,
-                valuation_class = ?, active_bom_id = ?,
+                replenishment_strategy = ?, valuation_class = ?, active_bom_id = ?,
                 status = ?, version = version + 1,
                 last_modified_by = ?
             WHERE product_id = ? AND version = ?
@@ -236,6 +240,7 @@ public class JdbcProductRepository implements ProductRepository {
             p.isStocked(), p.isPurchased(), p.isManufactured(), p.isSellable(),
             p.salesPrice().amount(), p.standardCost().amount(),
             p.reorderPoint(), p.reorderQuantity(),
+            p.replenishmentStrategy() == null ? null : p.replenishmentStrategy().dbValue(),
             p.valuationClass() == null ? null : p.valuationClass().dbValue(),
             p.activeBomId(),
             p.status().dbValue(),

@@ -7,6 +7,7 @@ import com.northwood.product.domain.Product;
 import com.northwood.product.domain.ProductId;
 import com.northwood.product.domain.ProductRepository;
 import com.northwood.product.domain.ProductType;
+import com.northwood.product.domain.ReplenishmentStrategy;
 import com.northwood.product.domain.ValuationClass;
 import com.northwood.shared.application.exception.NotFoundException;
 import com.northwood.shared.domain.Assert;
@@ -176,6 +177,29 @@ public class ProductService {
             return;
         }
         product.changeValuationClass(parsed);
+        products.save(product);
+    }
+
+    /**
+     * Set the replenishment strategy. String at the controller seam (per the
+     * hex-layering rule — {@code api/} doesn't import the domain enum); the
+     * wire-format value parses into {@link ReplenishmentStrategy} here and is
+     * passed typed to the aggregate, which enforces the REQ-PROD-022 invariant
+     * set. An unknown wire value surfaces as {@link IllegalArgumentException}
+     * from {@code ReplenishmentStrategy.fromDb} — the schema CHECK on
+     * {@code product.product.replenishment_strategy} keeps the same set in sync.
+     */
+    @Transactional
+    public void changeReplenishmentStrategy(UUID productId, String replenishmentStrategy) {
+        Product product = products.findById(ProductId.of(productId))
+            .orElseThrow(() -> new ProductNotFoundException(productId));
+        ReplenishmentStrategy parsed = ReplenishmentStrategy.fromDb(replenishmentStrategy);
+        if (parsed == product.replenishmentStrategy()) {
+            log.debug("changeReplenishmentStrategy product_id={} ignored — value unchanged ({})",
+                productId, replenishmentStrategy);
+            return;
+        }
+        product.changeReplenishmentStrategy(parsed);
         products.save(product);
     }
 
