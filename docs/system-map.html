@@ -1,4 +1,4 @@
-    thi<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -2174,11 +2174,17 @@ window.NORTHWOOD_PROJECTIONS = [
       const src = srcEl.textContent || '';
       // Path filter: SalesOrderFulfilment (make-vs-buy + payment-terms) and
       // ReplenishmentRequest (targetService). The others have no filter.
+      // service drives the drill-down's handler correlation (an applyXxx
+      // transition resolves to that event's consumer in the saga's own service).
       let sagaOpts = null;
       if (block.querySelector('#' + SO_SAGA_SUMMARY_ID)) {
-        sagaOpts = { edgeConds: SO_EDGE_CONDS, filters: SO_FILTERS, note: SO_NOTE };
+        sagaOpts = { edgeConds: SO_EDGE_CONDS, filters: SO_FILTERS, note: SO_NOTE, service: 'sales' };
       } else if (block.querySelector('#' + RR_SAGA_SUMMARY_ID)) {
-        sagaOpts = { edgeConds: RR_EDGE_CONDS, filters: RR_FILTERS, note: RR_NOTE };
+        sagaOpts = { edgeConds: RR_EDGE_CONDS, filters: RR_FILTERS, note: RR_NOTE, service: 'inventory' };
+      } else if (block.querySelector('#saga-purchase-to-pay')) {
+        sagaOpts = { service: 'purchasing' };
+      } else if (block.querySelector('#saga-work-order')) {
+        sagaOpts = { service: 'manufacturing' };
       }
       let inst = null;
       block.addEventListener('toggle', function () {
@@ -2348,7 +2354,7 @@ window.NORTHWOOD_PROJECTIONS = [
       const bar = document.createElement('div');
       bar.className = 'saga-graph-toolbar';
       bar.innerHTML = '<button type="button">Re-layout</button>' +
-        '<span class="hint">drag a state to rearrange · scroll to zoom · drag the canvas to pan · drag the bottom edge to resize</span>';
+        '<span class="hint">click a state for details · drag to rearrange · scroll to zoom · drag the canvas to pan · drag the bottom edge to resize</span>';
       container.parentNode.insertBefore(bar, container);
       bar.querySelector('button').addEventListener('click', function () {
         // Re-arrange only what's currently visible (a path filter may be on).
@@ -2501,6 +2507,117 @@ window.NORTHWOOD_PROJECTIONS = [
         applyFilter();
       });
     }
+
+    // ── Transition-level drill-down (zoom level 3) ──────────────────────────
+    // Click a state to open a panel describing how it's entered and where it
+    // leads. For saga-manager transitions (applyXxx) we resolve the inbound
+    // event by the apply→EventName convention and cross-link the matching
+    // NORTHWOOD_EVENTS consumer in this saga's own service for the handler name
+    // + side-effects prose. Worker-/command-driven transitions are labelled as
+    // such; anything that doesn't resolve falls back to the raw transition (so
+    // the panel is never wrong, only sometimes un-enriched).
+    (function wireDrillDown() {
+      if (!document.getElementById('dd-style')) {
+        const st = document.createElement('style');
+        st.id = 'dd-style';
+        st.textContent =
+          '.saga-detail .dd-sec{font-weight:600;color:#656d76;text-transform:uppercase;font-size:10px;letter-spacing:.04em;margin:8px 0 3px;}' +
+          '.saga-detail .dd-list{list-style:none;margin:0;padding:0;}' +
+          '.saga-detail .dd-list>li{padding:5px 0;border-top:1px solid #eaeef2;}' +
+          '.saga-detail .dd-list>li:first-child{border-top:none;}' +
+          '.saga-detail .dd-arrow{color:#0969da;font-weight:700;margin-right:2px;}' +
+          '.saga-detail .dd-m{font-family:monospace;color:#1f2328;}' +
+          '.saga-detail .dd-c{color:#656d76;}' +
+          '.saga-detail .dd-evt{margin:3px 0 2px 18px;}' +
+          '.saga-detail .dd-h{margin:2px 0 2px 18px;}' +
+          '.saga-detail .dd-d{color:#3b4149;}' +
+          '.saga-detail .dd-note{color:#8c959f;font-style:italic;margin-left:18px;}' +
+          '.saga-detail code{background:#eaeef2;padding:0 3px;border-radius:3px;}';
+        document.head.appendChild(st);
+      }
+      const service = opts && opts.service;
+      const inbound = {}, outbound = {};
+      parsed.edges.forEach(function (e) {
+        (inbound[e.target] = inbound[e.target] || []).push(e);
+        (outbound[e.source] = outbound[e.source] || []).push(e);
+      });
+      function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>]/g, function (c) {
+          return c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;';
+        });
+      }
+      function methodOf(label) { const m = (label || '').match(/^([A-Za-z][A-Za-z0-9_]*)/); return m ? m[1] : (label || ''); }
+      function resolve(method) {
+        if (!/^apply[A-Z]/.test(method)) return null;
+        const ev = method.slice(5);
+        const events = window.NORTHWOOD_EVENTS || [];
+        let hits = events.filter(function (e) { return e.event === ev; });
+        if (!hits.length) {
+          const c = events.filter(function (e) { return e.event.endsWith(ev) || ev.endsWith(e.event); });
+          if (c.length === 1) hits = c;
+        }
+        const cons = [];
+        hits.forEach(function (h) {
+          (h.consumers || []).forEach(function (c) {
+            if (!service || c.dest === service) cons.push({ name: c.name, desc: c.desc });
+          });
+        });
+        return { event: hits.length ? (hits[0].source + '.' + hits[0].event) : ev, consumers: cons };
+      }
+      function transitionHtml(e, dir) {
+        const other = dir === 'in'
+          ? (e.source === '__start__' ? '(start)' : e.source)
+          : (e.target === '__end__' ? '(end)' : e.target);
+        const label = e.label || '';
+        const method = methodOf(label);
+        const cond = label.slice(method.length).trim();
+        let detail = '';
+        if (/^apply[A-Z]/.test(method)) {
+          const r = resolve(method);
+          if (r && r.consumers.length) {
+            detail = '<div class="dd-evt">on <code>' + esc(r.event) + '</code> → <code>' + esc(method) + '</code></div>' +
+              r.consumers.map(function (c) {
+                return '<div class="dd-h"><strong>' + esc(c.name) + '</strong><div class="dd-d">' + (c.desc || '') + '</div></div>';
+              }).join('');
+          } else {
+            detail = '<div class="dd-evt">on <code>' + esc(r ? r.event : method.slice(5)) +
+              '</code> → <code>' + esc(method) + '</code> <span class="dd-note">(no matching consumer in index)</span></div>';
+          }
+        } else if (/\(worker\)/.test(label)) {
+          detail = '<div class="dd-note">worker-driven (SagaWorker) — no inbound event</div>';
+        } else {
+          detail = '<div class="dd-note">command / aggregate method</div>';
+        }
+        return '<li><span class="dd-arrow">' + (dir === 'in' ? '←' : '→') + '</span><code>' + esc(other) + '</code> ' +
+          '<span class="dd-m">' + esc(method) + '</span>' + (cond ? ' <span class="dd-c">' + esc(cond) + '</span>' : '') + detail + '</li>';
+      }
+      const panel = document.createElement('div');
+      panel.className = 'saga-detail';
+      panel.style.cssText = 'display:none;margin-top:8px;padding:10px 12px;border:1px solid #d0d7de;border-radius:6px;background:#f6f8fa;font-size:12px;line-height:1.45;';
+      container.parentNode.insertBefore(panel, container.nextSibling);
+      function show(stateId) {
+        const ins = inbound[stateId] || [], outs = outbound[stateId] || [];
+        panel.innerHTML =
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+            '<strong style="font-size:13px;">' + esc(stateId) +
+              (service ? ' <span style="color:#656d76;font-weight:normal;">· ' + esc(service) + '</span>' : '') + '</strong>' +
+            '<button type="button" class="dd-x" style="border:none;background:none;cursor:pointer;font-size:16px;line-height:1;color:#656d76;">×</button>' +
+          '</div>' +
+          '<div class="dd-sec">Entered by</div><ul class="dd-list">' +
+            (ins.length ? ins.map(function (e) { return transitionHtml(e, 'in'); }).join('') : '<li class="dd-note">initial — no inbound transition</li>') +
+          '</ul>' +
+          '<div class="dd-sec">Leads to</div><ul class="dd-list">' +
+            (outs.length ? outs.map(function (e) { return transitionHtml(e, 'out'); }).join('') : '<li class="dd-note">terminal — no outbound transition</li>') +
+          '</ul>';
+        panel.style.display = 'block';
+        panel.querySelector('.dd-x').addEventListener('click', function () {
+          panel.style.display = 'none';
+          cy.$(':selected').unselect();
+        });
+      }
+      cy.on('tap', 'node.state', function (evt) { show(evt.target.id()); });
+      cy.on('tap', function (evt) { if (evt.target === cy) panel.style.display = 'none'; });
+    })();
 
     return { cy: cy, layoutOpts: layoutOpts };
   }
