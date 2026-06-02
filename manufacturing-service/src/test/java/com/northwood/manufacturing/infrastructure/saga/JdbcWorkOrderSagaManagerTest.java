@@ -124,7 +124,7 @@ class JdbcWorkOrderSagaManagerTest {
             var outcome = manager.unparkOrNarrowShortage(sagaId,
                 Map.of(PRODUCT, new BigDecimal("4")));
 
-            // §2.41: lands straight at raw_material_reservation_requested (not
+            // Lands straight at raw_material_reservation_requested (not
             // work_order_created) and carries the WO id for the handler to emit.
             assertThat(outcome.state()).isEqualTo(RAW_MATERIAL_RESERVATION_REQUESTED);
             assertThat(outcome.workOrderId()).isEqualTo(WO);

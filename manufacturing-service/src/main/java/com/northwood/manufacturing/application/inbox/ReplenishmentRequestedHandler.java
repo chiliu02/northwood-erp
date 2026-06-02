@@ -19,10 +19,9 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.35 Slice C: idempotent inbox handler for
- * {@code inventory.ReplenishmentRequested}. Filters on
- * {@code targetService = "manufacturing"}; for purchasing-routed requests
- * this is a no-op (purchasing has its own sibling handler in Slice D).
+ * Idempotent inbox handler for {@code inventory.ReplenishmentRequested}.
+ * Filters on {@code targetService = "manufacturing"}; for purchasing-routed
+ * requests this is a no-op (purchasing has its own sibling handler).
  *
  * <p>Releases a stock work order via
  * {@link WorkOrderReleaseService#releaseForReplenishment}. The aggregate
@@ -72,9 +71,9 @@ public class ReplenishmentRequestedHandler extends AbstractInboxHandler<Replenis
         UUID productId = payload.productId();
         Optional<BomHeaderIdentity> identity = boms.findActiveBomIdentity(productId);
         if (identity.isEmpty()) {
-            // §2.37 Slice 3: can't make it (no active BOM). Tell inventory so it
-            // cancels the request (ReplenishmentCancelled) — which for a
-            // sales_order_shortage request rejects the originating sales order.
+            // Can't make it (no active BOM). Tell inventory so it cancels the
+            // request (ReplenishmentCancelled) — which for a sales_order_shortage
+            // request rejects the originating sales order.
             String reason = "no active BOM for product " + productId + " — cannot release a work order";
             outbox.append(new ReplenishmentUndispatchable(
                 UUID.randomUUID(),

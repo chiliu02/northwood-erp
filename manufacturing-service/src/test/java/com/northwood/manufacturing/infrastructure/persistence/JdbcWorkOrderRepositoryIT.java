@@ -33,7 +33,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.25 Tier 2: real-Postgres test for the full {@link JdbcWorkOrderRepository}
+ * Real-Postgres test for the full {@link JdbcWorkOrderRepository}
  * aggregate — header + material requirements + planned operations. Complements
  * the focused {@link JdbcWorkOrderRepositoryMaterialStatusIT} (which guards only
  * the {@code material_status} column + its CHECK) by exercising the rest of the

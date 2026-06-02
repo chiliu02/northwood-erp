@@ -18,10 +18,10 @@ spring:
       # successfully (handler exception → no commit → redelivery; the inbox dedup
       # makes that safe). Full contract: docs/messaging.md → Consumer-side idempotency.
       auto-offset-reset: earliest
-    # §1D.2: turn on Spring Kafka's Micrometer observation so KafkaTemplate.send
-    # creates a producer span (W3C traceparent stamped on the record headers)
-    # and @KafkaListener-managed containers continue the trace via a consumer
-    # span. Combined with OutboxPublisher's per-row Observation wrap, every
+    # Turn on Spring Kafka's Micrometer observation so KafkaTemplate.send creates
+    # a producer span (W3C traceparent stamped on the record headers) and
+    # @KafkaListener-managed containers continue the trace via a consumer span.
+    # Combined with OutboxPublisher's per-row Observation wrap, every
     # cross-service event preserves trace context through the bus.
     template:
       observation-enabled: true
@@ -36,7 +36,7 @@ northwood:
       enabled: true                # activates OutboxDrainAutoConfiguration (drainer + scheduler)
   saga:
     poll-interval: 1000
-    # §2.13: claim-lease TTL + retry backoff for the @Scheduled saga worker.
+    # Claim-lease TTL + retry backoff for the @Scheduled saga worker.
     # Defaults shown; uncomment to override per environment (e.g. raise
     # lease-ttl under heavy load so a slow advance doesn't lose the lease).
     # lease-ttl-seconds: 30
@@ -45,20 +45,20 @@ northwood:
     # Manufacturing subscribes to:
     # - product.events    for MakeVsBuyChanged (Shape A make-vs-buy projection
     #   into manufacturing.product_card) and ApprovedVendorListChanged
-    #   (manufacturing.product_approved_vendor projection — read by the §2.8
-    #   Slice C materialsCost rollup engine).
+    #   (manufacturing.product_approved_vendor projection — read by the
+    #   materialsCost rollup engine).
     # - sales.events      for SalesOrderCancellationRequested (compensation —
-    #   cancel any WOs for the order). §2.37 Slice 3 retired the
-    #   ManufacturingRequested consumer (sales no longer drives WO release).
+    #   cancel any WOs for the order). The ManufacturingRequested consumer was
+    #   retired (sales no longer drives WO release).
     # - inventory.events  for ReplenishmentRequested (targetService=manufacturing
     #   → make-to-stock WO release) and RawMaterialsReserved (response to its own
     #   RawMaterialReservationRequested), which drives the WO-lifecycle saga
     #   from raw_material_reservation_requested onward.
-    # - purchasing.events for SupplierProductPriceChanged (§2.8 Slice C drives
-    #   the materialsCost rollup for purchased items off these).
+    # - purchasing.events for SupplierProductPriceChanged (drives the
+    #   materialsCost rollup for purchased items).
     subscribe-topics: product.events,sales.events,inventory.events,purchasing.events
     dlt:
       redrive:
-        enabled: true             # per-service DLT auto-redrive (§2.28 Tier 1.B): re-applies this
+        enabled: true             # per-service DLT auto-redrive: re-applies this
                                   # service's own dead-lettered records, parks the unrecoverable ones
 

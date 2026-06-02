@@ -40,7 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
  *       transaction.</li>
  * </ul>
  *
- * <p>Promoted from a row-shaped service 2026-05-16 (§2.16). Previously the
+ * <p>Promoted from a row-shaped service 2026-05-16. Previously the
  * state-machine invariants (status guards, line-number allocation, "at most
  * one active per product" via DB partial unique index) were spread across
  * this service and {@code BomEditRepository}; now they live on the
@@ -121,7 +121,7 @@ public class BomService {
     }
 
     /**
-     * §1.4 B.3: thrown when {@link #addLine} is called with a
+     * Thrown when {@link #addLine} is called with a
      * {@code componentProductId} that product-service has already discontinued.
      * Mirrors purchasing's {@code ProductDiscontinuedException} shape — a
      * planner shouldn't be allowed to author a draft BOM that names a
@@ -194,9 +194,9 @@ public class BomService {
 
     @Transactional
     public UUID addLine(UUID bomHeaderId, AddLineCommand command) {
-        // §1.4 B.3: reject discontinued components upfront. Mirrors
-        // purchasing's PR-entry gate; prevents authoring a BOM that names
-        // a retired SKU before the planner gets to activation.
+        // Reject discontinued components upfront. Mirrors purchasing's PR-entry
+        // gate; prevents authoring a BOM that names a retired SKU before the
+        // planner gets to activation.
         if (discontinuedProducts.isDiscontinued(command.componentProductId())) {
             throw new BomComponentDiscontinuedException(command.componentProductId(), command.componentSku());
         }
@@ -284,9 +284,9 @@ public class BomService {
         }
         log.info("activated bom_header {} for product {} ({} components)",
             bomHeaderId, bom.finishedProductSku(), bom.lineCount());
-        // §2.8 Slice D: kick off the materialsCost rollup in the same
-        // transaction as the activation. Walks parents recursively so a
-        // multi-level activation cascade reaches everything in one go.
+        // Kick off the materialsCost rollup in the same transaction as the
+        // activation. Walks parents recursively so a multi-level activation
+        // cascade reaches everything in one go.
         rollup.recomputeViaBom(bom.finishedProductId(), "bom_activated");
     }
 }

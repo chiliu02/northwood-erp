@@ -127,7 +127,7 @@ class WorkOrderTest {
             assertThat(created.salesOrderHeaderId()).isNull();
             assertThat(created.salesOrderLineId()).isNull();
             assertThat(created.replenishmentRequestId()).isEqualTo(replenishmentRequestId);
-            // §2.37 Slice 4: the originating SO is threaded onto WorkOrderCreated.
+            // The originating SO is threaded onto WorkOrderCreated.
             assertThat(created.sourceSalesOrderHeaderId()).isEqualTo(sourceSalesOrderHeaderId);
 
             ReplenishmentDispatched dispatched = (ReplenishmentDispatched) events.get(1);

@@ -31,8 +31,8 @@ public interface WorkOrderSagaManager {
      * pre-attached. Called from {@code WorkOrderReleaseService} for every work
      * order it releases — the root stock-replenishment WO and each sub-assembly
      * child during recursion (all make-to-stock, so the sales-order pair is
-     * null). §2.37 Slice 3 retired the {@code started}-entry path (the
-     * sales-driven {@code ManufacturingRequested} flow); the saga is now always
+     * null). The {@code started}-entry path (the sales-driven
+     * {@code ManufacturingRequested} flow) was retired; the saga is now always
      * entered here.
      */
     void insertAttachedToWorkOrder(
@@ -74,7 +74,7 @@ public interface WorkOrderSagaManager {
      * every entry is covered, otherwise saves the narrowed shortage and stays at
      * {@code raw_material_shortage}.
      *
-     * <p>§2.41: on un-park the saga lands directly at
+     * <p>On un-park the saga lands directly at
      * {@code raw_material_reservation_requested} (not {@code work_order_created},
      * which misleadingly read as "a new WO is created"). The caller
      * ({@code GoodsReceivedHandler}) re-emits {@code RawMaterialReservationRequested}

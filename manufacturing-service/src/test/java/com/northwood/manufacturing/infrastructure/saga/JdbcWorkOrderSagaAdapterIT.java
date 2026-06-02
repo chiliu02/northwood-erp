@@ -28,8 +28,8 @@ import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * §2.25 Tier 3: real-Postgres test for {@link JdbcWorkOrderSagaAdapter} —
- * same {@code claimDue} (FOR UPDATE SKIP LOCKED + lease) + optimistic-locked
+ * Real-Postgres test for {@link JdbcWorkOrderSagaAdapter} — same
+ * {@code claimDue} (FOR UPDATE SKIP LOCKED + lease) + optimistic-locked
  * {@code update} surface as the other two saga adapters. Its domain key
  * ({@code work_order_id}) is nullable until a work order is attached, so the
  * round-trip is asserted via {@code findBySagaId} and the keyed finder via a

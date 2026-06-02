@@ -33,7 +33,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.25 Tier 2: real-Postgres test for {@link JdbcBomRepository} — a mutable
+ * Real-Postgres test for {@link JdbcBomRepository} — a mutable
  * header + lines aggregate with the diff-based line persistence (DELETE removed
  * + INSERT added) and a {@code row_version} optimistic lock distinct from the
  * string {@code version} label. Covers the behaviour only a real DB exhibits:

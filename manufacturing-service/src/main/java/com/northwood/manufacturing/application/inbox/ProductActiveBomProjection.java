@@ -10,8 +10,8 @@ import java.util.UUID;
  *
  * <p>Read path: {@link #findActiveBomId(UUID)} returns the active BoM id
  * for a product, or {@link Optional#empty()} when no BoM has been activated
- * (typical for purchased-only items). The §2.8 Slice C rollup engine
- * routes purchased-vs-manufactured on the presence/absence of this row.
+ * (typical for purchased-only items). The rollup engine routes
+ * purchased-vs-manufactured on the presence/absence of this row.
  *
  * <p>Application-side port; JDBC implementation lives in
  * {@code infrastructure/persistence/JdbcProductActiveBomProjection}.

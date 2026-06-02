@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
  * Spring scheduling glue + worker-driven advance for the work-order saga.
  * Delegates the reservation-request side effect to
  * {@link RawMaterialReservationRequestEmitter} (shared with
- * {@code GoodsReceivedHandler} since §2.41); the saga state machine lives
+ * {@code GoodsReceivedHandler}); the saga state machine lives
  * on {@link WorkOrderSagaManager}.
  *
  * <p>Worker-driven advances:
@@ -29,8 +29,8 @@ import org.springframework.stereotype.Component;
  *       saga, park.</li>
  * </ul>
  *
- * <p>§2.37 Slice 3 removed the {@code started → work_order_created} leg (and the
- * sales-bound {@code WorkOrderReleaseService.release(...)} call it made): the
+ * <p>The {@code started → work_order_created} leg (and the sales-bound
+ * {@code WorkOrderReleaseService.release(...)} call it made) was removed: the
  * saga is no longer entered at {@code started} from a sales-driven
  * {@code ManufacturingRequested}. Every WO-lifecycle saga is now seeded at
  * {@code work_order_created} by {@code WorkOrderReleaseService.releaseForReplenishment}

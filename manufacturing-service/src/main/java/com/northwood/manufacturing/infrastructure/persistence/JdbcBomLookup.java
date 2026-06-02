@@ -97,7 +97,7 @@ public class JdbcBomLookup implements BomLookup {
     }
 
     /**
-     * §2.24.3: returns the entire active-BOM hierarchy in a single recursive
+     * Returns the entire active-BOM hierarchy in a single recursive
      * CTE — anchor row(s) are direct children of the root product's active
      * BOM, recursion descends via each component's own active BOM. Computes
      * cumulative quantity (running product of {@code quantity_per_finished_unit

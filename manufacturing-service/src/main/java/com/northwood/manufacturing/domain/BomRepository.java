@@ -4,7 +4,7 @@ import java.util.Optional;
 
 /**
  * DDD Repository for the {@link Bom} aggregate root. Promoted from a
- * row-level write port ({@code BomEditRepository}) 2026-05-16 (§2.16) —
+ * row-level write port ({@code BomEditRepository}) 2026-05-16 —
  * see {@link Bom}'s class Javadoc for the rationale.
  *
  * <p>{@link #save} persists header + line diff in one transaction:

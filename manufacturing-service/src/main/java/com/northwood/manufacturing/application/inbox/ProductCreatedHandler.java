@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §3.1: seed a default {@code manufacturing.product_card} row at
+ * Seed a default {@code manufacturing.product_card} row at
  * product registration so newly-registered products are sourceable from the
  * moment they're created — rather than the previous "no row → reject" default.
  *

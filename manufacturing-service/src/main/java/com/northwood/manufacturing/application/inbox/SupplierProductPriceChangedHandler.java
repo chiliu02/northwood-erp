@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.8 Slice C: drives the materialsCost rollup engine from
+ * Drives the materialsCost rollup engine from
  * {@code purchasing.SupplierProductPriceChanged}. Routing logic lives in
  * {@link MaterialsCostRollupService}; this handler is the
  * inbox-dedupe-deserialise glue.

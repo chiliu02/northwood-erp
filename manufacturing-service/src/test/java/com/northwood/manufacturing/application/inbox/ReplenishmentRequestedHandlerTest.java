@@ -107,9 +107,9 @@ class ReplenishmentRequestedHandlerTest {
     }
 
     @Test void sales_order_shortage_threads_source_so_onto_the_release_command() {
-        // §2.37 Slice 4: a sales-order-shortage replenishment carries the
-        // originating SO header; the handler threads it onto the command so
-        // WorkOrderCreated keeps the SO link for reporting.
+        // A sales-order-shortage replenishment carries the originating SO header;
+        // the handler threads it onto the command so WorkOrderCreated keeps the
+        // SO link for reporting.
         UUID sourceSo = UUID.randomUUID();
         when(boms.findActiveBomIdentity(PRODUCT))
             .thenReturn(Optional.of(new BomHeaderIdentity("FG-WIDGET-001", "Widget")));

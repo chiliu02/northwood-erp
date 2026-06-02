@@ -32,9 +32,9 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.5 Phase C: real-Postgres test for the §2.2 work-order material_status
- * projection (dev-done.md 2026-05-12). Specifically guards against a future
- * regression in {@link JdbcWorkOrderRepository#update} dropping the
+ * Real-Postgres test for the work-order material_status projection.
+ * Specifically guards against a future regression in
+ * {@link JdbcWorkOrderRepository#update} dropping the
  * {@code material_status = ?} column from its UPDATE SQL — which would
  * silently break the projection even though {@code WorkOrder.materialStatus}
  * was correctly mutated in memory.

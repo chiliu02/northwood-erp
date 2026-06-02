@@ -37,10 +37,10 @@ import org.springframework.transaction.annotation.Transactional;
  * are inserted at {@code work_order_created} with {@code work_order_id}
  * pre-attached so the next worker tick can advance them.
  *
- * <p>§2.37 Slice 3 removed the sales-order-bound {@code release(ReleaseCommand)}
- * path: sales no longer drives manufacturing directly — manufactured
- * sales-order shortages now flow through inventory's replenishment (make-to-
- * stock), which lands here via {@link #releaseForReplenishment}.
+ * <p>The sales-order-bound {@code release(ReleaseCommand)} path was removed:
+ * sales no longer drives manufacturing directly — manufactured sales-order
+ * shortages now flow through inventory's replenishment (make-to-stock),
+ * which lands here via {@link #releaseForReplenishment}.
  */
 @Service
 public class WorkOrderReleaseService {
@@ -87,24 +87,22 @@ public class WorkOrderReleaseService {
     }
 
     /**
-     * §2.35 Slice C / §2.37 Slice 1: release a stock-replenishment work order
-     * (make-to-stock — no sales-order line). Walks the active BOM with the same
-     * multi-level recursion as the make-to-order path ({@link #releaseInternal}):
-     * {@code raw} components become {@code work_order_material} rows; each
-     * {@code sub_assembly} component recursively spawns a child work order (its
-     * own BOM + routing snapshot) bound to its parent WO. Every work order —
-     * top-level and descendants — gets a {@code work_order_saga} seeded at
+     * Release a stock-replenishment work order (make-to-stock — no sales-order
+     * line). Walks the active BOM with the same multi-level recursion as the
+     * make-to-order path ({@link #releaseInternal}): {@code raw} components
+     * become {@code work_order_material} rows; each {@code sub_assembly}
+     * component recursively spawns a child work order (its own BOM + routing
+     * snapshot) bound to its parent WO. Every work order — top-level and
+     * descendants — gets a {@code work_order_saga} seeded at
      * {@code work_order_created} so the worker drives raw-material reservation →
-     * completion exactly like make-to-order. (Closes the §2.35 gap where
-     * replenishment WOs were created without a lifecycle saga and skipped
-     * sub-assemblies.)
+     * completion exactly like make-to-order.
      *
      * <p>The top-level WO carries the {@code replenishmentRequestId} and emits
      * {@code manufacturing.ReplenishmentDispatched} alongside
      * {@code WorkOrderCreated} (via {@link WorkOrder#releaseForReplenishment});
      * children carry only {@code parentWorkOrderId} and emit
      * {@code WorkOrderCreated}. The seeded sagas have a null sales-order pair
-     * (make-to-stock) — the schema permits it since §2.37 Slice 1.
+     * (make-to-stock).
      *
      * <p>Synchronous recursion inside this service's transaction: parent + all
      * descendants + their sagas + every outbox write commit together, or none do.

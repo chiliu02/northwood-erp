@@ -25,7 +25,7 @@ import tools.jackson.databind.ObjectMapper;
  * un-park (saga transitions to {@code raw_material_reservation_requested}) or
  * narrow the stashed shortage.
  *
- * <p>§2.41: on un-park this handler re-emits {@code RawMaterialReservationRequested}
+ * <p>On un-park this handler re-emits {@code RawMaterialReservationRequested}
  * via {@link RawMaterialReservationRequestEmitter} (the same emitter the worker
  * uses for the initial request) so inventory retries the reservation against the
  * now-restocked materials. Mirrors the sales saga's {@code ReplenishmentFulfilledHandler}
@@ -72,7 +72,7 @@ public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
                 sagaManager.unparkOrNarrowShortage(sagaId, receivedByProduct);
             if (RAW_MATERIAL_RESERVATION_REQUESTED.equals(outcome.state())) {
                 // Shortage fully covered — re-request reservation against the
-                // now-restocked materials (§2.41; mirrors the worker's emission).
+                // now-restocked materials (mirrors the worker's emission).
                 reservationEmitter.emitFor(outcome.workOrderId());
                 unparkedCount++;
             } else if (RAW_MATERIAL_SHORTAGE.equals(outcome.state())) {

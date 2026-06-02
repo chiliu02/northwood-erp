@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * §3.3: a parent work order has completed and consumed its sub-assembly
+ * A parent work order has completed and consumed its sub-assembly
  * children's outputs from WIP. Inventory consumes this event to decrement
  * {@code wip_balance.on_hand_quantity} for each sub-assembly product —
  * pairing with the WIP bumps that fire when each child WO completes.

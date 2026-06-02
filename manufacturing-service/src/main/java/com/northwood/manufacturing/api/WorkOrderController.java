@@ -66,7 +66,7 @@ public class WorkOrderController {
     }
 
     /**
-     * §3.5: skip an operation. From the WO state machine's perspective skipped
+     * Skip an operation. From the WO state machine's perspective skipped
      * counts the same as completed — earlier ops still gate later ones, and a
      * skipped last op closes the WO. No {@code OperationCompleted} event fires
      * for skipped ops; the WO-level {@code WorkOrderManufacturingCompleted}
@@ -84,7 +84,7 @@ public class WorkOrderController {
     }
 
     /**
-     * §3.5: re-prioritise a work order. Pure CQRS — emits
+     * Re-prioritise a work order. Pure CQRS — emits
      * {@code manufacturing.WorkOrderPriorityChanged}; the production
      * planning board projection picks it up and updates {@code priority}.
      * The WO aggregate itself doesn't track priority today (no

@@ -11,12 +11,11 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Idempotent inbox handler for {@code product.ActiveBomChanged}. Maintains
  * the {@code manufacturing.product_card.active_bom_header_id} column and, in the same
- * transaction, kicks off the §2.8 Slice D BoM rollup so the activated
- * product's materialsCost is computed immediately. Co-exists with
- * manufacturing's existing {@code bom_header.is_active} column during the
- * migration period.
+ * transaction, kicks off the BoM rollup so the activated product's
+ * materialsCost is computed immediately. Co-exists with manufacturing's
+ * existing {@code bom_header.is_active} column during the migration period.
  *
- * <p>Renamed from {@code BomActivatedHandler} 2026-05-14 (§2.13) to track
+ * <p>Renamed from {@code BomActivatedHandler} 2026-05-14 to track
  * the producer-side event rename; {@code CONSUMER_NAME} is unchanged
  * ({@code manufacturing.product-active-bom-projector}) — it was named
  * after the read-model column it maintains, not after the event, so the
@@ -44,10 +43,10 @@ public class ActiveBomChangedHandler extends AbstractInboxHandler<ActiveBomChang
     @Override
     protected void apply(ActiveBomChanged payload, EventEnvelope envelope) {
         projection.apply(payload.aggregateId(), payload.newBomHeaderId());
-        // §2.8 Slice D: a newly active BoM means materialsCost rolls up afresh.
-        // The recompute also walks parents, so a multi-level activation cascade
-        // (rare — typically one product activates at a time) reaches everything
-        // in a single transaction.
+        // A newly active BoM means materialsCost rolls up afresh. The recompute
+        // also walks parents, so a multi-level activation cascade (rare —
+        // typically one product activates at a time) reaches everything in a
+        // single transaction.
         rollup.recomputeViaBom(payload.aggregateId(), "bom_activated");
     }
 }

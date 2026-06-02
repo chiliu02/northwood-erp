@@ -44,7 +44,7 @@ import org.springframework.transaction.annotation.Transactional;
  * saga is advanced to {@code completed} here (no self-consuming inbox loop —
  * the saga is in manufacturing's bounded context).
  *
- * <p>§3.3 sub-assembly WIP consume: when a parent WO completes, this service
+ * <p>Sub-assembly WIP consume: when a parent WO completes, this service
  * also emits {@code manufacturing.SubAssembliesConsumed} listing each
  * immediate child's product + completedQuantity. Inventory consumes that
  * event to decrement {@code wip_balance.on_hand_quantity} — pairing with the
@@ -114,7 +114,7 @@ public class WorkOrderOperationService {
     }
 
     /**
-     * §3.5: skip an operation by sequence. Same WO-completion cascade as
+     * Skip an operation by sequence. Same WO-completion cascade as
      * {@link #completeOperation} — if this is the last op (and no children
      * pending), the WO transitions to {@code completed} and the saga / parent
      * cascade fires identically.
@@ -166,7 +166,7 @@ public class WorkOrderOperationService {
     }
 
     /**
-     * Post-completion hook. Advances the WO's own saga and (§3.3) emits
+     * Post-completion hook. Advances the WO's own saga and emits
      * {@code SubAssembliesConsumed} if this WO is a parent that just
      * consumed its sub-assembly children's outputs.
      */

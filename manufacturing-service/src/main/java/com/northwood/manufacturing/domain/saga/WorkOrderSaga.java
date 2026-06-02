@@ -16,12 +16,12 @@ import java.util.UUID;
  * created by {@code WorkOrderReleaseService}); the worker drives
  * {@code work_order_created → raw_material_reservation_requested → …}.
  *
- * <p>§2.37 Slice 3 retired the {@code started} entry state: it only existed for
- * the sales-driven make-to-order path (a {@code ManufacturingRequested} seeded
+ * <p>The {@code started} entry state was retired: it only existed for the
+ * sales-driven make-to-order path (a {@code ManufacturingRequested} seeded
  * a saga at {@code started}, which then released the WO). Sales-order shortages
  * now route through inventory's replenishment (make-to-stock), so every saga is
- * seeded directly at {@code work_order_created}. (Saga is now a misnomer — it
- * serves make-to-stock too; §2.39 tracks the rename.)
+ * seeded directly at {@code work_order_created}. (The name "Saga" is now a
+ * misnomer — it serves make-to-stock too; a rename may follow.)
  */
 public final class WorkOrderSaga extends SagaInstance {
 

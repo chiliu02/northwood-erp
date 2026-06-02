@@ -5,7 +5,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * §2.35 Slice C: emitted alongside {@link WorkOrderCreated} when manufacturing's
+ * Emitted alongside {@link WorkOrderCreated} when manufacturing's
  * {@code ReplenishmentRequestedHandler} releases a stock work order in
  * response to an {@code inventory.ReplenishmentRequested} event.
  *

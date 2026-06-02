@@ -24,7 +24,7 @@ import tools.jackson.databind.ObjectMapper;
  *   <li>{@code active_bom_header_id = null} — equivalent in effect to an
  *       {@code ActiveBomChanged} with a null newBomHeaderId, so any consumer
  *       reading the active BOM gets the empty signal too.</li>
- *   <li><b>§1.4 B.2 parent-BOM cascade:</b> queries
+ *   <li><b>Parent-BOM cascade:</b> queries
  *       {@link BomLookup#findParentProductIdsByComponent(UUID)} for finished
  *       products whose active BOM lists the discontinued product as a
  *       component, and clears each parent's

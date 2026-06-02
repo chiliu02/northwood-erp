@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * §2.8 Slice C: read endpoint for the manufacturing-owned materialsCost.
+ * Read endpoint for the manufacturing-owned materialsCost.
  * The ERP UI's product detail page fetches this alongside the rest of the
  * product master from product-service; the BFF stitches the two together.
  *

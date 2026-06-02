@@ -11,7 +11,7 @@ package com.northwood.manufacturing.domain;
  * {@code manufacturing-events} jar is the only cross-service contract surface
  * for manufacturing's wire constants.
  *
- * <p>Convention introduced 2026-05-16 (§2.20).
+ * <p>Convention introduced 2026-05-16.
  */
 public final class ManufacturingAggregateTypes {
 

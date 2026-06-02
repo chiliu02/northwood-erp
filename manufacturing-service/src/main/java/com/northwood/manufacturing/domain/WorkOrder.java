@@ -230,7 +230,7 @@ public final class WorkOrder {
     }
 
     /**
-     * §2.35 Slice C: release a new work order against an
+     * Release a new work order against an
      * {@link com.northwood.inventory.domain.ReplenishmentRequest}
      * (a stock-replenishment WO; no sales-order line). Emits BOTH
      * {@link WorkOrderCreated} (with {@code replenishmentRequestId} populated)

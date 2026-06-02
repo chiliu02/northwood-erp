@@ -14,7 +14,7 @@ import java.util.UUID;
  * lines removed), {@code ACTIVE} (frozen; work orders snapshot from it at
  * release time), {@code INACTIVE} (superseded by a later active version).
  *
- * <p>Promoted from a row-level write port 2026-05-16 (§2.16). Previously
+ * <p>Promoted from a row-level write port 2026-05-16. Previously
  * {@code BomEditRepository} carried row-shaped methods ({@code insertHeader},
  * {@code insertLine}, {@code markActive}) and the application service held the
  * state-machine invariants. Now the aggregate owns the state machine; the
@@ -29,7 +29,7 @@ import java.util.UUID;
  * application service's transaction <em>after</em> {@code save()} — the
  * detector sees the just-persisted state and the surrounding {@code @Transactional}
  * rolls back the save on a positive cycle finding. This is a documented
- * deviation from the §2.16 backlog's "pass {@code BomCycleDetector} into
+ * deviation from the original "pass {@code BomCycleDetector} into
  * {@link #activate} as a method parameter" wording: that shape would require
  * the aggregate to walk other aggregates' data, which is exactly what
  * domain services exist to externalise. The application service owns the

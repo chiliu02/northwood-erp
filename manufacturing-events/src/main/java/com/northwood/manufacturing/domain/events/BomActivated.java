@@ -17,10 +17,10 @@ import java.util.UUID;
  * (planning audit, BOM-change notifications, etc.) can attach without
  * changing the aggregate.
  *
- * <p>Introduced 2026-05-16 (§2.16). Wire-format name {@code manufacturing.BomActivated}
+ * <p>Introduced 2026-05-16. Wire-format name {@code manufacturing.BomActivated}
  * does not collide with the retired {@code product.BomActivated} (renamed to
- * {@code product.ActiveBomChanged} in §2.13) — different service prefix,
- * different semantics.
+ * {@code product.ActiveBomChanged}) — different service prefix, different
+ * semantics.
  */
 public record BomActivated(
     UUID eventId,

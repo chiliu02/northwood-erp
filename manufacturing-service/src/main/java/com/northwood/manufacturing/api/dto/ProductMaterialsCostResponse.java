@@ -5,7 +5,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * §2.8 Slice C: read model for {@code GET /api/products/{id}/materials-cost}.
+ * Read model for {@code GET /api/products/{id}/materials-cost}.
  * {@code materialsCost} and {@code currencyCode} are nullable together —
  * the UI renders "—" / "n/a" when {@code reason="inputs_missing"}.
  */

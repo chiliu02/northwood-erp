@@ -5,9 +5,9 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * §2.37 Slice 3: manufacturing could not release a stock-replenishment work
- * order for the {@code inventory.ReplenishmentRequest} it was dispatched —
- * the product has no active BOM. Inventory consumes this and cancels the
+ * Manufacturing could not release a stock-replenishment work order for the
+ * {@code inventory.ReplenishmentRequest} it was dispatched — the product has
+ * no active BOM. Inventory consumes this and cancels the
  * originating request ({@code ReplenishmentRequest.markCancelled}, emitting
  * {@code inventory.ReplenishmentCancelled}); for a {@code sales_order_shortage}
  * request that cancellation flips the sales order to {@code rejected}.

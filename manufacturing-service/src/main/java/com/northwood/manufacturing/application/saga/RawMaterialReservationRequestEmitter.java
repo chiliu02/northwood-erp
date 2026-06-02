@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
 /**
  * Builds and appends {@code RawMaterialReservationRequested} for a work order.
  *
- * <p>§2.41: shared by the two paths that ask inventory to reserve a WO's raw
+ * <p>Shared by the two paths that ask inventory to reserve a WO's raw
  * materials, so the event-construction logic lives in exactly one place:
  * <ul>
  *   <li>the {@code WorkOrderSagaWorker}, on the initial

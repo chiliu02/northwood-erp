@@ -5,7 +5,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * §3.5: a work order's priority has changed. Pure CQRS read-side concern —
+ * A work order's priority has changed. Pure CQRS read-side concern —
  * the WO aggregate doesn't track priority (no manufacturing decision flow
  * depends on it today), so the event is emitted directly by the service
  * without an aggregate state mutation. Reporting's production planning

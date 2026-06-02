@@ -16,7 +16,7 @@ import java.util.UUID;
  * <ul>
  *   <li><b>Manual</b> — {@code salesOrderHeaderId}, {@code salesOrderLineId},
  *       {@code replenishmentRequestId} all {@code null}.</li>
- *   <li><b>Stock replenishment (§2.35)</b> — {@code replenishmentRequestId}
+ *   <li><b>Stock replenishment</b> — {@code replenishmentRequestId}
  *       populated, {@code salesOrderHeaderId}/{@code salesOrderLineId} null.
  *       Inventory's close-the-loop handler consumes this shape (alongside the
  *       sibling {@code manufacturing.ReplenishmentDispatched}); reporting's
@@ -24,16 +24,16 @@ import java.util.UUID;
  * </ul>
  *
  * <p>The make-to-order shape ({@code salesOrderHeaderId}/{@code salesOrderLineId}
- * populated) was retired in §2.37 Slice 3 — sales-order shortages now flow
- * through inventory's make-to-stock replenishment, so those two fields are
- * always null going forward (kept on the wire + the CHECK set for back-compat).
+ * populated) was retired — sales-order shortages now flow through inventory's
+ * make-to-stock replenishment, so those two fields are always null going
+ * forward (kept on the wire + the CHECK set for back-compat).
  *
  * <p>{@code parentWorkOrderId} is {@code null} for top-level work orders
  * and non-null for sub-assembly children spawned by recursion in the release
  * service.
  *
- * <p>{@code sourceSalesOrderHeaderId} (§2.37 Slice 4) is the sales order whose
- * shortage triggered this make-to-stock replenishment WO — non-null only on the
+ * <p>{@code sourceSalesOrderHeaderId} is the sales order whose shortage
+ * triggered this make-to-stock replenishment WO — non-null only on the
  * top-level replenishment WO (alongside {@code replenishmentRequestId}), null
  * for sub-assembly children and for reorder-point / WO-shortage replenishments.
  * Distinct from {@code salesOrderHeaderId} (the retired make-to-order binding,

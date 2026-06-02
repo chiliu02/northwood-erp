@@ -26,7 +26,7 @@
             <artifactId>shared-kernel</artifactId>
         </dependency>
         <!--
-            Cross-service stamping deps (§2.20, 2026-05-16).
+            Cross-service stamping deps (added 2026-05-16).
             Two events in this jar stamp aggregates owned by other services:
               - ManufacturingDispatched.AGGREGATE_TYPE = SalesAggregateTypes.SALES_ORDER
               - ProductMaterialsCostComputed.AGGREGATE_TYPE = ProductAggregateTypes.PRODUCT

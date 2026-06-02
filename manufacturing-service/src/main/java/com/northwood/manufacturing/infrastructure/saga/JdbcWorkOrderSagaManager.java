@@ -39,7 +39,7 @@ public class JdbcWorkOrderSagaManager
     /**
      * Lease + backoff durations are overridable via
      * {@code northwood.saga.lease-ttl-seconds} (default 30s) and
-     * {@code northwood.saga.retry-backoff-seconds} (default 15s) — §2.13.
+     * {@code northwood.saga.retry-backoff-seconds} (default 15s).
      */
     public JdbcWorkOrderSagaManager(
         WorkOrderSagaPort sagaPort,
@@ -54,7 +54,7 @@ public class JdbcWorkOrderSagaManager
 
     @Override
     protected Set<String> activeStates() {
-        // §2.37 Slice 3 dropped STARTED — the saga is now always entered at
+        // STARTED was dropped — the saga is now always entered at
         // work_order_created (make-to-stock replenishment), never via a
         // sales-driven ManufacturingRequested.
         return Set.of(WORK_ORDER_CREATED);
@@ -119,7 +119,7 @@ public class JdbcWorkOrderSagaManager
         UnparkDecision decision = decideUnpark(saga, receivedByProductId);
         switch (decision) {
             case UNPARK -> {
-                // §2.41: land directly at raw_material_reservation_requested and
+                // Land directly at raw_material_reservation_requested and
                 // re-park (mirroring the worker after it emits) — the
                 // GoodsReceivedHandler re-emits RawMaterialReservationRequested
                 // for this work order. Previously bounced through

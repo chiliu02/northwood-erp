@@ -14,14 +14,14 @@ import java.util.UUID;
  * Read port for the active BOM of a finished product. Returns enough detail
  * to snapshot {@code work_order_material} rows at release time. Deliberately
  * not a full BOM aggregate yet — that lands when manufacturing grows BOM-edit
- * commands and the cycle-prevention DFS (see dev-todo).
+ * commands and the cycle-prevention DFS.
  */
 public interface BomLookup {
 
     Optional<ActiveBom> findActiveByFinishedProductId(UUID finishedProductId);
 
     /**
-     * §2.8 Slice D: products whose <em>active</em> BoM lists {@code componentProductId}
+     * Products whose <em>active</em> BoM lists {@code componentProductId}
      * as a line. Used by {@code MaterialsCostRollupService} to walk up from a
      * component whose materials cost just changed and recompute every parent.
      *
@@ -47,7 +47,7 @@ public interface BomLookup {
     }
 
     /**
-     * §2.24.3: returns every component in the active BOM hierarchy rooted at
+     * Returns every component in the active BOM hierarchy rooted at
      * {@code rootProductId} in one read. Each row carries its position in the
      * tree (depth + holding BOM + the component's own active BOM if it has
      * one) plus the cumulative per-finished-unit quantity multiplied through

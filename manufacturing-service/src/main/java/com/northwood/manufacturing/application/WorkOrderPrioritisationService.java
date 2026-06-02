@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * §3.5: sets a work order's priority. The WO aggregate doesn't currently
+ * Sets a work order's priority. The WO aggregate doesn't currently
  * model priority (no manufacturing decision flow consumes it), so this
  * is a pure CQRS read-side slice: the service validates the WO exists +
  * the priority is one of the allowed values, then writes a

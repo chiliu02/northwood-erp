@@ -22,7 +22,7 @@ import java.util.UUID;
 public interface ProductReplenishmentProjection {
 
     /**
-     * §3.1: seed a default row at product registration so the
+     * Seed a default row at product registration so the
      * {@code findByProductId.empty() == reject} default no longer rejects
      * newly registered products. Mapping computed by {@link #defaultsFor}.
      *
@@ -36,7 +36,7 @@ public interface ProductReplenishmentProjection {
     void applyMakeVsBuy(UUID productId, boolean isPurchased, boolean isManufactured);
 
     /**
-     * §1F.1: retire the product from manufacturing. Flips both flags to
+     * Retire the product from manufacturing. Flips both flags to
      * {@code false} so {@code ManufacturingRequestedHandler}'s
      * {@code !isManufactured()} guard rejects subsequent lines, and so the
      * cost-rollup engine treats the product as buy-blocked too. Equivalent

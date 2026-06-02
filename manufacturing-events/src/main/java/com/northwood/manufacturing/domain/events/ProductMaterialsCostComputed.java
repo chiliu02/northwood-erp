@@ -7,11 +7,10 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * §2.8 Slice C: emitted by the manufacturing-side materialsCost rollup
- * engine whenever a product's computed cost transitions to a new value
- * (or to/from null). The cost itself lives on
- * {@code manufacturing.product_card} (manufacturing's own data
- * of record) — the event is the public contract so other services /
+ * Emitted by the manufacturing-side materialsCost rollup engine whenever a
+ * product's computed cost transitions to a new value (or to/from null). The
+ * cost itself lives on {@code manufacturing.product_card} (manufacturing's own
+ * data of record) — the event is the public contract so other services /
  * read-models can react.
  *
  * <p>{@code materialsCost} and {@code currencyCode} are nullable together:
@@ -42,7 +41,7 @@ public record ProductMaterialsCostComputed(
      * Wire-format aggregate-type. Sourced from {@link ProductAggregateTypes#PRODUCT}
      * — manufacturing-service cannot import product-service's {@code Product}
      * aggregate class, but it can import the constants in {@code product-events}
-     * (the contract surface). Per §2.20 (2026-05-16).
+     * (the contract surface).
      */
     public static final String AGGREGATE_TYPE = ProductAggregateTypes.PRODUCT;
 
