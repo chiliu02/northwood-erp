@@ -19,10 +19,10 @@ import java.util.UUID;
  *
  * <p>{@code aggregateId} is the replenishment_request_id.
  *
- * <p>{@code sourceSalesOrderHeaderId} is the sales order whose shortage
- * triggered this replenishment — non-null only for
- * {@code reason = sales_order_shortage}. Manufacturing threads it onto the
- * make-to-stock {@code WorkOrderCreated} so reporting's production-planning
+ * <p>{@code sourceSalesOrderHeaderId} is the sales order whose demand
+ * triggered this replenishment — non-null for {@code reason =
+ * sales_order_shortage} and {@code reason = order_pegged} (§2.43). Manufacturing
+ * threads it onto the {@code WorkOrderCreated} so reporting's production-planning
  * board keeps the SO↔WO link the make-to-order path used to carry directly.
  *
  * <p>Cross-service wire-format constants live on this class because consumers
@@ -49,6 +49,8 @@ public record ReplenishmentRequested(
     public static final String REASON_REORDER_POINT_BREACH = "reorder_point_breach";
     public static final String REASON_WORK_ORDER_SHORTAGE = "work_order_shortage";
     public static final String REASON_SALES_ORDER_SHORTAGE = "sales_order_shortage";
+    /** Order-pegged (to_order) demand — dedicated supply for one SO line, never the shared pool (§2.43). */
+    public static final String REASON_ORDER_PEGGED = "order_pegged";
 
     @Override public String eventType() { return EVENT_TYPE; }
 }

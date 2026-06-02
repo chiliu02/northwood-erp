@@ -242,7 +242,8 @@ public class SalesOrderFulfilmentSagaWorker {
                 s.productId(),
                 s.productSku(),
                 s.productName(),
-                s.orderedQuantity()
+                s.orderedQuantity(),
+                s.pegged()
             ));
         }
 

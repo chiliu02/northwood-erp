@@ -85,6 +85,30 @@ public class StockReservationService {
 
         List<StockReservationLine> lines = new ArrayList<>();
         for (StockReservationRequested.RequestedLine req : payload.lines()) {
+            if (req.pegged()) {
+                // Order-pegged (to_order, §2.43): the line NEVER draws from the
+                // shared pool. Record it as a full-shortage (zero-reserved) line
+                // and raise a dedicated, order-pegged replenishment for the FULL
+                // line qty, routed by make-vs-buy. Peg-on-completion (slices C/D)
+                // reserves the eventual output for this SO line; until then the
+                // line behaves to sales exactly like an awaiting-replenishment
+                // shortage line (parks the saga at stock_reservation_incomplete).
+                lines.add(new StockReservationLine(
+                    UUID.randomUUID(),
+                    req.productId(), req.productSku(), req.productName(),
+                    req.requestedQuantity(), BigDecimal.ZERO, req.requestedQuantity(),
+                    StockReservation.Status.FAILED
+                ));
+                replenishmentDetection.raiseForOrderPegged(
+                    req.productId(),
+                    warehouseId,
+                    req.requestedQuantity(),
+                    payload.salesOrderId(),
+                    req.salesOrderLineId()
+                );
+                continue;
+            }
+
             StockReservationLine line = reserveOneLine(
                 warehouseId,
                 UUID.randomUUID(),

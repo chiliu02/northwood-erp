@@ -189,13 +189,55 @@ public class ReplenishmentDetectionService {
         UUID sourceSalesOrderHeaderId,
         UUID sourceSalesOrderLineId
     ) {
+        raiseSalesOrderBacked(productId, warehouseId, quantity,
+            sourceSalesOrderHeaderId, sourceSalesOrderLineId, Reason.SALES_ORDER_SHORTAGE);
+    }
+
+    /**
+     * Order-pegged ({@code to_order}) trigger (§2.43). Called by
+     * {@link StockReservationService#reserveForSalesOrder} for each pegged line
+     * <em>instead of</em> the free-stock reservation: the line never draws from
+     * the shared pool, so this raises dedicated supply for the FULL line
+     * quantity, routed by make-vs-buy. Same back-reference + per-line
+     * multiplicity + unsourceable-cancel handling as
+     * {@link #raiseForSalesOrderShortage}; only the {@code reason} differs
+     * ({@code order_pegged}), which is what tells the peg-on-completion step
+     * (slices C/D) to earmark the eventual output to the SO line.
+     */
+    @Transactional(propagation = Propagation.REQUIRED)
+    public void raiseForOrderPegged(
+        UUID productId,
+        UUID warehouseId,
+        BigDecimal quantity,
+        UUID sourceSalesOrderHeaderId,
+        UUID sourceSalesOrderLineId
+    ) {
+        raiseSalesOrderBacked(productId, warehouseId, quantity,
+            sourceSalesOrderHeaderId, sourceSalesOrderLineId, Reason.ORDER_PEGGED);
+    }
+
+    /**
+     * Shared body for the two sales-order-backed triggers (shortage top-up vs
+     * order-pegged dedicated supply). Routes via make-vs-buy and stamps the
+     * sales-order line back-reference; unsourceable SKUs emit
+     * {@code ReplenishmentCancelled} so sales' fan-in flips the order to
+     * {@code rejected} rather than parking forever.
+     */
+    private void raiseSalesOrderBacked(
+        UUID productId,
+        UUID warehouseId,
+        BigDecimal quantity,
+        UUID sourceSalesOrderHeaderId,
+        UUID sourceSalesOrderLineId,
+        Reason reason
+    ) {
         Optional<Replenishment> flags = productCards.findByProductId(productId);
         if (flags.isEmpty()) {
             cancelUnsourceableSalesOrderShortage(productId, sourceSalesOrderHeaderId, sourceSalesOrderLineId,
                 "no inventory.product_card row for product " + productId + " — make-vs-buy unknown");
             log.warn("no inventory.product_card row for product_id={} — cannot classify make-vs-buy, "
-                + "cancelling sales-order-shortage replenishment (qty={}, warehouse_id={}, sales_order={}, sales_order_line={})",
-                productId, quantity, warehouseId, sourceSalesOrderHeaderId, sourceSalesOrderLineId);
+                + "cancelling {} replenishment (qty={}, warehouse_id={}, sales_order={}, sales_order_line={})",
+                productId, reason.dbValue(), quantity, warehouseId, sourceSalesOrderHeaderId, sourceSalesOrderLineId);
             return;
         }
         boolean purchased = flags.get().isPurchased();
@@ -204,8 +246,8 @@ public class ReplenishmentDetectionService {
             cancelUnsourceableSalesOrderShortage(productId, sourceSalesOrderHeaderId, sourceSalesOrderLineId,
                 "product " + productId + " is unsourceable (is_purchased=false, is_manufactured=false)");
             log.warn("unsourceable SKU product_id={} (is_purchased=false, is_manufactured=false) — "
-                + "cancelling sales-order-shortage replenishment (qty={}, warehouse_id={}, sales_order={}, sales_order_line={})",
-                productId, quantity, warehouseId, sourceSalesOrderHeaderId, sourceSalesOrderLineId);
+                + "cancelling {} replenishment (qty={}, warehouse_id={}, sales_order={}, sales_order_line={})",
+                productId, reason.dbValue(), quantity, warehouseId, sourceSalesOrderHeaderId, sourceSalesOrderLineId);
             return;
         }
 
@@ -213,12 +255,14 @@ public class ReplenishmentDetectionService {
         // integrated SKUs default to manufacturing.
         TargetService target = manufactured ? TargetService.MANUFACTURING : TargetService.PURCHASING;
 
-        ReplenishmentRequest r = ReplenishmentRequest.requestForSalesOrderShortage(
-            productId, warehouseId, quantity, target, sourceSalesOrderHeaderId, sourceSalesOrderLineId
-        );
+        ReplenishmentRequest r = reason == Reason.ORDER_PEGGED
+            ? ReplenishmentRequest.requestForOrderPegged(
+                productId, warehouseId, quantity, target, sourceSalesOrderHeaderId, sourceSalesOrderLineId)
+            : ReplenishmentRequest.requestForSalesOrderShortage(
+                productId, warehouseId, quantity, target, sourceSalesOrderHeaderId, sourceSalesOrderLineId);
         replenishmentRequests.save(r);
-        log.info("raised sales-order-shortage replenishment_request {} for product_id={} warehouse_id={} qty={} → {} (sales_order={}, sales_order_line={})",
-            r.id().value(), productId, warehouseId, quantity, target.dbValue(),
+        log.info("raised {} replenishment_request {} for product_id={} warehouse_id={} qty={} → {} (sales_order={}, sales_order_line={})",
+            reason.dbValue(), r.id().value(), productId, warehouseId, quantity, target.dbValue(),
             sourceSalesOrderHeaderId, sourceSalesOrderLineId);
     }
 

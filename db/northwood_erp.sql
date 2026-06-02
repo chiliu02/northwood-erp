@@ -773,12 +773,14 @@ CREATE TABLE inventory.replenishment_request (
     warehouse_id                UUID NOT NULL REFERENCES inventory.warehouse(warehouse_id),
     requested_quantity          NUMERIC(18, 4) NOT NULL CHECK (requested_quantity > 0),
     target_service              VARCHAR(20) NOT NULL CHECK (target_service IN ('manufacturing', 'purchasing')),
-    -- sales_order_shortage is the third reason — a sales order line short on
-    -- stock for a purchased-only SKU. Distinct from reorder_point_breach
-    -- (proactive policy-driven) and work_order_shortage (manufacturing's
-    -- raw-material bridge); these are reactive demand-driven requests carrying
-    -- a source-line back-reference so the sales saga can un-park on fulfilment.
-    reason                      VARCHAR(40) NOT NULL CHECK (reason IN ('reorder_point_breach', 'work_order_shortage', 'sales_order_shortage')),
+    -- sales_order_shortage is a sales order line short on stock for a SKU that
+    -- builds/buys to stock. order_pegged (§2.43) is the to_order sibling: the
+    -- line never draws from the shared pool — sales raises dedicated supply for
+    -- the FULL line qty, earmarked to that line (peg-on-completion in slices
+    -- C/D). Both carry a source-line back-reference so the sales saga can
+    -- un-park on fulfilment; distinct from reorder_point_breach (proactive
+    -- policy-driven) and work_order_shortage (manufacturing's raw-material bridge).
+    reason                      VARCHAR(40) NOT NULL CHECK (reason IN ('reorder_point_breach', 'work_order_shortage', 'sales_order_shortage', 'order_pegged')),
     status                      VARCHAR(20) NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'dispatched', 'fulfilled', 'cancelled')),
     dispatched_aggregate_kind   VARCHAR(30) CHECK (dispatched_aggregate_kind IN ('work_order', 'purchase_requisition')),
     dispatched_aggregate_id     UUID,
@@ -804,15 +806,15 @@ CREATE TABLE inventory.replenishment_request (
 
 -- One-open invariant: at most one open (requested / dispatched) request
 -- per (product, warehouse) for the proactive policy-driven and WO-shortage
--- paths — re-triggering while a request is pending is a no-op. Sales-
--- order-shortage requests are EXCLUDED from this constraint: every short
--- SO line raises its own request (back-referenced to the line) so the
--- sales saga can wait for ITS specific replenishment to land, even when
--- multiple sales orders are short on the same SKU.
+-- paths — re-triggering while a request is pending is a no-op. Demand-driven
+-- per-line requests (sales_order_shortage AND order_pegged, §2.43) are
+-- EXCLUDED: every such SO line raises its own request (back-referenced to the
+-- line) so the sales saga can wait for ITS specific replenishment to land,
+-- even when multiple sales orders demand the same SKU.
 CREATE UNIQUE INDEX uq_replenishment_request_open
     ON inventory.replenishment_request (product_id, warehouse_id)
     WHERE status IN ('requested', 'dispatched')
-      AND reason <> 'sales_order_shortage';
+      AND reason NOT IN ('sales_order_shortage', 'order_pegged');
 
 CREATE INDEX idx_replenishment_request_dispatched_aggregate
     ON inventory.replenishment_request (dispatched_aggregate_id)

@@ -1,5 +1,6 @@
 package com.northwood.sales.application.saga;
 
+import com.northwood.product.domain.ReplenishmentStrategy;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
@@ -23,12 +24,27 @@ public interface SalesOrderLineSnapshotPort {
      */
     List<LineSnapshot> findLines(UUID salesOrderHeaderId);
 
+    /**
+     * @param replenishmentStrategy the product's {@code to_stock} | {@code to_order}
+     *     strategy, projected onto {@code sales.product_card} (§2.43). Drives the
+     *     reserve-step branch via {@link #pegged()}.
+     */
     record LineSnapshot(
         UUID salesOrderLineId,
         int lineNumber,
         UUID productId,
         String productSku,
         String productName,
-        BigDecimal orderedQuantity
-    ) {}
+        BigDecimal orderedQuantity,
+        String replenishmentStrategy
+    ) {
+        /**
+         * True when the product is order-pegged ({@code to_order}) — the
+         * fulfilment saga raises dedicated supply for this line rather than
+         * reserving from free stock.
+         */
+        public boolean pegged() {
+            return ReplenishmentStrategy.TO_ORDER.dbValue().equals(replenishmentStrategy);
+        }
+    }
 }

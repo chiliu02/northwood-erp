@@ -28,12 +28,19 @@ public record StockReservationRequested(
 
     @Override public String eventType() { return EVENT_TYPE; }
 
+    /**
+     * @param pegged order-pegged ({@code to_order}, §2.43): inventory must NOT
+     *     reserve this line from the shared pool — it raises dedicated supply for
+     *     the full quantity, earmarked to the SO line. {@code false} = today's
+     *     make/buy-to-stock free-stock reservation path.
+     */
     public record RequestedLine(
         UUID salesOrderLineId,
         int lineNumber,
         UUID productId,
         String productSku,
         String productName,
-        BigDecimal requestedQuantity
+        BigDecimal requestedQuantity,
+        boolean pegged
     ) {}
 }

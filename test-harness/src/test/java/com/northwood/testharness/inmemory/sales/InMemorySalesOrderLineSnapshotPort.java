@@ -1,5 +1,6 @@
 package com.northwood.testharness.inmemory.sales;
 
+import com.northwood.product.domain.ReplenishmentStrategy;
 import com.northwood.sales.application.saga.SalesOrderLineSnapshotPort;
 import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.SalesOrderId;
@@ -37,7 +38,12 @@ public final class InMemorySalesOrderLineSnapshotPort implements SalesOrderLineS
                 line.productId(),
                 line.productSku(),
                 line.productName(),
-                line.orderedQuantity()
+                line.orderedQuantity(),
+                // The in-memory SalesOrder aggregate doesn't carry the product's
+                // replenishment strategy (it's a product-master facet projected
+                // onto sales.product_card); harness E2E flows are to_stock, so
+                // default it. A to_order E2E test would set this explicitly.
+                ReplenishmentStrategy.TO_STOCK.dbValue()
             ));
         }
         return out;

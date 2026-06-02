@@ -142,6 +142,32 @@ class ReplenishmentRequestTest {
                 PRODUCT, WAREHOUSE, QTY, TargetService.PURCHASING, UUID.randomUUID(), null
             )).isInstanceOf(IllegalArgumentException.class);
         }
+
+        @Test void request_rejects_order_pegged_reason() {
+            assertThatThrownBy(() -> ReplenishmentRequest.request(
+                PRODUCT, WAREHOUSE, QTY, TargetService.MANUFACTURING, Reason.ORDER_PEGGED
+            ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requestForOrderPegged");
+        }
+
+        @Test void requestForOrderPegged_stamps_back_reference_and_reason() {
+            UUID salesOrderHeaderId = UUID.randomUUID();
+            UUID salesOrderLineId = UUID.randomUUID();
+            ReplenishmentRequest r = ReplenishmentRequest.requestForOrderPegged(
+                PRODUCT, WAREHOUSE, QTY, TargetService.MANUFACTURING, salesOrderHeaderId, salesOrderLineId
+            );
+            assertThat(r.status()).isEqualTo(Status.REQUESTED);
+            assertThat(r.reason()).isEqualTo(Reason.ORDER_PEGGED);
+            assertThat(r.sourceSalesOrderHeaderId()).isEqualTo(salesOrderHeaderId);
+            assertThat(r.sourceSalesOrderLineId()).isEqualTo(salesOrderLineId);
+        }
+
+        @Test void requestForOrderPegged_rejects_null_header_id() {
+            assertThatThrownBy(() -> ReplenishmentRequest.requestForOrderPegged(
+                PRODUCT, WAREHOUSE, QTY, TargetService.MANUFACTURING, null, UUID.randomUUID()
+            )).isInstanceOf(IllegalArgumentException.class);
+        }
     }
 
     @Nested

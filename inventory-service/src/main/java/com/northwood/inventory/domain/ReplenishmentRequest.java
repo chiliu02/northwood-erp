@@ -112,12 +112,21 @@ public final class ReplenishmentRequest {
         WORK_ORDER_SHORTAGE("work_order_shortage"),
         /**
          * A sales order line is short on stock — the saga's partial-reservation
-         * path routes purchased-only shortages through inventory (symmetric to
-         * the manufacturing branch). The {@code source_sales_order_line_id}
-         * column carries the back-reference so the eventual
-         * {@code ReplenishmentFulfilled} can un-park the fulfilment saga.
+         * path routes shortages through inventory (routed by make-vs-buy). The
+         * {@code source_sales_order_line_id} column carries the back-reference so
+         * the eventual {@code ReplenishmentFulfilled} can un-park the fulfilment
+         * saga.
          */
-        SALES_ORDER_SHORTAGE("sales_order_shortage");
+        SALES_ORDER_SHORTAGE("sales_order_shortage"),
+        /**
+         * An order-pegged ({@code to_order}) sales-order line (§2.43). Unlike
+         * {@link #SALES_ORDER_SHORTAGE}, the line never draws from the shared
+         * pool: sales raises dedicated supply for the FULL line quantity,
+         * earmarked to that line. Same back-reference + per-line multiplicity as
+         * sales_order_shortage; the peg-on-completion step (slices C/D) reserves
+         * the eventual output for the SO line.
+         */
+        ORDER_PEGGED("order_pegged");
 
         private final String dbValue;
 
@@ -173,19 +182,19 @@ public final class ReplenishmentRequest {
     private final Reason reason;
     /**
      * Sales-order back-reference (saga key). Non-null iff
-     * {@code reason == SALES_ORDER_SHORTAGE} — identifies the sales-order
-     * header whose fulfilment saga is awaiting this replenishment. Sales is
-     * keyed by header id, not line id, so this is what the fan-in handler
-     * uses to find the saga. Sibling of {@link #sourceSalesOrderLineId}
+     * {@code reason ∈ {SALES_ORDER_SHORTAGE, ORDER_PEGGED}} — identifies the
+     * sales-order header whose fulfilment saga is awaiting this replenishment.
+     * Sales is keyed by header id, not line id, so this is what the fan-in
+     * handler uses to find the saga. Sibling of {@link #sourceSalesOrderLineId}
      * (same nullable semantic).
      */
     private final UUID sourceSalesOrderHeaderId;
     /**
      * Sales-order back-reference (line within the saga). Non-null iff
-     * {@code reason == SALES_ORDER_SHORTAGE} — identifies the specific
-     * sales-order line on the addressed saga so the fan-in handler can
+     * {@code reason ∈ {SALES_ORDER_SHORTAGE, ORDER_PEGGED}} — identifies the
+     * specific sales-order line on the addressed saga so the fan-in handler can
      * remove just that line's entry from the saga's
-     * {@code outstandingPurchasingLineIds} set.
+     * {@code outstandingReplenishmentLineIds} set.
      */
     private final UUID sourceSalesOrderLineId;
     private Status status;
@@ -210,8 +219,8 @@ public final class ReplenishmentRequest {
         TargetService targetService,
         Reason reason
     ) {
-        Assert.argument(reason != Reason.SALES_ORDER_SHORTAGE,
-            "use requestForSalesOrderShortage(...) for SALES_ORDER_SHORTAGE reason");
+        Assert.argument(reason == Reason.REORDER_POINT_BREACH || reason == Reason.WORK_ORDER_SHORTAGE,
+            "use requestForSalesOrderShortage(...) / requestForOrderPegged(...) for sales-order-backed reasons");
         return doRequest(productId, warehouseId, requestedQuantity, targetService, reason, null, null);
     }
 
@@ -234,6 +243,28 @@ public final class ReplenishmentRequest {
         Assert.notNull(sourceSalesOrderLineId, "sourceSalesOrderLineId");
         return doRequest(productId, warehouseId, requestedQuantity, targetService,
             Reason.SALES_ORDER_SHORTAGE, sourceSalesOrderHeaderId, sourceSalesOrderLineId);
+    }
+
+    /**
+     * Factory: raise a dedicated, order-pegged replenishment for a {@code to_order}
+     * sales-order line (§2.43). Same shape + back-references as
+     * {@link #requestForSalesOrderShortage} but {@code reason = ORDER_PEGGED} —
+     * the request is for the FULL line quantity and the eventual output is
+     * pegged to the SO line on completion (slices C/D). Emits
+     * {@link ReplenishmentRequested}.
+     */
+    public static ReplenishmentRequest requestForOrderPegged(
+        UUID productId,
+        UUID warehouseId,
+        BigDecimal requestedQuantity,
+        TargetService targetService,
+        UUID sourceSalesOrderHeaderId,
+        UUID sourceSalesOrderLineId
+    ) {
+        Assert.notNull(sourceSalesOrderHeaderId, "sourceSalesOrderHeaderId");
+        Assert.notNull(sourceSalesOrderLineId, "sourceSalesOrderLineId");
+        return doRequest(productId, warehouseId, requestedQuantity, targetService,
+            Reason.ORDER_PEGGED, sourceSalesOrderHeaderId, sourceSalesOrderLineId);
     }
 
     private static ReplenishmentRequest doRequest(

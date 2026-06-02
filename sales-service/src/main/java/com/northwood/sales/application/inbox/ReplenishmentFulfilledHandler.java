@@ -105,7 +105,8 @@ public class ReplenishmentFulfilledHandler extends AbstractInboxHandler<Replenis
                 s.productId(),
                 s.productSku(),
                 s.productName(),
-                s.orderedQuantity()
+                s.orderedQuantity(),
+                s.pegged()
             ));
         }
         outbox.append(new StockReservationRequested(

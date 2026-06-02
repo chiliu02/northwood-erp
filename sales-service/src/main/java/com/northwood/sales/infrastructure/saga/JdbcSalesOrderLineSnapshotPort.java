@@ -25,10 +25,13 @@ public class JdbcSalesOrderLineSnapshotPort implements SalesOrderLineSnapshotPor
         List<LineSnapshot> out = new ArrayList<>();
         jdbc.query(
             """
-            SELECT sales_order_line_id, line_number, product_id, product_sku, product_name, ordered_quantity
-            FROM sales.sales_order_line
-            WHERE sales_order_header_id = ?
-            ORDER BY line_number
+            SELECT l.sales_order_line_id, l.line_number, l.product_id, l.product_sku, l.product_name,
+                   l.ordered_quantity,
+                   COALESCE(pc.replenishment_strategy, 'to_stock') AS replenishment_strategy
+            FROM sales.sales_order_line l
+            LEFT JOIN sales.product_card pc ON pc.product_id = l.product_id
+            WHERE l.sales_order_header_id = ?
+            ORDER BY l.line_number
             """,
             rs -> {
                 out.add(new LineSnapshot(
@@ -37,7 +40,8 @@ public class JdbcSalesOrderLineSnapshotPort implements SalesOrderLineSnapshotPor
                     rs.getObject("product_id", UUID.class),
                     rs.getString("product_sku"),
                     rs.getString("product_name"),
-                    rs.getBigDecimal("ordered_quantity")
+                    rs.getBigDecimal("ordered_quantity"),
+                    rs.getString("replenishment_strategy")
                 ));
             },
             salesOrderHeaderId

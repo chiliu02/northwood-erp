@@ -61,10 +61,14 @@ class StockReservationServiceTest {
     }
 
     private StockReservationRequested salesPayload(String warehouseCode, BigDecimal requested) {
+        return salesPayload(warehouseCode, requested, false);
+    }
+
+    private StockReservationRequested salesPayload(String warehouseCode, BigDecimal requested, boolean pegged) {
         return new StockReservationRequested(
             UUID.randomUUID(), SO, SO, warehouseCode,
             List.of(new StockReservationRequested.RequestedLine(
-                SO_LINE_1, 10, PRODUCT_1, "SKU-1", "Product 1", requested
+                SO_LINE_1, 10, PRODUCT_1, "SKU-1", "Product 1", requested, pegged
             )),
             Instant.now()
         );
@@ -132,6 +136,33 @@ class StockReservationServiceTest {
             verify(reservations).save(cap.capture());
             StockReservation saved = cap.getValue();
             assertThat(saved.status()).isEqualTo(StockReservation.Status.FAILED);
+            assertThat(saved.lines().get(0).reservedQuantity()).isEqualByComparingTo("0");
+            assertThat(saved.lines().get(0).shortageQuantity()).isEqualByComparingTo("10");
+            assertThat(saved.lines().get(0).status()).isEqualTo(StockReservation.Status.FAILED);
+        }
+
+        @Test void pegged_line_skips_free_stock_and_raises_order_pegged_replenishment() {
+            // to_order (§2.43): no reserve attempt at all; raise dedicated supply
+            // for the FULL line qty via raiseForOrderPegged.
+            when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
+
+            service.reserveForSalesOrder(salesPayload(WarehouseCodes.MAIN, new BigDecimal("10"), true));
+
+            // Never touches the shared pool.
+            verifyNoInteractions(balanceLookup);
+            verify(stockBalances, never()).tryReserveOnHand(any(), any(), any());
+
+            // Raises an order-pegged replenishment for the FULL qty (not a shortage).
+            verify(replenishmentDetection).raiseForOrderPegged(
+                eq(PRODUCT_1), eq(WAREHOUSE), eq(new BigDecimal("10")), eq(SO), eq(SO_LINE_1));
+            verify(replenishmentDetection, never()).raiseForSalesOrderShortage(
+                any(), any(), any(), any(), any());
+
+            // The reservation line is recorded as a full shortage (zero reserved)
+            // so sales parks the saga at stock_reservation_incomplete.
+            ArgumentCaptor<StockReservation> cap = ArgumentCaptor.forClass(StockReservation.class);
+            verify(reservations).save(cap.capture());
+            StockReservation saved = cap.getValue();
             assertThat(saved.lines().get(0).reservedQuantity()).isEqualByComparingTo("0");
             assertThat(saved.lines().get(0).shortageQuantity()).isEqualByComparingTo("10");
             assertThat(saved.lines().get(0).status()).isEqualTo(StockReservation.Status.FAILED);

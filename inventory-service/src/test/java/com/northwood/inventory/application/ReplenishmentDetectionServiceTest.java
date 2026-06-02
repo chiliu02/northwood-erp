@@ -235,6 +235,35 @@ class ReplenishmentDetectionServiceTest {
         verify(outbox).append(any(ReplenishmentCancelled.class), eq(ReplenishmentRequest.AGGREGATE_TYPE));
     }
 
+    @Test void order_pegged_sourceable_saves_request_with_reason_and_back_reference() {
+        UUID soHeader = UUID.randomUUID();
+        UUID soLine = UUID.randomUUID();
+        stubFlags(false, true);   // manufactured → make-to-order
+
+        service.raiseForOrderPegged(PRODUCT, WAREHOUSE, new BigDecimal("10"), soHeader, soLine);
+
+        ArgumentCaptor<ReplenishmentRequest> captor = ArgumentCaptor.forClass(ReplenishmentRequest.class);
+        verify(replenishmentRequests).save(captor.capture());
+        ReplenishmentRequest r = captor.getValue();
+        assertThat(r.reason()).isEqualTo(Reason.ORDER_PEGGED);
+        assertThat(r.targetService()).isEqualTo(TargetService.MANUFACTURING);
+        assertThat(r.requestedQuantity()).isEqualByComparingTo("10");
+        assertThat(r.sourceSalesOrderHeaderId()).isEqualTo(soHeader);
+        assertThat(r.sourceSalesOrderLineId()).isEqualTo(soLine);
+        verify(outbox, never()).append(any(), any());
+    }
+
+    @Test void order_pegged_unsourceable_emits_cancelled_and_raises_nothing() {
+        UUID soHeader = UUID.randomUUID();
+        UUID soLine = UUID.randomUUID();
+        stubFlags(false, false);   // neither purchased nor manufactured
+
+        service.raiseForOrderPegged(PRODUCT, WAREHOUSE, new BigDecimal("10"), soHeader, soLine);
+
+        verify(replenishmentRequests, never()).save(any());
+        verify(outbox).append(any(ReplenishmentCancelled.class), eq(ReplenishmentRequest.AGGREGATE_TYPE));
+    }
+
     @Test void raiseIfNoneOpen_supports_work_order_shortage_path() {
         // Slice C bridge will call raiseIfNoneOpen directly with its own
         // quantity + reason; this verifies the path is reusable for both
