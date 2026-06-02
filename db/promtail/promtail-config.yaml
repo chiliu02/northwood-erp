@@ -1,7 +1,7 @@
 # Northwood Promtail config — tails docker container logs for the infra
 # services (postgres, kafka, keycloak) and pushes to Loki. Spring service
 # logs run on the host process and push directly via loki-logback-appender
-# (wired in §1D.1), so Promtail is intentionally not configured to scrape
+# (wired in the app instrumentation), so Promtail is intentionally not configured to scrape
 # them here.
 
 server:

@@ -1,6 +1,6 @@
 {
   "annotations": { "list": [] },
-  "description": "Northwood ERP showcase observability board (§1D.5). Three rows: service health, bus health, a placed-order's journey.",
+  "description": "Northwood ERP showcase observability board. Three rows: service health, bus health, a placed-order's journey.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -109,7 +109,7 @@
     {
       "type": "timeseries",
       "title": "Outbox pending (per service)",
-      "description": "northwood_outbox_pending — custom gauge polled on every Prometheus scrape (§1D.5). Inbox-only services (reporting) have no outbox_message table and emit no series. -1 means the gauge query failed unexpectedly on a service that does have the table.",
+      "description": "northwood_outbox_pending — custom gauge polled on every Prometheus scrape. Inbox-only services (reporting) have no outbox_message table and emit no series. -1 means the gauge query failed unexpectedly on a service that does have the table.",
       "gridPos": { "x": 0, "y": 8, "w": 8, "h": 7 },
       "id": 201,
       "datasource": { "type": "prometheus", "uid": "northwood-prometheus" },
@@ -134,7 +134,7 @@
     {
       "type": "timeseries",
       "title": "Kafka publish rate (per topic)",
-      "description": "rate(spring_kafka_template_seconds_count) — auto-instrumented by Spring Kafka's observation-enabled producer (§1D.2).",
+      "description": "rate(spring_kafka_template_seconds_count) — auto-instrumented by Spring Kafka's observation-enabled producer.",
       "gridPos": { "x": 8, "y": 8, "w": 8, "h": 7 },
       "id": 202,
       "datasource": { "type": "prometheus", "uid": "northwood-prometheus" },
@@ -156,7 +156,7 @@
     {
       "type": "barchart",
       "title": "Saga state distribution",
-      "description": "northwood_saga_count — per (saga type, state). Refreshed every 15s (§1D.5).",
+      "description": "northwood_saga_count — per (saga type, state). Refreshed every 15s.",
       "gridPos": { "x": 16, "y": 8, "w": 8, "h": 7 },
       "id": 203,
       "datasource": { "type": "prometheus", "uid": "northwood-prometheus" },
@@ -195,7 +195,7 @@
     {
       "type": "table",
       "title": "Recent sales-order traces",
-      "description": "Recent placed-order traces — TraceQL for the `http post /api/sales-orders` span (Spring Boot 4 / OTel names HTTP spans `http <lowercase-method> <route>`, not `POST …`). Drill-down: click a Trace ID to open these traces in Explore, or use the panel menu (⋮ top-right) → Explore, then click any Trace ID there — Tempo trace links only resolve inside Explore, not from a dashboard table cell. The Logs panel below correlates by trace id via the Loki↔Tempo wiring (§1D.0).",
+      "description": "Recent placed-order traces — TraceQL for the `http post /api/sales-orders` span (Spring Boot 4 / OTel names HTTP spans `http <lowercase-method> <route>`, not `POST …`). Drill-down: click a Trace ID to open these traces in Explore, or use the panel menu (⋮ top-right) → Explore, then click any Trace ID there — Tempo trace links only resolve inside Explore, not from a dashboard table cell. The Logs panel below correlates by trace id via the Loki↔Tempo wiring.",
       "gridPos": { "x": 0, "y": 16, "w": 24, "h": 9 },
       "id": 301,
       "datasource": { "type": "tempo", "uid": "northwood-tempo" },
@@ -242,7 +242,7 @@
     {
       "type": "logs",
       "title": "Service logs (last 5 minutes)",
-      "description": "All Spring-service logs from Loki. Trace IDs in each line are click-able and deep-link to Tempo via the `derivedFields` regex on the Loki datasource (§1D.0).",
+      "description": "All Spring-service logs from Loki. Trace IDs in each line are click-able and deep-link to Tempo via the `derivedFields` regex on the Loki datasource.",
       "gridPos": { "x": 0, "y": 25, "w": 24, "h": 10 },
       "id": 302,
       "datasource": { "type": "loki", "uid": "northwood-loki" },

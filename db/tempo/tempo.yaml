@@ -5,7 +5,7 @@
 #
 # OTLP receivers exposed on 4317 (gRPC) and 4318 (HTTP). Spring services
 # push via micrometer-tracing-bridge-otel + opentelemetry-exporter-otlp
-# (wired in §1D.1).
+# (wired in the app instrumentation).
 
 server:
   http_listen_port: 3200

@@ -7,7 +7,7 @@
 # Tempo's tracesToLogs / tracesToMetrics correlations are deliberately
 # wired so click-throughs from a trace span land on the right log lines
 # and the right RED-style metric panel automatically — paired with the
-# %X{traceId} MDC injection landing in §1D.1.
+# %X{traceId} MDC injection.
 
 apiVersion: 1
 

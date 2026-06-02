@@ -6,9 +6,9 @@
 # `extra_hosts: ["host.docker.internal:host-gateway"]` (already the default
 # DNS name on Docker Desktop for Windows/macOS).
 #
-# Targets stay "down" until §1D.1 wires the actuator prometheus endpoint into
+# Targets stay "down" until the actuator prometheus endpoint is wired into
 # the shared module. That's expected — Prometheus discovering an unreachable
-# target up-front is harmless and lets §1D.0 ship before §1D.1.
+# target up-front is harmless.
 
 global:
   scrape_interval: 15s
