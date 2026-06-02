@@ -310,6 +310,13 @@ INSERT INTO inventory.product_card (
     ('00000000-0000-7000-8000-000000000201', 'SA-DRAWER-001',        'Cabinet Drawer Sub-assembly', 'semi_finished_good', 'EA', 'tracked', false, true,  0,  0),
     ('00000000-0000-7000-8000-000000000202', 'RM-DRAWER-FRONT-001',  'Drawer Front Panel',          'raw_material',       'EA', 'tracked', true,  false, 5, 10),
     ('00000000-0000-7000-8000-000000000203', 'RM-DRAWER-RUNNER-001', 'Drawer Runner',               'raw_material',       'EA', 'tracked', true,  false, 5, 10),
+    -- Multi-level BOM demo set: chest + frame/panel sub-assemblies. Made on
+    -- demand (no stock_balance rows), but the card still exists — at runtime
+    -- product.ProductCreated projects a card for every product, so the seed
+    -- must too, or the stock-items page is short three rows vs product.Products.
+    ('00000000-0000-7000-8000-000000000300', 'FG-CHEST-001',         'Chest of Drawers',            'finished_good',      'EA', 'tracked', false, true,  1,  3),
+    ('00000000-0000-7000-8000-000000000301', 'SA-FRAME-001',         'Chest Frame Sub-assembly',    'semi_finished_good', 'EA', 'tracked', false, true,  0,  0),
+    ('00000000-0000-7000-8000-000000000302', 'SA-PANEL-001',         'Side Panel Sub-assembly',     'semi_finished_good', 'EA', 'tracked', false, true,  0,  0),
     ('00000000-0000-7000-8000-000000000400', 'FG-CHAIR-001',         'Wooden Dining Chair',         'finished_good',      'EA', 'tracked', false, true,  5, 10)
 ON CONFLICT (product_id) DO NOTHING;
 
