@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Filter, Download } from "lucide-react";
@@ -7,8 +6,9 @@ import { apiGet } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { DataGrid, type Column } from "@/components/ui/DataGrid";
+import { FilterPanel, useFieldFilters, type FilterField } from "@/components/ui/FilterPanel";
+import { downloadCsv } from "@/lib/csv";
 import { StatusPill, statusForOrder } from "@/components/ui/StatusPill";
-import { Select } from "@/components/ui/Form";
 
 interface WorkOrderBoardRow {
   workOrderId: string;
@@ -26,8 +26,6 @@ interface WorkOrderBoardRow {
   updatedAt: string;
 }
 
-const STATUS_FILTERS = ["all", "released", "in_progress", "completed", "cancelled"];
-
 /**
  * Linda's main screen — every active and recent work order. Reads from
  * reporting's production_planning_board projection. Click-through to
@@ -36,27 +34,33 @@ const STATUS_FILTERS = ["all", "released", "in_progress", "completed", "cancelle
  */
 export function WorkOrders() {
   const navigate = useNavigate();
-  const [statusFilter, setStatusFilter] = useState("all");
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["work-orders"],
     queryFn: () => apiGet<WorkOrderBoardRow[]>("/api/work-orders"),
   });
 
-  const filtered = (data ?? []).filter((r) =>
-    statusFilter === "all" ? true : r.workOrderStatus === statusFilter
-  );
+  const filterFields: FilterField<WorkOrderBoardRow>[] = [
+    { key: "number", label: "WO #", get: (r) => r.workOrderNumber },
+    { key: "product", label: "Product", get: (r) => `${r.finishedProductName} ${r.finishedProductSku}` },
+    { key: "status", label: "Status", type: "select", get: (r) => r.workOrderStatus, optionLabel: (v) => v.replace(/_/g, " ") },
+    { key: "materials", label: "Materials", type: "select", get: (r) => r.materialStatus, optionLabel: (v) => v.replace(/_/g, " ") },
+    { key: "priority", label: "Priority", type: "select", get: (r) => r.priority },
+  ];
+  const filter = useFieldFilters(data ?? [], filterFields);
 
   const columns: Column<WorkOrderBoardRow>[] = [
     {
       key: "number",
       header: "WO #",
       width: "150px",
+      sortAccessor: (r) => r.workOrderNumber,
       render: (r) => <span className="font-medium tabular-nums">{r.workOrderNumber}</span>,
     },
     {
       key: "product",
       header: "Product",
+      sortAccessor: (r) => r.finishedProductName,
       render: (r) => (
         <div>
           <div className="text-text-primary">{r.finishedProductName}</div>
@@ -68,6 +72,7 @@ export function WorkOrders() {
       key: "status",
       header: "Status",
       width: "140px",
+      sortAccessor: (r) => r.workOrderStatus,
       render: (r) => {
         const s = statusForOrder(r.workOrderStatus);
         return <StatusPill label={s.label} tone={s.tone} />;
@@ -77,6 +82,7 @@ export function WorkOrders() {
       key: "material",
       header: "Materials",
       width: "150px",
+      sortAccessor: (r) => r.materialStatus,
       render: (r) => {
         const tone = r.materialStatus === "reserved" ? "success"
           : r.materialStatus === "shortage" ? "error"
@@ -89,12 +95,17 @@ export function WorkOrders() {
       key: "progress",
       header: "Progress",
       width: "180px",
+      sortAccessor: (r) => {
+        const p = Math.max(0, Number(r.plannedQuantity));
+        return p === 0 ? 0 : Math.min(1, Math.max(0, Number(r.completedQuantity)) / p);
+      },
       render: (r) => <ProgressBar planned={r.plannedQuantity} completed={r.completedQuantity} />,
     },
     {
       key: "priority",
       header: "Priority",
       width: "110px",
+      sortAccessor: (r) => priorityRank(r.priority),
       render: (r) => <PriorityPill priority={r.priority} />,
     },
     {
@@ -102,6 +113,7 @@ export function WorkOrders() {
       header: "Shortages",
       width: "100px",
       numeric: true,
+      sortAccessor: (r) => r.shortageMaterialsCount,
       render: (r) => r.shortageMaterialsCount > 0
         ? <span className="text-status-error">{r.shortageMaterialsCount}</span>
         : <span className="text-text-muted">—</span>,
@@ -110,6 +122,7 @@ export function WorkOrders() {
       key: "updated",
       header: "Updated",
       width: "110px",
+      sortAccessor: (r) => new Date(r.updatedAt).getTime(),
       render: (r) => <span className="text-text-muted">{formatRelative(r.updatedAt)}</span>,
     },
   ];
@@ -126,26 +139,35 @@ export function WorkOrders() {
         ]}
         actions={
           <>
-            <ActionButton icon={<Filter className="h-4 w-4" />}>Filter</ActionButton>
-            <ActionButton icon={<Download className="h-4 w-4" />}>Export</ActionButton>
+            <ActionButton
+              icon={<Filter className="h-4 w-4" />}
+              variant={filter.open ? "primary" : "secondary"}
+              onClick={filter.toggle}
+            >
+              Filter
+            </ActionButton>
+            <ActionButton
+              icon={<Download className="h-4 w-4" />}
+              onClick={() => downloadCsv("work-orders.csv", filter.filtered)}
+              disabled={filter.filtered.length === 0}
+            >
+              Export
+            </ActionButton>
           </>
         }
       />
 
-      <div className="px-8 py-6">
-        <div className="mb-3 flex items-center gap-3 text-xs">
-          <span className="text-text-muted">Status:</span>
-          <Select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="!h-8 max-w-[180px]"
-          >
-            {STATUS_FILTERS.map((s) => (
-              <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
-            ))}
-          </Select>
-        </div>
+      <FilterPanel
+        open={filter.open}
+        rows={data ?? []}
+        fields={filterFields}
+        values={filter.values}
+        onChange={filter.set}
+        onClear={filter.clear}
+        onClose={filter.close}
+      />
 
+      <div className="px-8 py-6">
         {error ? (
           <div className="rounded-md border border-status-error/30 bg-status-error-soft px-4 py-3 text-sm text-status-error">
             Failed to load work orders: {(error as Error).message}
@@ -153,21 +175,17 @@ export function WorkOrders() {
         ) : (
           <DataGrid
             columns={columns}
-            rows={filtered}
+            rows={filter.filtered}
             rowKey={(r) => r.workOrderId}
             onRowClick={(r) => navigate(`/work-orders/${r.workOrderId}`)}
             loading={isLoading}
-            emptyState={
-              statusFilter === "all"
-                ? "No work orders yet."
-                : `No work orders with status "${statusFilter}".`
-            }
+            emptyState={filter.active ? "No work orders match the filter." : "No work orders yet."}
           />
         )}
 
         {data && (
           <div className="mt-3 text-xs text-text-muted">
-            Showing {filtered.length} of {data.length} work orders.
+            Showing {filter.filtered.length} of {data.length} work orders.
           </div>
         )}
       </div>
@@ -189,6 +207,17 @@ function ProgressBar({ planned, completed }: { planned: string; completed: strin
       </span>
     </div>
   );
+}
+
+/** Sort rank for the priority column — urgent highest. */
+function priorityRank(priority: string): number {
+  switch (priority) {
+    case "urgent": return 3;
+    case "high": return 2;
+    case "normal": return 1;
+    case "low": return 0;
+    default: return 1;
+  }
 }
 
 function PriorityPill({ priority }: { priority: string }) {

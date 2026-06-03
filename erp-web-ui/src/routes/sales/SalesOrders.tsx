@@ -5,6 +5,8 @@ import { apiGet } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { DataGrid, type Column } from "@/components/ui/DataGrid";
+import { FilterPanel, useFieldFilters, type FilterField } from "@/components/ui/FilterPanel";
+import { downloadCsv } from "@/lib/csv";
 import { StatusPill, statusForOrder } from "@/components/ui/StatusPill";
 
 /** Mirror of {@code reporting.sales_order_360_view}. */
@@ -39,22 +41,33 @@ export function SalesOrders() {
     queryFn: () => apiGet<SalesOrderRow[]>("/api/sales-orders"),
   });
 
+  const filterFields: FilterField<SalesOrderRow>[] = [
+    { key: "orderNumber", label: "Order #", get: (r) => r.orderNumber },
+    { key: "customer", label: "Customer", get: (r) => r.customerName },
+    { key: "status", label: "Status", type: "select", get: (r) => r.orderStatus },
+    { key: "terms", label: "Terms", type: "select", get: (r) => r.paymentTerms },
+  ];
+  const filter = useFieldFilters(data ?? [], filterFields);
+
   const columns: Column<SalesOrderRow>[] = [
     {
       key: "orderNumber",
       header: "Order #",
       width: "140px",
+      sortAccessor: (r) => r.orderNumber,
       render: (r) => <span className="font-medium tabular-nums">{r.orderNumber}</span>,
     },
     {
       key: "customer",
       header: "Customer",
+      sortAccessor: (r) => r.customerName,
       render: (r) => <span>{r.customerName}</span>,
     },
     {
       key: "status",
       header: "Status",
       width: "180px",
+      sortAccessor: (r) => r.orderStatus,
       render: (r) => {
         const s = statusForOrder(r.orderStatus);
         return (
@@ -70,12 +83,14 @@ export function SalesOrders() {
       key: "paymentTerms",
       header: "Terms",
       width: "120px",
+      sortAccessor: (r) => r.paymentTerms,
       render: (r) => <span className="font-mono text-xs text-text-muted">{r.paymentTerms}</span>,
     },
     {
       key: "fulfilment",
       header: "Fulfilment",
       width: "180px",
+      sortAccessor: (r) => fulfilmentReachedCount(r),
       render: (r) => <FulfilmentSummary row={r} />,
     },
     {
@@ -83,6 +98,7 @@ export function SalesOrders() {
       header: "Total",
       numeric: true,
       width: "120px",
+      sortAccessor: (r) => Number(r.totalAmount),
       render: (r) => (
         <span>
           {formatMoney(r.totalAmount)} <span className="text-text-faint">{r.currencyCode}</span>
@@ -94,6 +110,7 @@ export function SalesOrders() {
       header: "Outstanding",
       numeric: true,
       width: "120px",
+      sortAccessor: (r) => Number(r.outstandingAmount),
       render: (r) => (
         <span className={Number(r.outstandingAmount) > 0 ? "text-status-warn" : "text-text-muted"}>
           {formatMoney(r.outstandingAmount)}
@@ -104,6 +121,7 @@ export function SalesOrders() {
       key: "updated",
       header: "Updated",
       width: "120px",
+      sortAccessor: (r) => new Date(r.updatedAt).getTime(),
       render: (r) => <span className="text-text-muted">{formatRelative(r.updatedAt)}</span>,
     },
   ];
@@ -119,8 +137,20 @@ export function SalesOrders() {
         ]}
         actions={
           <>
-            <ActionButton icon={<Filter className="h-4 w-4" />}>Filter</ActionButton>
-            <ActionButton icon={<Download className="h-4 w-4" />}>Export</ActionButton>
+            <ActionButton
+              icon={<Filter className="h-4 w-4" />}
+              variant={filter.open ? "primary" : "secondary"}
+              onClick={filter.toggle}
+            >
+              Filter
+            </ActionButton>
+            <ActionButton
+              icon={<Download className="h-4 w-4" />}
+              onClick={() => downloadCsv("sales-orders.csv", filter.filtered)}
+              disabled={filter.filtered.length === 0}
+            >
+              Export
+            </ActionButton>
             <ActionButton
               variant="primary"
               icon={<Plus className="h-4 w-4" />}
@@ -133,6 +163,16 @@ export function SalesOrders() {
         }
       />
 
+      <FilterPanel
+        open={filter.open}
+        rows={data ?? []}
+        fields={filterFields}
+        values={filter.values}
+        onChange={filter.set}
+        onClear={filter.clear}
+        onClose={filter.close}
+      />
+
       <div className="flex-1 px-8 py-6">
         {error ? (
           <div className="rounded-md border border-status-error/30 bg-status-error-soft px-4 py-3 text-sm text-status-error">
@@ -141,17 +181,18 @@ export function SalesOrders() {
         ) : (
           <DataGrid
             columns={columns}
-            rows={data ?? []}
+            rows={filter.filtered}
             rowKey={(r) => r.salesOrderHeaderId}
             onRowClick={(r) => navigate(`/sales-orders/${r.salesOrderHeaderId}`)}
             loading={isLoading}
-            emptyState="No sales orders yet. Click 'New Order' to place one."
+            emptyState={filter.active ? "No orders match the filter." : "No sales orders yet. Click 'New Order' to place one."}
           />
         )}
 
         {data && (
           <div className="mt-3 text-xs text-text-muted">
-            Showing {data.length} {data.length === 1 ? "order" : "orders"}.
+            Showing {filter.filtered.length} {filter.filtered.length === 1 ? "order" : "orders"}
+            {filter.active ? ` (filtered from ${data.length})` : ""}.
           </div>
         )}
       </div>
@@ -165,28 +206,37 @@ export function SalesOrders() {
  * pending. Concrete demo of the cross-context projection — the dots
  * come from five different inbox handlers.
  */
-function FulfilmentSummary({ row }: { row: SalesOrderRow }) {
-  const stages = [
-    { reached: row.stockStatus === "reserved" || isPast(row, "reserved") },
-    { reached: ["completed", "in_progress"].includes(row.manufacturingStatus) || isPast(row, "manufacturing") },
-    { reached: ["shipped", "completed"].includes(row.shipmentStatus) },
-    { reached: ["invoiced", "partially_invoiced"].includes(row.invoiceStatus) },
-    { reached: ["paid", "partially_paid"].includes(row.paymentStatus) },
+function fulfilmentStages(row: SalesOrderRow): boolean[] {
+  return [
+    row.stockStatus === "reserved" || isPast(row, "reserved"),
+    ["completed", "in_progress"].includes(row.manufacturingStatus) || isPast(row, "manufacturing"),
+    ["shipped", "completed"].includes(row.shipmentStatus),
+    ["invoiced", "partially_invoiced"].includes(row.invoiceStatus),
+    ["paid", "partially_paid"].includes(row.paymentStatus),
   ];
+}
+
+/** How many of the five fulfilment stages this order has reached (sort key). */
+function fulfilmentReachedCount(row: SalesOrderRow): number {
+  return fulfilmentStages(row).filter(Boolean).length;
+}
+
+function FulfilmentSummary({ row }: { row: SalesOrderRow }) {
+  const stages = fulfilmentStages(row);
   return (
     <div className="flex items-center gap-1">
-      {stages.map((s, i) => (
+      {stages.map((reached, i) => (
         <span
           key={i}
           className={
-            s.reached
+            reached
               ? "h-2 w-2 rounded-full bg-status-success"
               : "h-2 w-2 rounded-full border border-border-strong"
           }
         />
       ))}
       <span className="ml-2 text-[11px] text-text-muted">
-        {stages.filter((s) => s.reached).length}/5
+        {stages.filter(Boolean).length}/5
       </span>
     </div>
   );

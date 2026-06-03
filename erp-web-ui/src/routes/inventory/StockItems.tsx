@@ -54,8 +54,8 @@ export function StockItems() {
     {
       key: "sku",
       header: "SKU",
-      width: "180px",
-      render: (s) => <span className="font-medium tabular-nums">{s.productSku}</span>,
+      width: "220px",
+      render: (s) => <span className="whitespace-nowrap font-medium tabular-nums">{s.productSku}</span>,
     },
     { key: "name", header: "Name", render: (s) => s.productName },
     {
@@ -177,8 +177,8 @@ function ReplenishmentActivity() {
     {
       key: "sku",
       header: "SKU",
-      width: "180px",
-      render: (r) => <span className="font-mono">{r.productSku ?? r.productId.slice(0, 8)}</span>,
+      width: "220px",
+      render: (r) => <span className="whitespace-nowrap font-mono">{r.productSku ?? r.productId.slice(0, 8)}</span>,
     },
     {
       key: "qty",

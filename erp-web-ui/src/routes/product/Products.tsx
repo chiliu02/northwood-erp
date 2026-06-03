@@ -5,6 +5,8 @@ import { apiGet } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { DataGrid, type Column } from "@/components/ui/DataGrid";
+import { FilterPanel, useFieldFilters, type FilterField } from "@/components/ui/FilterPanel";
+import { downloadCsv } from "@/lib/csv";
 import { StatusPill } from "@/components/ui/StatusPill";
 
 interface Product {
@@ -33,18 +35,30 @@ export function Products() {
     queryFn: () => apiGet<Product[]>("/api/products"),
   });
 
+  const filterFields: FilterField<Product>[] = [
+    { key: "sku", label: "SKU", get: (p) => p.sku },
+    { key: "name", label: "Name", get: (p) => p.name },
+    { key: "type", label: "Type", type: "select", get: (p) => p.productType, optionLabel: (v) => v.replace(/_/g, " ") },
+    { key: "sourcing", label: "Sourcing", type: "select", get: sourcingToken, optionLabel: sourcingLabel },
+    { key: "replenishment", label: "Replenishment", type: "select", get: (p) => p.replenishmentStrategy ?? "", optionLabel: formatStrategy },
+    { key: "status", label: "Status", type: "select", get: (p) => p.status },
+  ];
+  const filter = useFieldFilters(data ?? [], filterFields);
+
   const columns: Column<Product>[] = [
     {
       key: "sku",
       header: "SKU",
-      width: "180px",
-      render: (p) => <span className="font-medium tabular-nums">{p.sku}</span>,
+      width: "220px",
+      sortAccessor: (p) => p.sku,
+      render: (p) => <span className="whitespace-nowrap font-medium tabular-nums">{p.sku}</span>,
     },
-    { key: "name", header: "Name", render: (p) => p.name },
+    { key: "name", header: "Name", sortAccessor: (p) => p.name, render: (p) => p.name },
     {
       key: "type",
       header: "Type",
       width: "150px",
+      sortAccessor: (p) => p.productType,
       render: (p) => <span className="text-text-muted">{p.productType.replace(/_/g, " ")}</span>,
     },
     {
@@ -52,6 +66,7 @@ export function Products() {
       header: "Sales Price",
       numeric: true,
       width: "120px",
+      sortAccessor: (p) => Number(p.salesPrice),
       render: (p) => formatMoney(p.salesPrice),
     },
     {
@@ -59,18 +74,21 @@ export function Products() {
       header: "Std Cost",
       numeric: true,
       width: "120px",
+      sortAccessor: (p) => Number(p.standardCost),
       render: (p) => formatMoney(p.standardCost),
     },
     {
       key: "sourcing",
       header: "Sourcing",
       width: "150px",
+      sortAccessor: (p) => formatSourcing(p),
       render: (p) => <span className="text-text-muted">{formatSourcing(p)}</span>,
     },
     {
       key: "replenishment",
       header: "Replenishment",
       width: "130px",
+      sortAccessor: (p) => p.replenishmentStrategy ?? "",
       render: (p) => <span className="text-text-muted">{formatStrategy(p.replenishmentStrategy)}</span>,
     },
     {
@@ -78,6 +96,7 @@ export function Products() {
       header: "Reorder pt / qty",
       numeric: true,
       width: "140px",
+      sortAccessor: (p) => Number(p.reorderPoint),
       render: (p) => (
         <span className="text-text-muted">
           {formatQty(p.reorderPoint)} / {formatQty(p.reorderQuantity)}
@@ -88,6 +107,7 @@ export function Products() {
       key: "valuation",
       header: "Valuation",
       width: "140px",
+      sortAccessor: (p) => p.valuationClass ?? "",
       render: (p) => (
         <span className="text-text-muted">{p.valuationClass?.replace(/_/g, " ") ?? "—"}</span>
       ),
@@ -96,6 +116,7 @@ export function Products() {
       key: "status",
       header: "Status",
       width: "120px",
+      sortAccessor: (p) => p.status,
       render: (p) => <StatusPill label={p.status} tone={p.status === "discontinued" ? "error" : "success"} />,
     },
   ];
@@ -112,8 +133,20 @@ export function Products() {
         ]}
         actions={
           <>
-            <ActionButton icon={<Filter className="h-4 w-4" />}>Filter</ActionButton>
-            <ActionButton icon={<Download className="h-4 w-4" />}>Export</ActionButton>
+            <ActionButton
+              icon={<Filter className="h-4 w-4" />}
+              variant={filter.open ? "primary" : "secondary"}
+              onClick={filter.toggle}
+            >
+              Filter
+            </ActionButton>
+            <ActionButton
+              icon={<Download className="h-4 w-4" />}
+              onClick={() => downloadCsv("products.csv", filter.filtered)}
+              disabled={filter.filtered.length === 0}
+            >
+              Export
+            </ActionButton>
             <ActionButton
               variant="primary"
               icon={<Plus className="h-4 w-4" />}
@@ -126,6 +159,16 @@ export function Products() {
         }
       />
 
+      <FilterPanel
+        open={filter.open}
+        rows={data ?? []}
+        fields={filterFields}
+        values={filter.values}
+        onChange={filter.set}
+        onClear={filter.clear}
+        onClose={filter.close}
+      />
+
       <div className="px-8 py-6">
         {error ? (
           <div className="rounded-md border border-status-error/30 bg-status-error-soft px-4 py-3 text-sm text-status-error">
@@ -134,16 +177,17 @@ export function Products() {
         ) : (
           <DataGrid
             columns={columns}
-            rows={data ?? []}
+            rows={filter.filtered}
             rowKey={(p) => p.productId}
             onRowClick={(p) => navigate(`/products/${p.productId}`)}
             loading={isLoading}
-            emptyState="No products in the catalog."
+            emptyState={filter.active ? "No products match the filter." : "No products in the catalog."}
           />
         )}
         {data && (
           <div className="mt-3 text-xs text-text-muted">
-            {data.length} product{data.length === 1 ? "" : "s"}.
+            {filter.filtered.length} product{filter.filtered.length === 1 ? "" : "s"}
+            {filter.active ? ` (filtered from ${data.length})` : ""}.
           </div>
         )}
       </div>
@@ -171,6 +215,21 @@ function formatSourcing(p: { manufactured: boolean; purchased: boolean }): strin
   if (p.manufactured) return "Manufactured";
   if (p.purchased) return "Purchased";
   return "—";
+}
+
+/** Canonical sourcing token for the filter (matches + dropdown options). */
+function sourcingToken(p: { manufactured: boolean; purchased: boolean }): string {
+  if (p.manufactured && p.purchased) return "both";
+  if (p.manufactured) return "manufactured";
+  if (p.purchased) return "purchased";
+  return "";
+}
+
+function sourcingLabel(token: string): string {
+  if (token === "both") return "Manufactured or purchased";
+  if (token === "manufactured") return "Manufactured";
+  if (token === "purchased") return "Purchased";
+  return token;
 }
 
 /** Replenishment-strategy axis — orthogonal to sourcing. */

@@ -5,6 +5,8 @@ import { apiGet } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { DataGrid, type Column } from "@/components/ui/DataGrid";
+import { FilterPanel, useFieldFilters, type FilterField } from "@/components/ui/FilterPanel";
+import { downloadCsv } from "@/lib/csv";
 import { StatusPill, statusForOrder } from "@/components/ui/StatusPill";
 
 interface PoRow {
@@ -38,18 +40,28 @@ export function PurchaseOrders() {
     queryFn: () => apiGet<PoRow[]>("/api/purchase-orders"),
   });
 
+  const filterFields: FilterField<PoRow>[] = [
+    { key: "number", label: "PO #", get: (r) => r.purchaseOrderNumber },
+    { key: "supplier", label: "Supplier", get: (r) => r.supplierName },
+    { key: "status", label: "Status", type: "select", get: (r) => r.poStatus },
+    { key: "match", label: "Match", type: "select", get: (r) => r.matchStatus, optionLabel: (v) => (v === "matched" ? "Matched" : "Not matched") },
+  ];
+  const filter = useFieldFilters(data ?? [], filterFields);
+
   const columns: Column<PoRow>[] = [
     {
       key: "number",
       header: "PO #",
       width: "150px",
+      sortAccessor: (r) => r.purchaseOrderNumber,
       render: (r) => <span className="font-medium tabular-nums">{r.purchaseOrderNumber}</span>,
     },
-    { key: "supplier", header: "Supplier", render: (r) => r.supplierName },
+    { key: "supplier", header: "Supplier", sortAccessor: (r) => r.supplierName, render: (r) => r.supplierName },
     {
       key: "status",
       header: "Status",
       width: "140px",
+      sortAccessor: (r) => r.poStatus,
       render: (r) => {
         const s = statusForOrder(r.poStatus);
         return <StatusPill label={s.label} tone={s.tone} />;
@@ -59,6 +71,7 @@ export function PurchaseOrders() {
       key: "match",
       header: "Match",
       width: "120px",
+      sortAccessor: (r) => r.matchStatus,
       render: (r) => (
         <StatusPill
           label={r.matchStatus === "matched" ? "Matched" : "Not matched"}
@@ -71,6 +84,7 @@ export function PurchaseOrders() {
       header: "Ordered",
       numeric: true,
       width: "120px",
+      sortAccessor: (r) => Number(r.orderedAmount),
       render: (r) => formatMoney(r.orderedAmount),
     },
     {
@@ -78,6 +92,7 @@ export function PurchaseOrders() {
       header: "Received",
       numeric: true,
       width: "120px",
+      sortAccessor: (r) => Number(r.receivedAmount),
       render: (r) => (
         <span className={Number(r.receivedAmount) === Number(r.orderedAmount) ? "text-status-success" : "text-text-muted"}>
           {formatMoney(r.receivedAmount)}
@@ -89,6 +104,7 @@ export function PurchaseOrders() {
       header: "Outstanding",
       numeric: true,
       width: "120px",
+      sortAccessor: (r) => Number(r.outstandingAmount),
       render: (r) => (
         <span className={Number(r.outstandingAmount) > 0 ? "text-status-warn" : "text-text-muted"}>
           {formatMoney(r.outstandingAmount)} <span className="text-text-faint">{r.currencyCode}</span>
@@ -99,6 +115,7 @@ export function PurchaseOrders() {
       key: "updated",
       header: "Updated",
       width: "120px",
+      sortAccessor: (r) => new Date(r.updatedAt).getTime(),
       render: (r) => <span className="text-text-muted">{formatRelative(r.updatedAt)}</span>,
     },
   ];
@@ -114,10 +131,32 @@ export function PurchaseOrders() {
         ]}
         actions={
           <>
-            <ActionButton icon={<Filter className="h-4 w-4" />}>Filter</ActionButton>
-            <ActionButton icon={<Download className="h-4 w-4" />}>Export</ActionButton>
+            <ActionButton
+              icon={<Filter className="h-4 w-4" />}
+              variant={filter.open ? "primary" : "secondary"}
+              onClick={filter.toggle}
+            >
+              Filter
+            </ActionButton>
+            <ActionButton
+              icon={<Download className="h-4 w-4" />}
+              onClick={() => downloadCsv("purchase-orders.csv", filter.filtered)}
+              disabled={filter.filtered.length === 0}
+            >
+              Export
+            </ActionButton>
           </>
         }
+      />
+
+      <FilterPanel
+        open={filter.open}
+        rows={data ?? []}
+        fields={filterFields}
+        values={filter.values}
+        onChange={filter.set}
+        onClear={filter.clear}
+        onClose={filter.close}
       />
 
       <div className="px-8 py-6">
@@ -128,16 +167,17 @@ export function PurchaseOrders() {
         ) : (
           <DataGrid
             columns={columns}
-            rows={data ?? []}
+            rows={filter.filtered}
             rowKey={(r) => r.purchaseOrderHeaderId}
             onRowClick={(r) => navigate(`/purchase-orders/${r.purchaseOrderHeaderId}`)}
             loading={isLoading}
-            emptyState="No purchase orders yet."
+            emptyState={filter.active ? "No purchase orders match the filter." : "No purchase orders yet."}
           />
         )}
         {data && (
           <div className="mt-3 text-xs text-text-muted">
-            {data.length} purchase order{data.length === 1 ? "" : "s"}.
+            {filter.filtered.length} purchase order{filter.filtered.length === 1 ? "" : "s"}
+            {filter.active ? ` (filtered from ${data.length})` : ""}.
           </div>
         )}
       </div>
