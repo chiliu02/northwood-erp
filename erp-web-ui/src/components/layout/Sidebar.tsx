@@ -52,16 +52,6 @@ const MODULES: NavModule[] = [
     ],
   },
   {
-    label: "Purchasing",
-    icon: Package,
-    items: [
-      { label: "Suppliers", to: "/suppliers" },
-      { label: "Supplier Prices", to: "/supplier-prices" },
-      { label: "Purchase Requisitions", to: "/purchase-requisitions" },
-      { label: "Purchase Orders", to: "/purchase-orders" },
-    ],
-  },
-  {
     label: "Inventory",
     icon: Warehouse,
     items: [
@@ -79,6 +69,16 @@ const MODULES: NavModule[] = [
       { label: "Bill of Materials", to: "/boms" },
       { label: "Work Orders", to: "/work-orders" },
       { label: "Production Board", to: "/production-board" },
+    ],
+  },
+  {
+    label: "Purchasing",
+    icon: Package,
+    items: [
+      { label: "Suppliers", to: "/suppliers" },
+      { label: "Supplier Prices", to: "/supplier-prices" },
+      { label: "Purchase Requisitions", to: "/purchase-requisitions" },
+      { label: "Purchase Orders", to: "/purchase-orders" },
     ],
   },
   {
