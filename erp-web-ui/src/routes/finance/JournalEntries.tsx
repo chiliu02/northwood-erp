@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Search, Undo2, Layers } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Undo2, Layers, X } from "lucide-react";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -9,6 +9,22 @@ import { TextInput, TextArea, DateInput, Select } from "@/components/ui/Form";
 import { StatusPill, statusForOrder } from "@/components/ui/StatusPill";
 import { DataGrid, type Column } from "@/components/ui/DataGrid";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+
+/** Lightweight list row from {@code GET /api/journal-entries}. */
+interface JournalEntrySummary {
+  journalEntryHeaderId: string;
+  journalNumber: string;
+  postingDate: string;
+  sourceModule: string;
+  sourceDocumentType: string;
+  sourceDocumentId: string;
+  description: string;
+  status: string;
+  currencyCode: string;
+  totalAmount: string;
+  lineCount: number;
+  postedAt: string | null;
+}
 
 interface JournalEntryLine {
   lineId: string;
@@ -53,24 +69,20 @@ const SOURCE_DOC_TYPES = [
 ];
 
 /**
- * Journal Entries page — no general list endpoint exists, so the page
- * is two narrow workflows side by side:
+ * Journal Entries page — the GL audit trail:
  *
- *   1. Lookup-by-id: paste a journal entry id, hit Look up, see the
- *      entry's header + balanced debit/credit lines + a Reverse button.
+ *   1. All entries: a newest-first list of every posted journal
+ *      ({@code GET /api/journal-entries}); click a row to see its header +
+ *      balanced debit/credit lines + a Reverse button.
  *   2. Reverse-by-source: pick a source document type + id, post a bulk
  *      reversal of every posted journal that originated from that source.
- *      Demo-interesting for cancel-invoice / refund flows.
- *
- * The page makes the GL traceability explicit without needing a list
- * endpoint backend.
  */
 export function JournalEntries() {
   return (
     <>
       <PageHeader
         title="Journal Entries"
-        description="GL audit trail. Look up a posted entry by id, or bulk-reverse every entry sourced from a specific document."
+        description="GL audit trail. Browse every posted entry, drill in for balanced lines, or bulk-reverse every entry sourced from a specific document."
         trail={[
           { label: "Home", to: "/" },
           { label: "Finance" },
@@ -78,7 +90,7 @@ export function JournalEntries() {
         ]}
       />
       <div className="space-y-8 px-8 py-6">
-        <LookupByIdSection />
+        <AllEntriesSection />
         <div className="border-t border-border-default" />
         <ReverseBySourceSection />
       </div>
@@ -86,123 +98,205 @@ export function JournalEntries() {
   );
 }
 
-// ----- Lookup by id -----
+// ----- All entries -----
 
-function LookupByIdSection() {
-  const [pendingId, setPendingId] = useState("");
-  const [lookupId, setLookupId] = useState<string | null>(null);
+function AllEntriesSection() {
+  const queryClient = useQueryClient();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const { data: rows, isLoading, error } = useQuery({
+    queryKey: ["journal-entries"],
+    queryFn: () => apiGet<JournalEntrySummary[]>("/api/journal-entries"),
+  });
+
+  const columns: Column<JournalEntrySummary>[] = [
+    {
+      key: "number",
+      header: "Journal #",
+      width: "150px",
+      sortAccessor: (r) => r.journalNumber,
+      render: (r) => <span className="font-medium tabular-nums">{r.journalNumber}</span>,
+    },
+    {
+      key: "date",
+      header: "Date",
+      width: "110px",
+      sortAccessor: (r) => r.postingDate,
+      render: (r) => <span className="text-text-muted tabular-nums">{r.postingDate}</span>,
+    },
+    {
+      key: "source",
+      header: "Source",
+      width: "200px",
+      sortAccessor: (r) => r.sourceDocumentType,
+      render: (r) => (
+        <span className="text-text-muted">
+          {r.sourceModule} • {r.sourceDocumentType}
+        </span>
+      ),
+    },
+    { key: "description", header: "Description", sortAccessor: (r) => r.description, render: (r) => r.description },
+    {
+      key: "total",
+      header: "Amount",
+      numeric: true,
+      width: "130px",
+      sortAccessor: (r) => Number(r.totalAmount),
+      render: (r) => (
+        <span>
+          {formatMoney(r.totalAmount)} <span className="text-text-faint">{r.currencyCode}</span>
+        </span>
+      ),
+    },
+    {
+      key: "lines",
+      header: "Lines",
+      numeric: true,
+      width: "70px",
+      sortAccessor: (r) => r.lineCount,
+      render: (r) => <span className="tabular-nums text-text-muted">{r.lineCount}</span>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      width: "120px",
+      sortAccessor: (r) => r.status,
+      render: (r) => {
+        const s = statusForOrder(r.status);
+        return <StatusPill label={s.label} tone={s.tone} />;
+      },
+    },
+  ];
+
+  return (
+    <section>
+      <h2 className="mb-3 text-sm font-semibold text-text-primary">All entries</h2>
+
+      {error ? (
+        <div className="rounded-md border border-status-error/30 bg-status-error-soft px-4 py-3 text-sm text-status-error">
+          Failed to load journal entries: {(error as Error).message}
+        </div>
+      ) : (
+        <DataGrid
+          columns={columns}
+          rows={rows ?? []}
+          rowKey={(r) => r.journalEntryHeaderId}
+          onRowClick={(r) => setSelectedId(r.journalEntryHeaderId)}
+          loading={isLoading}
+          emptyState="No journal entries yet. They post as side effects of AP/AR flows (invoices, payments, shipments, adjustments)."
+        />
+      )}
+      {rows && (
+        <div className="mt-3 text-xs text-text-muted">
+          {rows.length} {rows.length === 1 ? "entry" : "entries"} (newest first).
+        </div>
+      )}
+
+      {selectedId && (
+        <EntryDetail
+          id={selectedId}
+          onClose={() => setSelectedId(null)}
+          onReversed={() => {
+            queryClient.invalidateQueries({ queryKey: ["journal-entries"] });
+            queryClient.invalidateQueries({ queryKey: ["journal-entry", selectedId] });
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+// ----- Selected entry detail + reverse -----
+
+function EntryDetail({ id, onClose, onReversed }: { id: string; onClose: () => void; onReversed: () => void }) {
   const [reverseDialog, setReverseDialog] = useState(false);
   const [reverseReason, setReverseReason] = useState("");
   const [reverseDate, setReverseDate] = useState(new Date().toISOString().slice(0, 10));
   const [reverseError, setReverseError] = useState<string | null>(null);
 
   const { data, isLoading, error: fetchError, refetch } = useQuery({
-    queryKey: ["journal-entry", lookupId],
-    queryFn: () => apiGet<JournalEntry>(`/api/journal-entries/${lookupId}`),
-    enabled: !!lookupId,
+    queryKey: ["journal-entry", id],
+    queryFn: () => apiGet<JournalEntry>(`/api/journal-entries/${id}`),
+    enabled: !!id,
   });
 
   const reverseMutation = useMutation({
     mutationFn: async () => {
-      await apiPost(`/api/journal-entries/${lookupId}/reverse`, {
+      await apiPost(`/api/journal-entries/${id}/reverse`, {
         reason: reverseReason.trim(),
         postingDate: reverseDate,
       });
     },
     onSuccess: () => {
       refetch();
+      onReversed();
       setReverseDialog(false);
       setReverseReason("");
     },
     onError: (err) => setReverseError(err instanceof ApiError ? err.message : "Reverse failed."),
   });
 
-  function lookup() {
-    if (!pendingId.trim()) return;
-    setLookupId(pendingId.trim());
-  }
-
   const status = data ? statusForOrder(data.status) : null;
   const isReversible = data?.status === "posted";
 
   return (
-    <section>
-      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-text-primary">
-        <Search className="h-4 w-4 text-text-muted" />
-        Find an entry by id
-      </h2>
+    <div className="mt-6 rounded-md border border-border-default bg-bg-surface p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-text-primary">
+          {data ? data.journalNumber : "Entry"} detail
+        </h3>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close detail"
+          className="text-text-muted hover:text-text-primary"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
 
-      <FormSection columns={1}>
-        <div className="flex gap-2">
-          <TextInput
-            placeholder="Journal entry header id (UUID)"
-            value={pendingId}
-            onChange={(e) => setPendingId(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") lookup(); }}
-          />
-          <ActionButton variant="primary" onClick={lookup}>Search</ActionButton>
+      {isLoading ? (
+        <div className="px-4 py-6 text-center text-sm text-text-muted">Loading entry…</div>
+      ) : fetchError ? (
+        <div className="rounded-md border border-status-error/30 bg-status-error-soft px-4 py-3 text-sm text-status-error">
+          {fetchError instanceof ApiError && fetchError.status === 404
+            ? "No entry found with that id."
+            : `Failed to load: ${(fetchError as Error).message}`}
         </div>
-      </FormSection>
+      ) : data ? (
+        <div className="space-y-4">
+          <FormSection title={data.journalNumber} description={data.description}>
+            <ReadOnlyField label="Posting date" value={data.postingDate} />
+            <ReadOnlyField label="Status" value={status && <StatusPill label={status.label} tone={status.tone} />} />
+            <ReadOnlyField label="Source" value={`${data.sourceModule} • ${data.sourceDocumentType}`} />
+            <ReadOnlyField label="Source doc id" value={<code className="text-xs text-text-muted">{shortUuid(data.sourceDocumentId)}</code>} />
+            <ReadOnlyField label="Currency" value={data.currencyCode} />
+            <ReadOnlyField label="Rate" value={<span className="tabular-nums">{data.exchangeRate}</span>} />
+          </FormSection>
 
-      {!lookupId ? (
-        <div className="mt-4 rounded-md border border-dashed border-border-default px-4 py-8 text-center text-sm text-text-muted">
-          Paste a journal entry header id and press <kbd className="rounded bg-bg-subtle px-1.5 py-0.5 text-xs">Enter</kbd> or click <strong>Search</strong> to view its header + balanced lines.
-        </div>
-      ) : (
-        <div className="mt-4">
-          {isLoading ? (
-            <div className="rounded-md border border-border-default bg-bg-surface px-4 py-6 text-center text-sm text-text-muted">
-              Loading entry…
-            </div>
-          ) : fetchError ? (
-            <div className="rounded-md border border-status-error/30 bg-status-error-soft px-4 py-3 text-sm text-status-error">
-              {fetchError instanceof ApiError && fetchError.status === 404
-                ? "No entry found with that id."
-                : `Failed to load: ${(fetchError as Error).message}`}
-            </div>
-          ) : data ? (
-            <div className="space-y-4">
-              <FormSection
-                title={data.journalNumber}
-                description={data.description}
+          <DataGrid columns={lineColumns} rows={data.lines} rowKey={(l) => l.lineId} />
+
+          <div className="flex justify-end">
+            {isReversible ? (
+              <ActionButton
+                variant="danger"
+                icon={<Undo2 className="h-4 w-4" />}
+                onClick={() => {
+                  setReverseDialog(true);
+                  setReverseError(null);
+                }}
+                requiresRole="finance_manager"
               >
-                <ReadOnlyField label="Posting date" value={data.postingDate} />
-                <ReadOnlyField label="Status" value={status && <StatusPill label={status.label} tone={status.tone} />} />
-                <ReadOnlyField label="Source" value={`${data.sourceModule} • ${data.sourceDocumentType}`} />
-                <ReadOnlyField label="Source doc id" value={<code className="text-xs text-text-muted">{shortUuid(data.sourceDocumentId)}</code>} />
-                <ReadOnlyField label="Currency" value={data.currencyCode} />
-                <ReadOnlyField label="Rate" value={<span className="tabular-nums">{data.exchangeRate}</span>} />
-              </FormSection>
-
-              <DataGrid
-                columns={lineColumns}
-                rows={data.lines}
-                rowKey={(l) => l.lineId}
-              />
-
-              <div className="flex justify-end">
-                {isReversible ? (
-                  <ActionButton
-                    variant="danger"
-                    icon={<Undo2 className="h-4 w-4" />}
-                    onClick={() => {
-                      setReverseDialog(true);
-                      setReverseError(null);
-                    }}
-                    requiresRole="finance_manager"
-                  >
-                    Reverse this entry
-                  </ActionButton>
-                ) : (
-                  <span className="text-xs text-text-muted">
-                    Status is <strong>{data.status}</strong> — not reversible.
-                  </span>
-                )}
-              </div>
-            </div>
-          ) : null}
+                Reverse this entry
+              </ActionButton>
+            ) : (
+              <span className="text-xs text-text-muted">
+                Status is <strong>{data.status}</strong> — not reversible.
+              </span>
+            )}
+          </div>
         </div>
-      )}
+      ) : null}
 
       <ConfirmDialog
         open={reverseDialog}
@@ -241,7 +335,7 @@ function LookupByIdSection() {
           </div>
         }
       />
-    </section>
+    </div>
   );
 }
 
@@ -254,6 +348,11 @@ const lineColumns: Column<JournalEntryLine>[] = [
   { key: "desc", header: "Description", render: (l) => <span className="text-text-muted">{l.description || "—"}</span> },
 ];
 
+function formatMoney(v: string | null | undefined): string {
+  if (v == null) return "—";
+  const n = Number(v);
+  return Number.isNaN(n) ? String(v) : n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 function formatDr(v: string): string {
   const n = Number(v);
   return n > 0 ? n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
@@ -276,6 +375,7 @@ function ReverseBySourceSection() {
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ReverseBySourceResponse | null>(null);
+  const queryClient = useQueryClient();
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -289,6 +389,7 @@ function ReverseBySourceSection() {
     onSuccess: (data) => {
       setResult(data);
       setConfirm(false);
+      queryClient.invalidateQueries({ queryKey: ["journal-entries"] });
     },
     onError: (err) => {
       setError(err instanceof ApiError ? err.message : "Reverse failed.");
