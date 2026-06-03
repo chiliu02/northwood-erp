@@ -28,6 +28,11 @@ public interface SalesOrderLineSnapshotPort {
      * @param replenishmentStrategy the product's {@code to_stock} | {@code to_order}
      *     strategy, projected onto {@code sales.product_card}. Drives the
      *     reserve-step branch via {@link #pegged()}.
+     * @param planningTimeFenceDays the product's planning time fence (days), read
+     *     live from {@code sales.product_card} the same way as
+     *     {@code replenishmentStrategy}. The worker takes the max across lines to
+     *     gate the whole-order reservation ({@code need-by − max fence}). 0 = no
+     *     fence (reserve immediately).
      */
     record LineSnapshot(
         UUID salesOrderLineId,
@@ -36,7 +41,8 @@ public interface SalesOrderLineSnapshotPort {
         String productSku,
         String productName,
         BigDecimal orderedQuantity,
-        String replenishmentStrategy
+        String replenishmentStrategy,
+        int planningTimeFenceDays
     ) {
         /**
          * True when the product is order-pegged ({@code to_order}) — the

@@ -7,8 +7,10 @@ import com.northwood.sales.domain.SalesOrderId;
 import com.northwood.sales.domain.SalesOrderLine;
 import com.northwood.sales.domain.SalesOrderRepository;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -30,6 +32,14 @@ public final class InMemorySalesOrderLineSnapshotPort implements SalesOrderLineS
      */
     private final Set<UUID> orderPeggedProductIds = new HashSet<>();
 
+    /**
+     * Per-product planning time fence (days). The aggregate doesn't carry the
+     * product-master fence (it's projected onto {@code sales.product_card} and
+     * read live by the JDBC variant), so a test seeds it here to exercise the
+     * planning-time-fence release-gating path. Absent → 0 (no fence).
+     */
+    private final Map<UUID, Integer> fenceByProductId = new HashMap<>();
+
     public InMemorySalesOrderLineSnapshotPort(SalesOrderRepository orders) {
         this.orders = orders;
     }
@@ -37,6 +47,12 @@ public final class InMemorySalesOrderLineSnapshotPort implements SalesOrderLineS
     /** Mark a product order-pegged so its SO lines reserve dedicated supply. */
     public InMemorySalesOrderLineSnapshotPort markOrderPegged(UUID productId) {
         orderPeggedProductIds.add(productId);
+        return this;
+    }
+
+    /** Seed a product's planning time fence (days) so its SO lines gate release. */
+    public InMemorySalesOrderLineSnapshotPort withFence(UUID productId, int planningTimeFenceDays) {
+        fenceByProductId.put(productId, planningTimeFenceDays);
         return this;
     }
 
@@ -61,7 +77,8 @@ public final class InMemorySalesOrderLineSnapshotPort implements SalesOrderLineS
                 // the product into order-pegged via markOrderPegged.
                 (orderPeggedProductIds.contains(line.productId())
                     ? ReplenishmentStrategy.TO_ORDER
-                    : ReplenishmentStrategy.TO_STOCK).dbValue()
+                    : ReplenishmentStrategy.TO_STOCK).dbValue(),
+                fenceByProductId.getOrDefault(line.productId(), 0)
             ));
         }
         return out;

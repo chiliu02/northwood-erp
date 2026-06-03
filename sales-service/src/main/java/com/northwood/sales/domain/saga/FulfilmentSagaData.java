@@ -34,6 +34,13 @@ import java.util.UUID;
  *       The manufacturing leg of the compensation gate was retired — no work
  *       order is bound to a sales order — so inventory is now the sole
  *       compensation contract.</li>
+ *   <li>{@link #requestedDeliveryDate} — the order's need-by date (ISO-8601
+ *       {@code yyyy-MM-dd}), stamped at saga creation so the worker can compute
+ *       the planning-time-fence release date ({@code need-by − max line fence})
+ *       and defer the stock reservation until then. String (not {@code LocalDate})
+ *       to keep the blob serialisable without a Jackson date module — mirrors
+ *       {@code paymentTerms}. Null on legacy rows / orders with no requested
+ *       date → no fence gating (reserve immediately).</li>
  * </ul>
  *
  * <p>The compact constructor defaults null fields so saga rows written before a
@@ -43,7 +50,8 @@ public record FulfilmentSagaData(
     Boolean inventoryCancellationAcked,
     String paymentTerms,
     Set<UUID> outstandingReplenishmentLineIds,
-    Boolean sawNonPeggedReplenishment
+    Boolean sawNonPeggedReplenishment,
+    String requestedDeliveryDate
 ) {
 
     public FulfilmentSagaData {
@@ -60,10 +68,12 @@ public record FulfilmentSagaData(
         // been fulfilled, meaning the saga must retry reservation rather than
         // ship straight off the order-pegged peg. Legacy/missing → false.
         sawNonPeggedReplenishment = sawNonPeggedReplenishment != null && sawNonPeggedReplenishment;
+        // requestedDeliveryDate stays null on legacy rows / dateless orders;
+        // the worker treats null as "no fence gating" (reserve immediately).
     }
 
     public static FulfilmentSagaData none() {
-        return new FulfilmentSagaData(false, null, Set.of(), false);
+        return new FulfilmentSagaData(false, null, Set.of(), false, null);
     }
 
     /** Stamp the order's commercial payment terms at saga creation. */
@@ -72,7 +82,19 @@ public record FulfilmentSagaData(
             inventoryCancellationAcked,
             paymentTerms,
             new LinkedHashSet<>(outstandingReplenishmentLineIds),
-            sawNonPeggedReplenishment
+            sawNonPeggedReplenishment,
+            requestedDeliveryDate
+        );
+    }
+
+    /** Stamp the order's need-by date (ISO {@code yyyy-MM-dd}) at saga creation. */
+    public FulfilmentSagaData withRequestedDeliveryDate(String requestedDeliveryDate) {
+        return new FulfilmentSagaData(
+            inventoryCancellationAcked,
+            paymentTerms,
+            new LinkedHashSet<>(outstandingReplenishmentLineIds),
+            sawNonPeggedReplenishment,
+            requestedDeliveryDate
         );
     }
 
@@ -82,7 +104,8 @@ public record FulfilmentSagaData(
             true,
             paymentTerms,
             new LinkedHashSet<>(outstandingReplenishmentLineIds),
-            sawNonPeggedReplenishment
+            sawNonPeggedReplenishment,
+            requestedDeliveryDate
         );
     }
 
@@ -96,7 +119,8 @@ public record FulfilmentSagaData(
             inventoryCancellationAcked,
             paymentTerms,
             lineIds == null ? Set.of() : new LinkedHashSet<>(lineIds),
-            sawNonPeggedReplenishment
+            sawNonPeggedReplenishment,
+            requestedDeliveryDate
         );
     }
 
@@ -118,7 +142,8 @@ public record FulfilmentSagaData(
             inventoryCancellationAcked,
             paymentTerms,
             next,
-            sawNonPeggedReplenishment || !pegged
+            sawNonPeggedReplenishment || !pegged,
+            requestedDeliveryDate
         );
     }
 

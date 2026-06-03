@@ -12,11 +12,12 @@ class FulfilmentSagaDataTest {
     @Nested
     class CompactConstructor {
         @Test void defaults_null_fields() {
-            FulfilmentSagaData d = new FulfilmentSagaData(null, null, null, null);
+            FulfilmentSagaData d = new FulfilmentSagaData(null, null, null, null, null);
             assertThat(d.inventoryCancellationAcked()).isFalse();
             assertThat(d.paymentTerms()).isNull();                       // null = legacy fallback (on_shipment)
             assertThat(d.outstandingReplenishmentLineIds()).isEmpty();
             assertThat(d.sawNonPeggedReplenishment()).isFalse();
+            assertThat(d.requestedDeliveryDate()).isNull();              // null = no fence gating (reserve immediately)
         }
 
         @Test void none_factory_yields_empty_data() {
@@ -32,6 +33,26 @@ class FulfilmentSagaDataTest {
         @Test void stamps_terms_on_immutable_copy() {
             FulfilmentSagaData d = FulfilmentSagaData.none().withPaymentTerms("prepayment");
             assertThat(d.paymentTerms()).isEqualTo("prepayment");
+        }
+    }
+
+    @Nested
+    class RequestedDeliveryDate {
+        @Test void stamps_date_on_immutable_copy() {
+            FulfilmentSagaData d = FulfilmentSagaData.none().withRequestedDeliveryDate("2026-07-01");
+            assertThat(d.requestedDeliveryDate()).isEqualTo("2026-07-01");
+        }
+
+        @Test void survives_other_mutations() {
+            // The gate reads need-by at requestStockReservation, which can run
+            // after prepayment parking + outstanding-replenishment churn — the
+            // date must thread through every with* builder.
+            FulfilmentSagaData d = FulfilmentSagaData.none()
+                .withRequestedDeliveryDate("2026-07-01")
+                .withPaymentTerms("prepayment")
+                .withOutstandingReplenishmentLineIds(Set.of(UUID.randomUUID()))
+                .withInventoryCancellationAcked();
+            assertThat(d.requestedDeliveryDate()).isEqualTo("2026-07-01");
         }
     }
 

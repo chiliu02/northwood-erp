@@ -27,7 +27,8 @@ public class JdbcSalesOrderLineSnapshotPort implements SalesOrderLineSnapshotPor
             """
             SELECT l.sales_order_line_id, l.line_number, l.product_id, l.product_sku, l.product_name,
                    l.ordered_quantity,
-                   COALESCE(pc.replenishment_strategy, 'to_stock') AS replenishment_strategy
+                   COALESCE(pc.replenishment_strategy, 'to_stock') AS replenishment_strategy,
+                   COALESCE(pc.planning_time_fence_days, 0) AS planning_time_fence_days
             FROM sales.sales_order_line l
             LEFT JOIN sales.product_card pc ON pc.product_id = l.product_id
             WHERE l.sales_order_header_id = ?
@@ -41,7 +42,8 @@ public class JdbcSalesOrderLineSnapshotPort implements SalesOrderLineSnapshotPor
                     rs.getString("product_sku"),
                     rs.getString("product_name"),
                     rs.getBigDecimal("ordered_quantity"),
-                    rs.getString("replenishment_strategy")
+                    rs.getString("replenishment_strategy"),
+                    rs.getInt("planning_time_fence_days")
                 ));
             },
             salesOrderHeaderId
