@@ -76,7 +76,7 @@ const MODULES: NavModule[] = [
     label: "Manufacturing",
     icon: Factory,
     items: [
-      { label: "BOMs", to: "/boms" },
+      { label: "Bill of Materials", to: "/boms" },
       { label: "Work Orders", to: "/work-orders" },
       { label: "Production Board", to: "/production-board" },
     ],
