@@ -914,6 +914,36 @@ COMMIT;
 
 
 -- ============================================================================
+-- SEED: FG-CHEST-001 reconfigured make-to-order
+-- The chest was seeded above with the bulk default (to_stock, reorder 1/3).
+-- Flip it to make-to-order so each sales order pegs a dedicated work order
+-- rather than building to the shared pool — the manufactured counterpart to
+-- FG-CARPET-001's buy-to-order. The three to_order invariants hold:
+-- is_sellable=true (set above), reorder 0/0 (zeroed here), non-service. Mirror
+-- the strategy onto sales.product_card (the fulfilment saga reads it to peg the
+-- SO line) and zero inventory's reorder policy so the make-to-stock reorder
+-- loop never fires for it. stock_balance is already 0 (made on demand).
+-- Idempotent UPDATEs (constant target), like the version fixup below.
+-- ============================================================================
+
+BEGIN;
+
+UPDATE product.product
+   SET replenishment_strategy = 'to_order', reorder_point = 0, reorder_quantity = 0
+ WHERE product_id = '00000000-0000-7000-8000-000000000300';
+
+UPDATE sales.product_card
+   SET replenishment_strategy = 'to_order'
+ WHERE product_id = '00000000-0000-7000-8000-000000000300';
+
+UPDATE inventory.product_card
+   SET reorder_point = 0, reorder_quantity = 0
+ WHERE product_id = '00000000-0000-7000-8000-000000000300';
+
+COMMIT;
+
+
+-- ============================================================================
 -- SEED: AGGREGATE VERSION FIXUP
 -- Seeded aggregate-root rows must land at version 1, not the table default 0.
 -- Each Jdbc*Repository.save() uses version() == 0 as its "new, not yet
