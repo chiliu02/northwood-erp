@@ -102,12 +102,13 @@ class JdbcShipmentRepositoryIT {
             UUID.randomUUID(), UUID.randomUUID(), productId, "FG-IT-1", "Finished 1",
             new BigDecimal("3"), new BigDecimal("40.000000"), new BigDecimal("120.00"));
         Shipment shipment = Shipment.post(
-            "SH-RT-001", salesOrderId, customerId, "Customer IT", WAREHOUSE_ID, "WH-IT-S", List.of(line));
+            "SH-RT-001", salesOrderId, "SO-RT-001", customerId, "Customer IT", WAREHOUSE_ID, "WH-IT-S", List.of(line));
         save(shipment);
 
         Shipment r = REPO.findById(shipment.id()).orElseThrow();
         assertThat(r.shipmentNumber()).isEqualTo("SH-RT-001");
         assertThat(r.salesOrderHeaderId()).isEqualTo(salesOrderId);
+        assertThat(r.salesOrderNumber()).isEqualTo("SO-RT-001");
         assertThat(r.customerId()).isEqualTo(customerId);
         assertThat(r.warehouseId()).isEqualTo(WAREHOUSE_ID);
         assertThat(r.status()).isEqualTo(Shipment.Status.POSTED);
@@ -122,7 +123,7 @@ class JdbcShipmentRepositoryIT {
     @Test
     void update_path_is_rejected_for_post_only_aggregate() {
         Shipment persisted = Shipment.reconstitute(
-            ShipmentId.newId(), "SH-UPD-001", UUID.randomUUID(), UUID.randomUUID(), "Cust",
+            ShipmentId.newId(), "SH-UPD-001", UUID.randomUUID(), "SO-UPD-001", UUID.randomUUID(), "Cust",
             WAREHOUSE_ID, "WH-IT-S", Shipment.Status.POSTED, List.of(), 1L);
         assertThatThrownBy(() -> save(persisted))
             .isInstanceOf(IllegalStateException.class);

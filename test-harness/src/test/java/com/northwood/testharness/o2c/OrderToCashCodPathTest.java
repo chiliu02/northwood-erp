@@ -89,6 +89,7 @@ class OrderToCashCodPathTest {
         inventory.shipmentService.post(new PostShipmentCommand(
             "SHIP-COD-1",
             orderId,
+            "SO-COD-1",
             customerId,
             "Acme Corp",
             WarehouseCodes.MAIN,

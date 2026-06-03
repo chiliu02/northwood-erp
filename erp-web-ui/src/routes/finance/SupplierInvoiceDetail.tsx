@@ -30,7 +30,9 @@ interface Invoice {
   internalInvoiceNumber: string;
   supplierInvoiceNumber: string;
   purchaseOrderHeaderId: string;
+  purchaseOrderNumber: string | null;
   goodsReceiptHeaderId: string;
+  goodsReceiptNumber: string | null;
   supplierId: string;
   supplierName: string;
   currencyCode: string;
@@ -175,8 +177,8 @@ export function SupplierInvoiceDetail() {
                   <ReadOnlyField label="Match" value={<StatusPill label={data.matchStatus.replace(/_/g, " ")} tone={data.matchStatus.includes("failed") ? "error" : "success"} />} />
                 </FormSection>
                 <FormSection title="Linked documents">
-                  <ReadOnlyField label="Purchase Order" value={<code className="text-xs text-text-muted">{shortUuid(data.purchaseOrderHeaderId)}</code>} />
-                  <ReadOnlyField label="Goods Receipt" value={data.goodsReceiptHeaderId ? <code className="text-xs text-text-muted">{shortUuid(data.goodsReceiptHeaderId)}</code> : "—"} />
+                  <ReadOnlyField label="Purchase Order" value={data.purchaseOrderNumber ?? <code className="text-xs text-text-muted">{shortUuid(data.purchaseOrderHeaderId)}</code>} />
+                  <ReadOnlyField label="Goods Receipt" value={data.goodsReceiptNumber ?? (data.goodsReceiptHeaderId ? <code className="text-xs text-text-muted">{shortUuid(data.goodsReceiptHeaderId)}</code> : "—")} />
                 </FormSection>
                 <FormSection title="Totals" columns={3} className="lg:col-span-2">
                   <ReadOnlyField label="Subtotal" value={<span className="tabular-nums">{formatMoney(data.subtotalAmount)} {data.currencyCode}</span>} />

@@ -197,6 +197,7 @@ public class ShipmentService {
         Shipment shipment = Shipment.post(
             command.shipmentNumber(),
             command.salesOrderHeaderId(),
+            command.salesOrderNumber(),
             command.customerId(),
             command.customerName(),
             warehouseId,

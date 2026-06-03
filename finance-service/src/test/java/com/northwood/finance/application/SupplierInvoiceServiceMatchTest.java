@@ -66,7 +66,7 @@ class SupplierInvoiceServiceMatchTest {
     private RecordSupplierInvoiceCommand command(BigDecimal qty, BigDecimal invoiceUnitPrice) {
         return new RecordSupplierInvoiceCommand(
             "INV-001", "SUPPLIER-001",
-            PO_HEADER, GR_HEADER,
+            PO_HEADER, "PO-001", GR_HEADER, "GR-001",
             SUPPLIER, "SUP-001", "Acme",
             Currencies.AUD,
             List.of(new RecordSupplierInvoiceCommand.Line(

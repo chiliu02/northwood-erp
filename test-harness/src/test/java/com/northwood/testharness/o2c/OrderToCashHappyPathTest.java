@@ -104,6 +104,7 @@ class OrderToCashHappyPathTest {
         inventory.shipmentService.post(new PostShipmentCommand(
             "SHIP-001",
             orderId,
+            "SO-HAPPY-1",
             customerId,
             "Acme Corp",
             WarehouseCodes.MAIN,

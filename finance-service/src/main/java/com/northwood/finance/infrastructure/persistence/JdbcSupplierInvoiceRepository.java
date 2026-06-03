@@ -28,7 +28,9 @@ public class JdbcSupplierInvoiceRepository implements SupplierInvoiceRepository 
         rs.getString("internal_invoice_number"),
         rs.getString("supplier_invoice_number"),
         rs.getObject("purchase_order_header_id", UUID.class),
+        rs.getString("purchase_order_number"),
         rs.getObject("goods_receipt_header_id", UUID.class),
+        rs.getString("goods_receipt_number"),
         rs.getObject("supplier_id", UUID.class),
         rs.getString("supplier_code"),
         rs.getString("supplier_name"),
@@ -71,7 +73,8 @@ public class JdbcSupplierInvoiceRepository implements SupplierInvoiceRepository 
     public Optional<SupplierInvoice> findById(SupplierInvoiceId id) {
         List<SupplierInvoice> matches = jdbc.query("""
             SELECT supplier_invoice_header_id, internal_invoice_number, supplier_invoice_number,
-                   purchase_order_header_id, goods_receipt_header_id,
+                   purchase_order_header_id, purchase_order_number,
+                   goods_receipt_header_id, goods_receipt_number,
                    supplier_id, supplier_code, supplier_name,
                    currency_code, subtotal_amount, tax_amount, total_amount,
                    status, match_status, version
@@ -93,7 +96,8 @@ public class JdbcSupplierInvoiceRepository implements SupplierInvoiceRepository 
             """, LINE_MAPPER, id.value());
         return Optional.of(SupplierInvoice.reconstitute(
             stub.id(), stub.internalInvoiceNumber(), stub.supplierInvoiceNumber(),
-            stub.purchaseOrderHeaderId(), stub.goodsReceiptHeaderId(),
+            stub.purchaseOrderHeaderId(), stub.purchaseOrderNumber(),
+            stub.goodsReceiptHeaderId(), stub.goodsReceiptNumber(),
             stub.supplierId(), stub.supplierCode(), stub.supplierName(),
             stub.currencyCode(),
             stub.subtotalAmount(), stub.taxAmount(), stub.totalAmount(),
@@ -136,7 +140,8 @@ public class JdbcSupplierInvoiceRepository implements SupplierInvoiceRepository 
     public List<SupplierInvoice> findByStatus(SupplierInvoice.Status status) {
         return jdbc.query("""
             SELECT supplier_invoice_header_id, internal_invoice_number, supplier_invoice_number,
-                   purchase_order_header_id, goods_receipt_header_id,
+                   purchase_order_header_id, purchase_order_number,
+                   goods_receipt_header_id, goods_receipt_number,
                    supplier_id, supplier_code, supplier_name,
                    currency_code, subtotal_amount, tax_amount, total_amount,
                    status, match_status, version
@@ -156,7 +161,8 @@ public class JdbcSupplierInvoiceRepository implements SupplierInvoiceRepository 
         // endpoint is the right place to fetch lines if the UI needs them.
         return jdbc.query("""
             SELECT supplier_invoice_header_id, internal_invoice_number, supplier_invoice_number,
-                   purchase_order_header_id, goods_receipt_header_id,
+                   purchase_order_header_id, purchase_order_number,
+                   goods_receipt_header_id, goods_receipt_number,
                    supplier_id, supplier_code, supplier_name,
                    currency_code, subtotal_amount, tax_amount, total_amount,
                    status, match_status, version
@@ -198,15 +204,17 @@ public class JdbcSupplierInvoiceRepository implements SupplierInvoiceRepository 
         jdbc.update("""
             INSERT INTO finance.supplier_invoice_header (
                 supplier_invoice_header_id, internal_invoice_number, supplier_invoice_number,
-                purchase_order_header_id, goods_receipt_header_id,
+                purchase_order_header_id, purchase_order_number,
+                goods_receipt_header_id, goods_receipt_number,
                 supplier_id, supplier_code, supplier_name,
                 currency_code, subtotal_amount, tax_amount, total_amount,
                 status, match_status, version, approved_at,
                 created_by, last_modified_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             si.id().value(), si.internalInvoiceNumber(), si.supplierInvoiceNumber(),
-            si.purchaseOrderHeaderId(), si.goodsReceiptHeaderId(),
+            si.purchaseOrderHeaderId(), si.purchaseOrderNumber(),
+            si.goodsReceiptHeaderId(), si.goodsReceiptNumber(),
             si.supplierId(), si.supplierCode(), si.supplierName(),
             si.currencyCode(), si.subtotalAmount(), si.taxAmount(), si.totalAmount(),
             si.status().dbValue(), si.matchStatus().dbValue(),

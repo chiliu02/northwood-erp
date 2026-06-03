@@ -53,7 +53,7 @@ class ShipmentServiceTest {
     }
 
     private PostShipmentCommand cmd(String warehouseCode, List<ShipmentLineRequest> lines) {
-        return new PostShipmentCommand("SHP-001", SO, CUSTOMER, "Acme", warehouseCode, lines);
+        return new PostShipmentCommand("SHP-001", SO, "SO-001", CUSTOMER, "Acme", warehouseCode, lines);
     }
 
     @Test void single_line_decrements_stock_and_records_movement() {

@@ -67,6 +67,7 @@ public final class Shipment {
     private final ShipmentId id;
     private final String shipmentNumber;
     private final UUID salesOrderHeaderId;
+    private final String salesOrderNumber;
     private final UUID customerId;
     private final String customerName;
     private final UUID warehouseId;
@@ -80,6 +81,7 @@ public final class Shipment {
     public static Shipment post(
         String shipmentNumber,
         UUID salesOrderHeaderId,
+        String salesOrderNumber,
         UUID customerId,
         String customerName,
         UUID warehouseId,
@@ -91,7 +93,7 @@ public final class Shipment {
         Assert.notEmpty(lines, "at least one line is required");
         ShipmentId id = ShipmentId.newId();
         Shipment s = new Shipment(
-            id, shipmentNumber, salesOrderHeaderId,
+            id, shipmentNumber, salesOrderHeaderId, salesOrderNumber,
             customerId, customerName,
             warehouseId, warehouseCode,
             Status.POSTED, new ArrayList<>(lines), 0L
@@ -122,13 +124,13 @@ public final class Shipment {
 
     /** Factory: hydrate from the DB; emits no events. */
     public static Shipment reconstitute(
-        ShipmentId id, String shipmentNumber, UUID salesOrderHeaderId,
+        ShipmentId id, String shipmentNumber, UUID salesOrderHeaderId, String salesOrderNumber,
         UUID customerId, String customerName,
         UUID warehouseId, String warehouseCode,
         Status status, List<ShipmentLine> lines, long version
     ) {
         return new Shipment(
-            id, shipmentNumber, salesOrderHeaderId,
+            id, shipmentNumber, salesOrderHeaderId, salesOrderNumber,
             customerId, customerName,
             warehouseId, warehouseCode,
             status, new ArrayList<>(lines), version
@@ -136,7 +138,7 @@ public final class Shipment {
     }
 
     private Shipment(
-        ShipmentId id, String shipmentNumber, UUID salesOrderHeaderId,
+        ShipmentId id, String shipmentNumber, UUID salesOrderHeaderId, String salesOrderNumber,
         UUID customerId, String customerName,
         UUID warehouseId, String warehouseCode,
         Status status, List<ShipmentLine> lines, long version
@@ -144,6 +146,7 @@ public final class Shipment {
         this.id = id;
         this.shipmentNumber = shipmentNumber;
         this.salesOrderHeaderId = salesOrderHeaderId;
+        this.salesOrderNumber = salesOrderNumber;
         this.customerId = customerId;
         this.customerName = customerName;
         this.warehouseId = warehouseId;
@@ -162,6 +165,7 @@ public final class Shipment {
     public ShipmentId id()                       { return id; }
     public String shipmentNumber()                { return shipmentNumber; }
     public UUID salesOrderHeaderId()              { return salesOrderHeaderId; }
+    public String salesOrderNumber()              { return salesOrderNumber; }
     public UUID customerId()                      { return customerId; }
     public String customerName()                  { return customerName; }
     public UUID warehouseId()                     { return warehouseId; }

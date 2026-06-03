@@ -1040,6 +1040,10 @@ CREATE TABLE inventory.shipment_header (
     shipment_header_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     shipment_number VARCHAR(50) NOT NULL UNIQUE,
     sales_order_header_id UUID NOT NULL,
+    -- Snapshot of the originating sales order's number, captured at post time
+    -- (same cross-context denormalisation as customer_name) so the shipments
+    -- list shows SO-XXXX rather than the bare SO UUID. Nullable for legacy rows.
+    sales_order_number VARCHAR(50),
     customer_id UUID,
     customer_name VARCHAR(200),
     warehouse_id UUID NOT NULL REFERENCES inventory.warehouse(warehouse_id),
@@ -2229,7 +2233,13 @@ CREATE TABLE finance.supplier_invoice_header (
     supplier_invoice_number VARCHAR(50) NOT NULL,
     internal_invoice_number VARCHAR(50) NOT NULL UNIQUE,
     purchase_order_header_id UUID NOT NULL,
+    -- Snapshots of the referenced PO + goods-receipt numbers, captured at record
+    -- time (same cross-context denormalisation as supplier_name) so the invoice
+    -- detail shows PO-XXXX / GR-XXXX rather than bare UUIDs. Nullable for legacy
+    -- rows (and goods_receipt_number is null when no receipt is linked).
+    purchase_order_number VARCHAR(50),
     goods_receipt_header_id UUID,
+    goods_receipt_number VARCHAR(50),
     supplier_id UUID NOT NULL,
     supplier_code VARCHAR(50),
     supplier_name VARCHAR(200) NOT NULL,

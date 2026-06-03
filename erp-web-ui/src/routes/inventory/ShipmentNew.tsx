@@ -150,6 +150,7 @@ export function ShipmentNew() {
     mutationFn: () => apiPost<CreatedShipment>("/api/shipments", {
       shipmentNumber: shipmentNumber.trim(),
       salesOrderHeaderId,
+      salesOrderNumber: orderDetail?.orderNumber ?? null,
       warehouseCode,
       lines: lines.map((l) => ({
         salesOrderLineId: l.salesOrderLineId || null,

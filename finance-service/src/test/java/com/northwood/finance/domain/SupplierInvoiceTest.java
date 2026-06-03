@@ -35,7 +35,7 @@ class SupplierInvoiceTest {
 
     private static SupplierInvoice record(SupplierInvoice.MatchStatus matchOutcome) {
         return SupplierInvoice.record(
-            "INT-001", "SUP-001", PO_HEADER, GR_HEADER,
+            "INT-001", "SUP-001", PO_HEADER, "PO-001", GR_HEADER, "GR-001",
             SUPPLIER, "ACME", "Acme Co",
             Currencies.AUD, List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
             matchOutcome
@@ -68,14 +68,14 @@ class SupplierInvoiceTest {
 
         @Test void rejects_empty_lines() {
             assertThatThrownBy(() -> SupplierInvoice.record(
-                "INT", "SUP", PO_HEADER, GR_HEADER,
+                "INT", "SUP", PO_HEADER, "PO-001", GR_HEADER, "GR-001",
                 SUPPLIER, "A", "A", Currencies.AUD, List.of(), SupplierInvoice.MatchStatus.MATCHED
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_purchase_order_header_id() {
             assertThatThrownBy(() -> SupplierInvoice.record(
-                "INT", "SUP", null, GR_HEADER,
+                "INT", "SUP", null, "PO-001", GR_HEADER, "GR-001",
                 SUPPLIER, "A", "A", Currencies.AUD,
                 List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
                 SupplierInvoice.MatchStatus.MATCHED
@@ -84,7 +84,7 @@ class SupplierInvoiceTest {
 
         @Test void rejects_null_supplier_id() {
             assertThatThrownBy(() -> SupplierInvoice.record(
-                "INT", "SUP", PO_HEADER, GR_HEADER,
+                "INT", "SUP", PO_HEADER, "PO-001", GR_HEADER, "GR-001",
                 null, "A", "A", Currencies.AUD,
                 List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
                 SupplierInvoice.MatchStatus.MATCHED
@@ -93,7 +93,7 @@ class SupplierInvoiceTest {
 
         @Test void rejects_null_supplier_invoice_number() {
             assertThatThrownBy(() -> SupplierInvoice.record(
-                "INT", null, PO_HEADER, GR_HEADER,
+                "INT", null, PO_HEADER, "PO-001", GR_HEADER, "GR-001",
                 SUPPLIER, "A", "A", Currencies.AUD,
                 List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
                 SupplierInvoice.MatchStatus.MATCHED
@@ -102,7 +102,7 @@ class SupplierInvoiceTest {
 
         @Test void totals_summed_from_lines() {
             SupplierInvoice si = SupplierInvoice.record(
-                "INT", "SUP", PO_HEADER, GR_HEADER,
+                "INT", "SUP", PO_HEADER, "PO-001", GR_HEADER, "GR-001",
                 SUPPLIER, "A", "A", Currencies.AUD,
                 List.of(line(new BigDecimal("5"), new BigDecimal("80"))),
                 SupplierInvoice.MatchStatus.MATCHED
@@ -117,7 +117,7 @@ class SupplierInvoiceTest {
             // entry; it lands at three_way_match_failed for manual review (where
             // assertApprovable then blocks approval until it's priced).
             SupplierInvoice si = SupplierInvoice.record(
-                "INT", "SUP", PO_HEADER, GR_HEADER,
+                "INT", "SUP", PO_HEADER, "PO-001", GR_HEADER, "GR-001",
                 SUPPLIER, "A", "A", Currencies.AUD,
                 List.of(line(new BigDecimal("5"), BigDecimal.ZERO)),
                 SupplierInvoice.MatchStatus.MATCHED
@@ -166,7 +166,7 @@ class SupplierInvoiceTest {
         private SupplierInvoice failed(BigDecimal subtotal, BigDecimal tax, BigDecimal total, List<SupplierInvoiceLine> lines) {
             return SupplierInvoice.reconstitute(
                 SupplierInvoiceId.newId(), "INT-001", "SUP-001",
-                PO_HEADER, GR_HEADER, SUPPLIER, "ACME", "Acme Co",
+                PO_HEADER, "PO-001", GR_HEADER, "GR-001", SUPPLIER, "ACME", "Acme Co",
                 Currencies.AUD, subtotal, tax, total,
                 SupplierInvoice.Status.THREE_WAY_MATCH_FAILED, SupplierInvoice.MatchStatus.FAILED,
                 lines, 0L

@@ -32,27 +32,27 @@ class ShipmentTest {
     class Post {
         @Test void rejects_empty_lines() {
             assertThatThrownBy(() -> Shipment.post(
-                "SH-001", SO, CUSTOMER, "Cust", WH, MAIN, List.of()
+                "SH-001", SO, "SO-001", CUSTOMER, "Cust", WH, MAIN, List.of()
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_sales_order() {
             assertThatThrownBy(() -> Shipment.post(
-                "SH-001", null, CUSTOMER, "Cust", WH, MAIN,
+                "SH-001", null, "SO-001", CUSTOMER, "Cust", WH, MAIN,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_warehouse_id() {
             assertThatThrownBy(() -> Shipment.post(
-                "SH-001", SO, CUSTOMER, "Cust", null, MAIN,
+                "SH-001", SO, "SO-001", CUSTOMER, "Cust", null, MAIN,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void posted_status_directly() {
             Shipment s = Shipment.post(
-                "SH-001", SO, CUSTOMER, "Cust", WH, MAIN,
+                "SH-001", SO, "SO-001", CUSTOMER, "Cust", WH, MAIN,
                 List.of(line(BigDecimal.ONE, BigDecimal.TEN))
             );
             assertThat(s.status()).isEqualTo(Shipment.Status.POSTED);
@@ -60,7 +60,7 @@ class ShipmentTest {
 
         @Test void emits_ShipmentPosted_with_lines_and_unit_cost() {
             Shipment s = Shipment.post(
-                "SH-001", SO, CUSTOMER, "Cust", WH, MAIN,
+                "SH-001", SO, "SO-001", CUSTOMER, "Cust", WH, MAIN,
                 List.of(line(new BigDecimal("3"), new BigDecimal("100.00")))
             );
             ShipmentPosted e = (ShipmentPosted) s.pullPendingEvents().get(0);

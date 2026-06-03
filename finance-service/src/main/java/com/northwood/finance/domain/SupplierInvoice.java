@@ -112,7 +112,9 @@ public final class SupplierInvoice {
     private final String internalInvoiceNumber;
     private final String supplierInvoiceNumber;
     private final UUID purchaseOrderHeaderId;
+    private final String purchaseOrderNumber;
     private final UUID goodsReceiptHeaderId;
+    private final String goodsReceiptNumber;
     private final UUID supplierId;
     private final String supplierCode;
     private final String supplierName;
@@ -138,7 +140,9 @@ public final class SupplierInvoice {
         String internalInvoiceNumber,
         String supplierInvoiceNumber,
         UUID purchaseOrderHeaderId,
+        String purchaseOrderNumber,
         UUID goodsReceiptHeaderId,
+        String goodsReceiptNumber,
         UUID supplierId,
         String supplierCode,
         String supplierName,
@@ -177,7 +181,7 @@ public final class SupplierInvoice {
             id,
             internalInvoiceNumber,
             Assert.notNull(supplierInvoiceNumber, "supplierInvoiceNumber"),
-            purchaseOrderHeaderId, goodsReceiptHeaderId,
+            purchaseOrderHeaderId, purchaseOrderNumber, goodsReceiptHeaderId, goodsReceiptNumber,
             supplierId, supplierCode, supplierName,
             Currencies.orBase(currencyCode),
             subtotal, tax, total,
@@ -205,7 +209,8 @@ public final class SupplierInvoice {
     /** Factory: hydrate from the DB; emits no events. */
     public static SupplierInvoice reconstitute(
         SupplierInvoiceId id, String internalInvoiceNumber, String supplierInvoiceNumber,
-        UUID purchaseOrderHeaderId, UUID goodsReceiptHeaderId,
+        UUID purchaseOrderHeaderId, String purchaseOrderNumber,
+        UUID goodsReceiptHeaderId, String goodsReceiptNumber,
         UUID supplierId, String supplierCode, String supplierName,
         String currencyCode,
         BigDecimal subtotalAmount, BigDecimal taxAmount, BigDecimal totalAmount,
@@ -214,7 +219,7 @@ public final class SupplierInvoice {
     ) {
         return new SupplierInvoice(
             id, internalInvoiceNumber, supplierInvoiceNumber,
-            purchaseOrderHeaderId, goodsReceiptHeaderId,
+            purchaseOrderHeaderId, purchaseOrderNumber, goodsReceiptHeaderId, goodsReceiptNumber,
             supplierId, supplierCode, supplierName,
             currencyCode,
             subtotalAmount, taxAmount, totalAmount,
@@ -225,7 +230,8 @@ public final class SupplierInvoice {
 
     private SupplierInvoice(
         SupplierInvoiceId id, String internalInvoiceNumber, String supplierInvoiceNumber,
-        UUID purchaseOrderHeaderId, UUID goodsReceiptHeaderId,
+        UUID purchaseOrderHeaderId, String purchaseOrderNumber,
+        UUID goodsReceiptHeaderId, String goodsReceiptNumber,
         UUID supplierId, String supplierCode, String supplierName,
         String currencyCode,
         BigDecimal subtotalAmount, BigDecimal taxAmount, BigDecimal totalAmount,
@@ -235,6 +241,8 @@ public final class SupplierInvoice {
         this.id = id;
         this.internalInvoiceNumber = internalInvoiceNumber;
         this.supplierInvoiceNumber = supplierInvoiceNumber;
+        this.purchaseOrderNumber = purchaseOrderNumber;
+        this.goodsReceiptNumber = goodsReceiptNumber;
         this.purchaseOrderHeaderId = purchaseOrderHeaderId;
         this.goodsReceiptHeaderId = goodsReceiptHeaderId;
         this.supplierId = supplierId;
@@ -362,7 +370,9 @@ public final class SupplierInvoice {
     public String internalInvoiceNumber()          { return internalInvoiceNumber; }
     public String supplierInvoiceNumber()          { return supplierInvoiceNumber; }
     public UUID purchaseOrderHeaderId()            { return purchaseOrderHeaderId; }
+    public String purchaseOrderNumber()            { return purchaseOrderNumber; }
     public UUID goodsReceiptHeaderId()             { return goodsReceiptHeaderId; }
+    public String goodsReceiptNumber()             { return goodsReceiptNumber; }
     public UUID supplierId()                       { return supplierId; }
     public String supplierCode()                   { return supplierCode; }
     public String supplierName()                   { return supplierName; }

@@ -26,6 +26,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
         ShipmentId.of(rs.getObject("shipment_header_id", UUID.class)),
         rs.getString("shipment_number"),
         rs.getObject("sales_order_header_id", UUID.class),
+        rs.getString("sales_order_number"),
         rs.getObject("customer_id", UUID.class),
         rs.getString("customer_name"),
         rs.getObject("warehouse_id", UUID.class),
@@ -59,7 +60,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
     @Override
     public Optional<Shipment> findById(ShipmentId id) {
         List<Shipment> matches = jdbc.query("""
-            SELECT shipment_header_id, shipment_number, sales_order_header_id,
+            SELECT shipment_header_id, shipment_number, sales_order_header_id, sales_order_number,
                    customer_id, customer_name, warehouse_id, status, version
             FROM inventory.shipment_header
             WHERE shipment_header_id = ?
@@ -77,7 +78,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
             ORDER BY shipment_line_id
             """, LINE_MAPPER, id.value());
         return Optional.of(Shipment.reconstitute(
-            stub.id(), stub.shipmentNumber(), stub.salesOrderHeaderId(),
+            stub.id(), stub.shipmentNumber(), stub.salesOrderHeaderId(), stub.salesOrderNumber(),
             stub.customerId(), stub.customerName(),
             stub.warehouseId(), stub.warehouseCode(),
             stub.status(), lines, stub.version()
@@ -87,7 +88,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
     @Override
     public List<Shipment> findAllHeaders() {
         return jdbc.query("""
-            SELECT shipment_header_id, shipment_number, sales_order_header_id,
+            SELECT shipment_header_id, shipment_number, sales_order_header_id, sales_order_number,
                    customer_id, customer_name, warehouse_id, status, version
             FROM inventory.shipment_header
             ORDER BY created_at DESC
@@ -111,13 +112,13 @@ public class JdbcShipmentRepository implements ShipmentRepository {
         Timestamp postedAt = s.status() == Shipment.Status.POSTED ? Timestamp.from(Instant.now()) : null;
         jdbc.update("""
             INSERT INTO inventory.shipment_header (
-                shipment_header_id, shipment_number, sales_order_header_id,
+                shipment_header_id, shipment_number, sales_order_header_id, sales_order_number,
                 customer_id, customer_name,
                 warehouse_id, status, version, posted_at,
                 created_by, last_modified_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            s.id().value(), s.shipmentNumber(), s.salesOrderHeaderId(),
+            s.id().value(), s.shipmentNumber(), s.salesOrderHeaderId(), s.salesOrderNumber(),
             s.customerId(), s.customerName(),
             s.warehouseId(), s.status().dbValue(),
             1L, postedAt,

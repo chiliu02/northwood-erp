@@ -9,6 +9,7 @@ public record ShipmentView(
     UUID id,
     String shipmentNumber,
     UUID salesOrderHeaderId,
+    String salesOrderNumber,
     UUID customerId,
     String customerName,
     UUID warehouseId,
@@ -22,7 +23,7 @@ public record ShipmentView(
             .map(ShipmentLineView::from)
             .toList();
         return new ShipmentView(
-            s.id().value(), s.shipmentNumber(), s.salesOrderHeaderId(),
+            s.id().value(), s.shipmentNumber(), s.salesOrderHeaderId(), s.salesOrderNumber(),
             s.customerId(), s.customerName(),
             s.warehouseId(), s.warehouseCode(),
             s.status().dbValue(), lineViews, s.version()

@@ -11,6 +11,7 @@ interface Shipment {
   id: string;
   shipmentNumber: string;
   salesOrderHeaderId: string;
+  salesOrderNumber: string | null;
   customerId: string | null;
   customerName: string | null;
   warehouseId: string;
@@ -45,7 +46,11 @@ export function Shipments() {
     {
       key: "salesOrder",
       header: "Sales Order",
-      render: (s) => <span className="tabular-nums text-xs">{s.salesOrderHeaderId.slice(0, 8)}…</span>,
+      render: (s) => (
+        <span className="tabular-nums">
+          {s.salesOrderNumber ?? <span className="text-xs text-text-muted">{s.salesOrderHeaderId.slice(0, 8)}…</span>}
+        </span>
+      ),
     },
     {
       key: "status",

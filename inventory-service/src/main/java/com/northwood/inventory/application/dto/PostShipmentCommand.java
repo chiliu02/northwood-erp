@@ -11,6 +11,7 @@ import java.util.UUID;
 public record PostShipmentCommand(
     @NotBlank @Size(max = 50) String shipmentNumber,
     @NotNull UUID salesOrderHeaderId,
+    @Size(max = 50) String salesOrderNumber,
     UUID customerId,
     String customerName,
     @NotBlank String warehouseCode,

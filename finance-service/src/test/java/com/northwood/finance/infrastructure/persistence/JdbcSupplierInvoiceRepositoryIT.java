@@ -181,7 +181,7 @@ class JdbcSupplierInvoiceRepositoryIT {
             BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("100.00"));
         SupplierInvoice stale = SupplierInvoice.reconstitute(
             SupplierInvoiceId.newId(), "SINV-MISSING", "SUP-MISSING",
-            UUID.randomUUID(), null, UUID.randomUUID(), "SUP-IT", "Supplier IT",
+            UUID.randomUUID(), "PO-MISSING", null, null, UUID.randomUUID(), "SUP-IT", "Supplier IT",
             "AUD", new BigDecimal("100.00"), BigDecimal.ZERO, new BigDecimal("100.00"),
             SupplierInvoice.Status.THREE_WAY_MATCH_FAILED, SupplierInvoice.MatchStatus.FAILED,
             List.of(line), 1L);
@@ -203,7 +203,7 @@ class JdbcSupplierInvoiceRepositoryIT {
             "RAW-IT-1", "Raw 1", new BigDecimal("5"), new BigDecimal("20.000000"),
             BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("100.00"));
         return SupplierInvoice.record(
-            internalNumber, "SUP-" + internalNumber, poId, UUID.randomUUID(),
+            internalNumber, "SUP-" + internalNumber, poId, "PO-IT", UUID.randomUUID(), "GR-IT",
             supplierId, "SUP-IT", "Supplier IT", "AUD", List.of(line), matchOutcome);
     }
 

@@ -113,7 +113,7 @@ class OrderToCashDepositPathTest {
         UUID customerId = sales.customers.findByCode("CUST-001").orElseThrow().customerId();
         SalesOrderLine placedLine = sales.orders.findById(SalesOrderId.of(orderId)).orElseThrow().lines().get(0);
         inventory.shipmentService.post(new PostShipmentCommand(
-            "SHIP-DEP-1", orderId, customerId, "Acme Corp", WarehouseCodes.MAIN,
+            "SHIP-DEP-1", orderId, "SO-DEP-1", customerId, "Acme Corp", WarehouseCodes.MAIN,
             List.of(new ShipmentLineRequest(
                 placedLine.lineId(), productId, "FG-001", "Finished Good 1",
                 new BigDecimal("3"), new BigDecimal("60.00")
