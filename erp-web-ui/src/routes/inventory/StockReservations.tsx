@@ -96,7 +96,6 @@ export function StockReservations() {
         title="Stock Reservations"
         description="Saga-driven reservations against on-hand stock. Sourced by sales orders or work orders; status reflects how much of the request the warehouse could honour."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Inventory" },
           { label: "Reservations" },
         ]}

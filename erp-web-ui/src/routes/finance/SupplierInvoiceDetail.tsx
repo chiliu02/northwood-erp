@@ -131,7 +131,6 @@ export function SupplierInvoiceDetail() {
     <>
       <DetailLayout
         trail={[
-          { label: "Home", to: "/" },
           { label: "Finance" },
           { label: "Supplier Invoices", to: "/supplier-invoices/pending-review" },
           { label: data.internalInvoiceNumber },

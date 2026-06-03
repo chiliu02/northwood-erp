@@ -118,7 +118,6 @@ export function SupplierInvoices() {
         title="Supplier Invoices"
         description="All AP invoices recorded against purchase orders. Drill in for lines + 3-way match outcome. See Pending Review for the variance-failed queue."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Finance" },
           { label: "Supplier Invoices" },
         ]}

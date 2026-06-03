@@ -119,7 +119,6 @@ export function StockItems() {
         title="Stock Balances"
         description="Inventory's projection of every catalogued product. Reorder policy is owned by product-service and projected here via product.ReorderPolicyChanged."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Inventory" },
           { label: "Stock Balances" },
         ]}

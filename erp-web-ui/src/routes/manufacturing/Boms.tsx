@@ -92,7 +92,6 @@ export function Boms() {
         title="Bills of Materials"
         description="Read-only tree view of the active BOM for a finished or semi-finished product. Sub-assemblies expand inline."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Manufacturing" },
           { label: "BOMs" },
         ]}

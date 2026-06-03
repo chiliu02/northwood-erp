@@ -56,9 +56,9 @@ const MODULES: NavModule[] = [
     icon: Package,
     items: [
       { label: "Suppliers", to: "/suppliers" },
+      { label: "Supplier Prices", to: "/supplier-prices" },
       { label: "Purchase Requisitions", to: "/purchase-requisitions" },
       { label: "Purchase Orders", to: "/purchase-orders" },
-      { label: "Supplier Prices", to: "/supplier-prices" },
     ],
   },
   {

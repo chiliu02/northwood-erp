@@ -201,7 +201,6 @@ export function SupplierInvoiceNew() {
       <PageHeader
         title="Record supplier invoice"
         trail={[
-          { label: "Home", to: "/" },
           { label: "Finance" },
           { label: "Supplier Invoices", to: "/supplier-invoices" },
           { label: "New" },

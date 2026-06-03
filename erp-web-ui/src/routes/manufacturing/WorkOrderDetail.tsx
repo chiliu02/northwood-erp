@@ -158,7 +158,6 @@ export function WorkOrderDetail() {
     <>
       <DetailLayout
         trail={[
-          { label: "Home", to: "/" },
           { label: "Manufacturing" },
           { label: "Work Orders", to: "/work-orders" },
           { label: data.workOrderNumber },

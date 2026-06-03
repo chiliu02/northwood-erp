@@ -84,7 +84,6 @@ export function Suppliers() {
         title="Suppliers"
         description="Supplier master. Onboard vendors, edit their details, and change status (active / inactive / blocked). A blocked or inactive supplier is skipped by PO supplier-selection."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Purchasing" },
           { label: "Suppliers" },
         ]}

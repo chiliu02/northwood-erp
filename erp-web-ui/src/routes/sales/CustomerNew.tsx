@@ -53,7 +53,6 @@ export function CustomerNew() {
       <PageHeader
         title="New customer"
         trail={[
-          { label: "Home", to: "/" },
           { label: "Sales" },
           { label: "Customers", to: "/customers" },
           { label: "New" },

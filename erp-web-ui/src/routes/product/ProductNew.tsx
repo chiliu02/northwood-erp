@@ -77,7 +77,6 @@ export function ProductNew() {
       <PageHeader
         title="New product"
         trail={[
-          { label: "Home", to: "/" },
           { label: "Master Data" },
           { label: "Products", to: "/products" },
           { label: "New" },

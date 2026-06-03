@@ -45,7 +45,6 @@ export function PaymentNew() {
       <PageHeader
         title="Record payment"
         trail={[
-          { label: "Home", to: "/" },
           { label: "Finance" },
           { label: "Payments", to: "/payments" },
           { label: "New" },

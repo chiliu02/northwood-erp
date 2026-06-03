@@ -56,7 +56,6 @@ export function PurchaseOrderTracking() {
         title="PO Tracking"
         description="End-to-end P2P trajectory of a purchase order: ordered → received → invoiced → paid, sourced from the reporting projection."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Reporting" },
           { label: "PO Tracking" },
         ]}

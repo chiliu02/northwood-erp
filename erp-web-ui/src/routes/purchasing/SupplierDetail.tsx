@@ -71,7 +71,6 @@ export function SupplierDetail() {
     <>
       <DetailLayout
         trail={[
-          { label: "Home", to: "/" },
           { label: "Purchasing" },
           { label: "Suppliers", to: "/suppliers" },
           { label: data.supplierCode },
@@ -195,7 +194,8 @@ function DetailsDialog({ supplier, onClose, onSaved }: DialogProps) {
         </div>
       }
       confirmLabel="Save"
-      busy={!name.trim() || mutation.isPending}
+      busy={mutation.isPending}
+      confirmDisabled={!name.trim()}
       onConfirm={() => mutation.mutate()}
       onCancel={onClose}
     />
@@ -238,7 +238,8 @@ function StatusDialog({ supplier, onClose, onSaved }: DialogProps) {
         </div>
       }
       confirmLabel="Save"
-      busy={status === supplier.status || mutation.isPending}
+      busy={mutation.isPending}
+      confirmDisabled={status === supplier.status}
       onConfirm={() => mutation.mutate()}
       onCancel={onClose}
     />

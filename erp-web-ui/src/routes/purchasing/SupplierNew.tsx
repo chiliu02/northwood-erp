@@ -48,7 +48,6 @@ export function SupplierNew() {
       <PageHeader
         title="New supplier"
         trail={[
-          { label: "Home", to: "/" },
           { label: "Purchasing" },
           { label: "Suppliers", to: "/suppliers" },
           { label: "New" },

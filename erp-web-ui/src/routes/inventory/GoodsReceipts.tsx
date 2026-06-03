@@ -67,7 +67,6 @@ export function GoodsReceipts() {
         title="Goods Receipts"
         description="Posted receipts against purchase orders. Each receipt drives a stock_movement and a Dr Inventory / Cr GRNI journal pair."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Inventory" },
           { label: "Goods Receipts" },
         ]}

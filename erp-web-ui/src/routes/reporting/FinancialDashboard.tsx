@@ -128,7 +128,6 @@ export function FinancialDashboard() {
             : "Awaiting first event for the financial-dashboard projection."
         }
         trail={[
-          { label: "Home", to: "/" },
           { label: "Reporting" },
           { label: "Financial Dashboard" },
         ]}

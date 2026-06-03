@@ -49,7 +49,6 @@ export function ArAp() {
         title="AR / AP Dashboard"
         description="Today's accounts-receivable and accounts-payable position. Click through for the open-invoice lists."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Finance" },
           { label: "AR / AP Dashboard" },
         ]}

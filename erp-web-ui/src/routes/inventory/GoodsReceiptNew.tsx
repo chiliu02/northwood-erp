@@ -184,7 +184,6 @@ export function GoodsReceiptNew() {
       <PageHeader
         title="Post goods receipt"
         trail={[
-          { label: "Home", to: "/" },
           { label: "Inventory" },
           { label: "Goods Receipts", to: "/goods-receipts" },
           { label: "New" },

@@ -72,7 +72,6 @@ export function ExchangeRate() {
         title="Exchange Rate Lookup"
         description="Look up a stamped FX rate by (from currency, to currency, effective date). Same lookup used by transaction posting."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Finance" },
           { label: "Exchange Rate" },
         ]}

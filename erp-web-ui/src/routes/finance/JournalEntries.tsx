@@ -84,7 +84,6 @@ export function JournalEntries() {
         title="Journal Entries"
         description="GL audit trail. Browse every posted entry, drill in for balanced lines, or bulk-reverse every entry sourced from a specific document."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Finance" },
           { label: "Journal Entries" },
         ]}

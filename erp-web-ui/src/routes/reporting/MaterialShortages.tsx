@@ -105,7 +105,6 @@ export function MaterialShortages() {
         title="Material Shortages"
         description="Materials whose required quantity (across active work orders) exceeds on-hand stock. Tom uses this to prioritise PR creation."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Reporting" },
           { label: "Material Shortages" },
         ]}

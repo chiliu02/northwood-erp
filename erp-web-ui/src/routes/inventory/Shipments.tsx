@@ -66,7 +66,6 @@ export function Shipments() {
         title="Shipments"
         description="Posted shipments against sales orders. Each shipment drives a stock_movement, a Dr COGS / Cr Inventory journal, and the auto-created customer invoice."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Inventory" },
           { label: "Shipments" },
         ]}

@@ -115,7 +115,6 @@ export function PurchaseRequisitionNew() {
       <PageHeader
         title="New purchase requisition"
         trail={[
-          { label: "Home", to: "/" },
           { label: "Purchasing" },
           { label: "Requisitions" },
           { label: "New" },

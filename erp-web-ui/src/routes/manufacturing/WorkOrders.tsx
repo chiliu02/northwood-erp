@@ -133,7 +133,6 @@ export function WorkOrders() {
         title="Work Orders"
         description="Production work orders. Reservation status and shortages drive Linda's daily triage."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Manufacturing" },
           { label: "Work Orders" },
         ]}

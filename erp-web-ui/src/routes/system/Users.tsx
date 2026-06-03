@@ -75,7 +75,6 @@ export function Users() {
         title="Users"
         description="The 13 seeded demo personas. Each maps to a single Keycloak realm role; sign out (top-right) and sign back in as another persona to switch roles. To add a real user, edit db/keycloak/northwood-realm.json and reload the realm."
         trail={[
-          { label: "Home", to: "/" },
           { label: "System" },
           { label: "Users" },
         ]}

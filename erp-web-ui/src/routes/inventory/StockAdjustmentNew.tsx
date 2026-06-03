@@ -109,7 +109,6 @@ export function StockAdjustmentNew() {
       <PageHeader
         title="Post stock adjustment"
         trail={[
-          { label: "Home", to: "/" },
           { label: "Inventory" },
           { label: "Stock Balances", to: "/stock-items" },
           { label: "Adjust" },

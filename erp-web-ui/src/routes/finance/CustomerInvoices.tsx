@@ -96,7 +96,6 @@ export function CustomerInvoices() {
         title="Customer Invoices"
         description="Auto-generated from each shipment. Olivia tracks AR here; no manual creation path — invoice creation is driven by sales.SalesOrderShipped."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Finance" },
           { label: "Customer Invoices" },
         ]}

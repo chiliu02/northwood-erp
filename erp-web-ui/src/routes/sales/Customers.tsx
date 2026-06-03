@@ -79,7 +79,6 @@ export function Customers() {
         title="Customers"
         description="Customer master. Sales orders snapshot the name + code at placement; subsequent renames don't ripple back to historical orders."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Sales" },
           { label: "Customers" },
         ]}

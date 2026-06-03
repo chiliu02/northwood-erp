@@ -189,7 +189,6 @@ export function PendingReview() {
         title="Pending 3-way Match Review"
         description="Supplier invoices parked at three_way_match_failed. Approve overrides the match check and posts the invoice + GL; reject is terminal."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Finance" },
           { label: "Pending Review" },
         ]}

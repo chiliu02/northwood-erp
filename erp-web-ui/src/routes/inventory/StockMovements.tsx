@@ -83,7 +83,6 @@ export function StockMovements() {
         title="Stock Movements"
         description="Append-only audit of every on-hand mutation. Sourced from goods receipts, shipments, and finished-goods completion."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Inventory" },
           { label: "Stock Movements" },
         ]}

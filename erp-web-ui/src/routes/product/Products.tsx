@@ -127,8 +127,7 @@ export function Products() {
         title="Products"
         description="Catalog of every product. Pricing, reorder policy, make-vs-buy, and discontinue are authored on the detail page."
         trail={[
-          { label: "Home", to: "/" },
-          { label: "Sales" },
+          { label: "Master Data" },
           { label: "Products" },
         ]}
         actions={

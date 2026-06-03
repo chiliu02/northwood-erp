@@ -125,7 +125,6 @@ export function PurchaseOrders() {
       <PageHeader
         title="Purchase Orders"
         trail={[
-          { label: "Home", to: "/" },
           { label: "Purchasing" },
           { label: "Purchase Orders" },
         ]}

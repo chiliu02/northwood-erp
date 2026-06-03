@@ -94,8 +94,7 @@ export function ProductDetail() {
     <>
       <DetailLayout
         trail={[
-          { label: "Home", to: "/" },
-          { label: "Sales" },
+          { label: "Master Data" },
           { label: "Products", to: "/products" },
           { label: data.sku },
         ]}

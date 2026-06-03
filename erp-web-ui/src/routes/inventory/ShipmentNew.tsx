@@ -183,7 +183,6 @@ export function ShipmentNew() {
       <PageHeader
         title="Post shipment"
         trail={[
-          { label: "Home", to: "/" },
           { label: "Inventory" },
           { label: "Shipments", to: "/shipments" },
           { label: "New" },

@@ -51,7 +51,6 @@ export function ProductionBoard() {
         title="Production Board"
         description="Scan view of all open work orders. Click a card to drill into operations."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Manufacturing" },
           { label: "Production Board" },
         ]}

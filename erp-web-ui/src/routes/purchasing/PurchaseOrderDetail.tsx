@@ -155,7 +155,6 @@ export function PurchaseOrderDetail() {
     <>
       <DetailLayout
         trail={[
-          { label: "Home", to: "/" },
           { label: "Purchasing" },
           { label: "Purchase Orders", to: "/purchase-orders" },
           { label: data.purchaseOrderNumber },

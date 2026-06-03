@@ -14,8 +14,10 @@ interface ConfirmDialogProps {
   variant?: "primary" | "danger";
   onConfirm: () => void;
   onCancel: () => void;
-  /** Disable the confirm button (e.g. while a mutation is in flight). */
+  /** Mutation in flight: relabels the confirm button "Working…" and disables both buttons. */
   busy?: boolean;
+  /** Disable the confirm button without the "Working…" label (e.g. an invalid / unchanged form). Cancel stays enabled. */
+  confirmDisabled?: boolean;
 }
 
 /**
@@ -36,6 +38,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
   busy,
+  confirmDisabled,
 }: ConfirmDialogProps) {
   useEffect(() => {
     if (!open) return;
@@ -69,7 +72,7 @@ export function ConfirmDialog({
           <ActionButton onClick={onCancel} disabled={busy}>
             {cancelLabel}
           </ActionButton>
-          <ActionButton variant={variant} onClick={onConfirm} disabled={busy}>
+          <ActionButton variant={variant} onClick={onConfirm} disabled={busy || confirmDisabled}>
             {busy ? "Working…" : confirmLabel}
           </ActionButton>
         </footer>

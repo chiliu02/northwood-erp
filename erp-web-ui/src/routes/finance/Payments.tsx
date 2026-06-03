@@ -115,7 +115,6 @@ export function Payments() {
         title="Payments"
         description="AP (outgoing) and AR (incoming) payments. Each payment links to one or more invoices via allocations."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Finance" },
           { label: "Payments" },
         ]}

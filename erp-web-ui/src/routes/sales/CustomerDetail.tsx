@@ -63,7 +63,6 @@ export function CustomerDetail() {
     <>
       <DetailLayout
         trail={[
-          { label: "Home", to: "/" },
           { label: "Sales" },
           { label: "Customers", to: "/customers" },
           { label: data.customerCode },
@@ -239,7 +238,8 @@ function NameDialog({ customer, onClose, onSaved }: DialogProps) {
         </div>
       }
       confirmLabel="Save"
-      busy={!name.trim() || name === customer.name || mutation.isPending}
+      busy={mutation.isPending}
+      confirmDisabled={!name.trim() || name === customer.name}
       onConfirm={() => mutation.mutate()}
       onCancel={onClose}
     />

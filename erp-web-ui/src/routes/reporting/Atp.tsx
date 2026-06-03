@@ -97,7 +97,6 @@ export function Atp() {
         title="Available-to-Promise"
         description="Per-product stock position projected from inventory + open sales/production + incoming receipts. Refreshes every 5 seconds."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Reporting" },
           { label: "Available-to-Promise" },
         ]}

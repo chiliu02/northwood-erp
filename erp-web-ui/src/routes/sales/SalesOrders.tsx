@@ -131,7 +131,6 @@ export function SalesOrders() {
       <PageHeader
         title="Sales Orders"
         trail={[
-          { label: "Home", to: "/" },
           { label: "Sales", to: "/sales-orders" },
           { label: "Orders" },
         ]}

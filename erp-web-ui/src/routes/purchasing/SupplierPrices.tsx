@@ -106,7 +106,6 @@ export function SupplierPrices() {
         title="Supplier Prices"
         description="The supplier price list, used by PurchaseOrderService when converting a requisition to a PO. Click a row to edit its price."
         trail={[
-          { label: "Home", to: "/" },
           { label: "Purchasing" },
           { label: "Supplier Prices" },
         ]}

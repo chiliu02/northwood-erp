@@ -144,7 +144,6 @@ export function SalesOrderDetail() {
     <>
       <DetailLayout
         trail={[
-          { label: "Home", to: "/" },
           { label: "Sales" },
           { label: "Orders", to: "/sales-orders" },
           { label: data.orderNumber },
