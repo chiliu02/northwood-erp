@@ -37,7 +37,15 @@ public interface FinancialDashboardProjection {
 
     void recordCustomerInvoice(BigDecimal amount, String currencyCode, Instant occurredAt);
 
-    void recordSupplierInvoice(BigDecimal amount, String currencyCode, Instant occurredAt);
+    /**
+     * Cost of goods sold for a shipment — Σ(shippedQty × unitCost) over the
+     * non-free-of-charge lines, recorded against the shipment's day. Matches
+     * finance's COGS recognition on {@code sales.SalesOrderShipped} (Dr 5000),
+     * so the dashboard's {@code cost_of_goods_sold} tracks the GL. Free-of-charge
+     * lines (zero sale price) are a promotions expense in finance (5500), not
+     * COGS, and are excluded by the caller.
+     */
+    void recordCostOfGoodsSold(BigDecimal amount, String currencyCode, Instant occurredAt);
 
     void recordCustomerPayment(BigDecimal amount, String currencyCode, Instant occurredAt);
 

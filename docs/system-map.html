@@ -763,6 +763,8 @@ window.NORTHWOOD_EVENTS = [
     consumers: [
       { dest: "finance", name: "finance.customer-invoice.shipped-order",
         desc: `Creates <code>finance.customer_invoice_header</code> + <code>customer_invoice_line</code> rows from shipped lines (qty × price + tax); emits <code>finance.CustomerInvoiceCreated</code> via outbox. <strong>Also posts perpetual-inventory COGS</strong> in the same handler: Dr 5000 COGS / Cr 1220 Inventory at standard cost (<code>finance.product_card</code>; shipment-stamped <code>unitCost</code> is the cold-start fallback) — but a free-of-charge line (zero sale price) debits <strong>5500 Promotions &amp; Samples Expense</strong> instead of COGS. COGS lives here, not on <code>ShipmentPosted</code>, because this is the only event carrying both the per-line cost and the sale price the free-of-charge split needs (matching principle: cost recognised with revenue)` },
+      { dest: "reporting", name: "reporting.dashboard.sales-order-shipped",
+        desc: `<code>reporting.financial_dashboard_daily.cost_of_goods_sold</code> (+= Σ qty × unitCost over non-free-of-charge lines, per dashboard_date, currency_code) + <code>gross_profit</code> recompute — mirrors finance's COGS-on-shipment so the dashboard tracks GL account 5000. Replaced the former supplier-invoice proxy, which mis-mapped purchases (AP) to COGS and missed COGS entirely for goods sold from stock` },
     ]
   },
   {
@@ -1053,8 +1055,6 @@ window.NORTHWOOD_EVENTS = [
         desc: `Advances <code>purchasing.purchase_to_pay_saga.current_state</code> → <code>supplier_invoice_approved</code>; bumps <code>purchasing.purchase_order_header.invoiced_amount</code> and flips <code>status</code> → <code>partially_invoiced</code> / <code>invoiced</code>` },
       { dest: "reporting", name: "reporting.po-tracking.invoice-approved",
         desc: `<code>reporting.purchase_order_tracking_view.invoice_amount</code>, <code>supplier_invoice_header_id</code>, <code>invoiced_at</code>` },
-      { dest: "reporting", name: "reporting.dashboard.supplier-invoice-approved",
-        desc: `<code>reporting.financial_dashboard_daily.supplier_invoices_amount</code> (+= amount, per currency)` },
     ]
   },
   {
@@ -1236,7 +1236,7 @@ window.NORTHWOOD_PROJECTIONS = [
         { name: "sales_order_360_view", kind: "read-model",
           events: ["SalesOrderPlaced", "SalesOrderReadyToShip", "SalesOrderCompensated"] },
         { name: "financial_dashboard_daily", kind: "read-model",
-          events: ["SalesOrderPlaced"] },
+          events: ["SalesOrderPlaced", "SalesOrderShipped"] },
       ]},
     ]
   },
@@ -1547,8 +1547,6 @@ window.NORTHWOOD_PROJECTIONS = [
       ]},
       { dest: "reporting", tables: [
         { name: "purchase_order_tracking_view", kind: "read-model",
-          events: ["SupplierInvoiceApproved"] },
-        { name: "financial_dashboard_daily", kind: "read-model",
           events: ["SupplierInvoiceApproved"] },
       ]},
     ]

@@ -30,7 +30,7 @@ public class JdbcFinancialDashboardProjection implements FinancialDashboardProje
 
     @Override
     @Transactional
-    public void recordSupplierInvoice(BigDecimal amount, String currencyCode, Instant occurredAt) {
+    public void recordCostOfGoodsSold(BigDecimal amount, String currencyCode, Instant occurredAt) {
         BigDecimal v = amount == null ? BigDecimal.ZERO : amount;
         if (v.signum() <= 0) return;
         upsertMoney("cost_of_goods_sold", v, currencyCode, occurredAt, true);
