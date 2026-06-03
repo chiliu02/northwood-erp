@@ -19,8 +19,11 @@ interface Product {
   productType: string;
   salesPrice: string;
   standardCost: string;
+  purchased: boolean;
+  manufactured: boolean;
   reorderPoint: string;
   reorderQuantity: string;
+  replenishmentStrategy: string | null;
   valuationClass: string | null;
   status: string;
   version: number;
@@ -168,6 +171,8 @@ export function ProductDetail() {
                   />
                 </FormSection>
                 <FormSection title="Replenishment">
+                  <ReadOnlyField label="Sourcing" value={formatSourcing(data)} />
+                  <ReadOnlyField label="Strategy" value={formatStrategy(data.replenishmentStrategy)} />
                   <ReadOnlyField label="Reorder Point" value={<span className="tabular-nums">{formatQty(data.reorderPoint)}</span>} />
                   <ReadOnlyField label="Reorder Qty" value={<span className="tabular-nums">{formatQty(data.reorderQuantity)}</span>} />
                 </FormSection>
@@ -317,7 +322,9 @@ function ReorderPolicyDialog({ open, product, onClose, onSuccess }: DialogProps)
 // ---- Make vs buy dialog ----
 
 function MakeVsBuyDialog({ open, product, onClose, onSuccess }: DialogProps) {
-  const [mode, setMode] = useState<"manufactured" | "purchased" | "both">("manufactured");
+  const [mode, setMode] = useState<"manufactured" | "purchased" | "both">(
+    product.manufactured && product.purchased ? "both" : product.purchased ? "purchased" : "manufactured",
+  );
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
@@ -408,6 +415,22 @@ function materialsCostHint(mc: MaterialsCost | null): string {
   if (mc.reason === "supplier_price_change") return "from preferred supplier";
   if (mc.reason === "inputs_missing") return "no preferred supplier";
   return mc.reason.replace(/_/g, " ");
+}
+
+/** Make-vs-buy axis. Both flags set = vertically integrated ("or"). */
+function formatSourcing(p: { manufactured: boolean; purchased: boolean }): string {
+  if (p.manufactured && p.purchased) return "Manufactured or purchased";
+  if (p.manufactured) return "Manufactured";
+  if (p.purchased) return "Purchased";
+  return "—";
+}
+
+/** Replenishment-strategy axis — orthogonal to sourcing. */
+function formatStrategy(v: string | null | undefined): string {
+  if (v == null) return "—";
+  if (v === "to_stock") return "To stock";
+  if (v === "to_order") return "To order";
+  return v.replace(/_/g, " ");
 }
 
 function formatMoney(v: string | null | undefined): string {

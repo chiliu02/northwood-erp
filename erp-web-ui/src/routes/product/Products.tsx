@@ -15,8 +15,11 @@ interface Product {
   productType: string;
   salesPrice: string;
   standardCost: string;
+  purchased: boolean;
+  manufactured: boolean;
   reorderPoint: string;
   reorderQuantity: string;
+  replenishmentStrategy: string | null;
   valuationClass: string | null;
   status: string;
   version: number;
@@ -57,6 +60,18 @@ export function Products() {
       numeric: true,
       width: "120px",
       render: (p) => formatMoney(p.standardCost),
+    },
+    {
+      key: "sourcing",
+      header: "Sourcing",
+      width: "150px",
+      render: (p) => <span className="text-text-muted">{formatSourcing(p)}</span>,
+    },
+    {
+      key: "replenishment",
+      header: "Replenishment",
+      width: "130px",
+      render: (p) => <span className="text-text-muted">{formatStrategy(p.replenishmentStrategy)}</span>,
     },
     {
       key: "reorder",
@@ -148,4 +163,20 @@ function formatQty(v: string | null | undefined): string {
   const n = Number(v);
   if (Number.isNaN(n)) return String(v);
   return n.toLocaleString("en-AU", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+}
+
+/** Make-vs-buy axis. Both flags set = vertically integrated ("or"). */
+function formatSourcing(p: { manufactured: boolean; purchased: boolean }): string {
+  if (p.manufactured && p.purchased) return "Manufactured or purchased";
+  if (p.manufactured) return "Manufactured";
+  if (p.purchased) return "Purchased";
+  return "—";
+}
+
+/** Replenishment-strategy axis — orthogonal to sourcing. */
+function formatStrategy(v: string | null | undefined): string {
+  if (v == null) return "—";
+  if (v === "to_stock") return "To stock";
+  if (v === "to_order") return "To order";
+  return v.replace(/_/g, " ");
 }
