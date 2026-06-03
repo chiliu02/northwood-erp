@@ -241,6 +241,23 @@ curl -X PUT http://localhost:8081/api/products/{id}/make-vs-buy \
 
 **Outbox:** `product.MakeVsBuyChanged`. **Projection:** inventory mirrors the `is_manufactured` / `is_purchased` flags onto its `product_card`; inventory's replenishment routing reads them to decide make-vs-buy (manufactured → make-to-stock WO, purchased → purchasing). Manufacturing also keeps its own make-vs-buy projection so it can reject a replenishment for a SKU with no active BOM (`ReplenishmentUndispatchable`).
 
+### 1.6 — Set planning time fence
+
+```bash
+curl -X PUT http://localhost:8081/api/products/{id}/planning-time-fence \
+  -H 'content-type: application/json' \
+  -d '{"planningTimeFenceDays":7}'
+```
+
+**Outbox:** `product.PlanningTimeFenceChanged`. **Projection:** sales consumes it (`PlanningTimeFenceChangedHandler` → `sales.product_card.planning_time_fence_days`). **Behaviour:** the sales fulfilment saga's reservation step defers a far-future order until `need-by − max(line fence)` — parking at `awaiting_release` until that date, then emitting the reservation as usual. `0` (the default) = no fence = reserve immediately (today's behaviour). To see it park, place an order whose `requestedDeliveryDate` is more than the fence beyond today and inspect `saga_state`:
+
+```sql
+SELECT sales_order_header_id, saga_state, next_retry_at
+  FROM sales.sales_order_fulfilment_saga WHERE saga_state = 'awaiting_release';
+```
+
+The parked order shows header status `Submitted` in the UI (no dedicated "Scheduled" pill yet — deferred).
+
 ---
 
 ## Demo 2 — CQRS: cross-context read models in reporting
