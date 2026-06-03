@@ -1,6 +1,7 @@
 package com.northwood.purchasing.api;
 
 import com.northwood.purchasing.api.dto.ApprovePurchaseOrderRequest;
+import com.northwood.purchasing.api.dto.RejectPurchaseOrderRequest;
 import com.northwood.purchasing.application.PurchaseOrderService;
 import com.northwood.purchasing.application.PurchaseOrderService.PoNotApprovableException;
 import com.northwood.purchasing.application.dto.PurchaseOrderView;
@@ -62,5 +63,26 @@ public class PurchaseOrderController {
         return ResponseEntity.ok(body);
     }
 
+    /**
+     * Reject (cancel) a draft PO — the manager's "bin this draft" counterpart to
+     * approve, for an erroneous draft (wrong supplier, zero-priced lines that
+     * can't be approved). Flips status {@code draft → cancelled}, emits
+     * {@code purchasing.PurchaseOrderCancelled}, and terminates the P2P saga at
+     * {@code cancelled}. 404 for an unknown PO; 409 if it isn't a draft.
+     */
+    @PostMapping("/{id}/reject")
+    @RequirePurchasingManager
+    public ResponseEntity<PurchaseOrderView> reject(
+        @PathVariable UUID id,
+        @Valid @RequestBody RejectPurchaseOrderRequest request
+    ) {
+        if (service.findById(id).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        service.assertRejectable(id);
+        service.reject(id, request.rejectedBy(), request.reason());
+        PurchaseOrderView body = service.findById(id).orElseThrow();
+        return ResponseEntity.ok(body);
+    }
 
 }

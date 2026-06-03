@@ -792,6 +792,15 @@ window.NORTHWOOD_EVENTS = [
   {
     source: "purchasing",
     aggregate: "PurchaseOrder",
+    event: "PurchaseOrderCancelled",
+    consumers: [
+      { dest: "reporting", name: "reporting.po-tracking.po-cancelled",
+        desc: `<code>reporting.purchase_order_tracking_view.po_status</code> flipped to <code>'cancelled'</code> when a draft PO is rejected via <code>POST /api/purchase-orders/{id}/reject</code> — drops the PO out of the open-PO counts. Emitted only from the draft-reject path (manager-gated); the PO flips <code>draft → cancelled</code> and its P2P saga terminates at <code>cancelled</code> in the same transaction.` },
+    ]
+  },
+  {
+    source: "purchasing",
+    aggregate: "PurchaseOrder",
     event: "PurchaseOrderCreated",
     consumers: [
       { dest: "finance", name: "finance.po-line-facts.po-created",
@@ -1262,7 +1271,7 @@ window.NORTHWOOD_PROJECTIONS = [
       ]},
       { dest: "reporting", tables: [
         { name: "purchase_order_tracking_view", kind: "read-model",
-          events: ["PurchaseOrderCreated", "PurchaseOrderApproved"] },
+          events: ["PurchaseOrderCreated", "PurchaseOrderApproved", "PurchaseOrderCancelled"] },
         { name: "available_to_promise_view", kind: "read-model",
           events: ["PurchaseOrderCreated"] },
         { name: "financial_dashboard_daily", kind: "read-model",

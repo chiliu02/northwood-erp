@@ -43,6 +43,15 @@ public interface PurchaseToPaySagaManager {
      */
     String approve(UUID purchaseOrderHeaderId);
 
+    /**
+     * Terminate the saga at {@code cancelled} when a draft PO is rejected.
+     * Only transitions from {@code started} (a draft PO's saga is always there);
+     * idempotent — a saga already past {@code started} or already cancelled is
+     * left alone (returns its current state). Returns null when no saga exists.
+     * Called from {@code PurchaseOrderService.reject} in the same transaction.
+     */
+    String cancel(UUID purchaseOrderHeaderId);
+
     // ------------------------------------------------------------
     // Worker drain (called from PurchaseToPaySagaWorker)
     // ------------------------------------------------------------

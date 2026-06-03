@@ -77,6 +77,22 @@ public class JdbcPurchaseToPaySagaManager
         return saga.state();
     }
 
+    @Override
+    @Transactional
+    public String cancel(UUID purchaseOrderHeaderId) {
+        PurchaseToPaySaga saga = sagaPort.findByPurchaseOrderId(purchaseOrderHeaderId).orElse(null);
+        if (saga == null) {
+            return null;
+        }
+        if (STARTED.equals(saga.state())) {
+            saga.transitionTo(CANCELLED, "purchase_order_rejected");
+            sagaPort.update(saga);
+            log.info("saga {} purchase_order={} → cancelled (draft rejected)",
+                saga.sagaId(), purchaseOrderHeaderId);
+        }
+        return saga.state();
+    }
+
     // ============================================================
     // Inbox-driven transitions
     // ============================================================

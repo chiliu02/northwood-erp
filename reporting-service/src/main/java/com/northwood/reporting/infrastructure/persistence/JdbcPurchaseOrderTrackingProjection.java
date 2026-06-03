@@ -157,6 +157,30 @@ public class JdbcPurchaseOrderTrackingProjection implements PurchaseOrderTrackin
 
     @Override
     @Transactional
+    public void recordPoCancelled(UUID purchaseOrderHeaderId, Instant cancelledAt, String actorUserId) {
+        int rows = jdbc.update("""
+            UPDATE reporting.purchase_order_tracking_view
+            SET po_status = 'cancelled',
+                last_modified_by = COALESCE(?, last_modified_by),
+                updated_at = now()
+            WHERE purchase_order_header_id = ?
+              AND po_status NOT IN ('cancelled', 'received', 'paid', 'closed')
+            """,
+            actorUserId, purchaseOrderHeaderId
+        );
+        if (rows == 0) {
+            log.warn(
+                "PurchaseOrderCancelled received for purchase_order_header_id={} — no open tracking row to cancel (missing or already terminal), projection skipped",
+                purchaseOrderHeaderId
+            );
+        } else {
+            log.info("flipped reporting.purchase_order_tracking_view po_status -> cancelled for po={} (at={})",
+                purchaseOrderHeaderId, cancelledAt);
+        }
+    }
+
+    @Override
+    @Transactional
     public void recordGoodsReceived(
         UUID purchaseOrderHeaderId,
         UUID goodsReceiptHeaderId,

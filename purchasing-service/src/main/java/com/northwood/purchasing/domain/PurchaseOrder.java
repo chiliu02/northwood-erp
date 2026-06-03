@@ -1,6 +1,7 @@
 package com.northwood.purchasing.domain;
 
 import com.northwood.purchasing.domain.events.PurchaseOrderApproved;
+import com.northwood.purchasing.domain.events.PurchaseOrderCancelled;
 import com.northwood.purchasing.domain.events.PurchaseOrderCreated;
 import com.northwood.purchasing.domain.events.PurchaseOrderCreated.OrderLine;
 import com.northwood.shared.domain.Assert;
@@ -317,6 +318,41 @@ public final class PurchaseOrder {
         ));
     }
 
+    /**
+     * Assert this PO may be rejected. A reject is the manager's "bin this draft"
+     * counterpart to {@link #approve} at the draft gate — so it's allowed only
+     * while the PO is still {@code 'draft'} (nothing has been sent to the
+     * supplier, no downstream commitment to compensate). Throws
+     * {@link PoNotRejectableException} from any other status. Pure read.
+     */
+    public void assertRejectable() {
+        if (status != Status.DRAFT) {
+            throw new PoNotRejectableException(id, status);
+        }
+    }
+
+    /**
+     * Reject (cancel) a draft PO. Flips {@code 'draft' → 'cancelled'} and emits
+     * {@link PurchaseOrderCancelled}. Rejects with {@link PoNotRejectableException}
+     * via {@link #assertRejectable} from any non-draft status. The owning service
+     * terminates the purchase-to-pay saga in the same transaction.
+     */
+    public void reject(String cancelledBy, String reason) {
+        assertRejectable();
+        Status previous = this.status;
+        this.status = Status.CANCELLED;
+        pendingEvents.add(new PurchaseOrderCancelled(
+            UUID.randomUUID(),
+            id.value(),
+            purchaseOrderNumber,
+            supplierId,
+            previous.dbValue(),
+            cancelledBy,
+            reason,
+            Instant.now()
+        ));
+    }
+
     /** Factory: hydrate from the DB; emits no events. */
     public static PurchaseOrder reconstitute(
         PurchaseOrderId id, String purchaseOrderNumber,
@@ -397,6 +433,22 @@ public final class PurchaseOrder {
         /** Consistency / value violation (zero or drifted header totals) with a specific detail. */
         public PoNotApprovableException(PurchaseOrderId orderId, Status currentStatus, String detail) {
             super("Purchase order " + orderId.value() + " cannot be approved: " + detail);
+            this.orderId = orderId;
+            this.currentStatus = currentStatus;
+        }
+
+        public PurchaseOrderId orderId()  { return orderId; }
+        public Status currentStatus()     { return currentStatus; }
+    }
+
+    /** Thrown by {@link #reject} / {@link #assertRejectable} when the PO isn't in {@code 'draft'} status. */
+    public static final class PoNotRejectableException extends RuntimeException {
+        private final PurchaseOrderId orderId;
+        private final Status currentStatus;
+
+        public PoNotRejectableException(PurchaseOrderId orderId, Status currentStatus) {
+            super("Purchase order " + orderId.value() + " is in status '" + currentStatus.dbValue()
+                + "' and cannot be rejected (only a 'draft' PO can be rejected)");
             this.orderId = orderId;
             this.currentStatus = currentStatus;
         }

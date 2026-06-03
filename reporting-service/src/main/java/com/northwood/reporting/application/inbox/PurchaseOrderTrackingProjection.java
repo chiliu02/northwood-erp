@@ -58,6 +58,18 @@ public interface PurchaseOrderTrackingProjection {
         Instant approvedAt,
         String actorUserId);
 
+    /**
+     * Flip {@code po_status} to {@code 'cancelled'} when
+     * {@code purchasing.PurchaseOrderCancelled} lands (a rejected draft PO).
+     * Idempotent; no-ops with a WARN if no tracking row exists. A cancelled PO
+     * drops out of the open-PO counts (both the planning board and the
+     * dashboard filter exclude {@code 'cancelled'}).
+     */
+    void recordPoCancelled(
+        UUID purchaseOrderHeaderId,
+        Instant cancelledAt,
+        String actorUserId);
+
     void recordGoodsReceived(
         UUID purchaseOrderHeaderId,
         UUID goodsReceiptHeaderId,

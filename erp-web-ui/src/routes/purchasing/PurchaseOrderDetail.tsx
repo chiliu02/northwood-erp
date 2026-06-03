@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check } from "lucide-react";
+import { Check, Ban } from "lucide-react";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { DetailLayout } from "@/components/ui/DetailLayout";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -52,6 +52,10 @@ export function PurchaseOrderDetail() {
   const [approver, setApprover] = useState("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [rejectDialog, setRejectDialog] = useState(false);
+  const [rejectedBy, setRejectedBy] = useState("");
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectError, setRejectError] = useState<string | null>(null);
 
   const { data, isLoading, error: fetchError } = useQuery({
     queryKey: ["po-aggregate", id],
@@ -76,6 +80,21 @@ export function PurchaseOrderDetail() {
     onError: (err) => setError(err instanceof ApiError ? err.message : "Approve failed."),
   });
 
+  const rejectMutation = useMutation({
+    mutationFn: () => apiPost(`/api/purchase-orders-cmd/${id}/reject`, {
+      rejectedBy: rejectedBy.trim(),
+      reason: rejectReason.trim(),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["po-aggregate", id] });
+      queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
+      setRejectDialog(false);
+      setRejectedBy("");
+      setRejectReason("");
+    },
+    onError: (err) => setRejectError(err instanceof ApiError ? err.message : "Reject failed."),
+  });
+
   function open() {
     setApprover("");
     setReason("");
@@ -89,6 +108,21 @@ export function PurchaseOrderDetail() {
       return;
     }
     approveMutation.mutate();
+  }
+
+  function openReject() {
+    setRejectedBy("");
+    setRejectReason("");
+    setRejectError(null);
+    setRejectDialog(true);
+  }
+
+  function submitReject() {
+    if (!rejectedBy.trim()) {
+      setRejectError("Rejected by is required.");
+      return;
+    }
+    rejectMutation.mutate();
   }
 
   if (isLoading) {
@@ -131,14 +165,24 @@ export function PurchaseOrderDetail() {
         status={status}
         actions={
           isDraft && (
-            <ActionButton
-              variant="primary"
-              icon={<Check className="h-4 w-4" />}
-              onClick={open}
-              requiresRole="purchasing_manager"
-            >
-              Approve
-            </ActionButton>
+            <>
+              <ActionButton
+                variant="primary"
+                icon={<Check className="h-4 w-4" />}
+                onClick={open}
+                requiresRole="purchasing_manager"
+              >
+                Approve
+              </ActionButton>
+              <ActionButton
+                variant="danger"
+                icon={<Ban className="h-4 w-4" />}
+                onClick={openReject}
+                requiresRole="purchasing_manager"
+              >
+                Reject
+              </ActionButton>
+            </>
           )
         }
         tabs={[
@@ -210,6 +254,45 @@ export function PurchaseOrderDetail() {
             {error && (
               <div className="rounded-md border border-status-error/30 bg-status-error-soft px-3 py-2 text-xs text-status-error">
                 {error}
+              </div>
+            )}
+          </div>
+        }
+      />
+
+      <ConfirmDialog
+        open={rejectDialog}
+        title="Reject purchase order?"
+        variant="danger"
+        message={
+          <>
+            Rejects <strong>{data.purchaseOrderNumber}</strong> for {data.supplierName}.
+            <br />
+            Status flips draft → cancelled, emits <code>purchasing.PurchaseOrderCancelled</code>, and
+            terminates the P2P saga at <code>cancelled</code>. Use this for an erroneous draft
+            (e.g. wrong supplier, or zero-priced lines that can't be approved).
+          </>
+        }
+        confirmLabel="Reject"
+        busy={rejectMutation.isPending}
+        onCancel={() => setRejectDialog(false)}
+        onConfirm={submitReject}
+        body={
+          <div className="space-y-3">
+            <Field label="Rejected by" required>
+              <TextInput value={rejectedBy} onChange={(e) => setRejectedBy(e.target.value)} autoFocus />
+            </Field>
+            <Field label="Reason / note">
+              <TextArea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="e.g. wrong supplier; lines unpriced — recreate after fixing the price list"
+                rows={3}
+              />
+            </Field>
+            {rejectError && (
+              <div className="rounded-md border border-status-error/30 bg-status-error-soft px-3 py-2 text-xs text-status-error">
+                {rejectError}
               </div>
             )}
           </div>

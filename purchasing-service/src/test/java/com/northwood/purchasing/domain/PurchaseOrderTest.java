@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.northwood.purchasing.domain.events.PurchaseOrderApproved;
+import com.northwood.purchasing.domain.events.PurchaseOrderCancelled;
 import com.northwood.purchasing.domain.events.PurchaseOrderCreated;
 import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
@@ -189,6 +190,37 @@ class PurchaseOrderTest {
             );
             assertThatThrownBy(() -> po.approve("alice", "double-approve"))
                 .isInstanceOf(PurchaseOrder.PoNotApprovableException.class)
+                .hasMessageContaining("'sent'");
+        }
+    }
+
+    @Nested
+    class Reject {
+        @Test void flips_draft_to_cancelled_and_emits_cancelled() {
+            PurchaseOrder po = PurchaseOrder.fromRequisition(
+                "PO-001", supplier(), PR_HEADER, null, Currencies.AUD,
+                List.of(line(BigDecimal.TEN, new BigDecimal("80"))), false
+            );
+            po.pullPendingEvents();  // drain the Created event
+
+            po.reject("priya", "wrong supplier");
+
+            assertThat(po.status()).isEqualTo(PurchaseOrder.Status.CANCELLED);
+            List<DomainEvent> events = po.pullPendingEvents();
+            assertThat(events).hasSize(1).first().isInstanceOf(PurchaseOrderCancelled.class);
+            PurchaseOrderCancelled cancelled = (PurchaseOrderCancelled) events.get(0);
+            assertThat(cancelled.previousStatus()).isEqualTo("draft");
+            assertThat(cancelled.cancelledBy()).isEqualTo("priya");
+            assertThat(cancelled.reason()).isEqualTo("wrong supplier");
+        }
+
+        @Test void rejected_when_not_draft() {
+            PurchaseOrder po = PurchaseOrder.fromRequisition(
+                "PO-001", supplier(), PR_HEADER, null, Currencies.AUD,
+                List.of(line(BigDecimal.TEN, new BigDecimal("80"))), true  // auto-approved → 'sent'
+            );
+            assertThatThrownBy(() -> po.reject("priya", "too late"))
+                .isInstanceOf(PurchaseOrder.PoNotRejectableException.class)
                 .hasMessageContaining("'sent'");
         }
     }

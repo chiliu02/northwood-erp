@@ -1895,7 +1895,9 @@ CREATE TABLE purchasing.purchase_to_pay_saga (
     saga_state VARCHAR(50) NOT NULL CHECK (
         saga_state IN (
             'started', 'purchase_order_approved', 'waiting_for_goods', 'goods_received',
-            'supplier_invoice_approved', 'supplier_partially_paid', 'completed', 'failed'
+            'supplier_invoice_approved', 'supplier_partially_paid', 'completed', 'failed',
+            -- terminal: a draft PO was rejected (manual reject) → saga cancelled
+            'cancelled'
         )
     ),
     current_step VARCHAR(100),

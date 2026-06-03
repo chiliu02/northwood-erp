@@ -68,6 +68,21 @@ public class PurchaseOrderService {
         }
     }
 
+    /**
+     * Application-layer wrapper around the domain
+     * {@link PurchaseOrder.PoNotRejectableException} (HTTP 409). Thrown when a
+     * reject is attempted on a PO that isn't {@code 'draft'}.
+     */
+    public static class PoNotRejectableException extends ConflictException {
+        public static final String CODE = "PO_NOT_REJECTABLE";
+        public PoNotRejectableException(Throwable cause) {
+            super(CODE, cause.getMessage(), cause);
+        }
+        @Override public Map<String, Object> params() {
+            return Map.of("detail", getMessage());
+        }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(PurchaseOrderService.class);
 
     private final PurchaseOrderRepository purchaseOrders;
@@ -177,6 +192,46 @@ public class PurchaseOrderService {
         } catch (PurchaseOrder.PoNotApprovableException e) {
             throw new PoNotApprovableException(e);
         }
+    }
+
+    /**
+     * Validate that a PO may be rejected without mutating it — exposed so the API
+     * can fail-fast before opening a write transaction. Throws
+     * {@link PoNotRejectableException} (HTTP 409) when the PO isn't {@code 'draft'},
+     * or {@link IllegalArgumentException} if unknown.
+     */
+    @Transactional(readOnly = true)
+    public void assertRejectable(UUID purchaseOrderHeaderId) {
+        PurchaseOrder po = purchaseOrders.findById(PurchaseOrderId.of(purchaseOrderHeaderId))
+            .orElseThrow(() -> new IllegalArgumentException("No purchase order " + purchaseOrderHeaderId));
+        try {
+            po.assertRejectable();
+        } catch (PurchaseOrder.PoNotRejectableException e) {
+            throw new PoNotRejectableException(e);
+        }
+    }
+
+    /**
+     * Reject (cancel) a draft PO. Flips the PO to {@code 'cancelled'}, emits
+     * {@code purchasing.PurchaseOrderCancelled}, and terminates the P2P saga at
+     * {@code cancelled} in the same transaction. Manager-gated at the API edge.
+     */
+    @Transactional
+    public void reject(UUID purchaseOrderHeaderId, String cancelledBy, String reason) {
+        PurchaseOrderId poId = PurchaseOrderId.of(purchaseOrderHeaderId);
+        PurchaseOrder po = purchaseOrders.findById(poId)
+            .orElseThrow(() -> new IllegalArgumentException("No purchase order " + purchaseOrderHeaderId));
+        try {
+            po.reject(cancelledBy, reason);
+        } catch (PurchaseOrder.PoNotRejectableException e) {
+            throw new PoNotRejectableException(e);
+        }
+        purchaseOrders.save(po);
+
+        sagaManager.cancel(purchaseOrderHeaderId);
+
+        log.info("rejected purchase_order {} (id={}) by={} reason={}",
+            po.purchaseOrderNumber(), purchaseOrderHeaderId, cancelledBy, reason);
     }
 
     /**

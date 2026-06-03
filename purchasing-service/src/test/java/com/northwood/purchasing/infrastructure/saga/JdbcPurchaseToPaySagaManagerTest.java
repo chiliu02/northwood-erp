@@ -102,6 +102,35 @@ class JdbcPurchaseToPaySagaManagerTest {
             assertThat(state).isNull();
             verify(sagas, never()).update(any());
         }
+
+        @Test void cancel_flips_started_to_cancelled() {
+            PurchaseToPaySaga saga = sagaInState(STARTED);
+            when(sagas.findByPurchaseOrderId(PO)).thenReturn(Optional.of(saga));
+
+            String state = manager.cancel(PO);
+
+            assertThat(state).isEqualTo(CANCELLED);
+            verify(sagas).update(saga);
+        }
+
+        @Test void cancel_idempotent_when_past_started() {
+            PurchaseToPaySaga saga = sagaInState(PURCHASE_ORDER_APPROVED);
+            when(sagas.findByPurchaseOrderId(PO)).thenReturn(Optional.of(saga));
+
+            String state = manager.cancel(PO);
+
+            assertThat(state).isEqualTo(PURCHASE_ORDER_APPROVED);
+            verify(sagas, never()).update(any());
+        }
+
+        @Test void cancel_returns_null_when_no_saga() {
+            when(sagas.findByPurchaseOrderId(PO)).thenReturn(Optional.empty());
+
+            String state = manager.cancel(PO);
+
+            assertThat(state).isNull();
+            verify(sagas, never()).update(any());
+        }
     }
 
     @Nested

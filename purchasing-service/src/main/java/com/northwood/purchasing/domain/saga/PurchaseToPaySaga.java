@@ -42,9 +42,11 @@ public final class PurchaseToPaySaga extends SagaInstance {
     public static final String SUPPLIER_PARTIALLY_PAID = "supplier_partially_paid";
     public static final String COMPLETED = "completed";
     public static final String FAILED = "failed";
+    /** Terminal — the PO was rejected while still a draft (manual reject). */
+    public static final String CANCELLED = "cancelled";
 
     private static final Set<String> TERMINAL_STATES = Set.of(
-        COMPLETED, FAILED
+        COMPLETED, FAILED, CANCELLED
     );
 
     /**
@@ -53,11 +55,12 @@ public final class PurchaseToPaySaga extends SagaInstance {
      * {@code purchasing.purchase_to_pay_saga.saga_state} via
      * {@code SagaStateInvariantChecker}.
      *
-     * <p>No compensation states today — there's no PO cancellation flow.
-     * The cancel-order saga (shipped 2026-05-06) compensates sales +
-     * manufacturing only; purchasing isn't part of that flow. If a future
-     * cancel-PO command lands, add {@code compensating} / {@code compensated}
-     * here AND extend the schema CHECK in the same slice.
+     * <p>{@code cancelled} is the terminal state for a manual reject of a draft
+     * PO ({@code started → cancelled}) — a clean termination, not a compensation
+     * (nothing downstream happened on a draft, so there's nothing to undo). A
+     * future cancel-after-sent flow would need real {@code compensating} /
+     * {@code compensated} states added here AND in the schema CHECK in the same
+     * slice; the draft reject deliberately doesn't.
      */
     public static final Set<String> ALL_STATES = Set.of(
         STARTED,
@@ -65,7 +68,8 @@ public final class PurchaseToPaySaga extends SagaInstance {
         WAITING_FOR_GOODS, GOODS_RECEIVED,
         SUPPLIER_INVOICE_APPROVED, SUPPLIER_PARTIALLY_PAID,
         COMPLETED,
-        FAILED
+        FAILED,
+        CANCELLED
     );
 
     private final UUID purchaseOrderHeaderId;
