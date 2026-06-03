@@ -48,6 +48,21 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
     // for "where is this state written?" trivial.
     // ------------------------------------------------------------
     public static final String STARTED = "started";
+    /**
+     * Planning-time-fence parked state: the order's need-by is far enough out
+     * that {@code need-by − max line fence} is still in the future, so the saga
+     * defers its stock reservation until then. The worker stamps
+     * {@code parkUntil(releaseAt)} on entry; the {@code @Scheduled poll()}
+     * re-claims the row once {@code next_retry_at <= now()} (this state is in
+     * {@code activeStates()} because it is woken by wall-clock time, not an
+     * inbound event). On wake the worker emits {@code StockReservationRequested}
+     * unconditionally — the park is the decision, so it does NOT re-evaluate the
+     * release date (see {@code docs/sagas.md} → Timed releases — park-and-wake,
+     * decide once). A cancel from this state has nothing reserved; inventory
+     * acks the compensation with {@code released = 0} so the saga still reaches
+     * {@code compensated}.
+     */
+    public static final String AWAITING_RELEASE = "awaiting_release";
     public static final String STOCK_RESERVATION_REQUESTED = "stock_reservation_requested";
     /**
      * Parked state: reservation came back partial/failed and inventory has
@@ -101,6 +116,7 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
      */
     public static final Set<String> ALL_STATES = Set.of(
         STARTED,
+        AWAITING_RELEASE,
         STOCK_RESERVATION_REQUESTED, STOCK_RESERVATION_INCOMPLETE, REJECTED,
         AWAITING_PREPAYMENT_INVOICE, PREPAID,
         AWAITING_DEPOSIT_INVOICE, DEPOSIT_INVOICED, DEPOSIT_PAID,

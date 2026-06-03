@@ -19,6 +19,9 @@ import com.northwood.sales.infrastructure.saga.JdbcSalesOrderFulfilmentSagaManag
 import com.northwood.sales.infrastructure.saga.SalesOrderFulfilmentSagaWorker;
 import com.northwood.shared.application.outbox.OutboxAppender;
 import com.northwood.shared.application.security.CurrentUserAccessor;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.InstantSource;
 import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.NoopPlatformTransactionManager;
@@ -67,6 +70,19 @@ public final class SalesTestKit {
 
     private final String workerId = "sales.fulfilment-test-worker";
 
+    /**
+     * Controllable wall clock the saga worker reads for the planning-time-fence
+     * gate. Defaults to construction time; a time-fence test sets it via
+     * {@link #setClock}/{@link #advanceClock} to land on either side of a
+     * release date deterministically (no real waiting). The lambda re-reads the
+     * volatile {@code now} each call so advancing it is visible to the worker.
+     */
+    private volatile Instant now = Instant.now();
+    public final InstantSource clock = () -> now;
+
+    public void setClock(Instant instant) { this.now = instant; }
+    public void advanceClock(Duration by)  { this.now = this.now.plus(by); }
+
     public SalesTestKit(SynchronousBus bus, ObjectMapper json) {
         this.orders = new InMemorySalesOrderRepository(outbox, json);
         this.lineSnapshots = new InMemorySalesOrderLineSnapshotPort(orders);
@@ -74,7 +90,7 @@ public final class SalesTestKit {
         PlatformTransactionManager txm = new NoopPlatformTransactionManager();
         this.sagaManager = new JdbcSalesOrderFulfilmentSagaManager(sagas, json, txm, 30L, 15L);
         OutboxAppender appender = new OutboxAppender(outbox, json, new CurrentUserAccessor());
-        this.sagaWorker = new SalesOrderFulfilmentSagaWorker(sagaManager, lineSnapshots, invoiceSnapshots, appender, json);
+        this.sagaWorker = new SalesOrderFulfilmentSagaWorker(sagaManager, lineSnapshots, invoiceSnapshots, appender, json, clock);
         this.compensationEmitter = new SalesOrderCompensationEmitter(orders, appender);
         this.readyToShipEmitter = new SalesOrderReadyToShipEmitter(appender);
         this.upfrontSettledEmitter = new SalesOrderUpfrontPaymentSettledEmitter(appender);

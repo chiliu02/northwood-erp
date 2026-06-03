@@ -565,7 +565,12 @@ CREATE TABLE sales.sales_order_fulfilment_saga (
     sales_order_header_id UUID NOT NULL UNIQUE,
     saga_state VARCHAR(50) NOT NULL CHECK (
         saga_state IN (
-            'started', 'stock_reservation_requested', 'stock_reservation_incomplete', 'rejected',
+            'started',
+            -- Planning-time-fence parked state: a far-future order defers its
+            -- stock reservation until need-by − max line fence. Woken by the
+            -- poll (wall-clock), so it's in SalesOrderFulfilmentSaga activeStates.
+            'awaiting_release',
+            'stock_reservation_requested', 'stock_reservation_incomplete', 'rejected',
             -- Prepayment branch states. awaiting_prepayment_invoice parks the
             -- saga after PrepaymentInvoiceRequested until finance acks with
             -- CustomerInvoiceCreated. prepaid is the active checkpoint between

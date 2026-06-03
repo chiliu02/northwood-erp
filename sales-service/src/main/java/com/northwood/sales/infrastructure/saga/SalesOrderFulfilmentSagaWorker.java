@@ -16,6 +16,7 @@ import com.northwood.sales.domain.saga.FulfilmentSagaData;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.AWAITING_DEPOSIT_INVOICE;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.AWAITING_PREPAYMENT_INVOICE;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.AWAITING_RELEASE;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.DEPOSIT_PAID;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.PREPAID;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STARTED;
@@ -27,6 +28,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.InstantSource;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -75,19 +79,27 @@ public class SalesOrderFulfilmentSagaWorker {
     private final SalesOrderInvoiceSnapshotPort invoiceSnapshots;
     private final OutboxAppender outbox;
     private final ObjectMapper json;
+    // Time source for the planning-time-fence gate decision + all park/event
+    // timestamps. Injected (InstantSource.system() in prod) so the decide-once
+    // gate is a pure unit test with a fixed clock — see docs/sagas.md → Timed
+    // releases. The wake itself is driven by the DB clock (next_retry_at <=
+    // now()), so the gate is evaluated against this clock exactly once, on entry.
+    private final InstantSource clock;
 
     public SalesOrderFulfilmentSagaWorker(
         SalesOrderFulfilmentSagaManager manager,
         SalesOrderLineSnapshotPort lineSnapshots,
         SalesOrderInvoiceSnapshotPort invoiceSnapshots,
         OutboxAppender outbox,
-        ObjectMapper json
+        ObjectMapper json,
+        InstantSource clock
     ) {
         this.manager = manager;
         this.lineSnapshots = lineSnapshots;
         this.invoiceSnapshots = invoiceSnapshots;
         this.outbox = outbox;
         this.json = json;
+        this.clock = clock;
     }
 
     @Scheduled(fixedDelayString = "${northwood.saga.poll-interval:1000}")
@@ -104,6 +116,9 @@ public class SalesOrderFulfilmentSagaWorker {
         switch (saga.state()) {
             case STARTED -> advanceFromStarted(saga);
             case PREPAID, DEPOSIT_PAID -> requestStockReservation(saga);
+            // Decide-once: woken from awaiting_release means the release date
+            // arrived (the DB poll said so) — emit unconditionally, no re-gate.
+            case AWAITING_RELEASE -> emitDeferredStockReservation(saga);
             default -> log.debug("[{}] no transition implemented for state {}", workerId, saga.state());
         }
     }
@@ -164,12 +179,12 @@ public class SalesOrderFulfilmentSagaWorker {
             order.currencyCode(),
             depositAmount,
             order.depositPercent(),
-            Instant.now()
+            clock.instant()
         );
         outbox.append(event, SalesOrderFulfilmentSaga.AGGREGATE_TYPE);
 
         saga.transitionTo(AWAITING_DEPOSIT_INVOICE, "wait_for_deposit_invoice");
-        saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
+        saga.parkUntil(clock.instant().plus(Duration.ofDays(1)));
 
         log.info("[{}] saga {} sales_order={} → awaiting_deposit_invoice (deposit {}% = {} {})",
             workerId, saga.sagaId(), salesOrderId, order.depositPercent(), depositAmount, order.currencyCode());
@@ -218,22 +233,65 @@ public class SalesOrderFulfilmentSagaWorker {
             order.customerName(),
             order.currencyCode(),
             lines,
-            Instant.now()
+            clock.instant()
         );
         outbox.append(event, SalesOrderFulfilmentSaga.AGGREGATE_TYPE);
 
         saga.transitionTo(AWAITING_PREPAYMENT_INVOICE, "wait_for_prepayment_invoice");
-        saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
+        saga.parkUntil(clock.instant().plus(Duration.ofDays(1)));
 
         log.info("[{}] saga {} sales_order={} → awaiting_prepayment_invoice ({} line(s); prepayment flow)",
             workerId, saga.sagaId(), salesOrderId, lines.size());
     }
 
+    /**
+     * Entry to the reservation leg. Applies the planning-time-fence gate
+     * <em>once</em>: if the order's need-by is far enough out that
+     * {@code need-by − max(line fence)} is still in the future, park at
+     * {@code awaiting_release} until that instant; otherwise emit the
+     * reservation immediately (today's behaviour for fence-0 / dateless orders).
+     * Reached from {@code started} (on-shipment) and from {@code prepaid} /
+     * {@code deposit_paid} after the up-front payment settles.
+     */
     private void requestStockReservation(SalesOrderFulfilmentSaga saga) {
         UUID salesOrderId = saga.salesOrderId();
         List<LineSnapshot> snapshots = lineSnapshots.findLines(salesOrderId);
         Assert.stateNotEmpty(snapshots, "No lines found for sales_order_header_id=" + salesOrderId + " — cannot request reservation");
 
+        Instant releaseAt = computeReleaseAt(saga, snapshots);
+        if (releaseAt != null && clock.instant().isBefore(releaseAt)) {
+            saga.transitionTo(AWAITING_RELEASE, "wait_for_planning_fence_release");
+            saga.parkUntil(releaseAt);
+            log.info("[{}] saga {} sales_order={} → awaiting_release (releases {})",
+                workerId, saga.sagaId(), salesOrderId, releaseAt);
+            return;
+        }
+
+        emitStockReservationRequested(saga, snapshots);
+    }
+
+    /**
+     * Wake from {@code awaiting_release}: the poll re-claimed this row because
+     * {@code next_retry_at <= now()}, i.e. the release date arrived. Emit the
+     * deferred reservation <em>without</em> re-evaluating the fence — the park
+     * was the decision (decide-once; see {@code docs/sagas.md} → Timed
+     * releases). Re-gating here against the Java clock would risk re-parking on
+     * any clock skew and never releasing.
+     */
+    private void emitDeferredStockReservation(SalesOrderFulfilmentSaga saga) {
+        UUID salesOrderId = saga.salesOrderId();
+        List<LineSnapshot> snapshots = lineSnapshots.findLines(salesOrderId);
+        Assert.stateNotEmpty(snapshots, "No lines found for sales_order_header_id=" + salesOrderId + " — cannot request reservation");
+        emitStockReservationRequested(saga, snapshots);
+    }
+
+    /**
+     * Build + emit {@code StockReservationRequested} for the order's lines and
+     * park awaiting {@code StockReserved}. Shared by the immediate path and the
+     * {@code awaiting_release} wake.
+     */
+    private void emitStockReservationRequested(SalesOrderFulfilmentSaga saga, List<LineSnapshot> snapshots) {
+        UUID salesOrderId = saga.salesOrderId();
         List<StockReservationRequested.RequestedLine> lines = new ArrayList<>();
         for (LineSnapshot s : snapshots) {
             lines.add(new StockReservationRequested.RequestedLine(
@@ -253,15 +311,42 @@ public class SalesOrderFulfilmentSagaWorker {
             salesOrderId,
             WarehouseCodes.MAIN,
             lines,
-            Instant.now()
+            clock.instant()
         );
         outbox.append(event, SalesOrderFulfilmentSaga.AGGREGATE_TYPE);
 
         saga.transitionTo(STOCK_RESERVATION_REQUESTED, "wait_for_stock_reserved");
-        saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
+        saga.parkUntil(clock.instant().plus(Duration.ofDays(1)));
 
         log.info("[{}] saga {} sales_order={} → stock_reservation_requested ({} line(s))",
             workerId, saga.sagaId(), salesOrderId, lines.size());
+    }
+
+    /**
+     * Planning-time-fence release instant = {@code need-by − max(line fence)},
+     * at UTC start-of-day. Returns {@code null} — meaning reserve immediately —
+     * when the order carries no need-by (no gating) or every line's fence is 0
+     * (today's default behaviour). Need-by is read from {@code saga.data}
+     * (stamped at placement); the per-line fence comes from the line snapshots
+     * (read live from {@code product_card}); the whole-order reservation is
+     * gated by the earliest-needed line, i.e. the largest fence.
+     */
+    private Instant computeReleaseAt(SalesOrderFulfilmentSaga saga, List<LineSnapshot> snapshots) {
+        String needBy = readData(saga).requestedDeliveryDate();
+        if (needBy == null) {
+            return null;
+        }
+        int maxFenceDays = snapshots.stream()
+            .mapToInt(LineSnapshot::planningTimeFenceDays)
+            .max()
+            .orElse(0);
+        if (maxFenceDays <= 0) {
+            return null;
+        }
+        return LocalDate.parse(needBy)
+            .minusDays(maxFenceDays)
+            .atStartOfDay(ZoneOffset.UTC)
+            .toInstant();
     }
 
     private FulfilmentSagaData readData(SalesOrderFulfilmentSaga saga) {
