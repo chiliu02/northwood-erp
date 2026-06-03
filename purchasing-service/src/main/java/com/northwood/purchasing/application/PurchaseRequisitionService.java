@@ -11,6 +11,7 @@ import com.northwood.purchasing.domain.PurchaseRequisitionRepository;
 import com.northwood.purchasing.domain.Supplier;
 import com.northwood.purchasing.domain.SupplierRepository;
 import com.northwood.shared.application.exception.ConflictException;
+import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.shared.domain.LineNumbering;
 import java.util.ArrayList;
 import java.util.List;
@@ -84,6 +85,7 @@ public class PurchaseRequisitionService {
     private final PurchaseOrderService purchaseOrders;
     private final DiscontinuedProductLookup discontinuedProducts;
     private final PurchasableProductLookup purchasableProducts;
+    private final CurrentUserAccessor currentUser;
     private final boolean shortagePoAutoApprove;
 
     public PurchaseRequisitionService(
@@ -92,6 +94,7 @@ public class PurchaseRequisitionService {
         PurchaseOrderService purchaseOrders,
         DiscontinuedProductLookup discontinuedProducts,
         PurchasableProductLookup purchasableProducts,
+        CurrentUserAccessor currentUser,
         @Value("${northwood.purchasing.shortagePoAutoApprove:true}") boolean shortagePoAutoApprove
     ) {
         this.purchaseRequisitions = purchaseRequisitions;
@@ -99,6 +102,7 @@ public class PurchaseRequisitionService {
         this.purchaseOrders = purchaseOrders;
         this.discontinuedProducts = discontinuedProducts;
         this.purchasableProducts = purchasableProducts;
+        this.currentUser = currentUser;
         this.shortagePoAutoApprove = shortagePoAutoApprove;
     }
 
@@ -118,12 +122,16 @@ public class PurchaseRequisitionService {
         Supplier defaultSupplier = suppliers.defaultSupplier();
         List<PurchaseRequisitionLine> lines = buildLines(command.lines(), defaultSupplier);
 
+        // The requester is the authenticated clerk, not a client-supplied name —
+        // same rationale as PO approve/reject. Falls back to "system" only when no
+        // authentication is in scope (out-of-request threads / tests).
+        String requestedBy = currentUser.currentUsername().orElse("system");
         PurchaseRequisition pr = PurchaseRequisition.create(
             command.requisitionNumber(),
             PurchaseRequisition.SourceType.MANUAL,
             null,
             null,
-            command.requestedBy(),
+            requestedBy,
             lines
         );
         purchaseRequisitions.save(pr);

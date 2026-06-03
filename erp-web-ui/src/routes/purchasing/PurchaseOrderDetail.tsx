@@ -8,7 +8,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { AuditTab } from "@/components/ui/AuditTab";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FormSection, ReadOnlyField, Field } from "@/components/ui/FormSection";
-import { TextInput, TextArea } from "@/components/ui/Form";
+import { TextArea } from "@/components/ui/Form";
 import { StatusPill, statusForOrder } from "@/components/ui/StatusPill";
 import { DataGrid, type Column } from "@/components/ui/DataGrid";
 
@@ -49,11 +49,9 @@ export function PurchaseOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
   const [approveDialog, setApproveDialog] = useState(false);
-  const [approver, setApprover] = useState("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [rejectDialog, setRejectDialog] = useState(false);
-  const [rejectedBy, setRejectedBy] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [rejectError, setRejectError] = useState<string | null>(null);
 
@@ -67,14 +65,12 @@ export function PurchaseOrderDetail() {
 
   const approveMutation = useMutation({
     mutationFn: () => apiPost(`/api/purchase-orders-cmd/${id}/approve`, {
-      approver: approver.trim(),
-      reason: reason.trim(),
+      reason: reason.trim() || null,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["po-aggregate", id] });
       queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
       setApproveDialog(false);
-      setApprover("");
       setReason("");
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : "Approve failed."),
@@ -82,46 +78,34 @@ export function PurchaseOrderDetail() {
 
   const rejectMutation = useMutation({
     mutationFn: () => apiPost(`/api/purchase-orders-cmd/${id}/reject`, {
-      rejectedBy: rejectedBy.trim(),
-      reason: rejectReason.trim(),
+      reason: rejectReason.trim() || null,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["po-aggregate", id] });
       queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
       setRejectDialog(false);
-      setRejectedBy("");
       setRejectReason("");
     },
     onError: (err) => setRejectError(err instanceof ApiError ? err.message : "Reject failed."),
   });
 
   function open() {
-    setApprover("");
     setReason("");
     setError(null);
     setApproveDialog(true);
   }
 
   function submit() {
-    if (!approver.trim()) {
-      setError("Approver is required.");
-      return;
-    }
     approveMutation.mutate();
   }
 
   function openReject() {
-    setRejectedBy("");
     setRejectReason("");
     setRejectError(null);
     setRejectDialog(true);
   }
 
   function submitReject() {
-    if (!rejectedBy.trim()) {
-      setRejectError("Rejected by is required.");
-      return;
-    }
     rejectMutation.mutate();
   }
 
@@ -239,15 +223,13 @@ export function PurchaseOrderDetail() {
         onConfirm={submit}
         body={
           <div className="space-y-3">
-            <Field label="Approver" required>
-              <TextInput value={approver} onChange={(e) => setApprover(e.target.value)} autoFocus />
-            </Field>
             <Field label="Reason / note">
               <TextArea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 placeholder="e.g. matches budget; supplier checked"
                 rows={3}
+                autoFocus
               />
             </Field>
             {error && (
@@ -278,15 +260,13 @@ export function PurchaseOrderDetail() {
         onConfirm={submitReject}
         body={
           <div className="space-y-3">
-            <Field label="Rejected by" required>
-              <TextInput value={rejectedBy} onChange={(e) => setRejectedBy(e.target.value)} autoFocus />
-            </Field>
             <Field label="Reason / note">
               <TextArea
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
                 placeholder="e.g. wrong supplier; lines unpriced — recreate after fixing the price list"
                 rows={3}
+                autoFocus
               />
             </Field>
             {rejectError && (

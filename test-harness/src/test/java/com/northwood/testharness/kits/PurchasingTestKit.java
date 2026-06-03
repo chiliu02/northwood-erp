@@ -86,11 +86,12 @@ public final class PurchasingTestKit {
         PlatformTransactionManager txm = new NoopPlatformTransactionManager();
         this.sagaManager = new JdbcPurchaseToPaySagaManager(sagas, txm, 30L, 15L);
 
+        CurrentUserAccessor currentUser = new CurrentUserAccessor();
         this.purchaseOrderService = new PurchaseOrderService(
-            orders, requisitions, suppliers, sagaManager, priceLookup, approvedVendorQuery
+            orders, requisitions, suppliers, sagaManager, priceLookup, approvedVendorQuery, currentUser
         );
         this.requisitionService = new PurchaseRequisitionService(
-            requisitions, suppliers, purchaseOrderService, discontinuedProducts, purchasableProducts, true
+            requisitions, suppliers, purchaseOrderService, discontinuedProducts, purchasableProducts, currentUser, true
         );
 
         // No-op query port — the harness drives setPrice, not the enriched list view.
@@ -98,7 +99,7 @@ public final class PurchasingTestKit {
 
         this.sagaWorker = new PurchaseToPaySagaWorker(sagaManager);
 
-        OutboxAppender appender = new OutboxAppender(outbox, json, new CurrentUserAccessor());
+        OutboxAppender appender = new OutboxAppender(outbox, json, currentUser);
 
         bus.register(outbox);
         bus.register(new ReplenishmentRequestedHandler(inbox, requisitionService, appender, json));

@@ -1,8 +1,10 @@
 package com.northwood.purchasing.api.dto;
 
-import jakarta.validation.constraints.NotBlank;
-
+/**
+ * Approve-PO request. The approver is taken from the authenticated principal
+ * server-side (not the client), so only an optional free-text {@code reason}
+ * remains.
+ */
 public record ApprovePurchaseOrderRequest(
-    @NotBlank String approver,
     String reason
 ) {}

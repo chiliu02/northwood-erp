@@ -58,7 +58,7 @@ public class PurchaseOrderController {
             return ResponseEntity.notFound().build();
         }
         service.assertApprovable(id);
-        service.approve(id, request.approver(), request.reason());
+        service.approve(id, request.reason());
         PurchaseOrderView body = service.findById(id).orElseThrow();
         return ResponseEntity.ok(body);
     }
@@ -80,7 +80,7 @@ public class PurchaseOrderController {
             return ResponseEntity.notFound().build();
         }
         service.assertRejectable(id);
-        service.reject(id, request.rejectedBy(), request.reason());
+        service.reject(id, request.reason());
         PurchaseOrderView body = service.findById(id).orElseThrow();
         return ResponseEntity.ok(body);
     }

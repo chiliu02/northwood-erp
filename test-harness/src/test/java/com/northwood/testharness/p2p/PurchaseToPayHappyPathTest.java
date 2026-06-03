@@ -66,7 +66,6 @@ class PurchaseToPayHappyPathTest {
         // Step 1: create manual PR. createManual auto-converts to PO at draft.
         var prView = purchasing.requisitionService.createManual(new CreateRequisitionCommand(
             "PR-1001",
-            "alice@example.com",
             List.of(new RequisitionLineRequest(
                 productId, "RM-101", "Raw Material 101",
                 new BigDecimal("10"), null
@@ -83,7 +82,7 @@ class PurchaseToPayHappyPathTest {
         assertThat(sagaAtStart.state()).isEqualTo(PurchaseToPaySaga.STARTED);
 
         // Step 2: buyer approves the PO. Saga → purchase_order_approved.
-        purchasing.purchaseOrderService.approve(po.id().value(), "alice@example.com", "ok to send");
+        purchasing.purchaseOrderService.approve(po.id().value(), "ok to send");
         PurchaseToPaySaga sagaAfterApprove = purchasing.sagas.findByPurchaseOrderId(po.id().value()).orElseThrow();
         assertThat(sagaAfterApprove.state()).isEqualTo(PurchaseToPaySaga.PURCHASE_ORDER_APPROVED);
 

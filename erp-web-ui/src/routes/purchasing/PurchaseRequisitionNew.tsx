@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Save, X, Plus, Trash2 } from "lucide-react";
@@ -20,6 +20,10 @@ interface Product {
 
 interface CreatedRequisition {
   id: string;
+  requisitionNumber: string;
+}
+
+interface RequisitionSummary {
   requisitionNumber: string;
 }
 
@@ -51,6 +55,12 @@ export function PurchaseRequisitionNew() {
     queryFn: () => apiGet<Product[]>("/api/products"),
   });
 
+  // Existing requisitions — used only to suggest the next PR-{year}-NNNN number.
+  const existingRequisitions = useQuery({
+    queryKey: ["purchase-requisitions"],
+    queryFn: () => apiGet<RequisitionSummary[]>("/api/purchase-requisitions"),
+  });
+
   // Only purchasable SKUs belong on a requisition — a make-only product (finished
   // good / sub-assembly that no supplier sells us) can't be sourced via a PO. The
   // server enforces the same rule (PurchaseRequisitionService rejects a make-only
@@ -61,13 +71,23 @@ export function PurchaseRequisitionNew() {
   );
 
   const [requisitionNumber, setRequisitionNumber] = useState("");
-  const [requestedBy, setRequestedBy] = useState("");
+  const [numberAutofilled, setNumberAutofilled] = useState(false);
   const [lines, setLines] = useState<DraftLine[]>([blankLine()]);
+
+  // Auto-fill the requisition number once, when the existing-PR list arrives, so
+  // the clerk doesn't have to invent one — but it stays editable (they can
+  // override before saving). Guard on the one-shot flag so we never clobber a
+  // value the user has started typing or deliberately cleared.
+  useEffect(() => {
+    if (!numberAutofilled && existingRequisitions.data && requisitionNumber === "") {
+      setRequisitionNumber(nextRequisitionNumber(existingRequisitions.data));
+      setNumberAutofilled(true);
+    }
+  }, [existingRequisitions.data, numberAutofilled, requisitionNumber]);
 
   const mutation = useMutation({
     mutationFn: () => apiPost<CreatedRequisition>("/api/purchase-requisitions", {
       requisitionNumber: requisitionNumber.trim(),
-      requestedBy: requestedBy.trim() || null,
       lines: lines.map(l => ({
         productId: l.productId,
         productSku: l.productSku,
@@ -145,21 +165,12 @@ export function PurchaseRequisitionNew() {
       <div className="px-8 py-6 space-y-4">
         <div className="grid gap-4 lg:grid-cols-2 max-w-4xl">
           <FormSection title="Header">
-            <Field label="Requisition number" required>
+            <Field label="Requisition number" required hint="Auto-numbered; edit if you need a specific number.">
               <input
                 type="text"
                 value={requisitionNumber}
                 onChange={(e) => setRequisitionNumber(e.target.value)}
                 placeholder="PR-2026-0001"
-                className="h-9 w-full rounded-md border border-border-default bg-bg-surface px-3 text-sm focus:border-border-focus focus:outline-none"
-              />
-            </Field>
-            <Field label="Requested by">
-              <input
-                type="text"
-                value={requestedBy}
-                onChange={(e) => setRequestedBy(e.target.value)}
-                placeholder="Tom (purchasing_clerk)"
                 className="h-9 w-full rounded-md border border-border-default bg-bg-surface px-3 text-sm focus:border-border-focus focus:outline-none"
               />
             </Field>
@@ -234,6 +245,24 @@ export function PurchaseRequisitionNew() {
       </div>
     </>
   );
+}
+
+/**
+ * Suggest the next requisition number as PR-{currentYear}-NNNN, one past the
+ * highest existing number for this year (zero-padded to 4). Falls back to
+ * PR-{year}-0001 when there are none yet. Client-side best-effort: the field
+ * stays editable and the server's UNIQUE constraint is the real backstop.
+ */
+function nextRequisitionNumber(existing: RequisitionSummary[]): string {
+  const year = new Date().getFullYear();
+  const prefix = `PR-${year}-`;
+  const maxSeq = existing
+    .map(r => r.requisitionNumber)
+    .filter(n => typeof n === "string" && n.startsWith(prefix))
+    .map(n => parseInt(n.slice(prefix.length), 10))
+    .filter(n => Number.isFinite(n))
+    .reduce((m, n) => Math.max(m, n), 0);
+  return `${prefix}${String(maxSeq + 1).padStart(4, "0")}`;
 }
 
 function blankLine(): DraftLine {

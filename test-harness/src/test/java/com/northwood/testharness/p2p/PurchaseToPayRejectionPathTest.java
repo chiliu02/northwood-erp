@@ -58,7 +58,6 @@ class PurchaseToPayRejectionPathTest {
         // Step 1: PR → PO at draft.
         purchasing.requisitionService.createManual(new CreateRequisitionCommand(
             "PR-REJ-001",
-            "tom@example.com",
             List.of(new RequisitionLineRequest(
                 productId, "RM-201", "Raw Material 201",
                 new BigDecimal("10"), null
@@ -68,7 +67,7 @@ class PurchaseToPayRejectionPathTest {
         assertThat(po.status()).isEqualTo(PurchaseOrder.Status.DRAFT);
 
         // Step 2: approve + drive worker to waiting_for_goods.
-        purchasing.purchaseOrderService.approve(po.id().value(), "tom@example.com", "ok to send");
+        purchasing.purchaseOrderService.approve(po.id().value(), "ok to send");
         purchasing.advanceSagaWorker();
         bus.drain();
 

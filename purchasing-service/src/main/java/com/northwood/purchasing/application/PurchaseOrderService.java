@@ -15,6 +15,7 @@ import com.northwood.purchasing.domain.Supplier;
 import com.northwood.purchasing.domain.SupplierId;
 import com.northwood.purchasing.domain.SupplierRepository;
 import com.northwood.shared.application.exception.ConflictException;
+import com.northwood.shared.application.security.CurrentUserAccessor;
 import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
@@ -92,6 +93,7 @@ public class PurchaseOrderService {
     private final PurchaseToPaySagaManager sagaManager;
     private final SupplierProductPriceLookup priceList;
     private final ApprovedVendorQueryPort approvedVendors;
+    private final CurrentUserAccessor currentUser;
 
     public PurchaseOrderService(
         PurchaseOrderRepository purchaseOrders,
@@ -99,7 +101,8 @@ public class PurchaseOrderService {
         SupplierRepository suppliers,
         PurchaseToPaySagaManager sagaManager,
         SupplierProductPriceLookup priceList,
-        ApprovedVendorQueryPort approvedVendors
+        ApprovedVendorQueryPort approvedVendors,
+        CurrentUserAccessor currentUser
     ) {
         this.purchaseOrders = purchaseOrders;
         this.purchaseRequisitions = purchaseRequisitions;
@@ -107,6 +110,7 @@ public class PurchaseOrderService {
         this.sagaManager = sagaManager;
         this.priceList = priceList;
         this.approvedVendors = approvedVendors;
+        this.currentUser = currentUser;
     }
 
     /**
@@ -216,9 +220,16 @@ public class PurchaseOrderService {
      * Reject (cancel) a draft PO. Flips the PO to {@code 'cancelled'}, emits
      * {@code purchasing.PurchaseOrderCancelled}, and terminates the P2P saga at
      * {@code cancelled} in the same transaction. Manager-gated at the API edge.
+     *
+     * <p>The actor ({@code cancelledBy}) is taken from the authenticated
+     * principal, not the request — the audit actor for a manager action is the
+     * logged-in manager, never a client-supplied string. Falls back to
+     * {@code "system"} only when no authentication is in scope (out-of-request
+     * threads / tests), matching the shortage-driven auto-approve path.
      */
     @Transactional
-    public void reject(UUID purchaseOrderHeaderId, String cancelledBy, String reason) {
+    public void reject(UUID purchaseOrderHeaderId, String reason) {
+        String cancelledBy = currentUser.currentUsername().orElse("system");
         PurchaseOrderId poId = PurchaseOrderId.of(purchaseOrderHeaderId);
         PurchaseOrder po = purchaseOrders.findById(poId)
             .orElseThrow(() -> new IllegalArgumentException("No purchase order " + purchaseOrderHeaderId));
@@ -240,9 +251,13 @@ public class PurchaseOrderService {
      * and emits {@code purchasing.PurchaseOrderApproved}; the saga worker
      * advances {@code purchase_order_approved → waiting_for_goods} on its
      * next tick.
+     *
+     * <p>The approver is taken from the authenticated principal, not the
+     * request — see {@link #reject} for the rationale + {@code "system"} fallback.
      */
     @Transactional
-    public void approve(UUID purchaseOrderHeaderId, String approver, String reason) {
+    public void approve(UUID purchaseOrderHeaderId, String reason) {
+        String approver = currentUser.currentUsername().orElse("system");
         PurchaseOrderId poId = PurchaseOrderId.of(purchaseOrderHeaderId);
         PurchaseOrder po = purchaseOrders.findById(poId)
             .orElseThrow(() -> new IllegalArgumentException("No purchase order " + purchaseOrderHeaderId));
