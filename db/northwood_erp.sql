@@ -233,6 +233,11 @@ CREATE TABLE product.product (
         OR valuation_class IN ('raw_materials', 'finished_goods', 'semi_finished_goods')
     ),
     active_bom_id UUID,
+    -- Planning time fence, in days. Sales's fulfilment saga defers a far-future
+    -- order's stock reservation until need-by − fence; projected to
+    -- sales.product_card via product.PlanningTimeFenceChanged. 0 = no fence
+    -- (reserve immediately, the default behaviour). Non-negative.
+    planning_time_fence_days INT NOT NULL DEFAULT 0 CHECK (planning_time_fence_days >= 0),
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (
         status IN ('active', 'inactive', 'discontinued')
     ),

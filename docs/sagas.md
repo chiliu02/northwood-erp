@@ -175,6 +175,26 @@ Saga state-machine classes carry the constant the same way: a `public static fin
 
 **Test rebalance.** Manager test asserts only saga state changes (state, current_step, saga.data). Side effects (projections, shipping calls, outbox emissions) are tested in handler tests where they live. Each handler test mocks the manager and verifies the dedupe → manager call → side-effect gating → recordProcessed shape; one or two transition assertions per side-effect branch is enough.
 
+## Timed releases — park-and-wake, decide once
+
+Some saga legs defer work to a wall-clock instant rather than to an inbound event: the prepayment/deposit legs park a day out as a liveness backstop, and the Sales-Order planning time fence parks until `need-by − fence` so a far-future order schedules its own fulfilment. All of them reuse one mechanism — `SagaInstance.parkUntil(Instant)` writes `next_retry_at`; the claim query (`Jdbc*SagaAdapter.claimDue`) re-selects the row once `next_retry_at <= now()`. No new scheduler; the existing `@Scheduled poll()` is the wake.
+
+Two clocks are in play and they must not disagree:
+
+- **Java clock** — the worker's `advance(...)` decides *whether* to park (`now < releaseAt`).
+- **Postgres clock** — `claimDue`'s `next_retry_at <= now()` decides *when* the parked row wakes.
+
+**Rule — decide once; the wake does not re-evaluate the deadline.** The advance handler for a timed-wait state (`awaiting_release`, etc.) must emit its command **unconditionally** — being claimed out of that state already means the deadline passed (Postgres said so). Re-checking `now < releaseAt` on wake creates a two-clock trap: if the entry decision used the Java clock but the row was woken by the Postgres clock, a slightly-behind Java clock re-parks the saga forever — a poll-loop in prod and a hang in tests. The park *is* the decision; the deadline lives in `next_retry_at`, evaluated by exactly one clock thereafter.
+
+Concretely, the entry state (`started` / `prepaid` / `deposit_paid`) evaluates the gate **once** — `releaseAt = needBy − maxFence`; `now ≥ releaseAt` → emit immediately, else `parkUntil(releaseAt)` + transition to the wait state. The wait state's advance branch just emits. One `now` read, at entry.
+
+**Clock seam for testability.** The worker reads `now` through an injected `java.time.InstantSource` (Spring auto-provides one; tests pass a fixed source), never a bare `Instant.now()` at the gate. This makes the park-vs-emit decision a pure unit test:
+
+- `needBy = now+30d, fence=7` → `releaseAt = now+23d` → asserts transition to the wait state + `parkUntil(now+23d)`. Microseconds — no real waiting.
+- `needBy = now+3d, fence=7` → `releaseAt = now−4d` → asserts the command is emitted immediately.
+
+**Testing the wake — fast-forward the timestamp, never the wall clock.** Because the deadline is a stored `next_retry_at`, the persistence IT proves the wake by making the row due, not by sleeping: park the saga, assert `drainOnce()` is a no-op (`next_retry_at > now()`), then `UPDATE … SET next_retry_at = now() - interval '1 second'`, `drainOnce()` again, and assert the command was emitted and the saga advanced. A multi-day fence is exercised in milliseconds. The decide-once rule is what makes this work with a single `UPDATE` — if the wake re-checked the Java clock, the IT would also have to advance the injected `InstantSource` in lockstep, reintroducing the two-clock coupling the rule exists to remove.
+
 ## Saga observability — milestone overview
 
 A saga's lifecycle is spread across many traces — each event-driven hop is its own bounded trace (`docs/observability.md` → *Saga-trace linkage*) and the worker advances run on their own poll traces. To see a saga **end to end** you query a *milestone overview* rather than reconstruct one giant trace.
