@@ -76,21 +76,24 @@ const MODULES: NavModule[] = [
     label: "Manufacturing",
     icon: Factory,
     items: [
+      { label: "BOMs", to: "/boms" },
       { label: "Work Orders", to: "/work-orders" },
       { label: "Production Board", to: "/production-board" },
-      { label: "BOMs", to: "/boms" },
     ],
   },
   {
     label: "Finance",
     icon: Receipt,
     items: [
-      { label: "Supplier Invoices", to: "/supplier-invoices" },
-      { label: "Pending Review", to: "/supplier-invoices/pending-review" },
       { label: "Customer Invoices", to: "/customer-invoices" },
+      { label: "Supplier Invoices", to: "/supplier-invoices" },
       { label: "Payments", to: "/payments" },
       { label: "Journal Entries", to: "/journal-entries" },
-      { label: "Exchange Rate", to: "/exchange-rate" },
+      // Exchange Rate hidden: the demo is single-currency (AUD) with no seeded FX
+      // rates, so the lookup only ever 404s. Restore when multi-currency is
+      // activated. Route + page (/exchange-rate) are kept.
+      // { label: "Exchange Rate", to: "/exchange-rate" },
+      { label: "Pending Review", to: "/supplier-invoices/pending-review" },
       { label: "AR / AP Dashboard", to: "/ar-ap" },
     ],
   },
