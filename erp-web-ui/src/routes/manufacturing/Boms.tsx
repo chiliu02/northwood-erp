@@ -10,6 +10,7 @@ interface Product {
   sku: string;
   name: string;
   productType: string;
+  manufactured: boolean;
   status: string;
 }
 
@@ -59,6 +60,11 @@ export function Boms() {
   const manufacturable = useMemo(
     () =>
       (products ?? [])
+        // BOMs are only for products we make. is_manufactured is the
+        // authoritative make-vs-buy signal — a finished good that's purchased-only
+        // (e.g. FG-CARPET-001) has no BOM and must not appear here. The product-type
+        // guard stays as a secondary filter (you don't build raw materials).
+        .filter((p) => p.manufactured)
         .filter((p) => p.productType === "finished_good" || p.productType === "semi_finished_good")
         .filter((p) => p.status === "active")
         .sort((a, b) => a.sku.localeCompare(b.sku)),
