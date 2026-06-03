@@ -592,6 +592,8 @@ window.NORTHWOOD_EVENTS = [
         desc: `<code>manufacturing.product_card.is_purchased</code>, <code>is_manufactured</code>` },
       { dest: "inventory", name: "inventory.product-replenishment-projector",
         desc: `<code>inventory.product_card.is_purchased</code>, <code>is_manufactured</code> — local mirror used by inventory's make-vs-buy routing (reorder-point monitor + the in-tx sales-order-shortage raise) to decide whether to route a replenishment to manufacturing or purchasing.` },
+      { dest: "purchasing", name: "purchasing.product-make-vs-buy",
+        desc: `<code>purchasing.product_card.is_purchased</code> — read by <code>PurchasableProductLookup</code> / <code>PurchaseRequisitionService.buildLines</code> to reject a make-only SKU on a new requisition (HTTP 409). Purchasing tracks only the purchased facet; <code>is_manufactured</code> is manufacturing's concern.` },
     ]
   },
   {
@@ -619,7 +621,7 @@ window.NORTHWOOD_EVENTS = [
       { dest: "reporting", name: "reporting.atp.product-created",
         desc: `<code>reporting.available_to_promise_view.product_sku</code>, <code>product_name</code> — backfills identity onto pending-stub rows` },
       { dest: "purchasing", name: "purchasing.product-created",
-        desc: `<code>purchasing.product_card (product_id, product_sku, product_name)</code> — upserts the name snapshot so the supplier-price list view shows a SKU/name instead of a raw product UUID (shares the one-row-per-product card with <code>product-discontinued</code>, which owns <code>discontinued_at</code>)` },
+        desc: `<code>purchasing.product_card (product_id, product_sku, product_name, is_purchased)</code> — upserts the name snapshot (so the supplier-price list view shows a SKU/name instead of a raw product UUID) plus a day-zero <code>is_purchased</code> default derived from <code>product_type</code>. Shares the one-row-per-product card with <code>product-discontinued</code> (owns <code>discontinued_at</code>) and <code>product-make-vs-buy</code> (owns the authoritative <code>is_purchased</code>); on-conflict leaves <code>is_purchased</code> alone so a make-vs-buy event that landed first wins` },
     ]
   },
   {
@@ -1207,7 +1209,7 @@ window.NORTHWOOD_PROJECTIONS = [
         { name: "product_approved_vendor", kind: "read-model",
           events: ["ApprovedVendorListChanged"] },
         { name: "product_card", kind: "read-model",
-          events: ["ProductCreated", "ProductDiscontinued"] },
+          events: ["ProductCreated", "MakeVsBuyChanged", "ProductDiscontinued"] },
       ]},
       { dest: "finance", tables: [
         { name: "product_card", kind: "read-model",

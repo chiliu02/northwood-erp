@@ -11,6 +11,7 @@ import com.northwood.product.api.dto.SetReorderPolicyRequest;
 import com.northwood.product.api.dto.SetValuationClassRequest;
 import com.northwood.product.application.ProductService;
 import com.northwood.product.application.dto.ApprovedVendorCommand;
+import com.northwood.product.application.dto.ApprovedVendorView;
 import com.northwood.product.application.dto.ProductView;
 import com.northwood.shared.api.security.RequireCatalogManager;
 import jakarta.validation.Valid;
@@ -142,6 +143,11 @@ public class ProductController {
     ) {
         service.activateBom(id, request.bomHeaderId());
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}/approved-vendors")
+    public List<ApprovedVendorView> getApprovedVendors(@PathVariable UUID id) {
+        return service.findApprovedVendors(id);
     }
 
     @PutMapping("/{id}/approved-vendors")

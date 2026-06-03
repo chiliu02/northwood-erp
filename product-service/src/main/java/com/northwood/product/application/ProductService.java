@@ -1,6 +1,7 @@
 package com.northwood.product.application;
 
 import com.northwood.product.application.dto.ApprovedVendorCommand;
+import com.northwood.product.application.dto.ApprovedVendorView;
 import com.northwood.product.application.dto.ProductView;
 import com.northwood.product.domain.ApprovedVendor;
 import com.northwood.product.domain.Product;
@@ -236,6 +237,18 @@ public class ProductService {
             .toList();
         product.setApprovedVendors(mapped);
         products.save(product);
+    }
+
+    /**
+     * Read the approved-vendor list for a product (loaded onto the aggregate by
+     * the repository). Backs {@code GET /api/products/{id}/approved-vendors} —
+     * the read counterpart of {@link #setApprovedVendors}.
+     */
+    @Transactional(readOnly = true)
+    public List<ApprovedVendorView> findApprovedVendors(UUID productId) {
+        Product product = products.findById(ProductId.of(productId))
+            .orElseThrow(() -> new ProductNotFoundException(productId));
+        return product.approvedVendors().stream().map(ApprovedVendorView::from).toList();
     }
 
     @Transactional

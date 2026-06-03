@@ -64,12 +64,26 @@ public class PurchaseRequisitionService {
         @Override public Map<String, Object> params() { return Map.of("sku", sku); }
     }
 
+    public static class ProductNotPurchasableException extends ConflictException {
+        public static final String CODE = "PRODUCT_NOT_PURCHASABLE";
+        private final String sku;
+        public ProductNotPurchasableException(String sku) {
+            super(CODE, "Product sku=" + sku + " is make-only (not flagged purchased on the "
+                + "product master); it cannot be sourced from a supplier, so it cannot go on a "
+                + "purchase requisition");
+            this.sku = sku;
+        }
+        public String sku() { return sku; }
+        @Override public Map<String, Object> params() { return Map.of("sku", sku); }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(PurchaseRequisitionService.class);
 
     private final PurchaseRequisitionRepository purchaseRequisitions;
     private final SupplierRepository suppliers;
     private final PurchaseOrderService purchaseOrders;
     private final DiscontinuedProductLookup discontinuedProducts;
+    private final PurchasableProductLookup purchasableProducts;
     private final boolean shortagePoAutoApprove;
 
     public PurchaseRequisitionService(
@@ -77,12 +91,14 @@ public class PurchaseRequisitionService {
         SupplierRepository suppliers,
         PurchaseOrderService purchaseOrders,
         DiscontinuedProductLookup discontinuedProducts,
+        PurchasableProductLookup purchasableProducts,
         @Value("${northwood.purchasing.shortagePoAutoApprove:true}") boolean shortagePoAutoApprove
     ) {
         this.purchaseRequisitions = purchaseRequisitions;
         this.suppliers = suppliers;
         this.purchaseOrders = purchaseOrders;
         this.discontinuedProducts = discontinuedProducts;
+        this.purchasableProducts = purchasableProducts;
         this.shortagePoAutoApprove = shortagePoAutoApprove;
     }
 
@@ -174,14 +190,20 @@ public class PurchaseRequisitionService {
         List<RequisitionLineRequest> requested,
         Supplier defaultSupplier
     ) {
-        // Reject upfront if any line names a product product-service
-        // has discontinued. Same idempotent-projection lookup is used by both
-        // manual and shortage-driven PR paths so the shortage detector also
-        // gets the rejection (manufacturing emitted the shortage before
-        // observing the discontinue is a real race).
+        // Reject upfront if any line names a product product-service has
+        // discontinued, or one that's make-only (not purchasable — no supplier
+        // sells it, so it could only ever yield a zero-value PO). Both use the
+        // same idempotent product_card projection and run on both the manual and
+        // stock-replenishment PR paths. The stock-replenishment path is already
+        // gated upstream (inventory only routes is_purchased SKUs to purchasing),
+        // so the purchasable check is belt-and-suspenders there but the sole
+        // guard on the manual path.
         for (RequisitionLineRequest line : requested) {
             if (discontinuedProducts.isDiscontinued(line.productId())) {
                 throw new ProductDiscontinuedException(line.productSku());
+            }
+            if (!purchasableProducts.isPurchasable(line.productId())) {
+                throw new ProductNotPurchasableException(line.productSku());
             }
         }
         List<PurchaseRequisitionLine> built = new ArrayList<>();

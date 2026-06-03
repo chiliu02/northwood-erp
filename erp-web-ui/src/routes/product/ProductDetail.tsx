@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { DollarSign, Package2, Wrench, Ban } from "lucide-react";
+import { DollarSign, Package2, Wrench, Ban, Users, Star } from "lucide-react";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { DetailLayout } from "@/components/ui/DetailLayout";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -37,7 +37,21 @@ interface MaterialsCost {
   capturedAt: string;
 }
 
-type DialogKind = "pricing" | "reorder" | "make-vs-buy" | "discontinue" | null;
+interface ApprovedVendor {
+  supplierId: string;
+  supplierCode: string;
+  supplierName: string;
+  preferred: boolean;
+}
+
+interface Supplier {
+  supplierId: string;
+  supplierCode: string;
+  name: string;
+  status: string;
+}
+
+type DialogKind = "pricing" | "reorder" | "make-vs-buy" | "discontinue" | "vendors" | null;
 
 /**
  * Catalog detail page. The four authoring actions Emma drives the
@@ -70,6 +84,12 @@ export function ProductDetail() {
         throw err;
       }
     },
+    enabled: !!id,
+  });
+
+  const approvedVendors = useQuery({
+    queryKey: ["product", id, "approved-vendors"],
+    queryFn: () => apiGet<ApprovedVendor[]>(`/api/products/${id}/approved-vendors`),
     enabled: !!id,
   });
 
@@ -183,6 +203,33 @@ export function ProductDetail() {
             ),
           },
           {
+            key: "vendors",
+            label: "Vendors",
+            content: (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-text-secondary">
+                    Suppliers approved to supply this product. The preferred vendor drives
+                    auto-sourcing on purchase orders and the materials-cost rollup.
+                  </p>
+                  <ActionButton
+                    icon={<Users className="h-4 w-4" />}
+                    onClick={() => setDialog("vendors")}
+                    requiresRole="catalog_manager"
+                    disabled={isDiscontinued}
+                  >
+                    Edit vendors
+                  </ActionButton>
+                </div>
+                <VendorTable
+                  vendors={approvedVendors.data ?? []}
+                  loading={approvedVendors.isLoading}
+                  purchased={data.purchased}
+                />
+              </div>
+            ),
+          },
+          {
             key: "audit",
             label: "Audit",
             content: <AuditTab aggregateId={id} />,
@@ -214,7 +261,64 @@ export function ProductDetail() {
         onClose={close}
         onSuccess={() => { close(); queryClient.invalidateQueries({ queryKey: ["product", id] }); queryClient.invalidateQueries({ queryKey: ["products"] }); }}
       />
+      <VendorsDialog
+        open={dialog === "vendors"}
+        product={data}
+        current={approvedVendors.data ?? []}
+        onClose={close}
+        onSuccess={() => { close(); queryClient.invalidateQueries({ queryKey: ["product", id, "approved-vendors"] }); }}
+      />
     </>
+  );
+}
+
+// ---- Vendors table (Vendors tab body) ----
+
+function VendorTable({ vendors, loading, purchased }: { vendors: ApprovedVendor[]; loading: boolean; purchased: boolean }) {
+  if (loading) {
+    return <div className="text-sm text-text-muted">Loading vendors…</div>;
+  }
+  if (vendors.length === 0) {
+    return (
+      <div className="rounded-md border border-border-default bg-bg-surface px-4 py-6 text-sm text-text-muted">
+        {purchased
+          ? "No approved vendors yet. A purchase requisition for this product can't be auto-sourced — its PO falls back to the default supplier and may come out unpriced. Add a vendor to fix that."
+          : "This product is make-only, so approved vendors don't apply. Switch it to purchased (Make vs buy) if it should be bought."}
+      </div>
+    );
+  }
+  // Preferred first, then by code.
+  const sorted = [...vendors].sort((a, b) =>
+    a.preferred === b.preferred ? a.supplierCode.localeCompare(b.supplierCode) : a.preferred ? -1 : 1
+  );
+  return (
+    <div className="overflow-hidden rounded-md border border-border-default">
+      <table className="w-full text-sm">
+        <thead className="bg-bg-elevated text-xs text-text-secondary">
+          <tr>
+            <th className="px-3 py-2 text-left font-medium">Supplier</th>
+            <th className="px-3 py-2 text-left font-medium" style={{ width: 140 }}>Preferred</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((v) => (
+            <tr key={v.supplierId} className="border-t border-border-default">
+              <td className="px-3 py-2">
+                <span className="font-medium tabular-nums">{v.supplierCode}</span>
+                <span className="text-text-secondary"> — {v.supplierName}</span>
+              </td>
+              <td className="px-3 py-2">
+                {v.preferred && (
+                  <span className="inline-flex items-center gap-1 text-status-warning">
+                    <Star className="h-3.5 w-3.5 fill-current" /> Preferred
+                  </span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -398,6 +502,138 @@ function DiscontinueDialog({ open, product, onClose, onSuccess }: DialogProps) {
           {error}
         </div>
       ) : undefined}
+    />
+  );
+}
+
+// ---- Vendors editor dialog ----
+
+function VendorsDialog({
+  open, product, current, onClose, onSuccess,
+}: {
+  open: boolean;
+  product: Product;
+  current: ApprovedVendor[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [preferredId, setPreferredId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Active suppliers only — a blocked/inactive supplier can't take a PO.
+  const suppliers = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: () => apiGet<Supplier[]>("/api/suppliers"),
+    enabled: open,
+  });
+  const activeSuppliers = useMemo(
+    () => (suppliers.data ?? []).filter((s) => s.status === "active"),
+    [suppliers.data]
+  );
+
+  // Re-seed local edit state from the saved list each time the dialog opens.
+  useEffect(() => {
+    if (open) {
+      setSelected(new Set(current.map((v) => v.supplierId)));
+      setPreferredId(current.find((v) => v.preferred)?.supplierId ?? null);
+      setError(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  function toggle(supplierId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(supplierId)) {
+        next.delete(supplierId);
+        if (preferredId === supplierId) setPreferredId(null);
+      } else {
+        next.add(supplierId);
+      }
+      return next;
+    });
+  }
+
+  function togglePreferred(supplierId: string) {
+    setPreferredId((prev) => (prev === supplierId ? null : supplierId));
+    setSelected((prev) => new Set(prev).add(supplierId)); // marking preferred implies approved
+  }
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      const vendors = activeSuppliers
+        .filter((s) => selected.has(s.supplierId))
+        .map((s) => ({
+          supplierId: s.supplierId,
+          supplierCode: s.supplierCode,
+          supplierName: s.name,
+          preferred: s.supplierId === preferredId,
+        }));
+      return apiPut(`/api/products-cmd/${product.productId}/approved-vendors`, { vendors });
+    },
+    onSuccess,
+    onError: (err) => setError(err instanceof Error ? err.message : "Failed."),
+  });
+
+  return (
+    <ConfirmDialog
+      open={open}
+      title="Edit approved vendors"
+      message={<>Sets which suppliers may supply <strong>{product.sku}</strong>. Emits <code>product.ApprovedVendorListChanged</code>; purchasing re-projects it for supplier selection.</>}
+      confirmLabel="Save"
+      busy={mutation.isPending}
+      onCancel={onClose}
+      onConfirm={() => mutation.mutate()}
+      confirmDisabled={selected.size === 0}
+      body={
+        <div className="space-y-3">
+          {suppliers.isLoading ? (
+            <div className="text-sm text-text-muted">Loading suppliers…</div>
+          ) : (
+            <div className="max-h-72 overflow-y-auto rounded-md border border-border-default divide-y divide-border-default">
+              {activeSuppliers.map((s) => {
+                const approved = selected.has(s.supplierId);
+                return (
+                  <div key={s.supplierId} className="flex items-center gap-3 px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={approved}
+                      onChange={() => toggle(s.supplierId)}
+                      className="h-4 w-4 rounded border-border-default"
+                    />
+                    <div className="flex-1 text-sm">
+                      <span className="font-medium tabular-nums">{s.supplierCode}</span>
+                      <span className="text-text-secondary"> — {s.name}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => togglePreferred(s.supplierId)}
+                      title={preferredId === s.supplierId ? "Preferred supplier" : "Mark preferred"}
+                      className={
+                        preferredId === s.supplierId
+                          ? "inline-flex items-center gap-1 text-xs text-status-warning"
+                          : "inline-flex items-center gap-1 text-xs text-text-muted hover:text-text-secondary"
+                      }
+                    >
+                      <Star className={`h-3.5 w-3.5 ${preferredId === s.supplierId ? "fill-current" : ""}`} />
+                      Preferred
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <p className="text-xs text-text-muted">
+            At least one vendor is required. The preferred one (optional) is picked first when sourcing a PO.
+          </p>
+          {error && (
+            <div className="rounded-md border border-status-error/30 bg-status-error-soft px-3 py-2 text-xs text-status-error">
+              {error}
+            </div>
+          )}
+        </div>
+      }
     />
   );
 }

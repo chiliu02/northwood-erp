@@ -30,7 +30,7 @@ public class ProductCreatedHandler extends AbstractInboxHandler<ProductCreated> 
 
     @Override
     protected void apply(ProductCreated payload, EventEnvelope envelope) {
-        projection.applyCreated(payload.aggregateId(), payload.sku(), payload.name());
+        projection.applyCreated(payload.aggregateId(), payload.sku(), payload.name(), payload.productType());
 
         log.info("[{}] applied {} ({}) for product_id={} (sku={})",
             CONSUMER_NAME, envelope.eventType(), envelope.eventId(),

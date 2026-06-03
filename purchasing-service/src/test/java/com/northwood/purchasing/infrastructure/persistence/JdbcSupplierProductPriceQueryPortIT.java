@@ -96,8 +96,8 @@ class JdbcSupplierProductPriceQueryPortIT {
 
     @Test
     void findAll_joins_supplier_and_product_names_ordered_by_supplier_then_sku() {
-        CARD_PROJECTION.applyCreated(PRODUCT_BOARD, "RM-BOARD-001", "Wooden Board");
-        CARD_PROJECTION.applyCreated(PRODUCT_LEG, "RM-LEG-001", "Table Leg");
+        CARD_PROJECTION.applyCreated(PRODUCT_BOARD, "RM-BOARD-001", "Wooden Board", "raw_material");
+        CARD_PROJECTION.applyCreated(PRODUCT_LEG, "RM-LEG-001", "Table Leg", "raw_material");
         seedPrice(SUPPLIER_B, PRODUCT_LEG, "25.00");       // Bolt Co — sorts after Acme
         seedPrice(SUPPLIER_A, PRODUCT_LEG, "24.00");       // Acme, RM-LEG
         seedPrice(SUPPLIER_A, PRODUCT_BOARD, "80.00");     // Acme, RM-BOARD (sku sorts before LEG)
@@ -136,9 +136,9 @@ class JdbcSupplierProductPriceQueryPortIT {
         // discontinued-first: a row stamped by ProductDiscontinued, then Created fills the name
         JDBC.update("INSERT INTO purchasing.product_card (product_id, discontinued_at) VALUES (?, ?)",
             PRODUCT_BOARD, java.sql.Timestamp.from(Instant.parse("2026-06-01T00:00:00Z")));
-        CARD_PROJECTION.applyCreated(PRODUCT_BOARD, "RM-BOARD-001", "Wooden Board");
+        CARD_PROJECTION.applyCreated(PRODUCT_BOARD, "RM-BOARD-001", "Wooden Board", "raw_material");
         // re-apply with a corrected name updates in place (upsert)
-        CARD_PROJECTION.applyCreated(PRODUCT_BOARD, "RM-BOARD-001", "Wooden Board v2");
+        CARD_PROJECTION.applyCreated(PRODUCT_BOARD, "RM-BOARD-001", "Wooden Board v2", "raw_material");
 
         var row = JDBC.queryForMap(
             "SELECT product_sku, product_name, discontinued_at FROM purchasing.product_card WHERE product_id = ?",

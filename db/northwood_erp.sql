@@ -1741,6 +1741,13 @@ CREATE TABLE purchasing.product_card (
     -- price list LEFT JOINs, so neither read breaks on a partially-filled row.
     product_sku     VARCHAR(50),
     product_name    VARCHAR(255),
+    -- Make-vs-buy projection of product master. Seeded from ProductCreated
+    -- (default derived from product_type) and maintained by
+    -- product.MakeVsBuyChanged. PurchasableProductLookup reads it to reject a
+    -- requisition line for a make-only SKU (one no supplier sells us). Defaults
+    -- false so a row stamped discontinued-first (sku/name still null) doesn't
+    -- read as purchasable before ProductCreated lands.
+    is_purchased    BOOLEAN NOT NULL DEFAULT false,
     discontinued_at TIMESTAMPTZ
 );
 

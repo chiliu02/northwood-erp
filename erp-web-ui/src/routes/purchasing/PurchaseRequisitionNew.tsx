@@ -14,6 +14,7 @@ interface Product {
   sku: string;
   name: string;
   productType: string;
+  purchased: boolean;
   status: string;
 }
 
@@ -50,8 +51,12 @@ export function PurchaseRequisitionNew() {
     queryFn: () => apiGet<Product[]>("/api/products"),
   });
 
+  // Only purchasable SKUs belong on a requisition — a make-only product (finished
+  // good / sub-assembly that no supplier sells us) can't be sourced via a PO. The
+  // server enforces the same rule (PurchaseRequisitionService rejects a make-only
+  // line); this just keeps them out of the picker. Mirrors the discontinued filter.
   const sourceableProducts = useMemo(
-    () => (products.data ?? []).filter(p => p.status !== "discontinued"),
+    () => (products.data ?? []).filter(p => p.status !== "discontinued" && p.purchased),
     [products.data]
   );
 

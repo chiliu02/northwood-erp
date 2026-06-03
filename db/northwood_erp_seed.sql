@@ -691,22 +691,26 @@ ON CONFLICT (supplier_id, product_id, currency_code, effective_from, min_quantit
 -- (one-card-per-product), not just the priced ones, mirroring the other
 -- services' card backfills. FG-RUG/CARPET (the floor-coverings pair) are
 -- included here too even though their prices seed in a later block.
-INSERT INTO purchasing.product_card (product_id, product_sku, product_name) VALUES
-    ('00000000-0000-7000-8000-000000000001', 'FG-TABLE-001',         'Wooden Dining Table'),
-    ('00000000-0000-7000-8000-000000000002', 'RM-BOARD-001',         'Wooden Board'),
-    ('00000000-0000-7000-8000-000000000003', 'RM-LEG-001',           'Table Leg'),
-    ('00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',         'Screw Pack'),
-    ('00000000-0000-7000-8000-000000000005', 'RM-VARNISH-001',       'Varnish Pack'),
-    ('00000000-0000-7000-8000-000000000200', 'FG-CABINET-001',       'Storage Cabinet'),
-    ('00000000-0000-7000-8000-000000000201', 'SA-DRAWER-001',        'Cabinet Drawer Sub-assembly'),
-    ('00000000-0000-7000-8000-000000000202', 'RM-DRAWER-FRONT-001',  'Drawer Front Panel'),
-    ('00000000-0000-7000-8000-000000000203', 'RM-DRAWER-RUNNER-001', 'Drawer Runner'),
-    ('00000000-0000-7000-8000-000000000300', 'FG-CHEST-001',         'Chest of Drawers'),
-    ('00000000-0000-7000-8000-000000000301', 'SA-FRAME-001',         'Chest Frame Sub-assembly'),
-    ('00000000-0000-7000-8000-000000000302', 'SA-PANEL-001',         'Side Panel Sub-assembly'),
-    ('00000000-0000-7000-8000-000000000400', 'FG-CHAIR-001',         'Wooden Dining Chair'),
-    ('00000000-0000-7000-8000-000000000500', 'FG-RUG-001',           'Woven Floor Rug'),
-    ('00000000-0000-7000-8000-000000000501', 'FG-CARPET-001',        'Custom-design Carpet')
+-- is_purchased mirrors product.product.is_purchased (the master): the six raw
+-- materials plus the two floor-covering FGs (RUG/CARPET) are bought; the
+-- made-in-house FGs and sub-assemblies are make-only. PurchasableProductLookup
+-- reads this so a manual requisition can't line up a make-only SKU.
+INSERT INTO purchasing.product_card (product_id, product_sku, product_name, is_purchased) VALUES
+    ('00000000-0000-7000-8000-000000000001', 'FG-TABLE-001',         'Wooden Dining Table',         false),
+    ('00000000-0000-7000-8000-000000000002', 'RM-BOARD-001',         'Wooden Board',                true),
+    ('00000000-0000-7000-8000-000000000003', 'RM-LEG-001',           'Table Leg',                   true),
+    ('00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',         'Screw Pack',                  true),
+    ('00000000-0000-7000-8000-000000000005', 'RM-VARNISH-001',       'Varnish Pack',                true),
+    ('00000000-0000-7000-8000-000000000200', 'FG-CABINET-001',       'Storage Cabinet',             false),
+    ('00000000-0000-7000-8000-000000000201', 'SA-DRAWER-001',        'Cabinet Drawer Sub-assembly', false),
+    ('00000000-0000-7000-8000-000000000202', 'RM-DRAWER-FRONT-001',  'Drawer Front Panel',          true),
+    ('00000000-0000-7000-8000-000000000203', 'RM-DRAWER-RUNNER-001', 'Drawer Runner',               true),
+    ('00000000-0000-7000-8000-000000000300', 'FG-CHEST-001',         'Chest of Drawers',            false),
+    ('00000000-0000-7000-8000-000000000301', 'SA-FRAME-001',         'Chest Frame Sub-assembly',    false),
+    ('00000000-0000-7000-8000-000000000302', 'SA-PANEL-001',         'Side Panel Sub-assembly',     false),
+    ('00000000-0000-7000-8000-000000000400', 'FG-CHAIR-001',         'Wooden Dining Chair',         false),
+    ('00000000-0000-7000-8000-000000000500', 'FG-RUG-001',           'Woven Floor Rug',             true),
+    ('00000000-0000-7000-8000-000000000501', 'FG-CARPET-001',        'Custom-design Carpet',        true)
 ON CONFLICT (product_id) DO NOTHING;
 
 COMMIT;
@@ -965,6 +969,62 @@ UPDATE sales.product_card
 UPDATE inventory.product_card
    SET reorder_point = 0, reorder_quantity = 0
  WHERE product_id = '00000000-0000-7000-8000-000000000300';
+
+COMMIT;
+
+
+-- ============================================================================
+-- SEED: APPROVED VENDORS
+-- The Shape-A approved-vendor list per purchased product — the engineering
+-- quality gate PurchaseOrderService.pickSupplier reads to choose a supplier
+-- (preferred first, then cheapest eligible by price list). Without it every PR
+-- falls through to the default supplier (SUP-001), which yields a 0.00 PO for a
+-- product SUP-001 doesn't price (e.g. the floor coverings, sourced only by
+-- SUP-006). Preferred = the cheapest supplier in the price list above, so the
+-- materials-cost rollup and the auto-source pick agree.
+--
+-- Seeded on BOTH the product master (product.approved_vendor — source of truth,
+-- read by the catalog UI) AND purchasing's projection
+-- (purchasing.product_approved_vendor — read by supplier selection), since the
+-- seed hand-maintains projections (no runtime ApprovedVendorListChanged at boot).
+-- PK defaults via uuid_generate_v7(); ON CONFLICT keys on the (product, supplier)
+-- unique constraint so re-running the seed is idempotent.
+-- ============================================================================
+
+BEGIN;
+
+INSERT INTO product.approved_vendor (product_id, supplier_id, supplier_code, supplier_name, is_preferred) VALUES
+    ('00000000-0000-7000-8000-000000000002', '00000000-0000-7000-8000-000000000040', 'SUP-001', 'Australian Timber Supplies', true),
+    ('00000000-0000-7000-8000-000000000002', '00000000-0000-7000-8000-000000000043', 'SUP-004', 'Highland Timber NSW',        false),
+    ('00000000-0000-7000-8000-000000000003', '00000000-0000-7000-8000-000000000040', 'SUP-001', 'Australian Timber Supplies', true),
+    ('00000000-0000-7000-8000-000000000003', '00000000-0000-7000-8000-000000000043', 'SUP-004', 'Highland Timber NSW',        false),
+    ('00000000-0000-7000-8000-000000000004', '00000000-0000-7000-8000-000000000041', 'SUP-002', 'Sydney Hardware Wholesale',  true),
+    ('00000000-0000-7000-8000-000000000004', '00000000-0000-7000-8000-000000000040', 'SUP-001', 'Australian Timber Supplies', false),
+    ('00000000-0000-7000-8000-000000000005', '00000000-0000-7000-8000-000000000042', 'SUP-003', 'Coastal Coatings & Finishes', true),
+    ('00000000-0000-7000-8000-000000000005', '00000000-0000-7000-8000-000000000040', 'SUP-001', 'Australian Timber Supplies', false),
+    ('00000000-0000-7000-8000-000000000202', '00000000-0000-7000-8000-000000000040', 'SUP-001', 'Australian Timber Supplies', true),
+    ('00000000-0000-7000-8000-000000000203', '00000000-0000-7000-8000-000000000041', 'SUP-002', 'Sydney Hardware Wholesale',  true),
+    ('00000000-0000-7000-8000-000000000203', '00000000-0000-7000-8000-000000000040', 'SUP-001', 'Australian Timber Supplies', false),
+    ('00000000-0000-7000-8000-000000000500', '00000000-0000-7000-8000-000000000045', 'SUP-006', 'Floor Coverings Direct',     true),
+    ('00000000-0000-7000-8000-000000000501', '00000000-0000-7000-8000-000000000045', 'SUP-006', 'Floor Coverings Direct',     true)
+ON CONFLICT (product_id, supplier_id) DO NOTHING;
+
+-- Purchasing's projection — same rows, the table supplier selection actually reads.
+INSERT INTO purchasing.product_approved_vendor (product_id, supplier_id, supplier_code, supplier_name, is_preferred) VALUES
+    ('00000000-0000-7000-8000-000000000002', '00000000-0000-7000-8000-000000000040', 'SUP-001', 'Australian Timber Supplies', true),
+    ('00000000-0000-7000-8000-000000000002', '00000000-0000-7000-8000-000000000043', 'SUP-004', 'Highland Timber NSW',        false),
+    ('00000000-0000-7000-8000-000000000003', '00000000-0000-7000-8000-000000000040', 'SUP-001', 'Australian Timber Supplies', true),
+    ('00000000-0000-7000-8000-000000000003', '00000000-0000-7000-8000-000000000043', 'SUP-004', 'Highland Timber NSW',        false),
+    ('00000000-0000-7000-8000-000000000004', '00000000-0000-7000-8000-000000000041', 'SUP-002', 'Sydney Hardware Wholesale',  true),
+    ('00000000-0000-7000-8000-000000000004', '00000000-0000-7000-8000-000000000040', 'SUP-001', 'Australian Timber Supplies', false),
+    ('00000000-0000-7000-8000-000000000005', '00000000-0000-7000-8000-000000000042', 'SUP-003', 'Coastal Coatings & Finishes', true),
+    ('00000000-0000-7000-8000-000000000005', '00000000-0000-7000-8000-000000000040', 'SUP-001', 'Australian Timber Supplies', false),
+    ('00000000-0000-7000-8000-000000000202', '00000000-0000-7000-8000-000000000040', 'SUP-001', 'Australian Timber Supplies', true),
+    ('00000000-0000-7000-8000-000000000203', '00000000-0000-7000-8000-000000000041', 'SUP-002', 'Sydney Hardware Wholesale',  true),
+    ('00000000-0000-7000-8000-000000000203', '00000000-0000-7000-8000-000000000040', 'SUP-001', 'Australian Timber Supplies', false),
+    ('00000000-0000-7000-8000-000000000500', '00000000-0000-7000-8000-000000000045', 'SUP-006', 'Floor Coverings Direct',     true),
+    ('00000000-0000-7000-8000-000000000501', '00000000-0000-7000-8000-000000000045', 'SUP-006', 'Floor Coverings Direct',     true)
+ON CONFLICT (product_id, supplier_id) DO NOTHING;
 
 COMMIT;
 

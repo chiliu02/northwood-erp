@@ -1,13 +1,14 @@
 package com.northwood.purchasing.application.inbox;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.northwood.product.domain.ProductAggregateTypes;
-import com.northwood.product.domain.events.ProductCreated;
+import com.northwood.product.domain.events.MakeVsBuyChanged;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
 import java.time.Instant;
@@ -20,48 +21,47 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
-class ProductCreatedHandlerTest {
+class MakeVsBuyChangedHandlerTest {
 
     private static final UUID PRODUCT = UUID.randomUUID();
 
     @Mock InboxPort inbox;
-    @Mock ProductCreatedProjection projection;
+    @Mock MakeVsBuyChangedProjection projection;
 
     private final ObjectMapper json = new ObjectMapper();
-    private ProductCreatedHandler handler;
+    private MakeVsBuyChangedHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new ProductCreatedHandler(inbox, projection, json);
+        handler = new MakeVsBuyChangedHandler(inbox, projection, json);
     }
 
-    private EventEnvelope event() {
+    private EventEnvelope event(boolean newPurchased) {
         UUID eventId = UUID.randomUUID();
-        ProductCreated payload = new ProductCreated(
-            eventId, PRODUCT, "RM-BOARD-001", "Wooden Board", "raw_material", Instant.now());
+        MakeVsBuyChanged payload = new MakeVsBuyChanged(
+            eventId, PRODUCT, false, newPurchased, true, true, Instant.now());
         return new EventEnvelope(
             eventId, ProductAggregateTypes.PRODUCT, PRODUCT,
-            ProductCreated.EVENT_TYPE, 1,
+            MakeVsBuyChanged.EVENT_TYPE, 1,
             json.writeValueAsString(payload),
-            null, null, null, null, Instant.now()
-        );
+            null, null, null, null, Instant.now());
     }
 
-    @Test void upserts_sku_and_name_onto_the_card() {
-        handler.handle(event());
+    @Test void projects_the_new_purchased_flag() {
+        handler.handle(event(true));
 
-        verify(projection).applyCreated(eq(PRODUCT), eq("RM-BOARD-001"), eq("Wooden Board"), eq("raw_material"));
+        verify(projection).applyMakeVsBuy(eq(PRODUCT), eq(true));
         verify(inbox).recordProcessed(any());
     }
 
     @Test void already_processed_short_circuits() {
-        EventEnvelope envelope = event();
-        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(ProductCreatedHandler.CONSUMER_NAME)))
+        EventEnvelope envelope = event(true);
+        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(MakeVsBuyChangedHandler.CONSUMER_NAME)))
             .thenReturn(true);
 
         handler.handle(envelope);
 
-        verify(projection, never()).applyCreated(any(), any(), any(), any());
+        verify(projection, never()).applyMakeVsBuy(any(), anyBoolean());
         verify(inbox, never()).recordProcessed(any());
     }
 }
