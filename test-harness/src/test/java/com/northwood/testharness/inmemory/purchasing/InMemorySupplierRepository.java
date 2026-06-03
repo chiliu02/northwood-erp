@@ -1,8 +1,8 @@
 package com.northwood.testharness.inmemory.purchasing;
 
-import com.northwood.purchasing.application.SupplierQueryPort;
 import com.northwood.purchasing.domain.Supplier;
 import com.northwood.purchasing.domain.SupplierId;
+import com.northwood.purchasing.domain.SupplierRepository;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -11,14 +11,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-public final class InMemorySupplierQueryPort implements SupplierQueryPort {
+public final class InMemorySupplierRepository implements SupplierRepository {
 
     private final Map<UUID, Supplier> byId = new HashMap<>();
     private final Map<String, Supplier> byCode = new HashMap<>();
 
-    public InMemorySupplierQueryPort putActive(String code, String name) {
+    public InMemorySupplierRepository putActive(String code, String name) {
         SupplierId id = SupplierId.of(UUID.randomUUID());
-        Supplier s = new Supplier(id, code, name, Supplier.ACTIVE);
+        Supplier s = Supplier.reconstitute(id, code, name, null, null, null, Supplier.Status.ACTIVE, 1L);
         byId.put(id.value(), s);
         byCode.put(code, s);
         return this;
@@ -35,6 +35,11 @@ public final class InMemorySupplierQueryPort implements SupplierQueryPort {
     }
 
     @Override
+    public boolean existsByCode(String supplierCode) {
+        return byCode.containsKey(supplierCode);
+    }
+
+    @Override
     public List<Supplier> findAll() {
         List<Supplier> out = new ArrayList<>(byId.values());
         out.sort(Comparator.comparing(Supplier::supplierCode));
@@ -47,5 +52,12 @@ public final class InMemorySupplierQueryPort implements SupplierQueryPort {
             .filter(Supplier::isActive)
             .findFirst()
             .orElseThrow(() -> new IllegalStateException("no active supplier seeded"));
+    }
+
+    @Override
+    public void save(Supplier supplier) {
+        supplier.pullPendingEvents(); // drain; harness doesn't assert supplier outbox
+        byId.put(supplier.id().value(), supplier);
+        byCode.put(supplier.supplierCode(), supplier);
     }
 }

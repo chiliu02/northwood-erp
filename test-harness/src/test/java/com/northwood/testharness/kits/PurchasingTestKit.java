@@ -28,7 +28,7 @@ import com.northwood.testharness.inmemory.purchasing.InMemoryPurchaseRequisition
 import com.northwood.testharness.inmemory.purchasing.InMemoryPurchaseToPaySagaPort;
 import com.northwood.testharness.inmemory.purchasing.InMemorySupplierProductPriceLookup;
 import com.northwood.testharness.inmemory.purchasing.InMemorySupplierProductPriceRepository;
-import com.northwood.testharness.inmemory.purchasing.InMemorySupplierQueryPort;
+import com.northwood.testharness.inmemory.purchasing.InMemorySupplierRepository;
 import org.springframework.transaction.PlatformTransactionManager;
 import tools.jackson.databind.ObjectMapper;
 
@@ -44,7 +44,7 @@ import tools.jackson.databind.ObjectMapper;
  * <p>The kit pre-seeds one active default supplier (SUP-001) so
  * {@code PurchaseRequisitionService.createForStockReplenishment} works out of
  * the box. Tests that need richer supplier setup add via
- * {@link InMemorySupplierQueryPort#putActive}.
+ * {@link InMemorySupplierRepository#putActive}.
  */
 public final class PurchasingTestKit {
 
@@ -53,7 +53,7 @@ public final class PurchasingTestKit {
 
     public final InMemoryPurchaseOrderRepository orders;
     public final InMemoryPurchaseRequisitionRepository requisitions;
-    public final InMemorySupplierQueryPort suppliers = new InMemorySupplierQueryPort();
+    public final InMemorySupplierRepository suppliers = new InMemorySupplierRepository();
     public final InMemoryPurchaseToPaySagaPort sagas = new InMemoryPurchaseToPaySagaPort();
     public final InMemoryApprovedVendorQueryPort approvedVendorQuery = new InMemoryApprovedVendorQueryPort();
     public final InMemorySupplierProductPriceLookup priceLookup = new InMemorySupplierProductPriceLookup();

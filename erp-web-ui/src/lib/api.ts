@@ -38,7 +38,11 @@ export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
   return apiWrite<T>("PUT", path, body);
 }
 
-async function apiWrite<T>(method: "POST" | "PUT", path: string, body?: unknown): Promise<T> {
+export async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
+  return apiWrite<T>("PATCH", path, body);
+}
+
+async function apiWrite<T>(method: "POST" | "PUT" | "PATCH", path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
     credentials: "include",

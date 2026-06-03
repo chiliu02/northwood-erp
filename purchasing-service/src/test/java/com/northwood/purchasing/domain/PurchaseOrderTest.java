@@ -21,7 +21,9 @@ class PurchaseOrderTest {
     private static final UUID PRODUCT = UUID.randomUUID();
 
     private static Supplier supplier() {
-        return new Supplier(SupplierId.of(UUID.randomUUID()), "SUP-001", "Acme Co", "active");
+        return Supplier.reconstitute(
+            SupplierId.of(UUID.randomUUID()), "SUP-001", "Acme Co", null, null, null,
+            Supplier.Status.ACTIVE, 1L);
     }
 
     private static PurchaseOrderLine line(BigDecimal qty, BigDecimal unitPrice) {

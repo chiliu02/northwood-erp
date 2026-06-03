@@ -14,6 +14,7 @@ package com.northwood.purchasing.domain;
  */
 public final class PurchasingAggregateTypes {
 
+    public static final String SUPPLIER = "Supplier";
     public static final String SUPPLIER_PRODUCT_PRICE = "SupplierProductPrice";
     public static final String PURCHASE_REQUISITION = "PurchaseRequisition";
     public static final String PURCHASE_ORDER = "PurchaseOrder";

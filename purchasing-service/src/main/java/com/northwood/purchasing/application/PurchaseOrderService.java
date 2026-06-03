@@ -13,6 +13,7 @@ import com.northwood.purchasing.domain.PurchaseRequisitionLine;
 import com.northwood.purchasing.domain.PurchaseRequisitionRepository;
 import com.northwood.purchasing.domain.Supplier;
 import com.northwood.purchasing.domain.SupplierId;
+import com.northwood.purchasing.domain.SupplierRepository;
 import com.northwood.shared.application.exception.ConflictException;
 import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.Currencies;
@@ -87,7 +88,7 @@ public class PurchaseOrderService {
 
     private final PurchaseOrderRepository purchaseOrders;
     private final PurchaseRequisitionRepository purchaseRequisitions;
-    private final SupplierQueryPort suppliers;
+    private final SupplierRepository suppliers;
     private final PurchaseToPaySagaManager sagaManager;
     private final SupplierProductPriceLookup priceList;
     private final ApprovedVendorQueryPort approvedVendors;
@@ -95,7 +96,7 @@ public class PurchaseOrderService {
     public PurchaseOrderService(
         PurchaseOrderRepository purchaseOrders,
         PurchaseRequisitionRepository purchaseRequisitions,
-        SupplierQueryPort suppliers,
+        SupplierRepository suppliers,
         PurchaseToPaySagaManager sagaManager,
         SupplierProductPriceLookup priceList,
         ApprovedVendorQueryPort approvedVendors
@@ -286,7 +287,10 @@ public class PurchaseOrderService {
         }
         for (PurchaseRequisitionLine l : pr.lines()) {
             if (l.suggestedSupplierId() != null) {
+                // A suggested supplier that's been blocked/deactivated falls back to
+                // the default active supplier — a non-active supplier never gets a PO.
                 return suppliers.findById(SupplierId.of(l.suggestedSupplierId()))
+                    .filter(Supplier::isActive)
                     .orElseGet(suppliers::defaultSupplier);
             }
         }

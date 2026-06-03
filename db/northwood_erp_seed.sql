@@ -977,15 +977,17 @@ COMMIT;
 -- FIRST app edit re-run the INSERT and hit a duplicate-PK error (e.g. editing
 -- FG-CHAIR-001 pricing -> "duplicate key value violates product_pkey").
 -- The INSERTs above can't carry version inline without listing it in every
--- column tuple, so we bump it once here, idempotently. Only the three seeded
--- tables backed by a version-sentinel repository are affected:
--- product.product, sales.customer, purchasing.supplier_product_price.
+-- column tuple, so we bump it once here, idempotently. Only the seeded tables
+-- backed by a version-sentinel repository are affected:
+-- product.product, sales.customer, purchasing.supplier (now an aggregate),
+-- purchasing.supplier_product_price.
 -- ============================================================================
 
 BEGIN;
 
-UPDATE product.product                  SET version = 1 WHERE version = 0;
-UPDATE sales.customer                   SET version = 1 WHERE version = 0;
+UPDATE product.product                   SET version = 1 WHERE version = 0;
+UPDATE sales.customer                    SET version = 1 WHERE version = 0;
+UPDATE purchasing.supplier               SET version = 1 WHERE version = 0;
 UPDATE purchasing.supplier_product_price SET version = 1 WHERE version = 0;
 
 COMMIT;

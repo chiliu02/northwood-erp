@@ -835,6 +835,28 @@ window.NORTHWOOD_EVENTS = [
         desc: `<code>manufacturing.product_card.materials_cost</code>, <code>currency_code</code>, <code>materials_cost_reason</code>, <code>materials_cost_captured_at</code> — rerun for every product whose preferred supplier matches` },
     ]
   },
+  // Supplier master aggregate (onboard / edit / status). No cross-service
+  // consumer today — other services snapshot supplier name/code onto PO lines +
+  // approved-vendor rows rather than projecting supplier master — but the events
+  // are the navigation anchor for a future supplier-directory projection.
+  {
+    source: "purchasing",
+    aggregate: "Supplier",
+    event: "SupplierRegistered",
+    consumers: []
+  },
+  {
+    source: "purchasing",
+    aggregate: "Supplier",
+    event: "SupplierStatusChanged",
+    consumers: []
+  },
+  {
+    source: "purchasing",
+    aggregate: "Supplier",
+    event: "SupplierDetailsChanged",
+    consumers: []
+  },
 
   // === inventory ===
   {
