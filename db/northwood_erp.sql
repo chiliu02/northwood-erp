@@ -432,6 +432,12 @@ CREATE TABLE sales.product_card (
     replenishment_strategy VARCHAR(20) NOT NULL DEFAULT 'to_stock' CHECK (
         replenishment_strategy IN ('to_stock', 'to_order')
     ),
+    -- Projected from product.PlanningTimeFenceChanged. The fulfilment saga reads
+    -- it at placement to defer a far-future order's stock reservation until
+    -- need-by − fence. Seeded 0 on ProductCreated (no fence — reserve
+    -- immediately); never null. Light CHECK only — projections cache facts, the
+    -- source table (product.product) carries the full invariant.
+    planning_time_fence_days INT NOT NULL DEFAULT 0 CHECK (planning_time_fence_days >= 0),
     discontinued_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

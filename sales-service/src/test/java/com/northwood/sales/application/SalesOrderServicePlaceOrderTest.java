@@ -69,7 +69,7 @@ class SalesOrderServicePlaceOrderTest {
 
     @Test void placeOrder_rejects_discontinued_product_even_when_caller_supplies_unitPrice() {
         when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
-            new CatalogPrice(new BigDecimal("10.00"), Currencies.AUD, Instant.parse("2026-05-14T03:15:00Z"))
+            new CatalogPrice(new BigDecimal("10.00"), Currencies.AUD, Instant.parse("2026-05-14T03:15:00Z"), 0)
         ));
 
         assertThatThrownBy(() -> service.placeOrder(commandWithUnitPrice(new BigDecimal("99.99"))))
@@ -83,7 +83,7 @@ class SalesOrderServicePlaceOrderTest {
 
     @Test void placeOrder_rejects_discontinued_product_when_using_catalog_unitPrice() {
         when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
-            new CatalogPrice(new BigDecimal("10.00"), Currencies.AUD, Instant.parse("2026-05-14T03:15:00Z"))
+            new CatalogPrice(new BigDecimal("10.00"), Currencies.AUD, Instant.parse("2026-05-14T03:15:00Z"), 0)
         ));
 
         assertThatThrownBy(() -> service.placeOrder(commandWithUnitPrice(null)))
@@ -94,7 +94,7 @@ class SalesOrderServicePlaceOrderTest {
 
     @Test void placeOrder_accepts_live_product() {
         when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
-            new CatalogPrice(new BigDecimal("10.00"), Currencies.AUD, null)
+            new CatalogPrice(new BigDecimal("10.00"), Currencies.AUD, null, 0)
         ));
 
         service.placeOrder(commandWithUnitPrice(null));
@@ -109,7 +109,7 @@ class SalesOrderServicePlaceOrderTest {
         // its lifetime). Without a caller-supplied unitPrice, the line is
         // unsellable, same outcome as catalog.isEmpty().
         when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
-            new CatalogPrice(null, null, null)
+            new CatalogPrice(null, null, null, 0)
         ));
 
         assertThatThrownBy(() -> service.placeOrder(commandWithUnitPrice(null)))
@@ -125,7 +125,7 @@ class SalesOrderServicePlaceOrderTest {
         // compare against, so the unitPrice is accepted without a currency
         // assertion (same race-tolerance the empty-catalog path provides).
         when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
-            new CatalogPrice(null, null, null)
+            new CatalogPrice(null, null, null, 0)
         ));
 
         service.placeOrder(commandWithUnitPrice(new BigDecimal("42.00")));
@@ -143,7 +143,7 @@ class SalesOrderServicePlaceOrderTest {
 
         @BeforeEach void priceLiveProduct() {
             when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
-                new CatalogPrice(new BigDecimal("10.00"), Currencies.AUD, null)
+                new CatalogPrice(new BigDecimal("10.00"), Currencies.AUD, null, 0)
             ));
         }
 
