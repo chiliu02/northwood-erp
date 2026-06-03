@@ -30,6 +30,7 @@ interface Po {
   supplierCode: string;
   supplierName: string;
   purchaseRequisitionHeaderId: string;
+  purchaseRequisitionNumber: string | null;
   currencyCode: string;
   subtotalAmount: string;
   taxAmount: string;
@@ -181,7 +182,7 @@ export function PurchaseOrderDetail() {
                   <ReadOnlyField label="Currency" value={data.currencyCode} />
                 </FormSection>
                 <FormSection title="Source">
-                  <ReadOnlyField label="From requisition" value={<code className="text-xs text-text-muted">{shortUuid(data.purchaseRequisitionHeaderId)}</code>} fullWidth />
+                  <ReadOnlyField label="From requisition" value={data.purchaseRequisitionNumber ?? <code className="text-xs text-text-muted">{shortUuid(data.purchaseRequisitionHeaderId)}</code>} fullWidth />
                 </FormSection>
                 <FormSection title="Totals" columns={3} className="lg:col-span-2">
                   <ReadOnlyField label="Subtotal" value={<span className="tabular-nums">{formatMoney(data.subtotalAmount)} {data.currencyCode}</span>} />

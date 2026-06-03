@@ -176,7 +176,22 @@ public class PurchaseOrderService {
     @Transactional(readOnly = true)
     public Optional<PurchaseOrderView> findById(UUID purchaseOrderHeaderId) {
         return purchaseOrders.findById(PurchaseOrderId.of(purchaseOrderHeaderId))
-            .map(PurchaseOrderView::from);
+            .map(po -> PurchaseOrderView.from(po, requisitionNumberFor(po)));
+    }
+
+    /**
+     * Resolve the originating requisition's human-readable number for the detail
+     * view (the PO aggregate carries only its id). Same-service read — purchasing
+     * owns both aggregates — so a lookup is cheaper than snapshotting the number
+     * onto the PO. Returns {@code null} if the requisition can't be resolved.
+     */
+    private String requisitionNumberFor(PurchaseOrder po) {
+        if (po.purchaseRequisitionHeaderId() == null) {
+            return null;
+        }
+        return purchaseRequisitions.findById(PurchaseRequisitionId.of(po.purchaseRequisitionHeaderId()))
+            .map(PurchaseRequisition::requisitionNumber)
+            .orElse(null);
     }
 
     /**

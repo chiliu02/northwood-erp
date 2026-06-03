@@ -13,6 +13,7 @@ public record PurchaseOrderView(
     String supplierCode,
     String supplierName,
     UUID purchaseRequisitionHeaderId,
+    String purchaseRequisitionNumber,
     String currencyCode,
     BigDecimal subtotalAmount,
     BigDecimal taxAmount,
@@ -21,7 +22,13 @@ public record PurchaseOrderView(
     long version,
     List<PurchaseOrderLineView> lines
 ) {
-    public static PurchaseOrderView from(PurchaseOrder po) {
+    /**
+     * @param purchaseRequisitionNumber the originating requisition's
+     *        human-readable number, looked up by the application service (the PO
+     *        aggregate stores only the requisition's id). May be {@code null} if
+     *        the requisition can't be resolved.
+     */
+    public static PurchaseOrderView from(PurchaseOrder po, String purchaseRequisitionNumber) {
         List<PurchaseOrderLineView> lineViews = po.lines().stream()
             .map(PurchaseOrderLineView::from)
             .toList();
@@ -32,6 +39,7 @@ public record PurchaseOrderView(
             po.supplierCode(),
             po.supplierName(),
             po.purchaseRequisitionHeaderId(),
+            purchaseRequisitionNumber,
             po.currencyCode(),
             po.subtotalAmount(),
             po.taxAmount(),
