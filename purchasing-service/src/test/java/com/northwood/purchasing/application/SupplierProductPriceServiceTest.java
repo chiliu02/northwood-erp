@@ -29,12 +29,13 @@ class SupplierProductPriceServiceTest {
     private static final UUID PRODUCT = UUID.randomUUID();
 
     @Mock SupplierProductPriceRepository prices;
+    @Mock SupplierProductPriceQueryPort priceQueries;
 
     private SupplierProductPriceService service;
 
     @BeforeEach
     void setUp() {
-        service = new SupplierProductPriceService(prices);
+        service = new SupplierProductPriceService(prices, priceQueries);
     }
 
     @Test void first_time_insert_saves_a_newly_registered_aggregate() {

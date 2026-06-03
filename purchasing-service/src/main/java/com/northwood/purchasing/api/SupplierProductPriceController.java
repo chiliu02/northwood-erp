@@ -3,6 +3,7 @@ package com.northwood.purchasing.api;
 import com.northwood.purchasing.api.dto.SetSupplierProductPriceRequest;
 import com.northwood.purchasing.application.SupplierProductPriceService;
 import com.northwood.purchasing.application.dto.PriceView;
+import com.northwood.purchasing.application.dto.SupplierPriceListView;
 import com.northwood.shared.api.security.RequirePurchasingManager;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -43,6 +44,12 @@ public class SupplierProductPriceController {
         return ResponseEntity
             .created(URI.create("/api/supplier-product-prices/" + id))
             .build();
+    }
+
+    /** Every supplier price, enriched with supplier + product names, for the list view. */
+    @GetMapping
+    public List<SupplierPriceListView> listAll() {
+        return service.listAll();
     }
 
     @GetMapping("/by-supplier/{supplierId}")

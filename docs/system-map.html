@@ -618,6 +618,8 @@ window.NORTHWOOD_EVENTS = [
         desc: `<code>finance.product_card</code> — seeds a stub row with <code>standard_cost=NULL</code>, <code>currency_code=NULL</code>, <code>valuation_class=NULL</code> so subsequent <code>StandardCostChanged</code> + <code>ValuationClassChanged</code> + <code>ProductDiscontinued</code> have a row to <code>UPDATE</code> (<code>ON CONFLICT DO NOTHING</code>). Consolidates the previous <code>product_standard_cost</code> + <code>product_valuation_class</code> tables — see <code>docs/conventions.md</code> → consumer-side projection tables` },
       { dest: "reporting", name: "reporting.atp.product-created",
         desc: `<code>reporting.available_to_promise_view.product_sku</code>, <code>product_name</code> — backfills identity onto pending-stub rows` },
+      { dest: "purchasing", name: "purchasing.product-created",
+        desc: `<code>purchasing.product_card (product_id, product_sku, product_name)</code> — upserts the name snapshot so the supplier-price list view shows a SKU/name instead of a raw product UUID (shares the one-row-per-product card with <code>product-discontinued</code>, which owns <code>discontinued_at</code>)` },
     ]
   },
   {
@@ -1174,7 +1176,7 @@ window.NORTHWOOD_PROJECTIONS = [
         { name: "product_approved_vendor", kind: "read-model",
           events: ["ApprovedVendorListChanged"] },
         { name: "product_card", kind: "read-model",
-          events: ["ProductDiscontinued"] },
+          events: ["ProductCreated", "ProductDiscontinued"] },
       ]},
       { dest: "finance", tables: [
         { name: "product_card", kind: "read-model",

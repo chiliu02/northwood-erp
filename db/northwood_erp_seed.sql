@@ -684,6 +684,31 @@ VALUES
 ON CONFLICT (supplier_id, product_id, currency_code, effective_from, min_quantity)
     DO NOTHING;
 
+-- Backfill purchasing.product_card name snapshot (product_sku/product_name) so
+-- the supplier-price list view shows readable columns at boot — the same shape
+-- the runtime ProductCreatedHandler produces on product.ProductCreated.
+-- discontinued_at stays NULL (none retired at day-1). One row per product
+-- (one-card-per-product), not just the priced ones, mirroring the other
+-- services' card backfills. FG-RUG/CARPET (the floor-coverings pair) are
+-- included here too even though their prices seed in a later block.
+INSERT INTO purchasing.product_card (product_id, product_sku, product_name) VALUES
+    ('00000000-0000-7000-8000-000000000001', 'FG-TABLE-001',         'Wooden Dining Table'),
+    ('00000000-0000-7000-8000-000000000002', 'RM-BOARD-001',         'Wooden Board'),
+    ('00000000-0000-7000-8000-000000000003', 'RM-LEG-001',           'Table Leg'),
+    ('00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',         'Screw Pack'),
+    ('00000000-0000-7000-8000-000000000005', 'RM-VARNISH-001',       'Varnish Pack'),
+    ('00000000-0000-7000-8000-000000000200', 'FG-CABINET-001',       'Storage Cabinet'),
+    ('00000000-0000-7000-8000-000000000201', 'SA-DRAWER-001',        'Cabinet Drawer Sub-assembly'),
+    ('00000000-0000-7000-8000-000000000202', 'RM-DRAWER-FRONT-001',  'Drawer Front Panel'),
+    ('00000000-0000-7000-8000-000000000203', 'RM-DRAWER-RUNNER-001', 'Drawer Runner'),
+    ('00000000-0000-7000-8000-000000000300', 'FG-CHEST-001',         'Chest of Drawers'),
+    ('00000000-0000-7000-8000-000000000301', 'SA-FRAME-001',         'Chest Frame Sub-assembly'),
+    ('00000000-0000-7000-8000-000000000302', 'SA-PANEL-001',         'Side Panel Sub-assembly'),
+    ('00000000-0000-7000-8000-000000000400', 'FG-CHAIR-001',         'Wooden Dining Chair'),
+    ('00000000-0000-7000-8000-000000000500', 'FG-RUG-001',           'Woven Floor Rug'),
+    ('00000000-0000-7000-8000-000000000501', 'FG-CARPET-001',        'Custom-design Carpet')
+ON CONFLICT (product_id) DO NOTHING;
+
 COMMIT;
 
 

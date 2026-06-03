@@ -90,7 +90,8 @@ public final class PurchasingTestKit {
             requisitions, suppliers, purchaseOrderService, discontinuedProducts, true
         );
 
-        this.priceService = new SupplierProductPriceService(priceRepository);
+        // No-op query port — the harness drives setPrice, not the enriched list view.
+        this.priceService = new SupplierProductPriceService(priceRepository, () -> java.util.List.of());
 
         this.sagaWorker = new PurchaseToPaySagaWorker(sagaManager);
 

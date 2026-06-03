@@ -1,6 +1,7 @@
 package com.northwood.purchasing.application;
 
 import com.northwood.purchasing.application.dto.PriceView;
+import com.northwood.purchasing.application.dto.SupplierPriceListView;
 import com.northwood.purchasing.domain.SupplierProductPrice;
 import com.northwood.purchasing.domain.SupplierProductPriceRepository;
 import com.northwood.shared.domain.Assert;
@@ -30,9 +31,14 @@ public class SupplierProductPriceService {
     private static final Logger log = LoggerFactory.getLogger(SupplierProductPriceService.class);
 
     private final SupplierProductPriceRepository supplierProductPrices;
+    private final SupplierProductPriceQueryPort priceQueries;
 
-    public SupplierProductPriceService(SupplierProductPriceRepository supplierProductPrices) {
+    public SupplierProductPriceService(
+        SupplierProductPriceRepository supplierProductPrices,
+        SupplierProductPriceQueryPort priceQueries
+    ) {
         this.supplierProductPrices = supplierProductPrices;
+        this.priceQueries = priceQueries;
     }
 
     /**
@@ -75,6 +81,12 @@ public class SupplierProductPriceService {
         log.info("set supplier price: supplier={} product={} currency={} {} → {}",
             supplierId, productId, currency, oldPrice, unitPrice);
         return price.id().value();
+    }
+
+    /** Every supplier price, enriched with supplier + product names, for the list view. */
+    @Transactional(readOnly = true)
+    public List<SupplierPriceListView> listAll() {
+        return priceQueries.findAll();
     }
 
     /** Read-only listing for a supplier — used by future authoring UIs. */

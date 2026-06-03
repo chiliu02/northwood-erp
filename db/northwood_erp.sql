@@ -1723,19 +1723,24 @@ CREATE INDEX idx_product_approved_vendor_product
     ON purchasing.product_approved_vendor(product_id);
 
 -- Consumer-side denormalized card per Product (purchasing's view). Single
--- attribute today: discontinued_at (read by PurchaseRequisitionService /
--- PurchaseOrderService to reject new commitments to retired SKUs). Seeded
--- and populated on product.ProductDiscontinued. Future-proofed under the
--- _card naming convention so additional purchasing-side product facets land
--- here as additional columns rather than separate tables. See
--- docs/conventions.md → Consumer-side denormalized tables.
+-- attributes: product_sku / product_name (the human-readable snapshot, set on
+-- product.ProductCreated — used by the supplier-price list view so prices show
+-- a SKU/name rather than a raw product UUID) and discontinued_at (read by
+-- PurchaseRequisitionService / PurchaseOrderService to reject new commitments
+-- to retired SKUs, set on product.ProductDiscontinued). Both handlers upsert
+-- this one row per product. Future-proofed under the _card naming convention so
+-- additional purchasing-side product facets land here as additional columns
+-- rather than separate tables. See docs/conventions.md → Consumer-side
+-- denormalized tables.
 CREATE TABLE purchasing.product_card (
     product_id      UUID PRIMARY KEY,
-    -- Nullable: future purchasing-side seed-on-Created handlers may insert
-    -- the row before any ProductDiscontinued has fired. Today every row is
-    -- inserted with discontinued_at populated, but DiscontinuedProductLookup
-    -- filters on `discontinued_at IS NOT NULL` so the column can relax to
-    -- nullable without changing read semantics.
+    -- Nullable: either handler may insert the row first. ProductCreated
+    -- populates sku/name; ProductDiscontinued populates discontinued_at. A row
+    -- stamped by discontinued-first leaves sku/name null until Created arrives;
+    -- DiscontinuedProductLookup filters on `discontinued_at IS NOT NULL` and the
+    -- price list LEFT JOINs, so neither read breaks on a partially-filled row.
+    product_sku     VARCHAR(50),
+    product_name    VARCHAR(255),
     discontinued_at TIMESTAMPTZ
 );
 
