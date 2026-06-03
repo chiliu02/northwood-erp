@@ -149,6 +149,7 @@ export function GoodsReceiptNew() {
     mutationFn: () => apiPost<CreatedReceipt>("/api/goods-receipts", {
       goodsReceiptNumber: receiptNumber.trim(),
       purchaseOrderHeaderId,
+      purchaseOrderNumber: poDetail?.purchaseOrderNumber ?? null,
       supplierId: poDetail?.supplierId ?? null,
       supplierName: poDetail?.supplierName ?? null,
       warehouseCode,

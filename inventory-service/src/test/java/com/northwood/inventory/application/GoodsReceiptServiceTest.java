@@ -56,7 +56,7 @@ class GoodsReceiptServiceTest {
     }
 
     private PostGoodsReceiptCommand cmd(String warehouseCode, List<GoodsReceiptLineRequest> lines) {
-        return new PostGoodsReceiptCommand("GR-001", PO, SUPPLIER, "Acme Supplies", warehouseCode, lines);
+        return new PostGoodsReceiptCommand("GR-001", PO, "PO-001", SUPPLIER, "Acme Supplies", warehouseCode, lines);
     }
 
     @Test void single_line_bumps_stock_balance_and_records_movement() {

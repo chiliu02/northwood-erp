@@ -154,6 +154,7 @@ public class GoodsReceiptService {
         GoodsReceipt receipt = GoodsReceipt.post(
             command.goodsReceiptNumber(),
             command.purchaseOrderHeaderId(),
+            command.purchaseOrderNumber(),
             command.supplierId(),
             command.supplierName(),
             warehouseId,

@@ -969,6 +969,11 @@ CREATE TABLE inventory.goods_receipt_header (
     goods_receipt_header_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     goods_receipt_number VARCHAR(50) NOT NULL UNIQUE,
     purchase_order_header_id UUID NOT NULL,
+    -- Snapshot of the originating PO's human-readable number, captured at
+    -- receipt time (same cross-context denormalisation as supplier_name) so the
+    -- goods-receipts list shows PO-XXXX rather than the bare PO UUID. Nullable
+    -- for any legacy row inserted before this column existed.
+    purchase_order_number VARCHAR(50),
     supplier_id UUID,
     supplier_name VARCHAR(200),
     warehouse_id UUID NOT NULL REFERENCES inventory.warehouse(warehouse_id),

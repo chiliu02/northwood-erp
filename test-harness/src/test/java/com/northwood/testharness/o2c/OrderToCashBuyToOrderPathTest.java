@@ -121,7 +121,7 @@ class OrderToCashBuyToOrderPathTest {
         // GoodsReceiptService credits on-hand AND peg-reserves for the SO line
         // (order_pegged), then markFulfilled emits ReplenishmentFulfilled(pegged).
         inventory.goodsReceiptService.post(new PostGoodsReceiptCommand(
-            "GR-0001", poId, supplierId, "Floor Coverings Direct", WarehouseCodes.MAIN,
+            "GR-0001", poId, "PO-CARPET-001", supplierId, "Floor Coverings Direct", WarehouseCodes.MAIN,
             List.of(new GoodsReceiptLineRequest(
                 /*purchaseOrderLineId*/ null, carpetId, "FG-CARPET-001", "Custom-design Carpet",
                 new BigDecimal("1"), new BigDecimal("700.00")

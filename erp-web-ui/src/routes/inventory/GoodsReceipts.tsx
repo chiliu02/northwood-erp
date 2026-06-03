@@ -11,6 +11,7 @@ interface GoodsReceipt {
   id: string;
   goodsReceiptNumber: string;
   purchaseOrderHeaderId: string;
+  purchaseOrderNumber: string | null;
   supplierId: string | null;
   supplierName: string | null;
   warehouseId: string;
@@ -46,7 +47,11 @@ export function GoodsReceipts() {
     {
       key: "po",
       header: "Purchase Order",
-      render: (g) => <span className="tabular-nums text-xs">{g.purchaseOrderHeaderId.slice(0, 8)}…</span>,
+      render: (g) => (
+        <span className="tabular-nums">
+          {g.purchaseOrderNumber ?? <span className="text-xs text-text-muted">{g.purchaseOrderHeaderId.slice(0, 8)}…</span>}
+        </span>
+      ),
     },
     {
       key: "status",

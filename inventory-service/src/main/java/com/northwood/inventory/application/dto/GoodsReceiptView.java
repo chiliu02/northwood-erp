@@ -9,6 +9,7 @@ public record GoodsReceiptView(
     UUID id,
     String goodsReceiptNumber,
     UUID purchaseOrderHeaderId,
+    String purchaseOrderNumber,
     UUID supplierId,
     String supplierName,
     UUID warehouseId,
@@ -23,7 +24,7 @@ public record GoodsReceiptView(
             .toList();
         return new GoodsReceiptView(
             gr.id().value(), gr.goodsReceiptNumber(),
-            gr.purchaseOrderHeaderId(), gr.supplierId(), gr.supplierName(),
+            gr.purchaseOrderHeaderId(), gr.purchaseOrderNumber(), gr.supplierId(), gr.supplierName(),
             gr.warehouseId(), gr.warehouseCode(),
             gr.status().dbValue(), lineViews, gr.version()
         );

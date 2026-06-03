@@ -66,6 +66,7 @@ public final class GoodsReceipt {
     private final GoodsReceiptId id;
     private final String goodsReceiptNumber;
     private final UUID purchaseOrderHeaderId;
+    private final String purchaseOrderNumber;
     private final UUID supplierId;
     private final String supplierName;
     private final UUID warehouseId;
@@ -79,6 +80,7 @@ public final class GoodsReceipt {
     public static GoodsReceipt post(
         String goodsReceiptNumber,
         UUID purchaseOrderHeaderId,
+        String purchaseOrderNumber,
         UUID supplierId,
         String supplierName,
         UUID warehouseId,
@@ -90,7 +92,7 @@ public final class GoodsReceipt {
         Assert.notEmpty(lines, "at least one line is required");
         GoodsReceiptId id = GoodsReceiptId.newId();
         GoodsReceipt gr = new GoodsReceipt(
-            id, goodsReceiptNumber, purchaseOrderHeaderId,
+            id, goodsReceiptNumber, purchaseOrderHeaderId, purchaseOrderNumber,
             supplierId, supplierName,
             warehouseId, warehouseCode,
             Status.POSTED, new ArrayList<>(lines), 0L
@@ -120,12 +122,13 @@ public final class GoodsReceipt {
     /** Factory: hydrate from the DB; emits no events. */
     public static GoodsReceipt reconstitute(
         GoodsReceiptId id, String goodsReceiptNumber,
-        UUID purchaseOrderHeaderId, UUID supplierId, String supplierName,
+        UUID purchaseOrderHeaderId, String purchaseOrderNumber,
+        UUID supplierId, String supplierName,
         UUID warehouseId, String warehouseCode,
         Status status, List<GoodsReceiptLine> lines, long version
     ) {
         return new GoodsReceipt(
-            id, goodsReceiptNumber, purchaseOrderHeaderId,
+            id, goodsReceiptNumber, purchaseOrderHeaderId, purchaseOrderNumber,
             supplierId, supplierName,
             warehouseId, warehouseCode,
             status, new ArrayList<>(lines), version
@@ -134,13 +137,15 @@ public final class GoodsReceipt {
 
     private GoodsReceipt(
         GoodsReceiptId id, String goodsReceiptNumber,
-        UUID purchaseOrderHeaderId, UUID supplierId, String supplierName,
+        UUID purchaseOrderHeaderId, String purchaseOrderNumber,
+        UUID supplierId, String supplierName,
         UUID warehouseId, String warehouseCode,
         Status status, List<GoodsReceiptLine> lines, long version
     ) {
         this.id = id;
         this.goodsReceiptNumber = goodsReceiptNumber;
         this.purchaseOrderHeaderId = purchaseOrderHeaderId;
+        this.purchaseOrderNumber = purchaseOrderNumber;
         this.supplierId = supplierId;
         this.supplierName = supplierName;
         this.warehouseId = warehouseId;
@@ -159,6 +164,7 @@ public final class GoodsReceipt {
     public GoodsReceiptId id()              { return id; }
     public String goodsReceiptNumber()      { return goodsReceiptNumber; }
     public UUID purchaseOrderHeaderId()     { return purchaseOrderHeaderId; }
+    public String purchaseOrderNumber()     { return purchaseOrderNumber; }
     public UUID supplierId()                { return supplierId; }
     public String supplierName()            { return supplierName; }
     public UUID warehouseId()               { return warehouseId; }

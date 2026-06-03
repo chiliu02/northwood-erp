@@ -26,6 +26,7 @@ public class JdbcGoodsReceiptRepository implements GoodsReceiptRepository {
         GoodsReceiptId.of(rs.getObject("goods_receipt_header_id", UUID.class)),
         rs.getString("goods_receipt_number"),
         rs.getObject("purchase_order_header_id", UUID.class),
+        rs.getString("purchase_order_number"),
         rs.getObject("supplier_id", UUID.class),
         rs.getString("supplier_name"),
         rs.getObject("warehouse_id", UUID.class),
@@ -60,7 +61,7 @@ public class JdbcGoodsReceiptRepository implements GoodsReceiptRepository {
     public Optional<GoodsReceipt> findById(GoodsReceiptId id) {
         List<GoodsReceipt> matches = jdbc.query("""
             SELECT goods_receipt_header_id, goods_receipt_number,
-                   purchase_order_header_id, supplier_id, supplier_name,
+                   purchase_order_header_id, purchase_order_number, supplier_id, supplier_name,
                    warehouse_id, status, version
             FROM inventory.goods_receipt_header
             WHERE goods_receipt_header_id = ?
@@ -79,7 +80,7 @@ public class JdbcGoodsReceiptRepository implements GoodsReceiptRepository {
             """, LINE_MAPPER, id.value());
         return Optional.of(GoodsReceipt.reconstitute(
             stub.id(), stub.goodsReceiptNumber(),
-            stub.purchaseOrderHeaderId(), stub.supplierId(), stub.supplierName(),
+            stub.purchaseOrderHeaderId(), stub.purchaseOrderNumber(), stub.supplierId(), stub.supplierName(),
             stub.warehouseId(), stub.warehouseCode(),
             stub.status(), lines, stub.version()
         ));
@@ -89,7 +90,7 @@ public class JdbcGoodsReceiptRepository implements GoodsReceiptRepository {
     public List<GoodsReceipt> findAllHeaders() {
         return jdbc.query("""
             SELECT goods_receipt_header_id, goods_receipt_number,
-                   purchase_order_header_id, supplier_id, supplier_name,
+                   purchase_order_header_id, purchase_order_number, supplier_id, supplier_name,
                    warehouse_id, status, version
             FROM inventory.goods_receipt_header
             ORDER BY created_at DESC
@@ -113,13 +114,13 @@ public class JdbcGoodsReceiptRepository implements GoodsReceiptRepository {
         jdbc.update("""
             INSERT INTO inventory.goods_receipt_header (
                 goods_receipt_header_id, goods_receipt_number,
-                purchase_order_header_id, supplier_id, supplier_name,
+                purchase_order_header_id, purchase_order_number, supplier_id, supplier_name,
                 warehouse_id, status, version, posted_at,
                 created_by, last_modified_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             gr.id().value(), gr.goodsReceiptNumber(),
-            gr.purchaseOrderHeaderId(), gr.supplierId(), gr.supplierName(),
+            gr.purchaseOrderHeaderId(), gr.purchaseOrderNumber(), gr.supplierId(), gr.supplierName(),
             gr.warehouseId(), gr.status().dbValue(),
             1L,
             gr.status() == GoodsReceipt.Status.POSTED ? Timestamp.from(Instant.now()) : null,

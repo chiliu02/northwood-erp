@@ -102,12 +102,13 @@ class JdbcGoodsReceiptRepositoryIT {
             UUID.randomUUID(), UUID.randomUUID(), productId, "RM-IT-1", "Raw 1",
             new BigDecimal("10"), new BigDecimal("2.500000"), new BigDecimal("25.00"));
         GoodsReceipt gr = GoodsReceipt.post(
-            "GR-RT-001", poHeaderId, supplierId, "Supplier IT", WAREHOUSE_ID, "WH-IT", List.of(line));
+            "GR-RT-001", poHeaderId, "PO-RT-001", supplierId, "Supplier IT", WAREHOUSE_ID, "WH-IT", List.of(line));
         save(gr);
 
         GoodsReceipt r = REPO.findById(gr.id()).orElseThrow();
         assertThat(r.goodsReceiptNumber()).isEqualTo("GR-RT-001");
         assertThat(r.purchaseOrderHeaderId()).isEqualTo(poHeaderId);
+        assertThat(r.purchaseOrderNumber()).isEqualTo("PO-RT-001");
         assertThat(r.supplierId()).isEqualTo(supplierId);
         assertThat(r.warehouseId()).isEqualTo(WAREHOUSE_ID);
         assertThat(r.status()).isEqualTo(GoodsReceipt.Status.POSTED);
@@ -122,7 +123,7 @@ class JdbcGoodsReceiptRepositoryIT {
     @Test
     void update_path_is_rejected_for_post_only_aggregate() {
         GoodsReceipt persisted = GoodsReceipt.reconstitute(
-            GoodsReceiptId.newId(), "GR-UPD-001", UUID.randomUUID(), UUID.randomUUID(), "Sup",
+            GoodsReceiptId.newId(), "GR-UPD-001", UUID.randomUUID(), "PO-UPD-001", UUID.randomUUID(), "Sup",
             WAREHOUSE_ID, "WH-IT", GoodsReceipt.Status.POSTED, List.of(), 1L);
         assertThatThrownBy(() -> save(persisted))
             .isInstanceOf(IllegalStateException.class);
