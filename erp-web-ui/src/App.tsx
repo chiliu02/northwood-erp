@@ -24,6 +24,8 @@ import { PurchaseOrders } from "./routes/purchasing/PurchaseOrders";
 import { PurchaseOrderDetail } from "./routes/purchasing/PurchaseOrderDetail";
 import { SupplierPrices } from "./routes/purchasing/SupplierPrices";
 import { Suppliers } from "./routes/purchasing/Suppliers";
+import { SupplierNew } from "./routes/purchasing/SupplierNew";
+import { SupplierDetail } from "./routes/purchasing/SupplierDetail";
 import { PurchaseRequisitionNew } from "./routes/purchasing/PurchaseRequisitionNew";
 import { StockItems } from "./routes/inventory/StockItems";
 import { StockAdjustmentNew } from "./routes/inventory/StockAdjustmentNew";
@@ -72,6 +74,8 @@ export function App() {
 
         {/* ---- Purchasing ---- */}
         <Route path="/suppliers"               element={<Suppliers />} />
+        <Route path="/suppliers/new"           element={<SupplierNew />} />
+        <Route path="/suppliers/:id"           element={<SupplierDetail />} />
         <Route path="/purchase-requisitions"   element={<PurchaseRequisitionNew />} />
         <Route path="/purchase-orders"         element={<PurchaseOrders />} />
         <Route path="/purchase-orders/:id"     element={<PurchaseOrderDetail />} />
