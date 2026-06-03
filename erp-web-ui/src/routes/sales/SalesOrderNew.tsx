@@ -36,6 +36,13 @@ interface DraftLine {
   unitPrice: string;
 }
 
+/** Today + 14 days as a YYYY-MM-DD string for the date input's default. */
+function defaultRequestedDeliveryDate(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 14);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Place-sales-order form. Sales clerk authoring path. */
 export function SalesOrderNew() {
   const navigate = useNavigate();
@@ -56,7 +63,10 @@ export function SalesOrderNew() {
 
   const [orderNumber, setOrderNumber] = useState(() => `SO-${Date.now()}`);
   const [customerCode, setCustomerCode] = useState("");
-  const [requestedDeliveryDate, setRequestedDeliveryDate] = useState("");
+  // Default to a near-future delivery window so newly-placed orders carry a
+  // sensible requested-by date rather than showing N/A. Informational only
+  // (REQ-SAL-013) — the clerk may change or clear it before placing.
+  const [requestedDeliveryDate, setRequestedDeliveryDate] = useState(defaultRequestedDeliveryDate);
   const [currencyCode, setCurrencyCode] = useState("AUD");
   const [paymentTerms, setPaymentTerms] = useState<"on_shipment" | "prepayment" | "cash_on_delivery" | "deposit">("on_shipment");
   // Tracks whether the user has manually overridden paymentTerms; once true,
@@ -203,7 +213,7 @@ export function SalesOrderNew() {
             </FormSection>
 
             <FormSection title="Terms">
-              <Field label="Requested delivery date">
+              <Field label="Requested delivery date" hint="Defaults to two weeks out; informational only — does not schedule fulfilment.">
                 <input
                   type="date"
                   value={requestedDeliveryDate}

@@ -151,6 +151,10 @@ Quantities must be positive numbers in the SKU's base UoM. Prices must be non-ne
 **REQ-SAL-012 — Order numbers are sequential and human-legible** *(shipped)*
 Orders carry both an internal UUID (for system traceability) and an external number (`SO-YYYY-NNNNNN`) shown to the customer.
 
+**REQ-SAL-013 — Requested delivery date is informational only** *(shipped — deliberate scope)*
+The optional requested-by date captured at REQ-SAL-010 is stored on the order and shown on the order-detail page, but it is **not actionable**: it does not influence *when* stock is reserved, *when* production or purchasing is triggered, or *when* the order ships. It is the customer's *wish*, recorded for reference — see REQ-SAL-037 for the fulfilment-timing rationale and REQ-INV-092 for the broader no-time-phasing scope decision.
+*Implementation note:* the date is **not** carried on the `sales.SalesOrderPlaced` event, so the Sales Order 360 read-model (REQ-RPT-001) does not project it — the field is hard-nulled there. The order-detail page therefore reads it from the owning sales aggregate (`/api/sales-cmd/sales-orders/{id}`), not from the 360 projection. Adding it to the event would only complete the read-model for display; no downstream consumer acts on it.
+
 ### 2.3 Payment terms and prepayment
 
 **REQ-SAL-020 — Payment terms per order** *(shipped)*
@@ -188,6 +192,17 @@ The customer payment has been received and fully allocated to the invoice. The o
 
 **REQ-SAL-036 — Compensation: Cancelled** *(shipped)*
 A cancellation request at any pre-shipment state releases reservations, cancels any open work orders for the order's lines, reverses any prepayment journal postings, and closes the order at "Compensated/Cancelled". Cancellation past `goods_shipped` is rejected (the customer must process a return — out of scope today).
+
+**REQ-SAL-037 — Fulfilment starts immediately on placement, not scheduled to the requested date** *(shipped — deliberate scope)*
+The fulfilment Saga acts the moment an order is placed: stock is reserved (REQ-SAL-030) and any shortfall triggers replenishment (REQ-INV-080) right away, **regardless of how far in the future the requested delivery date (REQ-SAL-013) is**. An order wanted in a year reserves and replenishes exactly like one wanted tomorrow. The reservation request event (`sales.StockReservationRequested`) carries no date; reservation is reserve-on-order and quantity-only.
+
+A time-phased system would instead **backward-schedule** from the requested date, acting at the *latest responsible moment* so finished goods, WIP, and raw materials are not carried longer than necessary:
+
+- **Reserve (hard allocation of on-hand stock)** at ≈ *need-by − pick/pack lead time*. Before that the order would be at most a *soft* peg — reducing available-to-promise for dates on/after the need-by, but not locking physical stock that nearer-term orders could use.
+- **Manufacture (release the work order)** at ≈ *need-by − (ship + manufacturing) lead time*.
+- **Purchase (release the PO for raw materials)** at ≈ *manufacturing-start − (supplier + receiving/inspection) lead time*.
+
+This would require three pieces **none of which is implemented**: a demand/planning time fence (inside it the order is actionable, outside it sits as planned demand), a soft-vs-hard reservation distinction, and lead-time-driven backward scheduling. It is consistent with REQ-INV-092 — Northwood models a reorder-point system, not time-phased MRP. For the showcase the immediate-fulfilment behaviour is **intentional**: the demo runs the whole order-to-cash flow end-to-end without waiting on calendar time. To make the requested date actionable one would insert a release/fence step between placement (REQ-SAL-030) and the `StockReservationRequested` emission, parking the order as future demand until `today ≥ need-by − cumulative lead time`.
 
 ### 2.5 Cancellation
 
@@ -349,7 +364,7 @@ A `ReplenishmentRequest` carries the reason it was raised. Three triggers feed t
 - `sales_order_shortage` — a **demand-driven top-up safety valve** for when standard stock genuinely cannot cover an order (REQ-INV-020); inventory tops up on-hand and the parked order re-reserves.
 
 **REQ-INV-092 — Scope of the MRP practice modelled** *(shipped — deliberate scope)*
-The planning practice Northwood models is a **reorder-point system plus BOM explosion** — the reactive end of MRP — **not** time-phased planning (there is no netting of projected demand against projected supply over a planning horizon). For a standard-catalogue make-to-stock finished-goods business this is the appropriate level of fidelity for the showcase; time-phased MRP is out of scope.
+The planning practice Northwood models is a **reorder-point system plus BOM explosion** — the reactive end of MRP — **not** time-phased planning (there is no netting of projected demand against projected supply over a planning horizon). For a standard-catalogue make-to-stock finished-goods business this is the appropriate level of fidelity for the showcase; time-phased MRP is out of scope. A direct consequence on the sales side: a sales order's requested delivery date does not schedule fulfilment — everything fires immediately on placement (REQ-SAL-037).
 
 **REQ-INV-093 — Make-to-order / buy-to-order is an opt-in per-product extension** *(shipped)*
 REQ-INV-090's make-to-stock default stays the catalogue norm, but a SKU may be configured `to_order` (REQ-PROD-022) to opt into an **order-pegged** path: a sales-order line for a `to_order` SKU raises *dedicated* supply — a work order (make-to-order) or a purchase order (buy-to-order) — earmarked to that line rather than drawing from / building to the shared pool.

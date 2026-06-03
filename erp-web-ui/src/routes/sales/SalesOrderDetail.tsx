@@ -11,6 +11,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FormSection, ReadOnlyField, Field } from "@/components/ui/FormSection";
 import { TextArea } from "@/components/ui/Form";
 import { StatusPill, statusForOrder } from "@/components/ui/StatusPill";
+import { DataGrid, type Column } from "@/components/ui/DataGrid";
 
 interface SalesOrder360 {
   salesOrderHeaderId: string;
@@ -38,12 +39,34 @@ interface SalesOrder360 {
   updatedAt: string;
 }
 
+interface SalesOrderLine {
+  lineId: string;
+  lineNumber: number;
+  productSku: string;
+  productName: string;
+  orderedQuantity: string;
+  reservedQuantity: string;
+  unitPrice: string;
+  lineTotal: string;
+  lineStatus: string;
+}
+
+interface SalesOrderAggregate {
+  id: string;
+  orderNumber: string;
+  requestedDeliveryDate: string | null;
+  currencyCode: string;
+  lines: SalesOrderLine[];
+}
+
 const NON_CANCELLABLE = ["shipped", "completed", "cancelled", "rejected"];
 
 /**
- * Sales-order detail. Reads from the 360 projection on reporting via
- * /api/sales-orders/{id}/360. Cancel button only when status is still
- * cancellable (not past goods_shipped) — server enforces this with 409
+ * Sales-order detail. Header/status/money read from the 360 projection on
+ * reporting via /api/sales-orders/{id}/360; the read-only Lines tab reads the
+ * owning aggregate via the /api/sales-cmd alias (reporting's 360 is
+ * header-level only — it carries no line rows). Cancel button only when status
+ * is still cancellable (not past goods_shipped) — server enforces this with 409
  * regardless. Posts to /api/sales-cmd/{id}/cancel via the BFF alias.
  */
 export function SalesOrderDetail() {
@@ -57,6 +80,15 @@ export function SalesOrderDetail() {
   const { data, isLoading, error: fetchError } = useQuery({
     queryKey: ["sales-order-360", id],
     queryFn: () => apiGet<SalesOrder360>(`/api/sales-orders/${id}/360`),
+    enabled: !!id,
+  });
+
+  // Lines come from the owning aggregate, not the 360 projection (which is
+  // header-level). The -cmd alias routes to sales-service; /api/sales-orders
+  // without -cmd routes to reporting.
+  const { data: aggregate } = useQuery({
+    queryKey: ["sales-order-aggregate", id],
+    queryFn: () => apiGet<SalesOrderAggregate>(`/api/sales-cmd/sales-orders/${id}`),
     enabled: !!id,
   });
 
@@ -95,6 +127,18 @@ export function SalesOrderDetail() {
 
   const status = statusForOrder(data.orderStatus);
   const cancellable = !NON_CANCELLABLE.includes(data.orderStatus);
+  const lines = aggregate?.lines ?? [];
+
+  const lineColumns: Column<SalesOrderLine>[] = [
+    { key: "ln", header: "#", width: "40px", numeric: true, render: (l) => l.lineNumber },
+    { key: "sku", header: "SKU", width: "180px", render: (l) => <span className="font-medium tabular-nums">{l.productSku}</span> },
+    { key: "name", header: "Product", render: (l) => l.productName },
+    { key: "qty", header: "Qty", numeric: true, width: "90px", render: (l) => formatQty(l.orderedQuantity) },
+    { key: "reserved", header: "Reserved", numeric: true, width: "100px", render: (l) => formatQty(l.reservedQuantity) },
+    { key: "price", header: "Unit Price", numeric: true, width: "110px", render: (l) => formatMoney(l.unitPrice) },
+    { key: "total", header: "Line Total", numeric: true, width: "120px", render: (l) => <strong>{formatMoney(l.lineTotal)}</strong> },
+    { key: "status", header: "Status", width: "120px", render: (l) => <StatusPill label={l.lineStatus} tone={toneFor(l.lineStatus)} /> },
+  ];
 
   return (
     <>
@@ -142,7 +186,7 @@ export function SalesOrderDetail() {
                   <ReadOnlyField label="Customer" value={data.customerName} />
                   <ReadOnlyField label="Currency" value={data.currencyCode} />
                   <ReadOnlyField label="Order date" value={data.orderDate} />
-                  <ReadOnlyField label="Requested delivery" value={data.requestedDeliveryDate || "—"} />
+                  <ReadOnlyField label="Requested delivery" value={aggregate?.requestedDeliveryDate || data.requestedDeliveryDate || "—"} />
                   <ReadOnlyField label="Payment terms" value={
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs">{data.paymentTerms}</span>
@@ -179,6 +223,19 @@ export function SalesOrderDetail() {
                   </div>
                 )}
               </div>
+            ),
+          },
+          {
+            key: "lines",
+            label: "Lines",
+            badge: lines.length || undefined,
+            content: (
+              <DataGrid
+                columns={lineColumns}
+                rows={lines}
+                rowKey={(l) => l.lineId}
+                emptyState={<span>No lines on this order.</span>}
+              />
             ),
           },
           {
@@ -241,4 +298,10 @@ function formatMoney(v: string | null | undefined): string {
   if (v == null) return "—";
   const n = Number(v);
   return Number.isNaN(n) ? String(v) : n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatQty(v: string | null | undefined): string {
+  if (v == null) return "—";
+  const n = Number(v);
+  return Number.isNaN(n) ? String(v) : n.toLocaleString("en-AU", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
 }
