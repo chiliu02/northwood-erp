@@ -127,6 +127,10 @@ export function SalesOrderDetail() {
 
   const status = statusForOrder(data.orderStatus);
   const cancellable = !NON_CANCELLABLE.includes(data.orderStatus);
+  // "awaiting prepayment/deposit" only applies while the order is live. A
+  // terminal order (cancelled → refunded, rejected, completed) is no longer
+  // waiting on the up-front payment.
+  const terminal = ["cancelled", "rejected", "completed"].includes(data.orderStatus);
   const lines = aggregate?.lines ?? [];
 
   const lineColumns: Column<SalesOrderLine>[] = [
@@ -189,10 +193,10 @@ export function SalesOrderDetail() {
                   <ReadOnlyField label="Payment terms" value={
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs">{data.paymentTerms}</span>
-                      {data.paymentTerms === "prepayment" && data.paymentStatus !== "paid" && (
+                      {!terminal && data.paymentTerms === "prepayment" && data.paymentStatus !== "paid" && (
                         <StatusPill label="awaiting prepayment" tone="warn" />
                       )}
-                      {data.paymentTerms === "deposit" && data.paymentStatus !== "paid"
+                      {!terminal && data.paymentTerms === "deposit" && data.paymentStatus !== "paid"
                         && data.paymentStatus !== "partially_paid" && (
                         <StatusPill label="awaiting deposit" tone="warn" />
                       )}
