@@ -17,26 +17,35 @@ _The operational ERP SPA — the Sales Orders list, served by the BFF from the r
 ```
 Northwood/
 ├── pom.xml                       Parent POM
-├── docker-compose.yml            Postgres 17 + Kafka 4.1.2 (KRaft, single broker) + Keycloak 26
+├── docker-compose.yml            Postgres 17 + Kafka 4.1.2 (KRaft, single broker) + Keycloak 26 + LGTM stack (Prometheus/Tempo/Loki/Grafana)
 ├── docker-compose.seed.yml       Override — layer on to also load the demo seed (db/northwood_erp_seed.sql)
-├── db/northwood_erp.sql          Baseline schema + roles/grants (seed data in northwood_erp_seed.sql)
+├── db/                           Baseline schema + roles/grants (northwood_erp.sql), seed, Keycloak realm + LGTM configs (prometheus/tempo/loki/promtail/grafana)
 │
 ├── shared-kernel/                Pure Java value objects (Money, Quantity, Sku, …)
 ├── shared/                       Outbox/inbox base, EventEnvelope, Kafka publisher, Saga base (split: `shared.application.*` ports, `shared.infrastructure.*` adapters, `shared.api.*` audit REST)
 │
+├── product-events/              Published event contracts (wire types + EVENT_TYPE) — the only cross-service API
 ├── product-service/              SKUs, pricing, reorder policy (Material Master / Shape A hub)
+├── sales-events/                 Published event contracts (wire types + EVENT_TYPE)
 ├── sales-service/                Sales orders + sales_order_fulfilment_saga
+├── inventory-events/             Published event contracts (wire types + EVENT_TYPE)
 ├── inventory-service/            Stock balances, reservations, goods receipts, shipments
+├── manufacturing-events/         Published event contracts (wire types + EVENT_TYPE)
 ├── manufacturing-service/        Work orders, BOMs, routing + work_order_saga
+├── purchasing-events/            Published event contracts (wire types + EVENT_TYPE)
 ├── purchasing-service/           POs, requisitions, supplier prices + purchase_to_pay_saga
+├── finance-events/               Published event contracts (wire types + EVENT_TYPE)
 ├── finance-service/              AP/AR invoices, payments, journal entries (perpetual inventory)
-├── reporting-service/            Six read-side projections, inbox-only
+├── reporting-service/            Six read-side projections, inbox-only (no events module — consumes only)
 │
 ├── erp-web-ui-bff/               BFF for the operational ERP SPA (port 8089)
-└── erp-web-ui/                   React + Vite SPA — operational ERP (port 5174)
+├── erp-web-ui/                   React + Vite SPA — operational ERP (port 5174)
+│
+├── terraform/                    AWS IaC — single-AZ EC2 + docker-run demo (network · infra-ec2 · ecr · secrets · bootstrap)
+└── docs/                         Architecture, conventions, messaging, sagas, observability, AWS, demo runbook
 ```
 
-11 Maven modules + the ERP SPA. Every Java service has full DDD layering (`domain` / `application` / `infrastructure` / `api`); all three Sagas drive end-to-end; reporting projects six cross-context views.
+17 Maven modules + the ERP SPA (six `*-events` jars carrying the published wire contracts, plus `test-harness`). Every Java service has full DDD layering (`domain` / `application` / `infrastructure` / `api`); all three Sagas drive end-to-end; reporting projects six cross-context views.
 
 ## Stack
 
@@ -48,6 +57,8 @@ Northwood/
 - **Keycloak 26** + Spring Security — OIDC code flow for the ERP SPA (see [Demo credentials & secrets](#demo-credentials--secrets))
 - **Testcontainers** for the integration-test seam
 - **React 18 + Vite + Tailwind v4** for the ERP SPA; **TanStack Query** for data fetching
+- **OpenTelemetry + LGTM stack** — Prometheus (metrics) · Tempo (OTLP traces) · Loki (logs) · Grafana, as compose sidecars; every service + the BFF auto-instrumented, one correlated trace per Saga across services
+- **Terraform** IaC for the AWS demo — single-AZ EC2 running the images via `docker run`, pushed to ECR
 
 ## Requirements
 
@@ -75,6 +86,8 @@ mvn -pl product-service spring-boot:run     # one service in one terminal
 
 For the **operational ERP UI**, follow [`erp-web-ui/README.md`](erp-web-ui/README.md): bring up Postgres + reporting-service + `erp-web-ui-bff`, then `npm run dev` in `erp-web-ui/` and open `http://localhost:5174` and sign in. The full multi-service walkthrough lives in **`docs/demo-script.md`**.
 
+The **LGTM observability tier** comes up with the same `docker compose up`. With services running under the `kafka` profile, open **Grafana at <http://localhost:3000>** (anonymous admin) to watch a single placed order as one correlated trace (Tempo) → logs (Loki) → RED metrics (Prometheus) across sales → inventory → finance. Wiring + worked example: [`docs/observability.md`](docs/observability.md).
+
 ## Demo credentials & secrets
 
 Everything ships with **demo-grade** credentials so the stack boots with zero setup. They are deliberately weak and committed to the repo — **override every one of them before exposing this to anything beyond localhost.**
@@ -95,7 +108,8 @@ The ERP SPA (`erp-web-ui`) authenticates real Keycloak users via OIDC code flow;
 | Run the ERP UI | `erp-web-ui/README.md` |
 | Run a demo end-to-end | `docs/demo-script.md` |
 | Understand the architecture before changing code | `CLAUDE.md` |
-| Deploy to AWS | `docs/aws-deployment.html` (demo) · `docs/aws-architecture.html` (production) |
+| Observe traces / metrics / logs | `docs/observability.md` |
+| Deploy to AWS with Terraform | `terraform/README.md` (IaC) · `docs/aws-deployment.html` (demo) · `docs/aws-architecture.html` (production) |
 
 ## Tests
 
