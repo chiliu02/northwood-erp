@@ -364,8 +364,19 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                       'inventory.ShipmentPosted', ?, ?)
             ON CONFLICT (sales_order_header_id) DO UPDATE SET
                 shipment_status = 'shipped',
-                -- Forward-only advance to 'shipped'; preserves completed/cancelled.
+                -- Forward-only advance. A prepaid order (paid in full up front,
+                -- before the goods reserve/ship) reaching shipment is now both
+                -- fully fulfilled AND settled → 'completed' directly: this is the
+                -- path that completes the prepayment flow, whose payment landed
+                -- before shipment so recordPayment deliberately left it short of
+                -- completed. Otherwise advance to 'shipped' (on-shipment/deposit
+                -- still owe the post-ship balance — recordPayment completes them
+                -- once paid). Preserves completed/cancelled via the ELSE.
                 order_status = CASE
+                    WHEN sales_order_360_view.order_status IN ('pending', 'submitted', 'ready_to_ship')
+                      AND sales_order_360_view.total_amount > 0
+                      AND sales_order_360_view.total_amount - sales_order_360_view.paid_amount <= 0
+                        THEN 'completed'
                     WHEN sales_order_360_view.order_status IN ('pending', 'submitted', 'ready_to_ship')
                         THEN 'shipped'
                     ELSE sales_order_360_view.order_status
@@ -480,18 +491,21 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                         THEN 'partially_paid'
                     ELSE 'pending'
                 END,
-                -- Full settlement of the ORDER completes it — not merely one invoice
-                -- being paid. Paying a deposit must NOT complete the order (its
-                -- balance is still due), else the UI marks it 'completed' and hides
-                -- the still-valid Cancel action. Prepayment still completes here
-                -- (paid in full up front → outstanding hits zero); on-shipment
-                -- completes once the post-ship invoice is paid. Forward-only and
-                -- cancelled-preserving (advances only from pre-completed states).
+                -- Completion requires BOTH full settlement AND a posted shipment,
+                -- so 'completed' only ever advances from 'shipped'. For on-shipment
+                -- terms the post-ship invoice is the last event, so paying it while
+                -- already 'shipped' completes the order here. A deposit (partial)
+                -- never satisfies the full-settlement test at all. PREPAYMENT pays
+                -- in full up front — before the goods reserve or ship — so it must
+                -- NOT complete here (order_status is still 'submitted'/'ready_to_ship'
+                -- at that point); the order stays at its fulfilment stage and
+                -- recordShipment carries it to 'completed' once shipped. Forward-only
+                -- and cancelled-preserving (advances only from 'shipped').
                 order_status = CASE
                     WHEN sales_order_360_view.total_amount > 0
                       AND sales_order_360_view.total_amount
                           - (sales_order_360_view.paid_amount + EXCLUDED.paid_amount) <= 0
-                      AND sales_order_360_view.order_status IN ('pending', 'submitted', 'ready_to_ship', 'shipped')
+                      AND sales_order_360_view.order_status = 'shipped'
                         THEN 'completed'
                     ELSE sales_order_360_view.order_status
                 END,

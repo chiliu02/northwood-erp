@@ -69,8 +69,12 @@ public interface SalesOrder360Projection {
 
     /**
      * Record a posted shipment: set {@code shipment_status='shipped'} and
-     * advance {@code order_status} to {@code 'shipped'} (forward-only; never
-     * downgrades a later state, preserves {@code 'cancelled'}).
+     * advance {@code order_status}. A prepaid order (already settled in full
+     * before shipment) goes straight to {@code 'completed'} here — shipment is
+     * its final fulfilment step; otherwise it advances to {@code 'shipped'}
+     * (on-shipment/deposit still owe the post-ship balance, completed later by
+     * {@link #recordPayment}). Forward-only; never downgrades a later state,
+     * preserves {@code 'cancelled'}.
      */
     void recordShipment(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
 
@@ -82,9 +86,12 @@ public interface SalesOrder360Projection {
      * ({@code paid}/{@code partially_paid}/{@code pending}) — a deposit invoice
      * settling to paid leaves the order {@code partially_paid} while its balance
      * is outstanding. Advance {@code order_status} to {@code 'completed'} only
-     * once {@code paid_amount} covers {@code total_amount} (forward-only;
-     * preserves {@code 'cancelled'}). {@code invoiceStatusAfter} seeds only the
-     * stub-row INSERT path.
+     * when the order is both fully settled ({@code paid_amount} covers
+     * {@code total_amount}) AND already {@code 'shipped'} — so a full PREPAYMENT
+     * (paid before the goods ship) does not complete the order here;
+     * {@link #recordShipment} completes it once shipped. Forward-only; preserves
+     * {@code 'cancelled'}. {@code invoiceStatusAfter} seeds only the stub-row
+     * INSERT path.
      */
     void recordPayment(
         UUID salesOrderHeaderId,

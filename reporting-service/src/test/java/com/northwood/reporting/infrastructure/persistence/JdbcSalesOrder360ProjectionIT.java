@@ -31,11 +31,14 @@ import org.testcontainers.utility.DockerImageName;
  * completed} as the driving events land, and — because reporting consumes
  * several topics and so can see events out of order — each advance is
  * <b>forward-only</b>: a late event never downgrades a later state, and a
- * terminal {@code 'cancelled'} is preserved. Also covers the deposit/pegged/
- * refund derivations: a paid deposit does not complete the order (its balance is
- * still due), reaching {@code ready_to_ship} lifts a pegged buy-to-order line out
- * of {@code 'failed'} stock, and cancelling a paid order releases its reservation
- * and marks the payment {@code 'refunded'}.
+ * terminal {@code 'cancelled'} is preserved. Completion requires BOTH full
+ * settlement AND a posted shipment, so a fully-paid PREPAYMENT (money in before
+ * the goods ship) stays at {@code ready_to_ship} until {@code recordShipment}
+ * completes it — it never reads {@code 'completed'} while shipment is still
+ * pending. Also covers the deposit/pegged/refund derivations: a paid deposit does
+ * not complete the order (its balance is still due), reaching {@code ready_to_ship}
+ * lifts a pegged buy-to-order line out of {@code 'failed'} stock, and cancelling a
+ * paid order releases its reservation and marks the payment {@code 'refunded'}.
  */
 class JdbcSalesOrder360ProjectionIT {
 
@@ -165,6 +168,30 @@ class JdbcSalesOrder360ProjectionIT {
     }
 
     @Test
+    void prepayment_paid_in_full_does_not_complete_until_shipped() {
+        UUID id = UUID.randomUUID();
+        createPrepaymentOrder(id); // total 650.00, paid up front before shipping
+
+        // Prepayment flow: invoice + full payment land BEFORE stock reservation
+        // and shipment. The order is fully settled but the goods have not shipped
+        // — it must read 'ready_to_ship' (awaiting shipment), NOT 'completed', and
+        // the shipment lozenge stays 'pending'. (Pre-fix this completed here,
+        // leaving Status=Completed alongside Shipment=pending.)
+        PROJECTION.recordPayment(id, new BigDecimal("650.00"),
+            CustomerPaymentReceived.INVOICE_STATUS_PAID, Instant.now(), "olivia");
+        PROJECTION.recordReadyToShip(id, Instant.now(), "system");
+        assertThat(orderStatus(id)).isEqualTo("ready_to_ship");
+        assertThat(paymentStatus(id)).isEqualTo("paid");
+        assertThat(shipmentStatus(id)).isEqualTo("pending");
+
+        // Shipment is the final fulfilment step for an already-settled prepaid
+        // order → it completes here (recordPayment deliberately left it short).
+        PROJECTION.recordShipment(id, Instant.now(), "mike");
+        assertThat(orderStatus(id)).isEqualTo("completed");
+        assertThat(shipmentStatus(id)).isEqualTo("shipped");
+    }
+
+    @Test
     void ready_to_ship_lifts_a_pegged_line_out_of_failed_stock() {
         UUID id = UUID.randomUUID();
         createOrder(id);
@@ -247,6 +274,14 @@ class JdbcSalesOrder360ProjectionIT {
             Instant.now(), "sales.SalesOrderPlaced", "sarah");
     }
 
+    private void createPrepaymentOrder(UUID id) {
+        PROJECTION.createFromOrder(
+            id, "SO-360-PREPAY", UUID.randomUUID(), "Brisbane Boutique Living",
+            LocalDate.now(), null, "AUD", new BigDecimal("650.00"),
+            "prepayment",
+            Instant.now(), "sales.SalesOrderPlaced", "sarah");
+    }
+
     private String orderStatus(UUID id) {
         return JDBC.queryForObject(
             "SELECT order_status FROM reporting.sales_order_360_view WHERE sales_order_header_id = ?",
@@ -256,6 +291,12 @@ class JdbcSalesOrder360ProjectionIT {
     private String stockStatus(UUID id) {
         return JDBC.queryForObject(
             "SELECT stock_status FROM reporting.sales_order_360_view WHERE sales_order_header_id = ?",
+            String.class, id);
+    }
+
+    private String shipmentStatus(UUID id) {
+        return JDBC.queryForObject(
+            "SELECT shipment_status FROM reporting.sales_order_360_view WHERE sales_order_header_id = ?",
             String.class, id);
     }
 
