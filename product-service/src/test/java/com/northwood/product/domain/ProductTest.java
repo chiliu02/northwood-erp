@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.northwood.product.domain.events.ApprovedVendorListChanged;
 import com.northwood.product.domain.events.ActiveBomChanged;
 import com.northwood.product.domain.events.MakeVsBuyChanged;
+import com.northwood.product.domain.events.PlanningTimeFenceChanged;
 import com.northwood.product.domain.events.ProductCreated;
 import com.northwood.product.domain.events.ProductDiscontinued;
 import com.northwood.product.domain.events.ReorderPolicyChanged;
@@ -389,7 +390,7 @@ class ProductTest {
                 true, false, true, /* sellable */ true,
                 Money.of(new BigDecimal("100"), Currencies.AUD), Money.of(new BigDecimal("60"), Currencies.AUD),
                 BigDecimal.ZERO, BigDecimal.ZERO,
-                ReplenishmentStrategy.TO_STOCK, null, null,
+                ReplenishmentStrategy.TO_STOCK, null, null, 0,
                 Product.Status.ACTIVE, 1L,
                 List.of()
             );
@@ -417,7 +418,7 @@ class ProductTest {
                 true, false, true, true,
                 Money.of(new BigDecimal("100"), Currencies.AUD), Money.of(new BigDecimal("60"), Currencies.AUD),
                 new BigDecimal("5"), new BigDecimal("20"),
-                ReplenishmentStrategy.TO_STOCK, null, null,
+                ReplenishmentStrategy.TO_STOCK, null, null, 0,
                 Product.Status.ACTIVE, 1L, List.of()
             );
             assertThatThrownBy(() -> p.changeReplenishmentStrategy(ReplenishmentStrategy.TO_ORDER))
@@ -584,7 +585,7 @@ class ProductTest {
                 false, false, false, false,
                 Money.of(new BigDecimal("10"), Currencies.AUD), Money.of(new BigDecimal("5"), Currencies.AUD),
                 BigDecimal.ZERO, BigDecimal.ZERO,
-                ReplenishmentStrategy.TO_STOCK, null, null,
+                ReplenishmentStrategy.TO_STOCK, null, null, 0,
                 Product.Status.ACTIVE, 1L,
                 List.of(existing)
             );
@@ -612,6 +613,45 @@ class ProductTest {
             Product p = newProduct();
             p.discontinue();
             assertThatThrownBy(() -> p.setApprovedVendors(List.of()))
+                .isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    @Nested
+    class ChangePlanningTimeFence {
+        @Test void defaults_to_zero_on_register() {
+            assertThat(newProduct().planningTimeFenceDays()).isZero();
+        }
+
+        @Test void sets_value_and_emits_event() {
+            Product p = newProduct();
+            p.pullPendingEvents();   // drain ProductCreated
+            p.changePlanningTimeFence(7);
+            assertThat(p.planningTimeFenceDays()).isEqualTo(7);
+            List<DomainEvent> events = p.pullPendingEvents();
+            assertThat(events).hasSize(1).first().isInstanceOf(PlanningTimeFenceChanged.class);
+            PlanningTimeFenceChanged e = (PlanningTimeFenceChanged) events.get(0);
+            assertThat(e.oldPlanningTimeFenceDays()).isZero();
+            assertThat(e.newPlanningTimeFenceDays()).isEqualTo(7);
+        }
+
+        @Test void is_no_op_when_unchanged() {
+            Product p = newProduct();
+            p.pullPendingEvents();
+            p.changePlanningTimeFence(0);   // already 0
+            assertThat(p.pullPendingEvents()).isEmpty();
+        }
+
+        @Test void rejects_negative() {
+            Product p = newProduct();
+            assertThatThrownBy(() -> p.changePlanningTimeFence(-1))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test void rejects_when_discontinued() {
+            Product p = newProduct();
+            p.discontinue();
+            assertThatThrownBy(() -> p.changePlanningTimeFence(7))
                 .isInstanceOf(IllegalStateException.class);
         }
     }
@@ -651,7 +691,7 @@ class ProductTest {
                 Money.of(new BigDecimal("10"), Currencies.AUD),
                 Money.of(new BigDecimal("5"), Currencies.AUD),
                 BigDecimal.ZERO, BigDecimal.ZERO,
-                ReplenishmentStrategy.TO_STOCK, ValuationClass.RAW_MATERIALS, null,
+                ReplenishmentStrategy.TO_STOCK, ValuationClass.RAW_MATERIALS, null, 0,
                 Product.Status.ACTIVE, 5L,
                 List.of()
             );

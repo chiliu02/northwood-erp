@@ -288,14 +288,20 @@ public class SalesOrderService {
 
         salesOrders.save(order);
 
-        // Stash payment_terms onto saga.data so the worker can branch at started
-        // (on_shipment → existing StockReservationRequested path; prepayment →
-        // PrepaymentInvoiceRequested) and so applyCustomerPaymentReceived can
-        // route full settlement to the right terminal (completed vs prepaid).
-        // Inline JSON to keep ObjectMapper out of this service for a single
-        // field; matches FulfilmentSagaData's wire shape. dbValue() is
-        // "on_shipment" / "prepayment" — no quoting concerns.
-        String dataJson = "{\"paymentTerms\":\"" + paymentTerms.dbValue() + "\"}";
+        // Stash payment_terms + need-by onto saga.data so the worker can branch
+        // at started (on_shipment → existing StockReservationRequested path;
+        // prepayment → PrepaymentInvoiceRequested), so applyCustomerPaymentReceived
+        // can route full settlement to the right terminal (completed vs prepaid),
+        // and so requestStockReservation can compute the planning-time-fence
+        // release date (need-by − max line fence). Inline JSON to keep
+        // ObjectMapper out of this service; matches FulfilmentSagaData's wire
+        // shape. dbValue() is "on_shipment" / "prepayment" and LocalDate.toString()
+        // is ISO yyyy-MM-dd — no quoting concerns.
+        String needByJson = command.requestedDeliveryDate() == null
+            ? "null"
+            : "\"" + command.requestedDeliveryDate() + "\"";
+        String dataJson = "{\"paymentTerms\":\"" + paymentTerms.dbValue() + "\","
+            + "\"requestedDeliveryDate\":" + needByJson + "}";
         sagaManager.insertStarted(order.id().value(), dataJson);
 
         return SalesOrderView.from(order);

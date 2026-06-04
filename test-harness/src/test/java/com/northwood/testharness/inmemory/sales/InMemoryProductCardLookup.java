@@ -14,7 +14,14 @@ public final class InMemoryProductCardLookup implements ProductCardLookup {
     private final Map<UUID, CatalogPrice> byProductId = new HashMap<>();
 
     public InMemoryProductCardLookup put(UUID productId, BigDecimal salesPrice, String currencyCode) {
-        byProductId.put(productId, new CatalogPrice(salesPrice, currencyCode, null));
+        byProductId.put(productId, new CatalogPrice(salesPrice, currencyCode, null, 0));
+        return this;
+    }
+
+    /** Seed a card with a non-zero planning time fence (days) for time-fence tests. */
+    public InMemoryProductCardLookup putWithFence(
+        UUID productId, BigDecimal salesPrice, String currencyCode, int planningTimeFenceDays) {
+        byProductId.put(productId, new CatalogPrice(salesPrice, currencyCode, null, planningTimeFenceDays));
         return this;
     }
 
@@ -23,7 +30,8 @@ public final class InMemoryProductCardLookup implements ProductCardLookup {
         byProductId.put(productId, new CatalogPrice(
             existing == null ? BigDecimal.ZERO : existing.salesPrice(),
             existing == null ? Currencies.AUD : existing.currencyCode(),
-            discontinuedAt
+            discontinuedAt,
+            existing == null ? 0 : existing.planningTimeFenceDays()
         ));
         return this;
     }

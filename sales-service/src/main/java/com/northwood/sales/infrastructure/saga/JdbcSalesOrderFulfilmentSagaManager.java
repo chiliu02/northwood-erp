@@ -72,11 +72,15 @@ public class JdbcSalesOrderFulfilmentSagaManager
         // Worker-pickup checkpoints, each requiring the worker to emit an event
         // and transition forward. STARTED → stock-reservation / prepayment /
         // deposit request; PREPAID + DEPOSIT_PAID → stock-reservation request
-        // after the up-front payment settles. STOCK_RESERVATION_INCOMPLETE is
-        // not in this set — inventory raises the replenishment in-tx, so the
-        // worker has nothing to do there; the saga parks until
-        // ReplenishmentFulfilled / ReplenishmentCancelled drives it via the inbox.
-        return Set.of(STARTED, PREPAID, DEPOSIT_PAID);
+        // after the up-front payment settles. AWAITING_RELEASE → emit the
+        // deferred stock reservation once the planning-time-fence release date
+        // arrives — woken by wall-clock (next_retry_at <= now()), NOT an inbox
+        // event, so it MUST be claimable here or the parked saga never wakes.
+        // STOCK_RESERVATION_INCOMPLETE is not in this set — inventory raises the
+        // replenishment in-tx, so the worker has nothing to do there; the saga
+        // parks until ReplenishmentFulfilled / ReplenishmentCancelled drives it
+        // via the inbox.
+        return Set.of(STARTED, AWAITING_RELEASE, PREPAID, DEPOSIT_PAID);
     }
 
     // ============================================================

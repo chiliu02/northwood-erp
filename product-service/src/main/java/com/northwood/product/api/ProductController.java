@@ -7,6 +7,7 @@ import com.northwood.product.api.dto.ChangeSalesPriceRequest;
 import com.northwood.product.api.dto.ChangeStandardCostRequest;
 import com.northwood.product.api.dto.CreateProductRequest;
 import com.northwood.product.api.dto.SetApprovedVendorsRequest;
+import com.northwood.product.api.dto.SetPlanningTimeFenceRequest;
 import com.northwood.product.api.dto.SetReorderPolicyRequest;
 import com.northwood.product.api.dto.SetValuationClassRequest;
 import com.northwood.product.application.ProductService;
@@ -95,6 +96,16 @@ public class ProductController {
         @Valid @RequestBody SetReorderPolicyRequest request
     ) {
         service.setReorderPolicy(id, request.reorderPoint(), request.reorderQuantity());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}/planning-time-fence")
+    @RequireCatalogManager
+    public ResponseEntity<Void> setPlanningTimeFence(
+        @PathVariable UUID id,
+        @Valid @RequestBody SetPlanningTimeFenceRequest request
+    ) {
+        service.setPlanningTimeFence(id, request.planningTimeFenceDays());
         return ResponseEntity.noContent().build();
     }
 

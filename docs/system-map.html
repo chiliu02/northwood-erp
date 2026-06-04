@@ -465,11 +465,14 @@
 stateDiagram-v2
     direction TB
     [*] --> started : placeOrder
-    started --> stock_reservation_requested : advance (worker) [on_shipment]
+    started --> stock_reservation_requested : advance (worker) [on_shipment, no fence or fence elapsed]
+    started --> awaiting_release : advance (worker) [planning fence: now before need-by minus max line fence]
     started --> awaiting_prepayment_invoice : advance (worker) [prepayment]
+    awaiting_release --> stock_reservation_requested : advance (worker) [release date reached - emit, no re-gate]
     awaiting_prepayment_invoice --> invoice_created : applyCustomerInvoiceCreated [prepayment]
     invoice_created --> prepaid : applyCustomerPaymentReceived [prepayment, fullySettled]
     prepaid --> stock_reservation_requested : advance (worker)
+    prepaid --> awaiting_release : advance (worker) [planning fence]
     stock_reservation_requested --> ready_to_ship : applyStockReserved [reserved]
     stock_reservation_requested --> stock_reservation_incomplete : applyStockReserved [partial/failed - inventory raised replenishment in-tx]
     stock_reservation_incomplete --> stock_reservation_requested : applyReplenishmentFulfilled [all short lines fulfilled, any shortage top-up - retry]
@@ -659,6 +662,15 @@ window.NORTHWOOD_EVENTS = [
     consumers: [
       { dest: "sales", name: "sales.product-pricing-projector",
         desc: `<code>sales.product_card.sales_price</code>, <code>currency_code</code>` },
+    ]
+  },
+  {
+    source: "product",
+    aggregate: "Product",
+    event: "PlanningTimeFenceChanged",
+    consumers: [
+      { dest: "sales", name: "sales.product-planning-time-fence-projector",
+        desc: `<code>sales.product_card.planning_time_fence_days</code> — the fulfilment saga reads it (live, via the line-snapshot join) at the reservation step to defer a far-future order until <code>need-by − max line fence</code>, parking at <code>awaiting_release</code> until then; <code>0</code> = no fence (reserve immediately)` },
     ]
   },
   {

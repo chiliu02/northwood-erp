@@ -143,6 +143,19 @@ public class ProductService {
     }
 
     @Transactional
+    public void setPlanningTimeFence(UUID productId, int planningTimeFenceDays) {
+        Product product = products.findById(ProductId.of(productId))
+            .orElseThrow(() -> new ProductNotFoundException(productId));
+        if (planningTimeFenceDays == product.planningTimeFenceDays()) {
+            log.debug("setPlanningTimeFence product_id={} ignored — value unchanged ({} days)",
+                productId, planningTimeFenceDays);
+            return;
+        }
+        product.changePlanningTimeFence(planningTimeFenceDays);
+        products.save(product);
+    }
+
+    @Transactional
     public void changeMakeVsBuy(
         UUID productId,
         boolean isPurchased,

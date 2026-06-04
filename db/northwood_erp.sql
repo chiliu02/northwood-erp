@@ -233,6 +233,11 @@ CREATE TABLE product.product (
         OR valuation_class IN ('raw_materials', 'finished_goods', 'semi_finished_goods')
     ),
     active_bom_id UUID,
+    -- Planning time fence, in days. Sales's fulfilment saga defers a far-future
+    -- order's stock reservation until need-by − fence; projected to
+    -- sales.product_card via product.PlanningTimeFenceChanged. 0 = no fence
+    -- (reserve immediately, the default behaviour). Non-negative.
+    planning_time_fence_days INT NOT NULL DEFAULT 0 CHECK (planning_time_fence_days >= 0),
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (
         status IN ('active', 'inactive', 'discontinued')
     ),
@@ -427,6 +432,12 @@ CREATE TABLE sales.product_card (
     replenishment_strategy VARCHAR(20) NOT NULL DEFAULT 'to_stock' CHECK (
         replenishment_strategy IN ('to_stock', 'to_order')
     ),
+    -- Projected from product.PlanningTimeFenceChanged. The fulfilment saga reads
+    -- it at placement to defer a far-future order's stock reservation until
+    -- need-by − fence. Seeded 0 on ProductCreated (no fence — reserve
+    -- immediately); never null. Light CHECK only — projections cache facts, the
+    -- source table (product.product) carries the full invariant.
+    planning_time_fence_days INT NOT NULL DEFAULT 0 CHECK (planning_time_fence_days >= 0),
     discontinued_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -554,7 +565,12 @@ CREATE TABLE sales.sales_order_fulfilment_saga (
     sales_order_header_id UUID NOT NULL UNIQUE,
     saga_state VARCHAR(50) NOT NULL CHECK (
         saga_state IN (
-            'started', 'stock_reservation_requested', 'stock_reservation_incomplete', 'rejected',
+            'started',
+            -- Planning-time-fence parked state: a far-future order defers its
+            -- stock reservation until need-by − max line fence. Woken by the
+            -- poll (wall-clock), so it's in SalesOrderFulfilmentSaga activeStates.
+            'awaiting_release',
+            'stock_reservation_requested', 'stock_reservation_incomplete', 'rejected',
             -- Prepayment branch states. awaiting_prepayment_invoice parks the
             -- saga after PrepaymentInvoiceRequested until finance acks with
             -- CustomerInvoiceCreated. prepaid is the active checkpoint between

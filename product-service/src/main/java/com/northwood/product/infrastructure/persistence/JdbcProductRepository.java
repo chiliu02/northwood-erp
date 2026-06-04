@@ -64,6 +64,7 @@ public class JdbcProductRepository implements ProductRepository {
                    sales_price, standard_cost,
                    reorder_point, reorder_quantity,
                    replenishment_strategy, valuation_class, active_bom_id,
+                   planning_time_fence_days,
                    status, version
             FROM product.product WHERE product_id = ?
             """,
@@ -97,6 +98,7 @@ public class JdbcProductRepository implements ProductRepository {
                    sales_price, standard_cost,
                    reorder_point, reorder_quantity,
                    replenishment_strategy, valuation_class, active_bom_id,
+                   planning_time_fence_days,
                    status, version
             FROM product.product
             ORDER BY sku
@@ -128,6 +130,7 @@ public class JdbcProductRepository implements ProductRepository {
                 replenishmentStrategyDb == null ? null : ReplenishmentStrategy.fromDb(replenishmentStrategyDb),
                 valuationClassDb == null ? null : ValuationClass.fromDb(valuationClassDb),
                 rs.getObject("active_bom_id", UUID.class),
+                rs.getInt("planning_time_fence_days"),
                 Product.Status.fromDb(rs.getString("status")),
                 rs.getLong("version"),
                 vendorsByProduct.getOrDefault(pid, List.of())
@@ -199,9 +202,10 @@ public class JdbcProductRepository implements ProductRepository {
                     sales_price, standard_cost,
                     reorder_point, reorder_quantity,
                     replenishment_strategy, valuation_class, active_bom_id,
+                    planning_time_fence_days,
                     status, version,
                     created_by, last_modified_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 p.id().value(),
                 p.sku().value(),
@@ -215,6 +219,7 @@ public class JdbcProductRepository implements ProductRepository {
                 p.replenishmentStrategy() == null ? null : p.replenishmentStrategy().dbValue(),
                 p.valuationClass() == null ? null : p.valuationClass().dbValue(),
                 p.activeBomId(),
+                p.planningTimeFenceDays(),
                 p.status().dbValue(),
                 1L,
                 actor, actor
@@ -232,6 +237,7 @@ public class JdbcProductRepository implements ProductRepository {
                 sales_price = ?, standard_cost = ?,
                 reorder_point = ?, reorder_quantity = ?,
                 replenishment_strategy = ?, valuation_class = ?, active_bom_id = ?,
+                planning_time_fence_days = ?,
                 status = ?, version = version + 1,
                 last_modified_by = ?
             WHERE product_id = ? AND version = ?
@@ -243,6 +249,7 @@ public class JdbcProductRepository implements ProductRepository {
             p.replenishmentStrategy() == null ? null : p.replenishmentStrategy().dbValue(),
             p.valuationClass() == null ? null : p.valuationClass().dbValue(),
             p.activeBomId(),
+            p.planningTimeFenceDays(),
             p.status().dbValue(),
             actor,
             p.id().value(), p.version()

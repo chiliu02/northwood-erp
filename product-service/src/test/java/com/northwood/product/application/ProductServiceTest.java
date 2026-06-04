@@ -73,7 +73,7 @@ class ProductServiceTest {
             Money.of(new BigDecimal("100.00"), Currencies.AUD),
             Money.of(new BigDecimal("60.00"), Currencies.AUD),
             new BigDecimal("5"), new BigDecimal("20"),
-            ReplenishmentStrategy.TO_STOCK, ValuationClass.FINISHED_GOODS, null,
+            ReplenishmentStrategy.TO_STOCK, ValuationClass.FINISHED_GOODS, null, 0,
             Product.Status.ACTIVE, 1L,
             List.of()
         );
@@ -88,7 +88,7 @@ class ProductServiceTest {
             Money.of(new BigDecimal("100.00"), Currencies.AUD),
             Money.of(new BigDecimal("60.00"), Currencies.AUD),
             new BigDecimal("5"), new BigDecimal("20"),
-            ReplenishmentStrategy.TO_STOCK, ValuationClass.FINISHED_GOODS, null,
+            ReplenishmentStrategy.TO_STOCK, ValuationClass.FINISHED_GOODS, null, 0,
             Product.Status.ACTIVE, 1L,
             vendors
         );
@@ -216,7 +216,7 @@ class ProductServiceTest {
                 true, false, true, true,
                 Money.of(new BigDecimal("100"), Currencies.AUD), Money.of(new BigDecimal("60"), Currencies.AUD),
                 BigDecimal.ZERO, BigDecimal.ZERO,
-                ReplenishmentStrategy.TO_STOCK, null, null,
+                ReplenishmentStrategy.TO_STOCK, null, null, 0,
                 Product.Status.ACTIVE, 1L, List.of()
             );
         }
@@ -335,7 +335,7 @@ class ProductServiceTest {
                 true, false, true, true,
                 Money.of(new BigDecimal("100"), Currencies.AUD), Money.of(new BigDecimal("60"), Currencies.AUD),
                 BigDecimal.ZERO, BigDecimal.ZERO,
-                ReplenishmentStrategy.TO_STOCK, null, bomId,
+                ReplenishmentStrategy.TO_STOCK, null, bomId, 0,
                 Product.Status.ACTIVE, 1L,
                 List.of()
             );
@@ -392,7 +392,7 @@ class ProductServiceTest {
                 true, false, true, true,
                 Money.of(new BigDecimal("100"), Currencies.AUD), Money.of(new BigDecimal("60"), Currencies.AUD),
                 BigDecimal.ZERO, BigDecimal.ZERO,
-                ReplenishmentStrategy.TO_STOCK, null, null,
+                ReplenishmentStrategy.TO_STOCK, null, null, 0,
                 Product.Status.DISCONTINUED, 2L,
                 List.of()
             );

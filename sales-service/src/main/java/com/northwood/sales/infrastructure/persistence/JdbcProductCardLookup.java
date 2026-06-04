@@ -22,7 +22,7 @@ public class JdbcProductCardLookup implements ProductCardLookup {
         try {
             return Optional.ofNullable(jdbc.queryForObject(
                 """
-                SELECT sales_price, currency_code, discontinued_at
+                SELECT sales_price, currency_code, discontinued_at, planning_time_fence_days
                 FROM sales.product_card
                 WHERE product_id = ?
                 """,
@@ -31,7 +31,8 @@ public class JdbcProductCardLookup implements ProductCardLookup {
                     return new CatalogPrice(
                         rs.getBigDecimal("sales_price"),
                         rs.getString("currency_code"),
-                        ts == null ? null : ts.toInstant()
+                        ts == null ? null : ts.toInstant(),
+                        rs.getInt("planning_time_fence_days")
                     );
                 },
                 productId

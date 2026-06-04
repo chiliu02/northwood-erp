@@ -13,6 +13,7 @@ import java.util.UUID;
 import com.northwood.product.domain.events.ApprovedVendorListChanged;
 import com.northwood.product.domain.events.ActiveBomChanged;
 import com.northwood.product.domain.events.MakeVsBuyChanged;
+import com.northwood.product.domain.events.PlanningTimeFenceChanged;
 import com.northwood.product.domain.events.ProductCreated;
 import com.northwood.product.domain.events.ProductDiscontinued;
 import com.northwood.product.domain.events.ReplenishmentStrategyChanged;
@@ -86,6 +87,14 @@ public class Product {
     private ReplenishmentStrategy replenishmentStrategy;
     private ValuationClass valuationClass;
     private UUID activeBomId;
+    /**
+     * Planning time fence, in days. The fulfilment saga reads this (via sales's
+     * {@code product_card} projection) to defer a far-future order's stock
+     * reservation until {@code need-by − fence}. 0 = no fence = reserve
+     * immediately (today's behaviour). Non-negative; set via
+     * {@link #changePlanningTimeFence}.
+     */
+    private int planningTimeFenceDays;
     private Status status;
     private final long version;
 
@@ -133,6 +142,9 @@ public class Product {
             // Shape A facets default to null/unknown; the appropriate steward
             // sets each via the dedicated REST endpoint.
             null, null,
+            // Planning time fence defaults to 0 (no fence — reserve immediately);
+            // the planning steward sets it via changePlanningTimeFence.
+            0,
             Status.ACTIVE,
             0L
         );
@@ -156,6 +168,7 @@ public class Product {
         BigDecimal reorderPoint, BigDecimal reorderQuantity,
         ReplenishmentStrategy replenishmentStrategy,
         ValuationClass valuationClass, UUID activeBomId,
+        int planningTimeFenceDays,
         Status status, long version,
         List<ApprovedVendor> approvedVendors
     ) {
@@ -164,6 +177,7 @@ public class Product {
             salesPrice, standardCost,
             reorderPoint, reorderQuantity,
             replenishmentStrategy, valuationClass, activeBomId,
+            planningTimeFenceDays,
             status, version);
         p.approvedVendors = List.copyOf(approvedVendors);
         return p;
@@ -177,6 +191,7 @@ public class Product {
         BigDecimal reorderPoint, BigDecimal reorderQuantity,
         ReplenishmentStrategy replenishmentStrategy,
         ValuationClass valuationClass, UUID activeBomId,
+        int planningTimeFenceDays,
         Status status, long version
     ) {
         this.id = id;
@@ -196,6 +211,7 @@ public class Product {
         this.replenishmentStrategy = replenishmentStrategy;
         this.valuationClass = valuationClass;
         this.activeBomId = activeBomId;
+        this.planningTimeFenceDays = planningTimeFenceDays;
         this.status = status;
         this.version = version;
     }
@@ -370,6 +386,28 @@ public class Product {
     }
 
     /**
+     * Set the planning time fence, in days. The fulfilment saga defers a
+     * far-future order's stock reservation until {@code need-by − fence}; 0
+     * means no fence (reserve immediately). Must be non-negative. Discontinued
+     * products reject the change. Emits {@link PlanningTimeFenceChanged} with
+     * old + new.
+     */
+    public void changePlanningTimeFence(int newPlanningTimeFenceDays) {
+        Assert.state(status != Status.DISCONTINUED, "Cannot change planning time fence on a discontinued product");
+        Assert.argument(newPlanningTimeFenceDays >= 0, "planningTimeFenceDays must be >= 0");
+        if (newPlanningTimeFenceDays == this.planningTimeFenceDays) return;
+        int oldDays = this.planningTimeFenceDays;
+        this.planningTimeFenceDays = newPlanningTimeFenceDays;
+        pendingEvents.add(new PlanningTimeFenceChanged(
+            UUID.randomUUID(),
+            id.value(),
+            oldDays,
+            newPlanningTimeFenceDays,
+            Instant.now()
+        ));
+    }
+
+    /**
      * Replace the approved-vendor list. Carries the new list in full;
      * downstream consumers replace their projection in one statement.
      *
@@ -452,6 +490,7 @@ public class Product {
     public ReplenishmentStrategy replenishmentStrategy() { return replenishmentStrategy; }
     public ValuationClass valuationClass() { return valuationClass; }
     public UUID activeBomId()              { return activeBomId; }
+    public int planningTimeFenceDays()     { return planningTimeFenceDays; }
     public Status status()                 { return status; }
     public long version()                  { return version; }
 }

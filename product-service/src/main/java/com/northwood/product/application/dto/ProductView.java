@@ -20,6 +20,7 @@ public record ProductView(
     String replenishmentStrategy,
     String valuationClass,
     UUID activeBomId,
+    int planningTimeFenceDays,
     String status,
     long version
 ) {
@@ -39,6 +40,7 @@ public record ProductView(
             p.replenishmentStrategy() == null ? null : p.replenishmentStrategy().dbValue(),
             p.valuationClass() == null ? null : p.valuationClass().dbValue(),
             p.activeBomId(),
+            p.planningTimeFenceDays(),
             p.status().dbValue(),
             p.version()
         );
