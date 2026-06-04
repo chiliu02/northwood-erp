@@ -10,7 +10,7 @@ This README is a 30-second orientation. Every link below points at the doc that 
 
 _The operational ERP SPA — the Sales Orders list, served by the BFF from the reporting service's cross-context projection._
 
-![ERP Sales Orders](docs/screenshots/sales-order.png)
+![ERP Sales Orders](docs/screenshots/sales-orders.png)
 
 ## What's here
 
