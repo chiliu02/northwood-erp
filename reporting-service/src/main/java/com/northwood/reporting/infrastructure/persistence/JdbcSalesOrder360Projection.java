@@ -243,6 +243,22 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                         THEN 'not_required'
                     ELSE sales_order_360_view.manufacturing_status
                 END,
+                -- Reaching ready_to_ship means every line is reserved (drawn from
+                -- stock, produced, or pegged off a buy/make-to-order receipt), so
+                -- the Stock lozenge is 'reserved' from here. This is the only path
+                -- that flips a buy-to-order line out of 'failed': its dedicated
+                -- supply is pegged at goods-receipt and signalled to the saga via
+                -- ReplenishmentFulfilled, not via a fresh inventory.StockReserved,
+                -- so recordStockReserved never re-runs for it. A 'reserved' stays
+                -- reserved (sticky); 'shipped' is never downgraded (cancelled is
+                -- already excluded by the order_status guard above).
+                stock_status = CASE
+                    WHEN sales_order_360_view.order_status IN ('cancelled', 'rejected')
+                        THEN sales_order_360_view.stock_status
+                    WHEN sales_order_360_view.stock_status IN ('pending', 'failed', 'partially_reserved')
+                        THEN 'reserved'
+                    ELSE sales_order_360_view.stock_status
+                END,
                 last_event_type = CASE
                     WHEN sales_order_360_view.last_event_at IS NULL
                       OR EXCLUDED.last_event_at > sales_order_360_view.last_event_at
@@ -285,6 +301,27 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                       'sales.SalesOrderCompensated', ?, ?)
             ON CONFLICT (sales_order_header_id) DO UPDATE SET
                 order_status = 'cancelled',
+                -- Compensation released any reservation this order held, so a
+                -- 'reserved' Stock lozenge becomes 'released'. Untouched when stock
+                -- was never reserved (failed/pending) — nothing to give back.
+                stock_status = CASE
+                    WHEN sales_order_360_view.stock_status = 'reserved'
+                        THEN 'released'
+                    ELSE sales_order_360_view.stock_status
+                END,
+                -- A cancelled order that already took money was a paid prepayment
+                -- or deposit (the only invoice a still-cancellable, pre-shipment
+                -- order can have), and finance always returns that cash — Dr 2110
+                -- / Cr 1000 — via SalesOrderCancellationRefundHandler. The Payment
+                -- lozenge therefore reads 'refunded'. Derived rather than driven by
+                -- a finance event: no CustomerRefunded event exists, and the
+                -- paid_amount > 0 ⇒ refund invariant is exact for cancellable
+                -- orders. See finance SalesOrderCancellationRefundHandler.
+                payment_status = CASE
+                    WHEN sales_order_360_view.paid_amount > 0
+                        THEN 'refunded'
+                    ELSE sales_order_360_view.payment_status
+                END,
                 last_event_type = CASE
                     WHEN sales_order_360_view.last_event_at IS NULL
                       OR EXCLUDED.last_event_at > sales_order_360_view.last_event_at
@@ -429,11 +466,31 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                       'AUD', 0, ?, 0,
                       'finance.CustomerPaymentReceived', ?, ?)
             ON CONFLICT (sales_order_header_id) DO UPDATE SET
-                payment_status = EXCLUDED.payment_status,
-                -- Full settlement completes the order. Forward-only and
-                -- cancelled-preserving (only advances from pre-completed states).
+                -- Payment lozenge tracks the ORDER, not a single invoice. A deposit
+                -- order's deposit invoice settles to 'paid' while the order's
+                -- balance is still outstanding — order-level that is 'partially_paid'
+                -- until paid_amount covers total_amount. (The invoice-level value
+                -- EXCLUDED.payment_status only seeds a stub row in the INSERT path.)
+                payment_status = CASE
+                    WHEN sales_order_360_view.total_amount > 0
+                      AND sales_order_360_view.total_amount
+                          - (sales_order_360_view.paid_amount + EXCLUDED.paid_amount) <= 0
+                        THEN 'paid'
+                    WHEN (sales_order_360_view.paid_amount + EXCLUDED.paid_amount) > 0
+                        THEN 'partially_paid'
+                    ELSE 'pending'
+                END,
+                -- Full settlement of the ORDER completes it — not merely one invoice
+                -- being paid. Paying a deposit must NOT complete the order (its
+                -- balance is still due), else the UI marks it 'completed' and hides
+                -- the still-valid Cancel action. Prepayment still completes here
+                -- (paid in full up front → outstanding hits zero); on-shipment
+                -- completes once the post-ship invoice is paid. Forward-only and
+                -- cancelled-preserving (advances only from pre-completed states).
                 order_status = CASE
-                    WHEN EXCLUDED.payment_status = 'paid'
+                    WHEN sales_order_360_view.total_amount > 0
+                      AND sales_order_360_view.total_amount
+                          - (sales_order_360_view.paid_amount + EXCLUDED.paid_amount) <= 0
                       AND sales_order_360_view.order_status IN ('pending', 'submitted', 'ready_to_ship', 'shipped')
                         THEN 'completed'
                     ELSE sales_order_360_view.order_status

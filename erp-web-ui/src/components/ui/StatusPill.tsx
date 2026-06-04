@@ -58,8 +58,10 @@ export function statusForOrder(status: string | null | undefined): { label: stri
     case "invoiced":
     case "paid":
     case "reserved":
+    case "refunded":
       return { label: titleCase(status!), tone: "success" };
     case "not_required":
+    case "released":
       return { label: titleCase(status!), tone: "neutral" };
     case "cancelled":
     case "rejected":

@@ -26,12 +26,16 @@ import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * Real-Postgres test for {@link JdbcSalesOrder360Projection}'s
- * {@code order_status} lifecycle: the column advances
- * {@code submitted → ready_to_ship → shipped → completed} as the driving
- * events land, and — because reporting consumes several topics and so can see
- * events out of order — each advance is <b>forward-only</b>: a late event never
- * downgrades a later state, and a terminal {@code 'cancelled'} is preserved.
+ * Real-Postgres test for {@link JdbcSalesOrder360Projection}'s status lifecycle:
+ * {@code order_status} advances {@code submitted → ready_to_ship → shipped →
+ * completed} as the driving events land, and — because reporting consumes
+ * several topics and so can see events out of order — each advance is
+ * <b>forward-only</b>: a late event never downgrades a later state, and a
+ * terminal {@code 'cancelled'} is preserved. Also covers the deposit/pegged/
+ * refund derivations: a paid deposit does not complete the order (its balance is
+ * still due), reaching {@code ready_to_ship} lifts a pegged buy-to-order line out
+ * of {@code 'failed'} stock, and cancelling a paid order releases its reservation
+ * and marks the payment {@code 'refunded'}.
  */
 class JdbcSalesOrder360ProjectionIT {
 
@@ -140,6 +144,66 @@ class JdbcSalesOrder360ProjectionIT {
     }
 
     @Test
+    void deposit_payment_does_not_complete_order_until_balance_is_paid() {
+        UUID id = UUID.randomUUID();
+        createOrder(id); // total 650.00
+        PROJECTION.recordReadyToShip(id, Instant.now(), "system");
+
+        // Deposit invoice paid in full (invoiceStatusAfter = PAID) but it is only
+        // part of the order total — the order is NOT complete and stays cancellable.
+        PROJECTION.recordPayment(id, new BigDecimal("325.00"),
+            CustomerPaymentReceived.INVOICE_STATUS_PAID, Instant.now(), "olivia");
+        assertThat(orderStatus(id)).isEqualTo("ready_to_ship");
+        assertThat(paymentStatus(id)).isEqualTo("partially_paid");
+
+        // Balance paid → order_status completes and payment settles in full.
+        PROJECTION.recordShipment(id, Instant.now(), "mike");
+        PROJECTION.recordPayment(id, new BigDecimal("325.00"),
+            CustomerPaymentReceived.INVOICE_STATUS_PAID, Instant.now(), "olivia");
+        assertThat(orderStatus(id)).isEqualTo("completed");
+        assertThat(paymentStatus(id)).isEqualTo("paid");
+    }
+
+    @Test
+    void ready_to_ship_lifts_a_pegged_line_out_of_failed_stock() {
+        UUID id = UUID.randomUUID();
+        createOrder(id);
+        // Buy-to-order: the immediate reservation fails (0 free stock); the
+        // dedicated supply is pegged at goods-receipt and the saga is advanced via
+        // ReplenishmentFulfilled — no fresh inventory.StockReserved ever arrives.
+        PROJECTION.recordStockReserved(id, StockReserved.STATUS_FAILED, Instant.now(), "system");
+        assertThat(stockStatus(id)).isEqualTo("failed");
+
+        PROJECTION.recordReadyToShip(id, Instant.now(), "system");
+        assertThat(stockStatus(id)).isEqualTo("reserved");
+    }
+
+    @Test
+    void cancelling_a_paid_deposit_releases_stock_and_marks_refunded() {
+        UUID id = UUID.randomUUID();
+        createOrder(id);
+        PROJECTION.recordReadyToShip(id, Instant.now(), "system"); // stock → reserved
+        PROJECTION.recordPayment(id, new BigDecimal("325.00"),
+            CustomerPaymentReceived.INVOICE_STATUS_PAID, Instant.now(), "olivia");
+        assertThat(stockStatus(id)).isEqualTo("reserved");
+
+        PROJECTION.recordCancellation(id, Instant.now(), "sam");
+        assertThat(orderStatus(id)).isEqualTo("cancelled");
+        assertThat(stockStatus(id)).isEqualTo("released");
+        assertThat(paymentStatus(id)).isEqualTo("refunded");
+    }
+
+    @Test
+    void cancelling_an_unpaid_order_does_not_mark_refunded() {
+        UUID id = UUID.randomUUID();
+        createOrder(id);
+        PROJECTION.recordCancellation(id, Instant.now(), "sam");
+        assertThat(orderStatus(id)).isEqualTo("cancelled");
+        // No money taken (on-shipment/COD cancelled pre-invoice) → nothing refunded.
+        assertThat(paymentStatus(id)).isEqualTo("pending");
+    }
+
+    @Test
     void stock_status_records_outcome_and_full_reservation_is_sticky() {
         UUID id = UUID.randomUUID();
         createOrder(id);
@@ -192,6 +256,12 @@ class JdbcSalesOrder360ProjectionIT {
     private String stockStatus(UUID id) {
         return JDBC.queryForObject(
             "SELECT stock_status FROM reporting.sales_order_360_view WHERE sales_order_header_id = ?",
+            String.class, id);
+    }
+
+    private String paymentStatus(UUID id) {
+        return JDBC.queryForObject(
+            "SELECT payment_status FROM reporting.sales_order_360_view WHERE sales_order_header_id = ?",
             String.class, id);
     }
 

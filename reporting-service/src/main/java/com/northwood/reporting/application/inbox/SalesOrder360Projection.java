@@ -47,14 +47,23 @@ public interface SalesOrder360Projection {
      * (every line reserved from stock or produced): advance {@code order_status}
      * to {@code 'ready_to_ship'} so the shipment UI's order picker surfaces it.
      * Also marks {@code manufacturing_status='not_required'} when it is still
-     * {@code 'pending'} (a stock-covered order skipped manufacturing). Never
-     * downgrades a terminal {@code 'cancelled'}. Idempotent.
+     * {@code 'pending'} (a stock-covered order skipped manufacturing), and lifts
+     * {@code stock_status} to {@code 'reserved'} from any not-yet-covered state
+     * ({@code pending}/{@code failed}/{@code partially_reserved}) — the only path
+     * that clears a buy-to-order line's {@code 'failed'}, since its pegged supply
+     * signals the saga via {@code ReplenishmentFulfilled}, not a fresh
+     * {@code inventory.StockReserved}. Never downgrades a terminal
+     * {@code 'cancelled'}. Idempotent.
      */
     void recordReadyToShip(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
 
     /**
      * Record that the sales fulfilment saga has finished compensation: flip
-     * {@code order_status} to {@code 'cancelled'}.
+     * {@code order_status} to {@code 'cancelled'}, release a {@code 'reserved'}
+     * {@code stock_status} to {@code 'released'}, and — when the order had taken
+     * money (a paid prepayment/deposit, the only invoice a pre-shipment cancel
+     * can have) — set {@code payment_status='refunded'} to mirror finance's
+     * automatic Dr 2110 / Cr 1000 refund.
      */
     void recordCancellation(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
 
@@ -69,9 +78,13 @@ public interface SalesOrder360Projection {
 
     /**
      * Record a customer payment: bump {@code paid_amount}/{@code outstanding}
-     * and set {@code payment_status}. On full settlement
-     * ({@code invoiceStatusAfter == paid}) advance {@code order_status} to
-     * {@code 'completed'} (forward-only; preserves {@code 'cancelled'}).
+     * and set {@code payment_status} from the ORDER-level balance
+     * ({@code paid}/{@code partially_paid}/{@code pending}) — a deposit invoice
+     * settling to paid leaves the order {@code partially_paid} while its balance
+     * is outstanding. Advance {@code order_status} to {@code 'completed'} only
+     * once {@code paid_amount} covers {@code total_amount} (forward-only;
+     * preserves {@code 'cancelled'}). {@code invoiceStatusAfter} seeds only the
+     * stub-row INSERT path.
      */
     void recordPayment(
         UUID salesOrderHeaderId,
