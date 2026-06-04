@@ -155,6 +155,16 @@
     </ol>
     <div class="watch"><b>Watch:</b> <span class="path">Finance → Journal Entries</span> shows the deposit→revenue reclassification at shipment.</div>
 
+    <h3>3.3 — Planning time fence (deferred release)</h3>
+    <p>A product's <b>planning time fence</b> holds a far-future order back: instead of reserving stock the moment it's placed, the fulfilment saga waits until <i>requested-delivery − fence days</i>, then reserves as usual. <code>0</code> (the default) = no fence = reserve immediately. Useful for made/bought-to-order goods you don't want to commit stock to weeks early.</p>
+    <ol>
+      <li><span class="persona">emma</span> <span class="path">Master Data → Products</span> → open a product (e.g. <b>FG-TABLE-001</b>) → <b>Planning fence</b> → set <b>7</b> days → Save. (The <i>Replenishment</i> card now shows <b>Planning Fence: 7 days</b>.)</li>
+      <li><span class="persona">sarah</span> <span class="path">Sales → Sales Orders → New</span> — order that product with a <b>Requested delivery date far in the future</b> (e.g. a month out). Unlike a normal order it does <b>not</b> march to <code>ready_to_ship</code>: it parks with no stock reserved (Stock stays <code>pending</code>) until a week before the delivery date.</li>
+      <li>For contrast, place a second order for the same product with a <b>near</b> requested-delivery (inside the 7 days) — it reserves immediately and proceeds the usual way.</li>
+    </ol>
+    <div class="note"><b>Note:</b> there's no dedicated "Scheduled" pill yet — a parked order just shows header <code>Submitted</code> with Stock <code>pending</code>. The saga sits at <code>awaiting_release</code> (see <code>docs/demo-script.md</code> §1.6 for the exact SQL) and wakes itself on the release date without re-checking the fence (decide-once). A parked order is still cancellable: <span class="persona">sam</span> can cancel it before release — nothing was reserved, so compensation completes cleanly.</div>
+    <div class="watch"><b>Watch:</b> the far-future order sits idle on <span class="path">Sales → Sales Orders</span> while the near-term one walks straight to ready-to-ship.</div>
+
     <h2 id="d4">Demo 4 — Failure &amp; cancel paths <a class="top-link" href="#start">↑ top</a></h2>
 
     <h3>4.1 — Cancel an order (role gate)</h3>

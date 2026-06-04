@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { DollarSign, Package2, Wrench, Ban, Users, Star } from "lucide-react";
+import { DollarSign, Package2, Wrench, Ban, Users, Star, CalendarClock } from "lucide-react";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { DetailLayout } from "@/components/ui/DetailLayout";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -24,6 +24,7 @@ interface Product {
   reorderPoint: string;
   reorderQuantity: string;
   replenishmentStrategy: string | null;
+  planningTimeFenceDays: number;
   valuationClass: string | null;
   status: string;
   version: number;
@@ -51,7 +52,7 @@ interface Supplier {
   status: string;
 }
 
-type DialogKind = "pricing" | "reorder" | "make-vs-buy" | "discontinue" | "vendors" | null;
+type DialogKind = "pricing" | "reorder" | "planning-fence" | "make-vs-buy" | "discontinue" | "vendors" | null;
 
 /**
  * Catalog detail page. The four authoring actions Emma drives the
@@ -140,6 +141,14 @@ export function ProductDetail() {
               Reorder policy
             </ActionButton>
             <ActionButton
+              icon={<CalendarClock className="h-4 w-4" />}
+              onClick={() => setDialog("planning-fence")}
+              requiresRole="catalog_manager"
+              disabled={isDiscontinued}
+            >
+              Planning fence
+            </ActionButton>
+            <ActionButton
               icon={<Wrench className="h-4 w-4" />}
               onClick={() => setDialog("make-vs-buy")}
               requiresRole="catalog_manager"
@@ -194,6 +203,7 @@ export function ProductDetail() {
                   <ReadOnlyField label="Strategy" value={formatStrategy(data.replenishmentStrategy)} />
                   <ReadOnlyField label="Reorder Point" value={<span className="tabular-nums">{formatQty(data.reorderPoint)}</span>} />
                   <ReadOnlyField label="Reorder Qty" value={<span className="tabular-nums">{formatQty(data.reorderQuantity)}</span>} />
+                  <ReadOnlyField label="Planning Fence" value={formatFence(data.planningTimeFenceDays)} />
                 </FormSection>
                 <FormSection title="Classification">
                   <ReadOnlyField label="Valuation class" value={data.valuationClass?.replace(/_/g, " ") ?? "—"} />
@@ -245,6 +255,12 @@ export function ProductDetail() {
       />
       <ReorderPolicyDialog
         open={dialog === "reorder"}
+        product={data}
+        onClose={close}
+        onSuccess={() => { close(); queryClient.invalidateQueries({ queryKey: ["product", id] }); queryClient.invalidateQueries({ queryKey: ["products"] }); }}
+      />
+      <PlanningFenceDialog
+        open={dialog === "planning-fence"}
         product={data}
         onClose={close}
         onSuccess={() => { close(); queryClient.invalidateQueries({ queryKey: ["product", id] }); queryClient.invalidateQueries({ queryKey: ["products"] }); }}
@@ -413,6 +429,45 @@ function ReorderPolicyDialog({ open, product, onClose, onSuccess }: DialogProps)
           </Field>
           {error && (
             <div className="col-span-2 rounded-md border border-status-error/30 bg-status-error-soft px-3 py-2 text-xs text-status-error">
+              {error}
+            </div>
+          )}
+        </div>
+      }
+    />
+  );
+}
+
+// ---- Planning time fence dialog ----
+
+function PlanningFenceDialog({ open, product, onClose, onSuccess }: DialogProps) {
+  const [days, setDays] = useState(String(product.planningTimeFenceDays));
+  const [error, setError] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: () => apiPut(`/api/products-cmd/${product.productId}/planning-time-fence`, {
+      planningTimeFenceDays: Number(days),
+    }),
+    onSuccess,
+    onError: (err) => setError(err instanceof Error ? err.message : "Failed."),
+  });
+
+  return (
+    <ConfirmDialog
+      open={open}
+      title="Set planning time fence"
+      message={<>How many days before an order's requested delivery the fulfilment saga starts reserving stock for <strong>{product.sku}</strong>. A far-future order parks at <code>awaiting_release</code> until <em>need-by − fence</em>, then reserves as usual. <code>0</code> = no fence (reserve immediately). Sales picks this up via <code>product.PlanningTimeFenceChanged</code>.</>}
+      confirmLabel="Save"
+      busy={mutation.isPending}
+      onCancel={onClose}
+      onConfirm={() => mutation.mutate()}
+      body={
+        <div className="grid grid-cols-1 gap-3">
+          <Field label="Planning time fence (days)" required hint="0 reserves immediately; e.g. 7 holds a far-future order until a week before its requested delivery date.">
+            <NumberInput min="0" step="1" value={days} onChange={(e) => setDays(e.target.value)} />
+          </Field>
+          {error && (
+            <div className="rounded-md border border-status-error/30 bg-status-error-soft px-3 py-2 text-xs text-status-error">
               {error}
             </div>
           )}
@@ -666,6 +721,11 @@ function formatStrategy(v: string | null | undefined): string {
   if (v === "to_stock") return "To stock";
   if (v === "to_order") return "To order";
   return v.replace(/_/g, " ");
+}
+
+function formatFence(days: number | null | undefined): string {
+  if (days == null || days <= 0) return "None (reserve immediately)";
+  return `${days} day${days === 1 ? "" : "s"}`;
 }
 
 function formatMoney(v: string | null | undefined): string {

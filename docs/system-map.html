@@ -1156,7 +1156,7 @@ window.NORTHWOOD_EVENTS = [
     event: "ReplenishmentFulfilled",
     consumers: [
       { dest: "reporting", name: "reporting.replenishment-history.fulfilled",
-        desc: `<code>reporting.replenishment_history_view.status='fulfilled'</code>, <code>fulfilled_at</code>. Terminal state on the projection.` },
+        desc: `Two writes: (1) <code>reporting.replenishment_history_view.status='fulfilled'</code>, <code>fulfilled_at</code> — terminal state on that projection; (2) for an order-pegged fulfilment (<code>pegged=true</code> with a non-null <code>sourceSalesOrderHeaderId</code>) it also lifts the <code>reporting.sales_order_360_view</code> row to <code>order_status='ready_to_ship'</code> / <code>stock_status='reserved'</code> — the <strong>only</strong> signal the 360 gets for a pegged line, since the saga ships off the peg and emits no <code>SalesOrderReadyToShip</code> and no fresh <code>StockReserved</code>.` },
       { dest: "sales", name: "sales.fulfilment-saga.replenishment-fulfilled",
         desc: `Replenishment fan-in: when payload carries non-null <code>sourceSalesOrderHeaderId</code> + <code>sourceSalesOrderLineId</code> (sales_order_shortage or order_pegged reason), looks up the fulfilment saga and removes the line id from <code>saga.data.outstandingReplenishmentLineIds</code>. When the set empties, the next state depends on <code>payload.pegged</code>: any shortage top-up involved (<code>pegged=false</code>) → <code>stock_reservation_incomplete → stock_reservation_requested</code> + re-emit <code>sales.StockReservationRequested</code> to retry against the now-restocked balance; all lines order-pegged (<code>pegged=true</code>, already reserved on completion) → <code>stock_reservation_incomplete → ready_to_ship</code> <strong>directly</strong>, no re-reservation. Null back-references (reorder-point or WO-shortage replenishments) are silently ignored.` },
     ]
@@ -1471,6 +1471,8 @@ window.NORTHWOOD_PROJECTIONS = [
       { dest: "reporting", tables: [
         { name: "replenishment_history_view", kind: "read-model",
           events: ["ReplenishmentRequested", "ReplenishmentFulfilled", "ReplenishmentCancelled"] },
+        { name: "sales_order_360_view", kind: "read-model",
+          events: ["ReplenishmentFulfilled"] },  // pegged-only: lifts order_status→ready_to_ship / stock_status→reserved
       ]},
       // Replenishment fan-in: ReplenishmentFulfilled (all short lines) re-enters
       // stock_reservation_requested + re-emits StockReservationRequested for

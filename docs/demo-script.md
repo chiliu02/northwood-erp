@@ -249,6 +249,8 @@ curl -X PUT http://localhost:8081/api/products/{id}/planning-time-fence \
   -d '{"planningTimeFenceDays":7}'
 ```
 
+**UI:** the same command is on the product detail page — **Master Data → Products → open the product → Planning fence** (catalog_manager). The *Replenishment* card shows the current value, and the order form's *Requested delivery date* drives the gate. A fully UI-driven walkthrough (set fence → far-future order parks → near-term order reserves) is in the web Help guide, **Demo 3.3**.
+
 **Outbox:** `product.PlanningTimeFenceChanged`. **Projection:** sales consumes it (`PlanningTimeFenceChangedHandler` → `sales.product_card.planning_time_fence_days`). **Behaviour:** the sales fulfilment saga's reservation step defers a far-future order until `need-by − max(line fence)` — parking at `awaiting_release` until that date, then emitting the reservation as usual. `0` (the default) = no fence = reserve immediately (today's behaviour). To see it park, place an order whose `requestedDeliveryDate` is more than the fence beyond today and inspect `saga_state`:
 
 ```sql

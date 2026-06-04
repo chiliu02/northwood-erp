@@ -64,8 +64,9 @@ export function SalesOrderNew() {
   const [orderNumber, setOrderNumber] = useState(() => `SO-${Date.now()}`);
   const [customerCode, setCustomerCode] = useState("");
   // Default to a near-future delivery window so newly-placed orders carry a
-  // sensible requested-by date rather than showing N/A. Informational only
-  // (REQ-SAL-013) — the clerk may change or clear it before placing.
+  // sensible requested-by date rather than showing N/A. Drives the planning-
+  // time-fence gate for fenced products (REQ-SAL-013); otherwise informational.
+  // The clerk may change or clear it before placing.
   const [requestedDeliveryDate, setRequestedDeliveryDate] = useState(defaultRequestedDeliveryDate);
   const [currencyCode, setCurrencyCode] = useState("AUD");
   const [paymentTerms, setPaymentTerms] = useState<"on_shipment" | "prepayment" | "cash_on_delivery" | "deposit">("on_shipment");
@@ -212,7 +213,7 @@ export function SalesOrderNew() {
             </FormSection>
 
             <FormSection title="Terms">
-              <Field label="Requested delivery date" hint="Defaults to two weeks out; informational only — does not schedule fulfilment.">
+              <Field label="Requested delivery date" hint="Defaults to two weeks out. For a product with a planning time fence, fulfilment is held until this date minus the fence days; otherwise it has no scheduling effect.">
                 <input
                   type="date"
                   value={requestedDeliveryDate}
