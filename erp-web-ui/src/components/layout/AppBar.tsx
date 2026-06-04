@@ -1,4 +1,4 @@
-import { Bell, LogOut, Search } from "lucide-react";
+import { Bell, CircleHelp, LogOut, Search } from "lucide-react";
 import { useCurrentUser } from "../../lib/UserContext";
 
 /**
@@ -36,6 +36,17 @@ export function AppBar() {
       </div>
 
       <div className="flex items-center gap-1">
+        <a
+          href="/help.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-bg-subtle"
+          aria-label="Help"
+          title="Help — step-by-step demo guide"
+        >
+          <CircleHelp className="h-5 w-5" />
+        </a>
+
         <button
           type="button"
           className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-bg-subtle"

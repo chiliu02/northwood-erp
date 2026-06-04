@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Northwood ERP — Demo Guide</title>
+<style>
+  :root {
+    --bg: #0e1117; --surface: #161b22; --elevated: #1c2230; --border: #2a3140;
+    --text: #e6edf3; --muted: #8b949e; --secondary: #c9d1d9;
+    --accent: #4493f8; --accent-soft: #16263f;
+    --ok: #3fb950; --warn: #d29922; --code-bg: #1b2330;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6; font-size: 15px;
+  }
+  .wrap { display: grid; grid-template-columns: 250px 1fr; max-width: 1300px; margin: 0 auto; }
+  nav.toc {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    border-right: 1px solid var(--border); padding: 1.5rem 1rem; background: var(--surface);
+  }
+  nav.toc .brand { display: flex; align-items: center; gap: .5rem; margin-bottom: 1rem; font-weight: 700; }
+  nav.toc .brand .mark {
+    width: 26px; height: 26px; border-radius: 6px; background: var(--accent);
+    color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700;
+  }
+  nav.toc a { display: block; color: var(--secondary); text-decoration: none; padding: .25rem .5rem; border-radius: 6px; font-size: 13.5px; }
+  nav.toc a:hover { background: var(--elevated); color: var(--text); }
+  main { padding: 2rem 2.75rem 5rem; max-width: 900px; }
+  h1 { font-size: 1.7rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.3rem; margin: 2.5rem 0 .5rem; padding-bottom: .35rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.05rem; margin: 1.6rem 0 .4rem; }
+  p { margin: .5rem 0 .8rem; }
+  .lead { color: var(--muted); }
+  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 5px; padding: .08em .4em; font-size: .86em; }
+  .path { color: var(--accent); font-weight: 600; white-space: nowrap; }
+  ol, ul { padding-left: 1.3rem; }
+  ol li, ul li { margin: .35rem 0; }
+  .persona {
+    display: inline-block; background: var(--accent-soft); border: 1px solid #284a72; color: #9ecbff;
+    border-radius: 999px; padding: .1rem .6rem; font-size: 12.5px; font-weight: 600; margin-right: .4rem;
+  }
+  .watch {
+    border-left: 3px solid var(--accent); background: var(--accent-soft);
+    padding: .6rem .9rem; border-radius: 0 6px 6px 0; margin: .8rem 0; font-size: 14px;
+  }
+  .note {
+    border-left: 3px solid var(--warn); background: #251f10;
+    padding: .6rem .9rem; border-radius: 0 6px 6px 0; margin: .8rem 0; font-size: 14px;
+  }
+  .watch b, .note b { color: var(--text); }
+  table { border-collapse: collapse; width: 100%; margin: .8rem 0; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: .45rem .6rem; text-align: left; vertical-align: top; }
+  th { background: var(--elevated); color: var(--secondary); font-weight: 600; }
+  .pwd { color: var(--muted); font-size: 13px; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  .top-link { font-size: 12px; color: var(--muted); text-decoration: none; }
+  .top-link:hover { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="toc">
+    <div class="brand"><span class="mark">N</span> Demo Guide</div>
+    <a href="#start">Getting started</a>
+    <a href="#personas">Personas &amp; switching</a>
+    <a href="#watch">Pages to watch</a>
+    <a href="#d1">1 · Product master</a>
+    <a href="#d2">2 · Reporting read models</a>
+    <a href="#d3">3 · Sales-order fulfilment</a>
+    <a href="#d4">4 · Failure &amp; cancel paths</a>
+    <a href="#d5">5 · Make-to-stock work order</a>
+    <a href="#d6">6 · Purchase-to-pay</a>
+    <a href="#d7">7 · End-to-end (all sagas)</a>
+    <a href="#d8">8 · Security &amp; audit</a>
+    <a href="#d9">9 · Broker outage</a>
+    <a href="#d10">10 · Make/buy-to-order</a>
+  </nav>
+
+  <main>
+    <h1>Northwood ERP — Demo Guide</h1>
+    <p class="lead">Step-by-step for driving each demo through the web UI. Every step names the persona to sign in as and the sidebar path to follow. Open this any time from the <b>?</b> icon in the top bar.</p>
+
+    <h2 id="start">Getting started</h2>
+    <ul>
+      <li>Sign in at the Keycloak login screen. <b>Password is the same as the username</b> (e.g. <code>sarah</code> / <code>sarah</code>).</li>
+      <li>The left sidebar groups screens by module (Master Data, Sales, Inventory, Manufacturing, Purchasing, Finance, Reporting, System). Click a module to expand it.</li>
+      <li>The <b>Home</b> page shows quick links tailored to your role.</li>
+      <li>Action buttons you don't have the role for are disabled with a <i>"Requires role: …"</i> tooltip — that's the security model, not a bug.</li>
+    </ul>
+
+    <h2 id="personas">Personas &amp; switching</h2>
+    <p>Each demo persona maps to one role. To switch persona mid-demo: click the <b>Sign out</b> icon (top-right), then sign back in as the new persona on the Keycloak form. The UI re-reads your role automatically.</p>
+    <table>
+      <tr><th>Sign in as</th><th>Role</th><th>Does</th></tr>
+      <tr><td>emma</td><td>catalog_manager</td><td>Product catalogue — pricing, reorder policy, make-vs-buy, discontinue</td></tr>
+      <tr><td>sarah</td><td>sales_clerk</td><td>Register customers, place sales orders</td></tr>
+      <tr><td>sam</td><td>sales_manager</td><td>Cancel sales orders</td></tr>
+      <tr><td>mike</td><td>warehouse_clerk</td><td>Post goods receipts &amp; shipments</td></tr>
+      <tr><td>wendy</td><td>warehouse_manager</td><td>Stock adjustments; oversees the warehouse</td></tr>
+      <tr><td>linda</td><td>production_planner</td><td>Plan/prioritise work orders, complete operations, BOMs</td></tr>
+      <tr><td>paul</td><td>production_supervisor</td><td>Complete operations, sign off work orders</td></tr>
+      <tr><td>tom</td><td>purchasing_clerk</td><td>Raise requisitions, process goods receipts</td></tr>
+      <tr><td>priya</td><td>purchasing_manager</td><td>Approve purchase orders, author supplier prices</td></tr>
+      <tr><td>olivia</td><td>accountant</td><td>Record supplier invoices, process AP/AR payments</td></tr>
+      <tr><td>daniel</td><td>finance_manager</td><td>Approve manual-review invoices, reverse journals</td></tr>
+      <tr><td>aaron</td><td>auditor</td><td>Read-only across every screen</td></tr>
+    </table>
+
+    <h2 id="watch">Pages to keep on screen</h2>
+    <p>These reporting/detail views update live as a saga advances — open one on a side screen and refresh:</p>
+    <ul>
+      <li><span class="path">Sales → Sales Orders → (a row)</span> — the <b>Sales Order detail</b> roll-up (reservation → shipment → invoice → payment). The headline view.</li>
+      <li><span class="path">Reporting → PO Tracking</span> — ordered / received / invoiced / paid money bars.</li>
+      <li><span class="path">Manufacturing → Production Board</span> — per-work-order progress.</li>
+      <li><span class="path">Reporting → Material Shortage</span> — open → purchase requested → purchase ordered → resolved.</li>
+      <li><span class="path">Reporting → Financial Dashboard</span> — revenue, COGS, gross %, open counts.</li>
+      <li><span class="path">Finance → Journal Entries</span> — balanced debit/credit pairs landing per action.</li>
+    </ul>
+
+    <hr />
+
+    <h2 id="d1">Demo 1 — Product master <a class="top-link" href="#start">↑ top</a></h2>
+    <p><span class="persona">emma</span> The product service owns SKUs, pricing, reorder policy, and make-vs-buy. All edits are inline actions on the product detail page.</p>
+    <ol>
+      <li>Go to <span class="path">Master Data → Products</span> and open <b>Wooden Dining Table</b> (FG-TABLE-001).</li>
+      <li><b>Change pricing:</b> click <b>Change pricing</b> → set sales price + standard cost → Save.</li>
+      <li><b>Reorder policy:</b> click <b>Reorder policy</b> → set reorder point + quantity → Save.</li>
+      <li><b>Make vs buy:</b> click <b>Make vs buy</b> → choose Manufactured / Purchased / Both → Save. (Drives whether replenishment routes to manufacturing or purchasing.)</li>
+      <li><b>Approved vendors:</b> open the <b>Vendors</b> tab → <b>Edit vendors</b> → tick approved suppliers, star a preferred one → Save. (The preferred vendor drives auto-sourcing on POs.)</li>
+      <li><b>Discontinue:</b> click <b>Discontinue</b> → confirm. The SKU can no longer be ordered, requisitioned, or produced.</li>
+    </ol>
+    <div class="watch"><b>Watch:</b> changes ripple to the other services' projections within a second — e.g. a make-vs-buy flip changes whether the SKU appears in the BOM picker (manufactured) or the requisition picker (purchased).</div>
+
+    <h2 id="d2">Demo 2 — Reporting read models <a class="top-link" href="#start">↑ top</a></h2>
+    <p><span class="persona">any</span> Reporting is read-only — it projects cross-service events into dashboards. Just browse the <span class="path">Reporting</span> module: <b>Available-to-Promise</b>, <b>Material Shortage</b>, <b>PO Tracking</b>, <b>Financial Dashboard</b>. The per-order roll-up lives on each <b>Sales Order detail</b> page. Run any other demo with one of these open and watch the numbers fill in.</p>
+
+    <h2 id="d3">Demo 3 — Sales-order fulfilment (happy path) <a class="top-link" href="#start">↑ top</a></h2>
+    <p>A stock-covered order ships straight from inventory — no manufacturing involved.</p>
+    <ol>
+      <li><span class="persona">sarah</span> <span class="path">Sales → Sales Orders → New</span>. Pick customer <b>Sydney Home Living</b> (CUST-001), add <b>1 × FG-TABLE-001</b>, Create. You land on the Sales Order detail page; with stock on hand the saga reaches <code>ready_to_ship</code> in one tick.</li>
+      <li><span class="persona">mike</span> <span class="path">Inventory → Shipments → New</span>. Pick the ready-to-ship order, confirm. Finance auto-creates the customer invoice; the order's roll-up shows it.</li>
+      <li><span class="persona">olivia</span> <span class="path">Finance → Payments → New</span> → <b>Customer</b> tab. Pick the customer invoice, record full payment. The order reaches <code>completed</code>.</li>
+    </ol>
+    <div class="watch"><b>Watch:</b> the Sales Order detail roll-up walks reservation → shipment → invoice → payment as you go.</div>
+
+    <h3>3.2 — Prepayment / cash-with-order</h3>
+    <p>Same flow, money first. <span class="persona">sarah</span> place an order and (in the New form) set <b>Payment terms = prepayment</b>. The order shows an <i>"awaiting prepayment"</i> lozenge; a shipment is blocked until paid.</p>
+    <ol>
+      <li><span class="persona">olivia</span> <span class="path">Finance → Payments → New → Customer</span> — pay the prepayment invoice in full. The lozenge clears and fulfilment proceeds.</li>
+      <li><span class="persona">mike</span> ship it when the order reaches <code>ready_to_ship</code>. Finance reclassifies the deposit to revenue at shipment.</li>
+    </ol>
+    <div class="watch"><b>Watch:</b> <span class="path">Finance → Journal Entries</span> shows the deposit→revenue reclassification at shipment.</div>
+
+    <h2 id="d4">Demo 4 — Failure &amp; cancel paths <a class="top-link" href="#start">↑ top</a></h2>
+
+    <h3>4.1 — Cancel an order (role gate)</h3>
+    <ol>
+      <li><span class="persona">sarah</span> place an order for more than is on hand so it parks at <code>stock_reservation_incomplete</code>.</li>
+      <li>Still as <b>sarah</b>, open the Sales Order detail and hover <b>Cancel order</b> — it's <b>disabled</b> with <i>"Requires role: sales_manager"</i>.</li>
+      <li><span class="persona">sam</span> sign out, sign back in as <b>sam</b>. Now <b>Cancel order</b> is enabled — click it, give a reason, confirm.</li>
+    </ol>
+    <div class="watch"><b>Watch:</b> the roll-up walks <code>compensating → compensated</code>; the reservation is released and the order shows <code>cancelled</code>.</div>
+    <div class="note"><b>Note:</b> cancel is rejected after the order has shipped (that needs a credit-note/return flow, out of scope).</div>
+
+    <h3>4.1.1 — Cancel a paid deposit order → automatic refund</h3>
+    <p><span class="persona">sarah</span> place a <b>deposit</b> order and <span class="persona">olivia</span> pay the deposit invoice. Then <span class="persona">sam</span> cancel it before shipment — finance posts the refund automatically.</p>
+    <div class="watch"><b>Watch:</b> a green <b>"refunded"</b> lozenge appears; <span class="path">Finance → Journal Entries</span> shows the <code>customer_refund</code> posting (Customer Deposits nets to zero).</div>
+
+    <h3>4.2 — Reservation comes back short</h3>
+    <p><span class="persona">sarah</span> order more than on-hand of a <i>makeable</i> product. Inventory raises a make-to-stock work order to top up; the order parks at <code>stock_reservation_incomplete</code> and retries once stock arrives (continue with Demo 5). If the product has no active BOM (or no vendor), the order is <code>rejected</code> instead.</p>
+
+    <h2 id="d5">Demo 5 — Make-to-stock work order <a class="top-link" href="#start">↑ top</a></h2>
+    <p>A work order appears when inventory dispatches a manufacturing-routed replenishment (from a shortage). Drive it on the board.</p>
+    <ol>
+      <li><span class="persona">linda</span> <span class="path">Manufacturing → Production Board</span>. Open the released work order.</li>
+      <li>For each operation in sequence (10, 20, 30 …) click <b>Complete operation</b>. Each completion advances the work-order saga.</li>
+      <li>When the last operation completes, on-hand is bumped and any parked sales order re-reserves and reaches <code>ready_to_ship</code>.</li>
+    </ol>
+    <div class="note"><b>Note:</b> if a BOM line is a sub-assembly, a child work order is created — complete its operations first; the parent holds until children finish.</div>
+    <div class="watch"><b>Watch:</b> <span class="path">Manufacturing → Production Board</span> shows each work order walk released → in_progress → completed.</div>
+
+    <h2 id="d6">Demo 6 — Purchase-to-pay <a class="top-link" href="#start">↑ top</a></h2>
+    <ol>
+      <li><span class="persona">tom</span> <span class="path">Purchasing → Purchase Requisitions → New</span>. The requisition number is auto-filled (editable). Add a <b>purchased</b> product (e.g. RM-LEG-001) with a quantity, Create. It auto-converts to a <b>draft</b> purchase order.</li>
+      <li><span class="persona">priya</span> <span class="path">Purchasing → Purchase Orders</span> → open the draft PO → <b>Approve</b> (optionally add a note). It flips to <code>sent</code>.</li>
+      <li><span class="persona">mike</span> (or tom) <span class="path">Inventory → Goods Receipts → New</span>. Pick the PO and its line from the picker, set received quantity, post.</li>
+      <li><span class="persona">olivia</span> <span class="path">Finance → Supplier Invoices → New</span>. Pick the PO + goods receipt, confirm the lines, record. Finance runs the 3-way match (quantity + price). On match it auto-approves.</li>
+      <li><span class="persona">olivia</span> <span class="path">Finance → Payments → New → Supplier</span>. Pick the approved invoice, record payment. The PO flips to <code>paid</code>.</li>
+    </ol>
+    <div class="note"><b>Variance branch:</b> record an invoice with a unit price &gt; 2% off the PO price and it parks at <code>three_way_match_failed</code>. Review it at <span class="path">Finance → Pending Review</span> — <span class="persona">daniel</span> can manual-approve or reject.</div>
+    <div class="watch"><b>Watch:</b> <span class="path">Reporting → PO Tracking</span> — ordered / received / invoiced / paid bars accumulate; the Match column flips to <i>Matched</i> once the invoice is approved.</div>
+
+    <h2 id="d7">Demo 7 — End-to-end (all three sagas) <a class="top-link" href="#start">↑ top</a></h2>
+    <p>One big order that touches every service. Pre-state: little/no FG-TABLE on hand and short raw materials, so the order triggers manufacturing <i>and</i> purchasing.</p>
+    <ol>
+      <li><span class="persona">sarah</span> place an order for <b>10 × FG-TABLE-001</b> for CUST-001. It parks at <code>stock_reservation_incomplete</code>.</li>
+      <li>Inventory raises a make-to-stock work order; releasing it hits a raw-material shortage, which inventory routes to purchasing as a PR → PO.</li>
+      <li><span class="persona">priya</span> approve the PO (if not auto-approved); <span class="persona">mike</span> post the goods receipt for the raw materials (Demo 6 steps 2–3).</li>
+      <li><span class="persona">linda</span> complete the work order operations on the <span class="path">Production Board</span> (Demo 5). Finished goods land; the parked sales order re-reserves to <code>ready_to_ship</code>.</li>
+      <li><span class="persona">mike</span> ship the 10 units; <span class="persona">olivia</span> record the supplier invoice + pay it, and receive the customer's payment (Demos 3 &amp; 6 final steps).</li>
+    </ol>
+    <div class="watch"><b>Watch (side screens):</b> Sales Order detail, PO Tracking, Production Board, Material Shortage, Available-to-Promise, and Financial Dashboard all update as the three sagas run concurrently.</div>
+
+    <h2 id="d8">Demo 8 — Security &amp; audit <a class="top-link" href="#start">↑ top</a></h2>
+    <ul>
+      <li><b>Login:</b> open the app cold (or sign out) → you're redirected to Keycloak → sign in → the top-right chip shows your name + role.</li>
+      <li><b>Role gate:</b> as <span class="persona">sarah</span> the <b>Cancel order</b> action is disabled (tooltip). Switch to <span class="persona">sam</span> and it's enabled. As <span class="persona">aaron</span> (auditor) every mutating action is disabled, but reading works everywhere.</li>
+      <li><b>Audit timeline:</b> on a Sales Order detail page open <b>View audit</b>, or go to <span class="path">System → Audit Log</span>. Every event is stamped with its source service, type, and actor (e.g. the cancel row shows <code>sam</code>; saga-driven rows show <code>system</code>).</li>
+      <li><b>Reverse a journal:</b> as <span class="persona">daniel</span> open <span class="path">Finance → Journal Entries</span>, pick a posted entry, click <b>Reverse</b>. (Disabled for olivia.)</li>
+    </ul>
+
+    <h2 id="d9">Demo 9 — Broker outage (auto-recovery) <a class="top-link" href="#start">↑ top</a></h2>
+    <p>Shows that nothing is lost if the message broker goes down — the outbox holds events and replays them on recovery.</p>
+    <div class="note"><b>Note:</b> stopping/starting the broker is a terminal action, not a UI one — run <code>docker stop northwood-kafka</code> then later <code>docker start northwood-kafka</code>. The web UI is where you <i>observe</i> it.</div>
+    <ol>
+      <li>Open a <b>Sales Order detail</b> page for an in-flight order.</li>
+      <li>Stop the broker, then <span class="persona">sarah</span> place a normal order — it still succeeds (the command path doesn't touch the broker), but the roll-up <b>stalls</b> at an early state because its events can't reach the other services.</li>
+      <li>Start the broker again. With no restart or manual action, the roll-up <b>resumes</b> and marches the order through to <code>completed</code> — just delayed by the outage.</li>
+    </ol>
+
+    <h2 id="d10">Demo 10 — Make / buy-to-order (pegged supply) <a class="top-link" href="#start">↑ top</a></h2>
+    <p>Some SKUs are order-pegged (<code>to_order</code>): an order raises dedicated supply earmarked to that line, instead of drawing from the shared pool.</p>
+
+    <h3>10.1 — Buy-to-stock baseline (contrast)</h3>
+    <p><span class="persona">sarah</span> order <b>1 × FG-RUG-001</b> (Woven Floor Rug). It has stock on hand, reserves from the pool, and goes straight to <code>ready_to_ship</code> — the ordinary off-the-shelf path. Keep it on screen next to 10.2.</p>
+
+    <h3>10.2 — Buy-to-order (pegged PO)</h3>
+    <ol>
+      <li><span class="persona">sarah</span> order <b>1 × FG-CARPET-001</b> (Custom-design Carpet) — 0 on hand, <code>to_order</code>. The order parks while a dedicated purchase order is raised for exactly the line quantity, sourced to <b>Floor Coverings Direct</b> (SUP-006).</li>
+      <li><span class="persona">priya</span> approve the PR/PO (Demo 6 step 2).</li>
+      <li><span class="persona">wendy</span> (or mike) post the goods receipt. The received unit is reserved to the SO line in the same step — it never enters available-to-promise.</li>
+      <li>The order goes <code>stock_reservation_incomplete → ready_to_ship</code> directly (ships off the peg, no re-reservation). <span class="persona">mike</span> ship it.</li>
+    </ol>
+
+    <h3>10.3 — Make-to-order (configure a SKU live)</h3>
+    <p><span class="persona">emma</span> take a manufactured FG (e.g. FG-CHAIR-001): on its product detail page set <b>Reorder policy</b> to 0/0, then set the <b>replenishment strategy</b> to <code>to_order</code>. Then <span class="persona">sarah</span> order it beyond on-hand — the same pegged flow, but the dedicated supply is a <b>work order</b> (complete it on the Production Board).</p>
+
+    <h3>10.4 — Cancel a pegged order</h3>
+    <p><span class="persona">sam</span> cancel the carpet order (any pre-shipment state). The peg is released — if the goods already arrived they return to the free pool.</p>
+    <div class="watch"><b>Watch:</b> <span class="path">Inventory → Stock Balances</span> — for a pegged product, <i>reserved</i> rises with <i>on-hand</i> and <i>available</i> stays 0; on cancel, reserved drops and available rises.</div>
+
+    <hr />
+    <p class="lead">For the architecture and wire-level (curl) walkthroughs, see <code>docs/demo-script.md</code> in the repo.</p>
+  </main>
+</div>
+</body>
+</html>
