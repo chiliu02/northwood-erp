@@ -24,7 +24,7 @@ Northwood/
 ├── shared-kernel/                Pure Java value objects (Money, Quantity, Sku, …)
 ├── shared/                       Outbox/inbox base, EventEnvelope, Kafka publisher, Saga base (split: `shared.application.*` ports, `shared.infrastructure.*` adapters, `shared.api.*` audit REST)
 │
-├── product-events/              Published event contracts (wire types + EVENT_TYPE) — the only cross-service API
+├── product-events/               Published event contracts (wire types + EVENT_TYPE) — the only cross-service API
 ├── product-service/              SKUs, pricing, reorder policy (Material Master / Shape A hub)
 ├── sales-events/                 Published event contracts (wire types + EVENT_TYPE)
 ├── sales-service/                Sales orders + sales_order_fulfilment_saga
@@ -66,7 +66,7 @@ Northwood/
 |---|---|---|
 | JDK | 21 | All Java modules |
 | Maven | 3.9+ | Multi-module build |
-| Docker + Compose | recent | Postgres 17, Kafka 4.1.2, Keycloak 26 |
+| Docker + Compose | recent | Postgres 17, Kafka 4.1.2, Keycloak 26, LGTM observability (Prometheus/Tempo/Loki/Grafana) |
 | Node.js + npm | 20+ | The React/Vite ERP SPA |
 
 Developed on Windows (PowerShell), but the build is OS-neutral — macOS and Linux work with the same Maven / npm / Docker commands; translate the PowerShell snippets below to your shell.
