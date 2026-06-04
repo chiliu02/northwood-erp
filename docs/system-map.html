@@ -570,6 +570,7 @@ window.NORTHWOOD_EVENTS = [
     source: "product",
     aggregate: "Product",
     event: "ApprovedVendorListChanged",
+    aggNote: `<strong>product owns the <code>Product</code> aggregate.</strong> All master-data changes (pricing, reorder policy, make-vs-buy, BoM activation, planning fence, discontinue, …) originate here, and product-service is <em>producer-only</em> — it consumes no cross-service events. The lone exception in this index: one more <code>Product</code> event, <code>ProductMaterialsCostComputed</code>, is emitted from <strong>manufacturing</strong> (a computed BoM-rollup cost, stamped with product's type so product can rebase <code>standard_cost</code> without consuming cross-service events). See that entry.`,
     consumers: [
       { dest: "manufacturing", name: "manufacturing.approved-vendor-projector",
         desc: `<code>manufacturing.product_approved_vendor</code> — replace-all rows for the product (supplier_id, is_preferred, …)` },
@@ -1047,6 +1048,7 @@ window.NORTHWOOD_EVENTS = [
     source: "manufacturing",
     aggregate: "Product",
     event: "ProductMaterialsCostComputed",
+    aggNote: `<strong>Not a manufacturing-owned aggregate</strong> — <code>Product</code> is product-service's master-data aggregate. Manufacturing emits this one event stamped with <em>product's</em> <code>ProductAggregateTypes.PRODUCT</code> type because the <em>materials cost</em> is a <em>computed</em> value (BoM rollup / preferred-vendor price) and "computed values live with the engine that computes them" — manufacturing already projects active BoMs + approved vendors, so it owns the rollup. Stamping it under product's type keeps product producer-only (it never consumes cross-service events) while letting it rebase <code>standard_cost</code> via the consumer below. See <code>design-notes.md → "Computed values live with the engine that computes them"</code>.`,
     consumers: [
       { dest: "product", name: "product.materials-cost-rebased",
         desc: `Calls <code>ProductService.changeStandardCost</code> to stamp the rolled-up materials cost onto product master's <code>standard_cost</code>; the aggregate then emits <code>product.StandardCostChanged</code>, which finance + reporting already consume — closes the cost-rollup feedback loop` },
@@ -1119,6 +1121,7 @@ window.NORTHWOOD_EVENTS = [
     source: "inventory",
     aggregate: "ReplenishmentRequest",
     event: "ReplenishmentRequested",
+    aggNote: `<strong>inventory owns the <code>ReplenishmentRequest</code> aggregate</strong> — it is the replenishment orchestrator, and the whole lifecycle lives here: <code>requested → dispatched → fulfilled / cancelled</code>. The same name appears below under <strong>manufacturing</strong> and <strong>purchasing</strong>, but those are <em>not</em> separately-owned aggregates — each is a single event those dispatcher services emit back at <em>this</em> aggregate (stamped with its <code>REPLENISHMENT_REQUEST</code> type). See those entries.`,
     consumers: [
       { dest: "manufacturing", name: "manufacturing.replenishment-dispatcher",
         desc: `Filter on <code>payload.targetService = "manufacturing"</code>. Builds a <code>ReleaseForReplenishmentCommand</code> (carrying <code>sourceSalesOrderHeaderId</code> from the payload) + BOM walk; calls <code>WorkOrderReleaseService.releaseForReplenishment(...)</code>. The <code>WorkOrder</code> factory emits both <code>WorkOrderCreated</code> (with <code>replenishmentRequestId</code> + <code>sourceSalesOrderHeaderId</code>) and <code>manufacturing.ReplenishmentDispatched</code> atomically. <strong>No active BOM → emits <code>manufacturing.ReplenishmentUndispatchable</code></strong> so inventory cancels. Reason is one of <code>reorder_point_breach</code>, <code>work_order_shortage</code>, <code>sales_order_shortage</code>, or <code>order_pegged</code> (make-to-order — full line qty, reserved to the SO line on completion).` },
@@ -1176,6 +1179,7 @@ window.NORTHWOOD_EVENTS = [
     source: "manufacturing",
     aggregate: "ReplenishmentRequest",
     event: "ReplenishmentUndispatchable",
+    aggNote: `<strong>Not a manufacturing-owned aggregate.</strong> Manufacturing has no <code>ReplenishmentRequest</code> of its own — it emits this one event stamped with <em>inventory's</em> <code>REPLENISHMENT_REQUEST</code> aggregate-type (it references the request by id) to tell the owner, inventory, that it can't dispatch the request (no active BOM). Inventory then cancels its own request. The aggregate and its lifecycle live in <strong>inventory</strong>.`,
     consumers: [
       { dest: "inventory", name: "inventory.replenishment.mfg-undispatchable",
         desc: `Manufacturing has no active BOM for the product. Looks up the <code>ReplenishmentRequest</code> by <code>payload.replenishmentRequestId</code> and calls <code>markCancelled(reason)</code> → status <code>cancelled</code> + emits <code>inventory.ReplenishmentCancelled</code> (which rejects the originating sales order for a sales_order_shortage request). Stamped under <code>InventoryAggregateTypes.REPLENISHMENT_REQUEST</code>.` },
@@ -1185,6 +1189,7 @@ window.NORTHWOOD_EVENTS = [
     source: "purchasing",
     aggregate: "ReplenishmentRequest",
     event: "ReplenishmentUndispatchable",
+    aggNote: `<strong>Not a purchasing-owned aggregate.</strong> Same shape as manufacturing's: purchasing emits this one event stamped with <em>inventory's</em> <code>REPLENISHMENT_REQUEST</code> type (no vendor configured for the product) so inventory cancels its own request. The aggregate and its lifecycle live in <strong>inventory</strong>.`,
     consumers: [
       { dest: "inventory", name: "inventory.replenishment.pur-undispatchable",
         desc: `Purchasing has no vendor configured for the product. Looks up the <code>ReplenishmentRequest</code> by <code>payload.replenishmentRequestId</code> and calls <code>markCancelled(reason)</code> → status <code>cancelled</code> + emits <code>inventory.ReplenishmentCancelled</code>. Stamped under <code>InventoryAggregateTypes.REPLENISHMENT_REQUEST</code>.` },
@@ -1676,6 +1681,14 @@ window.NORTHWOOD_PROJECTIONS = [
         const events = byService[svc][agg];
         html += '<details class="agg-section">';
         html += '<summary>' + agg + ' <span class="meta" style="color:var(--muted);font-weight:normal;font-size:0.82rem;">(' + events.length + ' event' + (events.length === 1 ? '' : 's') + ')</span></summary>';
+        // Optional aggregate-level note: clarifies ownership when the same
+        // aggregate name appears under more than one source service (e.g.
+        // ReplenishmentRequest — owned by inventory, but manufacturing &
+        // purchasing emit events stamped with its type).
+        const aggNote = (byService[svc][agg].find(function (e) { return e.aggNote; }) || {}).aggNote;
+        if (aggNote) {
+          html += '<p class="desc" style="margin:0.4rem 0 0.5rem;">' + aggNote + '</p>';
+        }
         events.forEach(function (e) {
           html += renderEventRow(e, projByEvent[e.event] || []);
         });

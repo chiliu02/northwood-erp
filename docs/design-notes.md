@@ -150,10 +150,11 @@ bug.
 - **(b) Source authority** — the emitter is the natural source of knowledge (inputs no other module can synthesize from its own state).
 - **(c) No invariant claim** — the emitter isn't claiming jurisdiction over the named aggregate's lifecycle or business rules.
 
-**Northwood passes for both events the audit examined:**
+**Northwood passes for the events the audit examined — plus a third, live, added later:**
 
 - `ManufacturingDispatched` → `SalesOrder` *(retired; preserved as the worked example)*. Manufacturing learned per-line accept/reject by joining its make-vs-buy projection + active-BOM lookup (knowledge only it had, (b)); the fact was what the SalesOrder needed to advance the fulfilment saga ((a)); manufacturing didn't claim SalesOrder state-machine authority, it just reported an outcome ((c)). When the make-vs-buy decision moved into inventory, this event was retired — but it remains the cleanest illustration of all three criteria holding for a cross-context emission.
 - `ProductMaterialsCostComputed` → `Product` *(still live)*. Manufacturing owns the rollup engine and has the inputs (vendor prices + active BOM), so it's the source of authority ((b)); the conclusion is a fact about a Product ((a)); manufacturing doesn't claim Product lifecycle authority ((c)).
+- `ReplenishmentUndispatchable` → `ReplenishmentRequest` *(still live; added after the 2026-05-14 audit)*. Inventory owns the `ReplenishmentRequest` aggregate (the replenishment orchestrator). A dispatcher — **manufacturing** (no active BOM) or **purchasing** (no vendor configured) — is the only module that knows its lane can't source the product ((b)); the fact is about that request ((a)); the dispatcher reports the outcome and inventory's `markCancelled` decides the cancel, so no jurisdiction is claimed over the request's lifecycle ((c)). Notable as the one event emitted by **two** different non-owners, both stamping `InventoryAggregateTypes.REPLENISHMENT_REQUEST`.
 
 **Counter-examples that would fail.** "Manufacturing emits `ProductDiscontinued`" violates (b) and (c) — manufacturing has no special knowledge of *why* a product should be retired, and discontinuation is a Product lifecycle decision. "Purchasing emits `SupplierBlocked`" is the same shape. Such cases should emit a producer-owned event (e.g. `BlockingRecommended`) and let the aggregate's owner consume it and decide whether to flip lifecycle state.
 
