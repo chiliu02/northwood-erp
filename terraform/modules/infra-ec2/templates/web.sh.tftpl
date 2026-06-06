@@ -1,27 +1,35 @@
 #!/bin/bash
-# Web tier — guest front door (:${welcome_port}) + Keycloak (public, for browser
-# OIDC) + erp-web-ui-bff. Public subnet, public IP. Keycloak + nginx pulled from
-# their registries via the IGW; the BFF from ECR. The BFF proxies to the services
-# on the app box's pinned private IP.
+# Web tier — guest front door (:${welcome_port}) + operational ERP SPA
+# (:${ui_port}, nginx) + Keycloak (:8080, browser OIDC) + erp-web-ui-bff (:8089).
+# Public subnet, public IP. Keycloak + nginx pulled via the IGW; the BFF from ECR.
+# The SPA nginx reverse-proxies the BFF; the BFF proxies to the services on the
+# app box's pinned private IP.
 set -euxo pipefail
 
 dnf install -y docker
 systemctl enable --now docker
 command -v aws >/dev/null 2>&1 || dnf install -y awscli-2 || dnf install -y awscli
 
-mkdir -p /opt/northwood/import /opt/northwood/welcome /data/keycloak
+mkdir -p /opt/northwood/import /opt/northwood/welcome /opt/northwood/spa /data/keycloak
 # Keycloak runs as uid 1000 inside the container; make its bind-mounted data dir
 # writable so it can create data/transaction-logs (otherwise ARJUNA's
 # ShadowNoFileLockStore "cannot access root of object store" crash-loops it).
 chmod -R 777 /data/keycloak
 aws s3 cp "s3://${bucket}/keycloak/northwood-realm.json" /opt/northwood/import/northwood-realm.json --region "${region}"
+# The realm ships with localhost redirect URIs / web origins for local + compose
+# dev (the BFF on :8089, the Vite SPA on :5174). On AWS the browser reaches the
+# SPA + BFF through the single public nginx origin (the web box's public host on
+# ui_port), so rewrite both localhost origins to it before import — otherwise
+# Keycloak rejects the callback with "Invalid parameter: redirect_uri". Keycloak
+# only imports into a fresh data volume, so this applies when the box is (re)created.
+sed -i "s|localhost:8089|${keycloak_host}:${ui_port}|g; s|localhost:5174|${keycloak_host}:${ui_port}|g" /opt/northwood/import/northwood-realm.json
 aws s3 cp "s3://${bucket}/env/keycloak.env" /opt/northwood/keycloak.env --region "${region}"
 aws s3 cp "s3://${bucket}/env/bff.env" /opt/northwood/bff.env --region "${region}"
 aws s3 cp "s3://${bucket}/welcome/index.html.template" /opt/northwood/welcome/index.html --region "${region}"
 
-# Guest front door — a static "start here" page. Its "Enter the ERP" + Demo-Guide
-# links are baked from ERP_URL here (host-side sed over the S3 template), then
-# served by a plain nginx. Same rendered HTML as the docker-compose envsubst path.
+# Guest front door — a static "start here" page. Its "Enter the ERP" link is
+# baked from ERP_URL here (host-side sed over the S3 template) and points at the
+# operational SPA on ui_port. Served by a plain nginx.
 sed -i 's|$${ERP_URL}|${erp_url}|g' /opt/northwood/welcome/index.html
 docker run -d --name northwood-welcome --restart unless-stopped \
   -p ${welcome_port}:80 \
@@ -49,7 +57,41 @@ docker run -d --name ${bff_name} --restart unless-stopped \
   -e KEYCLOAK_ISSUER_URI=${kc_issuer} \
   -e OTLP_ENDPOINT=${otlp_endpoint} \
   -e LOKI_URL=${loki_url} \
+  -e SPRING_APPLICATION_JSON='{"server.forward-headers-strategy":"framework","northwood.bff.web-ui-url":"http://${keycloak_host}:${ui_port}/"}' \
 %{ for name, port in services ~}
   -e NORTHWOOD_BFF_TARGETS_${upper(name)}=http://${app_ip}:${port} \
 %{ endfor ~}
   ${registry}/${image_prefix}/${bff_name}:${image_tag}
+
+# Operational ERP SPA — nginx serves the built erp-web-ui (synced from S3) and
+# reverse-proxies the BFF's API + OIDC endpoints, so the SPA's relative
+# /api,/oauth2,/login,/logout calls reach the BFF same-origin. X-Forwarded-* let
+# the BFF build OIDC redirect URIs against this public origin
+# (server.forward-headers-strategy=framework is set on the BFF above).
+aws s3 sync "s3://${bucket}/spa/" /opt/northwood/spa/ --region "${region}"
+cat >/opt/northwood/spa.conf <<'NGINXCONF'
+server {
+  listen 80;
+  server_name _;
+  root /usr/share/nginx/html;
+  index index.html;
+
+  location ~ ^/(api|oauth2|login|logout) {
+    proxy_pass http://${web_ip}:${bff_port};
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Port ${ui_port};
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+}
+NGINXCONF
+docker run -d --name northwood-spa --restart unless-stopped \
+  -p ${ui_port}:80 \
+  -v /opt/northwood/spa:/usr/share/nginx/html:ro \
+  -v /opt/northwood/spa.conf:/etc/nginx/conf.d/default.conf:ro \
+  ${welcome_image}

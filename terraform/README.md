@@ -7,13 +7,16 @@ Three EC2 instances across one public + two private subnets, with a small NAT
 
 | Tier | Subnet | EC2 runs |
 |---|---|---|
-| web  | public (public IP, `web-sg` :80 + :8089 + :8080) | guest **front door** (nginx :80) + `erp-web-ui-bff` + Keycloak |
+| web  | public (public IP, `web-sg` :80 + :8090 + :8089 + :8080) | guest **front door** (nginx :80) + **operational ERP SPA** (nginx :8090) + `erp-web-ui-bff` (:8089) + Keycloak (:8080) |
 | app  | private (`app-sg`) | the 7 services |
 | data | private (`infra-sg`) | Postgres + Kafka + (optional) LGTM observability |
 
-The 2 SPAs (S3/CloudFront) and the fully-managed **production** variant
-(ECS Fargate / Aurora / MSK / Cognito) are out of scope here — production is
-documented in **docs/aws-architecture.html**.
+The operational `erp-web-ui` SPA is served **from the web box** by an nginx on
+`:8090` that reverse-proxies `/api`, `/oauth2`, `/login`, `/logout` to the BFF
+(same-origin, so the SPA's relative calls + the OIDC code flow work without
+CORS). Hosting the SPAs on **S3/CloudFront**, and the fully-managed
+**production** variant (ECS Fargate / Aurora / MSK / Cognito), are out of scope
+here — production is documented in **docs/aws-architecture.html**.
 
 ```
 terraform/
@@ -60,7 +63,13 @@ terraform apply -target=module.ecr
 # 5. Build the 8 app images (7 services + erp-bff) and push to ECR.
 ../../build/build-and-push.ps1 -Tag latest        #  bash: ../../build/build-and-push.sh latest
 
-# 6. Apply everything else (network + NAT, secrets, the 3 EC2s + the web Elastic IP).
+# 5b. Build the operational ERP SPA. Its dist/ is staged to S3 on apply and served
+#     by the web box's nginx (:8090), so build it BEFORE step 6 — the dist fileset
+#     is read at plan time. From the repo root:
+#       cd erp-web-ui ; npm ci ; npm run build ; cd ../terraform/envs/demo
+
+# 6. Apply everything else (network + NAT, secrets, the 3 EC2s + the web Elastic IP
+#    + the SPA staged to S3).
 terraform apply
 
 # 7. Done — browser OIDC works out of the box: the web box has a stable Elastic IP
@@ -85,7 +94,7 @@ terraform output web_public_ip    # the stable Elastic IP (also the issuer host)
 > The module allocates a stable **Elastic IP** for the web box and defaults the
 > issuer to it, so browser login works on the **first** apply — no second re-apply,
 > and the address survives instance replacement / stop-start. The front door's
-> **"Enter the ERP"** link reuses the same address (→ the public BFF on `:8089`).
+> **"Enter the ERP"** link reuses the same address (→ the operational SPA on `:8090`).
 > To front it with a real domain, point DNS at the EIP and re-apply with
 > `-var="keycloak_hostname=<your-dns-name>"`. Because `user_data_replace_on_change`
 > is false, that change is in-place and won't re-run user-data on the live boxes —
@@ -96,14 +105,14 @@ Bring-up order (data → app → web) is handled by Terraform's graph: the boxes
 **pinned static private IPs** (`10.0.1.10 / .2.10 / .3.10`, set in `envs/demo/main.tf`)
 so cross-tier URLs (BFF→services, services→Postgres/Kafka/Keycloak) are computed at
 plan time with no instance-to-instance dependency cycle. User-data pulls `db/`,
-the Keycloak realm, the generated role-login script, and the env files from the
-private artifacts bucket on first boot.
+the Keycloak realm, the generated role-login script, the env files, and the built
+SPA (`spa/`) from the private artifacts bucket on first boot.
 
 ## Verify
 
 ```powershell
 terraform output front_door_url      # open this first — the guest "start here" page (http://<ip>/)
-terraform output web_public_ip       # ERP UI on http://<ip>:8089  (erp-web-ui-bff)  ·  Keycloak on :8080
+terraform output web_public_ip       # operational ERP UI on http://<ip>:8090  ·  Keycloak on :8080  (BFF :8089 is proxied by the SPA nginx)
 terraform output instance_ids        # aws ssm start-session --target <data-id>
 # on the data box:  docker exec -it northwood-postgres psql -U postgres -d northwood_erp \
 #                     -c "select count(*) from sales.customer;"
@@ -123,6 +132,20 @@ terraform destroy
 ---
 
 ## Design decisions worth knowing
+
+- **The operational SPA is served from the web box by nginx (not S3/CloudFront).**
+  `erp-web-ui` is a Vite SPA that calls the BFF with **relative** paths (`/api`,
+  `/oauth2`, `/login`, `/logout`), so it must be served same-origin as the BFF. On
+  this minimal demo we skip S3/CloudFront and instead run an nginx on the web box
+  (`:8090`) that serves the built `dist/` and reverse-proxies those four prefixes to
+  the BFF (`:8089`). The BFF runs with `server.forward-headers-strategy=framework`,
+  so the `X-Forwarded-*` headers nginx sends let Spring build the OIDC `redirect_uri`
+  / `{baseUrl}` against the public `:8090` origin. The realm's `localhost:8089` +
+  `localhost:5174` redirect URIs / web origins are rewritten to `<public-host>:8090`
+  at import time (host-side `sed` in the web user-data). `dist/` is staged to S3 by
+  Terraform (`aws_s3_object.spa`, a `fileset` over `erp-web-ui/dist`), so **build the
+  SPA before `apply`** (step 5b). Production serves the SPA from S3/CloudFront
+  (`docs/aws-architecture.html`).
 
 - **NAT *instance*, not a NAT Gateway or VPC endpoints.** The private subnets need
   outbound internet to pull third-party images (Postgres/Kafka from Docker Hub,

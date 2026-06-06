@@ -79,6 +79,12 @@ variable "welcome_image" {
   default     = "nginx:1.27-alpine"
 }
 
+variable "ui_port" {
+  description = "Public port for the operational ERP SPA on the web box. An nginx serves the built erp-web-ui here and reverse-proxies /api,/oauth2,/login,/logout to the BFF (:8089). This is the 'Enter the ERP' target and the OIDC redirect/origin host."
+  type        = number
+  default     = 8090
+}
+
 # ---- third-party images pulled straight from their registries (via the NAT) -
 variable "images" {
   description = "Third-party images (Docker Hub / quay.io) — pulled directly through the NAT instance."

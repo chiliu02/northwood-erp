@@ -38,11 +38,11 @@ locals {
   kc_host   = var.keycloak_hostname != "" ? var.keycloak_hostname : aws_eip.web.public_ip
   kc_issuer = "http://${local.kc_host}:8080/realms/northwood"
 
-  # The front-door "Enter the ERP" / Demo-Guide links target the public BFF.
-  # Reuses kc_host (the public hostname set via var.keycloak_hostname) so it's
-  # browser-reachable once OIDC is wired — same chicken-and-egg as kc_issuer:
-  # until keycloak_hostname is set it points at the web private IP.
-  erp_url = "http://${local.kc_host}:${var.bff_port}"
+  # The front-door "Enter the ERP" link targets the operational ERP SPA, served
+  # by an nginx on the web box (ui_port) that reverse-proxies /api,/oauth2,/login,
+  # /logout to the BFF. Reuses kc_host (the web box's stable Elastic IP) so it's
+  # browser-reachable; same host the OIDC redirect_uri + web origins resolve to.
+  erp_url = "http://${local.kc_host}:${var.ui_port}"
 
   kafka_boot    = "${local.data_ip}:9092"
   otlp_endpoint = var.enable_observability ? "http://${local.data_ip}:4317" : ""
@@ -120,6 +120,17 @@ resource "aws_s3_object" "welcome_template" {
   key    = "welcome/index.html.template"
   source = "${var.repo_root}/config/welcome.html.template"
   etag   = filemd5("${var.repo_root}/config/welcome.html.template")
+}
+
+# Built operational ERP SPA (erp-web-ui/dist). Staged file-by-file under spa/;
+# the web box `aws s3 sync`s it to the nginx html dir. Requires `npm run build`
+# in erp-web-ui/ before apply (the dist fileset is read at plan time).
+resource "aws_s3_object" "spa" {
+  for_each = fileset("${var.repo_root}/erp-web-ui/dist", "**")
+  bucket   = aws_s3_bucket.artifacts.id
+  key      = "spa/${each.value}"
+  source   = "${var.repo_root}/erp-web-ui/dist/${each.value}"
+  etag     = filemd5("${var.repo_root}/erp-web-ui/dist/${each.value}")
 }
 
 resource "aws_s3_object" "postgres_env" {
@@ -316,10 +327,12 @@ resource "aws_instance" "web" {
     welcome_image  = var.welcome_image
     welcome_port   = var.welcome_port
     erp_url        = local.erp_url
+    ui_port        = var.ui_port
+    web_ip         = local.web_ip
   })
 
   tags       = { Name = "${var.name_prefix}-web" }
-  depends_on = [aws_s3_object.realm, aws_s3_object.keycloak_env, aws_s3_object.bff_env, aws_s3_object.welcome_template, aws_instance.app]
+  depends_on = [aws_s3_object.realm, aws_s3_object.keycloak_env, aws_s3_object.bff_env, aws_s3_object.welcome_template, aws_s3_object.spa, aws_instance.app]
 }
 
 # Stable public IP for the web box so the Keycloak issuer + front-door URLs

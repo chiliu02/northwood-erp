@@ -62,6 +62,15 @@ resource "aws_vpc_security_group_ingress_rule" "web_keycloak_internet" {
   cidr_ipv4         = "0.0.0.0/0"
 }
 
+resource "aws_vpc_security_group_ingress_rule" "web_ui" {
+  security_group_id = aws_security_group.this["web"].id
+  description       = "Operational ERP SPA (nginx) from internet"
+  ip_protocol       = "tcp"
+  from_port         = var.ui_port
+  to_port           = var.ui_port
+  cidr_ipv4         = "0.0.0.0/0"
+}
+
 # ---- app-sg: service ports from the web tier (BFF -> services) ------------
 resource "aws_vpc_security_group_ingress_rule" "app_from_web" {
   security_group_id            = aws_security_group.this["app"].id

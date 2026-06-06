@@ -27,6 +27,16 @@ npm run dev                                      # http://localhost:5174
 
 Each backend command takes its own terminal. IntelliJ run configurations are the easier path for multi-service runs.
 
+## On AWS (the demo deployment)
+
+There is no Vite dev server in the cloud. The built `dist/` is served by an
+**nginx on the web box (`:8090`)** that reverse-proxies `/api`, `/oauth2`,
+`/login`, `/logout` to the BFF — the same relative-path, same-origin contract the
+Vite proxy provides locally, so the SPA code is identical. Build it with
+`npm run build` before `terraform apply` (the `dist/` is staged to S3 and synced
+onto the box at boot). Full wiring: `terraform/README.md` and
+`docs/aws-deployment.html`.
+
 ## Ports
 
 | Component | Port |
