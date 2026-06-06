@@ -72,16 +72,15 @@
     <ol>
       <li><b>Click "Enter the ERP" below.</b> You'll be sent to the Keycloak sign-in screen — the demo uses real login, not a bypass.</li>
       <li><b>Sign in. Every persona's password is the same as its username.</b> A friendly first login is <code>sarah</code> / <code>sarah</code> — a sales clerk who can place orders and watch them fulfil end-to-end.</li>
-      <li><b>Open the Demo Guide</b> for the full cast (13 personas, each a different role) and ten step-by-step walkthroughs. You can reopen it any time from the <b>?</b> icon in the app's top bar.</li>
+      <li><b>Find the Demo Guide inside the app</b> — the <b>?</b> icon in the top bar — for the full cast (13 personas, each a different role) and ten step-by-step walkthroughs.</li>
       <li><b>Switch persona</b> whenever you like: sign out (top-right) and sign back in as someone else — the UI re-reads your role automatically.</li>
     </ol>
 
     <div class="actions">
       <a class="btn primary" href="${ERP_URL}">Enter the ERP →</a>
-      <a class="btn secondary" href="${ERP_URL}/help.html">Open the Demo Guide</a>
     </div>
 
-    <p class="foot">First time with Northwood? Start with the <b>Demo Guide</b> — it walks you through placing an order, building it on the production floor, and paying for it, one persona at a time.</p>
+    <p class="foot">First time with Northwood? Once you're signed in, open the <b>Demo Guide</b> (the <b>?</b> icon, top bar) — it walks you through placing an order, building it on the production floor, and paying for it, one persona at a time.</p>
   </div>
 </body>
 </html>
