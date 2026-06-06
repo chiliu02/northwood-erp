@@ -13,7 +13,7 @@ interface CreatedProduct {
   productId: string;
 }
 
-// Seed UoMs from db/northwood_erp.sql — hardcoded because no UoM
+// Seed UoMs from config/postgresql/northwood_erp.sql — hardcoded because no UoM
 // admin page exists yet (the catalog is a closed list in the demo).
 const UOMS: { id: string; code: string; label: string }[] = [
   { id: "00000000-0000-7000-8000-000000000010", code: "EA", label: "EA — each" },

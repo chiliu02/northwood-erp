@@ -2,8 +2,8 @@
 #
 # Layered on top of docker-compose.yml to additionally mount the seed file
 # into Postgres's init-script directory. The base compose file mounts only
-# the schema baseline (db/northwood_erp.sql); this override adds the demo
-# fixtures (db/northwood_erp_seed.sql) — products, BOMs, customers, suppliers,
+# the schema baseline (config/postgresql/northwood_erp.sql); this override adds the demo
+# fixtures (config/postgresql/northwood_erp_seed.sql) — products, BOMs, customers, suppliers,
 # GL chart, etc. — alongside it so a fresh volume comes up populated.
 #
 # Usage (from repo root):
@@ -31,4 +31,4 @@
 services:
   postgres:
     volumes:
-      - ./db/northwood_erp_seed.sql:/docker-entrypoint-initdb.d/02-northwood_erp_seed.sql:ro
+      - ./config/postgresql/northwood_erp_seed.sql:/docker-entrypoint-initdb.d/02-northwood_erp_seed.sql:ro

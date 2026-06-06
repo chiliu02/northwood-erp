@@ -24,8 +24,8 @@ services:
       # BOMs, customers, suppliers, etc.) layer in docker-compose.seed.yml:
       #   docker compose down -v
       #   docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d
-      # See db/northwood_erp_seed.sql + the override file for details.
-      - ./db/northwood_erp.sql:/docker-entrypoint-initdb.d/01-northwood_erp.sql:ro
+      # See config/postgresql/northwood_erp_seed.sql + the override file for details.
+      - ./config/postgresql/northwood_erp.sql:/docker-entrypoint-initdb.d/01-northwood_erp.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -105,7 +105,7 @@ services:
     ports:
       - "8090:8080"
     volumes:
-      - ./db/keycloak/northwood-realm.json:/opt/keycloak/data/import/northwood-realm.json:ro
+      - ./config/keycloak/northwood-realm.json:/opt/keycloak/data/import/northwood-realm.json:ro
       - northwood-keycloakdata:/opt/keycloak/data
     healthcheck:
       test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '\"status\": \"UP\"'"]
@@ -133,7 +133,7 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - ./db/welcome.html.template:/etc/nginx/welcome-src/index.html.template:ro
+      - ./config/welcome.html.template:/etc/nginx/welcome-src/index.html.template:ro
     command:
       - /bin/sh
       - -c
@@ -177,7 +177,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./db/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - northwood-prometheusdata:/prometheus
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -195,7 +195,7 @@ services:
       - "4317:4317"  # OTLP gRPC receiver (Spring services push here)
       - "4318:4318"  # OTLP HTTP receiver
     volumes:
-      - ./db/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - ./config/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
       - northwood-tempodata:/var/tempo
 
   loki:
@@ -205,7 +205,7 @@ services:
     ports:
       - "3100:3100"
     volumes:
-      - ./db/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - ./config/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
       - northwood-lokidata:/loki
 
   # Promtail tails docker container logs (postgres, kafka, keycloak) and ships
@@ -218,7 +218,7 @@ services:
     container_name: northwood-promtail
     command: ["-config.file=/etc/promtail/promtail-config.yaml"]
     volumes:
-      - ./db/promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      - ./config/promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - northwood-promtaildata:/tmp
     depends_on:
@@ -226,7 +226,7 @@ services:
 
   # Grafana: single pane. Anonymous Admin in dev mode — never deploy this
   # config beyond the local showcase. Datasources + dashboards provisioned
-  # from db/grafana/provisioning/ so a fresh `docker compose up -d` boots
+  # from config/grafana/provisioning/ so a fresh `docker compose up -d` boots
   # with everything wired.
   grafana:
     image: grafana/grafana:11.3.1
@@ -239,8 +239,8 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./db/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./db/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - northwood-grafanadata:/var/lib/grafana
     depends_on:
       - prometheus

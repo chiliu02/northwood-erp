@@ -147,7 +147,7 @@ variable "repo_root" {
 }
 
 variable "load_seed_data" {
-  description = "Stage db/northwood_erp_seed.sql as init-script 02 (populated demo)."
+  description = "Stage config/postgresql/northwood_erp_seed.sql as init-script 02 (populated demo)."
   type        = bool
   default     = true
 }

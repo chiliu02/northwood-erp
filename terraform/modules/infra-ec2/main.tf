@@ -87,16 +87,16 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "artifacts" {
 resource "aws_s3_object" "baseline_sql" {
   bucket = aws_s3_bucket.artifacts.id
   key    = "db/01-northwood_erp.sql"
-  source = "${var.repo_root}/db/northwood_erp.sql"
-  etag   = filemd5("${var.repo_root}/db/northwood_erp.sql")
+  source = "${var.repo_root}/config/postgresql/northwood_erp.sql"
+  etag   = filemd5("${var.repo_root}/config/postgresql/northwood_erp.sql")
 }
 
 resource "aws_s3_object" "seed_sql" {
   count  = var.load_seed_data ? 1 : 0
   bucket = aws_s3_bucket.artifacts.id
   key    = "db/02-northwood_erp_seed.sql"
-  source = "${var.repo_root}/db/northwood_erp_seed.sql"
-  etag   = filemd5("${var.repo_root}/db/northwood_erp_seed.sql")
+  source = "${var.repo_root}/config/postgresql/northwood_erp_seed.sql"
+  etag   = filemd5("${var.repo_root}/config/postgresql/northwood_erp_seed.sql")
 }
 
 resource "aws_s3_object" "service_logins_sql" {
@@ -108,8 +108,8 @@ resource "aws_s3_object" "service_logins_sql" {
 resource "aws_s3_object" "realm" {
   bucket = aws_s3_bucket.artifacts.id
   key    = "keycloak/northwood-realm.json"
-  source = "${var.repo_root}/db/keycloak/northwood-realm.json"
-  etag   = filemd5("${var.repo_root}/db/keycloak/northwood-realm.json")
+  source = "${var.repo_root}/config/keycloak/northwood-realm.json"
+  etag   = filemd5("${var.repo_root}/config/keycloak/northwood-realm.json")
 }
 
 # Guest front-door page template. The web box renders ${ERP_URL} at boot
@@ -118,8 +118,8 @@ resource "aws_s3_object" "realm" {
 resource "aws_s3_object" "welcome_template" {
   bucket = aws_s3_bucket.artifacts.id
   key    = "welcome/index.html.template"
-  source = "${var.repo_root}/db/welcome.html.template"
-  etag   = filemd5("${var.repo_root}/db/welcome.html.template")
+  source = "${var.repo_root}/config/welcome.html.template"
+  etag   = filemd5("${var.repo_root}/config/welcome.html.template")
 }
 
 resource "aws_s3_object" "postgres_env" {
@@ -149,12 +149,12 @@ resource "aws_s3_object" "bff_env" {
 # ---- observability config tree (only when enabled) -------------------------
 resource "aws_s3_object" "obs_config" {
   for_each = var.enable_observability ? {
-    "obs/tempo.yaml"                                      = "${var.repo_root}/db/tempo/tempo.yaml"
-    "obs/loki-config.yaml"                                = "${var.repo_root}/db/loki/loki-config.yaml"
-    "obs/prometheus.yml"                                  = "${var.repo_root}/db/prometheus/prometheus.yml"
-    "obs/grafana/datasources/datasources.yaml"            = "${var.repo_root}/db/grafana/provisioning/datasources/datasources.yaml"
-    "obs/grafana/dashboards-provisioning/dashboards.yaml" = "${var.repo_root}/db/grafana/provisioning/dashboards/dashboards.yaml"
-    "obs/grafana/dashboards/northwood-overview.json"      = "${var.repo_root}/db/grafana/dashboards/northwood-overview.json"
+    "obs/tempo.yaml"                                      = "${var.repo_root}/config/tempo/tempo.yaml"
+    "obs/loki-config.yaml"                                = "${var.repo_root}/config/loki/loki-config.yaml"
+    "obs/prometheus.yml"                                  = "${var.repo_root}/config/prometheus/prometheus.yml"
+    "obs/grafana/datasources/datasources.yaml"            = "${var.repo_root}/config/grafana/provisioning/datasources/datasources.yaml"
+    "obs/grafana/dashboards-provisioning/dashboards.yaml" = "${var.repo_root}/config/grafana/provisioning/dashboards/dashboards.yaml"
+    "obs/grafana/dashboards/northwood-overview.json"      = "${var.repo_root}/config/grafana/dashboards/northwood-overview.json"
   } : {}
   bucket = aws_s3_bucket.artifacts.id
   key    = each.key

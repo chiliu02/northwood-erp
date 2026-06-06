@@ -2,7 +2,7 @@
 description: Fresh-volume reset of docker-compose infra + wait for Postgres ready
 ---
 
-Wipe the docker-compose volumes and bring everything back up cleanly. Used after any change to `db/northwood_erp.sql` or `db/northwood_erp_seed.sql`, when seed data needs resetting, or when Liquibase bookkeeping in the `databasechangelog` table has drifted from what's on disk.
+Wipe the docker-compose volumes and bring everything back up cleanly. Used after any change to `config/postgresql/northwood_erp.sql` or `config/postgresql/northwood_erp_seed.sql`, when seed data needs resetting, or when Liquibase bookkeeping in the `databasechangelog` table has drifted from what's on disk.
 
 Pick the variant that matches what the user asked for:
 
@@ -30,11 +30,11 @@ Steps:
    docker compose ps
    ```
 4. Report which containers came up and any that failed (look for `Exit` or `Restarting` in `ps` output).
-5. Keycloak takes a further ~30-60s before its health probe flips to `healthy` (it's importing `db/keycloak/northwood-realm.json` on first boot). Postgres being healthy is the gate for starting backend services; Keycloak being healthy is the gate for the BFFs' OIDC code flow. Kafka typically reports healthy in step 3 already.
+5. Keycloak takes a further ~30-60s before its health probe flips to `healthy` (it's importing `config/keycloak/northwood-realm.json` on first boot). Postgres being healthy is the gate for starting backend services; Keycloak being healthy is the gate for the BFFs' OIDC code flow. Kafka typically reports healthy in step 3 already.
 
 What the smoke covers:
-- Postgres runs `db/northwood_erp.sql` on first boot of the fresh volume (mounted into `/docker-entrypoint-initdb.d/01-…`) — every schema, role, grant, partition, and PL/pgSQL function. With the seed override layered in, it also runs `db/northwood_erp_seed.sql` immediately after (`02-…`) for the demo fixture rows.
-- Keycloak imports `db/keycloak/northwood-realm.json` on first boot — 13 roles + 13 demo users.
+- Postgres runs `config/postgresql/northwood_erp.sql` on first boot of the fresh volume (mounted into `/docker-entrypoint-initdb.d/01-…`) — every schema, role, grant, partition, and PL/pgSQL function. With the seed override layered in, it also runs `config/postgresql/northwood_erp_seed.sql` immediately after (`02-…`) for the demo fixture rows.
+- Keycloak imports `config/keycloak/northwood-realm.json` on first boot — 13 roles + 13 demo users.
 - Kafka starts with `auto.create.topics.enable=true` so service-side outbox publishes will create their topics on first send.
 
 After the smoke completes, running services that were pointed at the old volume need a restart — their JDBC pools hold dead connections.

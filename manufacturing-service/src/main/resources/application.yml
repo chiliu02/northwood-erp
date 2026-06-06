@@ -61,7 +61,7 @@ northwood:
     poll-interval: 1000
   liquibase:
     # Disabled during showcase development (see docs/persistence.md). The
-    # baseline db/northwood_erp.sql is the single source of truth while the
+    # baseline config/postgresql/northwood_erp.sql is the single source of truth while the
     # schema is in showcase-flux.
     enabled: false
     default-schema: manufacturing

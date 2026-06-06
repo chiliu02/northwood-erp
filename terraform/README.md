@@ -139,7 +139,7 @@ terraform destroy
   just set `KEYCLOAK_ISSUER_URI` to the public host.
 
 - **Per-service DB login roles (the load-bearing invariant, made real).** The baseline
-  `db/northwood_erp.sql` ships the `<svc>_service` roles as `NOLOGIN`. Terraform
+  `config/postgresql/northwood_erp.sql` ships the `<svc>_service` roles as `NOLOGIN`. Terraform
   generates a password per service, renders an `ALTER ROLE <svc>_service LOGIN
   PASSWORD …` init script (staged as `03-service-logins.sql`), stages all of them in
   `env/services.env`, and each service container connects as its own role — so the
@@ -150,7 +150,7 @@ terraform destroy
   that's why state lives in the private + encrypted + versioned bootstrap bucket.
 
 - **Keycloak BFF client secret is fixed, not random.** It must equal the `"secret"`
-  baked into `db/keycloak/northwood-realm.json` (`northwood-bff-secret`). Rotating it
+  baked into `config/keycloak/northwood-realm.json` (`northwood-bff-secret`). Rotating it
   means editing the realm JSON too.
 
 - **Single Kafka broker, RF=1**, carried over from compose — recover-after-restart,

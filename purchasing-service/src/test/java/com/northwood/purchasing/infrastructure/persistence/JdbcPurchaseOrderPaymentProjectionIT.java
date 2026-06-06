@@ -37,7 +37,7 @@ import org.testcontainers.utility.DockerImageName;
  * in scenario 7.1.
  *
  * <p>Lifecycle: one container per JVM (static), schema bootstrapped from
- * {@code db/northwood_erp.sql} once. Each test seeds its own
+ * {@code config/postgresql/northwood_erp.sql} once. Each test seeds its own
  * {@code purchase_order_header} row via {@link #seedPo(BigDecimal)} and
  * asserts the column transitions via direct SELECT.
  */

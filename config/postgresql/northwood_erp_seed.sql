@@ -1,7 +1,7 @@
 -- northwood_erp_seed.sql
 -- Northwood Furniture Co. Mini ERP — demo seed data
 --
--- This file is the data-side companion to db/northwood_erp.sql. The schema
+-- This file is the data-side companion to config/postgresql/northwood_erp.sql. The schema
 -- file is the canonical baseline (DDL, roles, grants, partitions); this file
 -- is the showcase fixture set (products, BOMs, customers, suppliers, chart of
 -- accounts, etc.). They were one file until 2026-05-20; splitting them lets a

@@ -22,7 +22,7 @@ variable "repo_root" {
 }
 
 variable "load_seed_data" {
-  description = "Load db/northwood_erp_seed.sql (populated demo). False => empty schema."
+  description = "Load config/postgresql/northwood_erp_seed.sql (populated demo). False => empty schema."
   type        = bool
   default     = true
 }
@@ -42,7 +42,7 @@ variable "enable_observability" {
 # ---- secrets knobs ---------------------------------------------------------
 
 variable "bff_client_secret" {
-  description = "Keycloak northwood-bff client secret — must match db/keycloak/northwood-realm.json."
+  description = "Keycloak northwood-bff client secret — must match config/keycloak/northwood-realm.json."
   type        = string
   default     = "northwood-bff-secret"
   sensitive   = true

@@ -24,7 +24,7 @@ import org.springframework.context.annotation.Bean;
  * </ul>
  *
  * <p>The {@code northwood_erp} database is provisioned directly from
- * {@code db/northwood_erp.sql} (mounted into Postgres's init-script
+ * {@code config/postgresql/northwood_erp.sql} (mounted into Postgres's init-script
  * directory). Each service's master changelog starts empty: Liquibase
  * creates the {@code databasechangelog} bookkeeping tables on first boot
  * but applies no changesets. New schema work goes in

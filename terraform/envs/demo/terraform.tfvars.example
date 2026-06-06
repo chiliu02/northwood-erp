@@ -19,5 +19,5 @@
 # and point the apps at it. Set false to skip it (and its cost).
 # enable_observability = true
 
-# Keycloak northwood-bff client secret — must match db/keycloak/northwood-realm.json.
+# Keycloak northwood-bff client secret — must match config/keycloak/northwood-realm.json.
 # bff_client_secret = "northwood-bff-secret"

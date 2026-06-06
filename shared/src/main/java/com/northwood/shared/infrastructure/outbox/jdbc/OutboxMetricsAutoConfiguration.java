@@ -14,7 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * Registers a {@code northwood.outbox.pending{service="..."}} gauge so
  * the showcase Grafana dashboard's "bus health" row can plot per-service
  * outbox backpressure. The gauge runs a {@code SELECT COUNT(*)} on every
- * Prometheus scrape (~15s, see {@code db/prometheus/prometheus.yml}). Cheap
+ * Prometheus scrape (~15s, see {@code config/prometheus/prometheus.yml}). Cheap
  * indexed-COUNT on the {@code status='pending'} index — measured in
  * sub-millisecond on a healthy box.
  *

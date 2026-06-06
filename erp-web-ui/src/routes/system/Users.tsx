@@ -30,7 +30,7 @@ const PERSONAS: Persona[] = [
 /**
  * Read-only listing of the 13 seeded demo personas + their primary role
  * + the current-user highlight. Source-of-truth is Keycloak's realm import
- * (db/keycloak/northwood-realm.json); this page mirrors that list so
+ * (config/keycloak/northwood-realm.json); this page mirrors that list so
  * operators can see who's in the system without hitting Keycloak admin.
  */
 export function Users() {
@@ -73,7 +73,7 @@ export function Users() {
     <>
       <PageHeader
         title="Users"
-        description="The 13 seeded demo personas. Each maps to a single Keycloak realm role; sign out (top-right) and sign back in as another persona to switch roles. To add a real user, edit db/keycloak/northwood-realm.json and reload the realm."
+        description="The 13 seeded demo personas. Each maps to a single Keycloak realm role; sign out (top-right) and sign back in as another persona to switch roles. To add a real user, edit config/keycloak/northwood-realm.json and reload the realm."
         trail={[
           { label: "System" },
           { label: "Users" },
