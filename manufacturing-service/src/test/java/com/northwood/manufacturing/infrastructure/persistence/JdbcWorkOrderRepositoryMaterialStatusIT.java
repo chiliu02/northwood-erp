@@ -77,8 +77,8 @@ class JdbcWorkOrderRepositoryMaterialStatusIT {
     }
 
     private static void loadBaseline() {
-        applySqlFile(Path.of("..", "db", "northwood_erp.sql"));
-        applySqlFile(Path.of("..", "db", "northwood_erp_seed.sql"));
+        applySqlFile(Path.of("..", "config", "postgresql", "northwood_erp.sql"));
+        applySqlFile(Path.of("..", "config", "postgresql", "northwood_erp_seed.sql"));
     }
 
     private static void applySqlFile(Path file) {

@@ -19,7 +19,7 @@ Northwood/
 ├── pom.xml                       Parent POM
 ├── docker-compose.yml            Postgres 17 + Kafka 4.1.2 (KRaft, single broker) + Keycloak 26 + LGTM stack (Prometheus/Tempo/Loki/Grafana)
 ├── docker-compose.seed.yml       Override — layer on to also load the demo seed (config/postgresql/northwood_erp_seed.sql)
-├── db/                           Baseline schema + roles/grants (northwood_erp.sql), seed, Keycloak realm + LGTM configs (prometheus/tempo/loki/promtail/grafana)
+├── config/                       Baseline schema + roles/grants + seed (postgresql/northwood_erp{,_seed}.sql), Keycloak realm, guest front-door template + LGTM configs (prometheus/tempo/loki/promtail/grafana)
 │
 ├── shared-kernel/                Pure Java value objects (Money, Quantity, Sku, …)
 ├── shared/                       Outbox/inbox base, EventEnvelope, Kafka publisher, Saga base (split: `shared.application.*` ports, `shared.infrastructure.*` adapters, `shared.api.*` audit REST)

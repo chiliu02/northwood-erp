@@ -938,14 +938,14 @@ Run from repo root:
 
 ```powershell
 # 1. Plural table names — should have zero output.
-Grep '^CREATE TABLE [a-z_]+\.[a-z_]+s \(' db\northwood_erp.sql
+Grep '^CREATE TABLE [a-z_]+\.[a-z_]+s \(' config\postgresql\northwood_erp.sql
 
 # 2. Boolean column missing is_ / has_ prefix — manually inspect output.
-Grep '^\s+[a-z_]+ BOOLEAN' db\northwood_erp.sql   # then filter out is_ / has_
+Grep '^\s+[a-z_]+ BOOLEAN' config\postgresql\northwood_erp.sql   # then filter out is_ / has_
 
 # 3. updated_at trigger attached to a table without updated_at column — pair every
 #    `CREATE TRIGGER trg_X_updated_at` with `CREATE TABLE X` containing `updated_at`.
-Grep 'CREATE TRIGGER trg_\w+_updated_at' db\northwood_erp.sql
+Grep 'CREATE TRIGGER trg_\w+_updated_at' config\postgresql\northwood_erp.sql
 ```
 
 Each canary is meant as a code-review sanity check, not a CI gate — the corpus is small enough that visual inspection is reliable.
