@@ -11,10 +11,10 @@
 
 locals {
   sgs = {
-    web   = "Public EC2 — front door 80 + erp-bff 8089 + Keycloak 8080 (internet-facing)"
-    app   = "Services EC2 — 8081-8087, private"
-    infra = "Data EC2 — Postgres 5432 / Kafka 9092 / observability, private"
-    nat   = "NAT instance — egress for the private subnets"
+    web   = "Public EC2 - front door 80 + erp-bff 8089 + Keycloak 8080 (internet-facing)"
+    app   = "Services EC2 - 8081-8087, private"
+    infra = "Data EC2 - Postgres 5432 / Kafka 9092 / observability, private"
+    nat   = "NAT instance - egress for the private subnets"
   }
 }
 
@@ -65,7 +65,7 @@ resource "aws_vpc_security_group_ingress_rule" "web_keycloak_internet" {
 # ---- app-sg: service ports from the web tier (BFF -> services) ------------
 resource "aws_vpc_security_group_ingress_rule" "app_from_web" {
   security_group_id            = aws_security_group.this["app"].id
-  description                  = "Service ports from web tier (BFF -> service)"
+  description                  = "Service ports from web tier (BFF to service)"
   ip_protocol                  = "tcp"
   from_port                    = var.app_port_range.from
   to_port                      = var.app_port_range.to
