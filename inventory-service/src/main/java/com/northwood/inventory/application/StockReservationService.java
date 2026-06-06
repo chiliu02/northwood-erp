@@ -260,10 +260,29 @@ public class StockReservationService {
             StockReservation.Status.RELEASED.dbValue()
         );
         stockReservations.recomputeSalesOrderHeaderStatus(l.stockReservationHeaderId());
+        // Emit the released reply FIRST so the saga drops this line from its
+        // outstanding set before the (below) ReplenishmentCancelled lands — a
+        // cancel for a no-longer-outstanding line is a benign no-op rather than
+        // an order rejection.
         emitLineReservationChanged(salesOrderId, salesOrderLineId, l.productId(),
             BigDecimal.ZERO, BigDecimal.ZERO, StockReservation.Status.RELEASED.dbValue());
+        // §1G Slice C: if the removed line was short and awaiting supply, cancel
+        // its in-flight replenishment so it doesn't fulfil into the pool for a
+        // line that no longer exists. A fulfilled request is excluded by the
+        // finder (its stock already landed; the line was re-reserved + released).
+        cancelOpenReplenishmentForLine(salesOrderId, salesOrderLineId);
         log.info("amended sales_order={} -line={} released reserved={}",
             salesOrderId, salesOrderLineId, l.reservedQuantity());
+    }
+
+    private void cancelOpenReplenishmentForLine(UUID salesOrderId, UUID salesOrderLineId) {
+        for (ReplenishmentRequest r : replenishmentRequests.findOpenForSalesOrderLine(salesOrderId, salesOrderLineId)) {
+            r.markCancelled("sales order " + salesOrderId + " line " + salesOrderLineId
+                + " removed — dropping its in-flight replenishment");
+            replenishmentRequests.save(r);
+            log.info("cancelled in-flight replenishment={} for removed sales_order={} line={}",
+                r.id().value(), salesOrderId, salesOrderLineId);
+        }
     }
 
     /** A line's quantity changed: reserve the delta on an increase, release it on a decrease. */

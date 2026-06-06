@@ -36,6 +36,16 @@ public interface ReplenishmentRequestRepository {
     Optional<ReplenishmentRequest> findByDispatchedAggregateId(UUID dispatchedAggregateId);
 
     /**
+     * Open ({@code requested} / {@code dispatched}) replenishments raised for a
+     * specific sales-order line (any sales-order-backed reason). Used by §1G
+     * line removal: when a short line is dropped, its in-flight replenishment is
+     * cancelled so it doesn't fulfil into the pool for a line that no longer
+     * exists. A {@code fulfilled} request is excluded — its stock already landed
+     * and the line was re-reserved, so removal releases it via the normal path.
+     */
+    List<ReplenishmentRequest> findOpenForSalesOrderLine(UUID salesOrderHeaderId, UUID salesOrderLineId);
+
+    /**
      * Find an open (or dispatched) replenishment by the PO that fulfils it
      * (purchasing path). Stamped during {@code PurchaseOrderCreated} consumption;
      * read during {@code GoodsReceived} consumption to flip the request to

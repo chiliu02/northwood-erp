@@ -99,11 +99,11 @@ class SalesOrderServiceAmendTest {
         verify(orders).save(any());
     }
 
-    @Test void addLine_rejected_once_stock_reservation_incomplete() {
-        // Still out of the window (amending a short-parked order is Slice C).
-        // The window guard runs before price resolution, so no productCards stub.
+    @Test void addLine_rejected_once_goods_shipped() {
+        // Past the amendable window (goods shipped). The window guard runs before
+        // price resolution, so no productCards stub.
         when(sagaManager.currentState(ORDER_ID))
-            .thenReturn(Optional.of(SalesOrderFulfilmentSaga.STOCK_RESERVATION_INCOMPLETE));
+            .thenReturn(Optional.of(SalesOrderFulfilmentSaga.GOODS_SHIPPED));
 
         assertThatThrownBy(() -> service.addLine(addCommand(null)))
             .isInstanceOf(OrderNotAmendableException.class);

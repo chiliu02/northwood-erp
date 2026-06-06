@@ -73,6 +73,20 @@ public final class InMemoryReplenishmentRequestRepository implements Replenishme
     }
 
     @Override
+    public List<ReplenishmentRequest> findOpenForSalesOrderLine(UUID salesOrderHeaderId, UUID salesOrderLineId) {
+        List<ReplenishmentRequest> out = new ArrayList<>();
+        for (ReplenishmentRequest r : byId.values()) {
+            if (salesOrderHeaderId.equals(r.sourceSalesOrderHeaderId())
+                && salesOrderLineId.equals(r.sourceSalesOrderLineId())
+                && (r.status() == ReplenishmentRequest.Status.REQUESTED
+                    || r.status() == ReplenishmentRequest.Status.DISPATCHED)) {
+                out.add(r);
+            }
+        }
+        return out;
+    }
+
+    @Override
     public void save(ReplenishmentRequest r) {
         if (r.version() == 0L && !byId.containsKey(r.id().value())) {
             // The partial unique index excludes the per-line demand-driven

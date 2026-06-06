@@ -253,13 +253,16 @@ public class SalesOrderService {
      * incrementally (reserve the added line / release the removed line / delta
      * the quantity) and the saga reconciles its outstanding-line set via
      * {@code SalesOrderLineReservationChanged}. {@code stock_reservation_incomplete}
-     * (amending a short-parked order, mid replenishment retry) and the
-     * finance-invoiced window stay out — Slices C / D.
+     * (Slice C) — amend a shortage-parked order: inventory reconciles incrementally
+     * (a removed short line cancels its in-flight replenishment) and the saga's
+     * outstanding-set plumbing absorbs the change. The finance-invoiced window
+     * (a pre-shipment invoice exists) stays out — Slice D.
      */
     private static final Set<String> AMENDABLE_SAGA_STATES = Set.of(
         SalesOrderFulfilmentSaga.STARTED,
         SalesOrderFulfilmentSaga.AWAITING_RELEASE,
         SalesOrderFulfilmentSaga.STOCK_RESERVATION_REQUESTED,
+        SalesOrderFulfilmentSaga.STOCK_RESERVATION_INCOMPLETE,
         SalesOrderFulfilmentSaga.READY_TO_SHIP
     );
 

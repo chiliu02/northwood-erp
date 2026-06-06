@@ -98,6 +98,16 @@ public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestR
     }
 
     @Override
+    public List<ReplenishmentRequest> findOpenForSalesOrderLine(UUID salesOrderHeaderId, UUID salesOrderLineId) {
+        return jdbc.query(
+            SELECT_COLUMNS + """
+                 WHERE source_sales_order_header_id = ? AND source_sales_order_line_id = ?
+                   AND status IN ('requested', 'dispatched')""",
+            ROW_MAPPER, salesOrderHeaderId, salesOrderLineId
+        );
+    }
+
+    @Override
     public Optional<ReplenishmentRequest> findByLinkedPurchaseOrderId(UUID purchaseOrderId) {
         List<ReplenishmentRequest> matches = jdbc.query(
             SELECT_COLUMNS + " WHERE linked_purchase_order_id = ?",

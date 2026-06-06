@@ -280,6 +280,15 @@ public class JdbcSalesOrderFulfilmentSagaManager
                 saga.sagaId(), salesOrderHeaderId, saga.state(), salesOrderLineId);
             return saga.state();
         }
+        // Only reject for a line still in the outstanding set. §1G: a line removed
+        // by amendment is dropped from the set first (the released reply lands
+        // before this cancel), so its in-flight replenishment cancellation is a
+        // benign no-op here — the order was deliberately amended, not unsourceable.
+        if (!readData(saga).outstandingReplenishmentLineIds().contains(salesOrderLineId)) {
+            log.debug("saga {} sales_order={} ignoring replenishment-cancelled for non-outstanding line={} (amended away)",
+                saga.sagaId(), salesOrderHeaderId, salesOrderLineId);
+            return saga.state();
+        }
         saga.transitionTo(REJECTED, "replenishment_cancelled");
         sagaPort.update(saga);
         log.info("saga {} sales_order={} → rejected (replenishment cancelled for line={}: {})",
