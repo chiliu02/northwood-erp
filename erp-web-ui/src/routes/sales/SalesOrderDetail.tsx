@@ -171,6 +171,7 @@ export function SalesOrderDetail() {
                 icon={<Ban className="h-4 w-4" />}
                 onClick={open}
                 requiresRole="sales_manager"
+                requiresRoleHint="For demo purposes, only a sales manager can cancel an order."
               >
                 Cancel order
               </ActionButton>

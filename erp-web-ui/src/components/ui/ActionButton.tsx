@@ -15,6 +15,13 @@ interface ActionButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
    * resolves.
    */
   requiresRole?: string;
+  /**
+   * Overrides the default "Requires role: X" tooltip shown while the button
+   * is disabled for lacking {@link requiresRole}. Use it to explain *why* the
+   * restriction exists (e.g. segregation of duties) so the disabled state
+   * reads as intentional rather than as a missing permission.
+   */
+  requiresRoleHint?: string;
 }
 
 /**
@@ -25,6 +32,7 @@ export function ActionButton({
   variant = "secondary",
   icon,
   requiresRole,
+  requiresRoleHint,
   className,
   children,
   type = "button",
@@ -37,7 +45,7 @@ export function ActionButton({
   const lacksRole = userLoaded && requiresRole != null && !hasRole(requiresRole);
   const finalDisabled = Boolean(disabled) || lacksRole;
   const finalTitle = lacksRole
-    ? `Requires role: ${requiresRole}`
+    ? requiresRoleHint ?? `Requires role: ${requiresRole}`
     : title ?? (requiresRole ? `Requires role: ${requiresRole}` : undefined);
 
   return (
