@@ -266,6 +266,23 @@ public class SalesOrderService {
         SalesOrderFulfilmentSaga.READY_TO_SHIP
     );
 
+    /**
+     * Reserve-phase states that are <em>past</em> invoice creation for
+     * prepayment/deposit orders (Slice D finance guard). These terms raise their
+     * invoice up front — before stock reservation — so by the time a
+     * prepayment/deposit order reaches any of these states a pre-shipment invoice
+     * already exists and amending the lines would desync it (post-invoice
+     * amendment needs the credit-note flow, §3.2). On-shipment orders carry no
+     * invoice until shipment, so they stay amendable here. {@code started} is
+     * excluded — it precedes the invoice request for every term.
+     */
+    private static final Set<String> POST_UPFRONT_INVOICE_STATES = Set.of(
+        SalesOrderFulfilmentSaga.AWAITING_RELEASE,
+        SalesOrderFulfilmentSaga.STOCK_RESERVATION_REQUESTED,
+        SalesOrderFulfilmentSaga.STOCK_RESERVATION_INCOMPLETE,
+        SalesOrderFulfilmentSaga.READY_TO_SHIP
+    );
+
     private final SalesOrderRepository salesOrders;
     private final SalesOrderFulfilmentSagaManager sagaManager;
     private final CustomerLookup customers;
@@ -448,8 +465,21 @@ public class SalesOrderService {
         if (!AMENDABLE_SAGA_STATES.contains(state)) {
             throw new OrderNotAmendableException(
                 "Sales order " + order.id().value() + " fulfilment is at '" + state
-                + "'; lines can only be amended before stock is reserved");
+                + "'; lines can only be amended before goods ship");
         }
+        // Finance guard (Slice D): prepayment/deposit orders invoice up front, so
+        // once past `started` they already carry a pre-shipment invoice — block
+        // the amendment (post-invoice amendment needs the credit-note flow, §3.2).
+        if (POST_UPFRONT_INVOICE_STATES.contains(state) && hasUpfrontInvoiceTerms(order.id().value())) {
+            throw new OrderNotAmendableException(
+                "Sales order " + order.id().value() + " has a pre-shipment invoice "
+                + "(prepayment/deposit terms); its lines can't be amended once invoiced");
+        }
+    }
+
+    private boolean hasUpfrontInvoiceTerms(UUID salesOrderHeaderId) {
+        String terms = sagaManager.currentPaymentTerms(salesOrderHeaderId).orElse(null);
+        return PaymentTerms.PREPAYMENT.dbValue().equals(terms) || PaymentTerms.DEPOSIT.dbValue().equals(terms);
     }
 
     @Transactional

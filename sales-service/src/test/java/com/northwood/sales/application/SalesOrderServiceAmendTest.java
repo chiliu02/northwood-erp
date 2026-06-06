@@ -99,6 +99,18 @@ class SalesOrderServiceAmendTest {
         verify(orders).save(any());
     }
 
+    @Test void addLine_rejected_for_prepayment_order_at_ready_to_ship() {
+        // Finance guard: prepayment/deposit orders invoice up front, so a
+        // ready_to_ship prepayment order already carries a pre-shipment invoice.
+        when(sagaManager.currentState(ORDER_ID)).thenReturn(Optional.of(SalesOrderFulfilmentSaga.READY_TO_SHIP));
+        when(sagaManager.currentPaymentTerms(ORDER_ID)).thenReturn(Optional.of(PaymentTerms.PREPAYMENT.dbValue()));
+
+        assertThatThrownBy(() -> service.addLine(addCommand(null)))
+            .isInstanceOf(OrderNotAmendableException.class);
+
+        verify(orders, never()).save(any());
+    }
+
     @Test void addLine_rejected_once_goods_shipped() {
         // Past the amendable window (goods shipped). The window guard runs before
         // price resolution, so no productCards stub.

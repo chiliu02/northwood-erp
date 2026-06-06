@@ -211,14 +211,21 @@ export function SalesOrderDetail() {
   const lines = aggregate?.lines ?? [];
   const activeLines = lines.filter((l) => l.lineStatus !== "cancelled");
 
-  // Client-side proxy for the server's amendable window: any in-flight order
-  // up to (and including) ready_to_ship / shortage-parked is amendable —
-  // inventory reconciles the change incrementally. Only terminal/shipped orders
-  // are closed. The server is authoritative and returns 409 if this is stale.
-  const amendable = !NON_CANCELLABLE.includes(data.orderStatus);
+  // Client-side proxy for the server's amendable window: any in-flight order up
+  // to (and including) ready_to_ship / shortage-parked is amendable — inventory
+  // reconciles the change incrementally. Closed once terminal/shipped, or once a
+  // prepayment/deposit order has raised its up-front invoice (post-invoice
+  // amendment needs the credit-note flow). The server is authoritative and
+  // returns 409 if this is stale.
+  const upfrontInvoiced =
+    (data.paymentTerms === "prepayment" || data.paymentTerms === "deposit")
+    && !!data.invoiceStatus && data.invoiceStatus !== "pending";
+  const amendable = !NON_CANCELLABLE.includes(data.orderStatus) && !upfrontInvoiced;
   const notAmendableReason = NON_CANCELLABLE.includes(data.orderStatus)
     ? `Order is ${data.orderStatus}; lines can no longer be amended.`
-    : null;
+    : upfrontInvoiced
+      ? "This order has a pre-shipment invoice (prepayment/deposit); lines can't be amended once invoiced."
+      : null;
 
   const amendBusy = changeQtyMutation.isPending || changePriceMutation.isPending
     || removeLineMutation.isPending || addLineMutation.isPending;

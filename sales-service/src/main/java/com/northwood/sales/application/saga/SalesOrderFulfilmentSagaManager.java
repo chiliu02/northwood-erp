@@ -38,10 +38,19 @@ public interface SalesOrderFulfilmentSagaManager {
     /**
      * Current fulfilment-saga state for an order, or empty if no saga row
      * exists. Read-only — used by the application service to gate line
-     * amendment on the saga's position in the flow (only before stock is
-     * reserved, this slice).
+     * amendment on the saga's position in the flow.
      */
     Optional<String> currentState(UUID salesOrderHeaderId);
+
+    /**
+     * The order's snapshotted commercial payment terms (wire-format
+     * {@code on_shipment} / {@code prepayment} / {@code deposit} …), or empty if
+     * no saga row exists / none was stamped. Read-only — used by the application
+     * service to apply the §1G finance guard: prepayment/deposit orders raise
+     * their invoice <em>before</em> reservation, so they are not amendable past
+     * {@code started} even though on-shipment orders are.
+     */
+    Optional<String> currentPaymentTerms(UUID salesOrderHeaderId);
 
     /**
      * Flip {@code → compensating} in response to a cancel command. Throws
