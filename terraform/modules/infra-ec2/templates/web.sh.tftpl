@@ -10,6 +10,10 @@ systemctl enable --now docker
 command -v aws >/dev/null 2>&1 || dnf install -y awscli-2 || dnf install -y awscli
 
 mkdir -p /opt/northwood/import /opt/northwood/welcome /data/keycloak
+# Keycloak runs as uid 1000 inside the container; make its bind-mounted data dir
+# writable so it can create data/transaction-logs (otherwise ARJUNA's
+# ShadowNoFileLockStore "cannot access root of object store" crash-loops it).
+chmod -R 777 /data/keycloak
 aws s3 cp "s3://${bucket}/keycloak/northwood-realm.json" /opt/northwood/import/northwood-realm.json --region "${region}"
 aws s3 cp "s3://${bucket}/env/keycloak.env" /opt/northwood/keycloak.env --region "${region}"
 aws s3 cp "s3://${bucket}/env/bff.env" /opt/northwood/bff.env --region "${region}"
