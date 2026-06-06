@@ -118,8 +118,8 @@ resource "aws_s3_object" "realm" {
 resource "aws_s3_object" "welcome_template" {
   bucket = aws_s3_bucket.artifacts.id
   key    = "welcome/index.html.template"
-  source = "${var.repo_root}/welcome/index.html.template"
-  etag   = filemd5("${var.repo_root}/welcome/index.html.template")
+  source = "${var.repo_root}/db/welcome.html.template"
+  etag   = filemd5("${var.repo_root}/db/welcome.html.template")
 }
 
 resource "aws_s3_object" "postgres_env" {

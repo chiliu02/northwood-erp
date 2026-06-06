@@ -133,7 +133,7 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - ./welcome:/etc/nginx/welcome-src:ro
+      - ./db/welcome.html.template:/etc/nginx/welcome-src/index.html.template:ro
     command:
       - /bin/sh
       - -c
