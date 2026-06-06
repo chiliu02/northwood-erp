@@ -114,6 +114,31 @@ services:
       retries: 12
       start_period: 30s
 
+  # -------- Guest front door: a standalone "start here" intro page --------
+  #
+  # A single static HTML page on its own port (http://localhost:8080) — the
+  # first thing a guest opens. It introduces Northwood and links into the ERP UI
+  # and the Demo Guide. Deliberately separate from erp-web-ui-bff (own port, no
+  # auth, no SPA) so it stays up independently and depends on nothing but itself.
+  #
+  # The "Enter the ERP" / "Demo Guide" links are injected from ERP_URL at start
+  # (envsubst over the mounted template → the served index.html), so local
+  # (:8089 BFF) and AWS (its own URL) differ by env var only, with no edit to the
+  # HTML. Override: `ERP_URL=https://erp.example.com docker compose up -d welcome`.
+  welcome:
+    image: nginx:1.27-alpine
+    container_name: northwood-welcome
+    environment:
+      ERP_URL: ${ERP_URL:-http://localhost:8089}
+    ports:
+      - "8080:80"
+    volumes:
+      - ./welcome:/etc/nginx/welcome-src:ro
+    command:
+      - /bin/sh
+      - -c
+      - envsubst '$$ERP_URL' < /etc/nginx/welcome-src/index.html.template > /usr/share/nginx/html/index.html && exec nginx -g 'daemon off;'
+
   # Optional: pgAdmin for database inspection. Uncomment to enable.
   # pgadmin:
   #   image: dpage/pgadmin4:latest
