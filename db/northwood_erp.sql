@@ -929,6 +929,11 @@ CREATE TRIGGER trg_stock_reservation_header_updated_at
 CREATE TABLE inventory.stock_reservation_line (
     stock_reservation_line_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     stock_reservation_header_id UUID NOT NULL REFERENCES inventory.stock_reservation_header(stock_reservation_header_id) ON DELETE RESTRICT,
+    -- The originating sales_order_line_id for sales-order reservations, so the
+    -- line-amendment flow (§1G) can correlate a SalesOrderLineAdded/Changed/Removed
+    -- event back to the exact reservation line to adjust. NULL for work-order
+    -- reservations (those correlate via stock_reservation_line_id = work_order_material_id).
+    sales_order_line_id UUID,
     product_id UUID NOT NULL,
     product_sku VARCHAR(50) NOT NULL,
     product_name VARCHAR(200) NOT NULL,

@@ -133,6 +133,24 @@ public interface SalesOrderFulfilmentSagaManager {
      */
     String applyReplenishmentCancelled(UUID salesOrderHeaderId, UUID salesOrderLineId, String reason);
 
+    /**
+     * Apply {@code inventory.SalesOrderLineReservationChanged} — inventory's
+     * per-line reply to a line amendment (§1G). Reconciles the saga's
+     * outstanding-replenishment set:
+     * <ul>
+     *   <li>{@code lineIsShort} — the amended line couldn't be fully reserved
+     *       (inventory raised a replenishment); add it to the outstanding set and
+     *       park at {@code stock_reservation_incomplete};</li>
+     *   <li>otherwise (fully reserved, or released on removal) — drop it from the
+     *       set; if the set empties while parked at
+     *       {@code stock_reservation_incomplete}, un-park to {@code ready_to_ship}.</li>
+     * </ul>
+     * No-op (returns current state) outside the reservation phase
+     * ({@code stock_reservation_requested} / {@code ready_to_ship} /
+     * {@code stock_reservation_incomplete}).
+     */
+    String applyLineReservationChanged(UUID salesOrderHeaderId, UUID salesOrderLineId, boolean lineIsShort);
+
     /** Apply {@code inventory.ShipmentPosted}. Transitions {@code ready_to_ship → goods_shipped}. */
     String applyShipmentPosted(UUID salesOrderHeaderId);
 

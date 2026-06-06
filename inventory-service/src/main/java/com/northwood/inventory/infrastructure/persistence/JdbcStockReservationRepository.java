@@ -8,6 +8,7 @@ import com.northwood.inventory.domain.StockReservationRepository;
 import com.northwood.shared.domain.DomainEvent;
 import com.northwood.shared.application.messaging.OutboxTraceHeaders;
 import com.northwood.shared.application.security.CurrentUserAccessor;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -51,21 +52,112 @@ public class JdbcStockReservationRepository implements StockReservationRepositor
             actor, actor
         );
         for (StockReservationLine line : reservation.lines()) {
-            jdbc.update("""
-                INSERT INTO inventory.stock_reservation_line (
-                    stock_reservation_line_id, stock_reservation_header_id, product_id,
-                    product_sku, product_name, requested_quantity, reserved_quantity,
-                    status, shortage_quantity
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                line.lineId(), reservation.id().value(), line.productId(),
-                line.productSku(), line.productName(), line.requestedQuantity(),
-                line.reservedQuantity(), line.status().dbValue(), line.shortageQuantity()
-            );
+            insertLine(reservation.id().value(), line);
         }
         for (DomainEvent event : reservation.pullPendingEvents()) {
             writeOutbox(event, actor);
         }
+    }
+
+    private void insertLine(UUID headerId, StockReservationLine line) {
+        jdbc.update("""
+            INSERT INTO inventory.stock_reservation_line (
+                stock_reservation_line_id, stock_reservation_header_id, sales_order_line_id, product_id,
+                product_sku, product_name, requested_quantity, reserved_quantity,
+                status, shortage_quantity
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            line.lineId(), headerId, line.salesOrderLineId(), line.productId(),
+            line.productSku(), line.productName(), line.requestedQuantity(),
+            line.reservedQuantity(), line.status().dbValue(), line.shortageQuantity()
+        );
+    }
+
+    @Override
+    public Optional<UUID> findLiveHeaderIdForSalesOrder(UUID salesOrderHeaderId) {
+        try {
+            return Optional.ofNullable(jdbc.queryForObject(
+                """
+                SELECT stock_reservation_header_id FROM inventory.stock_reservation_header
+                WHERE sales_order_header_id = ? AND status <> 'released'
+                """,
+                UUID.class, salesOrderHeaderId
+            ));
+        } catch (EmptyResultDataAccessException e) {
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public Optional<AmendableSalesOrderLine> findAmendableSalesOrderLine(UUID salesOrderHeaderId, UUID salesOrderLineId) {
+        try {
+            return Optional.ofNullable(jdbc.queryForObject(
+                """
+                SELECT h.stock_reservation_header_id, l.stock_reservation_line_id, h.warehouse_id,
+                       l.product_id, l.requested_quantity, l.reserved_quantity, l.status
+                FROM inventory.stock_reservation_line l
+                JOIN inventory.stock_reservation_header h
+                  ON h.stock_reservation_header_id = l.stock_reservation_header_id
+                WHERE h.sales_order_header_id = ? AND l.sales_order_line_id = ?
+                  AND h.status <> 'released' AND l.status <> 'released'
+                """,
+                (rs, n) -> new AmendableSalesOrderLine(
+                    rs.getObject("stock_reservation_header_id", UUID.class),
+                    rs.getObject("stock_reservation_line_id", UUID.class),
+                    rs.getObject("warehouse_id", UUID.class),
+                    rs.getObject("product_id", UUID.class),
+                    rs.getBigDecimal("requested_quantity"),
+                    rs.getBigDecimal("reserved_quantity"),
+                    rs.getString("status")
+                ),
+                salesOrderHeaderId, salesOrderLineId
+            ));
+        } catch (EmptyResultDataAccessException e) {
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public void appendLine(UUID stockReservationHeaderId, StockReservationLine line) {
+        insertLine(stockReservationHeaderId, line);
+    }
+
+    @Override
+    public void updateLine(
+        UUID stockReservationLineId,
+        BigDecimal requestedQuantity,
+        BigDecimal reservedQuantity,
+        BigDecimal shortageQuantity,
+        String status
+    ) {
+        jdbc.update("""
+            UPDATE inventory.stock_reservation_line
+            SET requested_quantity = ?, reserved_quantity = ?, shortage_quantity = ?, status = ?
+            WHERE stock_reservation_line_id = ?
+            """,
+            requestedQuantity, reservedQuantity, shortageQuantity, status, stockReservationLineId
+        );
+    }
+
+    @Override
+    public void recomputeSalesOrderHeaderStatus(UUID stockReservationHeaderId) {
+        jdbc.update("""
+            UPDATE inventory.stock_reservation_header h
+            SET status = CASE
+                WHEN (SELECT COALESCE(SUM(l.reserved_quantity), 0)
+                      FROM inventory.stock_reservation_line l
+                      WHERE l.stock_reservation_header_id = h.stock_reservation_header_id
+                        AND l.status <> 'released') = 0 THEN 'failed'
+                WHEN EXISTS (SELECT 1 FROM inventory.stock_reservation_line l
+                      WHERE l.stock_reservation_header_id = h.stock_reservation_header_id
+                        AND l.status <> 'released' AND l.shortage_quantity > 0) THEN 'partially_reserved'
+                ELSE 'reserved'
+              END,
+              version = version + 1
+            WHERE h.stock_reservation_header_id = ?
+            """,
+            stockReservationHeaderId
+        );
     }
 
     @Override

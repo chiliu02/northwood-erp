@@ -11,6 +11,7 @@ import com.northwood.sales.application.inbox.CustomerPaymentReceivedHandler;
 import com.northwood.sales.application.inbox.InventoryCancellationAppliedHandler;
 import com.northwood.sales.application.inbox.ReplenishmentCancelledHandler;
 import com.northwood.sales.application.inbox.ReplenishmentFulfilledHandler;
+import com.northwood.sales.application.inbox.SalesOrderLineReservationChangedHandler;
 import com.northwood.sales.application.inbox.ShipmentPostedHandler;
 import com.northwood.sales.application.inbox.StockReservedHandler;
 import com.northwood.sales.domain.SalesOrder;
@@ -104,6 +105,7 @@ public final class SalesTestKit {
         bus.register(new CustomerInvoiceCreatedHandler(inbox, sagaManager, json));
         bus.register(new CustomerPaymentReceivedHandler(inbox, sagaManager, statusProjection, upfrontSettledEmitter, json));
         bus.register(new InventoryCancellationAppliedHandler(inbox, sagaManager, compensationEmitter, json));
+        bus.register(new SalesOrderLineReservationChangedHandler(inbox, sagaManager, json));
     }
 
     public UUID placeOrder(PlaceOrderCommand cmd) {

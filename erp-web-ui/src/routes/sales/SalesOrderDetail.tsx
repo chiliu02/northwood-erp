@@ -211,15 +211,16 @@ export function SalesOrderDetail() {
   const lines = aggregate?.lines ?? [];
   const activeLines = lines.filter((l) => l.lineStatus !== "cancelled");
 
-  // Client-side proxy for the server's amendable window (saga before stock is
-  // reserved, this slice): order not terminal/shipped AND stock not yet
-  // reserved. The server is authoritative — it returns 409 if this is stale.
-  const reserved = !!data.stockStatus && data.stockStatus !== "pending";
-  const amendable = !NON_CANCELLABLE.includes(data.orderStatus) && !reserved;
+  // Client-side proxy for the server's amendable window: order not
+  // terminal/shipped, and not parked on a material shortage (amending a
+  // shortage-parked order is a later slice). A fully-reserved order is
+  // amendable — inventory reconciles the change incrementally. The server is
+  // authoritative and returns 409 if this is stale.
+  const amendable = !NON_CANCELLABLE.includes(data.orderStatus) && !data.hasShortage;
   const notAmendableReason = NON_CANCELLABLE.includes(data.orderStatus)
     ? `Order is ${data.orderStatus}; lines can no longer be amended.`
-    : reserved
-      ? "Stock is already reserved — line amendment is not available for reserved orders yet."
+    : data.hasShortage
+      ? "This order has a material shortage and is awaiting replenishment; lines can't be amended while it's parked."
       : null;
 
   const amendBusy = changeQtyMutation.isPending || changePriceMutation.isPending

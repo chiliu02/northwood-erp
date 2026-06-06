@@ -64,5 +64,50 @@ public interface StockReservationRepository {
      */
     void deleteHeaderAndLines(UUID stockReservationHeaderId);
 
+    // ------------------------------------------------------------
+    // §1G line amendment — per-line incremental reserve / release / delta.
+    // ------------------------------------------------------------
+
+    /** The live (non-{@code released}) reservation header id for a sales order, if any. */
+    Optional<UUID> findLiveHeaderIdForSalesOrder(UUID salesOrderHeaderId);
+
+    /**
+     * The live (non-{@code released}) reservation line for a given sales-order
+     * line, correlated via {@code stock_reservation_line.sales_order_line_id}.
+     * Empty when the order has no live reservation, or none for that line.
+     */
+    Optional<AmendableSalesOrderLine> findAmendableSalesOrderLine(UUID salesOrderHeaderId, UUID salesOrderLineId);
+
+    /** Append one line to an existing reservation header (add-line amendment). */
+    void appendLine(UUID stockReservationHeaderId, StockReservationLine line);
+
+    /** Update a single reservation line's quantities + status (change / remove amendment). */
+    void updateLine(
+        UUID stockReservationLineId,
+        BigDecimal requestedQuantity,
+        BigDecimal reservedQuantity,
+        BigDecimal shortageQuantity,
+        String status
+    );
+
+    /**
+     * Recompute a sales-order reservation header's status from its
+     * non-{@code released} lines (all reserved → {@code reserved}; any short →
+     * {@code partially_reserved}; nothing reserved → {@code failed}) and bump
+     * its version.
+     */
+    void recomputeSalesOrderHeaderStatus(UUID stockReservationHeaderId);
+
     record ReservedLineSnapshot(UUID productId, BigDecimal reservedQuantity) {}
+
+    /** A live reservation line targeted by a line amendment. */
+    record AmendableSalesOrderLine(
+        UUID stockReservationHeaderId,
+        UUID stockReservationLineId,
+        UUID warehouseId,
+        UUID productId,
+        BigDecimal requestedQuantity,
+        BigDecimal reservedQuantity,
+        String status
+    ) {}
 }

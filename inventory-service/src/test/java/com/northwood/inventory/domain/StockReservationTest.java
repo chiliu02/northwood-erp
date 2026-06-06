@@ -23,7 +23,7 @@ class StockReservationTest {
             ? (reserved.signum() > 0 ? StockReservation.Status.PARTIALLY_RESERVED : StockReservation.Status.FAILED)
             : StockReservation.Status.RESERVED;
         return new StockReservationLine(
-            UUID.randomUUID(), UUID.randomUUID(),
+            UUID.randomUUID(), null, UUID.randomUUID(),
             "FG-X", "Test Product",
             requested, reserved, shortage, status
         );
@@ -128,14 +128,14 @@ class StockReservationTest {
     class LineInvariants {
         @Test void rejects_zero_requested_quantity() {
             assertThatThrownBy(() -> new StockReservationLine(
-                UUID.randomUUID(), UUID.randomUUID(), "FG-X", "X",
+                UUID.randomUUID(), null, UUID.randomUUID(), "FG-X", "X",
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, StockReservation.Status.RESERVED
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void allows_zero_reserved_with_full_shortage() {
             new StockReservationLine(
-                UUID.randomUUID(), UUID.randomUUID(), "FG-X", "X",
+                UUID.randomUUID(), null, UUID.randomUUID(), "FG-X", "X",
                 BigDecimal.TEN, BigDecimal.ZERO, BigDecimal.TEN, StockReservation.Status.FAILED
             );
         }

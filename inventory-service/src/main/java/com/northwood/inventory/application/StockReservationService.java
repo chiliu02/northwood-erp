@@ -10,6 +10,7 @@ import com.northwood.inventory.domain.StockReservationRepository;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.StockReservationRepository.ReservedLineSnapshot;
 import com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied;
+import com.northwood.inventory.domain.events.SalesOrderLineReservationChanged;
 import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -100,6 +101,7 @@ public class StockReservationService {
                 // shortage line (parks the saga at stock_reservation_incomplete).
                 lines.add(new StockReservationLine(
                     UUID.randomUUID(),
+                    req.salesOrderLineId(),
                     req.productId(), req.productSku(), req.productName(),
                     req.requestedQuantity(), BigDecimal.ZERO, req.requestedQuantity(),
                     StockReservation.Status.FAILED
@@ -117,6 +119,7 @@ public class StockReservationService {
             StockReservationLine line = reserveOneLine(
                 warehouseId,
                 UUID.randomUUID(),
+                req.salesOrderLineId(),
                 req.productId(), req.productSku(), req.productName(),
                 req.requestedQuantity()
             );
@@ -170,6 +173,7 @@ public class StockReservationService {
             lines.add(reserveOneLine(
                 warehouseId,
                 comp.workOrderMaterialId(),
+                null,   // work-order line — no sales_order_line_id
                 comp.componentProductId(), comp.componentSku(), comp.componentName(),
                 comp.requiredQuantity()
             ));
@@ -184,6 +188,126 @@ public class StockReservationService {
             "reserved raw materials for work_order={} status={} reservation={} components={}",
             payload.workOrderId(), reservation.status(), reservation.id().value(), summary(lines)
         );
+    }
+
+    // ============================================================
+    // §1G line amendment — incremental per-line reserve / release / delta.
+    //
+    // Each op no-ops when the order has no live reservation yet: the amendment
+    // raced ahead of inventory's first reservation, and the eventual
+    // StockReservationRequested (re-)reads the full current line set from sales'
+    // LineSnapshot, so the line is covered there. When a reservation does exist,
+    // the op adjusts only the affected line + stock_balance, recomputes the
+    // header status, and emits SalesOrderLineReservationChanged so the saga can
+    // reconcile its outstanding-line set.
+    // ============================================================
+
+    /** A line was added to a sales order: reserve it against the existing reservation. */
+    @Transactional
+    public void applyLineAdded(
+        UUID salesOrderId,
+        UUID salesOrderLineId,
+        UUID productId,
+        String productSku,
+        String productName,
+        BigDecimal quantity
+    ) {
+        Optional<UUID> headerId = stockReservations.findLiveHeaderIdForSalesOrder(salesOrderId);
+        if (headerId.isEmpty()) {
+            log.info("no live reservation for sales_order={}; added line {} will be covered by the (re-)reservation",
+                salesOrderId, salesOrderLineId);
+            return;
+        }
+        if (stockReservations.findAmendableSalesOrderLine(salesOrderId, salesOrderLineId).isPresent()) {
+            log.debug("reservation line for sales_order={} line={} already exists — idempotent no-op",
+                salesOrderId, salesOrderLineId);
+            return;
+        }
+        UUID warehouseId = stockReservations.findWarehouseIdForHeader(headerId.get())
+            .orElseThrow(() -> new IllegalStateException("Reservation header " + headerId.get() + " has no warehouse"));
+
+        BigDecimal reserved = reserveUpTo(warehouseId, productId, quantity);
+        BigDecimal shortage = quantity.subtract(reserved);
+        StockReservation.Status status = statusFor(quantity, reserved);
+        stockReservations.appendLine(headerId.get(), new StockReservationLine(
+            UUID.randomUUID(), salesOrderLineId, productId, productSku, productName,
+            quantity, reserved, shortage, status
+        ));
+        if (shortage.signum() > 0) {
+            replenishmentDetection.raiseForSalesOrderShortage(productId, warehouseId, shortage, salesOrderId, salesOrderLineId);
+        }
+        stockReservations.recomputeSalesOrderHeaderStatus(headerId.get());
+        emitLineReservationChanged(salesOrderId, salesOrderLineId, productId, reserved, shortage, status.dbValue());
+        log.info("amended sales_order={} +line={} reserved={} shortage={} status={}",
+            salesOrderId, salesOrderLineId, reserved, shortage, status.dbValue());
+    }
+
+    /** A line was removed: release its reservation back to the free pool. */
+    @Transactional
+    public void applyLineRemoved(UUID salesOrderId, UUID salesOrderLineId) {
+        Optional<StockReservationRepository.AmendableSalesOrderLine> opt =
+            stockReservations.findAmendableSalesOrderLine(salesOrderId, salesOrderLineId);
+        if (opt.isEmpty()) {
+            log.info("no live reservation line for sales_order={} line={} to release — no-op", salesOrderId, salesOrderLineId);
+            return;
+        }
+        StockReservationRepository.AmendableSalesOrderLine l = opt.get();
+        if (l.reservedQuantity().signum() > 0) {
+            stockBalances.releaseReserved(l.warehouseId(), l.productId(), l.reservedQuantity());
+        }
+        stockReservations.updateLine(
+            l.stockReservationLineId(), l.requestedQuantity(), BigDecimal.ZERO, BigDecimal.ZERO,
+            StockReservation.Status.RELEASED.dbValue()
+        );
+        stockReservations.recomputeSalesOrderHeaderStatus(l.stockReservationHeaderId());
+        emitLineReservationChanged(salesOrderId, salesOrderLineId, l.productId(),
+            BigDecimal.ZERO, BigDecimal.ZERO, StockReservation.Status.RELEASED.dbValue());
+        log.info("amended sales_order={} -line={} released reserved={}",
+            salesOrderId, salesOrderLineId, l.reservedQuantity());
+    }
+
+    /** A line's quantity changed: reserve the delta on an increase, release it on a decrease. */
+    @Transactional
+    public void applyLineQuantityChanged(UUID salesOrderId, UUID salesOrderLineId, BigDecimal newQuantity) {
+        Optional<StockReservationRepository.AmendableSalesOrderLine> opt =
+            stockReservations.findAmendableSalesOrderLine(salesOrderId, salesOrderLineId);
+        if (opt.isEmpty()) {
+            log.info("no live reservation line for sales_order={} line={} to adjust — no-op", salesOrderId, salesOrderLineId);
+            return;
+        }
+        StockReservationRepository.AmendableSalesOrderLine l = opt.get();
+        BigDecimal oldReserved = l.reservedQuantity();
+        BigDecimal reserved;
+        if (newQuantity.compareTo(oldReserved) <= 0) {
+            BigDecimal release = oldReserved.subtract(newQuantity);
+            if (release.signum() > 0) {
+                stockBalances.releaseReserved(l.warehouseId(), l.productId(), release);
+            }
+            reserved = newQuantity;
+        } else {
+            BigDecimal got = reserveUpTo(l.warehouseId(), l.productId(), newQuantity.subtract(oldReserved));
+            reserved = oldReserved.add(got);
+        }
+        BigDecimal shortage = newQuantity.subtract(reserved);
+        StockReservation.Status status = statusFor(newQuantity, reserved);
+        stockReservations.updateLine(l.stockReservationLineId(), newQuantity, reserved, shortage, status.dbValue());
+        if (shortage.signum() > 0) {
+            replenishmentDetection.raiseForSalesOrderShortage(l.productId(), l.warehouseId(), shortage, salesOrderId, salesOrderLineId);
+        }
+        stockReservations.recomputeSalesOrderHeaderStatus(l.stockReservationHeaderId());
+        emitLineReservationChanged(salesOrderId, salesOrderLineId, l.productId(), reserved, shortage, status.dbValue());
+        log.info("amended sales_order={} ~line={} newQty={} reserved={} shortage={} status={}",
+            salesOrderId, salesOrderLineId, newQuantity, reserved, shortage, status.dbValue());
+    }
+
+    private void emitLineReservationChanged(
+        UUID salesOrderId, UUID salesOrderLineId, UUID productId,
+        BigDecimal reserved, BigDecimal shortage, String status
+    ) {
+        outbox.append(new SalesOrderLineReservationChanged(
+            UUID.randomUUID(), salesOrderId, salesOrderLineId, productId,
+            reserved, shortage, status, Instant.now()
+        ), StockReservation.AGGREGATE_TYPE);
     }
 
     /**
@@ -323,38 +447,48 @@ public class StockReservationService {
     private StockReservationLine reserveOneLine(
         UUID warehouseId,
         UUID lineId,
+        UUID salesOrderLineId,
         UUID productId,
         String productSku,
         String productName,
         BigDecimal requested
     ) {
-        // Bounded retry with exponential backoff on lost-race against a
-        // concurrent reservation. Each attempt re-reads available stock and
-        // clamps the request to it — the winner of a race shrinks (or zeroes)
-        // what's left on the next read, and we accept whatever residual the
-        // retry can still secure.
-        //
-        // Termination paths:
-        //   - tryReserveOnHand returns true → loop exits with that quantity.
-        //   - available reads as zero (no stock left) → no point retrying; exit.
-        //   - all RESERVE_MAX_ATTEMPTS exhausted → reserved stays at 0, status
-        //     becomes FAILED below.
-        BigDecimal reserved = BigDecimal.ZERO;
+        BigDecimal reserved = reserveUpTo(warehouseId, productId, requested);
+        BigDecimal shortage = requested.subtract(reserved);
+        StockReservation.Status status = statusFor(requested, reserved);
+        return new StockReservationLine(
+            lineId,
+            salesOrderLineId,
+            productId,
+            productSku,
+            productName,
+            requested,
+            reserved,
+            shortage,
+            status
+        );
+    }
+
+    /**
+     * Reserve up to {@code want} from the free pool, returning how much was
+     * actually secured (0..{@code want}). Bounded retry with exponential backoff
+     * on a lost race against a concurrent reservation — each attempt re-reads
+     * available stock and clamps the request to it.
+     *
+     * <p>Termination: {@code tryReserveOnHand} wins → return that quantity;
+     * available reads zero (no stock) → return 0; attempts exhausted → return 0.
+     */
+    private BigDecimal reserveUpTo(UUID warehouseId, UUID productId, BigDecimal want) {
         for (int attempt = 0; attempt < RESERVE_MAX_ATTEMPTS; attempt++) {
             BigDecimal available = balanceLookup.findAvailableQuantity(warehouseId, productId);
-            BigDecimal toReserve = available.compareTo(requested) >= 0 ? requested : available.max(BigDecimal.ZERO);
+            BigDecimal toReserve = available.compareTo(want) >= 0 ? want : available.max(BigDecimal.ZERO);
 
             if (toReserve.signum() == 0) {
-                // No stock left at all — not a race, just empty. Don't retry.
                 break;
             }
-
             if (stockBalances.tryReserveOnHand(warehouseId, productId, toReserve)) {
-                reserved = toReserve;
-                break;
+                return toReserve;
             }
-
-            // Lost a race with a concurrent reservation. Back off and retry.
             log.debug("tryReserveOnHand lost race on product={} attempt={}/{} — backing off {}ms",
                 productId, attempt + 1, RESERVE_MAX_ATTEMPTS, RESERVE_BACKOFF_MS[attempt]);
             if (attempt < RESERVE_MAX_ATTEMPTS - 1) {
@@ -366,22 +500,14 @@ public class StockReservationService {
                 }
             }
         }
+        return BigDecimal.ZERO;
+    }
 
+    private static StockReservation.Status statusFor(BigDecimal requested, BigDecimal reserved) {
         BigDecimal shortage = requested.subtract(reserved);
-        StockReservation.Status status = shortage.signum() == 0 ? StockReservation.Status.RESERVED
+        return shortage.signum() == 0 ? StockReservation.Status.RESERVED
             : reserved.signum() == 0 ? StockReservation.Status.FAILED
             : StockReservation.Status.PARTIALLY_RESERVED;
-
-        return new StockReservationLine(
-            lineId,
-            productId,
-            productSku,
-            productName,
-            requested,
-            reserved,
-            shortage,
-            status
-        );
     }
 
     private static List<Map<String, Object>> summary(List<StockReservationLine> lines) {

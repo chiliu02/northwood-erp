@@ -150,6 +150,77 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             assertThatThrownBy(() -> manager.applyStockReserved(SO, "reserved", Set.of()))
                 .isInstanceOf(IllegalStateException.class);
         }
+
+        @Test void reserved_with_outstanding_amended_line_stays_incomplete() {
+            // §1G ordering guard: a SalesOrderLineReservationChanged (short) landed
+            // first and registered an outstanding amended line; a now-arriving
+            // 'reserved' for the original lines must not clobber it to ready_to_ship.
+            SalesOrderFulfilmentSaga saga = sagaInState(STOCK_RESERVATION_REQUESTED,
+                FulfilmentSagaData.none().withOutstandingReplenishmentLineIds(Set.of(LINE_1)));
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyStockReserved(SO, "reserved", Set.of());
+
+            assertThat(state).isEqualTo(STOCK_RESERVATION_INCOMPLETE);
+            assertThat(saga.state()).isEqualTo(STOCK_RESERVATION_INCOMPLETE);
+        }
+    }
+
+    @Nested
+    class ApplyLineReservationChanged {
+        @Test void short_amended_line_parks_at_incomplete_and_registers_outstanding() {
+            SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP, FulfilmentSagaData.none());
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyLineReservationChanged(SO, LINE_1, true);
+
+            assertThat(state).isEqualTo(STOCK_RESERVATION_INCOMPLETE);
+            FulfilmentSagaData data = json.readValue(saga.dataJson(), FulfilmentSagaData.class);
+            assertThat(data.outstandingReplenishmentLineIds()).containsExactly(LINE_1);
+        }
+
+        @Test void reserved_amended_line_clears_outstanding_and_unparks_to_ready_to_ship() {
+            SalesOrderFulfilmentSaga saga = sagaInState(STOCK_RESERVATION_INCOMPLETE,
+                FulfilmentSagaData.none().withOutstandingReplenishmentLineIds(Set.of(LINE_1)));
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyLineReservationChanged(SO, LINE_1, false);
+
+            assertThat(state).isEqualTo(READY_TO_SHIP);
+            FulfilmentSagaData data = json.readValue(saga.dataJson(), FulfilmentSagaData.class);
+            assertThat(data.outstandingReplenishmentLineIds()).isEmpty();
+        }
+
+        @Test void reserved_amended_line_with_others_outstanding_stays_incomplete() {
+            SalesOrderFulfilmentSaga saga = sagaInState(STOCK_RESERVATION_INCOMPLETE,
+                FulfilmentSagaData.none().withOutstandingReplenishmentLineIds(Set.of(LINE_1, LINE_2)));
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyLineReservationChanged(SO, LINE_1, false);
+
+            assertThat(state).isEqualTo(STOCK_RESERVATION_INCOMPLETE);
+            FulfilmentSagaData data = json.readValue(saga.dataJson(), FulfilmentSagaData.class);
+            assertThat(data.outstandingReplenishmentLineIds()).containsExactly(LINE_2);
+        }
+
+        @Test void reserved_amended_line_at_ready_to_ship_stays_ready_to_ship() {
+            SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP, FulfilmentSagaData.none());
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyLineReservationChanged(SO, LINE_1, false);
+
+            assertThat(state).isEqualTo(READY_TO_SHIP);
+        }
+
+        @Test void out_of_phase_is_noop() {
+            SalesOrderFulfilmentSaga saga = sagaInState(GOODS_SHIPPED);
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyLineReservationChanged(SO, LINE_1, true);
+
+            assertThat(state).isEqualTo(GOODS_SHIPPED);
+            verify(sagas, never()).update(any());
+        }
     }
 
     @Nested

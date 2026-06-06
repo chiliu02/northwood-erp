@@ -246,16 +246,21 @@ public class SalesOrderService {
     }
 
     /**
-     * Fulfilment-saga states in which line amendment is currently permitted —
-     * before any stock is reserved, so an amendment is a pure sales-side edit
-     * with no inventory reconciliation. Widening this set (to
-     * {@code stock_reservation_requested} / {@code ready_to_ship} …) is the job
-     * of the later slices that teach inventory + the saga to reconcile a
-     * changing line set mid-flight.
+     * Fulfilment-saga states in which line amendment is currently permitted.
+     * {@code started} / {@code awaiting_release} (Slice A) — nothing reserved
+     * yet, a pure sales-side edit. {@code stock_reservation_requested} /
+     * {@code ready_to_ship} (Slice B) — inventory reconciles the change
+     * incrementally (reserve the added line / release the removed line / delta
+     * the quantity) and the saga reconciles its outstanding-line set via
+     * {@code SalesOrderLineReservationChanged}. {@code stock_reservation_incomplete}
+     * (amending a short-parked order, mid replenishment retry) and the
+     * finance-invoiced window stay out — Slices C / D.
      */
     private static final Set<String> AMENDABLE_SAGA_STATES = Set.of(
         SalesOrderFulfilmentSaga.STARTED,
-        SalesOrderFulfilmentSaga.AWAITING_RELEASE
+        SalesOrderFulfilmentSaga.AWAITING_RELEASE,
+        SalesOrderFulfilmentSaga.STOCK_RESERVATION_REQUESTED,
+        SalesOrderFulfilmentSaga.READY_TO_SHIP
     );
 
     private final SalesOrderRepository salesOrders;

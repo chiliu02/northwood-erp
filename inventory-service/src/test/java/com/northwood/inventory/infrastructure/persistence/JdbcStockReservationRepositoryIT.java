@@ -161,7 +161,7 @@ class JdbcStockReservationRepositoryIT {
     private static StockReservationLine fullyReservedLine(UUID productId, String qty) {
         BigDecimal q = new BigDecimal(qty);
         return new StockReservationLine(
-            UUID.randomUUID(), productId, "SKU-" + qty, "Product " + qty,
+            UUID.randomUUID(), null, productId, "SKU-" + qty, "Product " + qty,
             q, q, BigDecimal.ZERO, StockReservation.Status.RESERVED);
     }
 

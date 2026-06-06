@@ -11,6 +11,8 @@ import java.util.UUID;
 public final class StockReservationLine {
 
     private final UUID lineId;
+    /** Originating sales_order_line_id for SO reservations; null for WO reservations. */
+    private final UUID salesOrderLineId;
     private final UUID productId;
     private final String productSku;
     private final String productName;
@@ -21,6 +23,7 @@ public final class StockReservationLine {
 
     public StockReservationLine(
         UUID lineId,
+        UUID salesOrderLineId,
         UUID productId,
         String productSku,
         String productName,
@@ -31,6 +34,7 @@ public final class StockReservationLine {
     ) {
         Assert.argument(requestedQuantity.signum() > 0, "requestedQuantity must be > 0");
         this.lineId = Assert.notNull(lineId, "lineId");
+        this.salesOrderLineId = salesOrderLineId;
         this.productId = Assert.notNull(productId, "productId");
         this.productSku = Assert.notNull(productSku, "productSku");
         this.productName = Assert.notNull(productName, "productName");
@@ -41,6 +45,7 @@ public final class StockReservationLine {
     }
 
     public UUID lineId()                  { return lineId; }
+    public UUID salesOrderLineId()        { return salesOrderLineId; }
     public UUID productId()               { return productId; }
     public String productSku()            { return productSku; }
     public String productName()           { return productName; }

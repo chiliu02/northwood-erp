@@ -86,10 +86,24 @@ class SalesOrderServiceAmendTest {
         verify(orders).save(any());
     }
 
-    @Test void addLine_rejected_once_stock_reservation_requested() {
+    @Test void addLine_allowed_when_ready_to_ship() {
+        // Slice B widened the window to the reserved order (inventory reconciles
+        // the change incrementally).
+        when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
+            new CatalogPrice(new BigDecimal("25.00"), Currencies.AUD, null, 0)
+        ));
+        when(sagaManager.currentState(ORDER_ID)).thenReturn(Optional.of(SalesOrderFulfilmentSaga.READY_TO_SHIP));
+
+        service.addLine(addCommand(null));
+
+        verify(orders).save(any());
+    }
+
+    @Test void addLine_rejected_once_stock_reservation_incomplete() {
+        // Still out of the window (amending a short-parked order is Slice C).
         // The window guard runs before price resolution, so no productCards stub.
         when(sagaManager.currentState(ORDER_ID))
-            .thenReturn(Optional.of(SalesOrderFulfilmentSaga.STOCK_RESERVATION_REQUESTED));
+            .thenReturn(Optional.of(SalesOrderFulfilmentSaga.STOCK_RESERVATION_INCOMPLETE));
 
         assertThatThrownBy(() -> service.addLine(addCommand(null)))
             .isInstanceOf(OrderNotAmendableException.class);

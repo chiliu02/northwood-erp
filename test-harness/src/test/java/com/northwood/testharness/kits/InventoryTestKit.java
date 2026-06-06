@@ -12,6 +12,9 @@ import com.northwood.inventory.application.inbox.PurchasingReplenishmentDispatch
 import com.northwood.inventory.application.inbox.PurchasingReplenishmentUndispatchableHandler;
 import com.northwood.inventory.application.inbox.RawMaterialReservationRequestedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderCancellationRequestedHandler;
+import com.northwood.inventory.application.inbox.SalesOrderLineAddedHandler;
+import com.northwood.inventory.application.inbox.SalesOrderLineQuantityChangedHandler;
+import com.northwood.inventory.application.inbox.SalesOrderLineRemovedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderPlacedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderUpfrontPaymentSettledHandler;
 import com.northwood.inventory.application.inbox.StockReservationRequestedHandler;
@@ -104,6 +107,9 @@ public final class InventoryTestKit {
         bus.register(new StockReservationRequestedHandler(inbox, service, json));
         bus.register(new RawMaterialReservationRequestedHandler(inbox, service, json));
         bus.register(new SalesOrderCancellationRequestedHandler(inbox, service, json));
+        bus.register(new SalesOrderLineAddedHandler(inbox, service, json));
+        bus.register(new SalesOrderLineRemovedHandler(inbox, service, json));
+        bus.register(new SalesOrderLineQuantityChangedHandler(inbox, service, json));
         bus.register(new WorkOrderManufacturingCompletedHandler(
             inbox, json, stockBalances, wipBalances, warehouses, stockMovements, replenishmentRequests
         ));

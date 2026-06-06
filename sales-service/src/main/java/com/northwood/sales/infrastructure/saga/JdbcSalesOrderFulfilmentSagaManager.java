@@ -5,6 +5,7 @@ import com.northwood.finance.domain.events.CustomerPaymentReceived;
 import com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied;
 import com.northwood.inventory.domain.events.ReplenishmentCancelled;
 import com.northwood.inventory.domain.events.ReplenishmentFulfilled;
+import com.northwood.inventory.domain.events.SalesOrderLineReservationChanged;
 import com.northwood.inventory.domain.events.ShipmentPosted;
 import com.northwood.inventory.domain.events.StockReserved;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
@@ -46,6 +47,11 @@ import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.*;
 public class JdbcSalesOrderFulfilmentSagaManager
     extends SagaManager<SalesOrderFulfilmentSaga, SalesOrderFulfilmentSagaPort>
     implements SalesOrderFulfilmentSagaManager {
+
+    /** Saga states in which a §1G line-amendment reservation reply is reconciled. */
+    private static final Set<String> RESERVATION_PHASE_STATES = Set.of(
+        STOCK_RESERVATION_REQUESTED, READY_TO_SHIP, STOCK_RESERVATION_INCOMPLETE
+    );
 
     private final ObjectMapper json;
 
@@ -120,7 +126,20 @@ public class JdbcSalesOrderFulfilmentSagaManager
         Set<UUID> shortageLineIds
     ) {
         SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, StockReserved.EVENT_TYPE);
-        if (StockReserved.STATUS_RESERVED.equals(reservationStatus)) {
+        if (StockReserved.STATUS_RESERVED.equals(reservationStatus)
+            && !readData(saga).outstandingReplenishmentLineIds().isEmpty()) {
+            // §1G ordering guard: a line-amendment reply (SalesOrderLineReservationChanged,
+            // partitioned by sales_order_id) can land before this StockReserved
+            // (partitioned by reservation_id) and register an outstanding amended
+            // short line. Don't clobber that with ready_to_ship — stay parked at
+            // stock_reservation_incomplete until the amended line's replenishment
+            // drains.
+            saga.transitionTo(STOCK_RESERVATION_INCOMPLETE, "wait_for_replenishment");
+            saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
+            sagaPort.update(saga);
+            log.info("saga {} sales_order={} status=reserved but {} amended line(s) outstanding → stock_reservation_incomplete",
+                saga.sagaId(), salesOrderHeaderId, readData(saga).outstandingReplenishmentLineIds().size());
+        } else if (StockReserved.STATUS_RESERVED.equals(reservationStatus)) {
             // Full stock cover — every line is already reserved against
             // stock_balance, so there is nothing to replenish. Go straight to
             // ready_to_ship and wait for ShipmentPosted.
@@ -145,6 +164,47 @@ public class JdbcSalesOrderFulfilmentSagaManager
             sagaPort.update(saga);
             log.info("saga {} sales_order={} status={} → stock_reservation_incomplete ({} line(s) awaiting replenishment)",
                 saga.sagaId(), salesOrderHeaderId, reservationStatus, shortageLineIds.size());
+        }
+        return saga.state();
+    }
+
+    @Override
+    @Transactional
+    public String applyLineReservationChanged(UUID salesOrderHeaderId, UUID salesOrderLineId, boolean lineIsShort) {
+        SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, SalesOrderLineReservationChanged.EVENT_TYPE);
+
+        // Only meaningful during the reservation phase. Outside it (pre-reservation,
+        // shipped+, compensating, terminal) the amendment window is closed and
+        // there's nothing to reconcile.
+        if (!RESERVATION_PHASE_STATES.contains(saga.state())) {
+            log.debug("saga {} sales_order={} ignoring line-reservation-changed (state={}, line={})",
+                saga.sagaId(), salesOrderHeaderId, saga.state(), salesOrderLineId);
+            return saga.state();
+        }
+
+        FulfilmentSagaData data = readData(saga);
+        java.util.Set<UUID> outstanding = new java.util.LinkedHashSet<>(data.outstandingReplenishmentLineIds());
+        if (lineIsShort) {
+            outstanding.add(salesOrderLineId);
+            writeData(saga, data.withOutstandingReplenishmentLineIds(outstanding));
+            if (!STOCK_RESERVATION_INCOMPLETE.equals(saga.state())) {
+                saga.transitionTo(STOCK_RESERVATION_INCOMPLETE, "amended_line_short");
+            }
+            saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
+            sagaPort.update(saga);
+            log.info("saga {} sales_order={} amended line={} short → stock_reservation_incomplete ({} outstanding)",
+                saga.sagaId(), salesOrderHeaderId, salesOrderLineId, outstanding.size());
+        } else {
+            boolean removed = outstanding.remove(salesOrderLineId);
+            if (removed) {
+                writeData(saga, data.withOutstandingReplenishmentLineIds(outstanding));
+            }
+            if (outstanding.isEmpty() && STOCK_RESERVATION_INCOMPLETE.equals(saga.state())) {
+                saga.transitionTo(READY_TO_SHIP, "amended_lines_all_reserved");
+            }
+            sagaPort.update(saga);
+            log.info("saga {} sales_order={} amended line={} reserved/released (state={}, {} outstanding)",
+                saga.sagaId(), salesOrderHeaderId, salesOrderLineId, saga.state(), outstanding.size());
         }
         return saga.state();
     }
