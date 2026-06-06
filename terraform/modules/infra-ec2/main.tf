@@ -35,8 +35,15 @@ locals {
   # Keycloak's public issuer (browser OIDC). Falls back to the web box's private
   # IP only so things resolve before a hostname is set — real OIDC login needs a
   # real public hostname (var.keycloak_hostname).
-  kc_host       = var.keycloak_hostname != "" ? var.keycloak_hostname : local.web_ip
-  kc_issuer     = "http://${local.kc_host}:8080/realms/northwood"
+  kc_host   = var.keycloak_hostname != "" ? var.keycloak_hostname : local.web_ip
+  kc_issuer = "http://${local.kc_host}:8080/realms/northwood"
+
+  # The front-door "Enter the ERP" / Demo-Guide links target the public BFF.
+  # Reuses kc_host (the public hostname set via var.keycloak_hostname) so it's
+  # browser-reachable once OIDC is wired — same chicken-and-egg as kc_issuer:
+  # until keycloak_hostname is set it points at the web private IP.
+  erp_url = "http://${local.kc_host}:${var.bff_port}"
+
   kafka_boot    = "${local.data_ip}:9092"
   otlp_endpoint = var.enable_observability ? "http://${local.data_ip}:4317" : ""
   loki_url      = var.enable_observability ? "http://${local.data_ip}:3100/loki/api/v1/push" : ""
@@ -103,6 +110,16 @@ resource "aws_s3_object" "realm" {
   key    = "keycloak/northwood-realm.json"
   source = "${var.repo_root}/db/keycloak/northwood-realm.json"
   etag   = filemd5("${var.repo_root}/db/keycloak/northwood-realm.json")
+}
+
+# Guest front-door page template. The web box renders ${ERP_URL} at boot
+# (host-side sed) before serving it via a plain nginx container — same output
+# as the docker-compose envsubst path, different runtime.
+resource "aws_s3_object" "welcome_template" {
+  bucket = aws_s3_bucket.artifacts.id
+  key    = "welcome/index.html.template"
+  source = "${var.repo_root}/welcome/index.html.template"
+  etag   = filemd5("${var.repo_root}/welcome/index.html.template")
 }
 
 resource "aws_s3_object" "postgres_env" {
@@ -296,8 +313,11 @@ resource "aws_instance" "web" {
     services       = var.services
     otlp_endpoint  = local.otlp_endpoint
     loki_url       = local.loki_url
+    welcome_image  = var.welcome_image
+    welcome_port   = var.welcome_port
+    erp_url        = local.erp_url
   })
 
   tags       = { Name = "${var.name_prefix}-web" }
-  depends_on = [aws_s3_object.realm, aws_s3_object.keycloak_env, aws_s3_object.bff_env, aws_instance.app]
+  depends_on = [aws_s3_object.realm, aws_s3_object.keycloak_env, aws_s3_object.bff_env, aws_s3_object.welcome_template, aws_instance.app]
 }

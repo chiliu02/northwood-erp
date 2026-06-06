@@ -1,6 +1,11 @@
 output "web_public_ip" {
-  description = "Public entry point — open http://<this>:8089 for erp-web-ui-bff; Keycloak is on :8080."
+  description = "Public entry point — open http://<this>/ for the guest front door; the ERP UI (erp-web-ui-bff) is on :8089, Keycloak on :8080."
   value       = module.compute.web_public_ip
+}
+
+output "front_door_url" {
+  description = "Guest 'start here' page — the first URL to hand a visitor. Links into the ERP UI + Demo Guide."
+  value       = module.compute.front_door_url
 }
 
 output "keycloak_hostname_hint" {

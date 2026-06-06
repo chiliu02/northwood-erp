@@ -67,6 +67,18 @@ variable "bff_port" {
   default = 8089
 }
 
+variable "welcome_port" {
+  description = "Public port for the guest front-door (static welcome) page on the web box. 80 = bare-IP entry; 8080/8089 are taken by Keycloak/BFF."
+  type        = number
+  default     = 80
+}
+
+variable "welcome_image" {
+  description = "nginx image for the front-door static page (pulled from Docker Hub via the IGW)."
+  type        = string
+  default     = "nginx:1.27-alpine"
+}
+
 # ---- third-party images pulled straight from their registries (via the NAT) -
 variable "images" {
   description = "Third-party images (Docker Hub / quay.io) — pulled directly through the NAT instance."

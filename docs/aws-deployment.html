@@ -81,7 +81,7 @@
     <div class="diagram">
 
       <div class="cloud"><img src="https://api.iconify.design/mdi/web.svg"/> <b>Internet</b> &nbsp;<span style="color:#5f6b7a">browser</span></div>
-      <div class="arrow">HTTP&nbsp;:8089&nbsp;&nbsp;·&nbsp;&nbsp;OIDC&nbsp;:8080</div>
+      <div class="arrow">Front door&nbsp;:80&nbsp;&nbsp;·&nbsp;&nbsp;HTTP&nbsp;:8089&nbsp;&nbsp;·&nbsp;&nbsp;OIDC&nbsp;:8080</div>
 
       <div class="region">
         <div class="lbl"><img src="aws-icons/g-region.svg"/> AWS Region · single AZ</div>
@@ -96,10 +96,11 @@
 
           <!-- ===== Band 1: public subnet ===== -->
           <section class="subnet public">
-            <div class="lbl"><img src="aws-icons/g-subnet-pub.svg"/> Public subnet · web-sg (:8089 + :8080 from internet)</div>
+            <div class="lbl"><img src="aws-icons/g-subnet-pub.svg"/> Public subnet · web-sg (:80 + :8089 + :8080 from internet)</div>
             <div class="ec2">
               <div class="lbl"><img src="aws-icons/ec2.svg"/> EC2 · public IP · docker-compose · SSM-only shell</div>
               <div class="row">
+                <div class="res"><img src="https://api.iconify.design/logos/nginx.svg"/><b>Front door</b><span>:80 · nginx · static "start here" page</span></div>
                 <div class="res"><img src="https://api.iconify.design/logos/spring-icon.svg"/><b>erp-web-ui-bff</b><span>:8089 · the only UI · OIDC</span></div>
                 <div class="res"><img src="https://api.iconify.design/simple-icons/keycloak.svg"/><b>Keycloak</b><span>:8080 · public (browser OIDC redirect)</span></div>
               </div>
@@ -153,7 +154,7 @@
 
     <h2>The three tiers (stacked, 1 EC2 each)</h2>
     <ul>
-      <li><b>Public subnet</b> — 1 EC2 (public IP), <code>web-sg</code> opens <code>:8089</code> + <code>:8080</code>: <code>erp-web-ui-bff</code> + Keycloak. The only internet-facing box; Keycloak is here so the browser can reach it for OIDC.</li>
+      <li><b>Public subnet</b> — 1 EC2 (public IP), <code>web-sg</code> opens <code>:80</code> + <code>:8089</code> + <code>:8080</code>: a guest <b>front door</b> (nginx static page), <code>erp-web-ui-bff</code>, and Keycloak. The only internet-facing box; Keycloak is here so the browser can reach it for OIDC. The front door (<code>:80</code>) is the first thing to open — its "Enter the ERP" / Demo-Guide links are baked from <code>ERP_URL</code> at boot (defaults to the public BFF on <code>:8089</code>), so a visitor lands on the bare public IP and clicks through.</li>
       <li><b>Private subnet #1 (app)</b> — 1 EC2 (no public IP), <code>app-sg</code> allows only the web tier: the 7 services.</li>
       <li><b>Private subnet #2 (infra)</b> — 1 EC2 (no public IP), <code>infra-sg</code> allows only the app tier: Postgres + Kafka (+ optional observability). Most-protected, two hops from the internet.</li>
     </ul>

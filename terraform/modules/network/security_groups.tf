@@ -3,7 +3,7 @@
 # web SG faces 0.0.0.0/0). Standalone rule resources so SGs can reference each
 # other without inline-block dependency cycles.
 #
-#   web   : public EC2 (erp-bff :8089 + Keycloak :8080) — internet-facing
+#   web   : public EC2 (front door :80 + erp-bff :8089 + Keycloak :8080) — internet-facing
 #   app   : services EC2 (8081-8087) — from web only
 #   infra : data EC2 (Postgres 5432 / Kafka 9092 / telemetry) — from app/web
 #   nat   : NAT instance — forwards egress for the private subnets
@@ -11,7 +11,7 @@
 
 locals {
   sgs = {
-    web   = "Public EC2 — erp-bff 8089 + Keycloak 8080 (internet-facing)"
+    web   = "Public EC2 — front door 80 + erp-bff 8089 + Keycloak 8080 (internet-facing)"
     app   = "Services EC2 — 8081-8087, private"
     infra = "Data EC2 — Postgres 5432 / Kafka 9092 / observability, private"
     nat   = "NAT instance — egress for the private subnets"
@@ -34,7 +34,16 @@ resource "aws_vpc_security_group_egress_rule" "all" {
   cidr_ipv4         = "0.0.0.0/0"
 }
 
-# ---- web-sg: erp-bff + Keycloak from the internet -------------------------
+# ---- web-sg: front door + erp-bff + Keycloak from the internet ------------
+resource "aws_vpc_security_group_ingress_rule" "web_front_door" {
+  security_group_id = aws_security_group.this["web"].id
+  description       = "Guest front door (static welcome page) from internet"
+  ip_protocol       = "tcp"
+  from_port         = var.welcome_port
+  to_port           = var.welcome_port
+  cidr_ipv4         = "0.0.0.0/0"
+}
+
 resource "aws_vpc_security_group_ingress_rule" "web_bff" {
   security_group_id = aws_security_group.this["web"].id
   description       = "erp-web-ui-bff from internet"

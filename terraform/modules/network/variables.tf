@@ -47,6 +47,12 @@ variable "keycloak_port" {
   default     = 8080
 }
 
+variable "welcome_port" {
+  description = "Guest front-door (static welcome page) port — public on the web EC2. Keep in sync with the infra-ec2 module's welcome_port (both default 80)."
+  type        = number
+  default     = 80
+}
+
 variable "app_port_range" {
   description = "Inclusive TCP port range the 7 services listen on (8081-8087)."
   type = object({

@@ -7,7 +7,7 @@ Three EC2 instances across one public + two private subnets, with a small NAT
 
 | Tier | Subnet | EC2 runs |
 |---|---|---|
-| web  | public (public IP, `web-sg` :8089 + :8080) | `erp-web-ui-bff` + Keycloak |
+| web  | public (public IP, `web-sg` :80 + :8089 + :8080) | guest **front door** (nginx :80) + `erp-web-ui-bff` + Keycloak |
 | app  | private (`app-sg`) | the 7 services |
 | data | private (`infra-sg`) | Postgres + Kafka + (optional) LGTM observability |
 
@@ -83,6 +83,8 @@ terraform apply -var="keycloak_hostname=<that-public-ip-or-a-DNS-name>"
 > avoid the re-apply churn, attach an **Elastic IP** to the web box up front and use
 > that as `keycloak_hostname`. Until it's set, the issuer falls back to the web
 > box's private IP and browser login won't work (the rest of the stack runs fine).
+> The front door's **"Enter the ERP"** link reuses this same hostname (→ the public
+> BFF on `:8089`), so it too only resolves for a browser once `keycloak_hostname` is set.
 
 Bring-up order (data → app → web) is handled by Terraform's graph: the boxes use
 **pinned static private IPs** (`10.0.1.10 / .2.10 / .3.10`, set in `envs/demo/main.tf`)
@@ -94,7 +96,8 @@ private artifacts bucket on first boot.
 ## Verify
 
 ```powershell
-terraform output web_public_ip       # open http://<ip>:8089  (erp-web-ui-bff)  ·  Keycloak on :8080
+terraform output front_door_url      # open this first — the guest "start here" page (http://<ip>/)
+terraform output web_public_ip       # ERP UI on http://<ip>:8089  (erp-web-ui-bff)  ·  Keycloak on :8080
 terraform output instance_ids        # aws ssm start-session --target <data-id>
 # on the data box:  docker exec -it northwood-postgres psql -U postgres -d northwood_erp \
 #                     -c "select count(*) from sales.customer;"
