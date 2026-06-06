@@ -1,6 +1,9 @@
 package com.northwood.sales.domain;
 
 import com.northwood.sales.domain.events.SalesOrderCancellationRequested;
+import com.northwood.sales.domain.events.SalesOrderLineAdded;
+import com.northwood.sales.domain.events.SalesOrderLineQuantityChanged;
+import com.northwood.sales.domain.events.SalesOrderLineRemoved;
 import com.northwood.sales.domain.events.SalesOrderPlaced;
 import com.northwood.sales.domain.events.SalesOrderPlaced.PlacedLine;
 import com.northwood.sales.domain.events.SalesOrderShipped;
@@ -8,6 +11,7 @@ import com.northwood.sales.domain.events.SalesOrderShipped.ShippedLine;
 import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
+import com.northwood.shared.domain.LineNumbering;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
@@ -168,6 +172,17 @@ public final class SalesOrder {
     /** Statuses past which a cancel is rejected with 409 (already shipped / paid / terminal). */
     private static final Set<Status> NON_CANCELLABLE_STATUSES =
         EnumSet.of(Status.SHIPPED, Status.COMPLETED, Status.CANCELLED, Status.REJECTED);
+
+    /**
+     * Header statuses in which line amendment (add / change / remove) is allowed
+     * — the coarse domain guard. Twin of {@link #NON_CANCELLABLE_STATUSES}: a
+     * line can only change while the order is still being fulfilled, never once
+     * it has shipped, completed, been cancelled, or rejected. The finer
+     * saga-state window (only before stock is reserved, this slice) is enforced
+     * by the application service, which knows the fulfilment saga's state.
+     */
+    private static final Set<Status> AMENDABLE_STATUSES =
+        EnumSet.of(Status.SUBMITTED, Status.IN_FULFILMENT);
 
     public static SalesOrder place(
         String orderNumber,
@@ -390,10 +405,137 @@ public final class SalesOrder {
         ));
     }
 
+    /**
+     * Add a new line to the order (line-amendment flow). The aggregate assigns
+     * the line id + next {@code line_number} and emits {@link SalesOrderLineAdded}.
+     * The caller (application service) has already resolved the unit price the
+     * same way placement does. Returns the created line so the caller can surface
+     * its id.
+     *
+     * @throws OrderNotAmendableException if the header status is past the
+     *         amendable window.
+     */
+    public SalesOrderLine addLine(
+        UUID productId,
+        String productSku,
+        String productName,
+        BigDecimal orderedQuantity,
+        BigDecimal unitPrice,
+        BigDecimal taxRate
+    ) {
+        assertAmendable();
+        int nextLineNumber = lines.stream().mapToInt(SalesOrderLine::lineNumber).max().orElse(0) + LineNumbering.STEP;
+        SalesOrderLine line = new SalesOrderLine(
+            UUID.randomUUID(),
+            nextLineNumber,
+            productId,
+            productSku,
+            productName,
+            orderedQuantity,
+            unitPrice,
+            taxRate == null ? BigDecimal.ZERO : taxRate,
+            BigDecimal.ZERO,
+            BigDecimal.ZERO,
+            LineStatus.OPEN
+        );
+        lines.add(line);
+        recomputeTotals();
+        this.pendingEvents.add(new SalesOrderLineAdded(
+            UUID.randomUUID(),
+            id.value(),
+            line.lineId(),
+            line.lineNumber(),
+            productId,
+            productSku,
+            productName,
+            orderedQuantity,
+            unitPrice,
+            Instant.now()
+        ));
+        return line;
+    }
+
+    /**
+     * Change an existing line's ordered quantity and unit price (line-amendment
+     * flow). A quantity-only amendment passes the unchanged price; a price-only
+     * amendment passes the unchanged quantity. Emits
+     * {@link SalesOrderLineQuantityChanged} carrying the before/after quantity
+     * and the post-change price.
+     *
+     * @throws OrderNotAmendableException if past the amendable window.
+     * @throws LineNotFoundException if no active line with that id exists.
+     */
+    public void changeLine(UUID lineId, BigDecimal newQuantity, BigDecimal newUnitPrice) {
+        assertAmendable();
+        SalesOrderLine line = activeLine(lineId);
+        BigDecimal previousQuantity = line.orderedQuantity();
+        line.amend(newQuantity, newUnitPrice);
+        recomputeTotals();
+        this.pendingEvents.add(new SalesOrderLineQuantityChanged(
+            UUID.randomUUID(),
+            id.value(),
+            lineId,
+            line.productId(),
+            previousQuantity,
+            newQuantity,
+            newUnitPrice,
+            Instant.now()
+        ));
+    }
+
+    /**
+     * Soft-remove a line (line-amendment flow): the line is flipped to
+     * {@code cancelled} (kept so inventory can release against its id) and
+     * excluded from totals. Emits {@link SalesOrderLineRemoved} with the
+     * quantity that was on the line so inventory knows how much to release.
+     *
+     * <p>The {@link #place} invariant — an order always has at least one live
+     * line — is preserved: removing the last live line throws. The caller drops
+     * to cancel-the-order instead.
+     *
+     * @throws OrderNotAmendableException if past the amendable window.
+     * @throws LineNotFoundException if no active line with that id exists.
+     */
+    public void removeLine(UUID lineId) {
+        assertAmendable();
+        SalesOrderLine line = activeLine(lineId);
+        long liveLines = lines.stream().filter(l -> !l.isCancelled()).count();
+        Assert.state(liveLines > 1, "cannot remove the last remaining line; cancel the order instead");
+        BigDecimal previousQuantity = line.orderedQuantity();
+        line.cancelLine();
+        recomputeTotals();
+        this.pendingEvents.add(new SalesOrderLineRemoved(
+            UUID.randomUUID(),
+            id.value(),
+            lineId,
+            line.productId(),
+            previousQuantity,
+            Instant.now()
+        ));
+    }
+
+    private void assertAmendable() {
+        if (!AMENDABLE_STATUSES.contains(status)) {
+            throw new OrderNotAmendableException(id, status);
+        }
+    }
+
+    private SalesOrderLine activeLine(UUID lineId) {
+        for (SalesOrderLine line : lines) {
+            if (line.lineId().equals(lineId) && !line.isCancelled()) {
+                return line;
+            }
+        }
+        throw new LineNotFoundException(id, lineId);
+    }
+
     private void recomputeTotals() {
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal tax = BigDecimal.ZERO;
         for (SalesOrderLine line : lines) {
+            if (line.isCancelled()) {
+                continue;
+            }
             subtotal = subtotal.add(line.lineSubtotal());
             tax = tax.add(line.taxAmount());
         }
@@ -441,5 +583,36 @@ public final class SalesOrder {
 
         public SalesOrderId orderId()  { return orderId; }
         public Status currentStatus()  { return currentStatus; }
+    }
+
+    /** Thrown by the line-amendment mutators when the header status is past the amendable window. */
+    public static final class OrderNotAmendableException extends RuntimeException {
+        private final SalesOrderId orderId;
+        private final Status currentStatus;
+
+        public OrderNotAmendableException(SalesOrderId orderId, Status currentStatus) {
+            super("Sales order " + orderId.value() + " is in status '" + currentStatus.dbValue()
+                + "' and its lines cannot be amended");
+            this.orderId = orderId;
+            this.currentStatus = currentStatus;
+        }
+
+        public SalesOrderId orderId()  { return orderId; }
+        public Status currentStatus()  { return currentStatus; }
+    }
+
+    /** Thrown by {@link #changeLine}/{@link #removeLine} when the target line id is not an active line. */
+    public static final class LineNotFoundException extends RuntimeException {
+        private final SalesOrderId orderId;
+        private final UUID lineId;
+
+        public LineNotFoundException(SalesOrderId orderId, UUID lineId) {
+            super("Sales order " + orderId.value() + " has no active line " + lineId);
+            this.orderId = orderId;
+            this.lineId = lineId;
+        }
+
+        public SalesOrderId orderId()  { return orderId; }
+        public UUID lineId()           { return lineId; }
     }
 }

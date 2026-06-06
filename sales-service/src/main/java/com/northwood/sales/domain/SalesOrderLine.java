@@ -18,8 +18,10 @@ public final class SalesOrderLine {
     private final UUID productId;
     private final String productSku;
     private final String productName;
-    private final BigDecimal orderedQuantity;
-    private final BigDecimal unitPrice;
+    // Mutable post-placement via the SalesOrder amendment mutators (addLine /
+    // changeLine / removeLine) — pre-shipment only, guarded on the aggregate.
+    private BigDecimal orderedQuantity;
+    private BigDecimal unitPrice;
     private final BigDecimal taxRate;
     private BigDecimal reservedQuantity;
     private BigDecimal manufacturingRequiredQuantity;
@@ -70,6 +72,32 @@ public final class SalesOrderLine {
         this.lineStatus = quantity.compareTo(orderedQuantity) >= 0
             ? SalesOrder.LineStatus.RESERVED
             : SalesOrder.LineStatus.PARTIALLY_RESERVED;
+    }
+
+    /**
+     * Amend the line's ordered quantity and/or unit price (line-amendment flow).
+     * Package-private — only the {@link SalesOrder} aggregate calls this, after
+     * its own amendable-window guard. Re-applies the same invariants as the
+     * constructor.
+     */
+    void amend(BigDecimal newOrderedQuantity, BigDecimal newUnitPrice) {
+        Assert.argument(newOrderedQuantity != null && newOrderedQuantity.signum() > 0, "orderedQuantity must be > 0");
+        Assert.argument(newUnitPrice != null && newUnitPrice.signum() >= 0, "unitPrice must be >= 0");
+        this.orderedQuantity = newOrderedQuantity;
+        this.unitPrice = newUnitPrice;
+    }
+
+    /**
+     * Soft-cancel the line (line-amendment removal). The row is kept so the line
+     * id stays resolvable for inventory to release against; totals exclude
+     * cancelled lines. Package-private — driven by {@link SalesOrder#removeLine}.
+     */
+    void cancelLine() {
+        this.lineStatus = SalesOrder.LineStatus.CANCELLED;
+    }
+
+    public boolean isCancelled() {
+        return lineStatus == SalesOrder.LineStatus.CANCELLED;
     }
 
     public UUID lineId()                              { return lineId; }

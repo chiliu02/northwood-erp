@@ -14,8 +14,10 @@ import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -101,23 +103,27 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
             actor, actor
         );
         for (SalesOrderLine line : o.lines()) {
-            jdbc.update("""
-                INSERT INTO sales.sales_order_line (
-                    sales_order_line_id, sales_order_header_id, line_number,
-                    product_id, product_sku, product_name,
-                    ordered_quantity, reserved_quantity, shipped_quantity,
-                    backordered_quantity, manufacturing_required_quantity,
-                    unit_price, tax_rate, tax_amount, line_total, line_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                line.lineId(), o.id().value(), line.lineNumber(),
-                line.productId(), line.productSku(), line.productName(),
-                line.orderedQuantity(), line.reservedQuantity(), java.math.BigDecimal.ZERO,
-                java.math.BigDecimal.ZERO, line.manufacturingRequiredQuantity(),
-                line.unitPrice(), line.taxRate(), line.taxAmount(), line.lineTotal(),
-                line.lineStatus().dbValue()
-            );
+            insertLine(o.id().value(), line);
         }
+    }
+
+    private void insertLine(UUID headerId, SalesOrderLine line) {
+        jdbc.update("""
+            INSERT INTO sales.sales_order_line (
+                sales_order_line_id, sales_order_header_id, line_number,
+                product_id, product_sku, product_name,
+                ordered_quantity, reserved_quantity, shipped_quantity,
+                backordered_quantity, manufacturing_required_quantity,
+                unit_price, tax_rate, tax_amount, line_total, line_status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            line.lineId(), headerId, line.lineNumber(),
+            line.productId(), line.productSku(), line.productName(),
+            line.orderedQuantity(), line.reservedQuantity(), java.math.BigDecimal.ZERO,
+            java.math.BigDecimal.ZERO, line.manufacturingRequiredQuantity(),
+            line.unitPrice(), line.taxRate(), line.taxAmount(), line.lineTotal(),
+            line.lineStatus().dbValue()
+        );
     }
 
     private void update(SalesOrder o, String actor) {
@@ -140,6 +146,37 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
             throw new OptimisticLockingFailureException(
                 "SalesOrder " + o.id().value() + " was modified by another transaction"
             );
+        }
+        upsertLines(o);
+    }
+
+    /**
+     * Diff the aggregate's lines against the persisted child rows: insert new
+     * lines, update existing ones (quantity / price / status — incl. the
+     * soft-cancel of a removed line). No deletes — removal is soft. The aggregate
+     * is the sole writer of {@code sales_order_line}, so a blanket update of the
+     * mutable columns can't clobber another writer.
+     */
+    private void upsertLines(SalesOrder o) {
+        Set<UUID> existing = new HashSet<>(jdbc.queryForList(
+            "SELECT sales_order_line_id FROM sales.sales_order_line WHERE sales_order_header_id = ?",
+            UUID.class, o.id().value()
+        ));
+        for (SalesOrderLine line : o.lines()) {
+            if (existing.contains(line.lineId())) {
+                jdbc.update("""
+                    UPDATE sales.sales_order_line SET
+                        ordered_quantity = ?, reserved_quantity = ?, manufacturing_required_quantity = ?,
+                        unit_price = ?, tax_rate = ?, tax_amount = ?, line_total = ?, line_status = ?
+                    WHERE sales_order_line_id = ?
+                    """,
+                    line.orderedQuantity(), line.reservedQuantity(), line.manufacturingRequiredQuantity(),
+                    line.unitPrice(), line.taxRate(), line.taxAmount(), line.lineTotal(),
+                    line.lineStatus().dbValue(), line.lineId()
+                );
+            } else {
+                insertLine(o.id().value(), line);
+            }
         }
     }
 

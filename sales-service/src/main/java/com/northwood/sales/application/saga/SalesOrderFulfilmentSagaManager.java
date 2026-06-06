@@ -1,6 +1,7 @@
 package com.northwood.sales.application.saga;
 
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -33,6 +34,14 @@ public interface SalesOrderFulfilmentSagaManager {
 
     /** Insert a fresh saga at {@code started}. */
     void insertStarted(UUID salesOrderHeaderId, String dataJson);
+
+    /**
+     * Current fulfilment-saga state for an order, or empty if no saga row
+     * exists. Read-only — used by the application service to gate line
+     * amendment on the saga's position in the flow (only before stock is
+     * reserved, this slice).
+     */
+    Optional<String> currentState(UUID salesOrderHeaderId);
 
     /**
      * Flip {@code → compensating} in response to a cancel command. Throws

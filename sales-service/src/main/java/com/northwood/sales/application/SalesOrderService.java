@@ -2,9 +2,13 @@ package com.northwood.sales.application;
 
 import com.northwood.sales.application.CustomerLookup.CustomerSummary;
 import com.northwood.sales.application.ProductCardLookup.CatalogPrice;
+import com.northwood.sales.application.dto.AddOrderLineCommand;
 import com.northwood.sales.application.dto.CancelOrderCommand;
+import com.northwood.sales.application.dto.ChangeOrderLineQuantityCommand;
+import com.northwood.sales.application.dto.ChangeOrderLineUnitPriceCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand.OrderLine;
+import com.northwood.sales.application.dto.RemoveOrderLineCommand;
 import com.northwood.sales.application.dto.SalesOrderView;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.sales.domain.Customer;
@@ -14,6 +18,7 @@ import com.northwood.sales.domain.SalesOrder.ShippedLineInput;
 import com.northwood.sales.domain.SalesOrderId;
 import com.northwood.sales.domain.SalesOrderLine;
 import com.northwood.sales.domain.SalesOrderRepository;
+import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.shared.application.exception.BadRequestException;
 import com.northwood.shared.application.exception.ConflictException;
 import com.northwood.shared.application.exception.NotFoundException;
@@ -25,6 +30,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -173,6 +179,85 @@ public class SalesOrderService {
         }
     }
 
+    /**
+     * Application-layer wrapper for the domain
+     * {@link SalesOrder.OrderNotAmendableException} <i>and</i> the saga-state
+     * window guard (lines can only be amended before stock is reserved). Both
+     * surface as HTTP 409 with the reason in {@code detail}.
+     */
+    public static class OrderNotAmendableException extends ConflictException {
+        public static final String CODE = "ORDER_NOT_AMENDABLE";
+        public OrderNotAmendableException(String message) {
+            super(CODE, message);
+        }
+        @Override public Map<String, Object> params() {
+            return Map.of("detail", getMessage());
+        }
+    }
+
+    public static class OrderLineNotFoundException extends NotFoundException {
+        public static final String CODE = "ORDER_LINE_NOT_FOUND";
+        private final UUID orderId;
+        private final UUID lineId;
+        public OrderLineNotFoundException(UUID orderId, UUID lineId) {
+            super(CODE, "Sales order " + orderId + " has no active line " + lineId);
+            this.orderId = orderId;
+            this.lineId = lineId;
+        }
+        public UUID orderId() { return orderId; }
+        public UUID lineId() { return lineId; }
+        @Override public Map<String, Object> params() {
+            return Map.of("orderId", orderId, "lineId", lineId);
+        }
+    }
+
+    /** Thrown when a remove would leave the order with no live line — cancel the order instead. */
+    public static class EmptyOrderNotAllowedException extends BadRequestException {
+        public static final String CODE = "ORDER_LINE_LAST_REMOVAL";
+        private final UUID orderId;
+        public EmptyOrderNotAllowedException(UUID orderId) {
+            super(CODE, "Sales order " + orderId
+                + " has only one line left; removing it would empty the order — cancel the order instead");
+            this.orderId = orderId;
+        }
+        public UUID orderId() { return orderId; }
+        @Override public Map<String, Object> params() { return Map.of("orderId", orderId); }
+    }
+
+    /** Thrown when an amend's {@code If-Match} version is stale against the persisted order. */
+    public static class OrderVersionConflictException extends ConflictException {
+        public static final String CODE = "ORDER_VERSION_CONFLICT";
+        private final UUID orderId;
+        private final long expectedVersion;
+        private final long actualVersion;
+        public OrderVersionConflictException(UUID orderId, long expectedVersion, long actualVersion) {
+            super(CODE, "Sales order " + orderId + " was modified concurrently (expected version "
+                + expectedVersion + ", current " + actualVersion + "); reload and retry");
+            this.orderId = orderId;
+            this.expectedVersion = expectedVersion;
+            this.actualVersion = actualVersion;
+        }
+        public UUID orderId() { return orderId; }
+        public long expectedVersion() { return expectedVersion; }
+        public long actualVersion() { return actualVersion; }
+        @Override public Map<String, Object> params() {
+            return Map.of("orderId", orderId, "expectedVersion", expectedVersion, "actualVersion", actualVersion);
+        }
+    }
+
+    /**
+     * Fulfilment-saga states in which line amendment is currently permitted —
+     * before any stock is reserved, so an amendment is a pure sales-side edit
+     * with no inventory reconciliation. Widening this set (to
+     * {@code stock_reservation_requested} / {@code ready_to_ship} …) is the job
+     * of the later slices that teach inventory + the saga to reconcile a
+     * changing line set mid-flight.
+     */
+    private static final Set<String> AMENDABLE_SAGA_STATES = Set.of(
+        SalesOrderFulfilmentSaga.STARTED,
+        SalesOrderFulfilmentSaga.AWAITING_RELEASE
+    );
+
     private final SalesOrderRepository salesOrders;
     private final SalesOrderFulfilmentSagaManager sagaManager;
     private final CustomerLookup customers;
@@ -231,6 +316,132 @@ public class SalesOrderService {
     @Transactional(readOnly = true)
     public Optional<SalesOrderView> findById(UUID salesOrderHeaderId) {
         return salesOrders.findById(SalesOrderId.of(salesOrderHeaderId)).map(SalesOrderView::from);
+    }
+
+    // ============================================================
+    // Line amendment (post-placement, pre-reservation — this slice)
+    // ============================================================
+
+    /**
+     * Add a line to an existing order. Reuses {@link #resolveUnitPrice} so the
+     * new line gets the same catalog-price / currency-match / discontinued-SKU
+     * validation as placement. Returns the reloaded order (fresh version) for
+     * the {@code ETag}.
+     */
+    @Transactional
+    public SalesOrderView addLine(AddOrderLineCommand command) {
+        SalesOrder order = loadOrder(command.salesOrderHeaderId());
+        assertAmendableWindow(order, command.expectedVersion());
+
+        BigDecimal resolvedUnitPrice = resolveUnitPrice(
+            new OrderLine(command.productId(), command.productSku(), command.productName(),
+                command.orderedQuantity(), command.unitPrice(), command.taxRate()),
+            order.currencyCode());
+        try {
+            order.addLine(command.productId(), command.productSku(), command.productName(),
+                command.orderedQuantity(), resolvedUnitPrice, command.taxRate());
+        } catch (SalesOrder.OrderNotAmendableException e) {
+            throw new OrderNotAmendableException(e.getMessage());
+        }
+        salesOrders.save(order);
+        return reload(command.salesOrderHeaderId());
+    }
+
+    /** Change a line's ordered quantity (price unchanged). */
+    @Transactional
+    public SalesOrderView changeLineQuantity(ChangeOrderLineQuantityCommand command) {
+        SalesOrder order = loadOrder(command.salesOrderHeaderId());
+        assertAmendableWindow(order, command.expectedVersion());
+        SalesOrderLine line = activeLineOrThrow(order, command.salesOrderLineId());
+        applyChange(order, command.salesOrderLineId(), command.orderedQuantity(), line.unitPrice());
+        salesOrders.save(order);
+        return reload(command.salesOrderHeaderId());
+    }
+
+    /**
+     * Override a line's unit price (quantity unchanged). The override is
+     * currency-checked against the catalog the same way placement validates an
+     * explicit price.
+     */
+    @Transactional
+    public SalesOrderView changeLineUnitPrice(ChangeOrderLineUnitPriceCommand command) {
+        SalesOrder order = loadOrder(command.salesOrderHeaderId());
+        assertAmendableWindow(order, command.expectedVersion());
+        SalesOrderLine line = activeLineOrThrow(order, command.salesOrderLineId());
+        BigDecimal resolvedUnitPrice = resolveUnitPrice(
+            new OrderLine(line.productId(), line.productSku(), line.productName(),
+                line.orderedQuantity(), command.unitPrice(), line.taxRate()),
+            order.currencyCode());
+        applyChange(order, command.salesOrderLineId(), line.orderedQuantity(), resolvedUnitPrice);
+        salesOrders.save(order);
+        return reload(command.salesOrderHeaderId());
+    }
+
+    /** Soft-remove a line. Rejected (400) if it would leave the order empty. */
+    @Transactional
+    public SalesOrderView removeLine(RemoveOrderLineCommand command) {
+        SalesOrder order = loadOrder(command.salesOrderHeaderId());
+        assertAmendableWindow(order, command.expectedVersion());
+        activeLineOrThrow(order, command.salesOrderLineId());
+        long liveLines = order.lines().stream().filter(l -> !l.isCancelled()).count();
+        if (liveLines <= 1) {
+            throw new EmptyOrderNotAllowedException(command.salesOrderHeaderId());
+        }
+        try {
+            order.removeLine(command.salesOrderLineId());
+        } catch (SalesOrder.OrderNotAmendableException e) {
+            throw new OrderNotAmendableException(e.getMessage());
+        } catch (SalesOrder.LineNotFoundException e) {
+            throw new OrderLineNotFoundException(command.salesOrderHeaderId(), command.salesOrderLineId());
+        }
+        salesOrders.save(order);
+        return reload(command.salesOrderHeaderId());
+    }
+
+    private void applyChange(SalesOrder order, UUID lineId, BigDecimal newQuantity, BigDecimal newUnitPrice) {
+        try {
+            order.changeLine(lineId, newQuantity, newUnitPrice);
+        } catch (SalesOrder.OrderNotAmendableException e) {
+            throw new OrderNotAmendableException(e.getMessage());
+        } catch (SalesOrder.LineNotFoundException e) {
+            throw new OrderLineNotFoundException(order.id().value(), lineId);
+        }
+    }
+
+    private SalesOrder loadOrder(UUID salesOrderHeaderId) {
+        return salesOrders.findById(SalesOrderId.of(salesOrderHeaderId))
+            .orElseThrow(() -> new OrderNotFoundException(salesOrderHeaderId));
+    }
+
+    private SalesOrderView reload(UUID salesOrderHeaderId) {
+        return SalesOrderView.from(loadOrder(salesOrderHeaderId));
+    }
+
+    private SalesOrderLine activeLineOrThrow(SalesOrder order, UUID lineId) {
+        return order.lines().stream()
+            .filter(l -> l.lineId().equals(lineId) && !l.isCancelled())
+            .findFirst()
+            .orElseThrow(() -> new OrderLineNotFoundException(order.id().value(), lineId));
+    }
+
+    /**
+     * Two-part amendable-window guard: the optimistic-concurrency check (the
+     * caller's {@code If-Match} version must match the persisted order) and the
+     * saga-state window (lines amend only before stock is reserved, this slice).
+     * The domain {@link SalesOrder#assertAmendable} status check is the coarse
+     * backstop applied inside each mutator.
+     */
+    private void assertAmendableWindow(SalesOrder order, Long expectedVersion) {
+        if (expectedVersion != null && expectedVersion != order.version()) {
+            throw new OrderVersionConflictException(order.id().value(), expectedVersion, order.version());
+        }
+        String state = sagaManager.currentState(order.id().value())
+            .orElseThrow(() -> new SagaNotFoundException(order.id().value()));
+        if (!AMENDABLE_SAGA_STATES.contains(state)) {
+            throw new OrderNotAmendableException(
+                "Sales order " + order.id().value() + " fulfilment is at '" + state
+                + "'; lines can only be amended before stock is reserved");
+        }
     }
 
     @Transactional

@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.northwood.sales.domain.events.SalesOrderCancellationRequested;
+import com.northwood.sales.domain.events.SalesOrderLineAdded;
+import com.northwood.sales.domain.events.SalesOrderLineQuantityChanged;
+import com.northwood.sales.domain.events.SalesOrderLineRemoved;
 import com.northwood.sales.domain.events.SalesOrderPlaced;
 import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
@@ -256,6 +259,108 @@ class SalesOrderTest {
             SalesOrder so = placeWithLines(List.of(line(BigDecimal.ONE, BigDecimal.TEN)));
             assertThat(so.pullPendingEvents()).hasSize(1);
             assertThat(so.pullPendingEvents()).isEmpty();
+        }
+    }
+
+    @Nested
+    class Amend {
+
+        private static final UUID PRODUCT = UUID.fromString("00000000-0000-0000-0000-000000000001");
+
+        private static SalesOrderLine lineWithId(UUID id, BigDecimal qty, BigDecimal price) {
+            return new SalesOrderLine(
+                id, 10, PRODUCT, "FG-TABLE-001", "Wooden Dining Table",
+                qty, price, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                SalesOrder.LineStatus.OPEN
+            );
+        }
+
+        private static SalesOrder amendable(SalesOrder.Status status, List<SalesOrderLine> lines) {
+            return SalesOrder.reconstitute(
+                SalesOrderId.of(UUID.randomUUID()),
+                "SO-AMEND-001",
+                CUSTOMER, "CUST-001", "Test Customer",
+                LocalDate.now(), null,
+                status,
+                Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT, null,
+                new BigDecimal("100"), BigDecimal.ZERO, new BigDecimal("100"),
+                null, 1L, lines
+            );
+        }
+
+        @Test void add_line_appends_recomputes_and_emits() {
+            SalesOrder so = amendable(SalesOrder.Status.SUBMITTED,
+                List.of(lineWithId(UUID.randomUUID(), new BigDecimal("1"), new BigDecimal("100.00"))));
+            SalesOrderLine added = so.addLine(PRODUCT, "FG-CHAIR-001", "Chair",
+                new BigDecimal("2"), new BigDecimal("25.00"), BigDecimal.ZERO);
+
+            assertThat(so.lines()).hasSize(2);
+            assertThat(added.lineNumber()).isGreaterThan(10);
+            // 1*100 + 2*25 = 150
+            assertThat(so.subtotalAmount()).isEqualByComparingTo(new BigDecimal("150.00"));
+            assertThat(so.pullPendingEvents()).hasSize(1)
+                .first().isInstanceOf(SalesOrderLineAdded.class);
+        }
+
+        @Test void change_line_updates_quantity_and_price_and_emits() {
+            UUID lineId = UUID.randomUUID();
+            SalesOrder so = amendable(SalesOrder.Status.SUBMITTED,
+                List.of(lineWithId(lineId, new BigDecimal("1"), new BigDecimal("100.00"))));
+            so.changeLine(lineId, new BigDecimal("3"), new BigDecimal("90.00"));
+
+            assertThat(so.subtotalAmount()).isEqualByComparingTo(new BigDecimal("270.00"));
+            List<DomainEvent> events = so.pullPendingEvents();
+            assertThat(events).hasSize(1).first().isInstanceOf(SalesOrderLineQuantityChanged.class);
+            SalesOrderLineQuantityChanged e = (SalesOrderLineQuantityChanged) events.get(0);
+            assertThat(e.previousQuantity()).isEqualByComparingTo(new BigDecimal("1"));
+            assertThat(e.newQuantity()).isEqualByComparingTo(new BigDecimal("3"));
+        }
+
+        @Test void remove_line_softcancels_excludes_from_totals_and_emits() {
+            UUID keep = UUID.randomUUID();
+            UUID drop = UUID.randomUUID();
+            SalesOrder so = amendable(SalesOrder.Status.SUBMITTED, List.of(
+                lineWithId(keep, new BigDecimal("1"), new BigDecimal("100.00")),
+                lineWithId(drop, new BigDecimal("2"), new BigDecimal("25.00"))
+            ));
+            so.removeLine(drop);
+
+            assertThat(so.subtotalAmount()).isEqualByComparingTo(new BigDecimal("100.00"));
+            assertThat(so.lines()).hasSize(2); // soft — row survives
+            assertThat(so.lines().stream().filter(l -> l.lineId().equals(drop)).findFirst().orElseThrow().isCancelled())
+                .isTrue();
+            assertThat(so.pullPendingEvents()).hasSize(1)
+                .first().isInstanceOf(SalesOrderLineRemoved.class);
+        }
+
+        @Test void remove_last_live_line_throws() {
+            UUID only = UUID.randomUUID();
+            SalesOrder so = amendable(SalesOrder.Status.SUBMITTED,
+                List.of(lineWithId(only, new BigDecimal("1"), new BigDecimal("100.00"))));
+            assertThatThrownBy(() -> so.removeLine(only))
+                .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test void change_unknown_line_throws_line_not_found() {
+            SalesOrder so = amendable(SalesOrder.Status.SUBMITTED,
+                List.of(lineWithId(UUID.randomUUID(), new BigDecimal("1"), new BigDecimal("100.00"))));
+            assertThatThrownBy(() -> so.changeLine(UUID.randomUUID(), new BigDecimal("2"), new BigDecimal("10")))
+                .isInstanceOf(SalesOrder.LineNotFoundException.class);
+        }
+
+        @Test void amend_rejected_once_shipped() {
+            SalesOrder so = amendable(SalesOrder.Status.SHIPPED,
+                List.of(lineWithId(UUID.randomUUID(), new BigDecimal("1"), new BigDecimal("100.00"))));
+            assertThatThrownBy(() -> so.addLine(PRODUCT, "X", "X", BigDecimal.ONE, BigDecimal.TEN, BigDecimal.ZERO))
+                .isInstanceOf(SalesOrder.OrderNotAmendableException.class);
+        }
+
+        @Test void amendable_when_in_fulfilment() {
+            UUID lineId = UUID.randomUUID();
+            SalesOrder so = amendable(SalesOrder.Status.IN_FULFILMENT,
+                List.of(lineWithId(lineId, new BigDecimal("1"), new BigDecimal("100.00"))));
+            so.changeLine(lineId, new BigDecimal("5"), new BigDecimal("100.00"));
+            assertThat(so.subtotalAmount()).isEqualByComparingTo(new BigDecimal("500.00"));
         }
     }
 }

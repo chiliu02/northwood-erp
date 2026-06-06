@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Ban, History } from "lucide-react";
-import { apiGet, apiPost, ApiError } from "@/lib/api";
+import { Ban, History, Pencil, Plus, Trash2, Check, X } from "lucide-react";
+import { apiGet, apiPost, apiPatch, apiDelete, ApiError } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
 import { DetailLayout } from "@/components/ui/DetailLayout";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -42,6 +42,7 @@ interface SalesOrder360 {
 interface SalesOrderLine {
   lineId: string;
   lineNumber: number;
+  productId: string;
   productSku: string;
   productName: string;
   orderedQuantity: string;
@@ -56,18 +57,31 @@ interface SalesOrderAggregate {
   orderNumber: string;
   requestedDeliveryDate: string | null;
   currencyCode: string;
+  version: number;
   lines: SalesOrderLine[];
+}
+
+interface Product {
+  productId: string;
+  sku: string;
+  name: string;
+  salesPrice: string;
+  status: string;
 }
 
 const NON_CANCELLABLE = ["shipped", "completed", "cancelled", "rejected"];
 
 /**
  * Sales-order detail. Header/status/money read from the 360 projection on
- * reporting via /api/sales-orders/{id}/360; the read-only Lines tab reads the
- * owning aggregate via the /api/sales-cmd alias (reporting's 360 is
- * header-level only — it carries no line rows). Cancel button only when status
- * is still cancellable (not past goods_shipped) — server enforces this with 409
- * regardless. Posts to /api/sales-cmd/{id}/cancel via the BFF alias.
+ * reporting via /api/sales-orders/{id}/360; the Lines tab reads the owning
+ * aggregate via the /api/sales-cmd alias (reporting's 360 is header-level only
+ * — it carries no line rows).
+ *
+ * <p>The Lines tab is editable while the order is pre-reservation (line
+ * amendment, §1G slice A): add / change quantity / remove (sales_clerk) and
+ * change price (sales_manager), each routed through /api/sales-cmd with an
+ * If-Match version for optimistic concurrency. The server is the source of
+ * truth — it returns 409 once the amendable window has closed.
  */
 export function SalesOrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -76,6 +90,10 @@ export function SalesOrderDetail() {
   const [cancelDialog, setCancelDialog] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [amending, setAmending] = useState(false);
+  // Per-line edit buffers (seeded from the server values) + the add-line draft.
+  const [edits, setEdits] = useState<Record<string, { qty: string; price: string }>>({});
+  const [addDraft, setAddDraft] = useState<{ productId: string; quantity: string; price: string } | null>(null);
 
   const { data, isLoading, error: fetchError } = useQuery({
     queryKey: ["sales-order-360", id],
@@ -90,6 +108,12 @@ export function SalesOrderDetail() {
     queryKey: ["sales-order-aggregate", id],
     queryFn: () => apiGet<SalesOrderAggregate>(`/api/sales-cmd/sales-orders/${id}`),
     enabled: !!id,
+  });
+
+  const { data: products } = useQuery({
+    queryKey: ["products"],
+    queryFn: () => apiGet<Product[]>("/api/products"),
+    enabled: amending,
   });
 
   const cancelMutation = useMutation({
@@ -112,6 +136,59 @@ export function SalesOrderDetail() {
     setCancelDialog(true);
   }
 
+  function ifMatch(): Record<string, string> {
+    return aggregate ? { "If-Match": String(aggregate.version) } : {};
+  }
+
+  function onAmendSuccess(message: string) {
+    queryClient.invalidateQueries({ queryKey: ["sales-order-aggregate", id] });
+    queryClient.invalidateQueries({ queryKey: ["sales-order-360", id] });
+    queryClient.invalidateQueries({ queryKey: ["sales-orders"] });
+    toast.success(message);
+  }
+
+  function onAmendError(e: unknown) {
+    toast.error(`Amendment failed: ${e instanceof ApiError ? e.message : String(e)}`);
+  }
+
+  const changeQtyMutation = useMutation({
+    mutationFn: (v: { lineId: string; quantity: string }) =>
+      apiPatch(`/api/sales-cmd/sales-orders/${id}/lines/${v.lineId}`, { orderedQuantity: v.quantity }, ifMatch()),
+    onSuccess: () => onAmendSuccess("Line quantity updated."),
+    onError: onAmendError,
+  });
+
+  const changePriceMutation = useMutation({
+    mutationFn: (v: { lineId: string; price: string }) =>
+      apiPatch(`/api/sales-cmd/sales-orders/${id}/lines/${v.lineId}/price`, { unitPrice: v.price }, ifMatch()),
+    onSuccess: () => onAmendSuccess("Line price updated."),
+    onError: onAmendError,
+  });
+
+  const removeLineMutation = useMutation({
+    mutationFn: (lineId: string) =>
+      apiDelete(`/api/sales-cmd/sales-orders/${id}/lines/${lineId}`, ifMatch()),
+    onSuccess: () => onAmendSuccess("Line removed."),
+    onError: onAmendError,
+  });
+
+  const addLineMutation = useMutation({
+    mutationFn: (v: { productId: string; productSku: string; productName: string; quantity: string; price: string }) =>
+      apiPost(`/api/sales-cmd/sales-orders/${id}/lines`, {
+        productId: v.productId,
+        productSku: v.productSku,
+        productName: v.productName,
+        orderedQuantity: v.quantity,
+        unitPrice: v.price,
+        taxRate: "0",
+      }, ifMatch()),
+    onSuccess: () => {
+      onAmendSuccess("Line added.");
+      setAddDraft(null);
+    },
+    onError: onAmendError,
+  });
+
   if (isLoading) {
     return <div className="flex h-full items-center justify-center text-sm text-text-muted">Loading order…</div>;
   }
@@ -132,6 +209,35 @@ export function SalesOrderDetail() {
   // waiting on the up-front payment.
   const terminal = ["cancelled", "rejected", "completed"].includes(data.orderStatus);
   const lines = aggregate?.lines ?? [];
+  const activeLines = lines.filter((l) => l.lineStatus !== "cancelled");
+
+  // Client-side proxy for the server's amendable window (saga before stock is
+  // reserved, this slice): order not terminal/shipped AND stock not yet
+  // reserved. The server is authoritative — it returns 409 if this is stale.
+  const reserved = !!data.stockStatus && data.stockStatus !== "pending";
+  const amendable = !NON_CANCELLABLE.includes(data.orderStatus) && !reserved;
+  const notAmendableReason = NON_CANCELLABLE.includes(data.orderStatus)
+    ? `Order is ${data.orderStatus}; lines can no longer be amended.`
+    : reserved
+      ? "Stock is already reserved — line amendment is not available for reserved orders yet."
+      : null;
+
+  const amendBusy = changeQtyMutation.isPending || changePriceMutation.isPending
+    || removeLineMutation.isPending || addLineMutation.isPending;
+
+  const sellableProducts = (products ?? []).filter((p) => p.status === "active");
+
+  function draftFor(line: SalesOrderLine) {
+    return edits[line.lineId] ?? { qty: line.orderedQuantity, price: line.unitPrice };
+  }
+  function setDraft(lineId: string, patch: Partial<{ qty: string; price: string }>) {
+    setEdits((prev) => ({ ...prev, [lineId]: { ...(prev[lineId] ?? { qty: "", price: "" }), ...patch } }));
+  }
+  function startAmending() {
+    setEdits({});
+    setAddDraft(null);
+    setAmending(true);
+  }
 
   const lineColumns: Column<SalesOrderLine>[] = [
     { key: "ln", header: "#", width: "40px", numeric: true, render: (l) => l.lineNumber },
@@ -143,6 +249,185 @@ export function SalesOrderDetail() {
     { key: "total", header: "Line Total", numeric: true, width: "120px", render: (l) => <strong>{formatMoney(l.lineTotal)}</strong> },
     { key: "status", header: "Status", width: "120px", render: (l) => <StatusPill label={l.lineStatus} tone={toneFor(l.lineStatus)} /> },
   ];
+
+  const linesTab = amending ? (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-text-muted">
+          Change quantities or remove lines (sales clerk); override a unit price (sales manager). Each change
+          is applied immediately with optimistic concurrency.
+        </p>
+        <ActionButton icon={<X className="h-4 w-4" />} onClick={() => setAmending(false)} disabled={amendBusy}>
+          Done
+        </ActionButton>
+      </div>
+      <table className="w-full text-sm">
+        <thead className="border-b border-border-default text-left text-[11px] uppercase tracking-wider text-text-muted">
+          <tr>
+            <th className="py-2 pr-3 font-semibold">#</th>
+            <th className="py-2 pr-3 font-semibold">Product</th>
+            <th className="py-2 pr-3 text-right font-semibold">Quantity</th>
+            <th className="py-2 pr-3 text-right font-semibold">Unit price</th>
+            <th className="py-2 font-semibold"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {activeLines.map((line) => {
+            const d = draftFor(line);
+            const qtyChanged = d.qty !== line.orderedQuantity && Number(d.qty) > 0;
+            const priceChanged = d.price !== line.unitPrice && Number(d.price) >= 0;
+            return (
+              <tr key={line.lineId} className="border-b border-border-default last:border-b-0">
+                <td className="py-2 pr-3 tabular-nums text-text-muted">{line.lineNumber}</td>
+                <td className="py-2 pr-3">
+                  <span className="font-medium tabular-nums">{line.productSku}</span>
+                  <span className="text-text-muted"> · {line.productName}</span>
+                </td>
+                <td className="py-2 pr-3">
+                  <div className="flex items-center justify-end gap-1.5">
+                    <input
+                      type="number" step="0.01" min="0.01"
+                      value={d.qty}
+                      onChange={(e) => setDraft(line.lineId, { qty: e.target.value })}
+                      className="h-9 w-24 rounded-md border border-border-default bg-bg-surface px-2 text-right text-sm focus:border-border-focus focus:outline-none"
+                    />
+                    <ActionButton
+                      variant="ghost"
+                      requiresRole="sales_clerk"
+                      disabled={!qtyChanged || amendBusy}
+                      onClick={() => changeQtyMutation.mutate({ lineId: line.lineId, quantity: d.qty })}
+                      title="Update quantity"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </ActionButton>
+                  </div>
+                </td>
+                <td className="py-2 pr-3">
+                  <div className="flex items-center justify-end gap-1.5">
+                    <input
+                      type="number" step="0.01" min="0"
+                      value={d.price}
+                      onChange={(e) => setDraft(line.lineId, { price: e.target.value })}
+                      className="h-9 w-24 rounded-md border border-border-default bg-bg-surface px-2 text-right text-sm focus:border-border-focus focus:outline-none"
+                    />
+                    <ActionButton
+                      variant="ghost"
+                      requiresRole="sales_manager"
+                      requiresRoleHint="Only a sales manager can override a line's unit price."
+                      disabled={!priceChanged || amendBusy}
+                      onClick={() => changePriceMutation.mutate({ lineId: line.lineId, price: d.price })}
+                      title="Update unit price"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </ActionButton>
+                  </div>
+                </td>
+                <td className="py-2 text-right">
+                  <ActionButton
+                    variant="ghost"
+                    requiresRole="sales_clerk"
+                    disabled={activeLines.length <= 1 || amendBusy}
+                    onClick={() => removeLineMutation.mutate(line.lineId)}
+                    title={activeLines.length <= 1 ? "Cannot remove the last line — cancel the order instead" : "Remove line"}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </ActionButton>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      {addDraft ? (
+        <div className="flex items-end gap-2 rounded-md border border-border-default bg-bg-subtle px-3 py-3">
+          <div className="flex-1">
+          <Field label="Product">
+            <select
+              value={addDraft.productId}
+              onChange={(e) => {
+                const p = sellableProducts.find((x) => x.productId === e.target.value);
+                setAddDraft({ ...addDraft, productId: e.target.value, price: p?.salesPrice ?? addDraft.price });
+              }}
+              className="h-9 w-full rounded-md border border-border-default bg-bg-surface px-2 text-sm focus:border-border-focus focus:outline-none"
+            >
+              <option value="">— pick a product —</option>
+              {sellableProducts.map((p) => (
+                <option key={p.productId} value={p.productId}>{p.sku} · {p.name}</option>
+              ))}
+            </select>
+          </Field>
+          </div>
+          <Field label="Qty">
+            <input
+              type="number" step="0.01" min="0.01"
+              value={addDraft.quantity}
+              onChange={(e) => setAddDraft({ ...addDraft, quantity: e.target.value })}
+              className="h-9 w-24 rounded-md border border-border-default bg-bg-surface px-2 text-right text-sm focus:border-border-focus focus:outline-none"
+            />
+          </Field>
+          <Field label="Unit price">
+            <input
+              type="number" step="0.01" min="0"
+              value={addDraft.price}
+              onChange={(e) => setAddDraft({ ...addDraft, price: e.target.value })}
+              className="h-9 w-28 rounded-md border border-border-default bg-bg-surface px-2 text-right text-sm focus:border-border-focus focus:outline-none"
+            />
+          </Field>
+          <ActionButton
+            variant="primary"
+            requiresRole="sales_clerk"
+            disabled={!addDraft.productId || !(Number(addDraft.quantity) > 0) || amendBusy}
+            onClick={() => {
+              const p = sellableProducts.find((x) => x.productId === addDraft.productId);
+              if (!p) return;
+              addLineMutation.mutate({
+                productId: p.productId, productSku: p.sku, productName: p.name,
+                quantity: addDraft.quantity, price: addDraft.price,
+              });
+            }}
+          >
+            Add
+          </ActionButton>
+          <ActionButton variant="ghost" onClick={() => setAddDraft(null)} disabled={amendBusy}>
+            <X className="h-3.5 w-3.5" />
+          </ActionButton>
+        </div>
+      ) : (
+        <ActionButton
+          icon={<Plus className="h-4 w-4" />}
+          requiresRole="sales_clerk"
+          onClick={() => setAddDraft({ productId: "", quantity: "1", price: "0" })}
+        >
+          Add line
+        </ActionButton>
+      )}
+    </div>
+  ) : (
+    <div className="space-y-3">
+      <div className="flex items-center justify-end">
+        {amendable ? (
+          <ActionButton
+            icon={<Pencil className="h-4 w-4" />}
+            requiresRole="sales_clerk"
+            onClick={startAmending}
+          >
+            Amend lines
+          </ActionButton>
+        ) : (
+          notAmendableReason && (
+            <span className="text-xs text-text-faint">{notAmendableReason}</span>
+          )
+        )}
+      </div>
+      <DataGrid
+        columns={lineColumns}
+        rows={lines}
+        rowKey={(l) => l.lineId}
+        emptyState={<span>No lines on this order.</span>}
+      />
+    </div>
+  );
 
   return (
     <>
@@ -232,15 +517,8 @@ export function SalesOrderDetail() {
           {
             key: "lines",
             label: "Lines",
-            badge: lines.length || undefined,
-            content: (
-              <DataGrid
-                columns={lineColumns}
-                rows={lines}
-                rowKey={(l) => l.lineId}
-                emptyState={<span>No lines on this order.</span>}
-              />
-            ),
+            badge: activeLines.length || undefined,
+            content: linesTab,
           },
           {
             key: "audit",

@@ -30,25 +30,35 @@ export async function apiGet<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
-  return apiWrite<T>("POST", path, body);
+export async function apiPost<T>(path: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
+  return apiWrite<T>("POST", path, body, headers);
 }
 
-export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
-  return apiWrite<T>("PUT", path, body);
+export async function apiPut<T>(path: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
+  return apiWrite<T>("PUT", path, body, headers);
 }
 
-export async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
-  return apiWrite<T>("PATCH", path, body);
+export async function apiPatch<T>(path: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
+  return apiWrite<T>("PATCH", path, body, headers);
 }
 
-async function apiWrite<T>(method: "POST" | "PUT" | "PATCH", path: string, body?: unknown): Promise<T> {
+export async function apiDelete<T>(path: string, headers?: Record<string, string>): Promise<T> {
+  return apiWrite<T>("DELETE", path, undefined, headers);
+}
+
+async function apiWrite<T>(
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
+  path: string,
+  body?: unknown,
+  headers?: Record<string, string>,
+): Promise<T> {
   const res = await fetch(path, {
     method,
     credentials: "include",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
+      ...(headers ?? {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });

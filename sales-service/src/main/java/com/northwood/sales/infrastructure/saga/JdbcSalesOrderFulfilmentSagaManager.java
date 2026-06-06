@@ -94,6 +94,12 @@ public class JdbcSalesOrderFulfilmentSagaManager
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public java.util.Optional<String> currentState(UUID salesOrderHeaderId) {
+        return sagaPort.findBySalesOrderId(salesOrderHeaderId).map(SalesOrderFulfilmentSaga::state);
+    }
+
+    @Override
     @Transactional
     public void requestCompensation(UUID salesOrderHeaderId) {
         SalesOrderFulfilmentSaga saga = sagaPort.findBySalesOrderId(salesOrderHeaderId)
