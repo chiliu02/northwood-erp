@@ -9,8 +9,8 @@ output "front_door_url" {
 }
 
 output "keycloak_hostname_hint" {
-  description = "Set -var keycloak_hostname=<web_public_ip or a DNS name> and re-apply so OIDC browser login works (the issuer must be browser-reachable)."
-  value       = var.keycloak_hostname != "" ? var.keycloak_hostname : "UNSET — using web private IP; set to ${module.compute.web_public_ip} (or a Route 53 name) and re-apply"
+  description = "The Keycloak issuer host. Defaults to the web box's stable Elastic IP (browser OIDC works out of the box); override with -var keycloak_hostname=<DNS name> for a real domain."
+  value       = var.keycloak_hostname != "" ? var.keycloak_hostname : "Defaulting to web Elastic IP ${module.compute.web_public_ip} (browser OIDC works); set -var keycloak_hostname=<Route 53 name> to override."
 }
 
 output "ecr_repository_urls" {

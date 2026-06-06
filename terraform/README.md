@@ -24,7 +24,7 @@ terraform/
     variables.tf / outputs.tf / terraform.tfvars.example
   modules/
     network/                 # VPC, 3 subnets, IGW, NAT instance, S3 gateway endpoint, tier SGs
-    infra-ec2/               # the 3 EC2 tiers (web/app/data) + docker user-data + IAM + artifacts bucket
+    infra-ec2/               # the 3 EC2 tiers (web/app/data) + web Elastic IP + docker user-data + IAM + artifacts bucket
     ecr/                     # 8 app repos (7 services + erp-bff)
     secrets/                 # Secrets Manager (DB pwds, BFF client secret, bypass token) + plaintext outputs
   build/                     # build-and-push.{ps1,sh}: buildpack images -> ECR
@@ -60,13 +60,17 @@ terraform apply -target=module.ecr
 # 5. Build the 8 app images (7 services + erp-bff) and push to ECR.
 ../../build/build-and-push.ps1 -Tag latest        #  bash: ../../build/build-and-push.sh latest
 
-# 6. Apply everything else (network + NAT, secrets, the 3 EC2s).
+# 6. Apply everything else (network + NAT, secrets, the 3 EC2s + the web Elastic IP).
 terraform apply
 
-# 7. OIDC needs a browser-reachable Keycloak. Grab the web box's public IP and
-#    re-apply with it as the issuer hostname (see note below):
-terraform output web_public_ip
-terraform apply -var="keycloak_hostname=<that-public-ip-or-a-DNS-name>"
+# 7. Done — browser OIDC works out of the box: the web box has a stable Elastic IP
+#    and Keycloak's issuer defaults to it. Grab the entry points:
+terraform output front_door_url   # guest "start here" page
+terraform output web_public_ip    # the stable Elastic IP (also the issuer host)
+#    Optional — to front it with a real domain instead, point DNS at the EIP and
+#    re-apply (user-data only re-runs on replacement, so force-replace the boxes):
+#    terraform apply -var="keycloak_hostname=<your-dns-name>" \
+#      -replace=module.compute.aws_instance.web -replace=module.compute.aws_instance.app
 ```
 
 > **Why the two-phase apply (4 → 5 → 6).** Each EC2's `docker run` user-data pulls
@@ -76,15 +80,17 @@ terraform apply -var="keycloak_hostname=<that-public-ip-or-a-DNS-name>"
 > change app code later: rebuild/push (step 5), then recreate the affected box —
 > `terraform apply -replace=module.compute.aws_instance.app` (or `.web`).
 
-> **Keycloak hostname is chicken-and-egg (step 7).** OIDC redirects the browser to
-> Keycloak, so `KC_HOSTNAME` / the issuer must be the web box's **public** address —
-> which you only know after the first apply. Re-applying with `keycloak_hostname`
-> set changes the web box's user-data and therefore **replaces the web EC2**. To
-> avoid the re-apply churn, attach an **Elastic IP** to the web box up front and use
-> that as `keycloak_hostname`. Until it's set, the issuer falls back to the web
-> box's private IP and browser login won't work (the rest of the stack runs fine).
-> The front door's **"Enter the ERP"** link reuses this same hostname (→ the public
-> BFF on `:8089`), so it too only resolves for a browser once `keycloak_hostname` is set.
+> **Keycloak issuer rides the web box's Elastic IP.** OIDC redirects the browser to
+> Keycloak, so `KC_HOSTNAME` / the issuer must be the web box's **public** address.
+> The module allocates a stable **Elastic IP** for the web box and defaults the
+> issuer to it, so browser login works on the **first** apply — no second re-apply,
+> and the address survives instance replacement / stop-start. The front door's
+> **"Enter the ERP"** link reuses the same address (→ the public BFF on `:8089`).
+> To front it with a real domain, point DNS at the EIP and re-apply with
+> `-var="keycloak_hostname=<your-dns-name>"`. Because `user_data_replace_on_change`
+> is false, that change is in-place and won't re-run user-data on the live boxes —
+> add `-replace=module.compute.aws_instance.web -replace=module.compute.aws_instance.app`
+> to force the recreation that re-bakes the issuer.
 
 Bring-up order (data → app → web) is handled by Terraform's graph: the boxes use
 **pinned static private IPs** (`10.0.1.10 / .2.10 / .3.10`, set in `envs/demo/main.tf`)

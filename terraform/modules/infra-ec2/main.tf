@@ -32,10 +32,10 @@ locals {
   app_ip  = var.private_ips.app
   web_ip  = var.private_ips.web
 
-  # Keycloak's public issuer (browser OIDC). Falls back to the web box's private
-  # IP only so things resolve before a hostname is set — real OIDC login needs a
-  # real public hostname (var.keycloak_hostname).
-  kc_host   = var.keycloak_hostname != "" ? var.keycloak_hostname : local.web_ip
+  # Keycloak's public issuer (browser OIDC). Defaults to the web box's stable
+  # Elastic IP so browser login works out of the box; an explicit
+  # var.keycloak_hostname (e.g. a DNS name) still overrides it.
+  kc_host   = var.keycloak_hostname != "" ? var.keycloak_hostname : aws_eip.web.public_ip
   kc_issuer = "http://${local.kc_host}:8080/realms/northwood"
 
   # The front-door "Enter the ERP" / Demo-Guide links target the public BFF.
@@ -320,4 +320,18 @@ resource "aws_instance" "web" {
 
   tags       = { Name = "${var.name_prefix}-web" }
   depends_on = [aws_s3_object.realm, aws_s3_object.keycloak_env, aws_s3_object.bff_env, aws_s3_object.welcome_template, aws_instance.app]
+}
+
+# Stable public IP for the web box so the Keycloak issuer + front-door URLs
+# survive instance replacement and stop/start. Allocation is kept separate from
+# the association so web/app user_data can embed aws_eip.web.public_ip without a
+# dependency cycle (the allocation does not reference the instance).
+resource "aws_eip" "web" {
+  domain = "vpc"
+  tags   = { Name = "${var.name_prefix}-web" }
+}
+
+resource "aws_eip_association" "web" {
+  allocation_id = aws_eip.web.id
+  instance_id   = aws_instance.web.id
 }
