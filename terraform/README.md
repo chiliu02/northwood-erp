@@ -43,11 +43,12 @@ terraform/
 
 ## Bring-up
 
-> Steps 1–3 are **one-time setup** (state bucket, backend wiring, `init` + tfvars) —
-> skip them on later runs. The repeat-on-change loop is **5 / 6**: rebuild & push
-> images + the SPA (one script call), then `apply` (add `-replace=…app`/`…web` to
-> force a box to re-pull on boot). Re-run `terraform init` only if providers/modules
-> change.
+> Steps 1–4 are **one-time setup** (state bucket, backend wiring, `init` + tfvars,
+> ECR repos) — skip them on later runs. The repeat-on-change loop is **5 / 6**:
+> rebuild & push images + the SPA (one script call), then `apply` (add
+> `-replace=…app`/`…web` to force a box to re-pull on boot). Re-run `terraform init`
+> only if providers/modules change; re-run step 4 only after a `terraform destroy`
+> (which drops the ECR repos).
 
 ```powershell
 # 1. State backend (local-state bootstrap).
