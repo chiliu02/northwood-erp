@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Linux/macOS equivalent of build-and-push.ps1. See that script's header.
 # Usage: ./build-and-push.sh [TAG] [TERRAFORM_DIR]
+#   SKIP_SPA=1  build images only (skip the erp-web-ui/dist build). When skipped,
+#               build erp-web-ui/dist yourself before `terraform apply`, or the
+#               web box's nginx (:8090) serves a 404 / stale build.
 set -euo pipefail
 
 TAG="${1:-latest}"
@@ -31,4 +34,16 @@ for app in $(echo "$URLS_JSON" | jq -r 'keys[]'); do
   docker push "$image"
 done
 
-echo "==> Done. Pushed images at tag '$TAG'. Now: terraform -chdir=\"$TF_DIR\" apply"
+# Build the operational ERP SPA (erp-web-ui/dist). Not an ECR image: `npm run
+# build` produces dist/, which the next `terraform apply` reads as a fileset at
+# PLAN time and stages to S3 for the web box's nginx (:8090). Set SKIP_SPA=1 to
+# skip (then build dist/ yourself before apply).
+if [[ "${SKIP_SPA:-0}" == "1" ]]; then
+  echo "==> Skipping SPA build (SKIP_SPA=1). Build erp-web-ui/dist manually before apply."
+else
+  command -v npm >/dev/null || { echo "npm not found — install Node.js or set SKIP_SPA=1 (then build erp-web-ui/dist manually before apply)." >&2; exit 1; }
+  echo "==> Building operational ERP SPA (npm ci && npm run build) in $REPO_ROOT/erp-web-ui"
+  ( cd "$REPO_ROOT/erp-web-ui" && npm ci && npm run build )
+fi
+
+echo "==> Done. Pushed images at tag '$TAG'$([[ "${SKIP_SPA:-0}" == "1" ]] || echo ' + built erp-web-ui/dist'). Now: terraform -chdir=\"$TF_DIR\" apply"

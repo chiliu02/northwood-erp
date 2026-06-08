@@ -44,9 +44,10 @@ terraform/
 ## Bring-up
 
 > Steps 1–3 are **one-time setup** (state bucket, backend wiring, `init` + tfvars) —
-> skip them on later runs. The repeat-on-change loop is **5 / 5b / 6**: rebuild &
-> push images, rebuild the SPA, then `apply` (add `-replace=…app`/`…web` to force a
-> box to re-pull on boot). Re-run `terraform init` only if providers/modules change.
+> skip them on later runs. The repeat-on-change loop is **5 / 6**: rebuild & push
+> images + the SPA (one script call), then `apply` (add `-replace=…app`/`…web` to
+> force a box to re-pull on boot). Re-run `terraform init` only if providers/modules
+> change.
 
 ```powershell
 # 1. State backend (local-state bootstrap).
@@ -65,17 +66,15 @@ cp terraform.tfvars.example terraform.tfvars   # optional: adjust region/tag/etc
 # 4. Create the ECR repos first, so there's somewhere to push the app images.
 terraform apply -target=module.ecr
 
-# 5. Build the 8 app images (7 services + erp-bff) and push to ECR.
+# 5. Build the 8 app images (7 services + erp-bff) + the operational ERP SPA, and
+#    push the images to ECR. One run produces every artifact step 6 needs: the
+#    script also does `npm ci && npm run build` in erp-web-ui/, so a fresh dist/ is
+#    on disk for the apply — Terraform reads that fileset at PLAN time and stages it
+#    to S3 for the web box's nginx (:8090). Images-only iteration: pass -SkipSpa
+#    (PowerShell) / SKIP_SPA=1 (bash), then build erp-web-ui/dist yourself before
+#    step 6, else :8090 serves a 404 / stale build a later build won't fix without
+#    re-applying.
 ../../build/build-and-push.ps1 -Tag latest        #  bash: ../../build/build-and-push.sh latest
-
-# 5b. Build the operational ERP SPA. This is a MANUAL step: it produces the latest
-#     erp-web-ui/dist/ that `apply` uploads to S3 and the web box's nginx (:8090)
-#     serves. Run it BEFORE step 6 — Terraform reads the dist fileset at PLAN time,
-#     so the apply only stages whatever is on disk when you plan. Skip it (or leave
-#     dist/ stale) and the fileset resolves empty / outdated: the apply still
-#     "succeeds" with no error, but :8090 serves nothing (404) or an old build —
-#     building afterwards does NOT fix it without re-applying. From the repo root:
-#       cd erp-web-ui ; npm ci ; npm run build ; cd ../terraform/envs/demo
 
 # 6. Apply everything else (network + NAT, secrets, the 3 EC2s + the web Elastic IP
 #    + the SPA staged to S3).
@@ -153,8 +152,8 @@ terraform destroy
   `localhost:5174` redirect URIs / web origins are rewritten to `<public-host>:8090`
   at import time (host-side `sed` in the web user-data). `dist/` is staged to S3 by
   Terraform (`aws_s3_object.spa`, a `fileset` over `erp-web-ui/dist`), so **build the
-  SPA before `apply`** (step 5b). Production serves the SPA from S3/CloudFront
-  (`docs/aws-architecture.html`).
+  SPA before `apply`** — step 5 does this for you (`-SkipSpa` to opt out). Production
+  serves the SPA from S3/CloudFront (`docs/aws-architecture.html`).
 
 - **NAT *instance*, not a NAT Gateway or VPC endpoints.** The private subnets need
   outbound internet to pull third-party images (Postgres/Kafka from Docker Hub,
