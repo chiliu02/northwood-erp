@@ -43,8 +43,13 @@ terraform/
 
 ## Bring-up
 
+> Steps 1–3 are **one-time setup** (state bucket, backend wiring, `init` + tfvars) —
+> skip them on later runs. The repeat-on-change loop is **5 / 5b / 6**: rebuild &
+> push images, rebuild the SPA, then `apply` (add `-replace=…app`/`…web` to force a
+> box to re-pull on boot). Re-run `terraform init` only if providers/modules change.
+
 ```powershell
-# 1. State backend (local-state bootstrap; run once).
+# 1. State backend (local-state bootstrap).
 cd terraform/bootstrap
 terraform init
 terraform apply -var="state_bucket_name=northwood-tfstate-<your-account-id>"
@@ -63,9 +68,13 @@ terraform apply -target=module.ecr
 # 5. Build the 8 app images (7 services + erp-bff) and push to ECR.
 ../../build/build-and-push.ps1 -Tag latest        #  bash: ../../build/build-and-push.sh latest
 
-# 5b. Build the operational ERP SPA. Its dist/ is staged to S3 on apply and served
-#     by the web box's nginx (:8090), so build it BEFORE step 6 — the dist fileset
-#     is read at plan time. From the repo root:
+# 5b. Build the operational ERP SPA. This is a MANUAL step: it produces the latest
+#     erp-web-ui/dist/ that `apply` uploads to S3 and the web box's nginx (:8090)
+#     serves. Run it BEFORE step 6 — Terraform reads the dist fileset at PLAN time,
+#     so the apply only stages whatever is on disk when you plan. Skip it (or leave
+#     dist/ stale) and the fileset resolves empty / outdated: the apply still
+#     "succeeds" with no error, but :8090 serves nothing (404) or an old build —
+#     building afterwards does NOT fix it without re-applying. From the repo root:
 #       cd erp-web-ui ; npm ci ; npm run build ; cd ../terraform/envs/demo
 
 # 6. Apply everything else (network + NAT, secrets, the 3 EC2s + the web Elastic IP
