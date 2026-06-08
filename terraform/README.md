@@ -91,12 +91,19 @@ terraform output web_public_ip    # the stable Elastic IP (also the issuer host)
 #      -replace=module.compute.aws_instance.web -replace=module.compute.aws_instance.app
 ```
 
-> **Why the two-phase apply (4 → 5 → 6).** Each EC2's `docker run` user-data pulls
-> the app images from ECR on first boot. If the repos are empty, the *instances*
-> still come up (so a single `apply` looks like it "succeeded") but the containers
-> crash-loop on a pull error. Create the repos, push, then apply the rest. If you
-> change app code later: rebuild/push (step 5), then recreate the affected box —
-> `terraform apply -replace=module.compute.aws_instance.app` (or `.web`).
+> **Why the two-phase apply (4 → 5 → 6) — first bring-up only.** Each EC2's
+> `docker run` user-data pulls the app images from ECR on first boot. If the repos
+> are empty, the *instances* still come up (so a single `apply` looks like it
+> "succeeded") but the containers crash-loop on a pull error. So the **first**
+> bring-up splits it: step 4 creates the repos, step 5 pushes images into them,
+> step 6 applies the rest. The split is a one-time bootstrap — the repos persist.
+>
+> **Shipping a new app version (deployment still up): just steps 5 → 6.** Skip
+> 1–4 entirely. Step 5 rebuilds & pushes the images (and the SPA) to the existing
+> repos; step 6 redeploys. Because user-data only re-runs on instance
+> *replacement*, a plain `apply` won't pull the new image onto a running box — so
+> recreate the affected box(es):
+> `terraform apply -replace=module.compute.aws_instance.app` (or `.web`, or both).
 
 > **Keycloak issuer rides the web box's Elastic IP.** OIDC redirects the browser to
 > Keycloak, so `KC_HOSTNAME` / the issuer must be the web box's **public** address.
