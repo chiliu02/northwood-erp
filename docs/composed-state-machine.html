@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Northwood — Composed State Machine (ideal / target model)</title>
+<!-- Sibling to system-map.html, NOT a replacement for it.
+
+     This page visualises the IDEAL sales-order fulfilment composed state
+     machine described in docs/composed-state-machines.md — i.e. the target
+     after the dev-todo §2.29 gaps are fixed (single classify() fold on the
+     aggregate; the in-progress band carried on the line; the invoice/pay
+     axes separated; COMPLETED as a cross-axis meet). It is a design target,
+     not a map of the code as it runs today — see §14 of the doc for the gap.
+
+     Self-contained: all diagrams are inline Mermaid stateDiagram-v2 sources.
+     Mermaid loads from a CDN (modern browsers permit HTTPS from file://); if
+     it fails to load, each <pre class="mermaid"> degrades to its readable
+     stateDiagram source text — the single source of truth + offline fallback,
+     same philosophy as system-map.html's Cytoscape graphs.
+
+     Palette + typography mirror system-map.html for visual continuity. -->
+<style>
+  :root {
+    --border: #d0d7de;
+    --border-strong: #8c959f;
+    --bg: #ffffff;
+    --bg-alt: #f6f8fa;
+    --code-bg: #eff1f3;
+    --text: #1f2328;
+    --muted: #57606a;
+    --accent: #0969da;
+    --critical: #cf222e;
+    --saga: #8250df;
+    --aggregate: #1a7f37;
+    --readmodel: #0969da;
+    --shipfold: #1a7f37;
+    --command: #cf222e;
+    --crossaxis: #0969da;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    margin: 0;
+    padding: 2rem 3rem 4rem;
+    line-height: 1.55;
+    max-width: 1500px;
+  }
+  h1 { font-size: 1.85rem; margin: 0 0 0.3rem; }
+  h2 {
+    font-size: 1.35rem;
+    margin: 2.5rem 0 0.75rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--border);
+  }
+  h3 { font-size: 1.1rem; margin: 1.6rem 0 0.5rem; }
+  p { margin: 0.5rem 0 0.8rem; }
+  .lede { color: var(--muted); font-size: 1.02rem; max-width: 60rem; }
+  code {
+    background: var(--code-bg);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+    font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.88em;
+  }
+  a { color: var(--accent); }
+  pre.code {
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.9rem 1.1rem;
+    overflow-x: auto;
+    font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.82rem;
+    line-height: 1.45;
+  }
+  .banner {
+    border: 1px solid var(--staleness, #9a6700);
+    background: #fff8e5;
+    border-left: 4px solid #9a6700;
+    border-radius: 6px;
+    padding: 0.8rem 1.1rem;
+    margin: 1rem 0 1.5rem;
+    font-size: 0.92rem;
+  }
+  .diagram {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-alt);
+    padding: 1.2rem;
+    margin: 1rem 0;
+    overflow-x: auto;
+  }
+  pre.mermaid { margin: 0; text-align: center; font-size: 0.85rem; }
+  details.src { margin: 0.5rem 0 0; }
+  details.src summary {
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: var(--muted);
+    user-select: none;
+  }
+  details.src pre {
+    background: var(--code-bg);
+    border-radius: 5px;
+    padding: 0.7rem 0.9rem;
+    font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.78rem;
+    overflow-x: auto;
+  }
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 1.2rem;
+    font-size: 0.84rem; color: var(--muted);
+    margin: 0.6rem 0 0;
+  }
+  .legend .swatch {
+    display: inline-block; width: 0.95em; height: 0.95em;
+    vertical-align: -1px; border-radius: 3px; margin-right: 0.35em;
+    border: 1px solid rgba(0,0,0,0.2);
+  }
+  .cols { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+  .cols > div { flex: 1 1 340px; min-width: 320px; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.86rem;
+    margin: 0.6rem 0 1rem;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 0.4rem 0.6rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: var(--bg-alt); }
+  td.band { font-weight: 600; }
+  .axis-ship { color: var(--shipfold); }
+  .axis-inv  { color: #9a6700; }
+  .axis-pay  { color: var(--accent); }
+  .pill {
+    display: inline-block; padding: 0.05em 0.5em; border-radius: 999px;
+    font-size: 0.78rem; font-weight: 600; border: 1px solid;
+  }
+  .pill.derived { color: var(--shipfold); border-color: var(--shipfold); background: #e8f5e9; }
+  .pill.command { color: var(--command); border-color: var(--command); background: #ffebe9; }
+  .pill.cross   { color: var(--crossaxis); border-color: var(--crossaxis); background: #ddf4ff; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); font-size: 0.82rem; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<h1>Composed State Machine — ideal / target model</h1>
+<p class="lede">
+  The sales-order fulfilment state machine as it <em>should</em> be — a parent (order) status
+  that is a <strong>pure fold over its line states</strong>, with the per-line progress split
+  into independent axes. This is the target described in
+  <code>docs/composed-state-machines.md</code>; the live code is a narrower special case.
+</p>
+
+<div class="banner">
+  <strong>This is a design target, not the current code.</strong> It depicts the model after the
+  <code>dev-todo §2.29</code> gaps are closed: one <code>classify()</code> fold on the aggregate
+  (no blind <code>markStatus</code> writer), the in-progress band carried on the line, the
+  invoice/pay axes separated, and <code>COMPLETED</code> as a cross-axis meet. For where today's
+  code differs, see <code>composed-state-machines.md</code> §14. The canonical as-built map remains
+  <code>system-map.html</code>.
+</div>
+
+<!-- ============================================================= -->
+<h2>1 · The order header — a two-tier statechart</h2>
+<p>
+  The header carries <strong>one</strong> <code>SalesOrder.Status</code>, which tracks the
+  <strong>shipment axis</strong>. Four of its states are <span class="pill derived">derived</span>
+  outputs of the line fold (<code>classify</code>, §2); two are
+  <span class="pill command">command</span> overrides that absorb the machine; one
+  (<code>COMPLETED</code>) is a <span class="pill cross">cross-axis meet</span> requiring all
+  axes saturated. Cancel is rejected once any goods have shipped — so the only edges into
+  <code>CANCELLED</code> leave <code>SUBMITTED</code> / <code>IN_FULFILMENT</code>.
+</p>
+
+<div class="diagram">
+<pre class="mermaid">
+stateDiagram-v2
+  direction LR
+  [*] --> SUBMITTED
+  SUBMITTED --> IN_FULFILMENT : a line begins progress
+  IN_FULFILMENT --> PARTIALLY_SHIPPED : some units shipped
+  IN_FULFILMENT --> SHIPPED : every line fully shipped
+  PARTIALLY_SHIPPED --> SHIPPED : every line fully shipped
+  SHIPPED --> COMPLETED : invoiced AND paid
+  PARTIALLY_SHIPPED --> COMPLETED : settled early (prepay / COD)
+  SUBMITTED --> CANCELLED : cancel cmd
+  IN_FULFILMENT --> CANCELLED : cancel cmd
+  SUBMITTED --> REJECTED : reject cmd
+  COMPLETED --> [*]
+  CANCELLED --> [*]
+  REJECTED --> [*]
+
+  classDef shipfold fill:#e8f5e9,stroke:#1a7f37,color:#13532a
+  classDef command fill:#ffebe9,stroke:#cf222e,color:#8a1d24
+  classDef crossaxis fill:#ddf4ff,stroke:#0969da,color:#0a4a8a
+  class SUBMITTED,IN_FULFILMENT,PARTIALLY_SHIPPED,SHIPPED shipfold
+  class CANCELLED,REJECTED command
+  class COMPLETED crossaxis
+</pre>
+<details class="src"><summary>stateDiagram source (offline fallback)</summary><pre>SUBMITTED --(line begins)--&gt; IN_FULFILMENT --(some shipped)--&gt; PARTIALLY_SHIPPED --(all shipped)--&gt; SHIPPED --(invoiced AND paid)--&gt; COMPLETED
+IN_FULFILMENT --(all shipped)--&gt; SHIPPED
+cancel cmd: SUBMITTED|IN_FULFILMENT --&gt; CANCELLED   (absorbing; refused once shipped)
+reject cmd: SUBMITTED --&gt; REJECTED                 (absorbing)
+PARTIALLY_SHIPPED --(settled early)--&gt; COMPLETED</pre></details>
+</div>
+<div class="legend">
+  <span><span class="swatch" style="background:#e8f5e9;border-color:#1a7f37"></span>derived — output of the ship-axis fold <code>classify(lines)</code></span>
+  <span><span class="swatch" style="background:#ffebe9;border-color:#cf222e"></span>command — absorbing override (cancel / reject)</span>
+  <span><span class="swatch" style="background:#ddf4ff;border-color:#0969da"></span>cross-axis — requires ship ∧ invoice ∧ pay</span>
+</div>
+
+<!-- ============================================================= -->
+<h2>2 · A line is a product of independent axes</h2>
+<p>
+  Shipping, invoicing, and payment progress <strong>independently</strong> (you can invoice
+  before shipping, ship before invoicing, or split each at unrelated quantities). A line's full
+  state is therefore the <em>product</em> of one progress lattice per axis — Harel orthogonal
+  regions. A product of lattices is still a lattice, so the fold algebra is untouched (§12). The
+  payment axis lives on <code>finance.CustomerInvoice</code> and is projected back — hence the
+  cross-context note.
+</p>
+
+<div class="diagram">
+<pre class="mermaid">
+stateDiagram-v2
+  state Line {
+    state "Shipment axis  (SalesOrder.LineStatus → band)" as S {
+      [*] --> not_started
+      not_started --> in_progress : reserve / produce begins
+      in_progress --> ready : fully allocated
+      ready --> partially_shipped : some units shipped
+      ready --> shipped : all units shipped
+      partially_shipped --> shipped : remaining units shipped
+    }
+    --
+    state "Invoice axis" as I {
+      [*] --> not_invoiced
+      not_invoiced --> partially_invoiced : some units invoiced
+      not_invoiced --> invoiced : all units invoiced
+      partially_invoiced --> invoiced : remaining units invoiced
+    }
+    --
+    state "Payment axis  (finance.CustomerInvoice, projected)" as P {
+      [*] --> not_paid
+      not_paid --> partially_paid
+      not_paid --> paid
+      partially_paid --> paid
+    }
+  }
+</pre>
+<details class="src"><summary>stateDiagram source (offline fallback)</summary><pre>Line = Shipment-axis  ||  Invoice-axis  ||  Payment-axis     (three orthogonal regions)
+  Shipment: not_started -> in_progress -> ready -> partially_shipped -> shipped
+  Invoice : not_invoiced -> partially_invoiced -> invoiced
+  Payment : not_paid -> partially_paid -> paid       (owned by finance, projected back)
+A soft-removed line -> CANCELLED (neutral: filtered from every fold).</pre></details>
+</div>
+
+<!-- ============================================================= -->
+<h2>3 · Variant coarsening — make / buy / stock onto one band</h2>
+<p>
+  Different product variants run <em>different internal</em> shipment FSMs, but each coarsens onto
+  the <strong>same band</strong> via a monotone map <code>g<sub>v</sub></code> (§11). The order
+  fold sees only the band, so it never branches on product type. A stock line in
+  <code>reserved</code>, a make line in <code>ready_to_ship</code>, and a buy line in
+  <code>ready_to_ship</code> all coarsen to <code>READY</code>.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Band <code>M_ship</code> (fold sees this)</th><th>stock line</th><th>make-to-order</th><th>buy-to-order</th></tr>
+  </thead>
+  <tbody>
+    <tr><td class="band">NOT_STARTED</td><td><code>open</code></td><td><code>open</code></td><td><code>open</code></td></tr>
+    <tr><td class="band">IN_PROGRESS</td><td><code>partially_reserved</code></td><td><code>waiting_for_production</code></td><td><code>awaiting_receipt</code></td></tr>
+    <tr><td class="band">READY</td><td><code>reserved</code></td><td><code>ready_to_ship</code></td><td><code>ready_to_ship</code></td></tr>
+    <tr><td class="band">PARTIALLY_SHIPPED</td><td><code>partially_shipped</code></td><td><code>partially_shipped</code></td><td><code>partially_shipped</code></td></tr>
+    <tr><td class="band">SHIPPED</td><td><code>shipped</code></td><td><code>shipped</code></td><td><code>shipped</code></td></tr>
+  </tbody>
+</table>
+<p style="font-size:0.86rem;color:var(--muted)">
+  Total order <code>NOT_STARTED ⊏ IN_PROGRESS ⊏ READY ⊏ PARTIALLY_SHIPPED ⊏ SHIPPED</code>;
+  <code>cancelled</code> is off the chain (neutral — filtered from the fold). The make/buy
+  apparatus rides on the future to-order extension (<code>dev-todo §2.43</code>); MTS lines all
+  use the <em>stock</em> column today.
+</p>
+
+<!-- ============================================================= -->
+<h2>4 · The fold — <code>classify</code></h2>
+<div class="cols">
+  <div>
+    <h3>Line level — quantity buckets → band</h3>
+    <pre class="code">band_ship(line) =
+    SHIPPED            if shippedQty == orderedQty
+    PARTIALLY_SHIPPED  if 0 &lt; shippedQty &lt; orderedQty
+    READY              if shippedQty == 0
+                          ∧ allocatedQty == orderedQty
+    IN_PROGRESS        if partial reservation / in production
+    NOT_STARTED        otherwise
+    CANCELLED          if line soft-removed     (neutral)
+
+band_invoice(line) =
+    INVOICED           if invoicedQty == orderedQty
+    PARTIALLY_INVOICED if 0 &lt; invoicedQty &lt; orderedQty
+    NOT_INVOICED       otherwise</pre>
+  </div>
+  <div>
+    <h3>Order level — line multiset → <code>SalesOrder.Status</code></h3>
+    <pre class="code">// over LIVE lines (cancelled filtered):
+// meet_a = ⊓ bands_a,  join_a = ⊔ bands_a
+
+classify(order) =
+  CANCELLED          if cancel cmd OR no live lines
+  REJECTED           if reject cmd
+  COMPLETED          if meet_ship    == SHIPPED
+                        ∧ meet_invoice == INVOICED
+                        ∧ meet_pay     == PAID
+  SHIPPED            if meet_ship == SHIPPED
+  PARTIALLY_SHIPPED  if join_ship ⊒ PARTIALLY_SHIPPED
+  IN_FULFILMENT      if join_ship ⊒ IN_PROGRESS
+  SUBMITTED          otherwise</pre>
+  </div>
+</div>
+<p style="font-size:0.86rem;color:var(--muted)">
+  <code>meet_ship == SHIPPED</code> ⟺ <em>all</em> live lines fully shipped;
+  <code>join_ship ⊒ PARTIALLY_SHIPPED</code> ⟺ <em>at least one</em> line shipped ≥ 1 unit.
+  Both meet and join are commutative ⇒ the result is order-insensitive (shuffle / replay / batch
+  re-grouping can't change it). One writer: the aggregate's <code>recomputeStatus()</code>, called
+  after every line mutation, with the invariant <code>stored status == classify(lines)</code>.
+</p>
+
+<!-- ============================================================= -->
+<h2>5 · Worked examples</h2>
+
+<h3>A · Homogeneous stock lines</h3>
+<p>SO: line 1 = 10×A, line 2 = 5×B (both stock).</p>
+<table>
+  <thead><tr><th>step</th><th>line 1 band</th><th>line 2 band</th><th>meet / join (ship)</th><th>header status</th></tr></thead>
+  <tbody>
+    <tr><td>place</td><td>NOT_STARTED</td><td>NOT_STARTED</td><td>NOT_STARTED / NOT_STARTED</td><td><span class="pill derived">SUBMITTED</span></td></tr>
+    <tr><td>both reserved</td><td>READY</td><td>READY</td><td>READY / READY</td><td><span class="pill derived">IN_FULFILMENT</span></td></tr>
+    <tr><td>ship line 1</td><td>SHIPPED</td><td>READY</td><td>READY / SHIPPED</td><td><span class="pill derived">PARTIALLY_SHIPPED</span></td></tr>
+    <tr><td>ship line 2</td><td>SHIPPED</td><td>SHIPPED</td><td>SHIPPED / SHIPPED</td><td><span class="pill derived">SHIPPED</span></td></tr>
+    <tr><td>invoiced + paid</td><td>—</td><td>—</td><td>+ invoice=INVOICED, pay=PAID</td><td><span class="pill cross">COMPLETED</span></td></tr>
+  </tbody>
+</table>
+
+<h3>B · Make vs buy heterogeneity</h3>
+<p>SO: line 1 = 10×A (<strong>make</strong>-to-order), line 2 = 4×B (<strong>buy</strong>-to-order). Different concrete states, identical bands ⇒ identical fold.</p>
+<table>
+  <thead><tr><th>step</th><th>line 1 (make) → band</th><th>line 2 (buy) → band</th><th>meet / join</th><th>header</th></tr></thead>
+  <tbody>
+    <tr><td>place</td><td><code>open</code> → NOT_STARTED</td><td><code>open</code> → NOT_STARTED</td><td>NS / NS</td><td><span class="pill derived">SUBMITTED</span></td></tr>
+    <tr><td>both started</td><td><code>waiting_for_production</code> → IN_PROGRESS</td><td><code>awaiting_receipt</code> → IN_PROGRESS</td><td>IP / IP</td><td><span class="pill derived">IN_FULFILMENT</span></td></tr>
+    <tr><td>line 1 produced</td><td><code>ready_to_ship</code> → READY</td><td><code>awaiting_receipt</code> → IN_PROGRESS</td><td>IP / READY</td><td><span class="pill derived">IN_FULFILMENT</span></td></tr>
+    <tr><td>ship line 1</td><td><code>shipped</code> → SHIPPED</td><td><code>ready_to_ship</code> → READY</td><td>READY / SHIPPED</td><td><span class="pill derived">PARTIALLY_SHIPPED</span></td></tr>
+  </tbody>
+</table>
+<p style="font-size:0.86rem;color:var(--muted)">
+  At “both started” the two lines are in different concrete states
+  (<code>waiting_for_production</code> vs <code>awaiting_receipt</code>) but
+  <code>g<sub>make</sub></code> and <code>g<sub>buy</sub></code> both map them to
+  <code>IN_PROGRESS</code> — heterogeneity is erased <em>before</em> the fold.
+</p>
+
+<h3>C · Multi-axis: partial ship + non-aligned partial invoice</h3>
+<p>
+  SO: line 1 = 10×A, line 2 = 10×B (stock). Shipment of <strong>2×A + 4×B</strong>; a separate
+  invoice of <strong>5×A + 0×B</strong> (deliberately not aligned with the shipment).
+</p>
+<table>
+  <thead><tr><th>line</th><th>ordered</th><th>shipped → <span class="axis-ship">band_ship</span></th><th>invoiced → <span class="axis-inv">band_invoice</span></th></tr></thead>
+  <tbody>
+    <tr><td>line 1 (A)</td><td>10</td><td>2 → <span class="axis-ship">PARTIALLY_SHIPPED</span></td><td>5 → <span class="axis-inv">PARTIALLY_INVOICED</span></td></tr>
+    <tr><td>line 2 (B)</td><td>10</td><td>4 → <span class="axis-ship">PARTIALLY_SHIPPED</span></td><td>0 → <span class="axis-inv">NOT_INVOICED</span></td></tr>
+  </tbody>
+</table>
+<pre class="code"><span class="axis-ship">ship axis</span>    : meet = PARTIALLY_SHIPPED, join = PARTIALLY_SHIPPED  →  header.status      = PARTIALLY_SHIPPED
+<span class="axis-inv">invoice axis</span> : meet = NOT_INVOICED,      join = PARTIALLY_INVOICED →  header.invoiceFlag = PARTIALLY_INVOICED</pre>
+<p style="font-size:0.86rem;color:var(--muted)">
+  Two independent componentwise folds; one status column can't carry both — which is exactly why
+  ship and invoice are <em>orthogonal regions</em>, not one chain. The cross-line bundling
+  (2×A + 4×B in one shipment) is invisible to the fold: each line accumulates only its own Σ, so
+  the result is identical whether the goods arrived in one shipment or several.
+  <strong>Boundary:</strong> a <em>return</em> would decrease <code>shippedQty</code> — moving an
+  axis backwards and breaking the monotonicity the lattice assumes. Reversals need signed deltas +
+  a net projection, not a status chain (out of scope today).
+</p>
+
+<!-- ============================================================= -->
+<h2>6 · What changes vs. today</h2>
+<table>
+  <thead><tr><th>Today (system-map.html / §14)</th><th>This target model</th></tr></thead>
+  <tbody>
+    <tr><td>Status written by 3 owners: aggregate + blind <code>markStatus</code> projection + Saga</td><td>One owner: <code>recomputeStatus()</code> = <code>classify(lines)</code> on the aggregate</td></tr>
+    <tr><td>Fold reduced to a single <code>allMatch(SHIPPED)</code> in <code>recordShipped</code></td><td>SUBMITTED…SHIPPED all derived from the ship-axis fold</td></tr>
+    <tr><td>In-progress band lives only in the Saga; line’s <code>RESERVED</code>/<code>READY</code> unwired</td><td>Line carries the full band (<code>markReserved</code> wired); the fold can see it</td></tr>
+    <tr><td>No invoice axis on the order; <code>COMPLETED</code> is a payment-event jump</td><td>Invoice/pay are orthogonal axes; <code>COMPLETED</code> is the cross-axis meet</td></tr>
+    <tr><td>No <code>status == classify(lines)</code> invariant</td><td>Invariant enforced + property-tested (shuffle / replay / cancel-neutrality)</td></tr>
+  </tbody>
+</table>
+
+<footer>
+  Generated from <code>docs/composed-state-machines.md</code> (§§2, 5, 11, 12, 13, 14). Target model,
+  pending <code>dev-todo §2.29</code>. Canonical as-built map: <code>system-map.html</code>.
+</footer>
+
+<script type="module">
+  // Modern browsers permit ESM imports over HTTPS from file://. If this fails
+  // (offline, no cache), each <pre class="mermaid"> keeps showing its source
+  // text — the intended degraded view.
+  try {
+    const mermaid = (await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs')).default;
+    // The dynamic import resolves AFTER the load event, so startOnLoad would
+    // have already missed its window — run the renderer explicitly instead.
+    mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose' });
+    await mermaid.run({ querySelector: 'pre.mermaid' });
+  } catch (e) {
+    console.warn('Mermaid failed to load; diagrams shown as source text.', e);
+  }
+</script>
+</body>
+</html>
