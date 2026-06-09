@@ -757,6 +757,33 @@ window.NORTHWOOD_EVENTS = [
   {
     source: "sales",
     aggregate: "SalesOrder",
+    event: "SalesOrderLineAdded",
+    consumers: [
+      { dest: "inventory", name: "inventory.sales-order-line-added",
+        desc: `<code>SalesOrderLineAddedHandler</code> → <code>StockReservationService.applyLineAdded</code>: reserves the new line against the order's live reservation, appends a <code>inventory.stock_reservation_line</code> (stamped with <code>sales_order_line_id</code>) and bumps <code>stock_balance.reserved_quantity</code>; on a short line raises <code>ReplenishmentRequest(reason=sales_order_shortage)</code> in-tx. <strong>No-op when no live reservation exists</strong> (the amendment raced ahead of the initial whole-order reservation — the added line is then covered by the initial/retried reservation via sales' <code>LineSnapshot</code>). Emits <code>inventory.SalesOrderLineReservationChanged</code>. Partition-keyed on <code>aggregateId</code> (sales-order id) so it lands strictly after <code>SalesOrderPlaced</code>.` },
+    ]
+  },
+  {
+    source: "sales",
+    aggregate: "SalesOrder",
+    event: "SalesOrderLineQuantityChanged",
+    consumers: [
+      { dest: "inventory", name: "inventory.sales-order-line-quantity-changed",
+        desc: `<code>SalesOrderLineQuantityChangedHandler</code> → <code>StockReservationService.applyLineQuantityChanged</code>: reserves the <em>delta</em> on a quantity increase / releases it on a decrease against the live reservation line. A pure price change rides this event with an unchanged quantity, so a zero delta is a no-op; also a no-op when no live reservation exists. Emits <code>inventory.SalesOrderLineReservationChanged</code>. Partition-keyed on <code>aggregateId</code>.` },
+    ]
+  },
+  {
+    source: "sales",
+    aggregate: "SalesOrder",
+    event: "SalesOrderLineRemoved",
+    consumers: [
+      { dest: "inventory", name: "inventory.sales-order-line-removed",
+        desc: `<code>SalesOrderLineRemovedHandler</code> → <code>StockReservationService.applyLineRemoved</code>: releases that line's reservation back to the free pool (soft <code>released</code>) and cancels any open (<code>requested</code>/<code>dispatched</code>) <code>ReplenishmentRequest</code> for the removed line — a <code>fulfilled</code> one is left alone (its stock already landed). The <code>released</code> <code>SalesOrderLineReservationChanged</code> reply is emitted <strong>before</strong> the cancel so the saga drops the line from its outstanding set first (the resulting <code>inventory.ReplenishmentCancelled</code> is then a benign no-op rather than a reject). No-op when no live reservation exists. Partition-keyed on <code>aggregateId</code>.` },
+    ]
+  },
+  {
+    source: "sales",
+    aggregate: "SalesOrder",
     event: "SalesOrderPlaced",
     consumers: [
       { dest: "inventory", name: "inventory.sales-order-line-facts",
@@ -922,6 +949,15 @@ window.NORTHWOOD_EVENTS = [
     consumers: [
       { dest: "sales", name: "sales.compensation-inventory-ack",
         desc: `Records inventory ack on <code>sales.sales_order_fulfilment_saga</code> (the sole compensation ack — manufacturing's was retired); flips <code>compensating → compensated</code> and emits <code>sales.SalesOrderCompensated</code> via outbox` },
+    ]
+  },
+  {
+    source: "inventory",
+    aggregate: "StockReservation",
+    event: "SalesOrderLineReservationChanged",
+    consumers: [
+      { dest: "sales", name: "sales.fulfilment-saga.line-reservation-changed",
+        desc: `<code>SalesOrderLineReservationChangedHandler</code> → <code>SalesOrderFulfilmentSagaManager.applyLineReservationChanged</code>: reconciles the saga's outstanding line set after an amendment. A short amended line registers as outstanding and parks <code>sales.sales_order_fulfilment_saga.current_state</code> → <code>stock_reservation_incomplete</code>; a fully-reserved/released line drops from the set and un-parks → <code>ready_to_ship</code> once the set empties (the replenishment-retry machinery then drains any shorts). Carries reserved / shortage / status per amended line. <strong>Partition-keyed on the sales-order id</strong> (the saga's key) — note this races <code>StockReserved</code> (keyed by <em>reservation</em> id), so <code>applyStockReserved</code> carries an ordering guard: a <code>reserved</code> outcome arriving with a non-empty outstanding set stays <code>stock_reservation_incomplete</code> rather than clobbering to <code>ready_to_ship</code>.` },
     ]
   },
   {
