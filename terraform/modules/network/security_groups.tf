@@ -81,6 +81,17 @@ resource "aws_vpc_security_group_ingress_rule" "app_from_web" {
   referenced_security_group_id = aws_security_group.this["web"].id
 }
 
+# Prometheus on the data box scrapes each service's /actuator/prometheus over
+# the service port range. (The BFF on the web box is already internet-open.)
+resource "aws_vpc_security_group_ingress_rule" "app_from_infra" {
+  security_group_id            = aws_security_group.this["app"].id
+  description                  = "Service ports from infra tier (Prometheus scrape)"
+  ip_protocol                  = "tcp"
+  from_port                    = var.app_port_range.from
+  to_port                      = var.app_port_range.to
+  referenced_security_group_id = aws_security_group.this["infra"].id
+}
+
 # ---- infra-sg: Postgres + Kafka from app; telemetry from app + web --------
 resource "aws_vpc_security_group_ingress_rule" "infra_postgres_from_app" {
   security_group_id            = aws_security_group.this["infra"].id

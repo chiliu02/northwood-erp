@@ -1,0 +1,33 @@
+# Northwood Prometheus scrape config — AWS (rendered from prometheus.yml.tftpl).
+#
+# Unlike the local docker-compose variant (config/prometheus/prometheus.yml,
+# which targets host.docker.internal), the AWS data box reaches the workloads
+# by their pinned private IPs: the 7 services on the app box over the app-sg
+# (infra -> app on the service port range, see the network module), and the
+# BFF on the web box via its already-internet-open port. Every service exposes
+# Micrometer metrics at /actuator/prometheus (permitted unauthenticated).
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: northwood-showcase
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: northwood-services
+    metrics_path: /actuator/prometheus
+    static_configs:
+%{ for name, port in services ~}
+      - targets: ["${app_ip}:${port}"]
+        labels: { service: ${name} }
+%{ endfor ~}
+
+  - job_name: northwood-bffs
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["${web_ip}:${bff_port}"]
+        labels: { service: ${bff_name} }

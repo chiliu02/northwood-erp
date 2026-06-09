@@ -162,7 +162,6 @@ resource "aws_s3_object" "obs_config" {
   for_each = var.enable_observability ? {
     "obs/tempo.yaml"                                      = "${var.repo_root}/config/tempo/tempo.yaml"
     "obs/loki-config.yaml"                                = "${var.repo_root}/config/loki/loki-config.yaml"
-    "obs/prometheus.yml"                                  = "${var.repo_root}/config/prometheus/prometheus.yml"
     "obs/grafana/datasources/datasources.yaml"            = "${var.repo_root}/config/grafana/provisioning/datasources/datasources.yaml"
     "obs/grafana/dashboards-provisioning/dashboards.yaml" = "${var.repo_root}/config/grafana/provisioning/dashboards/dashboards.yaml"
     "obs/grafana/dashboards/northwood-overview.json"      = "${var.repo_root}/config/grafana/dashboards/northwood-overview.json"
@@ -171,6 +170,24 @@ resource "aws_s3_object" "obs_config" {
   key    = each.key
   source = each.value
   etag   = filemd5(each.value)
+}
+
+# prometheus.yml is rendered (not a static copy of the compose file) so the AWS
+# data box scrapes the services at their pinned private IPs instead of the
+# compose-only host.docker.internal. The app-sg admits the infra tier on the
+# service port range for the scrape (see the network module); the BFF's port on
+# the web box is already internet-open.
+resource "aws_s3_object" "prometheus_config" {
+  count  = var.enable_observability ? 1 : 0
+  bucket = aws_s3_bucket.artifacts.id
+  key    = "obs/prometheus.yml"
+  content = templatefile("${path.module}/templates/prometheus.yml.tftpl", {
+    services = var.services
+    app_ip   = local.app_ip
+    web_ip   = local.web_ip
+    bff_name = var.bff_name
+    bff_port = var.bff_port
+  })
 }
 
 # --------------------------------------------------------------------------
