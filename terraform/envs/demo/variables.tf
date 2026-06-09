@@ -39,6 +39,20 @@ variable "enable_observability" {
   default     = true
 }
 
+# ---- front-door DNS (see dns.tf) -------------------------------------------
+
+variable "dns_zone_name" {
+  description = "Existing Route 53 public hosted zone the front-door record is created in (no trailing dot)."
+  type        = string
+  default     = "chiliu02.com"
+}
+
+variable "front_door_domain" {
+  description = "FQDN A-record'd to the web box Elastic IP for the guest front door (HTTP only). Empty => no record (reach the front door by IP). Does NOT affect the ERP UI / Keycloak issuer, which stay on the IP."
+  type        = string
+  default     = "www.northwood.chiliu02.com"
+}
+
 # ---- secrets knobs ---------------------------------------------------------
 
 variable "bff_client_secret" {

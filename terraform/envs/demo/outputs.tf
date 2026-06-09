@@ -8,6 +8,11 @@ output "front_door_url" {
   value       = module.compute.front_door_url
 }
 
+output "front_door_domain_url" {
+  description = "Friendly front-door URL once DNS propagates (A record → web box Elastic IP). Empty front_door_domain => only the IP-based front_door_url is available."
+  value       = var.front_door_domain != "" ? "http://${var.front_door_domain}/" : "(no front_door_domain set — use front_door_url)"
+}
+
 output "keycloak_hostname_hint" {
   description = "The Keycloak issuer host. Defaults to the web box's stable Elastic IP (browser OIDC works out of the box); override with -var keycloak_hostname=<DNS name> for a real domain."
   value       = var.keycloak_hostname != "" ? var.keycloak_hostname : "Defaulting to web Elastic IP ${module.compute.web_public_ip} (browser OIDC works); set -var keycloak_hostname=<Route 53 name> to override."
