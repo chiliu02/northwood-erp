@@ -8,12 +8,13 @@ one ERP master-detail actually is, gives the algebra for it, and ties it to Nort
 existing invariants (`deltas get aggregates, totals get projections`; the DDD aggregate
 root + read-model projection split).
 
-> Status: design / vocabulary note, opened 2026-06-09 for discussion. Not yet a binding
-> convention. The worked example uses the real `SalesOrder.Status` / `SalesOrder.LineStatus`
-> enums. **Implementation note (2026-06-10):** the header ship-axis fold *is* now implemented —
-> `SalesOrder.recomputeStatus()` is the single writer of `status` and `markReserved` is wired, so
-> §14.2 gaps 1 & 2 are closed; the multi-axis invoice separation (gap 3) is still open. §8 and §14
-> below still describe the pre-implementation state and get their full rewrite when gap 3 lands.
+> Status: design / vocabulary note, opened 2026-06-09. The worked example uses the real
+> `SalesOrder.Status` / `SalesOrder.LineStatus` enums. **Implemented (§2.29, 2026-06-10):** the
+> header ship-axis fold is `SalesOrder.recomputeStatus()` — the single writer of `status`, with
+> `markReserved` wired and the blind projection retired (§14.2 gaps 1 & 2 closed). The multi-axis
+> invoice/pay separation (gap 3) is **resolved by design** — those axes fold over the
+> fulfilment-document chain, not the SO line, and live in finance + the 360 rollup (see **§12.6**).
+> §8 and §14 record the resolved state.
 
 ---
 
@@ -346,26 +347,34 @@ and downstream consumers?** Yes → aggregate (7.2). No → projection (7.3).
 
 ## 8. Where the model meets the code today
 
-The codebase implements a **special case** of this model, not the general fold — worth
-stating plainly so the gap is a conscious choice, not an accident (full accounting + the
-three gaps that matter + severity in **§14**):
+The codebase implements the **ship-axis fold** of this model (§2.29 Slice A, 2026-06-10);
+the multi-axis invoice/pay separation is realized at the order level rather than on the SO
+line, for the reason worked out in **§12.6** (full accounting + severity in **§14**):
 
 - ✅ Lines are the authoritative state machines (`SalesOrderLine.lineStatus`, mutated only
-  by the aggregate via `markReserved` / `recordShipment` / `cancelLine`).
-- ✅ The shipped/partially-shipped distinction *is* a fold: `allMatch(SHIPPED)` in
-  `recordShipped` (= `m == M == SHIPPED`).
+  by the aggregate via `markReserved` / `recordShipment` / `cancelLine`). `markReserved` is
+  now wired (`StockReservedHandler` → `recordReservation`), so the line carries the
+  `RESERVED` / `PARTIALLY_RESERVED` band in production, not just the terminal ship states.
+- ✅ Header status **is** the general fold: `SalesOrder.recomputeStatus()` re-derives
+  `SUBMITTED → IN_FULFILMENT → PARTIALLY_SHIPPED → SHIPPED` from the live-line multiset via
+  `classify(meet, join)` after *every* mutation (place / amend / reserve / ship). The old
+  `allMatch(SHIPPED)` is now this fold's `meet == SHIPPED`.
+- ✅ The aggregate is the **sole writer** of `status`: the derived region comes from the
+  fold; the absorbing terminals are guarded transitions (`cancel` / `reject` / `complete`).
+  The former blind `SalesOrderHeaderStatusProjection.markStatus(...)` is **retired**.
 - ✅ Quantity-bucket sub-composition exists (`shippedQuantity` vs `orderedQuantity` →
   line `SHIPPED` vs `PARTIALLY_SHIPPED`).
-- ✅ Cancelled-neutrality is honoured for *totals* (`recomputeTotals` skips cancelled).
-- ⚠️ **The header status is only recomputed at shipment time.** There is no general
-  `recomputeStatus()` that re-derives `SUBMITTED → IN_FULFILMENT → …` from the live line
-  multiset after *every* mutation. The early transitions are set imperatively (`place` sets
-  `SUBMITTED`; the Saga drives `IN_FULFILMENT`). That's the §5 autonomous-FSM tier doing its
-  job — but it means the "derived region" boundary is implicit, not modelled.
-- ⚠️ **`ρ` is not order-insensitivity-tested** as a property (§3). The current single
-  `allMatch` is trivially order-insensitive; a richer fold would need the property tests.
-- ⚠️ Several `LineStatus` values (`WAITING_FOR_PRODUCTION`, `READY_TO_SHIP`, line-level
-  `PARTIALLY_SHIPPED`) are *schema-prep* — the chain in §2.1 is partly aspirational.
+- ✅ Cancelled-neutrality is honoured for both *totals* (`recomputeTotals` skips cancelled)
+  and *status* (the fold filters cancelled lines), and is property-tested (§3 shapes in
+  `SalesOrderTest.StatusFold`).
+- 🔵 **Invoice/pay are not on the SO line — by design (§12.6).** They fold over the
+  fulfilment-document chain (which cross-cuts the lines), not the SO lines, so they live in
+  `finance.CustomerInvoice` / `Payment` + the `reporting.sales_order_360_view` rollup. The
+  cross-axis `COMPLETED` meet is the saga sequencing those documents; `complete()` asserts
+  only the one leg the aggregate owns the quantities for (`ordered = shipped`).
+- ⚠️ Several `LineStatus` values (`WAITING_FOR_PRODUCTION`, `READY_TO_SHIP`) are
+  *schema-prep* — the make/buy part of the chain in §2.1 rides the to-order extension
+  (dev-todo §2.43), still future.
 
 **The load-bearing tie-in:** a composed status is a *total over the line deltas*. Promoting
 it to an independently-`UPDATE`-able header field is the same mistake as promoting
@@ -595,6 +604,56 @@ B — the §11 stratification on a new axis). The fold itself only gives out at 
 (returns/credit notes break per-axis monotonicity, boundary #2), and the only modelling trap
 is **forcing the orthogonal axes into one chain** (boundary #1).
 
+### 12.6 The fulfilment-event triple — each axis folds over a *different* detail set
+
+§12.2 says the order is a product of per-axis folds. The sharp question §12.1–12.5 left
+implicit is: **what does each axis fold *over*?** The answer is not "the SO lines" for all
+three axes — and getting this right is what tells you where each axis's state belongs.
+
+**The order is a quantity matrix `M`.** For an order of `line-1: 4×A, line-2: 2×B`,
+`M = { A:4, B:2 }`. There are **two orthogonal partitions** of `M`:
+
+- **By line (product)** — the SO lines: `{A:4} | {B:2}`. Fixed, the order's own structure.
+- **By fulfilment event** — the ship/invoice/pay documents: *any* set of sub-vectors `M_e`
+  with `Σ M_e = M`. One event `{4A+2B}`; or two `{3A+1B}+{1A+1B}`; or six singletons; etc.
+  This partition **cross-cuts the lines** — a single shipment `{3A+1B}` touches both lines.
+
+A **fulfilment event** `e` is a *triple* `(shipment_e, invoice_e, payment_e)`, all covering
+the same `M_e`: a shipment of `M_e` begets one invoice for `M_e` (`createFromShippedOrder`
+raises an invoice per `SalesOrderShipped`), settled by one payment. The order is fulfilled by
+a **dynamic set of these triples** (uniform role, dynamic count → a Model-B fold), each
+triple itself a little `ship → invoice → pay` chain. (Prepayment / deposit just *reorder* the
+triple — invoice/pay lead the shipment — but it is the same unit; the saga owns the ordering.)
+
+**The conservation invariant (Pacioli, again).** The two partitions are decompositions of the
+*same* total, so at completion they reconcile on every axis:
+
+```
+Σ shipments  =  Σ invoices  =  Σ payments  =  Σ SO lines  =  M
+ordered      =  shipped     =  invoiced    =  paid
+```
+
+This is the order-to-cash form of the double-entry identity. A reconciled total is a
+**projection**; the per-document line deltas that sum into it are **aggregates**. So each leg
+of the reconciliation lives where that principle puts it:
+
+| Leg | Reconciled in | Grain | Why there |
+|---|---|---|---|
+| `ordered = shipped` | the **SO aggregate** (`complete()` asserts it; the §13.3 fold) | quantity, per SO line | shipment lines carry `salesOrderLineId + qty` — line-aligned, so the SO line is a valid accumulator |
+| `invoiced = ordered` | the **360 projection** (`invoiced_amount` vs `total_amount`) | value, order-level | invoice docs cross-cut lines; deposit/balance invoices are value-only (no `salesOrderLineId`) |
+| `paid = ordered` | the **360 projection** (`paid_amount` vs `total_amount`) | value, order-level | payments settle *invoices*, never SO lines |
+
+**Consequence — no invoice axis on the SO line.** Putting an `invoicedQuantity` bucket on the
+SO line would force the invoice axis onto the line grain it does not fit (it folds over the
+document chain, not the lines) and could not even be populated for value-based deposit/balance
+invoices. The invoice and pay axes belong to `finance.CustomerInvoice` / `Payment` and the
+`sales_order_360_view` rollup; the **saga** is the cross-aggregate meet that sequences the
+triples. Because an invoice sits *structurally between* ship and pay — you cannot pay an
+amount that was never invoiced, and an invoice is raised per shipment — `shipped ∧ paid`
+already implies `invoiced`, which is why the 360's `completed = shipped ∧ paid_amount ≥ total`
+rule is sound with no separate invoice gate, and why the aggregate's `complete()` need only
+assert the one leg it owns the quantities for (`ordered = shipped`).
+
 ---
 
 ## 13. The concrete `M` and `classify` (worked examples)
@@ -746,75 +805,77 @@ One column can't carry both — exactly why they're orthogonal regions, not one 
 
 ---
 
-## 14. Gap analysis — model vs. codebase
+## 14. Gap analysis — model vs. codebase (resolved by §2.29, 2026-06-10)
 
-§8 sketched where the model meets the code; this is the full accounting. **Headline: the
-composed-state machine is fragmented across three owners where the model has one.** In the
-ideal model (§13.3) header status is a *pure fold over the line states* — one
-`classify(lines)`, owned by the aggregate. In the code the same machine is split across
-three writers that don't share a derivation:
+§8 sketched where the model meets the code; this is the full accounting. The gaps below were
+the *pre-§2.29* state; §2.29 (Slices A + B) closed gaps 1 & 2 and resolved gap 3 by design.
+The **headline before**: the composed-state machine was fragmented across three writers where
+the model has one. **After:** the aggregate is the single writer of the ship-axis fold; the
+invoice/pay axes are document-chain folds owned by finance + the 360 (§12.6).
 
-| Who writes header status | Mechanism | States it produces |
+| Who writes header status | Mechanism | States |
 |---|---|---|
-| **The aggregate** (`SalesOrder`) | derived-ish: `place`, `recordShipped` (`allMatch(SHIPPED)`), `cancel` | `SUBMITTED`, `PARTIALLY_SHIPPED`, `SHIPPED`, `CANCELLED` |
-| **A blind projection** (`SalesOrderHeaderStatusProjection.markStatus`) | blind `UPDATE status = ?` | `IN_FULFILMENT` (`StockReservedHandler`), `COMPLETED` (`ShipmentPostedHandler`, `CustomerPaymentReceivedHandler`) |
-| **The Saga** (`SalesOrderFulfilmentSaga`) | owns the *in-progress* fulfilment band entirely | reserved / ready_to_ship / awaiting-replenishment — none of which live on the line |
+| **The aggregate** (`SalesOrder`) — *now the sole writer* | `recomputeStatus()` fold (derived region) + guarded `cancel` / `reject` / `complete` (terminals) | all of `SUBMITTED` / `IN_FULFILMENT` / `PARTIALLY_SHIPPED` / `SHIPPED` / `COMPLETED` / `CANCELLED` / `REJECTED` |
+| ~~A blind projection (`markStatus`)~~ | **retired** — `SalesOrderHeaderStatusProjection` deleted | — |
+| **The Saga** (`SalesOrderFulfilmentSaga`) | still owns *process* progress (reservation / replenishment / per-triple sequencing) — a distinct machine (§5), feeds the aggregate via guarded transitions | saga states, not header status |
 
-So today's header status is mostly the §5 *autonomous-FSM tier* (imperative, event-driven
-writes), with the §13.3 fold reduced to a single `allMatch` inside `recordShipped`.
+### 14.1 Gap by model pillar — resolution
 
-### 14.1 Gap by model pillar
+| Model pillar (ideal) | Resolution (§2.29) | Status |
+|---|---|---|
+| **Header status = `classify(lines)`** single fold (§13.3) | `SalesOrder.recomputeStatus()` re-derives the ship-axis status after every mutation | ✅ closed (Slice A) |
+| **Single writer, status derived not stored** (§9) | blind `markStatus` retired; aggregate is sole writer (fold + guarded terminals) | ✅ closed (Slice A) |
+| **Line is the authoritative state machine** (§8) | `markReserved` wired from `StockReservedHandler` → `recordReservation`; line carries the `RESERVED`/`PARTIALLY_RESERVED` band, fold derives `IN_FULFILMENT` | ✅ closed (Slice A) |
+| **Multi-axis product** `M_ship × M_invoice × M_pay` (§12) | ship axis folds over SO lines (aggregate); invoice/pay fold over the fulfilment-document chain (finance + 360), **not** the SO line — the per-event-triple model (§12.6). `COMPLETED` is the saga's cross-aggregate meet, with `complete()` asserting the `ordered = shipped` leg | ✅ resolved by design (Slice B) |
+| **Variant coarsening** make/buy → common band (§11) | unchanged — rides the to-order extension (dev-todo §2.43) | 🔵 deferred |
+| **Quantity-bucket `Σ`-folds** (§2.3) | `shippedQty` + `reservedQty` now both accumulate; `manufacturingRequiredQty` still unwired (MTS) | ✅ mostly closed |
+| **Cancelled-neutrality in the fold** | the status fold filters cancelled lines (property-tested) | ✅ closed |
 
-| Model pillar (ideal) | Current code | Gap | Severity |
-|---|---|---|---|
-| **Header status = `classify(lines)`** single fold (§13.3) | one `allMatch(SHIPPED)` in `recordShipped`; everything else imperative | no `recomputeStatus()`; the fold covers only ship-vs-partial | **High** — load-bearing |
-| **Single writer, status derived not stored** (§9) | **two** writers to the status column: aggregate + blind `markStatus` | the §9 *independently-writable status* anti-pattern; no invariant ties `status` to `lines` | **High** — divergence risk |
-| **Line is the authoritative state machine** (§8) | line authoritatively holds only *terminal* ship states; in-progress band lives in the Saga | `markReserved` (sets `RESERVED`/`PARTIALLY_RESERVED`) has **no production caller** — line reservation band + `reservedQuantity` bucket are effectively dead (tests only); live band is `OPEN → {PARTIALLY_SHIPPED \| SHIPPED \| CANCELLED}` | **Medium** — partly deliberate (Saga owns process) |
-| **Multi-axis product** `M_ship × M_invoice × M_pay` (§12/§13.1) | only the ship axis on the order; **no `invoicedQuantity` on the line** | invoice/pay axes unmodelled in sales; `COMPLETED` is a payment-*event* jump via blind `markStatus`, not a cross-axis `meet` | **Medium** — happy path only; partial-invoice ≠ partial-ship unrepresentable |
-| **Variant coarsening** make/buy → common band (§11/§13.5) | single `LineStatus` enum, MTS-only, no variant | `waiting_for_production` / `ready_to_ship` are **schema-prep dead values**; §11 apparatus is future (to-order, dev-todo §2.43) | **Low** — deliberately deferred |
-| **Quantity-bucket `Σ`-folds** (§2.3) | `shippedQty` live (`recordShipment`); `reservedQty` / `manufacturingRequiredQty` unwired | only one of three buckets accumulates | **Low/Med** |
-| **Cancelled-neutrality in the fold** | `recomputeTotals` filters cancelled ✓; no status fold to filter for | totals honour it; status has no fold | **Low** |
+### 14.2 The three gaps — how they closed
 
-### 14.2 The three gaps that matter
+1. **Single `classify` + single writer (was High).** `SalesOrder.recomputeStatus()` is the one
+   `classify(meet, join)` over the live lines, called after every mutation; it is the *sole*
+   writer of the derived region, and the absorbing terminals are guarded transitions
+   (`cancel` / `reject` / `complete`). The blind `markStatus` projection is **deleted**, so the
+   §9 *independently-writable status* anti-pattern is gone — there is no second writer to
+   desync. ✅ **Closed (Slice A).**
 
-1. **No single `classify` — and two writers to one column.** `recordShipped` writes `status`
-   from the lines while `markStatus(...)` blindly `UPDATE`s it from event handlers. Nothing
-   asserts `stored status == classify(lines)`. States can't easily diverge *today* (the Saga
-   sequences the events), but the *invariant* that would guarantee it is absent. **Close it:**
-   a single `recomputeStatus()` on the aggregate (the §7.2 shape, sibling to
-   `recomputeTotals`), called after every line mutation; retire `markStatus`, or explicitly
-   declare it the §5 lifecycle tier and keep it out of the same column.
+2. **In-progress band on the line (was Medium).** `markReserved` is wired from
+   `StockReservedHandler` via `SalesOrderService.recordReservation`, so the line authoritatively
+   carries `RESERVED` / `PARTIALLY_RESERVED` and the fold derives `IN_FULFILMENT` from it
+   (Option 2, not "document the split"). `reservedQuantity` is no longer dead. The Saga still
+   owns the states the line cannot represent (awaiting-replenishment, ready-to-ship) — those are
+   *process* state by design (§5). ✅ **Closed (Slice A).**
 
-2. **The in-progress band lives in the Saga, not the line.** `markReserved` being uncalled
-   means the line never holds `RESERVED`/`READY` in production — that progress is the Saga's
-   state. Defensible (the Saga is the process; §5 names it a distinct machine), but it makes
-   "the line is the authoritative state machine" only half-true, so the fold can't see
-   reservation progress. **Close it:** either wire `markReserved` from `StockReservedHandler`
-   (line carries the full band, fold becomes meaningful for `IN_FULFILMENT` too), or document
-   that the fold governs only the terminal region and the Saga owns the rest.
+3. **Multi-axis — resolved by recognising the axes fold over different detail sets (was
+   Medium).** The fix is *not* an `invoicedQuantity` bucket on the SO line. Per §12.6, the order
+   is fulfilled by a dynamic set of **fulfilment-event triples** `(shipment, invoice, payment)`
+   that partition the order matrix `M` and **cross-cut the SO lines**; the conservation
+   invariant `Σ shipments = Σ invoices = Σ payments = Σ SO lines = M` says completion is a
+   *totals reconciliation*. Only the **ship** leg is SO-line-aligned (shipment lines carry
+   `salesOrderLineId + qty`), so it lives on the aggregate; the **invoice** and **pay** legs are
+   value-level order rollups owned by `finance.CustomerInvoice` / `Payment` + the
+   `sales_order_360_view` (`invoiced_amount` / `paid_amount` vs `total_amount`). `COMPLETED` is
+   the saga sequencing the triples; the former blind `markStatus(COMPLETED)` is replaced by the
+   guarded `complete()`, which asserts the one leg the aggregate owns (`ordered = shipped`) —
+   and because invoice sits structurally between ship and pay, `shipped ∧ paid ⇒ invoiced`, so
+   the 360's `completed = shipped ∧ paid_amount ≥ total` is the complete meet. ✅ **Resolved by
+   design (Slice B).** Putting the invoice axis on the SO line would have contradicted
+   *deltas get aggregates, totals get projections* (§12.4 #4) and could not be populated for
+   value-based deposit/balance invoices.
 
-3. **Multi-axis is collapsed.** No invoice axis on the order; `COMPLETED` jumps straight from
-   a payment event, conflating "shipped" with "paid." §12's "header `status` = ship axis;
-   invoice/pay = orthogonal flags" isn't implemented. **Close it:** add an `invoicedQuantity`
-   line bucket + an orthogonal invoice-status flag on the read model, and make `COMPLETED` the
-   cross-axis `meet` rather than a payment-triggered blind write.
+### 14.3 What stays deferred
 
-### 14.3 Deliberate vs. latent risk
+- **Make/buy variant coarsening (§11)** — rides the to-order extension (dev-todo §2.43).
+- **Reversals (returns / credit notes, §12.4 #2)** — break per-axis monotonicity; out of scope
+  (`project_credit_notes_low_priority`).
+- `WAITING_FOR_PRODUCTION` / `READY_TO_SHIP` remain schema-prep `LineStatus` values for that
+  future variant work.
 
-- **Deliberate (not defects):** MTS-only / no variants (§11 deferred); the Saga owning the
-  in-progress band; cancel fan-out via event rather than aggregate iteration. Conscious
-  architecture, just *narrower* than the general model.
-- **Latent risk worth a ticket:** the two-writer status column with no
-  `status == classify(lines)` invariant (gap 1) — where a future reorder or new handler could
-  silently desync the header from its lines.
-- **Cleanup:** the stale `schema-prep` Javadoc on `LineStatus.PARTIALLY_SHIPPED` / `SHIPPED`
-  / `CANCELLED` — they *are* produced now (by `recordShipment` / `cancelLine`).
-
-**Net:** the codebase implements a *correct special case* on the forward MTS happy path, but
-distributes the machine across aggregate + Saga + blind projection instead of concentrating
-it in one fold, and flattens the multi-axis product to a single ship-plus-payment column. The
-gap is "fold not yet centralized" + "axes not yet separated," not "wrong." Tracked as
-dev-todo §2.29.
+**Net:** the codebase now concentrates the ship-axis machine in one aggregate fold (single
+writer, line-authoritative, property-tested) and locates the invoice/pay axes where the
+conservation invariant puts them — value-level order rollups over the fulfilment-document
+chain, owned by finance + the 360, sequenced by the saga. The model and the code agree.
 
 ---
 
