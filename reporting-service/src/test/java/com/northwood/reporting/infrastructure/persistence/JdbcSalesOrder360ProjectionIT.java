@@ -297,6 +297,27 @@ class JdbcSalesOrder360ProjectionIT {
         assertThat(manufacturingStatus(id)).isEqualTo("completed");
     }
 
+    @Test
+    void line_amendment_refreshes_total_and_outstanding() {
+        UUID id = UUID.randomUUID();
+        createOrder(id); // total 650.00, outstanding 650.00
+        assertThat(totalAmount(id)).isEqualByComparingTo(new BigDecimal("650.00"));
+
+        // §1G.3: a line addition raised the order total → total + outstanding refresh.
+        PROJECTION.recordAmendedTotal(id, new BigDecimal("840.00"), Instant.now(),
+            "sales.SalesOrderLineAdded", "emma");
+        assertThat(totalAmount(id)).isEqualByComparingTo(new BigDecimal("840.00"));
+        assertThat(outstandingAmount(id)).isEqualByComparingTo(new BigDecimal("840.00"));
+
+        // After a part-payment, a further amendment nets the already-paid amount.
+        PROJECTION.recordPayment(id, new BigDecimal("200.00"),
+            CustomerPaymentReceived.INVOICE_STATUS_PARTIALLY_PAID, Instant.now(), "olivia");
+        PROJECTION.recordAmendedTotal(id, new BigDecimal("500.00"), Instant.now(),
+            "sales.SalesOrderLineRemoved", "emma");
+        assertThat(totalAmount(id)).isEqualByComparingTo(new BigDecimal("500.00"));
+        assertThat(outstandingAmount(id)).isEqualByComparingTo(new BigDecimal("300.00")); // 500 − 200
+    }
+
     private void createOrder(UUID id) {
         PROJECTION.createFromOrder(
             id, "SO-360-LIFECYCLE", UUID.randomUUID(), "Sydney Home Living",
@@ -341,5 +362,17 @@ class JdbcSalesOrder360ProjectionIT {
         return JDBC.queryForObject(
             "SELECT manufacturing_status FROM reporting.sales_order_360_view WHERE sales_order_header_id = ?",
             String.class, id);
+    }
+
+    private BigDecimal totalAmount(UUID id) {
+        return JDBC.queryForObject(
+            "SELECT total_amount FROM reporting.sales_order_360_view WHERE sales_order_header_id = ?",
+            BigDecimal.class, id);
+    }
+
+    private BigDecimal outstandingAmount(UUID id) {
+        return JDBC.queryForObject(
+            "SELECT outstanding_amount FROM reporting.sales_order_360_view WHERE sales_order_header_id = ?",
+            BigDecimal.class, id);
     }
 }

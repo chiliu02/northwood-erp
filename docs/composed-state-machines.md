@@ -8,7 +8,9 @@ one ERP master-detail actually is, gives the algebra for it, and ties it to Nort
 existing invariants (`deltas get aggregates, totals get projections`; the DDD aggregate
 root + read-model projection split).
 
-> Status: design / vocabulary note, opened 2026-06-09. The worked example uses the real
+> Status: **adopted convention** — opened 2026-06-09 as a design note, implemented and adopted
+> 2026-06-10 (§2.29); registered in `CLAUDE.md` → *Pointers*. Consult it when modelling any
+> master-detail status / completion rollup. The worked example uses the real
 > `SalesOrder.Status` / `SalesOrder.LineStatus` enums. **Implemented (§2.29, 2026-06-10):** the
 > header ship-axis fold is `SalesOrder.recomputeStatus()` — the single writer of `status`, with
 > `markReserved` wired and the blind projection retired (§14.2 gaps 1 & 2 closed). The multi-axis

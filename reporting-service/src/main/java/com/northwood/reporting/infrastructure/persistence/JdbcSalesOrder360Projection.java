@@ -112,6 +112,55 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
 
     @Override
     @Transactional
+    public void recordAmendedTotal(UUID salesOrderHeaderId, BigDecimal newOrderTotal, Instant occurredAt, String eventType, String actorUserId) {
+        BigDecimal total = newOrderTotal == null ? BigDecimal.ZERO : newOrderTotal;
+        jdbc.update("""
+            INSERT INTO reporting.sales_order_360_view (
+                sales_order_header_id, order_number,
+                customer_id, customer_name,
+                order_date, order_status, stock_status,
+                manufacturing_status, shipment_status,
+                invoice_status, payment_status,
+                currency_code, total_amount, outstanding_amount,
+                last_event_type, last_event_at,
+                last_modified_by
+            ) VALUES (?, '(pending)', ?, '(pending)',
+                      CURRENT_DATE, 'pending', 'pending',
+                      'pending', 'pending',
+                      'pending', 'pending',
+                      'AUD', ?, ?, ?, ?, ?)
+            ON CONFLICT (sales_order_header_id) DO UPDATE SET
+                -- §1G.3: a line amendment changed the order total. Overwrite
+                -- total_amount with the recomputed figure carried on the event
+                -- and re-derive outstanding (total − already-paid). paid/invoiced
+                -- are untouched (an amendment is pre-shipment; nothing is paid yet
+                -- on the amendable path, but the subtraction stays correct if it is).
+                total_amount = EXCLUDED.total_amount,
+                outstanding_amount = EXCLUDED.total_amount - sales_order_360_view.paid_amount,
+                last_event_type = CASE
+                    WHEN sales_order_360_view.last_event_at IS NULL
+                      OR EXCLUDED.last_event_at > sales_order_360_view.last_event_at
+                    THEN EXCLUDED.last_event_type
+                    ELSE sales_order_360_view.last_event_type
+                END,
+                last_event_at = CASE
+                    WHEN sales_order_360_view.last_event_at IS NULL
+                      OR EXCLUDED.last_event_at > sales_order_360_view.last_event_at
+                    THEN EXCLUDED.last_event_at
+                    ELSE sales_order_360_view.last_event_at
+                END,
+                last_modified_by = COALESCE(EXCLUDED.last_modified_by, sales_order_360_view.last_modified_by),
+                updated_at = now()
+            """,
+            salesOrderHeaderId, STUB_CUSTOMER_ID, total, total, eventType,
+            Timestamp.from(occurredAt == null ? Instant.now() : occurredAt),
+            actorUserId
+        );
+        log.info("refreshed sales_order_360 total for {} → {} ({})", salesOrderHeaderId, total, eventType);
+    }
+
+    @Override
+    @Transactional
     public void recordManufacturingCompleted(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId) {
         jdbc.update("""
             INSERT INTO reporting.sales_order_360_view (

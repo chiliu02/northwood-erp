@@ -16,6 +16,11 @@ import java.util.UUID;
  * <p>Partition key is {@code aggregateId} (the sales-order header id) so the
  * removal is ordered relative to the original placement and any prior
  * amendment.
+ *
+ * <p>{@code newOrderTotal} is the order's recomputed header total <i>after</i>
+ * the removal (the soft-cancelled line is excluded from totals), so the
+ * reporting 360 projection can refresh {@code total_amount} /
+ * {@code outstanding_amount} — §1G.3.
  */
 public record SalesOrderLineRemoved(
     UUID eventId,
@@ -23,6 +28,7 @@ public record SalesOrderLineRemoved(
     UUID salesOrderLineId,
     UUID productId,
     BigDecimal previousQuantity,
+    BigDecimal newOrderTotal,
     Instant occurredAt
 ) implements DomainEvent {
 

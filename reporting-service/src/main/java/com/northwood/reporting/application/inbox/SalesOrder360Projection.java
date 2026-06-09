@@ -32,6 +32,19 @@ public interface SalesOrder360Projection {
         String eventType,
         String actorUserId);
 
+    /**
+     * Refresh the header money after a sales-order line amendment (§1G.3): set
+     * {@code total_amount} to the order's recomputed total and re-derive
+     * {@code outstanding_amount} ({@code total − paid_amount}). All three
+     * line-amendment events ({@code SalesOrderLineAdded} /
+     * {@code SalesOrderLineQuantityChanged} / {@code SalesOrderLineRemoved})
+     * carry the post-amendment order total, so this one method serves them all.
+     * Idempotent — overwriting with the same total is a no-op; the 360 row
+     * already exists (amendment rides the same {@code aggregateId} partition as
+     * the placement).
+     */
+    void recordAmendedTotal(UUID salesOrderHeaderId, BigDecimal newOrderTotal, Instant occurredAt, String eventType, String actorUserId);
+
     void recordManufacturingCompleted(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
 
     /**

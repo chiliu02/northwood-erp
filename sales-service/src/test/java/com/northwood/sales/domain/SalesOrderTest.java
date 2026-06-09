@@ -300,8 +300,11 @@ class SalesOrderTest {
             assertThat(added.lineNumber()).isGreaterThan(10);
             // 1*100 + 2*25 = 150
             assertThat(so.subtotalAmount()).isEqualByComparingTo(new BigDecimal("150.00"));
-            assertThat(so.pullPendingEvents()).hasSize(1)
-                .first().isInstanceOf(SalesOrderLineAdded.class);
+            List<DomainEvent> events = so.pullPendingEvents();
+            assertThat(events).hasSize(1).first().isInstanceOf(SalesOrderLineAdded.class);
+            // §1G.3: the event carries the recomputed order total for the 360.
+            assertThat(((SalesOrderLineAdded) events.get(0)).newOrderTotal())
+                .isEqualByComparingTo(new BigDecimal("150.00"));
         }
 
         @Test void change_line_updates_quantity_and_price_and_emits() {
@@ -316,6 +319,8 @@ class SalesOrderTest {
             SalesOrderLineQuantityChanged e = (SalesOrderLineQuantityChanged) events.get(0);
             assertThat(e.previousQuantity()).isEqualByComparingTo(new BigDecimal("1"));
             assertThat(e.newQuantity()).isEqualByComparingTo(new BigDecimal("3"));
+            // §1G.3: 3*90 = 270
+            assertThat(e.newOrderTotal()).isEqualByComparingTo(new BigDecimal("270.00"));
         }
 
         @Test void remove_line_softcancels_excludes_from_totals_and_emits() {
@@ -331,8 +336,11 @@ class SalesOrderTest {
             assertThat(so.lines()).hasSize(2); // soft — row survives
             assertThat(so.lines().stream().filter(l -> l.lineId().equals(drop)).findFirst().orElseThrow().isCancelled())
                 .isTrue();
-            assertThat(so.pullPendingEvents()).hasSize(1)
-                .first().isInstanceOf(SalesOrderLineRemoved.class);
+            List<DomainEvent> events = so.pullPendingEvents();
+            assertThat(events).hasSize(1).first().isInstanceOf(SalesOrderLineRemoved.class);
+            // §1G.3: removed line (2*25) drops out → 1*100 = 100
+            assertThat(((SalesOrderLineRemoved) events.get(0)).newOrderTotal())
+                .isEqualByComparingTo(new BigDecimal("100.00"));
         }
 
         @Test void remove_last_live_line_throws() {

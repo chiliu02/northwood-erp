@@ -549,6 +549,7 @@ public final class SalesOrder {
             productName,
             orderedQuantity,
             unitPrice,
+            totalAmount,
             Instant.now()
         ));
         return line;
@@ -579,6 +580,7 @@ public final class SalesOrder {
             previousQuantity,
             newQuantity,
             newUnitPrice,
+            totalAmount,
             Instant.now()
         ));
     }
@@ -611,6 +613,7 @@ public final class SalesOrder {
             lineId,
             line.productId(),
             previousQuantity,
+            totalAmount,
             Instant.now()
         ));
     }

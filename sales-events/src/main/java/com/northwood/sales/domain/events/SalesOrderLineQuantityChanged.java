@@ -16,6 +16,10 @@ import java.util.UUID;
  *
  * <p>Partition key is {@code aggregateId} (the sales-order header id) so the
  * change is ordered relative to the original placement and any prior amendment.
+ *
+ * <p>{@code newOrderTotal} is the order's recomputed header total <i>after</i>
+ * the change, so the reporting 360 projection can refresh {@code total_amount} /
+ * {@code outstanding_amount} — §1G.3.
  */
 public record SalesOrderLineQuantityChanged(
     UUID eventId,
@@ -25,6 +29,7 @@ public record SalesOrderLineQuantityChanged(
     BigDecimal previousQuantity,
     BigDecimal newQuantity,
     BigDecimal unitPrice,
+    BigDecimal newOrderTotal,
     Instant occurredAt
 ) implements DomainEvent {
 

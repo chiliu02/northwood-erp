@@ -15,6 +15,11 @@ import java.util.UUID;
  * <p>Partition key is {@code aggregateId} (the sales-order header id), the same
  * key {@code SalesOrderPlaced} rides, so a consumer sees the add strictly after
  * the original placement for that order.
+ *
+ * <p>{@code newOrderTotal} is the order's recomputed header total <i>after</i>
+ * the amendment (the aggregate runs {@code recomputeTotals()} before emitting),
+ * so the reporting 360 projection can refresh {@code total_amount} /
+ * {@code outstanding_amount} without re-reading sales — §1G.3.
  */
 public record SalesOrderLineAdded(
     UUID eventId,
@@ -26,6 +31,7 @@ public record SalesOrderLineAdded(
     String productName,
     BigDecimal orderedQuantity,
     BigDecimal unitPrice,
+    BigDecimal newOrderTotal,
     Instant occurredAt
 ) implements DomainEvent {
 
