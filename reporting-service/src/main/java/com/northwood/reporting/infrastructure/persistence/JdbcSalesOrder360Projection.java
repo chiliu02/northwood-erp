@@ -345,7 +345,12 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
 
     @Override
     @Transactional
-    public void recordShipment(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId) {
+    public void recordShipment(UUID salesOrderHeaderId, boolean orderFullyShipped, Instant occurredAt, String actorUserId) {
+        // Stub-row (shipment projected before placement): a partial shipment must
+        // leave order_status pickable + advanceable, so 'ready_to_ship' rather
+        // than a terminal — the eventual full shipment's CASE advances it.
+        String stubOrderStatus = orderFullyShipped ? "shipped" : "ready_to_ship";
+        String stubShipmentStatus = orderFullyShipped ? "shipped" : "partially_shipped";
         jdbc.update("""
             INSERT INTO reporting.sales_order_360_view (
                 sales_order_header_id, order_number,
@@ -357,27 +362,34 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                 last_event_type, last_event_at,
                 last_modified_by
             ) VALUES (?, '(pending)', ?, '(pending)',
-                      CURRENT_DATE, 'shipped', 'pending',
-                      'pending', 'shipped',
+                      CURRENT_DATE, ?, 'pending',
+                      'pending', ?,
                       'pending', 'pending',
                       'AUD', 0, 0,
-                      'inventory.ShipmentPosted', ?, ?)
+                      'sales.SalesOrderShipped', ?, ?)
             ON CONFLICT (sales_order_header_id) DO UPDATE SET
-                shipment_status = 'shipped',
-                -- Forward-only advance. A prepaid order (paid in full up front,
-                -- before the goods reserve/ship) reaching shipment is now both
-                -- fully fulfilled AND settled → 'completed' directly: this is the
-                -- path that completes the prepayment flow, whose payment landed
-                -- before shipment so recordPayment deliberately left it short of
-                -- completed. Otherwise advance to 'shipped' (on-shipment/deposit
-                -- still owe the post-ship balance — recordPayment completes them
-                -- once paid). Preserves completed/cancelled via the ELSE.
+                -- shipment_status forward-only: 'shipped' is never downgraded to
+                -- 'partially_shipped' by an out-of-order/late event.
+                shipment_status = CASE
+                    WHEN sales_order_360_view.shipment_status = 'shipped' THEN 'shipped'
+                    WHEN ?::boolean THEN 'shipped'
+                    ELSE 'partially_shipped'
+                END,
+                -- order_status advances ONLY when the order is fully shipped. A
+                -- prepaid order (paid in full before shipment) goes straight to
+                -- 'completed'; otherwise 'shipped' (on_shipment/deposit owe the
+                -- post-ship balance — recordPayment completes them once paid). A
+                -- PARTIAL shipment leaves order_status unchanged so the order stays
+                -- 'ready_to_ship' and pickable for the backorder. Preserves
+                -- completed/cancelled via the ELSE.
                 order_status = CASE
-                    WHEN sales_order_360_view.order_status IN ('pending', 'submitted', 'ready_to_ship')
+                    WHEN ?::boolean
+                      AND sales_order_360_view.order_status IN ('pending', 'submitted', 'ready_to_ship')
                       AND sales_order_360_view.total_amount > 0
                       AND sales_order_360_view.total_amount - sales_order_360_view.paid_amount <= 0
                         THEN 'completed'
-                    WHEN sales_order_360_view.order_status IN ('pending', 'submitted', 'ready_to_ship')
+                    WHEN ?::boolean
+                      AND sales_order_360_view.order_status IN ('pending', 'submitted', 'ready_to_ship')
                         THEN 'shipped'
                     ELSE sales_order_360_view.order_status
                 END,
@@ -397,8 +409,10 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                 updated_at = now()
             """,
             salesOrderHeaderId, STUB_CUSTOMER_ID,
+            stubOrderStatus, stubShipmentStatus,
             Timestamp.from(occurredAt == null ? Instant.now() : occurredAt),
-            actorUserId
+            actorUserId,
+            orderFullyShipped, orderFullyShipped, orderFullyShipped
         );
     }
 

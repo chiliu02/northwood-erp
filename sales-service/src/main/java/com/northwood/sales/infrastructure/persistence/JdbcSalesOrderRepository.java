@@ -53,7 +53,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
         List<SalesOrderLine> lines = jdbc.query(
             """
             SELECT sales_order_line_id, line_number, product_id, product_sku, product_name,
-                   ordered_quantity, reserved_quantity, manufacturing_required_quantity,
+                   ordered_quantity, reserved_quantity, manufacturing_required_quantity, shipped_quantity,
                    unit_price, tax_rate, line_status
             FROM sales.sales_order_line WHERE sales_order_header_id = ? ORDER BY line_number
             """,
@@ -141,6 +141,19 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
                 "SalesOrder " + o.id().value() + " was modified by another transaction"
             );
         }
+        // Persist per-line shipment progress (driven by recordShipped). Scoped to
+        // these three columns so the reservation path's reserved_quantity isn't
+        // clobbered; rides the same save()-transaction as the header update above.
+        for (SalesOrderLine line : o.lines()) {
+            jdbc.update("""
+                UPDATE sales.sales_order_line SET
+                    shipped_quantity = ?, backordered_quantity = ?, line_status = ?
+                WHERE sales_order_line_id = ?
+                """,
+                line.shippedQuantity(), line.backorderedQuantity(), line.lineStatus().dbValue(),
+                line.lineId()
+            );
+        }
     }
 
     private void writeOutbox(DomainEvent event, String aggregateType, String actor) {
@@ -207,6 +220,10 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
         rs.getBigDecimal("tax_rate"),
         rs.getBigDecimal("reserved_quantity"),
         rs.getBigDecimal("manufacturing_required_quantity"),
+        // Cumulative shipped qty MUST be reconstituted — otherwise each reload
+        // re-decides shipped/partially_shipped from zero and the "order fully
+        // shipped?" gate is wrong across shipments.
+        rs.getBigDecimal("shipped_quantity"),
         SalesOrder.LineStatus.fromDb(rs.getString("line_status"))
     );
 }

@@ -78,6 +78,18 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
     public static final String STOCK_RESERVATION_INCOMPLETE = "stock_reservation_incomplete";
     public static final String REJECTED = "rejected";
     public static final String READY_TO_SHIP = "ready_to_ship";
+    /**
+     * On_shipment partial-shipment park: some lines have shipped but a backorder
+     * remains. Entered from {@link #READY_TO_SHIP} on a partial
+     * {@code inventory.ShipmentPosted}; the saga stays here across further partial
+     * shipments and the interim per-shipment invoices/payments they generate
+     * (those are no-ops while here), and only moves to {@link #GOODS_SHIPPED} on
+     * the shipment that completes the order. Inbox-driven (not worker-claimable):
+     * the next shipment event advances it. Only reachable for {@code on_shipment}
+     * terms — prepayment/deposit/COD settle at a single shipment and never park
+     * here.
+     */
+    public static final String PARTIALLY_SHIPPED = "partially_shipped";
     public static final String GOODS_SHIPPED = "goods_shipped";
     public static final String INVOICE_REQUESTED = "invoice_requested";
     public static final String INVOICE_CREATED = "invoice_created";
@@ -120,7 +132,7 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
         STOCK_RESERVATION_REQUESTED, STOCK_RESERVATION_INCOMPLETE, REJECTED,
         AWAITING_PREPAYMENT_INVOICE, PREPAID,
         AWAITING_DEPOSIT_INVOICE, DEPOSIT_INVOICED, DEPOSIT_PAID,
-        READY_TO_SHIP, GOODS_SHIPPED,
+        READY_TO_SHIP, PARTIALLY_SHIPPED, GOODS_SHIPPED,
         INVOICE_REQUESTED, INVOICE_CREATED, INVOICE_PARTIALLY_PAID,
         COMPLETED,
         COMPENSATING, COMPENSATED,

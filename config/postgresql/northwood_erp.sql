@@ -462,7 +462,7 @@ CREATE TABLE sales.sales_order_header (
     status VARCHAR(30) NOT NULL DEFAULT 'draft' CHECK (
         status IN (
             'draft', 'submitted', 'confirmed', 'in_fulfilment',
-            'shipped', 'completed', 'cancelled', 'rejected'
+            'partially_shipped', 'shipped', 'completed', 'cancelled', 'rejected'
         )
     ),
     -- Commercial payment terms snapshotted from
@@ -592,7 +592,11 @@ CREATE TABLE sales.sales_order_fulfilment_saga (
             -- ReplenishmentFulfilled / ReplenishmentCancelled events resolve it.
             -- All four states are gone from SalesOrderFulfilmentSaga.ALL_STATES,
             -- so the CHECK no longer lists them.
-            'ready_to_ship', 'goods_shipped', 'invoice_requested', 'invoice_created',
+            -- partially_shipped: on_shipment order with a backorder — some lines
+            -- shipped, the saga parks here across further partial shipments + their
+            -- interim invoices/payments until the shipment that completes the order
+            -- moves it to goods_shipped. Inbox-driven (not worker-claimable).
+            'ready_to_ship', 'partially_shipped', 'goods_shipped', 'invoice_requested', 'invoice_created',
             'invoice_partially_paid',
             'completed', 'compensating', 'compensated', 'failed'
         )

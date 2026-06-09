@@ -44,6 +44,15 @@ public final class SalesOrder {
     ) {}
 
     /**
+     * Result of {@link #recordShipped}: {@code orderFullyShipped} is true when
+     * every line's cumulative shipped quantity now meets its ordered quantity
+     * (header moved to {@code shipped}); false for a partial shipment that
+     * leaves a backorder (header at {@code partially_shipped}). The inbox
+     * handler gates the fulfilment saga on this.
+     */
+    public record ShipmentOutcome(boolean orderFullyShipped) {}
+
+    /**
      * SalesOrder header fulfilment status. Mirrors the schema CHECK on
      * {@code sales.sales_order_header.status}; values flagged
      * <i>schema-prep</i> are accepted by the column but not currently produced
@@ -59,6 +68,8 @@ public final class SalesOrder {
         /** Schema-prep — not currently produced by Java. */
         CONFIRMED("confirmed"),
         IN_FULFILMENT("in_fulfilment"),
+        /** Some — but not all — lines have shipped; a backorder remains. */
+        PARTIALLY_SHIPPED("partially_shipped"),
         SHIPPED("shipped"),
         COMPLETED("completed"),
         CANCELLED("cancelled"),
@@ -167,7 +178,7 @@ public final class SalesOrder {
 
     /** Statuses past which a cancel is rejected with 409 (already shipped / paid / terminal). */
     private static final Set<Status> NON_CANCELLABLE_STATUSES =
-        EnumSet.of(Status.SHIPPED, Status.COMPLETED, Status.CANCELLED, Status.REJECTED);
+        EnumSet.of(Status.PARTIALLY_SHIPPED, Status.SHIPPED, Status.COMPLETED, Status.CANCELLED, Status.REJECTED);
 
     public static SalesOrder place(
         String orderNumber,
@@ -295,8 +306,15 @@ public final class SalesOrder {
      * {@code salesOrderLineId} so it can surface {@code lineNumber},
      * {@code unitPrice}, and {@code taxRate} on the emitted event.
      *
-     * <p>Also flips the header status to {@code 'shipped'} — once shipped,
-     * the order is no longer cancellable (see {@link #NON_CANCELLABLE_STATUSES}).
+     * <p><b>Partial shipments.</b> Each matched line accumulates its shipped
+     * quantity ({@link SalesOrderLine#recordShipment}) and moves to
+     * {@code shipped} or {@code partially_shipped}. The header moves to
+     * {@code shipped} only when every line is fully shipped, else to
+     * {@code partially_shipped}; either way the order is no longer cancellable
+     * via the simple cancel path (see {@link #NON_CANCELLABLE_STATUSES}). The
+     * returned {@link ShipmentOutcome#orderFullyShipped()} (also stamped on the
+     * emitted {@link SalesOrderShipped}) tells the caller whether this shipment
+     * completed the order — the saga gates {@code goods_shipped} on it.
      *
      * <p><b>Sentinel-zero fallback for unmatched lines.</b> If an inbound
      * {@link ShippedLineInput} has a {@code salesOrderLineId} that's null or
@@ -318,13 +336,12 @@ public final class SalesOrder {
      * {@code ProductCardLookup} on the sales side (preserves saga, emits
      * a real number).
      */
-    public void recordShipped(
+    public ShipmentOutcome recordShipped(
         UUID shipmentHeaderId,
         String shipmentNumber,
         LocalDate shipmentDate,
         List<ShippedLineInput> shippedLines
     ) {
-        this.status = Status.SHIPPED;
         Map<UUID, SalesOrderLine> byLineId = new HashMap<>();
         for (SalesOrderLine line : lines) {
             byLineId.put(line.lineId(), line);
@@ -335,6 +352,12 @@ public final class SalesOrder {
             int lineNumber = matched != null ? matched.lineNumber() : 0;
             BigDecimal unitPrice = matched != null ? matched.unitPrice() : BigDecimal.ZERO;
             BigDecimal taxRate = matched != null ? matched.taxRate() : BigDecimal.ZERO;
+            // Accumulate the shipped quantity onto the matched line (moves it to
+            // shipped / partially_shipped). An unmatched line (sentinel path
+            // below) accumulates nothing — it can't be tied to an ordered line.
+            if (matched != null) {
+                matched.recordShipment(sl.shippedQuantity());
+            }
             eventLines.add(new ShippedLine(
                 sl.salesOrderLineId(), lineNumber,
                 sl.productId(), sl.productSku(), sl.productName(),
@@ -345,6 +368,11 @@ public final class SalesOrder {
                 sl.unitCost()
             ));
         }
+        // The order is fully shipped iff every line reached SHIPPED. A line that
+        // never shipped is still RESERVED/OPEN; a backordered line is
+        // PARTIALLY_SHIPPED — both keep the header at partially_shipped.
+        boolean orderFullyShipped = lines.stream().allMatch(l -> l.lineStatus() == LineStatus.SHIPPED);
+        this.status = orderFullyShipped ? Status.SHIPPED : Status.PARTIALLY_SHIPPED;
         this.pendingEvents.add(new SalesOrderShipped(
             UUID.randomUUID(),
             id.value(),
@@ -358,8 +386,10 @@ public final class SalesOrder {
             Currencies.orBase(currencyCode),
             paymentTerms.dbValue(),
             eventLines,
+            orderFullyShipped,
             Instant.now()
         ));
+        return new ShipmentOutcome(orderFullyShipped);
     }
 
     /**

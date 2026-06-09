@@ -138,6 +138,19 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
     }
 
     @Override
+    public java.math.BigDecimal sumOutstandingForOrder(java.util.UUID salesOrderHeaderId) {
+        return jdbc.queryForObject(
+            """
+            SELECT COALESCE(SUM(outstanding_amount), 0)
+            FROM finance.customer_invoice_header
+            WHERE sales_order_header_id = ?
+            """,
+            java.math.BigDecimal.class,
+            salesOrderHeaderId
+        );
+    }
+
+    @Override
     public java.util.Optional<ShipmentTimeInvoice> findInvoiceForShipment(java.util.UUID salesOrderHeaderId) {
         java.util.List<ShipmentTimeInvoice> rows = jdbc.query(
             """

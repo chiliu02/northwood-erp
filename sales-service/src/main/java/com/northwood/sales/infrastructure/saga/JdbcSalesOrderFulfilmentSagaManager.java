@@ -223,29 +223,27 @@ public class JdbcSalesOrderFulfilmentSagaManager
 
     @Override
     @Transactional
-    public String applyShipmentPosted(UUID salesOrderHeaderId) {
+    public String applyShipmentPosted(UUID salesOrderHeaderId, boolean orderFullyShipped) {
         SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, ShipmentPosted.EVENT_TYPE);
 
-        if (!READY_TO_SHIP.equals(saga.state())) {
-            log.debug("saga {} sales_order={} not in ready_to_ship (state={}); ignoring",
+        // Valid only while awaiting / mid shipment. ready_to_ship is the first
+        // shipment; partially_shipped is a follow-on shipment for a backordered
+        // on_shipment order.
+        if (!READY_TO_SHIP.equals(saga.state()) && !PARTIALLY_SHIPPED.equals(saga.state())) {
+            log.debug("saga {} sales_order={} not in ready_to_ship/partially_shipped (state={}); ignoring",
                 saga.sagaId(), salesOrderHeaderId, saga.state());
             return saga.state();
         }
-        // For prepayment orders, the invoice was created at placement and paid
-        // before shipment — there's no invoice / payment event still to wait
-        // for. Walk goods_shipped → completed in this same transaction so the
-        // saga lands on the right terminal without an active state hop the
-        // worker would otherwise pick up.
+        // Prepayment / COD are single-shipment terms (partial shipments are out of
+        // scope for them — see docs/sagas.md), so they ignore orderFullyShipped and
+        // walk straight to their terminal on the first ShipmentPosted:
         //
-        // COD orders settle AT shipment — finance auto-creates the invoice and
-        // auto-records the full customer payment the moment the SalesOrderShipped
-        // lands. So the saga is self-contained: walk goods_shipped →
-        // invoice_created → completed in this transaction
-        // rather than wait for finance's CustomerInvoiceCreated /
-        // CustomerPaymentReceived (which would otherwise race — they carry
-        // different aggregate-ids / partition keys, so out-of-order delivery
-        // could strand the saga). Those events still arrive and update
-        // reporting; the saga is terminal by then and ignores them.
+        // Prepayment — invoice created at placement and paid before shipment, so
+        // walk goods_shipped → completed in this transaction. COD settles AT
+        // shipment (finance auto-creates the invoice + auto-records full payment
+        // when SalesOrderShipped lands), so walk goods_shipped → invoice_created →
+        // completed here rather than wait for finance's events (which carry
+        // different aggregate-ids / partition keys and could arrive out of order).
         String pt = readData(saga).paymentTerms();
         if (PaymentTerms.PREPAYMENT.dbValue().equals(pt)) {
             saga.transitionTo(GOODS_SHIPPED, "prepayment_shipment_landed");
@@ -260,10 +258,25 @@ public class JdbcSalesOrderFulfilmentSagaManager
             sagaPort.update(saga);
             log.info("saga {} sales_order={} → goods_shipped → invoice_created → completed (COD; invoice + payment auto-recorded at shipment)",
                 saga.sagaId(), salesOrderHeaderId);
-        } else {
+        } else if (orderFullyShipped) {
+            // on_shipment, order now complete (this shipment closed the last
+            // backordered line) → wait for finance's per-shipment invoice(s).
             saga.transitionTo(GOODS_SHIPPED, "wait_for_invoice");
             sagaPort.update(saga);
-            log.info("saga {} sales_order={} → goods_shipped",
+            log.info("saga {} sales_order={} → goods_shipped (order fully shipped)",
+                saga.sagaId(), salesOrderHeaderId);
+        } else if (READY_TO_SHIP.equals(saga.state())) {
+            // on_shipment, first shipment is partial — park awaiting the rest.
+            saga.transitionTo(PARTIALLY_SHIPPED, "wait_for_more_shipments");
+            sagaPort.update(saga);
+            log.info("saga {} sales_order={} → partially_shipped (backorder remains)",
+                saga.sagaId(), salesOrderHeaderId);
+        } else {
+            // Already partially_shipped and still not complete — a further partial
+            // shipment. No milestone transition; bump the version so the row
+            // reflects the event was applied.
+            sagaPort.update(saga);
+            log.info("saga {} sales_order={} stays partially_shipped (further partial shipment; backorder remains)",
                 saga.sagaId(), salesOrderHeaderId);
         }
         return saga.state();
@@ -292,8 +305,17 @@ public class JdbcSalesOrderFulfilmentSagaManager
             sagaPort.update(saga);
             log.info("saga {} sales_order={} {} → invoice_created",
                 saga.sagaId(), salesOrderHeaderId, fromState);
+        } else if (PARTIALLY_SHIPPED.equals(saga.state())) {
+            // Interim per-shipment invoice for a still-backordered on_shipment
+            // order. Stay in partially_shipped — advancing to invoice_created now
+            // would let a later payment complete the order before the remaining
+            // lines ship. The final shipment's invoice advances goods_shipped →
+            // invoice_created. (Finance still recorded the invoice; reporting
+            // accumulates invoiced_amount independently.)
+            log.debug("saga {} sales_order={} interim invoice while partially_shipped; staying",
+                saga.sagaId(), salesOrderHeaderId);
         } else {
-            log.debug("saga {} sales_order={} not in goods_shipped / awaiting_prepayment_invoice / awaiting_deposit_invoice (state={}); ignoring",
+            log.debug("saga {} sales_order={} not in goods_shipped / awaiting_prepayment_invoice / awaiting_deposit_invoice / partially_shipped (state={}); ignoring",
                 saga.sagaId(), salesOrderHeaderId, saga.state());
         }
         return saga.state();
@@ -301,16 +323,15 @@ public class JdbcSalesOrderFulfilmentSagaManager
 
     @Override
     @Transactional
-    public String applyCustomerPaymentReceived(UUID salesOrderHeaderId, boolean fullySettled) {
+    public String applyCustomerPaymentReceived(UUID salesOrderHeaderId, boolean invoiceFullySettled, boolean orderFullySettled) {
         SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, CustomerPaymentReceived.EVENT_TYPE);
 
         // A payment against the DEPOSIT invoice (saga parked at deposit_invoiced)
-        // settles the up-front portion. Full settlement → deposit_paid (an ACTIVE
-        // checkpoint, like prepaid: the worker picks the saga up to request stock
-        // reservation). The balance invoice/payment cycle after shipment is the
-        // on-shipment tail handled below.
+        // settles the up-front portion. Single deposit invoice → use the
+        // per-invoice flag. Full settlement → deposit_paid (an ACTIVE checkpoint,
+        // like prepaid: the worker picks the saga up to request stock reservation).
         if (DEPOSIT_INVOICED.equals(saga.state())) {
-            if (fullySettled) {
+            if (invoiceFullySettled) {
                 saga.transitionTo(DEPOSIT_PAID, "wait_for_worker_pickup");
                 saga.parkUntil(Instant.now());
                 sagaPort.update(saga);
@@ -323,34 +344,57 @@ public class JdbcSalesOrderFulfilmentSagaManager
             return saga.state();
         }
 
-        if (!INVOICE_CREATED.equals(saga.state()) && !INVOICE_PARTIALLY_PAID.equals(saga.state())) {
+        // Payment-receivable completion states. goods_shipped is included so a
+        // payment that races ahead of its CustomerInvoiceCreated (different
+        // partition key) still completes a genuinely-settled order rather than
+        // stranding it.
+        boolean receivable = INVOICE_CREATED.equals(saga.state())
+            || INVOICE_PARTIALLY_PAID.equals(saga.state())
+            || GOODS_SHIPPED.equals(saga.state());
+        if (PARTIALLY_SHIPPED.equals(saga.state())) {
+            // Interim payment for an early partial shipment's invoice while the
+            // order is still backordered. No-op: completion is gated on the order
+            // being fully shipped (reach goods_shipped first) AND fully settled.
+            log.debug("saga {} sales_order={} interim payment while partially_shipped; staying",
+                saga.sagaId(), salesOrderHeaderId);
+            return saga.state();
+        }
+        if (!receivable) {
             log.debug("saga {} sales_order={} not in payment-receivable state (state={}); ignoring",
                 saga.sagaId(), salesOrderHeaderId, saga.state());
-        } else if (fullySettled) {
-            // Full settlement routes by payment_terms. on_shipment → completed
-            // (the existing happy-path terminal — the invoice was created after
-            // shipment, so payment closes O2C). prepayment → prepaid (an ACTIVE
-            // checkpoint; the worker picks the saga up from prepaid to emit
-            // StockReservationRequested and walk the rest of the fulfilment path).
-            // Legacy sagas (paymentTerms null) fall back to on_shipment.
-            String pt = readData(saga).paymentTerms();
-            boolean isPrepayment = PaymentTerms.PREPAYMENT.dbValue().equals(pt);
-            if (isPrepayment) {
+            return saga.state();
+        }
+
+        String pt = readData(saga).paymentTerms();
+        boolean isPrepayment = PaymentTerms.PREPAYMENT.dbValue().equals(pt);
+        if (isPrepayment) {
+            // Prepayment is a single invoice for the whole order amount, settled
+            // before any shipment → use the per-invoice flag. Full → prepaid (an
+            // ACTIVE checkpoint; the worker continues from prepaid).
+            if (invoiceFullySettled) {
                 saga.transitionTo(PREPAID, "wait_for_worker_pickup");
                 saga.parkUntil(Instant.now());
                 sagaPort.update(saga);
                 log.info("saga {} sales_order={} → prepaid (prepayment invoice fully paid; worker continues forward)",
                     saga.sagaId(), salesOrderHeaderId);
             } else {
-                saga.transitionTo(COMPLETED, "o2c_completed");
+                saga.transitionTo(INVOICE_PARTIALLY_PAID, "wait_for_remaining_payments");
                 sagaPort.update(saga);
-                log.info("saga {} sales_order={} → completed (fully settled)",
+                log.info("saga {} sales_order={} → invoice_partially_paid (prepayment partial)",
                     saga.sagaId(), salesOrderHeaderId);
             }
+        } else if (orderFullySettled) {
+            // on_shipment: complete only when EVERY invoice for the order is paid
+            // (an order with partial shipments has several invoices). Paying one
+            // invoice in full carries orderFullySettled=false and holds here.
+            saga.transitionTo(COMPLETED, "o2c_completed");
+            sagaPort.update(saga);
+            log.info("saga {} sales_order={} → completed (order fully settled)",
+                saga.sagaId(), salesOrderHeaderId);
         } else {
             saga.transitionTo(INVOICE_PARTIALLY_PAID, "wait_for_remaining_payments");
             sagaPort.update(saga);
-            log.info("saga {} sales_order={} → invoice_partially_paid (partial)",
+            log.info("saga {} sales_order={} → invoice_partially_paid (order not yet fully settled)",
                 saga.sagaId(), salesOrderHeaderId);
         }
         return saga.state();

@@ -181,7 +181,7 @@ class PaymentTest {
             Payment p = Payment.recordCustomerPayment(
                 "PMT-C-001", CUSTOMER_A, "BigCorp",
                 null, Payment.Method.BANK_TRANSFER, Currencies.AUD, new BigDecimal("500.00"),
-                INVOICE_1, SO_1, "paid"
+                INVOICE_1, SO_1, "paid", true
             );
             CustomerPaymentReceived e = (CustomerPaymentReceived) p.pullPendingEvents().get(0);
             assertThat(e.salesOrderHeaderId()).isEqualTo(SO_1);
@@ -194,8 +194,8 @@ class PaymentTest {
                 "PMT-MULTI-C", CUSTOMER_A, "BigCorp",
                 null, Payment.Method.BANK_TRANSFER, Currencies.AUD,
                 List.of(
-                    new Payment.CustomerAllocationLine(INVOICE_1, SO_1, new BigDecimal("100"), "paid"),
-                    new Payment.CustomerAllocationLine(INVOICE_2, SO_1, new BigDecimal("50"), "partially_paid")
+                    new Payment.CustomerAllocationLine(INVOICE_1, SO_1, new BigDecimal("100"), "paid", false),
+                    new Payment.CustomerAllocationLine(INVOICE_2, SO_1, new BigDecimal("50"), "partially_paid", false)
                 )
             );
             assertThat(p.pullPendingEvents()).hasSize(2);
@@ -204,42 +204,42 @@ class PaymentTest {
         @Test void rejects_null_customer_id() {
             assertThatThrownBy(() -> Payment.recordCustomerPayment(
                 "PMT", null, "A", null, Payment.Method.CASH, Currencies.AUD, BigDecimal.TEN,
-                INVOICE_1, SO_1, "paid"
+                INVOICE_1, SO_1, "paid", true
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_customer_invoice_id() {
             assertThatThrownBy(() -> Payment.recordCustomerPayment(
                 "PMT", CUSTOMER_A, "A", null, Payment.Method.CASH, Currencies.AUD, BigDecimal.TEN,
-                null, SO_1, "paid"
+                null, SO_1, "paid", true
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void rejects_null_sales_order_id() {
             assertThatThrownBy(() -> Payment.recordCustomerPayment(
                 "PMT", CUSTOMER_A, "A", null, Payment.Method.CASH, Currencies.AUD, BigDecimal.TEN,
-                INVOICE_1, null, "paid"
+                INVOICE_1, null, "paid", true
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void multi_rejects_null_customer_id() {
             assertThatThrownBy(() -> Payment.recordMultiCustomerPayment(
                 "PMT-MULTI-C", null, "A", null, Payment.Method.BANK_TRANSFER, Currencies.AUD,
-                List.of(new Payment.CustomerAllocationLine(INVOICE_1, SO_1, BigDecimal.TEN, "paid"))
+                List.of(new Payment.CustomerAllocationLine(INVOICE_1, SO_1, BigDecimal.TEN, "paid", true))
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void multi_rejects_allocation_with_null_invoice_id() {
             assertThatThrownBy(() -> Payment.recordMultiCustomerPayment(
                 "PMT-MULTI-C", CUSTOMER_A, "A", null, Payment.Method.BANK_TRANSFER, Currencies.AUD,
-                List.of(new Payment.CustomerAllocationLine(null, SO_1, BigDecimal.TEN, "paid"))
+                List.of(new Payment.CustomerAllocationLine(null, SO_1, BigDecimal.TEN, "paid", true))
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test void multi_rejects_allocation_with_null_sales_order_id() {
             assertThatThrownBy(() -> Payment.recordMultiCustomerPayment(
                 "PMT-MULTI-C", CUSTOMER_A, "A", null, Payment.Method.BANK_TRANSFER, Currencies.AUD,
-                List.of(new Payment.CustomerAllocationLine(INVOICE_1, null, BigDecimal.TEN, "paid"))
+                List.of(new Payment.CustomerAllocationLine(INVOICE_1, null, BigDecimal.TEN, "paid", true))
             )).isInstanceOf(IllegalArgumentException.class);
         }
     }
@@ -258,7 +258,7 @@ class PaymentTest {
         @Test void customer_payment_is_incoming() {
             Payment p = Payment.recordCustomerPayment(
                 "PMT", CUSTOMER_A, "A", null, Payment.Method.CASH, Currencies.AUD, BigDecimal.TEN,
-                INVOICE_1, SO_1, "paid"
+                INVOICE_1, SO_1, "paid", true
             );
             assertThat(p.paymentDirection()).isEqualTo(Payment.Direction.INCOMING);
             assertThat(p.paymentType()).isEqualTo(Payment.Type.CUSTOMER_PAYMENT);

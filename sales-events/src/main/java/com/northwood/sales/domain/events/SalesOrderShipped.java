@@ -22,6 +22,16 @@ import java.util.UUID;
  * payment auto-recorded the moment the invoice is created (cash-on-delivery). Nullable for
  * backward compatibility with in-flight messages produced by older versions —
  * consumers treat null as {@code on_shipment}.
+ *
+ * <p>{@code orderFullyShipped} is {@code true} when this shipment completes the
+ * order (every line's cumulative shipped quantity now meets its ordered
+ * quantity), {@code false} for a partial shipment that leaves a backorder. Only
+ * sales can decide this — it owns ordered vs. cumulative-shipped quantities.
+ * Reporting uses it to show {@code shipped} vs. {@code partially_shipped}; the
+ * fulfilment saga uses its in-process equivalent to gate {@code goods_shipped}.
+ * A primitive {@code boolean} defaults to {@code false} when an older in-flight
+ * message lacks it — the safe default (hold as partial rather than wrongly
+ * complete).
  */
 public record SalesOrderShipped(
     UUID eventId,
@@ -36,6 +46,7 @@ public record SalesOrderShipped(
     String currencyCode,
     String paymentTerms,
     List<ShippedLine> lines,
+    boolean orderFullyShipped,
     Instant occurredAt
 ) implements DomainEvent {
 

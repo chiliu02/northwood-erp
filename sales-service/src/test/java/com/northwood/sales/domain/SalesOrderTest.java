@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.northwood.sales.domain.events.SalesOrderCancellationRequested;
 import com.northwood.sales.domain.events.SalesOrderPlaced;
+import com.northwood.sales.domain.events.SalesOrderShipped;
 import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
@@ -256,6 +257,90 @@ class SalesOrderTest {
             SalesOrder so = placeWithLines(List.of(line(BigDecimal.ONE, BigDecimal.TEN)));
             assertThat(so.pullPendingEvents()).hasSize(1);
             assertThat(so.pullPendingEvents()).isEmpty();
+        }
+    }
+
+    @Nested
+    class RecordShipped {
+        private static SalesOrder twoLineOrder() {
+            return placeWithLines(List.of(
+                line(new BigDecimal("2"), new BigDecimal("110.00")),   // line 0: ordered 2
+                line(new BigDecimal("5"), new BigDecimal("130.00"))    // line 1: ordered 5
+            ));
+        }
+
+        private static SalesOrder.ShippedLineInput ship(SalesOrderLine l, BigDecimal qty) {
+            return new SalesOrder.ShippedLineInput(
+                l.lineId(), l.productId(), l.productSku(), l.productName(), qty, new BigDecimal("10.00"));
+        }
+
+        @Test void partial_shipment_marks_partially_shipped_and_reports_not_fully_shipped() {
+            SalesOrder so = twoLineOrder();
+            so.pullPendingEvents(); // drain SalesOrderPlaced
+            SalesOrderLine line0 = so.lines().get(0);
+
+            SalesOrder.ShipmentOutcome outcome = so.recordShipped(
+                UUID.randomUUID(), "SHP-1", LocalDate.of(2026, 6, 2), List.of(ship(line0, new BigDecimal("2"))));
+
+            assertThat(outcome.orderFullyShipped()).isFalse();
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.PARTIALLY_SHIPPED);
+            assertThat(so.lines().get(0).lineStatus()).isEqualTo(SalesOrder.LineStatus.SHIPPED);
+            assertThat(so.lines().get(0).shippedQuantity()).isEqualByComparingTo(new BigDecimal("2"));
+            assertThat(so.lines().get(0).backorderedQuantity()).isEqualByComparingTo(BigDecimal.ZERO);
+            // line 1 untouched.
+            assertThat(so.lines().get(1).lineStatus()).isEqualTo(SalesOrder.LineStatus.OPEN);
+            assertThat(so.lines().get(1).shippedQuantity()).isEqualByComparingTo(BigDecimal.ZERO);
+            assertThat(so.lines().get(1).backorderedQuantity()).isEqualByComparingTo(new BigDecimal("5"));
+            SalesOrderShipped e = (SalesOrderShipped) so.pullPendingEvents().get(0);
+            assertThat(e.orderFullyShipped()).isFalse();
+        }
+
+        @Test void second_shipment_completes_the_order() {
+            SalesOrder so = twoLineOrder();
+            so.pullPendingEvents();
+            so.recordShipped(UUID.randomUUID(), "SHP-1", LocalDate.now(), List.of(ship(so.lines().get(0), new BigDecimal("2"))));
+            so.pullPendingEvents();
+
+            SalesOrder.ShipmentOutcome outcome = so.recordShipped(
+                UUID.randomUUID(), "SHP-2", LocalDate.now(), List.of(ship(so.lines().get(1), new BigDecimal("5"))));
+
+            assertThat(outcome.orderFullyShipped()).isTrue();
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.SHIPPED);
+            assertThat(so.lines()).allSatisfy(l ->
+                assertThat(l.lineStatus()).isEqualTo(SalesOrder.LineStatus.SHIPPED));
+            SalesOrderShipped e = (SalesOrderShipped) so.pullPendingEvents().get(0);
+            assertThat(e.orderFullyShipped()).isTrue();
+        }
+
+        @Test void partial_quantity_on_a_line_marks_line_partially_shipped() {
+            SalesOrder so = twoLineOrder();
+            so.pullPendingEvents();
+            SalesOrderLine line1 = so.lines().get(1); // ordered 5
+
+            so.recordShipped(UUID.randomUUID(), "SHP-1", LocalDate.now(), List.of(ship(line1, new BigDecimal("2"))));
+
+            assertThat(so.lines().get(1).lineStatus()).isEqualTo(SalesOrder.LineStatus.PARTIALLY_SHIPPED);
+            assertThat(so.lines().get(1).shippedQuantity()).isEqualByComparingTo(new BigDecimal("2"));
+            assertThat(so.lines().get(1).backorderedQuantity()).isEqualByComparingTo(new BigDecimal("3"));
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.PARTIALLY_SHIPPED);
+        }
+
+        @Test void cumulative_shipment_across_two_partials_completes_the_line() {
+            SalesOrder so = twoLineOrder();
+            SalesOrderLine line1 = so.lines().get(1); // ordered 5
+            so.recordShipped(UUID.randomUUID(), "SHP-1", LocalDate.now(), List.of(ship(line1, new BigDecimal("2"))));
+            so.recordShipped(UUID.randomUUID(), "SHP-2", LocalDate.now(), List.of(ship(line1, new BigDecimal("3"))));
+
+            assertThat(so.lines().get(1).shippedQuantity()).isEqualByComparingTo(new BigDecimal("5"));
+            assertThat(so.lines().get(1).lineStatus()).isEqualTo(SalesOrder.LineStatus.SHIPPED);
+        }
+
+        @Test void over_shipment_is_rejected() {
+            SalesOrder so = twoLineOrder();
+            SalesOrderLine line0 = so.lines().get(0); // ordered 2
+            assertThatThrownBy(() -> so.recordShipped(
+                UUID.randomUUID(), "SHP-1", LocalDate.now(), List.of(ship(line0, new BigDecimal("3")))))
+                .isInstanceOf(IllegalStateException.class);
         }
     }
 }

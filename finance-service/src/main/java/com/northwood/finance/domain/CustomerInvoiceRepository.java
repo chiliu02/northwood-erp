@@ -24,6 +24,17 @@ public interface CustomerInvoiceRepository {
     Optional<PaymentSnapshot> findPaymentSnapshot(UUID customerInvoiceHeaderId);
 
     /**
+     * Sum of {@code outstanding_amount} (total − paid, the generated column)
+     * across <em>all</em> of an order's customer invoices — the order-level
+     * outstanding. With partial shipments an order has several per-shipment
+     * invoices; the payment flow uses this to compute {@code orderFullySettled}
+     * for {@code CustomerPaymentReceived}, so sales' fulfilment saga completes
+     * only when the whole order is paid. Returns {@link BigDecimal#ZERO} when
+     * the order has no invoices (COALESCE).
+     */
+    BigDecimal sumOutstandingForOrder(UUID salesOrderHeaderId);
+
+    /**
      * Narrow projection used at shipment-time to (a) skip commercial invoice
      * auto-creation when a prepayment invoice already exists for the order,
      * and (b) post the deferred-revenue Dr 2110 / Cr Revenue pair against an

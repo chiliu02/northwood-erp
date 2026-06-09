@@ -110,7 +110,7 @@ Per-aggregate summary of what Java writes today (✓) vs what the schema CHECK a
 |---|---|---|---|
 | `Product` | `product.product` | active, inactive, discontinued | — |
 | `Customer` | `sales.customer` | active, inactive, blocked | — |
-| `SalesOrder` | `sales.sales_order_header` | submitted, confirmed, in_fulfilment, ready_to_ship, partially_shipped, shipped, invoiced, cancelled, on_hold, completed | draft |
+| `SalesOrder` | `sales.sales_order_header` | submitted, in_fulfilment, partially_shipped, shipped, completed, cancelled, rejected | draft, confirmed |
 | `StockReservation` | `inventory.stock_reservation_header` + `_line` | reserved, partially_reserved, failed | pending, released, consumed |
 | `GoodsReceipt` | `inventory.goods_receipt_header` | posted, reversed ‡ | draft |
 | `Shipment` | `inventory.shipment_header` | posted, reversed ‡ | draft |

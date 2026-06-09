@@ -46,8 +46,13 @@ public class CustomerPaymentReceivedHandler extends AbstractInboxHandler<Custome
 
     @Override
     protected void apply(CustomerPaymentReceived payload, EventEnvelope envelope) {
-        boolean fullySettled = CustomerPaymentReceived.INVOICE_STATUS_PAID.equals(payload.invoiceStatusAfter());
-        String newState = sagaManager.applyCustomerPaymentReceived(payload.salesOrderHeaderId(), fullySettled);
+        // invoiceFullySettled: this one invoice is paid (drives prepayment/deposit,
+        // which are single-invoice). orderFullySettled: every invoice for the order
+        // is paid (drives on_shipment completion — a partially-shipped order has
+        // several per-shipment invoices, so paying one must not complete the order).
+        boolean invoiceFullySettled = CustomerPaymentReceived.INVOICE_STATUS_PAID.equals(payload.invoiceStatusAfter());
+        String newState = sagaManager.applyCustomerPaymentReceived(
+            payload.salesOrderHeaderId(), invoiceFullySettled, payload.orderFullySettled());
         if (COMPLETED.equals(newState)) {
             statusProjection.markStatus(payload.salesOrderHeaderId(), SalesOrder.Status.COMPLETED);
         } else if (PREPAID.equals(newState) || DEPOSIT_PAID.equals(newState)) {

@@ -252,11 +252,38 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
 
     @Nested
     class ApplyShipmentPosted {
-        @Test void ready_to_ship_advances_to_goods_shipped() {
+        @Test void ready_to_ship_full_shipment_advances_to_goods_shipped() {
             SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyShipmentPosted(SO);
+            String state = manager.applyShipmentPosted(SO, true);
+
+            assertThat(state).isEqualTo(GOODS_SHIPPED);
+        }
+
+        @Test void ready_to_ship_partial_shipment_parks_at_partially_shipped() {
+            SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP);
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyShipmentPosted(SO, false);
+
+            assertThat(state).isEqualTo(PARTIALLY_SHIPPED);
+        }
+
+        @Test void further_partial_shipment_stays_at_partially_shipped() {
+            SalesOrderFulfilmentSaga saga = sagaInState(PARTIALLY_SHIPPED);
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyShipmentPosted(SO, false);
+
+            assertThat(state).isEqualTo(PARTIALLY_SHIPPED);
+        }
+
+        @Test void completing_shipment_from_partially_shipped_advances_to_goods_shipped() {
+            SalesOrderFulfilmentSaga saga = sagaInState(PARTIALLY_SHIPPED);
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyShipmentPosted(SO, true);
 
             assertThat(state).isEqualTo(GOODS_SHIPPED);
         }
@@ -265,7 +292,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             SalesOrderFulfilmentSaga saga = sagaInState(INVOICE_CREATED);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyShipmentPosted(SO);
+            String state = manager.applyShipmentPosted(SO, true);
 
             assertThat(state).isEqualTo(INVOICE_CREATED);
             verify(sagas, never()).update(any());
@@ -296,11 +323,11 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
 
     @Nested
     class ApplyCustomerPaymentReceived {
-        @Test void full_settlement_completes() {
+        @Test void order_fully_settled_completes() {
             SalesOrderFulfilmentSaga saga = sagaInState(INVOICE_CREATED);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyCustomerPaymentReceived(SO, true);
+            String state = manager.applyCustomerPaymentReceived(SO, true, true);
 
             assertThat(state).isEqualTo(COMPLETED);
         }
@@ -309,25 +336,47 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             SalesOrderFulfilmentSaga saga = sagaInState(INVOICE_CREATED);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyCustomerPaymentReceived(SO, false);
+            String state = manager.applyCustomerPaymentReceived(SO, false, false);
 
             assertThat(state).isEqualTo(INVOICE_PARTIALLY_PAID);
         }
 
-        @Test void from_invoice_partially_paid_full_completes() {
+        @Test void one_invoice_paid_but_order_not_settled_does_not_complete() {
+            // Partial-shipment case: a per-shipment invoice is fully paid
+            // (invoiceFullySettled=true) but another shipment's invoice is still
+            // outstanding (orderFullySettled=false) → must NOT complete.
+            SalesOrderFulfilmentSaga saga = sagaInState(INVOICE_CREATED);
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyCustomerPaymentReceived(SO, true, false);
+
+            assertThat(state).isEqualTo(INVOICE_PARTIALLY_PAID);
+        }
+
+        @Test void from_invoice_partially_paid_order_settled_completes() {
             SalesOrderFulfilmentSaga saga = sagaInState(INVOICE_PARTIALLY_PAID);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyCustomerPaymentReceived(SO, true);
+            String state = manager.applyCustomerPaymentReceived(SO, true, true);
 
             assertThat(state).isEqualTo(COMPLETED);
+        }
+
+        @Test void payment_while_partially_shipped_is_noop() {
+            SalesOrderFulfilmentSaga saga = sagaInState(PARTIALLY_SHIPPED);
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyCustomerPaymentReceived(SO, true, false);
+
+            assertThat(state).isEqualTo(PARTIALLY_SHIPPED);
+            verify(sagas, never()).update(any());
         }
 
         @Test void unrelated_state_returns_unchanged() {
             SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyCustomerPaymentReceived(SO, true);
+            String state = manager.applyCustomerPaymentReceived(SO, true, true);
 
             assertThat(state).isEqualTo(READY_TO_SHIP);
             verify(sagas, never()).update(any());
@@ -396,7 +445,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
                 FulfilmentSagaData.none().withPaymentTerms("deposit"));
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyCustomerPaymentReceived(SO, true);
+            String state = manager.applyCustomerPaymentReceived(SO, true, true);
 
             assertThat(state).isEqualTo(DEPOSIT_PAID);
         }
@@ -406,7 +455,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
                 FulfilmentSagaData.none().withPaymentTerms("deposit"));
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyCustomerPaymentReceived(SO, false);
+            String state = manager.applyCustomerPaymentReceived(SO, false, false);
 
             assertThat(state).isEqualTo(DEPOSIT_INVOICED);
         }
@@ -419,7 +468,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
                 FulfilmentSagaData.none().withPaymentTerms("prepayment"));
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyShipmentPosted(SO);
+            String state = manager.applyShipmentPosted(SO, true);
 
             assertThat(state).isEqualTo(COMPLETED);
         }
@@ -429,7 +478,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
                 FulfilmentSagaData.none().withPaymentTerms("on_shipment"));
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyShipmentPosted(SO);
+            String state = manager.applyShipmentPosted(SO, true);
 
             assertThat(state).isEqualTo(GOODS_SHIPPED);
         }
@@ -438,7 +487,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             SalesOrderFulfilmentSaga saga = sagaInState(READY_TO_SHIP, FulfilmentSagaData.none());
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyShipmentPosted(SO);
+            String state = manager.applyShipmentPosted(SO, true);
 
             assertThat(state).isEqualTo(GOODS_SHIPPED);
         }
@@ -451,7 +500,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
                 FulfilmentSagaData.none().withPaymentTerms("prepayment"));
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyCustomerPaymentReceived(SO, true);
+            String state = manager.applyCustomerPaymentReceived(SO, true, true);
 
             assertThat(state).isEqualTo(PREPAID);
         }
@@ -461,7 +510,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
                 FulfilmentSagaData.none().withPaymentTerms("on_shipment"));
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyCustomerPaymentReceived(SO, true);
+            String state = manager.applyCustomerPaymentReceived(SO, true, true);
 
             assertThat(state).isEqualTo(COMPLETED);
         }
@@ -470,7 +519,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             SalesOrderFulfilmentSaga saga = sagaInState(INVOICE_CREATED, FulfilmentSagaData.none());
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyCustomerPaymentReceived(SO, true);
+            String state = manager.applyCustomerPaymentReceived(SO, true, true);
 
             assertThat(state).isEqualTo(COMPLETED);
         }

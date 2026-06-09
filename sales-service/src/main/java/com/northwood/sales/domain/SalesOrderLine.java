@@ -23,8 +23,13 @@ public final class SalesOrderLine {
     private final BigDecimal taxRate;
     private BigDecimal reservedQuantity;
     private BigDecimal manufacturingRequiredQuantity;
+    private BigDecimal shippedQuantity;
     private SalesOrder.LineStatus lineStatus;
 
+    /**
+     * Canonical constructor — used by reconstitution, which supplies the
+     * cumulative {@code shippedQuantity} read back from the row.
+     */
     public SalesOrderLine(
         UUID lineId,
         int lineNumber,
@@ -36,6 +41,7 @@ public final class SalesOrderLine {
         BigDecimal taxRate,
         BigDecimal reservedQuantity,
         BigDecimal manufacturingRequiredQuantity,
+        BigDecimal shippedQuantity,
         SalesOrder.LineStatus lineStatus
     ) {
         Assert.argument(orderedQuantity.signum() > 0, "orderedQuantity must be > 0");
@@ -50,7 +56,26 @@ public final class SalesOrderLine {
         this.taxRate = taxRate == null ? BigDecimal.ZERO : taxRate;
         this.reservedQuantity = reservedQuantity == null ? BigDecimal.ZERO : reservedQuantity;
         this.manufacturingRequiredQuantity = manufacturingRequiredQuantity == null ? BigDecimal.ZERO : manufacturingRequiredQuantity;
+        this.shippedQuantity = shippedQuantity == null ? BigDecimal.ZERO : shippedQuantity;
         this.lineStatus = lineStatus;
+    }
+
+    /** New-line / place-order constructor — nothing shipped yet. */
+    public SalesOrderLine(
+        UUID lineId,
+        int lineNumber,
+        UUID productId,
+        String productSku,
+        String productName,
+        BigDecimal orderedQuantity,
+        BigDecimal unitPrice,
+        BigDecimal taxRate,
+        BigDecimal reservedQuantity,
+        BigDecimal manufacturingRequiredQuantity,
+        SalesOrder.LineStatus lineStatus
+    ) {
+        this(lineId, lineNumber, productId, productSku, productName, orderedQuantity, unitPrice, taxRate,
+            reservedQuantity, manufacturingRequiredQuantity, BigDecimal.ZERO, lineStatus);
     }
 
     public BigDecimal lineSubtotal() {
@@ -72,6 +97,25 @@ public final class SalesOrderLine {
             : SalesOrder.LineStatus.PARTIALLY_RESERVED;
     }
 
+    /**
+     * Add {@code quantity} to this line's cumulative shipped quantity and move
+     * its status to {@code shipped} (cumulative meets ordered) or
+     * {@code partially_shipped} (still short). Mirrors the DB CHECK
+     * {@code shipped_quantity <= ordered_quantity} as an aggregate invariant.
+     * Called by {@link SalesOrder#recordShipped} once per matched shipment line.
+     */
+    void recordShipment(BigDecimal quantity) {
+        Assert.argument(quantity != null && quantity.signum() > 0, "shipped quantity must be > 0");
+        BigDecimal next = shippedQuantity.add(quantity);
+        Assert.state(next.compareTo(orderedQuantity) <= 0,
+            "cumulative shipped quantity " + next + " would exceed ordered quantity "
+                + orderedQuantity + " for line " + lineId);
+        this.shippedQuantity = next;
+        this.lineStatus = next.compareTo(orderedQuantity) >= 0
+            ? SalesOrder.LineStatus.SHIPPED
+            : SalesOrder.LineStatus.PARTIALLY_SHIPPED;
+    }
+
     public UUID lineId()                              { return lineId; }
     public int lineNumber()                           { return lineNumber; }
     public UUID productId()                           { return productId; }
@@ -82,5 +126,8 @@ public final class SalesOrderLine {
     public BigDecimal taxRate()                       { return taxRate; }
     public BigDecimal reservedQuantity()              { return reservedQuantity; }
     public BigDecimal manufacturingRequiredQuantity() { return manufacturingRequiredQuantity; }
+    public BigDecimal shippedQuantity()               { return shippedQuantity; }
+    /** Ordered minus cumulative shipped, floored at zero — the outstanding backorder. */
+    public BigDecimal backorderedQuantity()           { return orderedQuantity.subtract(shippedQuantity).max(BigDecimal.ZERO); }
     public SalesOrder.LineStatus lineStatus()         { return lineStatus; }
 }

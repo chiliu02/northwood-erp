@@ -41,7 +41,9 @@ public final class Payment {
         UUID customerInvoiceHeaderId,
         UUID salesOrderHeaderId,
         BigDecimal amount,
-        String invoiceStatusAfter
+        String invoiceStatusAfter,
+        /** Order-level: every invoice for this allocation's order is paid after this payment. */
+        boolean orderFullySettled
     ) {}
 
     /**
@@ -299,7 +301,8 @@ public final class Payment {
         BigDecimal amount,
         UUID customerInvoiceHeaderId,
         UUID salesOrderHeaderId,
-        String invoiceStatusAfter
+        String invoiceStatusAfter,
+        boolean orderFullySettled
     ) {
         Assert.notNull(customerId, "customerId");
         Assert.notNull(customerInvoiceHeaderId, "customerInvoiceHeaderId");
@@ -340,6 +343,7 @@ public final class Payment {
             amount,
             amount,
             invoiceStatusAfter,
+            orderFullySettled,
             Instant.now()
         ));
         return p;
@@ -479,6 +483,7 @@ public final class Payment {
                 total,           // payment-level total
                 l.amount,        // allocated to THIS invoice
                 l.invoiceStatusAfter,
+                l.orderFullySettled,
                 now
             ));
         }
