@@ -32,6 +32,17 @@ import java.util.UUID;
  * shipment, invoice) belong on the read model fed by saga events, not on the
  * aggregate itself.
  *
+ * <p><b>Header status is a fold over the lines — the aggregate is its sole
+ * writer.</b> {@link #recomputeStatus()} derives the ship-axis status
+ * ({@code submitted} → {@code in_fulfilment} → {@code partially_shipped} →
+ * {@code shipped}) from the live line states after every mutation — the
+ * {@code classify(meet, join)} rollup of {@code docs/composed-state-machines.md}
+ * §13.3 — and the absorbing lifecycle terminals are intent-named guarded
+ * transitions: {@link #cancel} ({@code cancelled}), {@link #reject}
+ * ({@code rejected}), {@link #complete} ({@code completed}). There is no blind
+ * {@code UPDATE status} from a projection: the former
+ * {@code SalesOrderHeaderStatusProjection} is retired.
+ *
  * <p>Mutations are intent-named methods that emit domain events captured by
  * the application service for outbox publication.
  */
@@ -98,7 +109,8 @@ public final class SalesOrder {
     }
 
     /**
-     * SalesOrderLine fulfilment status. Mirrors the schema CHECK on
+     * SalesOrderLine fulfilment status — the per-line state machine the header
+     * fold ({@link #recomputeStatus()}) rolls up. Mirrors the schema CHECK on
      * {@code sales.sales_order_line.line_status}; values flagged
      * <i>schema-prep</i> are accepted by the column but not currently produced
      * by Java.
@@ -107,15 +119,12 @@ public final class SalesOrder {
         OPEN("open"),
         RESERVED("reserved"),
         PARTIALLY_RESERVED("partially_reserved"),
-        /** Schema-prep — not currently produced by Java. */
+        /** Schema-prep — not currently produced by Java (to-order extension). */
         WAITING_FOR_PRODUCTION("waiting_for_production"),
-        /** Schema-prep — not currently produced by Java. */
+        /** Schema-prep — not currently produced by Java (to-order extension). */
         READY_TO_SHIP("ready_to_ship"),
-        /** Schema-prep — not currently produced by Java. */
         PARTIALLY_SHIPPED("partially_shipped"),
-        /** Schema-prep — not currently produced by Java. */
         SHIPPED("shipped"),
-        /** Schema-prep — not currently produced by Java. */
         CANCELLED("cancelled");
 
         private final String dbValue;
@@ -195,6 +204,16 @@ public final class SalesOrder {
     private static final Set<Status> AMENDABLE_STATUSES =
         EnumSet.of(Status.SUBMITTED, Status.IN_FULFILMENT);
 
+    // Ship-progress lattice M_ship (docs/composed-state-machines.md §13.1): the
+    // coarse band a line status maps onto for the header fold. Ordered so meet/
+    // join are plain int min/max. `cancelled` is off the chain (filtered before
+    // the fold), so it has no band.
+    private static final int BAND_NOT_STARTED = 0;
+    private static final int BAND_IN_PROGRESS = 1;
+    private static final int BAND_READY = 2;
+    private static final int BAND_PARTIALLY_SHIPPED = 3;
+    private static final int BAND_SHIPPED = 4;
+
     public static SalesOrder place(
         String orderNumber,
         UUID customerId,
@@ -228,6 +247,7 @@ public final class SalesOrder {
             new ArrayList<>(lines)
         );
         order.recomputeTotals();
+        order.recomputeStatus();
 
         List<PlacedLine> placedLines = new ArrayList<>();
         for (SalesOrderLine line : order.lines) {
@@ -383,11 +403,12 @@ public final class SalesOrder {
                 sl.unitCost()
             ));
         }
-        // The order is fully shipped iff every line reached SHIPPED. A line that
-        // never shipped is still RESERVED/OPEN; a backordered line is
-        // PARTIALLY_SHIPPED — both keep the header at partially_shipped.
-        boolean orderFullyShipped = lines.stream().allMatch(l -> l.lineStatus() == LineStatus.SHIPPED);
-        this.status = orderFullyShipped ? Status.SHIPPED : Status.PARTIALLY_SHIPPED;
+        // Re-derive the header from the (now-updated) line multiset rather than
+        // writing the column directly: the fold maps "every live line SHIPPED" →
+        // shipped, "some shipped" → partially_shipped (§13.3). orderFullyShipped
+        // is the meet == SHIPPED test the saga gates goods_shipped on.
+        recomputeStatus();
+        boolean orderFullyShipped = status == Status.SHIPPED;
         this.pendingEvents.add(new SalesOrderShipped(
             UUID.randomUUID(),
             id.value(),
@@ -436,6 +457,53 @@ public final class SalesOrder {
     }
 
     /**
+     * Complete the order — the absorbing terminal past {@code shipped}, set when
+     * the fulfilment saga reports full settlement. A guarded lifecycle
+     * transition, not a blind {@code UPDATE status}: it asserts the order has
+     * fully shipped first (the ship-axis meet the aggregate owns), so
+     * {@code completed} can only ever advance from {@code shipped}. The cross-
+     * aggregate paid signal stays the caller's (the saga's
+     * {@code orderFullySettled}, fed from finance) — the pay axis is a
+     * projection-total, not aggregate state (<i>deltas get aggregates, totals get
+     * projections</i>). Idempotent: completing an already-{@code completed} order
+     * is a no-op.
+     *
+     * @throws IllegalStateException if the order has not fully shipped.
+     */
+    public void complete() {
+        if (status == Status.COMPLETED) {
+            return;
+        }
+        Assert.state(status == Status.SHIPPED, "sales order " + id.value()
+            + " cannot complete from '" + status.dbValue() + "' — it must be fully shipped first");
+        this.status = Status.COMPLETED;
+    }
+
+    /**
+     * Reject the order — the absorbing terminal for an order that can never be
+     * fulfilled (a short line's replenishment could not be sourced). Set by the
+     * saga-driven {@code ReplenishmentCancelled} handler. Like {@link #cancel} it
+     * emits {@link SalesOrderCancellationRequested} so inventory releases any
+     * partial reservation; unlike cancel it lands in {@code rejected}
+     * (system-driven) rather than {@code cancelled} (customer-driven). Idempotent
+     * and defensive: a no-op once the order has shipped or reached any terminal.
+     */
+    public void reject(String reason) {
+        if (NON_CANCELLABLE_STATUSES.contains(status)) {
+            return;
+        }
+        this.status = Status.REJECTED;
+        this.pendingEvents.add(new SalesOrderCancellationRequested(
+            UUID.randomUUID(),
+            id.value(),
+            orderNumber,
+            customerId,
+            reason,
+            Instant.now()
+        ));
+    }
+
+    /**
      * Add a new line to the order (line-amendment flow). The aggregate assigns
      * the line id + next {@code line_number} and emits {@link SalesOrderLineAdded}.
      * The caller (application service) has already resolved the unit price the
@@ -470,6 +538,7 @@ public final class SalesOrder {
         );
         lines.add(line);
         recomputeTotals();
+        recomputeStatus();
         this.pendingEvents.add(new SalesOrderLineAdded(
             UUID.randomUUID(),
             id.value(),
@@ -501,6 +570,7 @@ public final class SalesOrder {
         BigDecimal previousQuantity = line.orderedQuantity();
         line.amend(newQuantity, newUnitPrice);
         recomputeTotals();
+        recomputeStatus();
         this.pendingEvents.add(new SalesOrderLineQuantityChanged(
             UUID.randomUUID(),
             id.value(),
@@ -534,6 +604,7 @@ public final class SalesOrder {
         BigDecimal previousQuantity = line.orderedQuantity();
         line.cancelLine();
         recomputeTotals();
+        recomputeStatus();
         this.pendingEvents.add(new SalesOrderLineRemoved(
             UUID.randomUUID(),
             id.value(),
@@ -542,6 +613,31 @@ public final class SalesOrder {
             previousQuantity,
             Instant.now()
         ));
+    }
+
+    /**
+     * Record inventory's stock-reservation outcome onto the live lines (§2.29
+     * item 2). Each entry maps a {@code line_number} to the quantity inventory
+     * reserved for it, moving the line onto the reservation band via
+     * {@link SalesOrderLine#markReserved}; the header is then re-derived
+     * ({@link #recomputeStatus()}) so a reserved line lifts the order to
+     * {@code in_fulfilment} through the fold rather than a blind projection
+     * write. Cancelled (removed) lines are skipped; line numbers absent from the
+     * map are left untouched. Emits no event — the reservation is inventory's
+     * fact; this is the sales aggregate reflecting it so the line carries the
+     * authoritative in-progress band.
+     */
+    public void recordReservation(Map<Integer, BigDecimal> reservedByLineNumber) {
+        for (SalesOrderLine line : lines) {
+            if (line.isCancelled()) {
+                continue;
+            }
+            BigDecimal reserved = reservedByLineNumber.get(line.lineNumber());
+            if (reserved != null) {
+                line.markReserved(reserved);
+            }
+        }
+        recomputeStatus();
     }
 
     private void assertAmendable() {
@@ -572,6 +668,75 @@ public final class SalesOrder {
         this.subtotalAmount = subtotal.setScale(2, RoundingMode.HALF_UP);
         this.taxAmount = tax.setScale(2, RoundingMode.HALF_UP);
         this.totalAmount = subtotal.add(tax).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Re-derive the header {@code status} from the live-line multiset — the
+     * ship-axis {@code classify(meet, join)} fold of
+     * {@code docs/composed-state-machines.md} §13.3, sibling to
+     * {@link #recomputeTotals()} and called from the same mutators. Sole writer
+     * of the derived region; the absorbing lifecycle terminals
+     * ({@code cancelled} / {@code completed} / {@code rejected}) are left
+     * untouched — a fold must never undo a top-down terminal (§4/§5).
+     *
+     * <ul>
+     *   <li>no live lines remain → {@code cancelled} (the removed-the-last-line
+     *       edge; {@link #removeLine} guards against it — this is defensive);</li>
+     *   <li>every live line {@code shipped} ({@code meet == SHIPPED}) →
+     *       {@code shipped};</li>
+     *   <li>at least one line shipped ≥1 unit ({@code join ⊒ partially_shipped})
+     *       → {@code partially_shipped};</li>
+     *   <li>at least one line reserved / in progress ({@code join ⊒ in_progress})
+     *       → {@code in_fulfilment};</li>
+     *   <li>otherwise (every live line still {@code open}) → {@code submitted}.</li>
+     * </ul>
+     *
+     * <p>Cancelled lines are filtered (monoid-neutral), the same way
+     * {@link #recomputeTotals()} skips them, so the result is invariant under
+     * line order, insert order, and how shipments were batched.
+     */
+    private void recomputeStatus() {
+        if (status == Status.CANCELLED || status == Status.REJECTED || status == Status.COMPLETED) {
+            return;
+        }
+        int meet = Integer.MAX_VALUE;
+        int join = Integer.MIN_VALUE;
+        for (SalesOrderLine line : lines) {
+            if (line.isCancelled()) {
+                continue;
+            }
+            int band = shipBand(line.lineStatus());
+            meet = Math.min(meet, band);
+            join = Math.max(join, band);
+        }
+        Status next;
+        if (join == Integer.MIN_VALUE) {
+            // No live lines — defensive; removeLine refuses to empty the order.
+            next = Status.CANCELLED;
+        } else if (meet == BAND_SHIPPED) {
+            next = Status.SHIPPED;
+        } else if (join >= BAND_PARTIALLY_SHIPPED) {
+            next = Status.PARTIALLY_SHIPPED;
+        } else if (join >= BAND_IN_PROGRESS) {
+            next = Status.IN_FULFILMENT;
+        } else {
+            next = Status.SUBMITTED;
+        }
+        this.status = next;
+    }
+
+    /** Coarsen a live line's status onto the ship-progress lattice {@code M_ship} (§13.1). */
+    private static int shipBand(LineStatus lineStatus) {
+        return switch (lineStatus) {
+            case OPEN -> BAND_NOT_STARTED;
+            case PARTIALLY_RESERVED, WAITING_FOR_PRODUCTION -> BAND_IN_PROGRESS;
+            case RESERVED, READY_TO_SHIP -> BAND_READY;
+            case PARTIALLY_SHIPPED -> BAND_PARTIALLY_SHIPPED;
+            case SHIPPED -> BAND_SHIPPED;
+            // cancelled is off the chain — filtered out before the fold reaches here.
+            case CANCELLED -> throw new IllegalStateException(
+                "cancelled lines are filtered before the ship-band fold");
+        };
     }
 
     public List<DomainEvent> pullPendingEvents() {

@@ -14,6 +14,7 @@ import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -446,6 +447,139 @@ class SalesOrderTest {
             assertThatThrownBy(() -> so.recordShipped(
                 UUID.randomUUID(), "SHP-1", LocalDate.now(), List.of(ship(line0, new BigDecimal("3")))))
                 .isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    /**
+     * Properties of the status fold {@code ρ = classify(meet, join)} (§2.29 item 1,
+     * docs/composed-state-machines.md §3): the header status is a pure function of
+     * the live-line multiset, invariant under order/insert/batch, neutral to
+     * cancelled lines, and monotone through the forward flow.
+     */
+    @Nested
+    class StatusFold {
+
+        private static SalesOrderLine reservableLine(UUID id, int lineNumber, BigDecimal qty) {
+            return new SalesOrderLine(
+                id, lineNumber, UUID.fromString("00000000-0000-0000-0000-000000000001"),
+                "FG-TABLE-001", "Wooden Dining Table",
+                qty, new BigDecimal("100.00"), BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, SalesOrder.LineStatus.OPEN);
+        }
+
+        private static SalesOrderLine reservableLine(UUID id, BigDecimal qty) {
+            return reservableLine(id, 10, qty);
+        }
+
+        /** Two open lines with distinct line numbers (10, 20) so per-line reservation keys are unambiguous. */
+        private static SalesOrder twoOpenLines() {
+            return placeWithLines(List.of(
+                reservableLine(UUID.randomUUID(), 10, new BigDecimal("2")),
+                reservableLine(UUID.randomUUID(), 20, new BigDecimal("5"))));
+        }
+
+        private static SalesOrder.ShippedLineInput ship(SalesOrderLine l, BigDecimal qty) {
+            return new SalesOrder.ShippedLineInput(
+                l.lineId(), l.productId(), l.productSku(), l.productName(), qty, new BigDecimal("10.00"));
+        }
+
+        @Test void all_open_is_submitted() {
+            assertThat(twoOpenLines().status()).isEqualTo(SalesOrder.Status.SUBMITTED);
+        }
+
+        @Test void any_reserved_line_lifts_to_in_fulfilment() {
+            SalesOrder so = twoOpenLines();
+            // reserve just line 0 (line_number 10), leave line 1 (20) open
+            so.recordReservation(Map.of(10, new BigDecimal("2")));
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.IN_FULFILMENT);
+        }
+
+        @Test void partial_reservation_is_in_fulfilment() {
+            SalesOrder so = twoOpenLines();
+            so.recordReservation(Map.of(10, new BigDecimal("1"), 20, new BigDecimal("3")));
+            assertThat(so.lines().get(0).lineStatus()).isEqualTo(SalesOrder.LineStatus.PARTIALLY_RESERVED);
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.IN_FULFILMENT);
+        }
+
+        @Test void zero_reservation_leaves_line_open() {
+            SalesOrder so = twoOpenLines();
+            so.recordReservation(Map.of(10, BigDecimal.ZERO));
+            assertThat(so.lines().get(0).lineStatus()).isEqualTo(SalesOrder.LineStatus.OPEN);
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.SUBMITTED);
+        }
+
+        @Test void order_insensitivity_status_independent_of_line_order() {
+            // Same multiset {SHIPPED, OPEN} reached two ways → same status.
+            SalesOrder a = twoOpenLines();
+            a.recordShipped(UUID.randomUUID(), "S", LocalDate.now(), List.of(ship(a.lines().get(0), new BigDecimal("2"))));
+            SalesOrder b = twoOpenLines();
+            b.recordShipped(UUID.randomUUID(), "S", LocalDate.now(), List.of(ship(b.lines().get(1), new BigDecimal("5"))));
+            assertThat(a.status()).isEqualTo(SalesOrder.Status.PARTIALLY_SHIPPED);
+            assertThat(b.status()).isEqualTo(a.status());
+        }
+
+        @Test void cancelled_line_is_neutral_to_the_fold() {
+            UUID keep = UUID.randomUUID();
+            UUID drop = UUID.randomUUID();
+            SalesOrder so = SalesOrder.reconstitute(
+                SalesOrderId.of(UUID.randomUUID()), "SO-FOLD-001",
+                CUSTOMER, "C", "Cust", LocalDate.now(), null,
+                SalesOrder.Status.SUBMITTED, Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT, null,
+                new BigDecimal("700"), BigDecimal.ZERO, new BigDecimal("700"), null, 1L,
+                List.of(reservableLine(keep, new BigDecimal("2")), reservableLine(drop, new BigDecimal("5"))));
+            so.removeLine(drop);
+            // Only the live line remains; it is still open → submitted (the
+            // cancelled line contributes nothing to the rollup).
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.SUBMITTED);
+        }
+
+        @Test void all_live_shipped_completes_ship_axis_even_with_a_removed_line() {
+            UUID keep = UUID.randomUUID();
+            UUID drop = UUID.randomUUID();
+            SalesOrder so = SalesOrder.reconstitute(
+                SalesOrderId.of(UUID.randomUUID()), "SO-FOLD-002",
+                CUSTOMER, "C", "Cust", LocalDate.now(), null,
+                SalesOrder.Status.SUBMITTED, Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT, null,
+                new BigDecimal("700"), BigDecimal.ZERO, new BigDecimal("700"), null, 1L,
+                List.of(reservableLine(keep, new BigDecimal("2")), reservableLine(drop, new BigDecimal("5"))));
+            so.removeLine(drop);
+            so.recordShipped(UUID.randomUUID(), "S", LocalDate.now(),
+                List.of(ship(so.lines().get(0), new BigDecimal("2"))));
+            // The removed line is filtered, so "every live line shipped" holds →
+            // order shipped (cancelled-neutrality on the ship axis).
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.SHIPPED);
+        }
+
+        @Test void fold_does_not_undo_a_cancelled_terminal() {
+            SalesOrder so = twoOpenLines();
+            so.cancel("changed mind");
+            // recordReservation runs the fold, but the terminal is absorbing.
+            so.recordReservation(Map.of(10, new BigDecimal("2"), 20, new BigDecimal("5")));
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.CANCELLED);
+        }
+
+        @Test void reject_sets_rejected_and_emits_cancellation_request() {
+            SalesOrder so = twoOpenLines();
+            so.pullPendingEvents(); // drain placed
+            so.reject("unsourceable");
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.REJECTED);
+            assertThat(so.pullPendingEvents()).hasSize(1)
+                .first().isInstanceOf(SalesOrderCancellationRequested.class);
+        }
+
+        @Test void complete_requires_fully_shipped() {
+            SalesOrder so = twoOpenLines();
+            assertThatThrownBy(so::complete).isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test void complete_from_shipped_reaches_completed() {
+            SalesOrder so = twoOpenLines();
+            so.recordShipped(UUID.randomUUID(), "S", LocalDate.now(), List.of(
+                ship(so.lines().get(0), new BigDecimal("2")),
+                ship(so.lines().get(1), new BigDecimal("5"))));
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.SHIPPED);
+            so.complete();
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.COMPLETED);
         }
     }
 }

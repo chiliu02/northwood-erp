@@ -7,12 +7,9 @@ import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.SalesOrderId;
 import com.northwood.sales.domain.SalesOrderRepository;
-import com.northwood.sales.domain.events.SalesOrderCancellationRequested;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
 import com.northwood.shared.application.messaging.EventEnvelope;
-import com.northwood.shared.application.outbox.OutboxAppender;
-import java.time.Instant;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
@@ -23,9 +20,11 @@ import tools.jackson.databind.ObjectMapper;
  * sales-order line's replenishment couldn't be sourced (unsourceable SKU, no
  * active BOM, no approved vendor), so the order can't be fulfilled. The saga
  * transitions {@code stock_reservation_incomplete → rejected} (any one
- * un-fulfillable line rejects the whole order), the
- * order header flips to {@code rejected}, and {@code SalesOrderCancellationRequested}
- * is emitted so inventory releases any partial reservation.
+ * un-fulfillable line rejects the whole order), and the order is rejected on the
+ * aggregate ({@link SalesOrder#reject} — a guarded transition that flips the
+ * header to {@code rejected} and emits {@code SalesOrderCancellationRequested}
+ * so inventory releases any partial reservation, draining via the repository's
+ * outbox in the same transaction).
  *
  * <p>Gates on {@code sourceSalesOrderHeaderId != null} — reorder-point /
  * work-order-shortage cancellations carry null back-references (no sales saga
@@ -37,23 +36,17 @@ public class ReplenishmentCancelledHandler extends AbstractInboxHandler<Replenis
     public static final String CONSUMER_NAME = "sales.fulfilment-saga.replenishment-cancelled";
 
     private final SalesOrderFulfilmentSagaManager sagaManager;
-    private final SalesOrderHeaderStatusProjection statusProjection;
     private final SalesOrderRepository salesOrders;
-    private final OutboxAppender outbox;
 
     public ReplenishmentCancelledHandler(
         InboxPort inbox,
         SalesOrderFulfilmentSagaManager sagaManager,
-        SalesOrderHeaderStatusProjection statusProjection,
         SalesOrderRepository salesOrders,
-        OutboxAppender outbox,
         ObjectMapper json
     ) {
         super(inbox, json, ReplenishmentCancelled.class, ReplenishmentCancelled.EVENT_TYPE, CONSUMER_NAME);
         this.sagaManager = sagaManager;
-        this.statusProjection = statusProjection;
         this.salesOrders = salesOrders;
-        this.outbox = outbox;
     }
 
     @Override
@@ -68,41 +61,31 @@ public class ReplenishmentCancelledHandler extends AbstractInboxHandler<Replenis
 
         String newState = sagaManager.applyReplenishmentCancelled(salesOrderHeaderId, salesOrderLineId, payload.reason());
         if (REJECTED.equals(newState)) {
-            statusProjection.markStatus(salesOrderHeaderId, SalesOrder.Status.REJECTED);
-            emitCancellationRequest(salesOrderHeaderId,
-                "Replenishment for a short line could not be sourced: " + payload.reason());
-            log.info("[{}] sales_order={} rejected (replenishment cancelled for line={}); compensation requested",
-                CONSUMER_NAME, salesOrderHeaderId, salesOrderLineId);
+            rejectOrder(salesOrderHeaderId, salesOrderLineId, payload.reason());
         }
     }
 
     /**
-     * Emit {@code sales.SalesOrderCancellationRequested} for a system-driven
-     * rejection without going through {@link SalesOrder#cancel(String)}.
-     * Inventory consumes it to release any partial stock reservation.
+     * Reject the order on the aggregate and let the repository drain its
+     * {@code SalesOrderCancellationRequested} to the outbox (inventory releases
+     * any partial reservation).
      *
-     * <p><b>Silent-fallback contract.</b> Loads the order to populate
-     * {@code orderNumber} + {@code customerId}. If it can't be loaded —
+     * <p><b>Silent-fallback contract.</b> If the order can't be loaded —
      * shouldn't happen, the saga exists for an existing order — we log WARN and
-     * skip the emission rather than throw; the saga has already transitioned to
+     * skip rather than throw; the saga has already transitioned to
      * {@code rejected} (terminal), so even without downstream compensation it is
-     * in a sensible state. (Mirrors the former
-     * {@code ManufacturingDispatchedHandler.emitCancellationRequest}.)
+     * in a sensible state.
      */
-    private void emitCancellationRequest(UUID salesOrderHeaderId, String reason) {
+    private void rejectOrder(UUID salesOrderHeaderId, UUID salesOrderLineId, String reason) {
         SalesOrder order = salesOrders.findById(SalesOrderId.of(salesOrderHeaderId)).orElse(null);
         if (order == null) {
-            log.warn("emitCancellationRequest sales_order={} could not load SalesOrder; skipping emission. "
-                + "Downstream compensation (stock release) will NOT fire.", salesOrderHeaderId);
+            log.warn("[{}] sales_order={} rejected by saga but could not load SalesOrder; skipping aggregate reject. "
+                + "Downstream compensation (stock release) will NOT fire.", CONSUMER_NAME, salesOrderHeaderId);
             return;
         }
-        outbox.append(new SalesOrderCancellationRequested(
-            UUID.randomUUID(),
-            salesOrderHeaderId,
-            order.orderNumber(),
-            order.customerId(),
-            reason,
-            Instant.now()
-        ), SalesOrder.AGGREGATE_TYPE);
+        order.reject("Replenishment for a short line could not be sourced: " + reason);
+        salesOrders.save(order);
+        log.info("[{}] sales_order={} rejected (replenishment cancelled for line={}); compensation requested",
+            CONSUMER_NAME, salesOrderHeaderId, salesOrderLineId);
     }
 }

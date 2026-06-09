@@ -5,9 +5,9 @@ import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.DEPOSIT_P
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.PREPAID;
 
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
+import com.northwood.sales.application.SalesOrderService;
 import com.northwood.sales.application.SalesOrderUpfrontPaymentSettledEmitter;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
-import com.northwood.sales.domain.SalesOrder;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
 import com.northwood.shared.application.messaging.EventEnvelope;
@@ -17,8 +17,10 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Inbox handler for {@code finance.CustomerPaymentReceived}. Asks the manager
  * to apply the payment outcome; if the saga reaches {@code 'completed'},
- * projects the order header to {@code 'completed'}. If the saga reaches
- * {@code 'prepaid'} (full settlement of a prepayment invoice), emit
+ * completes the order on the aggregate ({@link SalesOrderService#completeOrder}
+ * — a guarded transition, replacing the former blind
+ * {@code markStatus(COMPLETED)}). If the saga reaches {@code 'prepaid'} (full
+ * settlement of a prepayment invoice), emit
  * {@code sales.SalesOrderPrepaymentSettled} so inventory can flip the
  * shipment-gate flag.
  */
@@ -28,19 +30,19 @@ public class CustomerPaymentReceivedHandler extends AbstractInboxHandler<Custome
     public static final String CONSUMER_NAME = "sales.fulfilment-saga.customer-payment-received";
 
     private final SalesOrderFulfilmentSagaManager sagaManager;
-    private final SalesOrderHeaderStatusProjection statusProjection;
+    private final SalesOrderService salesOrders;
     private final SalesOrderUpfrontPaymentSettledEmitter upfrontSettledEmitter;
 
     public CustomerPaymentReceivedHandler(
         InboxPort inbox,
         SalesOrderFulfilmentSagaManager sagaManager,
-        SalesOrderHeaderStatusProjection statusProjection,
+        SalesOrderService salesOrders,
         SalesOrderUpfrontPaymentSettledEmitter upfrontSettledEmitter,
         ObjectMapper json
     ) {
         super(inbox, json, CustomerPaymentReceived.class, CustomerPaymentReceived.EVENT_TYPE, CONSUMER_NAME);
         this.sagaManager = sagaManager;
-        this.statusProjection = statusProjection;
+        this.salesOrders = salesOrders;
         this.upfrontSettledEmitter = upfrontSettledEmitter;
     }
 
@@ -54,7 +56,7 @@ public class CustomerPaymentReceivedHandler extends AbstractInboxHandler<Custome
         String newState = sagaManager.applyCustomerPaymentReceived(
             payload.salesOrderHeaderId(), invoiceFullySettled, payload.orderFullySettled());
         if (COMPLETED.equals(newState)) {
-            statusProjection.markStatus(payload.salesOrderHeaderId(), SalesOrder.Status.COMPLETED);
+            salesOrders.completeOrder(payload.salesOrderHeaderId());
         } else if (PREPAID.equals(newState) || DEPOSIT_PAID.equals(newState)) {
             // prepaid + deposit_paid both settle the up-front payment
             // → tell inventory to lift the shipment gate.

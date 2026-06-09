@@ -15,6 +15,7 @@ import com.northwood.sales.application.inbox.SalesOrderLineReservationChangedHan
 import com.northwood.sales.application.inbox.ShipmentPostedHandler;
 import com.northwood.sales.application.inbox.StockReservedHandler;
 import com.northwood.sales.domain.SalesOrder;
+import com.northwood.sales.domain.SalesOrderId;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.sales.infrastructure.saga.JdbcSalesOrderFulfilmentSagaManager;
 import com.northwood.sales.infrastructure.saga.SalesOrderFulfilmentSagaWorker;
@@ -30,7 +31,6 @@ import com.northwood.testharness.inmemory.SynchronousBus;
 import com.northwood.testharness.inmemory.sales.InMemoryCustomerLookup;
 import com.northwood.testharness.inmemory.sales.InMemoryProductCardLookup;
 import com.northwood.testharness.inmemory.sales.InMemorySalesOrderFulfilmentSagaPort;
-import com.northwood.testharness.inmemory.sales.InMemorySalesOrderHeaderStatusProjection;
 import com.northwood.testharness.inmemory.sales.InMemorySalesOrderInvoiceSnapshotPort;
 import com.northwood.testharness.inmemory.sales.InMemorySalesOrderLineSnapshotPort;
 import com.northwood.testharness.inmemory.sales.InMemorySalesOrderRepository;
@@ -58,7 +58,6 @@ public final class SalesTestKit {
     public final InMemorySalesOrderFulfilmentSagaPort sagas = new InMemorySalesOrderFulfilmentSagaPort();
     public final InMemoryCustomerLookup customers = new InMemoryCustomerLookup();
     public final InMemoryProductCardLookup productCards = new InMemoryProductCardLookup();
-    public final InMemorySalesOrderHeaderStatusProjection statusProjection = new InMemorySalesOrderHeaderStatusProjection();
     public final InMemorySalesOrderLineSnapshotPort lineSnapshots;
     public final InMemorySalesOrderInvoiceSnapshotPort invoiceSnapshots;
 
@@ -98,12 +97,12 @@ public final class SalesTestKit {
         this.service = new SalesOrderService(orders, sagaManager, customers, productCards);
 
         bus.register(outbox);
-        bus.register(new StockReservedHandler(inbox, sagaManager, statusProjection, readyToShipEmitter, lineSnapshots, json));
+        bus.register(new StockReservedHandler(inbox, sagaManager, service, readyToShipEmitter, lineSnapshots, json));
         bus.register(new ReplenishmentFulfilledHandler(inbox, sagaManager, lineSnapshots, appender, json));
-        bus.register(new ReplenishmentCancelledHandler(inbox, sagaManager, statusProjection, orders, appender, json));
-        bus.register(new ShipmentPostedHandler(inbox, sagaManager, service, statusProjection, json));
+        bus.register(new ReplenishmentCancelledHandler(inbox, sagaManager, orders, json));
+        bus.register(new ShipmentPostedHandler(inbox, sagaManager, service, json));
         bus.register(new CustomerInvoiceCreatedHandler(inbox, sagaManager, json));
-        bus.register(new CustomerPaymentReceivedHandler(inbox, sagaManager, statusProjection, upfrontSettledEmitter, json));
+        bus.register(new CustomerPaymentReceivedHandler(inbox, sagaManager, service, upfrontSettledEmitter, json));
         bus.register(new InventoryCancellationAppliedHandler(inbox, sagaManager, compensationEmitter, json));
         bus.register(new SalesOrderLineReservationChangedHandler(inbox, sagaManager, json));
     }
@@ -121,7 +120,9 @@ public final class SalesTestKit {
     }
 
     public Optional<SalesOrder.Status> orderStatus(UUID salesOrderId) {
-        return statusProjection.get(salesOrderId);
+        // Header status is now the aggregate's single-writer fold (§2.29), not a
+        // separate projection — read it straight off the SalesOrder.
+        return orders.findById(SalesOrderId.of(salesOrderId)).map(SalesOrder::status);
     }
 
     /**

@@ -10,8 +10,10 @@ root + read-model projection split).
 
 > Status: design / vocabulary note, opened 2026-06-09 for discussion. Not yet a binding
 > convention. The worked example uses the real `SalesOrder.Status` / `SalesOrder.LineStatus`
-> enums but the codebase does **not** yet implement the general fold described here — see
-> §8 *Where the model meets the code today*.
+> enums. **Implementation note (2026-06-10):** the header ship-axis fold *is* now implemented —
+> `SalesOrder.recomputeStatus()` is the single writer of `status` and `markReserved` is wired, so
+> §14.2 gaps 1 & 2 are closed; the multi-axis invoice separation (gap 3) is still open. §8 and §14
+> below still describe the pre-implementation state and get their full rewrite when gap 3 lands.
 
 ---
 

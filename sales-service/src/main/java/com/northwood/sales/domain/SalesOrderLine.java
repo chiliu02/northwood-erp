@@ -92,11 +92,34 @@ public final class SalesOrderLine {
         return lineSubtotal().add(taxAmount());
     }
 
+    /**
+     * Record inventory's reservation outcome for this line: set
+     * {@code reservedQuantity} and move the line onto the reservation band —
+     * {@code reserved} (cover meets ordered) or {@code partially_reserved}
+     * (short). A zero reservation leaves the line {@code open} (nothing reserved
+     * is {@code NOT_STARTED}, not a degenerate partial). Package-private — driven
+     * by {@link SalesOrder#recordReservation} from the {@code StockReserved}
+     * inbox handler, so the line authoritatively carries the in-progress band and
+     * the header fold ({@link SalesOrder#recomputeStatus()}) can derive
+     * {@code in_fulfilment} from it. Forward-only: never downgrades a line that
+     * has already shipped or been cancelled (a late/duplicate reservation reply
+     * must not regress it).
+     */
     void markReserved(BigDecimal quantity) {
+        Assert.argument(quantity != null && quantity.signum() >= 0, "reserved quantity must be >= 0");
+        if (lineStatus == SalesOrder.LineStatus.SHIPPED
+            || lineStatus == SalesOrder.LineStatus.PARTIALLY_SHIPPED
+            || lineStatus == SalesOrder.LineStatus.CANCELLED) {
+            return;
+        }
         this.reservedQuantity = quantity;
-        this.lineStatus = quantity.compareTo(orderedQuantity) >= 0
-            ? SalesOrder.LineStatus.RESERVED
-            : SalesOrder.LineStatus.PARTIALLY_RESERVED;
+        if (quantity.signum() == 0) {
+            this.lineStatus = SalesOrder.LineStatus.OPEN;
+        } else {
+            this.lineStatus = quantity.compareTo(orderedQuantity) >= 0
+                ? SalesOrder.LineStatus.RESERVED
+                : SalesOrder.LineStatus.PARTIALLY_RESERVED;
+        }
     }
 
     /**

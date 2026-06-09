@@ -1,7 +1,5 @@
 package com.northwood.sales.application.inbox;
 
-import com.northwood.sales.domain.SalesOrder;
-
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.COMPLETED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.INVOICE_PARTIALLY_PAID;
 import static org.mockito.ArgumentMatchers.any;
@@ -13,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.northwood.finance.domain.FinanceAggregateTypes;
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
+import com.northwood.sales.application.SalesOrderService;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.EventEnvelope;
@@ -34,7 +33,7 @@ class CustomerPaymentReceivedHandlerTest {
 
     @Mock InboxPort inbox;
     @Mock SalesOrderFulfilmentSagaManager sagaManager;
-    @Mock SalesOrderHeaderStatusProjection statusProjection;
+    @Mock SalesOrderService salesOrders;
     @Mock com.northwood.sales.application.SalesOrderUpfrontPaymentSettledEmitter upfrontSettledEmitter;
 
     private final ObjectMapper json = new ObjectMapper();
@@ -42,7 +41,7 @@ class CustomerPaymentReceivedHandlerTest {
 
     @BeforeEach
     void setUp() {
-        handler = new CustomerPaymentReceivedHandler(inbox, sagaManager, statusProjection, upfrontSettledEmitter, json);
+        handler = new CustomerPaymentReceivedHandler(inbox, sagaManager, salesOrders, upfrontSettledEmitter, json);
     }
 
     private EventEnvelope event(String invoiceStatusAfter, boolean orderFullySettled) {
@@ -62,24 +61,24 @@ class CustomerPaymentReceivedHandlerTest {
         );
     }
 
-    @Test void full_settlement_triggers_completed_projection() {
+    @Test void full_settlement_completes_the_order() {
         // invoice paid AND order fully settled → saga completes.
         when(sagaManager.applyCustomerPaymentReceived(eq(SO), eq(true), eq(true))).thenReturn(COMPLETED);
 
         handler.handle(event("paid", true));
 
         verify(sagaManager).applyCustomerPaymentReceived(SO, true, true);
-        verify(statusProjection).markStatus(SO, SalesOrder.Status.COMPLETED);
+        verify(salesOrders).completeOrder(SO);
         verify(inbox).recordProcessed(any());
     }
 
-    @Test void partial_payment_does_not_project_completed() {
+    @Test void partial_payment_does_not_complete() {
         when(sagaManager.applyCustomerPaymentReceived(eq(SO), eq(false), eq(false))).thenReturn(INVOICE_PARTIALLY_PAID);
 
         handler.handle(event("partially_paid", false));
 
         verify(sagaManager).applyCustomerPaymentReceived(SO, false, false);
-        verify(statusProjection, never()).markStatus(any(), any());
+        verify(salesOrders, never()).completeOrder(any());
     }
 
     @Test void invoice_paid_but_order_not_settled_does_not_complete() {
@@ -90,7 +89,7 @@ class CustomerPaymentReceivedHandlerTest {
         handler.handle(event("paid", false));
 
         verify(sagaManager).applyCustomerPaymentReceived(SO, true, false);
-        verify(statusProjection, never()).markStatus(any(), any());
+        verify(salesOrders, never()).completeOrder(any());
     }
 
     @Test void already_processed_short_circuits() {
@@ -101,7 +100,7 @@ class CustomerPaymentReceivedHandlerTest {
         handler.handle(envelope);
 
         verify(sagaManager, never()).applyCustomerPaymentReceived(any(), org.mockito.ArgumentMatchers.anyBoolean(), org.mockito.ArgumentMatchers.anyBoolean());
-        verifyNoInteractions(statusProjection);
+        verifyNoInteractions(salesOrders);
     }
 
     @Test void wrong_event_type_is_no_op() {

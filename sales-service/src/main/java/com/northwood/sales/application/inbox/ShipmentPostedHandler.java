@@ -37,19 +37,16 @@ public class ShipmentPostedHandler extends AbstractInboxHandler<ShipmentPosted> 
 
     private final SalesOrderFulfilmentSagaManager sagaManager;
     private final SalesOrderService salesOrders;
-    private final SalesOrderHeaderStatusProjection statusProjection;
 
     public ShipmentPostedHandler(
         InboxPort inbox,
         SalesOrderFulfilmentSagaManager sagaManager,
         SalesOrderService salesOrders,
-        SalesOrderHeaderStatusProjection statusProjection,
         ObjectMapper json
     ) {
         super(inbox, json, ShipmentPosted.class, ShipmentPosted.EVENT_TYPE, CONSUMER_NAME);
         this.sagaManager = sagaManager;
         this.salesOrders = salesOrders;
-        this.statusProjection = statusProjection;
     }
 
     @Override
@@ -70,12 +67,13 @@ public class ShipmentPostedHandler extends AbstractInboxHandler<ShipmentPosted> 
         );
         String newState = sagaManager.applyShipmentPosted(
             payload.salesOrderHeaderId(), outcome.orderFullyShipped());
-        // Prepayment + COD complete the saga at shipment, so mark the header
-        // completed here (the payment-received handler that normally does it
-        // never fires the completing transition for them). on_shipment orders get
-        // their shipped / partially_shipped header from recordShipped → save().
+        // Prepayment + COD complete the saga at shipment, so complete the order
+        // here (the payment-received handler that normally does it never fires the
+        // completing transition for them). on_shipment orders get their shipped /
+        // partially_shipped header from recordShipped → save(); their completion
+        // comes later via CustomerPaymentReceivedHandler.
         if (COMPLETED.equals(newState)) {
-            statusProjection.markStatus(payload.salesOrderHeaderId(), SalesOrder.Status.COMPLETED);
+            salesOrders.completeOrder(payload.salesOrderHeaderId());
         }
         log.info("[{}] sales_order={} → {} (shipment={}, orderFullyShipped={})",
             CONSUMER_NAME, payload.salesOrderHeaderId(), newState, payload.shipmentNumber(),

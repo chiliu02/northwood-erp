@@ -600,6 +600,44 @@ public class SalesOrderService {
         return outcome;
     }
 
+    /**
+     * Reflect inventory's stock-reservation outcome onto the {@link SalesOrder}
+     * aggregate (§2.29 item 2): loads the order, applies the per-line reserved
+     * quantities ({@code line_number → reservedQuantity}) onto the lines, and
+     * saves — the repository persists the line reservation band + the re-derived
+     * header status in the same transaction. Called from the inbox handler that
+     * consumes inventory's {@code StockReserved}, replacing the former blind
+     * {@code markStatus(IN_FULFILMENT)} projection write: the header now reaches
+     * {@code in_fulfilment} as the fold of reserved lines, not an independent
+     * column write. No-op-safe if the order vanished (defensive — the saga
+     * exists for an existing order).
+     */
+    @Transactional
+    public void recordReservation(UUID salesOrderHeaderId, Map<Integer, BigDecimal> reservedByLineNumber) {
+        SalesOrder order = salesOrders.findById(SalesOrderId.of(salesOrderHeaderId))
+            .orElseThrow(() -> new IllegalStateException(
+                "No sales_order_header for sales_order_header_id=" + salesOrderHeaderId));
+        order.recordReservation(reservedByLineNumber);
+        salesOrders.save(order);
+    }
+
+    /**
+     * Mark the order {@code completed} (§2.29: a guarded aggregate transition,
+     * replacing the former blind {@code markStatus(COMPLETED)}). Loads the order,
+     * calls {@link SalesOrder#complete()} (which asserts it has fully shipped),
+     * and saves. Called from the inbox handlers when the fulfilment saga reaches
+     * its {@code completed} terminal (full settlement). No-op-safe if the order
+     * vanished (defensive — the saga exists for an existing order).
+     */
+    @Transactional
+    public void completeOrder(UUID salesOrderHeaderId) {
+        SalesOrder order = salesOrders.findById(SalesOrderId.of(salesOrderHeaderId))
+            .orElseThrow(() -> new IllegalStateException(
+                "No sales_order_header for sales_order_header_id=" + salesOrderHeaderId));
+        order.complete();
+        salesOrders.save(order);
+    }
+
     private BigDecimal resolveUnitPrice(OrderLine req, String orderCurrency) {
         Optional<CatalogPrice> catalog = productCards.findByProductId(req.productId());
 

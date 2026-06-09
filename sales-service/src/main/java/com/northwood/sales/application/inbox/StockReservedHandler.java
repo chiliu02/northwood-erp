@@ -3,15 +3,18 @@ package com.northwood.sales.application.inbox;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.READY_TO_SHIP;
 
 import com.northwood.sales.application.SalesOrderReadyToShipEmitter;
+import com.northwood.sales.application.SalesOrderService;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.sales.application.saga.SalesOrderLineSnapshotPort;
 import com.northwood.sales.application.saga.SalesOrderLineSnapshotPort.LineSnapshot;
 import com.northwood.inventory.domain.events.StockReserved;
-import com.northwood.sales.domain.SalesOrder;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
 import com.northwood.shared.application.messaging.EventEnvelope;
+import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
@@ -19,10 +22,13 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Inbox handler for {@code inventory.StockReserved}. Resolves which sales-order
- * lines came back short, asks the manager to advance the saga, then projects
- * the order header to {@code 'in_fulfilment'} (always, since any StockReserved
- * event means inventory has acted on the request). When the manager reports a
- * full-reservation shortcut to {@code ready_to_ship}, emits
+ * lines came back short, asks the manager to advance the saga, then records the
+ * reservation outcome onto the {@code SalesOrder} aggregate — each line's
+ * reserved quantity moves it onto the reservation band and the header fold
+ * re-derives {@code 'in_fulfilment'} (§2.29 item 2: the line carries the
+ * authoritative in-progress band, replacing the former blind
+ * {@code markStatus(IN_FULFILMENT)} projection write). When the manager reports
+ * a full-reservation shortcut to {@code ready_to_ship}, emits
  * {@code sales.SalesOrderReadyToShip} so reporting can advance
  * {@code order_status} (the shipment picker's filter).
  *
@@ -41,21 +47,21 @@ public class StockReservedHandler extends AbstractInboxHandler<StockReserved> {
     public static final String CONSUMER_NAME = "sales.fulfilment-saga";
 
     private final SalesOrderFulfilmentSagaManager sagaManager;
-    private final SalesOrderHeaderStatusProjection statusProjection;
+    private final SalesOrderService salesOrders;
     private final SalesOrderReadyToShipEmitter readyToShipEmitter;
     private final SalesOrderLineSnapshotPort lineSnapshots;
 
     public StockReservedHandler(
         InboxPort inbox,
         SalesOrderFulfilmentSagaManager sagaManager,
-        SalesOrderHeaderStatusProjection statusProjection,
+        SalesOrderService salesOrders,
         SalesOrderReadyToShipEmitter readyToShipEmitter,
         SalesOrderLineSnapshotPort lineSnapshots,
         ObjectMapper json
     ) {
         super(inbox, json, StockReserved.class, StockReserved.EVENT_TYPE, CONSUMER_NAME);
         this.sagaManager = sagaManager;
-        this.statusProjection = statusProjection;
+        this.salesOrders = salesOrders;
         this.readyToShipEmitter = readyToShipEmitter;
         this.lineSnapshots = lineSnapshots;
     }
@@ -64,7 +70,7 @@ public class StockReservedHandler extends AbstractInboxHandler<StockReserved> {
     protected void apply(StockReserved payload, EventEnvelope envelope) {
         Set<UUID> shortageLineIds = extractShortageLineIds(payload);
         String newState = sagaManager.applyStockReserved(payload.salesOrderId(), payload.status(), shortageLineIds);
-        statusProjection.markStatus(payload.salesOrderId(), SalesOrder.Status.IN_FULFILMENT);
+        salesOrders.recordReservation(payload.salesOrderId(), reservedByLineNumber(payload));
 
         // Full reservation shortcuts the saga straight to ready_to_ship. Emit so
         // reporting can advance order_status — the value the shipment picker
@@ -76,6 +82,21 @@ public class StockReservedHandler extends AbstractInboxHandler<StockReserved> {
 
         log.info("[{}] sales_order={} status={} saga_state={} (reservation_id={})",
             CONSUMER_NAME, payload.salesOrderId(), payload.status(), newState, payload.stockReservationId());
+    }
+
+    /**
+     * Per-line reserved quantity keyed by {@code line_number}, as inventory
+     * reported it. Fed to {@link SalesOrderService#recordReservation} so the
+     * aggregate moves each line onto the reservation band and the header fold
+     * derives {@code in_fulfilment}. Positional line-number correlation, the same
+     * basis the rest of the fulfilment flow uses.
+     */
+    private static Map<Integer, BigDecimal> reservedByLineNumber(StockReserved payload) {
+        Map<Integer, BigDecimal> reserved = new HashMap<>();
+        for (StockReserved.ReservedLine line : payload.lines()) {
+            reserved.put(line.lineNumber(), line.reservedQuantity());
+        }
+        return reserved;
     }
 
     /**
