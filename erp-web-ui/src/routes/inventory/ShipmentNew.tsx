@@ -25,7 +25,19 @@ interface SalesOrderLine {
   productSku: string;
   productName: string;
   orderedQuantity: string;
+  // Cumulative shipped-to-date + the remaining (outstanding) quantity. The
+  // picker defaults to the outstanding quantity so a re-ship of a
+  // partially-shipped order pre-fills only the backorder, not the full order.
+  shippedQuantity?: string;
+  backorderedQuantity?: string;
   unitPrice: string;
+}
+
+/** Remaining-to-ship for a line; falls back to ordered if the backend
+ *  predates the backordered-quantity field (defensive, never < 0). */
+function outstandingQty(l: SalesOrderLine): number {
+  const remaining = l.backorderedQuantity ?? l.orderedQuantity;
+  return Math.max(0, Number(remaining));
 }
 
 interface SalesOrderDetail {
@@ -105,21 +117,25 @@ export function ShipmentNew() {
     enabled: !!salesOrderHeaderId,
   });
 
-  // Reset draft lines whenever the picked order changes.
+  // Reset draft lines whenever the picked order changes. Default to shipping
+  // every line's *outstanding* quantity (partial = opt-in: the clerk reduces a
+  // qty to under-ship); already-fully-shipped lines drop out of the draft.
   useEffect(() => {
     if (!orderDetail) return;
     if (orderDetail.lines.length === 0) return;
-    setLines(orderDetail.lines.map((l) => {
-      const p = sellable.find((p) => p.productId === l.productId);
-      return {
-        salesOrderLineId: l.lineId,
-        productId: l.productId,
-        productSku: l.productSku,
-        productName: l.productName,
-        shippedQuantity: l.orderedQuantity,
-        unitCost: p?.standardCost ?? "0",
-      };
-    }));
+    setLines(orderDetail.lines
+      .filter((l) => outstandingQty(l) > 0)
+      .map((l) => {
+        const p = sellable.find((p) => p.productId === l.productId);
+        return {
+          salesOrderLineId: l.lineId,
+          productId: l.productId,
+          productSku: l.productSku,
+          productName: l.productName,
+          shippedQuantity: String(outstandingQty(l)),
+          unitCost: p?.standardCost ?? "0",
+        };
+      }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderDetail]);
 
@@ -127,9 +143,10 @@ export function ShipmentNew() {
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
   }
   function addLine() {
-    // Prefer to add an SO line that isn't already in the draft.
+    // Prefer to add an SO line that isn't already in the draft and still has
+    // an outstanding quantity to ship.
     const usedLineIds = new Set(lines.map((l) => l.salesOrderLineId));
-    const next = orderDetail?.lines.find((l) => !usedLineIds.has(l.lineId));
+    const next = orderDetail?.lines.find((l) => !usedLineIds.has(l.lineId) && outstandingQty(l) > 0);
     if (next) {
       const p = sellable.find((p) => p.productId === next.productId);
       setLines((prev) => [...prev, {
@@ -137,7 +154,7 @@ export function ShipmentNew() {
         productId: next.productId,
         productSku: next.productSku,
         productName: next.productName,
-        shippedQuantity: next.orderedQuantity,
+        shippedQuantity: String(outstandingQty(next)),
         unitCost: p?.standardCost ?? "0",
       }]);
     }

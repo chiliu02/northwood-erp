@@ -13,6 +13,8 @@ public record SalesOrderLineView(
     String productName,
     BigDecimal orderedQuantity,
     BigDecimal reservedQuantity,
+    BigDecimal shippedQuantity,
+    BigDecimal backorderedQuantity,
     BigDecimal unitPrice,
     BigDecimal lineTotal,
     String lineStatus
@@ -20,8 +22,8 @@ public record SalesOrderLineView(
     public static SalesOrderLineView from(SalesOrderLine l) {
         return new SalesOrderLineView(
             l.lineId(), l.lineNumber(), l.productId(), l.productSku(), l.productName(),
-            l.orderedQuantity(), l.reservedQuantity(), l.unitPrice(),
-            l.lineTotal(), l.lineStatus().dbValue()
+            l.orderedQuantity(), l.reservedQuantity(), l.shippedQuantity(), l.backorderedQuantity(),
+            l.unitPrice(), l.lineTotal(), l.lineStatus().dbValue()
         );
     }
 }
