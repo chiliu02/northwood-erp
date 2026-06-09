@@ -203,7 +203,15 @@ export function SalesOrderDetail() {
   }
 
   const status = statusForOrder(data.orderStatus);
-  const cancellable = !NON_CANCELLABLE.includes(data.orderStatus);
+  // A partial (or full) shipment closes the amend/cancel window even though the
+  // 360 `order_status` stays `ready_to_ship` (deliberately kept pickable so the
+  // backorder can still ship). The server gates amend on header status / saga
+  // state = `partially_shipped` | `shipped` and cancel on its
+  // NON_CANCELLABLE_STATUSES, so `shipment_status` — not `order_status` — is the
+  // field that tells us goods have moved. Without this the UI would offer
+  // Amend/Cancel on a partially-shipped order and the server would 409.
+  const goodsMoved = ["partially_shipped", "shipped"].includes(data.shipmentStatus);
+  const cancellable = !NON_CANCELLABLE.includes(data.orderStatus) && !goodsMoved;
   // "awaiting prepayment/deposit" only applies while the order is live. A
   // terminal order (cancelled → refunded, rejected, completed) is no longer
   // waiting on the up-front payment.
@@ -213,19 +221,22 @@ export function SalesOrderDetail() {
 
   // Client-side proxy for the server's amendable window: any in-flight order up
   // to (and including) ready_to_ship / shortage-parked is amendable — inventory
-  // reconciles the change incrementally. Closed once terminal/shipped, or once a
+  // reconciles the change incrementally. Closed once terminal, once any goods
+  // have shipped (`goodsMoved`, incl. partially_shipped), or once a
   // prepayment/deposit order has raised its up-front invoice (post-invoice
   // amendment needs the credit-note flow). The server is authoritative and
   // returns 409 if this is stale.
   const upfrontInvoiced =
     (data.paymentTerms === "prepayment" || data.paymentTerms === "deposit")
     && !!data.invoiceStatus && data.invoiceStatus !== "pending";
-  const amendable = !NON_CANCELLABLE.includes(data.orderStatus) && !upfrontInvoiced;
+  const amendable = !NON_CANCELLABLE.includes(data.orderStatus) && !goodsMoved && !upfrontInvoiced;
   const notAmendableReason = NON_CANCELLABLE.includes(data.orderStatus)
     ? `Order is ${data.orderStatus}; lines can no longer be amended.`
-    : upfrontInvoiced
-      ? "This order has a pre-shipment invoice (prepayment/deposit); lines can't be amended once invoiced."
-      : null;
+    : goodsMoved
+      ? "Order has shipped goods; lines can no longer be amended."
+      : upfrontInvoiced
+        ? "This order has a pre-shipment invoice (prepayment/deposit); lines can't be amended once invoiced."
+        : null;
 
   const amendBusy = changeQtyMutation.isPending || changePriceMutation.isPending
     || removeLineMutation.isPending || addLineMutation.isPending;
