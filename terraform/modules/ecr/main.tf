@@ -9,6 +9,7 @@ resource "aws_ecr_repository" "this" {
 
   name                 = "${var.name_prefix}/${each.key}"
   image_tag_mutability = "MUTABLE" # demo: reuse the same tag (e.g. "latest")
+  force_delete         = true      # demo: `terraform destroy` should drop repos even with images pushed
 
   image_scanning_configuration {
     scan_on_push = true

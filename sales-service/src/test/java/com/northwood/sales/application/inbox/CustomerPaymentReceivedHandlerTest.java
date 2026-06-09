@@ -45,14 +45,14 @@ class CustomerPaymentReceivedHandlerTest {
         handler = new CustomerPaymentReceivedHandler(inbox, sagaManager, statusProjection, upfrontSettledEmitter, json);
     }
 
-    private EventEnvelope event(String invoiceStatusAfter) {
+    private EventEnvelope event(String invoiceStatusAfter, boolean orderFullySettled) {
         UUID eventId = UUID.randomUUID();
         CustomerPaymentReceived payload = new CustomerPaymentReceived(
             eventId, UUID.randomUUID(), "PMT-001",
             UUID.randomUUID(), SO, UUID.randomUUID(), "Acme",
             "EFT", Currencies.AUD,
             new BigDecimal("1000.00"), new BigDecimal("1000.00"),
-            invoiceStatusAfter, Instant.now()
+            invoiceStatusAfter, orderFullySettled, Instant.now()
         );
         return new EventEnvelope(
             eventId, FinanceAggregateTypes.PAYMENT, UUID.randomUUID(),
@@ -63,32 +63,44 @@ class CustomerPaymentReceivedHandlerTest {
     }
 
     @Test void full_settlement_triggers_completed_projection() {
-        when(sagaManager.applyCustomerPaymentReceived(eq(SO), eq(true))).thenReturn(COMPLETED);
+        // invoice paid AND order fully settled → saga completes.
+        when(sagaManager.applyCustomerPaymentReceived(eq(SO), eq(true), eq(true))).thenReturn(COMPLETED);
 
-        handler.handle(event("paid"));
+        handler.handle(event("paid", true));
 
-        verify(sagaManager).applyCustomerPaymentReceived(SO, true);
+        verify(sagaManager).applyCustomerPaymentReceived(SO, true, true);
         verify(statusProjection).markStatus(SO, SalesOrder.Status.COMPLETED);
         verify(inbox).recordProcessed(any());
     }
 
     @Test void partial_payment_does_not_project_completed() {
-        when(sagaManager.applyCustomerPaymentReceived(eq(SO), eq(false))).thenReturn(INVOICE_PARTIALLY_PAID);
+        when(sagaManager.applyCustomerPaymentReceived(eq(SO), eq(false), eq(false))).thenReturn(INVOICE_PARTIALLY_PAID);
 
-        handler.handle(event("partially_paid"));
+        handler.handle(event("partially_paid", false));
 
-        verify(sagaManager).applyCustomerPaymentReceived(SO, false);
+        verify(sagaManager).applyCustomerPaymentReceived(SO, false, false);
+        verify(statusProjection, never()).markStatus(any(), any());
+    }
+
+    @Test void invoice_paid_but_order_not_settled_does_not_complete() {
+        // One per-shipment invoice fully paid, but the order still owes another
+        // shipment's invoice → invoiceFullySettled=true, orderFullySettled=false.
+        when(sagaManager.applyCustomerPaymentReceived(eq(SO), eq(true), eq(false))).thenReturn(INVOICE_PARTIALLY_PAID);
+
+        handler.handle(event("paid", false));
+
+        verify(sagaManager).applyCustomerPaymentReceived(SO, true, false);
         verify(statusProjection, never()).markStatus(any(), any());
     }
 
     @Test void already_processed_short_circuits() {
-        EventEnvelope envelope = event("paid");
+        EventEnvelope envelope = event("paid", true);
         when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(CustomerPaymentReceivedHandler.CONSUMER_NAME)))
             .thenReturn(true);
 
         handler.handle(envelope);
 
-        verify(sagaManager, never()).applyCustomerPaymentReceived(any(), org.mockito.ArgumentMatchers.anyBoolean());
+        verify(sagaManager, never()).applyCustomerPaymentReceived(any(), org.mockito.ArgumentMatchers.anyBoolean(), org.mockito.ArgumentMatchers.anyBoolean());
         verifyNoInteractions(statusProjection);
     }
 
@@ -102,6 +114,6 @@ class CustomerPaymentReceivedHandlerTest {
         handler.handle(wrong);
 
         verify(inbox, never()).alreadyProcessed(any(), any());
-        verify(sagaManager, never()).applyCustomerPaymentReceived(any(), org.mockito.ArgumentMatchers.anyBoolean());
+        verify(sagaManager, never()).applyCustomerPaymentReceived(any(), org.mockito.ArgumentMatchers.anyBoolean(), org.mockito.ArgumentMatchers.anyBoolean());
     }
 }

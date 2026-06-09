@@ -14,6 +14,16 @@ import java.util.UUID;
  *
  * <p>{@code aggregateId} is the payment id. {@code salesOrderHeaderId} is
  * the saga-routing key for sales.
+ *
+ * <p>{@code invoiceStatusAfter} is scoped to the single invoice this payment
+ * allocated against. {@code orderFullySettled} is the ORDER-level companion:
+ * {@code true} when the sum of {@code outstanding_amount} across <em>all</em> of
+ * the order's invoices is zero after this allocation. With partial shipments an
+ * order can have several invoices, so the on-shipment fulfilment saga completes
+ * on {@code orderFullySettled} (not the per-invoice flag) — paying one of
+ * several invoices in full must not complete the order. A primitive
+ * {@code boolean} defaults to {@code false} on older in-flight messages (the
+ * safe default — don't auto-complete from a stale event).
  */
 public record CustomerPaymentReceived(
     UUID eventId,
@@ -28,6 +38,7 @@ public record CustomerPaymentReceived(
     BigDecimal amount,
     BigDecimal allocatedAmount,
     String invoiceStatusAfter,
+    boolean orderFullySettled,
     Instant occurredAt
 ) implements DomainEvent {
 

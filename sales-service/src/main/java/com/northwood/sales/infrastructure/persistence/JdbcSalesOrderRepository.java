@@ -55,7 +55,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
         List<SalesOrderLine> lines = jdbc.query(
             """
             SELECT sales_order_line_id, line_number, product_id, product_sku, product_name,
-                   ordered_quantity, reserved_quantity, manufacturing_required_quantity,
+                   ordered_quantity, reserved_quantity, manufacturing_required_quantity, shipped_quantity,
                    unit_price, tax_rate, line_status
             FROM sales.sales_order_line WHERE sales_order_header_id = ? ORDER BY line_number
             """,
@@ -152,10 +152,12 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
 
     /**
      * Diff the aggregate's lines against the persisted child rows: insert new
-     * lines, update existing ones (quantity / price / status — incl. the
-     * soft-cancel of a removed line). No deletes — removal is soft. The aggregate
-     * is the sole writer of {@code sales_order_line}, so a blanket update of the
-     * mutable columns can't clobber another writer.
+     * lines, update existing ones — the line-amendment columns (ordered_quantity,
+     * reserved_quantity, unit_price, tax, status incl. the soft-cancel of a
+     * removed line) and the shipment columns (shipped_quantity /
+     * backordered_quantity, driven by recordShipped). No deletes — removal is
+     * soft. The aggregate is the sole writer of {@code sales_order_line}, so a
+     * blanket update of the mutable columns can't clobber another writer.
      */
     private void upsertLines(SalesOrder o) {
         Set<UUID> existing = new HashSet<>(jdbc.queryForList(
@@ -167,10 +169,12 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
                 jdbc.update("""
                     UPDATE sales.sales_order_line SET
                         ordered_quantity = ?, reserved_quantity = ?, manufacturing_required_quantity = ?,
+                        shipped_quantity = ?, backordered_quantity = ?,
                         unit_price = ?, tax_rate = ?, tax_amount = ?, line_total = ?, line_status = ?
                     WHERE sales_order_line_id = ?
                     """,
                     line.orderedQuantity(), line.reservedQuantity(), line.manufacturingRequiredQuantity(),
+                    line.shippedQuantity(), line.backorderedQuantity(),
                     line.unitPrice(), line.taxRate(), line.taxAmount(), line.lineTotal(),
                     line.lineStatus().dbValue(), line.lineId()
                 );
@@ -244,6 +248,10 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
         rs.getBigDecimal("tax_rate"),
         rs.getBigDecimal("reserved_quantity"),
         rs.getBigDecimal("manufacturing_required_quantity"),
+        // Cumulative shipped qty MUST be reconstituted — otherwise each reload
+        // re-decides shipped/partially_shipped from zero and the "order fully
+        // shipped?" gate is wrong across shipments.
+        rs.getBigDecimal("shipped_quantity"),
         SalesOrder.LineStatus.fromDb(rs.getString("line_status"))
     );
 }

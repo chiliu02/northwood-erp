@@ -67,6 +67,24 @@ variable "bff_port" {
   default = 8089
 }
 
+variable "welcome_port" {
+  description = "Public port for the guest front-door (static welcome) page on the web box. 80 = bare-IP entry; 8080/8089 are taken by Keycloak/BFF."
+  type        = number
+  default     = 80
+}
+
+variable "welcome_image" {
+  description = "nginx image for the front-door static page (pulled from Docker Hub via the IGW)."
+  type        = string
+  default     = "nginx:1.27-alpine"
+}
+
+variable "ui_port" {
+  description = "Public port for the operational ERP SPA on the web box. An nginx serves the built erp-web-ui here and reverse-proxies /api,/oauth2,/login,/logout to the BFF (:8089). This is the 'Enter the ERP' target and the OIDC redirect/origin host."
+  type        = number
+  default     = 8090
+}
+
 # ---- third-party images pulled straight from their registries (via the NAT) -
 variable "images" {
   description = "Third-party images (Docker Hub / quay.io) — pulled directly through the NAT instance."
@@ -135,7 +153,7 @@ variable "repo_root" {
 }
 
 variable "load_seed_data" {
-  description = "Stage db/northwood_erp_seed.sql as init-script 02 (populated demo)."
+  description = "Stage config/postgresql/northwood_erp_seed.sql as init-script 02 (populated demo)."
   type        = bool
   default     = true
 }

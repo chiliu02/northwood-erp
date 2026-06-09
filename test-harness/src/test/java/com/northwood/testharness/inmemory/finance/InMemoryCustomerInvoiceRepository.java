@@ -75,6 +75,18 @@ public final class InMemoryCustomerInvoiceRepository implements CustomerInvoiceR
     }
 
     @Override
+    public BigDecimal sumOutstandingForOrder(UUID salesOrderHeaderId) {
+        BigDecimal sum = BigDecimal.ZERO;
+        for (CustomerInvoice inv : store.values()) {
+            if (salesOrderHeaderId.equals(inv.salesOrderHeaderId())) {
+                BigDecimal paid = paidByInvoice.getOrDefault(inv.id().value(), BigDecimal.ZERO);
+                sum = sum.add(inv.totalAmount().subtract(paid));
+            }
+        }
+        return sum;
+    }
+
+    @Override
     public Optional<ShipmentTimeInvoice> findInvoiceForShipment(UUID salesOrderHeaderId) {
         return store.values().stream()
             .filter(inv -> salesOrderHeaderId.equals(inv.salesOrderHeaderId()))

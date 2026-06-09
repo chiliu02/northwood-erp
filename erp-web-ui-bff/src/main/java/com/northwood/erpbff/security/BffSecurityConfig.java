@@ -37,8 +37,11 @@ import org.springframework.security.web.servlet.util.matcher.PathPatternRequestM
  * </ul>
  *
  * <p>{@code /actuator/health} is permitted unauthenticated for the Docker
- * healthcheck. {@code /api/events} (the SSE notification stream) is treated
- * as any other authenticated endpoint — the session cookie carries the auth.
+ * healthcheck, and {@code /actuator/prometheus} so the observability box can
+ * scrape BFF metrics (it has no session); both mirror how the resource-server
+ * services expose them. {@code /api/events} (the SSE notification stream) is
+ * treated as any other authenticated endpoint — the session cookie carries
+ * the auth.
  *
  * <p>CSRF is disabled because the SPA hits this BFF as a JSON API only; no
  * cookie-authenticated HTML forms exist. The session cookie is still required
@@ -58,7 +61,8 @@ public class BffSecurityConfig {
                 .requestMatchers(
                     "/actuator/health",
                     "/actuator/health/**",
-                    "/actuator/info"
+                    "/actuator/info",
+                    "/actuator/prometheus"
                 ).permitAll()
                 .anyRequest().authenticated()
             )

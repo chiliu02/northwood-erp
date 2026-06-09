@@ -5,7 +5,7 @@
 -- This file is the canonical schema baseline: extensions, schemas, roles,
 -- grants, DDL, partitions, functions, and PL/pgSQL constraints. It contains
 -- NO data — demo seed (products, BOMs, customers, suppliers, GL chart, etc.)
--- lives in the companion file db/northwood_erp_seed.sql. They were one file
+-- lives in the companion file config/postgresql/northwood_erp_seed.sql. They were one file
 -- until 2026-05-20; splitting them lets a developer choose between "from
 -- scratch" (schema only, populate at runtime via events) and "ready to demo"
 -- (schema + seed) without editing either file.
@@ -40,7 +40,7 @@
 --     creation, grants, and all DDL (including the service's own outbox/inbox).
 --     Lifting any one section out into its own services/<name>/install.sql
 --     produces a working installer for that service against its own database.
---     The matching seed section in db/northwood_erp_seed.sql (same section
+--     The matching seed section in config/postgresql/northwood_erp_seed.sql (same section
 --     name) ships the demo fixture rows for that service when wanted.
 --
 --   * The shared bootstrap (extensions, `shared` schema, `uuid_generate_v7()`,
@@ -73,7 +73,7 @@
 --     separate connection pool per service, each authenticated with its own
 --     `<service>_service` role. `search_path` is set per pool so the service
 --     can only see its own schema and `shared`.
---   * Ship demo seed data. The companion file db/northwood_erp_seed.sql
+--   * Ship demo seed data. The companion file config/postgresql/northwood_erp_seed.sql
 --     carries the cross-context fixture rows (the wooden table BOM that
 --     joins product, inventory, and manufacturing) keyed off well-known
 --     constant UUIDs; see that file's fixture UUID registry. The hardcoded
@@ -345,7 +345,7 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA product TO product_service;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA product TO product_service;
 
 -- ----------------------------------------------------------------------------
--- PRODUCT: seed lives in db/northwood_erp_seed.sql (SEED: PRODUCT section).
+-- PRODUCT: seed lives in config/postgresql/northwood_erp_seed.sql (SEED: PRODUCT section).
 -- ----------------------------------------------------------------------------
 
 COMMIT;
@@ -462,7 +462,7 @@ CREATE TABLE sales.sales_order_header (
     status VARCHAR(30) NOT NULL DEFAULT 'draft' CHECK (
         status IN (
             'draft', 'submitted', 'confirmed', 'in_fulfilment',
-            'shipped', 'completed', 'cancelled', 'rejected'
+            'partially_shipped', 'shipped', 'completed', 'cancelled', 'rejected'
         )
     ),
     -- Commercial payment terms snapshotted from
@@ -592,7 +592,11 @@ CREATE TABLE sales.sales_order_fulfilment_saga (
             -- ReplenishmentFulfilled / ReplenishmentCancelled events resolve it.
             -- All four states are gone from SalesOrderFulfilmentSaga.ALL_STATES,
             -- so the CHECK no longer lists them.
-            'ready_to_ship', 'goods_shipped', 'invoice_requested', 'invoice_created',
+            -- partially_shipped: on_shipment order with a backorder — some lines
+            -- shipped, the saga parks here across further partial shipments + their
+            -- interim invoices/payments until the shipment that completes the order
+            -- moves it to goods_shipped. Inbox-driven (not worker-claimable).
+            'ready_to_ship', 'partially_shipped', 'goods_shipped', 'invoice_requested', 'invoice_created',
             'invoice_partially_paid',
             'completed', 'compensating', 'compensated', 'failed'
         )
@@ -685,7 +689,7 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA sales TO sales_service;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA sales TO sales_service;
 
 -- ----------------------------------------------------------------------------
--- SALES: seed lives in db/northwood_erp_seed.sql (SEED: SALES section).
+-- SALES: seed lives in config/postgresql/northwood_erp_seed.sql (SEED: SALES section).
 -- ----------------------------------------------------------------------------
 
 COMMIT;
@@ -1189,7 +1193,7 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA inventory TO inventory_serv
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA inventory TO inventory_service;
 
 -- ----------------------------------------------------------------------------
--- INVENTORY: seed lives in db/northwood_erp_seed.sql (SEED: INVENTORY section).
+-- INVENTORY: seed lives in config/postgresql/northwood_erp_seed.sql (SEED: INVENTORY section).
 -- ----------------------------------------------------------------------------
 
 COMMIT;
@@ -1655,7 +1659,7 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA manufacturing TO manufactur
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA manufacturing TO manufacturing_service;
 
 -- ----------------------------------------------------------------------------
--- MANUFACTURING: seed lives in db/northwood_erp_seed.sql (SEED: MANUFACTURING section).
+-- MANUFACTURING: seed lives in config/postgresql/northwood_erp_seed.sql (SEED: MANUFACTURING section).
 -- ----------------------------------------------------------------------------
 
 COMMIT;
@@ -2036,7 +2040,7 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA purchasing TO purchasing_se
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA purchasing TO purchasing_service;
 
 -- ----------------------------------------------------------------------------
--- PURCHASING: seed lives in db/northwood_erp_seed.sql (SEED: PURCHASING section).
+-- PURCHASING: seed lives in config/postgresql/northwood_erp_seed.sql (SEED: PURCHASING section).
 -- ----------------------------------------------------------------------------
 
 COMMIT;
@@ -2909,7 +2913,7 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA finance TO finance_service;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA finance TO finance_service;
 
 -- ----------------------------------------------------------------------------
--- FINANCE: seed lives in db/northwood_erp_seed.sql (SEED: FINANCE section).
+-- FINANCE: seed lives in config/postgresql/northwood_erp_seed.sql (SEED: FINANCE section).
 -- ----------------------------------------------------------------------------
 
 COMMIT;
@@ -3215,7 +3219,7 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA reporting TO reporting_serv
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA reporting TO reporting_service;
 
 -- ----------------------------------------------------------------------------
--- REPORTING: seed lives in db/northwood_erp_seed.sql (SEED: REPORTING section).
+-- REPORTING: seed lives in config/postgresql/northwood_erp_seed.sql (SEED: REPORTING section).
 -- Read models are otherwise populated by projection consumers draining
 -- events from the bus into reporting.inbox_message and applying them to
 -- the read tables. The product_card cache is seeded so that day-1

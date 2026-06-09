@@ -25,13 +25,13 @@ Quick-reference summary; the canonical exhaustive statement lives in `docs/conve
 
 ## Reference data and seed UUIDs
 
-The reference seed data lives in `db/northwood_erp_seed.sql`, the data-side companion to the `db/northwood_erp.sql` schema baseline (split out 2026-05-20). It uses well-known constant UUIDs (e.g. `00000000-0000-7000-8000-000000000001` for "Wooden Dining Table") so cross-context references work without joining across schemas — the registry of those UUIDs is in the header block of `northwood_erp_seed.sql`. Follow the same convention when adding fixtures.
+The reference seed data lives in `config/postgresql/northwood_erp_seed.sql`, the data-side companion to the `config/postgresql/northwood_erp.sql` schema baseline (split out 2026-05-20). It uses well-known constant UUIDs (e.g. `00000000-0000-7000-8000-000000000001` for "Wooden Dining Table") so cross-context references work without joining across schemas — the registry of those UUIDs is in the header block of `northwood_erp_seed.sql`. Follow the same convention when adding fixtures.
 
 The split lets a developer pick at infra-up time:
 - `docker compose up -d` — schema only, empty database (populate at runtime via events).
 - `docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d` — schema + the demo fixtures.
 
-Both files are run under `/docker-entrypoint-initdb.d/` exactly once on first boot of a fresh volume (`01-…` then `02-…`). To re-seed an already-up database, `psql -U postgres -d northwood_erp -f db/northwood_erp_seed.sql` is safe to re-run thanks to per-INSERT `ON CONFLICT DO NOTHING`.
+Both files are run under `/docker-entrypoint-initdb.d/` exactly once on first boot of a fresh volume (`01-…` then `02-…`). To re-seed an already-up database, `psql -U postgres -d northwood_erp -f config/postgresql/northwood_erp_seed.sql` is safe to re-run thanks to per-INSERT `ON CONFLICT DO NOTHING`.
 
 **Seed inserts in Liquibase changesets must spell out PK UUIDs explicitly** rather than relying on `DEFAULT shared.uuid_generate_v7()`. The default-expression path calls unqualified `gen_random_bytes()` (in pgcrypto, installed to `public`), but per-service connections use `search_path = <service>, shared` — `public` isn't on the path, so the default fails. The `psql` baseline load runs without that init-SQL so the default works there. Java repositories pass explicit UUIDs at runtime. Conclusion: explicit UUIDs in seed changesets.
 
@@ -44,11 +44,11 @@ Both files are run under `/docker-entrypoint-initdb.d/` exactly once on first bo
 **Liquibase changesets must be idempotent against the `northwood_erp.sql` baseline.** The baseline gets rebaked into the latest schema on every slice that ships a structural change; the corresponding changeset must no-op cleanly when applied to a fresh DB that already has the change via the baseline. This rule is invisible to unit tests and only surfaces on first boot of a fresh volume. Patterns that have bitten:
 
 - **`CREATE TRIGGER` is not idempotent.** Use `CREATE OR REPLACE TRIGGER` (Postgres 14+) or `DO $$ BEGIN … EXCEPTION WHEN duplicate_object THEN NULL; END $$;`.
-- **`ON CONFLICT` column lists must match a unique constraint exactly.** When the schema baseline extends a unique constraint, every seed `INSERT … ON CONFLICT` (in `db/northwood_erp_seed.sql` AND in any corresponding changeset) must be updated in the same slice. Postgres rejects subset-match at planning time.
+- **`ON CONFLICT` column lists must match a unique constraint exactly.** When the schema baseline extends a unique constraint, every seed `INSERT … ON CONFLICT` (in `config/postgresql/northwood_erp_seed.sql` AND in any corresponding changeset) must be updated in the same slice. Postgres rejects subset-match at planning time.
 - **`ADD CONSTRAINT` is not idempotent.** Prefix with `DROP CONSTRAINT IF EXISTS <name>`.
 - **Use `IF [NOT] EXISTS` everywhere** — `CREATE TABLE`, `CREATE INDEX`, `ALTER TABLE … ADD COLUMN`, `ALTER TABLE IF EXISTS … RENAME`. No bare CREATE / ALTER / RENAME in changesets.
 
-**`db/northwood_erp.sql` must be safe to run while already connected to the target database.** It's mounted into `/docker-entrypoint-initdb.d/`; postgres creates the DB from `POSTGRES_DB=northwood_erp` and runs init scripts while connected to it. Don't open with `DROP DATABASE / CREATE DATABASE / \connect` (Postgres rejects with "cannot drop the currently open database"). Standalone usage adapts: `createdb -U postgres northwood_erp; psql -U postgres -d northwood_erp -f northwood_erp.sql`.
+**`config/postgresql/northwood_erp.sql` must be safe to run while already connected to the target database.** It's mounted into `/docker-entrypoint-initdb.d/`; postgres creates the DB from `POSTGRES_DB=northwood_erp` and runs init scripts while connected to it. Don't open with `DROP DATABASE / CREATE DATABASE / \connect` (Postgres rejects with "cannot drop the currently open database"). Standalone usage adapts: `createdb -U postgres northwood_erp; psql -U postgres -d northwood_erp -f northwood_erp.sql`.
 
 **Don't start a `--` comment with a Liquibase keyword** (`changeset`, `rollback`, `precondition`, `liquibase`). Liquibase 5's formatted-SQL parser scans every `--` line for directive keywords and tries to parse `:author:id`, even with leading space. Rephrase to put the keyword anywhere except first-word-after-`--`.
 
@@ -110,7 +110,7 @@ Per-aggregate summary of what Java writes today (✓) vs what the schema CHECK a
 |---|---|---|---|
 | `Product` | `product.product` | active, inactive, discontinued | — |
 | `Customer` | `sales.customer` | active, inactive, blocked | — |
-| `SalesOrder` | `sales.sales_order_header` | submitted, confirmed, in_fulfilment, ready_to_ship, partially_shipped, shipped, invoiced, cancelled, on_hold, completed | draft |
+| `SalesOrder` | `sales.sales_order_header` | submitted, in_fulfilment, partially_shipped, shipped, completed, cancelled, rejected | draft, confirmed |
 | `StockReservation` | `inventory.stock_reservation_header` + `_line` | reserved, partially_reserved, failed | pending, released, consumed |
 | `GoodsReceipt` | `inventory.goods_receipt_header` | posted, reversed ‡ | draft |
 | `Shipment` | `inventory.shipment_header` | posted, reversed ‡ | draft |
@@ -142,5 +142,5 @@ If you find yourself wanting to drop a value from a status CHECK because "Java d
 
 1. **Check the column DEFAULT** — if the DEFAULT is the value you want to drop, you need to update the DEFAULT in the same change.
 2. **Check the triggers** — `maintain_allocation_totals`, `guard_journal_line_immutability`, and similar may write values Java doesn't.
-3. **Check the seed in `db/northwood_erp_seed.sql`** — hand-INSERTed seed rows can carry values that no factory produces.
+3. **Check the seed in `config/postgresql/northwood_erp_seed.sql`** — hand-INSERTed seed rows can carry values that no factory produces.
 4. **Confirm with the user before proposing the drop.** Per the standing memory, single-valued status fields are deliberate forward-compat surface.

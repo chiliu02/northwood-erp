@@ -68,15 +68,24 @@ public interface SalesOrder360Projection {
     void recordCancellation(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
 
     /**
-     * Record a posted shipment: set {@code shipment_status='shipped'} and
-     * advance {@code order_status}. A prepaid order (already settled in full
-     * before shipment) goes straight to {@code 'completed'} here — shipment is
-     * its final fulfilment step; otherwise it advances to {@code 'shipped'}
-     * (on-shipment/deposit still owe the post-ship balance, completed later by
-     * {@link #recordPayment}). Forward-only; never downgrades a later state,
+     * Record a posted shipment (driven by {@code sales.SalesOrderShipped}, which
+     * carries {@code orderFullyShipped} — only sales knows ordered-vs-shipped).
+     * <ul>
+     *   <li>Fully shipped — {@code shipment_status='shipped'} and advance
+     *       {@code order_status}: a prepaid order (settled before shipment) goes
+     *       straight to {@code 'completed'}; otherwise {@code 'shipped'}
+     *       (on_shipment/deposit owe the post-ship balance, completed later by
+     *       {@link #recordPayment}).</li>
+     *   <li>Partial — {@code shipment_status='partially_shipped'} and
+     *       {@code order_status} is left unchanged so the order stays pickable
+     *       (the shipment UI filters on {@code 'ready_to_ship'}) for the
+     *       backorder.</li>
+     * </ul>
+     * Forward-only: a {@code 'shipped'} shipment_status is never downgraded back
+     * to {@code 'partially_shipped'}; never downgrades a later order_status,
      * preserves {@code 'cancelled'}.
      */
-    void recordShipment(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
+    void recordShipment(UUID salesOrderHeaderId, boolean orderFullyShipped, Instant occurredAt, String actorUserId);
 
     void recordInvoice(UUID salesOrderHeaderId, BigDecimal invoiced, Instant occurredAt, String actorUserId);
 

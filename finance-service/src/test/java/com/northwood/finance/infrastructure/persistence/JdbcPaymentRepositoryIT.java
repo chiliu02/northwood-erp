@@ -63,7 +63,7 @@ class JdbcPaymentRepositoryIT {
     @BeforeAll
     static void bootContainerAndSchema() {
         Startables.deepStart(POSTGRES).join();
-        applySqlFile(Path.of("..", "db", "northwood_erp.sql"));
+        applySqlFile(Path.of("..", "config", "postgresql", "northwood_erp.sql"));
         DATA_SOURCE = new HikariDataSource();
         DATA_SOURCE.setJdbcUrl(POSTGRES.getJdbcUrl());
         DATA_SOURCE.setUsername(POSTGRES.getUsername());
@@ -139,7 +139,7 @@ class JdbcPaymentRepositoryIT {
 
         Payment payment = Payment.recordCustomerPayment(
             "PAY-CUS-001", customerId, "Customer IT", LocalDate.now(), Payment.Method.CARD,
-            "AUD", new BigDecimal("80.00"), invoiceId, salesOrderId, "partially_paid");
+            "AUD", new BigDecimal("80.00"), invoiceId, salesOrderId, "partially_paid", false);
         save(payment);
 
         Payment r = REPO.findById(payment.id()).orElseThrow();

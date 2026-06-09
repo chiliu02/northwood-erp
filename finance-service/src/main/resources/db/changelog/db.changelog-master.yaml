@@ -2,7 +2,7 @@
 #
 # Currently empty — Liquibase is disabled (`northwood.liquibase.enabled: false`
 # in application.yml) while the DB schema is still in showcase-flux. The
-# baseline `db/northwood_erp.sql` is the single source of truth for schema and
+# baseline `config/postgresql/northwood_erp.sql` is the single source of truth for schema and
 # is rebaked every slice that ships a structural change; the development
 # workflow assumes `docker compose down -v` on schema changes.
 #

@@ -29,7 +29,7 @@ public class JdbcGlAccountLookup implements GlAccountLookup {
             );
         } catch (EmptyResultDataAccessException e) {
             throw new IllegalStateException(
-                "GL account " + accountCode + " not seeded; check db/northwood_erp.sql"
+                "GL account " + accountCode + " not seeded; check config/postgresql/northwood_erp.sql"
             );
         }
     }

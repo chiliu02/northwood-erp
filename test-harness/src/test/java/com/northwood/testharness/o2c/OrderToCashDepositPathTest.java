@@ -98,6 +98,11 @@ class OrderToCashDepositPathTest {
             LocalDate.of(2026, 5, 20)
         ));
         bus.drain();
+        // Stand in for the maintain_allocation_totals trigger (see FinanceTestKit):
+        // mark the deposit invoice paid so the later balance payment computes the
+        // order-level settlement (orderFullySettled) correctly — by then the
+        // deposit invoice must read as fully paid, leaving only the balance owing.
+        finance.customerInvoices.recordAllocation(depositInvoice.id().value(), new BigDecimal("150.00"));
         assertThat(sales.findSagaBySalesOrderId(orderId).orElseThrow().state())
             .isEqualTo(SalesOrderFulfilmentSaga.DEPOSIT_PAID);
 

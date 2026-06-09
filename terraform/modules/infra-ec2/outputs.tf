@@ -1,6 +1,11 @@
 output "web_public_ip" {
-  description = "Public IP of the web EC2 (erp-bff :8089, Keycloak :8080). Use for KEYCLOAK hostname + browsing the demo."
-  value       = aws_instance.web.public_ip
+  description = "Stable Elastic IP of the web EC2 (front door :80, erp-bff :8089, Keycloak :8080). Survives instance replacement; it is the Keycloak issuer host."
+  value       = aws_eip.web.public_ip
+}
+
+output "front_door_url" {
+  description = "Guest front-door (start-here) page — the first thing to open."
+  value       = "http://${aws_eip.web.public_ip}${var.welcome_port == 80 ? "" : ":${var.welcome_port}"}/"
 }
 
 output "web_private_ip" {

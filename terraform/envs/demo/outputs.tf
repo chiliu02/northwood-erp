@@ -1,11 +1,21 @@
 output "web_public_ip" {
-  description = "Public entry point — open http://<this>:8089 for erp-web-ui-bff; Keycloak is on :8080."
+  description = "Public entry point — open http://<this>/ for the guest front door; the ERP UI (erp-web-ui-bff) is on :8089, Keycloak on :8080."
   value       = module.compute.web_public_ip
 }
 
+output "front_door_url" {
+  description = "Guest 'start here' page — the first URL to hand a visitor. Links into the ERP UI + Demo Guide."
+  value       = module.compute.front_door_url
+}
+
+output "front_door_domain_url" {
+  description = "Friendly front-door URL once DNS propagates (A record → web box Elastic IP). Empty front_door_domain => only the IP-based front_door_url is available."
+  value       = var.front_door_domain != "" ? "http://${var.front_door_domain}/" : "(no front_door_domain set — use front_door_url)"
+}
+
 output "keycloak_hostname_hint" {
-  description = "Set -var keycloak_hostname=<web_public_ip or a DNS name> and re-apply so OIDC browser login works (the issuer must be browser-reachable)."
-  value       = var.keycloak_hostname != "" ? var.keycloak_hostname : "UNSET — using web private IP; set to ${module.compute.web_public_ip} (or a Route 53 name) and re-apply"
+  description = "The Keycloak issuer host. Defaults to the web box's stable Elastic IP (browser OIDC works out of the box); override with -var keycloak_hostname=<DNS name> for a real domain."
+  value       = var.keycloak_hostname != "" ? var.keycloak_hostname : "Defaulting to web Elastic IP ${module.compute.web_public_ip} (browser OIDC works); set -var keycloak_hostname=<Route 53 name> to override."
 }
 
 output "ecr_repository_urls" {

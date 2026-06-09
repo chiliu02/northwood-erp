@@ -16,7 +16,7 @@ import java.util.UUID;
  * {@code shared.application.saga} and operate over this kernel type.
  *
  * <p>The fields here mirror the lease/retry/version columns on every
- * {@code *_saga} table in {@code db/northwood_erp.sql}: {@code saga_id},
+ * {@code *_saga} table in {@code config/postgresql/northwood_erp.sql}: {@code saga_id},
  * {@code saga_state}, {@code current_step}, {@code last_error},
  * {@code retry_count}, {@code next_retry_at}, {@code lease_owner},
  * {@code lease_expires_at}, {@code version}, {@code data}, {@code created_at},

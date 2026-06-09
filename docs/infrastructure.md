@@ -87,7 +87,7 @@ Assuming a genuine total mandate, here is what happens.
 
 4. **Running totals kept transactionally consistent.** `stock_balance`, GL-account balance,
    `customer_invoice_header.paid_amount`, plus the `set_updated_at()` / balance triggers
-   (`db/northwood_erp.sql`). The "deltas get aggregates, **totals get projections**" rule assumes a
+   (`config/postgresql/northwood_erp.sql`). The "deltas get aggregates, **totals get projections**" rule assumes a
    projection can read-modify-write a running sum *in the same transaction* as ingesting the delta.
    Cassandra has no triggers, and `counter` columns are non-transactional and can't mix with
    conditional logic. The double-entry "total never diverges from the facts" invariant needs a

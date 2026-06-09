@@ -48,7 +48,7 @@ class JdbcPurchaseToPaySagaAdapterIT {
     @BeforeAll
     static void bootContainerAndSchema() {
         Startables.deepStart(POSTGRES).join();
-        applySqlFile(Path.of("..", "db", "northwood_erp.sql"));
+        applySqlFile(Path.of("..", "config", "postgresql", "northwood_erp.sql"));
         DATA_SOURCE = new HikariDataSource();
         DATA_SOURCE.setJdbcUrl(POSTGRES.getJdbcUrl());
         DATA_SOURCE.setUsername(POSTGRES.getUsername());

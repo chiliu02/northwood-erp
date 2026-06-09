@@ -55,7 +55,7 @@ class JdbcSalesOrder360ProjectionIT {
     @BeforeAll
     static void bootContainerAndSchema() {
         Startables.deepStart(POSTGRES).join();
-        applySqlFile(Path.of("..", "db", "northwood_erp.sql"));
+        applySqlFile(Path.of("..", "config", "postgresql", "northwood_erp.sql"));
         DATA_SOURCE = new HikariDataSource();
         DATA_SOURCE.setJdbcUrl(POSTGRES.getJdbcUrl());
         DATA_SOURCE.setUsername(POSTGRES.getUsername());
@@ -95,7 +95,7 @@ class JdbcSalesOrder360ProjectionIT {
         PROJECTION.recordReadyToShip(id, Instant.now(), "system");
         assertThat(orderStatus(id)).isEqualTo("ready_to_ship");
 
-        PROJECTION.recordShipment(id, Instant.now(), "mike");
+        PROJECTION.recordShipment(id, true, Instant.now(), "mike");
         assertThat(orderStatus(id)).isEqualTo("shipped");
 
         PROJECTION.recordPayment(id, new BigDecimal("650.00"),
@@ -104,10 +104,41 @@ class JdbcSalesOrder360ProjectionIT {
     }
 
     @Test
+    void partial_shipment_marks_partially_shipped_and_stays_pickable() {
+        UUID id = UUID.randomUUID();
+        createOrder(id);
+        PROJECTION.recordReadyToShip(id, Instant.now(), "system");
+
+        // First shipment covers only some lines (orderFullyShipped=false) →
+        // shipment_status='partially_shipped'; order_status stays 'ready_to_ship'
+        // so the shipment picker still surfaces the backorder.
+        PROJECTION.recordShipment(id, false, Instant.now(), "mike");
+        assertThat(shipmentStatus(id)).isEqualTo("partially_shipped");
+        assertThat(orderStatus(id)).isEqualTo("ready_to_ship");
+
+        // Completing shipment (orderFullyShipped=true) → 'shipped'.
+        PROJECTION.recordShipment(id, true, Instant.now(), "mike");
+        assertThat(shipmentStatus(id)).isEqualTo("shipped");
+        assertThat(orderStatus(id)).isEqualTo("shipped");
+    }
+
+    @Test
+    void full_shipment_after_partial_is_not_downgraded() {
+        UUID id = UUID.randomUUID();
+        createOrder(id);
+        PROJECTION.recordShipment(id, true, Instant.now(), "mike");
+        assertThat(shipmentStatus(id)).isEqualTo("shipped");
+
+        // A late/duplicate partial event must not downgrade 'shipped'.
+        PROJECTION.recordShipment(id, false, Instant.now(), "mike");
+        assertThat(shipmentStatus(id)).isEqualTo("shipped");
+    }
+
+    @Test
     void late_ready_to_ship_does_not_downgrade_shipped() {
         UUID id = UUID.randomUUID();
         createOrder(id);
-        PROJECTION.recordShipment(id, Instant.now(), "mike");
+        PROJECTION.recordShipment(id, true, Instant.now(), "mike");
         assertThat(orderStatus(id)).isEqualTo("shipped");
 
         // A ready_to_ship event that arrives after the shipment (cross-topic
@@ -120,7 +151,7 @@ class JdbcSalesOrder360ProjectionIT {
     void partial_payment_does_not_complete() {
         UUID id = UUID.randomUUID();
         createOrder(id);
-        PROJECTION.recordShipment(id, Instant.now(), "mike");
+        PROJECTION.recordShipment(id, true, Instant.now(), "mike");
 
         PROJECTION.recordPayment(id, new BigDecimal("300.00"),
             CustomerPaymentReceived.INVOICE_STATUS_PARTIALLY_PAID, Instant.now(), "olivia");
@@ -140,7 +171,7 @@ class JdbcSalesOrder360ProjectionIT {
 
         // Forward-advance attempts after cancellation are no-ops on order_status.
         PROJECTION.recordReadyToShip(id, Instant.now(), "system");
-        PROJECTION.recordShipment(id, Instant.now(), "mike");
+        PROJECTION.recordShipment(id, true, Instant.now(), "mike");
         PROJECTION.recordPayment(id, new BigDecimal("650.00"),
             CustomerPaymentReceived.INVOICE_STATUS_PAID, Instant.now(), "olivia");
         assertThat(orderStatus(id)).isEqualTo("cancelled");
@@ -160,7 +191,7 @@ class JdbcSalesOrder360ProjectionIT {
         assertThat(paymentStatus(id)).isEqualTo("partially_paid");
 
         // Balance paid → order_status completes and payment settles in full.
-        PROJECTION.recordShipment(id, Instant.now(), "mike");
+        PROJECTION.recordShipment(id, true, Instant.now(), "mike");
         PROJECTION.recordPayment(id, new BigDecimal("325.00"),
             CustomerPaymentReceived.INVOICE_STATUS_PAID, Instant.now(), "olivia");
         assertThat(orderStatus(id)).isEqualTo("completed");
@@ -186,7 +217,7 @@ class JdbcSalesOrder360ProjectionIT {
 
         // Shipment is the final fulfilment step for an already-settled prepaid
         // order → it completes here (recordPayment deliberately left it short).
-        PROJECTION.recordShipment(id, Instant.now(), "mike");
+        PROJECTION.recordShipment(id, true, Instant.now(), "mike");
         assertThat(orderStatus(id)).isEqualTo("completed");
         assertThat(shipmentStatus(id)).isEqualTo("shipped");
     }

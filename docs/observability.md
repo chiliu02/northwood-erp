@@ -18,7 +18,7 @@ Companion docs: `docs/sagas.md` (the saga state machines), `docs/messaging.md` (
 | Logs (container) | Promtail | `grafana/promtail:3.3.0` | — | Tails the Docker socket → Loki (infra containers) |
 | UI | Grafana | `grafana/grafana:11.3.1` | 3000 | Queries all three datasources |
 
-All five are defined in `docker-compose.yml`; their backend configs live under `db/{prometheus,tempo,loki,promtail,grafana}/`. Grafana is provisioned with three datasources + one dashboard (`db/grafana/provisioning/`, `db/grafana/dashboards/northwood-overview.json`) — no manual setup.
+All five are defined in `docker-compose.yml`; their backend configs live under `config/{prometheus,tempo,loki,promtail,grafana}/`. Grafana is provisioned with three datasources + one dashboard (`config/grafana/provisioning/`, `config/grafana/dashboards/northwood-overview.json`) — no manual setup.
 
 ### How instrumentation is wired
 
@@ -116,7 +116,7 @@ curl http://localhost:8082/actuator/prometheus | Select-String http_server_reque
 
 ### Metrics (Prometheus)
 
-Each service exposes Micrometer metrics at `/actuator/prometheus`; Prometheus scrapes them with a `service` label per target (`db/prometheus/prometheus.yml`). Useful queries in Grafana Explore → Prometheus:
+Each service exposes Micrometer metrics at `/actuator/prometheus`; Prometheus scrapes them with a `service` label per target (`config/prometheus/prometheus.yml`). Useful queries in Grafana Explore → Prometheus:
 
 ```promql
 # Request rate per service (RED — rate)
@@ -210,7 +210,7 @@ Structured logs are pushed straight from each JVM via the loki4j appender, plus 
 {service=~".+"} |= "traceId=3a1f...c9"
 ```
 
-The Loki datasource defines a **derived field** with regex `traceId=([a-f0-9]+)` (`db/grafana/provisioning/datasources/datasources.yaml`), turning every `traceId=…` in a log line into a clickable link straight to that trace in Tempo. That's the logs → traces direction; `tracesToLogsV2` is the reverse. The console appender prints the same `[traceId=… spanId=…]` so you can correlate against terminal output too.
+The Loki datasource defines a **derived field** with regex `traceId=([a-f0-9]+)` (`config/grafana/provisioning/datasources/datasources.yaml`), turning every `traceId=…` in a log line into a clickable link straight to that trace in Tempo. That's the logs → traces direction; `tracesToLogsV2` is the reverse. The console appender prints the same `[traceId=… spanId=…]` so you can correlate against terminal output too.
 
 ---
 
@@ -277,4 +277,4 @@ You get an interleaved, time-ordered log of the same transaction across sales/in
 
 ## AWS
 
-The same stack runs on a single EC2 "observability box," gated on the Terraform variable `enable_observability` (`terraform/modules/infra-ec2/`). It pulls the identical `db/{tempo,loki,prometheus,grafana}` configs from an S3 artifacts bucket and runs the same container images (pinned in `variables.tf` → `observability_images`). The box's private DNS is exported as `observability_private_dns` (`outputs.tf`); feed it into the services' `OTLP_ENDPOINT` (`:4317`) and `LOKI_URL` (`:3100`). Prometheus on AWS currently self-scrapes only, with a commented service-discovery stub for future ECS SD. See commit `589a0c8` (observability tier on AWS).
+The same stack runs on a single EC2 "observability box," gated on the Terraform variable `enable_observability` (`terraform/modules/infra-ec2/`). It pulls the identical `config/{tempo,loki,prometheus,grafana}` configs from an S3 artifacts bucket and runs the same container images (pinned in `variables.tf` → `observability_images`). The box's private DNS is exported as `observability_private_dns` (`outputs.tf`); feed it into the services' `OTLP_ENDPOINT` (`:4317`) and `LOKI_URL` (`:3100`). Unlike the local compose `config/prometheus/prometheus.yml` (which targets `host.docker.internal`), the AWS data box gets a **rendered** scrape config (`terraform/modules/infra-ec2/templates/prometheus.yml.tftpl`) pointing at the app box's pinned private IP for the 7 services (`10.0.2.x:8081-8087`) and the web box for the BFF; the `app` security group admits the `infra` tier on the service port range (`app_from_infra`) so the scrape can reach them. The 7 services permit `/actuator/prometheus` unauthenticated, so they scrape clean; the **BFF secures all its actuator endpoints** (OAuth2 layer) and is therefore not scraped unless its `SecurityFilterChain` is changed to `permitAll` that path.

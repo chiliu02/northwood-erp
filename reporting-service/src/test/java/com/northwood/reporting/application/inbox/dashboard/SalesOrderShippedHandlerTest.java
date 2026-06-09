@@ -48,7 +48,7 @@ class SalesOrderShippedHandlerTest {
             eventId, ORDER, "SO-1", UUID.randomUUID(), "SH-1",
             UUID.randomUUID(), "CUST-001", "Acme",
             LocalDate.of(2026, 6, 3), "AUD", "on_shipment",
-            lines, SHIPPED_AT
+            lines, true, SHIPPED_AT
         );
         return new EventEnvelope(
             eventId, SalesAggregateTypes.SALES_ORDER, ORDER,

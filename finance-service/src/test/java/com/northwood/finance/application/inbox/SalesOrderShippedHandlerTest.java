@@ -65,6 +65,7 @@ class SalesOrderShippedHandlerTest {
                 UUID.randomUUID(), 10, UUID.randomUUID(), "SKU", "Product",
                 new BigDecimal("2"), unitPrice, new BigDecimal("0.10"), new BigDecimal("60.00")
             )),
+            true,
             Instant.now()
         );
         return new EventEnvelope(

@@ -10,7 +10,7 @@ variable "service_names" {
 variable "bff_client_secret" {
   description = <<-EOT
     Keycloak confidential-client secret for northwood-bff. MUST match the
-    `"secret"` baked into db/keycloak/northwood-realm.json (default
+    `"secret"` baked into config/keycloak/northwood-realm.json (default
     "northwood-bff-secret"). Rotating it means editing the realm JSON too —
     that's why it's a fixed variable, not a random_password.
   EOT

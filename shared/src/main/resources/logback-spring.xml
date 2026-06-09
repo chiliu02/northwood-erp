@@ -52,7 +52,7 @@
             <!-- Labels stay low-cardinality (service + level) so Loki's index
                  doesn't explode. Thread / logger / trace IDs go into the
                  message line; trace IDs are also picked up by the Loki
-                 datasource's `derivedFields` regex (db/grafana/provisioning/
+                 datasource's `derivedFields` regex (config/grafana/provisioning/
                  datasources/datasources.yaml) for click-through to Tempo. -->
             <label>
                 <pattern>service=${appName},level=%level</pattern>

@@ -574,13 +574,17 @@ public class SalesOrderService {
     }
 
     /**
-     * Loads the {@link SalesOrder}, calls {@code recordShipped(...)} to emit
-     * {@code SalesOrderShipped}, and saves — the repository drains the pending
-     * event onto the outbox in the same transaction. Called from the inbox
-     * handler that consumes inventory's {@code ShipmentPosted}.
+     * Loads the {@link SalesOrder}, calls {@code recordShipped(...)} (accumulates
+     * per-line shipped quantity, moves the header to {@code shipped} /
+     * {@code partially_shipped}, emits {@code SalesOrderShipped}), and saves — the
+     * repository persists the line shipment progress + drains the pending event
+     * onto the outbox in the same transaction. Called from the inbox handler that
+     * consumes inventory's {@code ShipmentPosted}. Returns the aggregate's
+     * {@link SalesOrder.ShipmentOutcome} so the handler can gate the saga on
+     * whether this shipment completed the order.
      */
     @Transactional
-    public void recordShipped(
+    public SalesOrder.ShipmentOutcome recordShipped(
         UUID salesOrderHeaderId,
         UUID shipmentHeaderId,
         String shipmentNumber,
@@ -590,8 +594,10 @@ public class SalesOrderService {
         SalesOrder order = salesOrders.findById(SalesOrderId.of(salesOrderHeaderId))
             .orElseThrow(() -> new IllegalStateException(
                 "No sales_order_header for sales_order_header_id=" + salesOrderHeaderId));
-        order.recordShipped(shipmentHeaderId, shipmentNumber, shipmentDate, new ArrayList<>(shippedLines));
+        SalesOrder.ShipmentOutcome outcome =
+            order.recordShipped(shipmentHeaderId, shipmentNumber, shipmentDate, new ArrayList<>(shippedLines));
         salesOrders.save(order);
+        return outcome;
     }
 
     private BigDecimal resolveUnitPrice(OrderLine req, String orderCurrency) {

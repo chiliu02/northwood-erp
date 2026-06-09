@@ -37,7 +37,7 @@ import org.testcontainers.utility.DockerImageName;
  * in scenario 7.1.
  *
  * <p>Lifecycle: one container per JVM (static), schema bootstrapped from
- * {@code db/northwood_erp.sql} once. Each test seeds its own
+ * {@code config/postgresql/northwood_erp.sql} once. Each test seeds its own
  * {@code purchase_order_header} row via {@link #seedPo(BigDecimal)} and
  * asserts the column transitions via direct SELECT.
  */
@@ -77,8 +77,8 @@ class JdbcPurchaseOrderPaymentProjectionIT {
      * above still connects as postgres but with the production search_path.
      */
     private static void loadBaseline() {
-        applySqlFile(Path.of("..", "db", "northwood_erp.sql"));
-        applySqlFile(Path.of("..", "db", "northwood_erp_seed.sql"));
+        applySqlFile(Path.of("..", "config", "postgresql", "northwood_erp.sql"));
+        applySqlFile(Path.of("..", "config", "postgresql", "northwood_erp_seed.sql"));
     }
 
     private static void applySqlFile(Path file) {

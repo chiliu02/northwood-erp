@@ -1,5 +1,5 @@
 -- Minimal Postgres bootstrap for the inventory-service integration test.
--- We deliberately don't replay db/northwood_erp.sql wholesale (too much
+-- We deliberately don't replay config/postgresql/northwood_erp.sql wholesale (too much
 -- unrelated schema for one test); just the inventory pieces the seam
 -- exercises: shared functions, inventory.warehouse + seed row,
 -- inventory.product_card, inventory.stock_balance, inventory.inbox_message.

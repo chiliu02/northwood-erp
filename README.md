@@ -18,8 +18,8 @@ _The operational ERP SPA — the Sales Orders list, served by the BFF from the r
 Northwood/
 ├── pom.xml                       Parent POM
 ├── docker-compose.yml            Postgres 17 + Kafka 4.1.2 (KRaft, single broker) + Keycloak 26 + LGTM stack (Prometheus/Tempo/Loki/Grafana)
-├── docker-compose.seed.yml       Override — layer on to also load the demo seed (db/northwood_erp_seed.sql)
-├── db/                           Baseline schema + roles/grants (northwood_erp.sql), seed, Keycloak realm + LGTM configs (prometheus/tempo/loki/promtail/grafana)
+├── docker-compose.seed.yml       Override — layer on to also load the demo seed (config/postgresql/northwood_erp_seed.sql)
+├── config/                       Baseline schema + roles/grants + seed (postgresql/northwood_erp{,_seed}.sql), Keycloak realm, guest front-door template + LGTM configs (prometheus/tempo/loki/promtail/grafana)
 │
 ├── shared-kernel/                Pure Java value objects (Money, Quantity, Sku, …)
 ├── shared/                       Outbox/inbox base, EventEnvelope, Kafka publisher, Saga base (split: `shared.application.*` ports, `shared.infrastructure.*` adapters, `shared.api.*` audit REST)
@@ -95,7 +95,7 @@ Everything ships with **demo-grade** credentials so the stack boots with zero se
 | Secret | Default | Override | Where |
 |---|---|---|---|
 | Keycloak BFF client secret | `northwood-bff-secret` | `KEYCLOAK_BFF_CLIENT_SECRET` | `erp-web-ui-bff` OIDC client |
-| 13 demo user passwords | password = username (e.g. `sarah` / `sarah`) | re-import the realm with new credentials | `db/keycloak/northwood-realm.json` |
+| 13 demo user passwords | password = username (e.g. `sarah` / `sarah`) | re-import the realm with new credentials | `config/keycloak/northwood-realm.json` |
 | Keycloak bootstrap admin | `admin` / `admin` | `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD` | `docker-compose.yml` |
 | 7 service DB passwords | `postgres` | `<SERVICE>_DB_PASSWORD` (+ `<SERVICE>_DB_USER`, `<SERVICE>_DB_URL`) | each service's `application.yml` |
 

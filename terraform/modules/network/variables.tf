@@ -47,6 +47,18 @@ variable "keycloak_port" {
   default     = 8080
 }
 
+variable "welcome_port" {
+  description = "Guest front-door (static welcome page) port — public on the web EC2. Keep in sync with the infra-ec2 module's welcome_port (both default 80)."
+  type        = number
+  default     = 80
+}
+
+variable "ui_port" {
+  description = "Operational ERP SPA port — public on the web EC2. An nginx on this port serves the built erp-web-ui and reverse-proxies /api,/oauth2,/login,/logout to the BFF. Keep in sync with the infra-ec2 module's ui_port (both default 8090)."
+  type        = number
+  default     = 8090
+}
+
 variable "app_port_range" {
   description = "Inclusive TCP port range the 7 services listen on (8081-8087)."
   type = object({

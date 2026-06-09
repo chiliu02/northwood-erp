@@ -197,6 +197,8 @@ class PaymentServiceTest {
             when(customerInvoices.findPaymentSnapshot(invoiceId)).thenReturn(Optional.of(
                 customerSnap(CUSTOMER, Currencies.AUD, "posted", "550.00", "0.00")
             ));
+            // Order has only this invoice, 550 outstanding → paying 550 settles the order.
+            when(customerInvoices.sumOutstandingForOrder(any())).thenReturn(new BigDecimal("550.00"));
 
             service.recordCustomerPayment(new RecordCustomerPaymentCommand(
                 "PMT-C-001", invoiceId, new BigDecimal("550.00"), "bank_transfer", PAY_DATE
@@ -204,10 +206,31 @@ class PaymentServiceTest {
 
             CustomerPaymentReceived event = firstCustomerEvent(capturedPayment());
             assertThat(event.invoiceStatusAfter()).isEqualTo("paid");
+            assertThat(event.orderFullySettled()).isTrue();
             verify(journals).postCustomerPayment(
                 any(), any(), eq("PMT-C-001"), eq(new BigDecimal("550.00")), eq(Currencies.AUD), eq(PAY_DATE),
                 eq(CustomerInvoice.InvoiceType.COMMERCIAL)
             );
+        }
+
+        @Test void invoice_paid_but_order_has_more_outstanding_reports_order_not_settled() {
+            // Partial-shipment case: this per-shipment invoice (550) is paid in
+            // full, but the order has another shipment's invoice still owing
+            // (1200 outstanding across the order) → orderFullySettled must be false
+            // so sales' saga does NOT complete the order.
+            UUID invoiceId = UUID.randomUUID();
+            when(customerInvoices.findPaymentSnapshot(invoiceId)).thenReturn(Optional.of(
+                customerSnap(CUSTOMER, Currencies.AUD, "posted", "550.00", "0.00")
+            ));
+            when(customerInvoices.sumOutstandingForOrder(any())).thenReturn(new BigDecimal("1200.00"));
+
+            service.recordCustomerPayment(new RecordCustomerPaymentCommand(
+                "PMT-C-002", invoiceId, new BigDecimal("550.00"), "bank_transfer", PAY_DATE
+            ));
+
+            CustomerPaymentReceived event = firstCustomerEvent(capturedPayment());
+            assertThat(event.invoiceStatusAfter()).isEqualTo("paid");
+            assertThat(event.orderFullySettled()).isFalse();
         }
 
         @Test void rejects_draft_invoice_status() {

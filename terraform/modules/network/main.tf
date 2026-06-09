@@ -87,14 +87,19 @@ resource "aws_instance" "nat" {
   user_data = <<-EOT
     #!/bin/bash
     set -euxo pipefail
+    # Amazon Linux 2023 ships WITHOUT iptables — install it before use. (The
+    # original ordering ran iptables first and aborted with "command not found"
+    # under set -e, leaving the NAT with ip_forward on but no MASQUERADE rule,
+    # so the private subnets had no egress at all.)
+    dnf install -y iptables-nft iptables-services
     sysctl -w net.ipv4.ip_forward=1
     echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/99-nat.conf
     IFACE=$(ip route show default | awk '{print $5; exit}')
     iptables -t nat -A POSTROUTING -o "$IFACE" -j MASQUERADE
     iptables -A FORWARD -i "$IFACE" -m state --state RELATED,ESTABLISHED -j ACCEPT
     iptables -A FORWARD -o "$IFACE" -j ACCEPT
-    dnf install -y iptables-services || true
-    iptables-save > /etc/sysconfig/iptables || true
+    iptables-save > /etc/sysconfig/iptables
+    systemctl enable --now iptables
   EOT
 
   tags = { Name = "${var.name_prefix}-nat" }

@@ -32,11 +32,18 @@ locals {
   app_ip  = var.private_ips.app
   web_ip  = var.private_ips.web
 
-  # Keycloak's public issuer (browser OIDC). Falls back to the web box's private
-  # IP only so things resolve before a hostname is set — real OIDC login needs a
-  # real public hostname (var.keycloak_hostname).
-  kc_host       = var.keycloak_hostname != "" ? var.keycloak_hostname : local.web_ip
-  kc_issuer     = "http://${local.kc_host}:8080/realms/northwood"
+  # Keycloak's public issuer (browser OIDC). Defaults to the web box's stable
+  # Elastic IP so browser login works out of the box; an explicit
+  # var.keycloak_hostname (e.g. a DNS name) still overrides it.
+  kc_host   = var.keycloak_hostname != "" ? var.keycloak_hostname : aws_eip.web.public_ip
+  kc_issuer = "http://${local.kc_host}:8080/realms/northwood"
+
+  # The front-door "Enter the ERP" link targets the operational ERP SPA, served
+  # by an nginx on the web box (ui_port) that reverse-proxies /api,/oauth2,/login,
+  # /logout to the BFF. Reuses kc_host (the web box's stable Elastic IP) so it's
+  # browser-reachable; same host the OIDC redirect_uri + web origins resolve to.
+  erp_url = "http://${local.kc_host}:${var.ui_port}"
+
   kafka_boot    = "${local.data_ip}:9092"
   otlp_endpoint = var.enable_observability ? "http://${local.data_ip}:4317" : ""
   loki_url      = var.enable_observability ? "http://${local.data_ip}:3100/loki/api/v1/push" : ""
@@ -80,16 +87,16 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "artifacts" {
 resource "aws_s3_object" "baseline_sql" {
   bucket = aws_s3_bucket.artifacts.id
   key    = "db/01-northwood_erp.sql"
-  source = "${var.repo_root}/db/northwood_erp.sql"
-  etag   = filemd5("${var.repo_root}/db/northwood_erp.sql")
+  source = "${var.repo_root}/config/postgresql/northwood_erp.sql"
+  etag   = filemd5("${var.repo_root}/config/postgresql/northwood_erp.sql")
 }
 
 resource "aws_s3_object" "seed_sql" {
   count  = var.load_seed_data ? 1 : 0
   bucket = aws_s3_bucket.artifacts.id
   key    = "db/02-northwood_erp_seed.sql"
-  source = "${var.repo_root}/db/northwood_erp_seed.sql"
-  etag   = filemd5("${var.repo_root}/db/northwood_erp_seed.sql")
+  source = "${var.repo_root}/config/postgresql/northwood_erp_seed.sql"
+  etag   = filemd5("${var.repo_root}/config/postgresql/northwood_erp_seed.sql")
 }
 
 resource "aws_s3_object" "service_logins_sql" {
@@ -101,8 +108,29 @@ resource "aws_s3_object" "service_logins_sql" {
 resource "aws_s3_object" "realm" {
   bucket = aws_s3_bucket.artifacts.id
   key    = "keycloak/northwood-realm.json"
-  source = "${var.repo_root}/db/keycloak/northwood-realm.json"
-  etag   = filemd5("${var.repo_root}/db/keycloak/northwood-realm.json")
+  source = "${var.repo_root}/config/keycloak/northwood-realm.json"
+  etag   = filemd5("${var.repo_root}/config/keycloak/northwood-realm.json")
+}
+
+# Guest front-door page template. The web box renders ${ERP_URL} at boot
+# (host-side sed) before serving it via a plain nginx container — same output
+# as the docker-compose envsubst path, different runtime.
+resource "aws_s3_object" "welcome_template" {
+  bucket = aws_s3_bucket.artifacts.id
+  key    = "welcome/index.html.template"
+  source = "${var.repo_root}/config/welcome.html.template"
+  etag   = filemd5("${var.repo_root}/config/welcome.html.template")
+}
+
+# Built operational ERP SPA (erp-web-ui/dist). Staged file-by-file under spa/;
+# the web box `aws s3 sync`s it to the nginx html dir. Requires `npm run build`
+# in erp-web-ui/ before apply (the dist fileset is read at plan time).
+resource "aws_s3_object" "spa" {
+  for_each = fileset("${var.repo_root}/erp-web-ui/dist", "**")
+  bucket   = aws_s3_bucket.artifacts.id
+  key      = "spa/${each.value}"
+  source   = "${var.repo_root}/erp-web-ui/dist/${each.value}"
+  etag     = filemd5("${var.repo_root}/erp-web-ui/dist/${each.value}")
 }
 
 resource "aws_s3_object" "postgres_env" {
@@ -132,17 +160,34 @@ resource "aws_s3_object" "bff_env" {
 # ---- observability config tree (only when enabled) -------------------------
 resource "aws_s3_object" "obs_config" {
   for_each = var.enable_observability ? {
-    "obs/tempo.yaml"                                      = "${var.repo_root}/db/tempo/tempo.yaml"
-    "obs/loki-config.yaml"                                = "${var.repo_root}/db/loki/loki-config.yaml"
-    "obs/prometheus.yml"                                  = "${var.repo_root}/db/prometheus/prometheus.yml"
-    "obs/grafana/datasources/datasources.yaml"            = "${var.repo_root}/db/grafana/provisioning/datasources/datasources.yaml"
-    "obs/grafana/dashboards-provisioning/dashboards.yaml" = "${var.repo_root}/db/grafana/provisioning/dashboards/dashboards.yaml"
-    "obs/grafana/dashboards/northwood-overview.json"      = "${var.repo_root}/db/grafana/dashboards/northwood-overview.json"
+    "obs/tempo.yaml"                                      = "${var.repo_root}/config/tempo/tempo.yaml"
+    "obs/loki-config.yaml"                                = "${var.repo_root}/config/loki/loki-config.yaml"
+    "obs/grafana/datasources/datasources.yaml"            = "${var.repo_root}/config/grafana/provisioning/datasources/datasources.yaml"
+    "obs/grafana/dashboards-provisioning/dashboards.yaml" = "${var.repo_root}/config/grafana/provisioning/dashboards/dashboards.yaml"
+    "obs/grafana/dashboards/northwood-overview.json"      = "${var.repo_root}/config/grafana/dashboards/northwood-overview.json"
   } : {}
   bucket = aws_s3_bucket.artifacts.id
   key    = each.key
   source = each.value
   etag   = filemd5(each.value)
+}
+
+# prometheus.yml is rendered (not a static copy of the compose file) so the AWS
+# data box scrapes the services at their pinned private IPs instead of the
+# compose-only host.docker.internal. The app-sg admits the infra tier on the
+# service port range for the scrape (see the network module); the BFF's port on
+# the web box is already internet-open.
+resource "aws_s3_object" "prometheus_config" {
+  count  = var.enable_observability ? 1 : 0
+  bucket = aws_s3_bucket.artifacts.id
+  key    = "obs/prometheus.yml"
+  content = templatefile("${path.module}/templates/prometheus.yml.tftpl", {
+    services = var.services
+    app_ip   = local.app_ip
+    web_ip   = local.web_ip
+    bff_name = var.bff_name
+    bff_port = var.bff_port
+  })
 }
 
 # --------------------------------------------------------------------------
@@ -296,8 +341,27 @@ resource "aws_instance" "web" {
     services       = var.services
     otlp_endpoint  = local.otlp_endpoint
     loki_url       = local.loki_url
+    welcome_image  = var.welcome_image
+    welcome_port   = var.welcome_port
+    erp_url        = local.erp_url
+    ui_port        = var.ui_port
+    web_ip         = local.web_ip
   })
 
   tags       = { Name = "${var.name_prefix}-web" }
-  depends_on = [aws_s3_object.realm, aws_s3_object.keycloak_env, aws_s3_object.bff_env, aws_instance.app]
+  depends_on = [aws_s3_object.realm, aws_s3_object.keycloak_env, aws_s3_object.bff_env, aws_s3_object.welcome_template, aws_s3_object.spa, aws_instance.app]
+}
+
+# Stable public IP for the web box so the Keycloak issuer + front-door URLs
+# survive instance replacement and stop/start. Allocation is kept separate from
+# the association so web/app user_data can embed aws_eip.web.public_ip without a
+# dependency cycle (the allocation does not reference the instance).
+resource "aws_eip" "web" {
+  domain = "vpc"
+  tags   = { Name = "${var.name_prefix}-web" }
+}
+
+resource "aws_eip_association" "web" {
+  allocation_id = aws_eip.web.id
+  instance_id   = aws_instance.web.id
 }

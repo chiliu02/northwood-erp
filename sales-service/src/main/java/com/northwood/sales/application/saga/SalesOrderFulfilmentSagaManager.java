@@ -160,18 +160,44 @@ public interface SalesOrderFulfilmentSagaManager {
      */
     String applyLineReservationChanged(UUID salesOrderHeaderId, UUID salesOrderLineId, boolean lineIsShort);
 
-    /** Apply {@code inventory.ShipmentPosted}. Transitions {@code ready_to_ship → goods_shipped}. */
-    String applyShipmentPosted(UUID salesOrderHeaderId);
+    /**
+     * Apply {@code inventory.ShipmentPosted}. {@code orderFullyShipped} (decided
+     * by the {@code SalesOrder} aggregate — it owns ordered vs. cumulative-shipped
+     * quantities) drives the on_shipment branch:
+     * <ul>
+     *   <li>fully shipped — {@code ready_to_ship | partially_shipped → goods_shipped}
+     *       (waits for finance's {@code CustomerInvoiceCreated});</li>
+     *   <li>partial — {@code ready_to_ship → partially_shipped}, or stays at
+     *       {@code partially_shipped} (a further partial shipment), awaiting the
+     *       shipment that completes the order.</li>
+     * </ul>
+     * Prepayment / COD orders are single-shipment: they ignore the flag and walk
+     * straight to their terminal on the first shipment (their invoice/payment is
+     * settled at/before shipment). No-op (returns current state) from any other
+     * source state.
+     */
+    String applyShipmentPosted(UUID salesOrderHeaderId, boolean orderFullyShipped);
 
     /** Apply {@code finance.CustomerInvoiceCreated}. Transitions {@code goods_shipped → invoice_created}. */
     String applyCustomerInvoiceCreated(UUID salesOrderHeaderId);
 
     /**
-     * Apply {@code finance.CustomerPaymentReceived}. On full settlement,
-     * transitions to {@code completed}. On partial, transitions to
-     * {@code invoice_partially_paid} and parks for further payments.
+     * Apply {@code finance.CustomerPaymentReceived}. Two settlement signals:
+     * <ul>
+     *   <li>{@code invoiceFullySettled} — the single invoice this payment
+     *       allocated against is now fully paid. Used by the prepayment
+     *       ({@code → prepaid}) and deposit ({@code deposit_invoiced →
+     *       deposit_paid}) branches, which are single-invoice.</li>
+     *   <li>{@code orderFullySettled} — every invoice for the order is fully
+     *       paid. The on_shipment branch completes the order on THIS (not the
+     *       per-invoice flag): with partial shipments an order has several
+     *       invoices, so paying one in full must not complete the order.</li>
+     * </ul>
+     * On_shipment: completes only when {@code orderFullySettled}, else
+     * {@code → invoice_partially_paid}. A payment while {@code partially_shipped}
+     * (an interim per-shipment invoice) is a no-op. No-op from any other source.
      */
-    String applyCustomerPaymentReceived(UUID salesOrderHeaderId, boolean fullySettled);
+    String applyCustomerPaymentReceived(UUID salesOrderHeaderId, boolean invoiceFullySettled, boolean orderFullySettled);
 
     /**
      * Apply {@code inventory.SalesOrderCancellationApplied} — the sole

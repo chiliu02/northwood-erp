@@ -81,7 +81,7 @@
     <div class="diagram">
 
       <div class="cloud"><img src="https://api.iconify.design/mdi/web.svg"/> <b>Internet</b> &nbsp;<span style="color:#5f6b7a">browser</span></div>
-      <div class="arrow">HTTP&nbsp;:8089&nbsp;&nbsp;·&nbsp;&nbsp;OIDC&nbsp;:8080</div>
+      <div class="arrow">Front door&nbsp;:80&nbsp;&nbsp;·&nbsp;&nbsp;ERP UI&nbsp;:8090&nbsp;&nbsp;·&nbsp;&nbsp;OIDC&nbsp;:8080</div>
 
       <div class="region">
         <div class="lbl"><img src="aws-icons/g-region.svg"/> AWS Region · single AZ</div>
@@ -96,11 +96,13 @@
 
           <!-- ===== Band 1: public subnet ===== -->
           <section class="subnet public">
-            <div class="lbl"><img src="aws-icons/g-subnet-pub.svg"/> Public subnet · web-sg (:8089 + :8080 from internet)</div>
+            <div class="lbl"><img src="aws-icons/g-subnet-pub.svg"/> Public subnet · web-sg (:80 + :8090 + :8089 + :8080 from internet)</div>
             <div class="ec2">
               <div class="lbl"><img src="aws-icons/ec2.svg"/> EC2 · public IP · docker-compose · SSM-only shell</div>
               <div class="row">
-                <div class="res"><img src="https://api.iconify.design/logos/spring-icon.svg"/><b>erp-web-ui-bff</b><span>:8089 · the only UI · OIDC</span></div>
+                <div class="res"><img src="https://api.iconify.design/logos/nginx.svg"/><b>Front door</b><span>:80 · nginx · static "start here" page</span></div>
+                <div class="res"><img src="https://api.iconify.design/logos/nginx.svg"/><b>ERP SPA</b><span>:8090 · nginx · serves erp-web-ui + proxies /api,/oauth2,/login,/logout → BFF</span></div>
+                <div class="res"><img src="https://api.iconify.design/logos/spring-icon.svg"/><b>erp-web-ui-bff</b><span>:8089 · API + OIDC (behind the SPA nginx)</span></div>
                 <div class="res"><img src="https://api.iconify.design/simple-icons/keycloak.svg"/><b>Keycloak</b><span>:8080 · public (browser OIDC redirect)</span></div>
               </div>
             </div>
@@ -144,7 +146,7 @@
         <div class="regional-lbl">▼ egress via the NAT instance — regional AWS services</div>
         <div class="regional">
           <div class="res"><img src="aws-icons/ecr.svg"/><b>ECR</b><span>×8 app images (3rd-party from Docker Hub/quay)</span></div>
-          <div class="res"><img src="aws-icons/s3.svg"/><b>S3 artifacts</b><span>db SQL · realm · env (passwords) · configs</span></div>
+          <div class="res"><img src="aws-icons/s3.svg"/><b>S3 artifacts</b><span>db SQL · realm · env (passwords) · configs · SPA dist</span></div>
           <div class="res"><img src="aws-icons/ssm.svg"/><b>SSM Session Manager</b><span>shell + Grafana port-forward (all 3 EC2)</span></div>
         </div>
       </div><!-- /region -->
@@ -153,7 +155,7 @@
 
     <h2>The three tiers (stacked, 1 EC2 each)</h2>
     <ul>
-      <li><b>Public subnet</b> — 1 EC2 (public IP), <code>web-sg</code> opens <code>:8089</code> + <code>:8080</code>: <code>erp-web-ui-bff</code> + Keycloak. The only internet-facing box; Keycloak is here so the browser can reach it for OIDC.</li>
+      <li><b>Public subnet</b> — 1 EC2 (public IP), <code>web-sg</code> opens <code>:80</code> + <code>:8090</code> + <code>:8089</code> + <code>:8080</code>: a guest <b>front door</b> (nginx static page on <code>:80</code>), the <b>operational ERP SPA</b> (nginx on <code>:8090</code> serving <code>erp-web-ui</code>), <code>erp-web-ui-bff</code> (<code>:8089</code>), and Keycloak (<code>:8080</code>). The only internet-facing box; Keycloak is here so the browser can reach it for OIDC. The front door (<code>:80</code>) is the first thing to open — its "Enter the ERP" link is baked from <code>ERP_URL</code> at boot (the SPA on <code>:8090</code>), so a visitor lands on the bare public IP and clicks through. The SPA nginx reverse-proxies <code>/api</code>, <code>/oauth2</code>, <code>/login</code>, <code>/logout</code> to the BFF so the SPA's relative calls + the OIDC code flow run same-origin (no CORS); the BFF uses <code>server.forward-headers-strategy=framework</code> so it builds the OIDC <code>redirect_uri</code> against the public <code>:8090</code> origin.</li>
       <li><b>Private subnet #1 (app)</b> — 1 EC2 (no public IP), <code>app-sg</code> allows only the web tier: the 7 services.</li>
       <li><b>Private subnet #2 (infra)</b> — 1 EC2 (no public IP), <code>infra-sg</code> allows only the app tier: Postgres + Kafka (+ optional observability). Most-protected, two hops from the internet.</li>
     </ul>

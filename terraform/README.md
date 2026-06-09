@@ -7,13 +7,16 @@ Three EC2 instances across one public + two private subnets, with a small NAT
 
 | Tier | Subnet | EC2 runs |
 |---|---|---|
-| web  | public (public IP, `web-sg` :8089 + :8080) | `erp-web-ui-bff` + Keycloak |
+| web  | public (public IP, `web-sg` :80 + :8090 + :8089 + :8080) | guest **front door** (nginx :80) + **operational ERP SPA** (nginx :8090) + `erp-web-ui-bff` (:8089) + Keycloak (:8080) |
 | app  | private (`app-sg`) | the 7 services |
 | data | private (`infra-sg`) | Postgres + Kafka + (optional) LGTM observability |
 
-The 2 SPAs (S3/CloudFront) and the fully-managed **production** variant
-(ECS Fargate / Aurora / MSK / Cognito) are out of scope here — production is
-documented in **docs/aws-architecture.html**.
+The operational `erp-web-ui` SPA is served **from the web box** by an nginx on
+`:8090` that reverse-proxies `/api`, `/oauth2`, `/login`, `/logout` to the BFF
+(same-origin, so the SPA's relative calls + the OIDC code flow work without
+CORS). Hosting the SPAs on **S3/CloudFront**, and the fully-managed
+**production** variant (ECS Fargate / Aurora / MSK / Cognito), are out of scope
+here — production is documented in **docs/aws-architecture.html**.
 
 ```
 terraform/
@@ -24,7 +27,7 @@ terraform/
     variables.tf / outputs.tf / terraform.tfvars.example
   modules/
     network/                 # VPC, 3 subnets, IGW, NAT instance, S3 gateway endpoint, tier SGs
-    infra-ec2/               # the 3 EC2 tiers (web/app/data) + docker user-data + IAM + artifacts bucket
+    infra-ec2/               # the 3 EC2 tiers (web/app/data) + web Elastic IP + docker user-data + IAM + artifacts bucket
     ecr/                     # 8 app repos (7 services + erp-bff)
     secrets/                 # Secrets Manager (DB pwds, BFF client secret, bypass token) + plaintext outputs
   build/                     # build-and-push.{ps1,sh}: buildpack images -> ECR
@@ -40,8 +43,15 @@ terraform/
 
 ## Bring-up
 
+> Steps 1–4 are **one-time setup** (state bucket, backend wiring, `init` + tfvars,
+> ECR repos) — skip them on later runs. The repeat-on-change loop is **5 / 6**:
+> rebuild & push images + the SPA (one script call), then `apply` (add
+> `-replace=…app`/`…web` to force a box to re-pull on boot). Re-run `terraform init`
+> only if providers/modules change; re-run step 4 only after a `terraform destroy`
+> (which drops the ECR repos).
+
 ```powershell
-# 1. State backend (local-state bootstrap; run once).
+# 1. State backend (local-state bootstrap).
 cd terraform/bootstrap
 terraform init
 terraform apply -var="state_bucket_name=northwood-tfstate-<your-account-id>"
@@ -57,44 +67,68 @@ cp terraform.tfvars.example terraform.tfvars   # optional: adjust region/tag/etc
 # 4. Create the ECR repos first, so there's somewhere to push the app images.
 terraform apply -target=module.ecr
 
-# 5. Build the 8 app images (7 services + erp-bff) and push to ECR.
+# 5. Build the 8 app images (7 services + erp-bff) + the operational ERP SPA, and
+#    push the images to ECR. One run produces every artifact step 6 needs: the
+#    script also does `npm ci && npm run build` in erp-web-ui/, so a fresh dist/ is
+#    on disk for the apply — Terraform reads that fileset at PLAN time and stages it
+#    to S3 for the web box's nginx (:8090). Images-only iteration: pass -SkipSpa
+#    (PowerShell) / SKIP_SPA=1 (bash), then build erp-web-ui/dist yourself before
+#    step 6, else :8090 serves a 404 / stale build a later build won't fix without
+#    re-applying.
 ../../build/build-and-push.ps1 -Tag latest        #  bash: ../../build/build-and-push.sh latest
 
-# 6. Apply everything else (network + NAT, secrets, the 3 EC2s).
+# 6. Apply everything else (network + NAT, secrets, the 3 EC2s + the web Elastic IP
+#    + the SPA staged to S3).
 terraform apply
 
-# 7. OIDC needs a browser-reachable Keycloak. Grab the web box's public IP and
-#    re-apply with it as the issuer hostname (see note below):
-terraform output web_public_ip
-terraform apply -var="keycloak_hostname=<that-public-ip-or-a-DNS-name>"
+# 7. Done — browser OIDC works out of the box: the web box has a stable Elastic IP
+#    and Keycloak's issuer defaults to it. Grab the entry points:
+terraform output front_door_url   # guest "start here" page
+terraform output web_public_ip    # the stable Elastic IP (also the issuer host)
+#    Optional — to front it with a real domain instead, point DNS at the EIP and
+#    re-apply (user-data only re-runs on replacement, so force-replace the boxes):
+#    terraform apply -var="keycloak_hostname=<your-dns-name>" \
+#      -replace=module.compute.aws_instance.web -replace=module.compute.aws_instance.app
 ```
 
-> **Why the two-phase apply (4 → 5 → 6).** Each EC2's `docker run` user-data pulls
-> the app images from ECR on first boot. If the repos are empty, the *instances*
-> still come up (so a single `apply` looks like it "succeeded") but the containers
-> crash-loop on a pull error. Create the repos, push, then apply the rest. If you
-> change app code later: rebuild/push (step 5), then recreate the affected box —
-> `terraform apply -replace=module.compute.aws_instance.app` (or `.web`).
+> **Why the two-phase apply (4 → 5 → 6) — first bring-up only.** Each EC2's
+> `docker run` user-data pulls the app images from ECR on first boot. If the repos
+> are empty, the *instances* still come up (so a single `apply` looks like it
+> "succeeded") but the containers crash-loop on a pull error. So the **first**
+> bring-up splits it: step 4 creates the repos, step 5 pushes images into them,
+> step 6 applies the rest. The split is a one-time bootstrap — the repos persist.
+>
+> **Shipping a new app version (deployment still up): just steps 5 → 6.** Skip
+> 1–4 entirely. Step 5 rebuilds & pushes the images (and the SPA) to the existing
+> repos; step 6 redeploys. Because user-data only re-runs on instance
+> *replacement*, a plain `apply` won't pull the new image onto a running box — so
+> recreate the affected box(es):
+> `terraform apply -replace=module.compute.aws_instance.app` (or `.web`, or both).
 
-> **Keycloak hostname is chicken-and-egg (step 7).** OIDC redirects the browser to
-> Keycloak, so `KC_HOSTNAME` / the issuer must be the web box's **public** address —
-> which you only know after the first apply. Re-applying with `keycloak_hostname`
-> set changes the web box's user-data and therefore **replaces the web EC2**. To
-> avoid the re-apply churn, attach an **Elastic IP** to the web box up front and use
-> that as `keycloak_hostname`. Until it's set, the issuer falls back to the web
-> box's private IP and browser login won't work (the rest of the stack runs fine).
+> **Keycloak issuer rides the web box's Elastic IP.** OIDC redirects the browser to
+> Keycloak, so `KC_HOSTNAME` / the issuer must be the web box's **public** address.
+> The module allocates a stable **Elastic IP** for the web box and defaults the
+> issuer to it, so browser login works on the **first** apply — no second re-apply,
+> and the address survives instance replacement / stop-start. The front door's
+> **"Enter the ERP"** link reuses the same address (→ the operational SPA on `:8090`).
+> To front it with a real domain, point DNS at the EIP and re-apply with
+> `-var="keycloak_hostname=<your-dns-name>"`. Because `user_data_replace_on_change`
+> is false, that change is in-place and won't re-run user-data on the live boxes —
+> add `-replace=module.compute.aws_instance.web -replace=module.compute.aws_instance.app`
+> to force the recreation that re-bakes the issuer.
 
 Bring-up order (data → app → web) is handled by Terraform's graph: the boxes use
 **pinned static private IPs** (`10.0.1.10 / .2.10 / .3.10`, set in `envs/demo/main.tf`)
 so cross-tier URLs (BFF→services, services→Postgres/Kafka/Keycloak) are computed at
 plan time with no instance-to-instance dependency cycle. User-data pulls `db/`,
-the Keycloak realm, the generated role-login script, and the env files from the
-private artifacts bucket on first boot.
+the Keycloak realm, the generated role-login script, the env files, and the built
+SPA (`spa/`) from the private artifacts bucket on first boot.
 
 ## Verify
 
 ```powershell
-terraform output web_public_ip       # open http://<ip>:8089  (erp-web-ui-bff)  ·  Keycloak on :8080
+terraform output front_door_url      # open this first — the guest "start here" page (http://<ip>/)
+terraform output web_public_ip       # operational ERP UI on http://<ip>:8090  ·  Keycloak on :8080  (BFF :8089 is proxied by the SPA nginx)
 terraform output instance_ids        # aws ssm start-session --target <data-id>
 # on the data box:  docker exec -it northwood-postgres psql -U postgres -d northwood_erp \
 #                     -c "select count(*) from sales.customer;"
@@ -114,6 +148,20 @@ terraform destroy
 ---
 
 ## Design decisions worth knowing
+
+- **The operational SPA is served from the web box by nginx (not S3/CloudFront).**
+  `erp-web-ui` is a Vite SPA that calls the BFF with **relative** paths (`/api`,
+  `/oauth2`, `/login`, `/logout`), so it must be served same-origin as the BFF. On
+  this minimal demo we skip S3/CloudFront and instead run an nginx on the web box
+  (`:8090`) that serves the built `dist/` and reverse-proxies those four prefixes to
+  the BFF (`:8089`). The BFF runs with `server.forward-headers-strategy=framework`,
+  so the `X-Forwarded-*` headers nginx sends let Spring build the OIDC `redirect_uri`
+  / `{baseUrl}` against the public `:8090` origin. The realm's `localhost:8089` +
+  `localhost:5174` redirect URIs / web origins are rewritten to `<public-host>:8090`
+  at import time (host-side `sed` in the web user-data). `dist/` is staged to S3 by
+  Terraform (`aws_s3_object.spa`, a `fileset` over `erp-web-ui/dist`), so **build the
+  SPA before `apply`** — step 5 does this for you (`-SkipSpa` to opt out). Production
+  serves the SPA from S3/CloudFront (`docs/aws-architecture.html`).
 
 - **NAT *instance*, not a NAT Gateway or VPC endpoints.** The private subnets need
   outbound internet to pull third-party images (Postgres/Kafka from Docker Hub,
@@ -136,7 +184,7 @@ terraform destroy
   just set `KEYCLOAK_ISSUER_URI` to the public host.
 
 - **Per-service DB login roles (the load-bearing invariant, made real).** The baseline
-  `db/northwood_erp.sql` ships the `<svc>_service` roles as `NOLOGIN`. Terraform
+  `config/postgresql/northwood_erp.sql` ships the `<svc>_service` roles as `NOLOGIN`. Terraform
   generates a password per service, renders an `ALTER ROLE <svc>_service LOGIN
   PASSWORD …` init script (staged as `03-service-logins.sql`), stages all of them in
   `env/services.env`, and each service container connects as its own role — so the
@@ -147,7 +195,7 @@ terraform destroy
   that's why state lives in the private + encrypted + versioned bootstrap bucket.
 
 - **Keycloak BFF client secret is fixed, not random.** It must equal the `"secret"`
-  baked into `db/keycloak/northwood-realm.json` (`northwood-bff-secret`). Rotating it
+  baked into `config/keycloak/northwood-realm.json` (`northwood-bff-secret`). Rotating it
   means editing the realm JSON too.
 
 - **Single Kafka broker, RF=1**, carried over from compose — recover-after-restart,

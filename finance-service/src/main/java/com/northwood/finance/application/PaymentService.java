@@ -141,6 +141,11 @@ public class PaymentService {
         BigDecimal paidAfter = inv.paidAmount().add(command.amount());
         String invoiceStatusAfter = paidAfter.compareTo(inv.totalAmount()) >= 0
             ? CustomerInvoice.Status.PAID.dbValue() : CustomerInvoice.Status.PARTIALLY_PAID.dbValue();
+        // Order-level settlement (drives the on_shipment saga completion).
+        // Computed arithmetically against the pre-payment order outstanding to
+        // sidestep the maintain_allocation_totals trigger timing, exactly as
+        // invoiceStatusAfter is.
+        boolean orderFullySettled = orderFullySettledAfter(inv.salesOrderHeaderId(), command.amount());
 
         Payment payment = Payment.recordCustomerPayment(
             command.paymentNumber(),
@@ -152,7 +157,8 @@ public class PaymentService {
             command.amount(),
             command.customerInvoiceHeaderId(),
             inv.salesOrderHeaderId(),
-            invoiceStatusAfter
+            invoiceStatusAfter,
+            orderFullySettled
         );
         payments.save(payment);
 
@@ -218,7 +224,11 @@ public class PaymentService {
             outstanding,
             customerInvoiceHeaderId,
             inv.salesOrderHeaderId(),
-            CustomerInvoice.Status.PAID.dbValue()
+            CustomerInvoice.Status.PAID.dbValue(),
+            // COD is single-shipment / single-invoice, so settling this invoice in
+            // full settles the order. (The COD saga ignores the flag anyway — it
+            // completes at shipment.) Compute it for consistency/correctness.
+            orderFullySettledAfter(inv.salesOrderHeaderId(), outstanding)
         );
         payments.save(payment);
 
@@ -333,6 +343,11 @@ public class PaymentService {
         CustomerInvoice.InvoiceType expectedInvoiceType = null;
         BigDecimal totalAmount = BigDecimal.ZERO;
         List<CustomerAllocationLine> lines = new ArrayList<>();
+        // A single physical receipt can settle invoices across several orders;
+        // order-level settlement is computed per distinct order after the loop.
+        java.util.Map<UUID, BigDecimal> allocByOrder = new java.util.HashMap<>();
+        record Interim(UUID invoiceId, UUID orderId, BigDecimal amount, String invoiceStatusAfter) {}
+        List<Interim> interim = new ArrayList<>();
         for (RecordCustomerPaymentMultiCommand.InvoiceLine il : command.invoices()) {
             PaymentSnapshot inv = lookupCustomerInvoice(il.customerInvoiceHeaderId());
             Assert.state(inv.status() == CustomerInvoice.Status.POSTED || inv.status() == CustomerInvoice.Status.PARTIALLY_PAID, "Cannot pay customer invoice " + il.customerInvoiceHeaderId()
@@ -369,11 +384,23 @@ public class PaymentService {
             String invoiceStatusAfter = paidAfter.compareTo(inv.totalAmount()) >= 0
                 ? CustomerInvoice.Status.PAID.dbValue() : CustomerInvoice.Status.PARTIALLY_PAID.dbValue();
             totalAmount = totalAmount.add(il.amount());
+            allocByOrder.merge(inv.salesOrderHeaderId(), il.amount(), BigDecimal::add);
+            interim.add(new Interim(
+                il.customerInvoiceHeaderId(), inv.salesOrderHeaderId(), il.amount(), invoiceStatusAfter));
+        }
+
+        // Per-order: settled when the order's pre-payment outstanding is fully
+        // covered by what this payment allocates to it (arithmetic, like the
+        // per-invoice status — independent of the maintain_allocation_totals trigger).
+        java.util.Map<UUID, Boolean> orderSettled = new java.util.HashMap<>();
+        for (UUID orderId : allocByOrder.keySet()) {
+            orderSettled.put(orderId,
+                customerInvoices.sumOutstandingForOrder(orderId).subtract(allocByOrder.get(orderId)).signum() <= 0);
+        }
+        for (Interim it : interim) {
             lines.add(new CustomerAllocationLine(
-                il.customerInvoiceHeaderId(),
-                inv.salesOrderHeaderId(),
-                il.amount(),
-                invoiceStatusAfter
+                it.invoiceId(), it.orderId(), it.amount(), it.invoiceStatusAfter(),
+                orderSettled.getOrDefault(it.orderId(), false)
             ));
         }
 
@@ -403,6 +430,18 @@ public class PaymentService {
             payment.paymentNumber(), totalAmount, lines.size(), expectedCustomerName
         );
         return PaymentView.from(payment);
+    }
+
+    /**
+     * Order-level settlement after allocating {@code allocationToOrder} toward
+     * {@code salesOrderHeaderId}: true when the order's pre-payment outstanding
+     * (SUM of {@code outstanding_amount} across all its invoices) is fully
+     * covered. Arithmetic — independent of the {@code maintain_allocation_totals}
+     * trigger having fired, exactly like the per-invoice {@code invoiceStatusAfter}.
+     */
+    private boolean orderFullySettledAfter(UUID salesOrderHeaderId, BigDecimal allocationToOrder) {
+        return customerInvoices.sumOutstandingForOrder(salesOrderHeaderId)
+            .subtract(allocationToOrder).signum() <= 0;
     }
 
     private PaymentSnapshot lookupCustomerInvoice(UUID customerInvoiceHeaderId) {

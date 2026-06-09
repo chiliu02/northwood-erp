@@ -31,7 +31,7 @@ import tools.jackson.databind.ObjectMapper;
  * service wires one drainer + one scheduler bean under {@code @Profile("kafka")}.
  *
  * <p>Uses the service's own {@code sequence_number} as the polling cursor —
- * never {@code created_at}. See {@code db/northwood_erp.sql} schema commentary
+ * never {@code created_at}. See {@code config/postgresql/northwood_erp.sql} schema commentary
  * for why. Publish is synchronous per row: a row is marked {@code published}
  * only after the bus acknowledges, otherwise {@code failed} (with the error)
  * for retry on the next tick.
