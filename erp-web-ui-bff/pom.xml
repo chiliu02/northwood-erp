@@ -60,6 +60,17 @@
             <artifactId>spring-boot-starter-opentelemetry</artifactId>
         </dependency>
 
+        <!-- Metrics. Same reason as the tracing starter above: the BFF doesn't
+             depend on `shared` (where the seven services pick up this registry),
+             so the Prometheus registry that backs /actuator/prometheus is added
+             directly. Without it the endpoint never registers — exposing it in
+             application.yml and permitting it in BffSecurityConfig are both inert
+             — and the observability box's scrape gets no BFF RED metrics. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
