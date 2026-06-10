@@ -203,6 +203,12 @@ world.
 | `reorder_point_breached(productCode)` | `inventory.replenishmentDetection.checkAfterOnHandDecrement(...)`; **settles** (releases + reserves a make-to-stock WO) |
 | `work_order_for(fgCode).completes_manufacturing()` | resolves the WO from its replenishment request; completes every operation through the **real** `WorkOrderOperationService` (no forged event); **settles** |
 | `goods_received_for(productCode)` | posts a full-quantity goods receipt against the product's replenishment PO through the **real** `GoodsReceiptService` (no forged event); **settles** |
+| `buyer().raises_requisition(prNo).line(productCode, Qty)` | `purchasing.requisitionService.createManual` (auto-converts to a draft PO; registers `prNo → poId`); **settles** |
+| `buyer().approves_the_po_for(prNo)` | `purchasing.purchaseOrderService.approve`; **settles** (worker → waiting_for_goods) |
+| `warehouse(MAIN).receives_goods_for(prNo)` | real goods receipt against the requisition's PO; **settles** |
+| `the_supplier().invoices(siNo).for_requisition(prNo).at_unit_price(Money)` | `finance.supplierInvoiceService.recordInvoice` (3-way match; >2% over forces failure); **settles** |
+| `a_reviewer().rejects_the_supplier_invoice().because(reason)` | `finance.supplierInvoiceService.manualReject` of the parked invoice; **settles** |
+| `the_supplier().is_paid(payNo).of(Money)` | `finance.paymentService.recordSupplierPayment`; **settles** |
 
 ### Then — assert the outcome
 
@@ -216,6 +222,8 @@ world.
 | `a_replenishment_request(code).routedTo(T).because(R).ofQuantity(Qty).forOrder(no).reaches(Status)` | inventory's `ReplenishmentRequest` for the product has that routing/reason/quantity, is pegged to that order, and reached that status (REQ-INV-080/081/093) |
 | `a_stock_balance(code).shows(onHand, reserved, available)` | the product's ATP triple (pegged stock shows 0 available) |
 | `a_work_order_for(code).wasCreated()` / `.isMakeToStock()` | a work order producing the product was released (and carries no sales-order peg) |
+| `a_purchase_order_for(prNo).reaches(PurchaseToPaySaga.STATE)` / `.is_fully_paid()` | the requisition's PO saga reached that state / the PO is fully paid |
+| `a_supplier_invoice().reaches(SupplierInvoice.Status)` | the supplier invoice on file reached that status (APPROVED / THREE_WAY_MATCH_FAILED / CANCELLED) |
 | `events_published_count(EVENT_TYPE, n)` | the event was published exactly `n` times across all kits (e.g. no-reservation-retry proof) |
 | `a_journal().of_type(SourceDocumentType).debiting(acct, Money).crediting(acct, Money).posted()` | finance posted a journal of that type with the given Dr/Cr lines (GL-posting / REQ-FIN-0xx detail) |
 | `gl_account(code).netsToZero()` | the account's Dr−Cr sum across every posted journal is zero (e.g. 2110 after a deposit + its refund) |
@@ -472,8 +480,8 @@ baseline) and the requirements it exercises. Build-out runs in the phases of §9
 | Stock replenishment — manufactured | `StockReplenishmentManufacturedPathDslTest` | `StockReplenishmentManufacturedPathTest` | REQ-XBC-080 (A, make), REQ-MFG-030, REQ-INV-080/084 | ✅ (real WO completion) |
 | Stock replenishment — purchased | `StockReplenishmentPurchasedPathDslTest` | `StockReplenishmentPurchasedPathTest` | REQ-XBC-080 (A, buy), REQ-PUR-020, REQ-INV-080/084 | ✅ (real goods receipt) |
 | Stock replenishment — sub-assembly | `StockReplenishmentSubAssemblyPathDslTest` | `StockReplenishmentSubAssemblyPathTest` | REQ-MFG-021 | ✅ (outcome subset) |
-| Procure-to-pay (happy) | `PurchaseToPayHappyPathDslTest` | `PurchaseToPayHappyPathTest` | REQ-XBC-020, REQ-FIN-020/021/022 | Phase C |
-| Procure-to-pay (3-way-match reject) | `PurchaseToPayRejectionPathDslTest` | `PurchaseToPayRejectionPathTest` | REQ-PUR-050, REQ-FIN-051 | Phase C |
+| Procure-to-pay (happy) | `PurchaseToPayHappyPathDslTest` | `PurchaseToPayHappyPathTest` | REQ-XBC-020, REQ-PUR-020/030/031 | ✅ (real goods receipt) |
+| Procure-to-pay (3-way-match reject) | `PurchaseToPayRejectionPathDslTest` | `PurchaseToPayRejectionPathTest` | REQ-PUR-050, REQ-FIN-051 | ✅ (real 3-way match) |
 | Requisition to-order guard | `PurchaseRequisitionToOrderGuardDslTest` | `PurchaseRequisitionToOrderGuardTest` | REQ-PUR-020, REQ-PROD-022 | Phase C |
 | Reporting read-views | *(per-view DslTests)* | — | REQ-RPT-001/010/020/040/050/060 | Phase D (feasibility TBD) |
 | WO priority cascade | `SetPriorityCascadeDslTest` | `SetPriorityCascadeTest` | REQ-MFG-070, REQ-RPT-020 | Phase E |

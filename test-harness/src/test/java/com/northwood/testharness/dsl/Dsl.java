@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.northwood.finance.domain.CustomerInvoice;
 import com.northwood.finance.domain.JournalEntry;
 import com.northwood.finance.domain.Payment;
+import com.northwood.finance.domain.SupplierInvoice;
 import com.northwood.inventory.domain.ReplenishmentRequest;
 import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
@@ -447,6 +448,11 @@ public final class Dsl {
         public Shipment ships(String orderNumber) {
             return new Shipment(orderNumber);
         }
+
+        /** Receive goods (for real) against the purchase order raised from a requisition. */
+        public ActionStep receives_goods_for(String requisitionNumber) {
+            return world -> world.receiveGoodsForRequisition(requisitionNumber, "GR-" + requisitionNumber);
+        }
     }
 
     /**
@@ -493,6 +499,121 @@ public final class Dsl {
     /** Goods are received (for real) against the purchase order replenishing a product, fulfilling the request. */
     public static ActionStep goods_received_for(String productCode) {
         return world -> world.receiveGoodsForReplenishment(productCode, "GR-" + productCode);
+    }
+
+    // ── procure-to-pay actors ──
+
+    /** A buyer who can raise a requisition or approve a purchase order. */
+    public static BuyerActions buyer() {
+        return new BuyerActions();
+    }
+
+    public static final class BuyerActions {
+        private BuyerActions() {
+        }
+
+        public RequisitionBuilder raises_requisition(String requisitionNumber) {
+            return new RequisitionBuilder(requisitionNumber);
+        }
+
+        /** Approve the purchase order auto-created from the named requisition. */
+        public ActionStep approves_the_po_for(String requisitionNumber) {
+            return world -> world.approvePurchaseOrder(requisitionNumber, "approved");
+        }
+    }
+
+    /** Accumulates the requisition line, then raises the manual requisition on {@code act}. */
+    public static final class RequisitionBuilder implements ActionStep {
+        private final String requisitionNumber;
+        private String productCode;
+        private Qty quantity;
+
+        private RequisitionBuilder(String requisitionNumber) {
+            this.requisitionNumber = requisitionNumber;
+        }
+
+        public RequisitionBuilder line(String productCode, Qty quantity) {
+            this.productCode = productCode;
+            this.quantity = quantity;
+            return this;
+        }
+
+        @Override
+        public void act(World world) {
+            world.raiseManualRequisition(requisitionNumber, productCode, quantity.amount());
+        }
+    }
+
+    /** The supplier, who invoices against a PO and receives payment. */
+    public static SupplierActions the_supplier() {
+        return new SupplierActions();
+    }
+
+    public static final class SupplierActions {
+        private SupplierActions() {
+        }
+
+        public SupplierInvoiceBuilder invoices(String internalInvoiceNumber) {
+            return new SupplierInvoiceBuilder(internalInvoiceNumber);
+        }
+
+        public SupplierPaymentBuilder is_paid(String paymentNumber) {
+            return new SupplierPaymentBuilder(paymentNumber);
+        }
+    }
+
+    public static final class SupplierInvoiceBuilder {
+        private final String internalInvoiceNumber;
+        private String requisitionNumber;
+
+        private SupplierInvoiceBuilder(String internalInvoiceNumber) {
+            this.internalInvoiceNumber = internalInvoiceNumber;
+        }
+
+        public SupplierInvoiceBuilder for_requisition(String requisitionNumber) {
+            this.requisitionNumber = requisitionNumber;
+            return this;
+        }
+
+        /** Invoice at a unit price; &gt; 2% over the PO price forces a three-way-match failure. */
+        public ActionStep at_unit_price(Money unitPrice) {
+            return world -> world.recordSupplierInvoice(internalInvoiceNumber, requisitionNumber, unitPrice.amount());
+        }
+    }
+
+    public static final class SupplierPaymentBuilder {
+        private final String paymentNumber;
+
+        private SupplierPaymentBuilder(String paymentNumber) {
+            this.paymentNumber = paymentNumber;
+        }
+
+        public ActionStep of(Money amount) {
+            return world -> world.paySupplier(paymentNumber, amount.amount());
+        }
+    }
+
+    /** An AP reviewer who can reject a parked supplier invoice. */
+    public static ReviewerActions a_reviewer() {
+        return new ReviewerActions();
+    }
+
+    public static final class ReviewerActions {
+        private ReviewerActions() {
+        }
+
+        public RejectionBuilder rejects_the_supplier_invoice() {
+            return new RejectionBuilder();
+        }
+    }
+
+    public static final class RejectionBuilder {
+        private RejectionBuilder() {
+        }
+
+        public ActionStep because(String reason) {
+            return world -> world.rejectSupplierInvoice("ap-reviewer", reason);
+        }
     }
 
     /** The stock work order replenishing a product; drive it through completion. */
@@ -819,6 +940,45 @@ public final class Dsl {
         return world -> assertThat(world.publishedEventCount(eventType))
             .as("times %s was published", eventType)
             .isEqualTo(times);
+    }
+
+    /** Assertion about the purchase-to-pay saga / payment state of a requisition's purchase order. */
+    public static PurchaseOrderAssertion a_purchase_order_for(String requisitionNumber) {
+        return new PurchaseOrderAssertion(requisitionNumber);
+    }
+
+    public static final class PurchaseOrderAssertion {
+        private final String requisitionNumber;
+
+        private PurchaseOrderAssertion(String requisitionNumber) {
+            this.requisitionNumber = requisitionNumber;
+        }
+
+        /** The purchase-to-pay saga reaches the given state (a {@code PurchaseToPaySaga.*} constant). */
+        public AssertStep reaches(String sagaState) {
+            return world -> assertThat(world.purchaseToPaySaga(requisitionNumber).state())
+                .as("purchase-to-pay saga for %s", requisitionNumber).isEqualTo(sagaState);
+        }
+
+        public AssertStep is_fully_paid() {
+            return world -> assertThat(world.isPurchaseOrderFullyPaid(requisitionNumber))
+                .as("purchase order for %s fully paid", requisitionNumber).isTrue();
+        }
+    }
+
+    /** Assertion about the supplier invoice on file (single-invoice p2p scenarios). */
+    public static SupplierInvoiceAssertion a_supplier_invoice() {
+        return new SupplierInvoiceAssertion();
+    }
+
+    public static final class SupplierInvoiceAssertion {
+        private SupplierInvoiceAssertion() {
+        }
+
+        public AssertStep reaches(SupplierInvoice.Status status) {
+            return world -> assertThat(world.supplierInvoice().status())
+                .as("supplier invoice status").isEqualTo(status);
+        }
     }
 
     /** The union of every kit's outbox contains each of the given {@code EVENT_TYPE}s. */

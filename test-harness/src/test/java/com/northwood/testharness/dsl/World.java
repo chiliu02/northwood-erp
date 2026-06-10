@@ -1,9 +1,12 @@
 package com.northwood.testharness.dsl;
 
 import com.northwood.finance.application.dto.RecordCustomerPaymentCommand;
+import com.northwood.finance.application.dto.RecordSupplierInvoiceCommand;
+import com.northwood.finance.application.dto.RecordSupplierPaymentCommand;
 import com.northwood.finance.domain.CustomerInvoice;
 import com.northwood.finance.domain.JournalEntry;
 import com.northwood.finance.domain.Payment;
+import com.northwood.finance.domain.SupplierInvoice;
 import com.northwood.inventory.application.dto.GoodsReceiptLineRequest;
 import com.northwood.inventory.application.dto.PostGoodsReceiptCommand;
 import com.northwood.inventory.application.dto.PostShipmentCommand;
@@ -17,9 +20,13 @@ import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderOperation;
 import com.northwood.manufacturing.domain.saga.WorkOrderSaga;
+import com.northwood.purchasing.application.dto.CreateRequisitionCommand;
+import com.northwood.purchasing.application.dto.RequisitionLineRequest;
 import com.northwood.purchasing.domain.PurchaseOrder;
 import com.northwood.purchasing.domain.PurchaseOrderId;
 import com.northwood.purchasing.domain.PurchaseOrderLine;
+import com.northwood.purchasing.domain.events.PurchaseOrderCreated;
+import com.northwood.purchasing.domain.saga.PurchaseToPaySaga;
 import com.northwood.sales.application.dto.PlaceOrderCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand.OrderLine;
 import com.northwood.sales.domain.Customer;
@@ -90,6 +97,7 @@ public final class World {
     // ── the registry: business identifier → engine identity / facts ──
     private final Map<String, SeededProduct> productsByCode = new HashMap<>();
     private final Map<String, UUID> orderIdsByNumber = new HashMap<>();
+    private final Map<String, UUID> purchaseOrderByRequisition = new HashMap<>();
 
     // settle()'s fixed point ticks every wired kit's saga worker and counts the
     // union of every wired kit's outbox, so a newly-wired kit auto-joins both.
@@ -285,6 +293,103 @@ public final class World {
         }
         receiveGoods(goodsReceiptNumber, poId);
         return this;
+    }
+
+    /**
+     * Raise a manual purchase requisition for a product (REQ-PUR-020). The
+     * requisition service auto-converts it to a draft purchase order; the created
+     * PO is registered under {@code prNumber} for later approve / receive / invoice
+     * / pay steps. Then {@link #settle()}.
+     */
+    public World raiseManualRequisition(String prNumber, String productCode, BigDecimal quantity) {
+        SeededProduct p = product(productCode);
+        purchasing.requisitionService.createManual(new CreateRequisitionCommand(
+            prNumber,
+            List.of(new RequisitionLineRequest(p.productId(), p.code(), p.name(), quantity, null))));
+        UUID poId = purchasing.outbox.all().stream()
+            .filter(r -> PurchaseOrderCreated.EVENT_TYPE.equals(r.getEventType()))
+            .map(OutboxRow::getAggregateId)
+            .reduce((first, second) -> second)
+            .orElseThrow(() -> new IllegalStateException("No purchase order created for requisition " + prNumber));
+        purchaseOrderByRequisition.put(prNumber, poId);
+        settle();
+        return this;
+    }
+
+    /** Approve the purchase order raised from a requisition (REQ-PUR-031), then settle (worker → waiting_for_goods). */
+    public World approvePurchaseOrder(String prNumber, String note) {
+        purchasing.purchaseOrderService.approve(purchaseOrderId(prNumber), note);
+        settle();
+        return this;
+    }
+
+    /** Post a goods receipt against a requisition's purchase order (real service), then settle. */
+    public World receiveGoodsForRequisition(String prNumber, String goodsReceiptNumber) {
+        return receiveGoods(goodsReceiptNumber, purchaseOrderId(prNumber));
+    }
+
+    /**
+     * Record a supplier invoice against a requisition's PO through the real
+     * {@code SupplierInvoiceService} (3-way match), then settle. The invoice line
+     * mirrors the PO line (full ordered quantity) at the given unit price — pass a
+     * price &gt; 2% over the PO price to force a three-way-match failure.
+     */
+    public World recordSupplierInvoice(String internalInvoiceNumber, String prNumber, BigDecimal unitPrice) {
+        UUID poId = purchaseOrderId(prNumber);
+        PurchaseOrder po = purchasing.orders.findById(PurchaseOrderId.of(poId)).orElseThrow();
+        PurchaseOrderLine line = po.lines().get(0);
+        finance.supplierInvoiceService.recordInvoice(new RecordSupplierInvoiceCommand(
+            internalInvoiceNumber, "SUP-" + internalInvoiceNumber,
+            poId, po.purchaseOrderNumber(), null, null,
+            po.supplierId(), "SUP-001", po.supplierName(), CURRENCY,
+            List.of(new RecordSupplierInvoiceCommand.Line(
+                line.id(), null, line.productId(), line.productSku(), line.productName(),
+                line.orderedQuantity(), unitPrice, BigDecimal.ZERO))));
+        settle();
+        return this;
+    }
+
+    /** Manually reject the parked (three-way-match-failed) supplier invoice, then settle (saga → failed). */
+    public World rejectSupplierInvoice(String reviewer, String reason) {
+        UUID supplierInvoiceId = finance.supplierInvoices
+            .findByStatus(SupplierInvoice.Status.THREE_WAY_MATCH_FAILED).get(0).id().value();
+        finance.supplierInvoiceService.manualReject(supplierInvoiceId, reviewer, reason);
+        settle();
+        return this;
+    }
+
+    /** Pay the approved supplier invoice in full through the real {@code PaymentService}, then settle. */
+    public World paySupplier(String paymentNumber, BigDecimal amount) {
+        UUID supplierInvoiceId = finance.supplierInvoices
+            .findByStatus(SupplierInvoice.Status.APPROVED).get(0).id().value();
+        finance.paymentService.recordSupplierPayment(new RecordSupplierPaymentCommand(
+            paymentNumber, supplierInvoiceId, amount,
+            Payment.Method.BANK_TRANSFER.dbValue(), LocalDate.of(2026, 5, 20)));
+        settle();
+        return this;
+    }
+
+    /** The purchase-to-pay saga of a requisition's PO. */
+    public PurchaseToPaySaga purchaseToPaySaga(String prNumber) {
+        return purchasing.sagas.findByPurchaseOrderId(purchaseOrderId(prNumber)).orElseThrow();
+    }
+
+    /** Whether a requisition's PO is fully paid (the payment projection). */
+    public boolean isPurchaseOrderFullyPaid(String prNumber) {
+        return purchasing.paymentProjection.isFullyPaid(purchaseOrderId(prNumber));
+    }
+
+    /** The supplier invoice currently on file (single-invoice p2p scenarios). */
+    public SupplierInvoice supplierInvoice() {
+        return finance.supplierInvoices.findAll().get(0);
+    }
+
+    private UUID purchaseOrderId(String prNumber) {
+        UUID poId = purchaseOrderByRequisition.get(prNumber);
+        if (poId == null) {
+            throw new IllegalStateException("No purchase order for requisition " + prNumber + " — raise it first");
+        }
+        return poId;
     }
 
     /** Post a full-quantity goods receipt against a purchase order through the real service, then settle. */
