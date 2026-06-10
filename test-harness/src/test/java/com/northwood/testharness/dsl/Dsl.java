@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The acceptance-DSL vocabulary (see {@code docs/dsl.md} §5). Static factory
+ * The acceptance-DSL vocabulary (see {@code docs/test-harness-dsl.md} §5). Static factory
  * methods that read as business English and resolve to real operations on the
  * {@link World}. A scenario file static-imports {@code Dsl.*}.
  *

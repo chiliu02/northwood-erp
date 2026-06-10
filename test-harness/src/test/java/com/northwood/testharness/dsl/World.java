@@ -32,7 +32,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * The single mutable fixture behind the acceptance-test DSL (see
- * {@code docs/dsl.md}). It constructs the {@link SynchronousBus} + the three
+ * {@code docs/test-harness-dsl.md}). It constructs the {@link SynchronousBus} + the three
  * service kits exactly as the hand-written {@code o2c/*Test}s do, owns a
  * <strong>registry</strong> mapping business identifiers (customer codes,
  * product codes, order numbers) to the UUIDs the engine generates, and folds

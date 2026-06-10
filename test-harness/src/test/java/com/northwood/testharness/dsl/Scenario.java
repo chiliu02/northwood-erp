@@ -1,7 +1,7 @@
 package com.northwood.testharness.dsl;
 
 /**
- * Fluent entry point for an acceptance scenario (see {@code docs/dsl.md} §7).
+ * Fluent entry point for an acceptance scenario (see {@code docs/test-harness-dsl.md} §7).
  * Threads one {@link World} through a {@code given / when / then} script
  * written in the ubiquitous language:
  *

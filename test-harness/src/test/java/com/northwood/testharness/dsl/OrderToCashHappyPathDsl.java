@@ -27,7 +27,7 @@ import com.northwood.sales.domain.events.StockReservationRequested;
 import org.junit.jupiter.api.Test;
 
 /**
- * Slice-2 of the acceptance-test DSL (see {@code docs/dsl.md} §7) — the o2c
+ * Slice-2 of the acceptance-test DSL (see {@code docs/test-harness-dsl.md} §7) — the o2c
  * happy path expressed entirely in the ubiquitous language: orders, shipments,
  * invoices, payments. No {@code drain}, no {@code advanceSagaWorker}, no UUIDs,
  * no positional command records.

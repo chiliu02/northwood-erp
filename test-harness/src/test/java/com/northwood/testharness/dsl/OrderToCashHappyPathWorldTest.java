@@ -17,7 +17,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * Slice-1 spike for the acceptance-test DSL (see {@code docs/dsl.md} §9.1).
+ * Slice-1 spike for the acceptance-test DSL (see {@code docs/test-harness-dsl.md} §9.1).
  *
  * <p>Re-derives {@code o2c/OrderToCashHappyPathTest}'s assertions through the
  * {@link World} fixture — same real services, saga worker, handlers, and serde
