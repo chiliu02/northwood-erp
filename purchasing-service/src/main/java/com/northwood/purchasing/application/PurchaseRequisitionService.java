@@ -78,6 +78,30 @@ public class PurchaseRequisitionService {
         @Override public Map<String, Object> params() { return Map.of("sku", sku); }
     }
 
+    /**
+     * Thrown when a <em>manual</em> requisition names a to-order product. A
+     * to-order line never draws from free stock — each sales order raises its own
+     * dedicated, order-pegged supply — so stock bought on a manual requisition
+     * would land in free ATP and could never be reserved by a sales order,
+     * orphaning as dead inventory. The system order-pegged buy flow
+     * ({@link #createForStockReplenishment}) is the legitimate path and is not
+     * gated. Mapped to HTTP 409.
+     */
+    public static class ToOrderProductManualPurchaseException extends ConflictException {
+        public static final String CODE = "PRODUCT_TO_ORDER_NO_MANUAL_PURCHASE";
+        private final String sku;
+        public ToOrderProductManualPurchaseException(String sku) {
+            super(CODE, "Product sku=" + sku + " is to-order (order-pegged supply): a sales order "
+                + "raises its own dedicated supply and never draws from free stock, so stock bought "
+                + "on a manual requisition could never be reserved by an order — it would orphan as "
+                + "dead inventory. To-order products are purchased only through the order-pegged "
+                + "replenishment flow, not a manual requisition.");
+            this.sku = sku;
+        }
+        public String sku() { return sku; }
+        @Override public Map<String, Object> params() { return Map.of("sku", sku); }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(PurchaseRequisitionService.class);
 
     private final PurchaseRequisitionRepository purchaseRequisitions;
@@ -85,6 +109,7 @@ public class PurchaseRequisitionService {
     private final PurchaseOrderService purchaseOrders;
     private final DiscontinuedProductLookup discontinuedProducts;
     private final PurchasableProductLookup purchasableProducts;
+    private final ToOrderProductLookup toOrderProducts;
     private final CurrentUserAccessor currentUser;
     private final boolean shortagePoAutoApprove;
 
@@ -94,6 +119,7 @@ public class PurchaseRequisitionService {
         PurchaseOrderService purchaseOrders,
         DiscontinuedProductLookup discontinuedProducts,
         PurchasableProductLookup purchasableProducts,
+        ToOrderProductLookup toOrderProducts,
         CurrentUserAccessor currentUser,
         @Value("${northwood.purchasing.shortagePoAutoApprove:true}") boolean shortagePoAutoApprove
     ) {
@@ -102,6 +128,7 @@ public class PurchaseRequisitionService {
         this.purchaseOrders = purchaseOrders;
         this.discontinuedProducts = discontinuedProducts;
         this.purchasableProducts = purchasableProducts;
+        this.toOrderProducts = toOrderProducts;
         this.currentUser = currentUser;
         this.shortagePoAutoApprove = shortagePoAutoApprove;
     }
@@ -119,6 +146,18 @@ public class PurchaseRequisitionService {
 
     @Transactional
     public PurchaseRequisitionView createManual(CreateRequisitionCommand command) {
+        // Manual-path-only guard: a to-order product must not be bought via a
+        // manual requisition — its received stock would land in free ATP and could
+        // never be reserved by a sales order (every to-order line raises its own
+        // dedicated, order-pegged supply), orphaning as dead inventory. The system
+        // order-pegged buy flow (createForStockReplenishment) is the legitimate
+        // path and is deliberately not gated here, so the check lives here rather
+        // than in the shared buildLines.
+        for (RequisitionLineRequest line : command.lines()) {
+            if (toOrderProducts.isToOrder(line.productId())) {
+                throw new ToOrderProductManualPurchaseException(line.productSku());
+            }
+        }
         Supplier defaultSupplier = suppliers.defaultSupplier();
         List<PurchaseRequisitionLine> lines = buildLines(command.lines(), defaultSupplier);
 

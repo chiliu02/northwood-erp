@@ -713,6 +713,18 @@ INSERT INTO purchasing.product_card (product_id, product_sku, product_name, is_p
     ('00000000-0000-7000-8000-000000000501', 'FG-CARPET-001',        'Custom-design Carpet',        true)
 ON CONFLICT (product_id) DO NOTHING;
 
+-- Mirror replenishment_strategy for the two to_order products onto the purchasing
+-- card (the bulk insert above lets the column default to 'to_stock'): FG-CHEST-001
+-- (make-to-order) and FG-CARPET-001 (buy-to-order). ToOrderProductLookup reads this
+-- so a manual requisition for a to-order product is rejected — its received stock
+-- could never be reserved by a sales order (every to-order line raises its own
+-- dedicated, order-pegged supply). Idempotent (constant target).
+UPDATE purchasing.product_card SET replenishment_strategy = 'to_order'
+ WHERE product_id IN (
+     '00000000-0000-7000-8000-000000000300',
+     '00000000-0000-7000-8000-000000000501'
+ );
+
 COMMIT;
 
 

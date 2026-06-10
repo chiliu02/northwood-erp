@@ -939,7 +939,7 @@ CREATE TABLE inventory.stock_reservation_line (
     stock_reservation_line_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     stock_reservation_header_id UUID NOT NULL REFERENCES inventory.stock_reservation_header(stock_reservation_header_id) ON DELETE RESTRICT,
     -- The originating sales_order_line_id for sales-order reservations, so the
-    -- line-amendment flow (§1G) can correlate a SalesOrderLineAdded/Changed/Removed
+    -- line-amendment flow can correlate a SalesOrderLineAdded/Changed/Removed
     -- event back to the exact reservation line to adjust. NULL for work-order
     -- reservations (those correlate via stock_reservation_line_id = work_order_material_id).
     sales_order_line_id UUID,
@@ -1787,6 +1787,15 @@ CREATE TABLE purchasing.product_card (
     -- false so a row stamped discontinued-first (sku/name still null) doesn't
     -- read as purchasable before ProductCreated lands.
     is_purchased    BOOLEAN NOT NULL DEFAULT false,
+    -- Projected from product.ReplenishmentStrategyChanged (seeded 'to_stock' via
+    -- the column default — ProductCreated carries no strategy). ToOrderProductLookup
+    -- reads it so a manual requisition for a to-order product is rejected: a
+    -- to-order line never draws from free stock (it raises dedicated, order-pegged
+    -- supply), so stock bought manually could never be reserved by a sales order.
+    -- Light CHECK only — the product master carries the full invariant set.
+    replenishment_strategy VARCHAR(20) NOT NULL DEFAULT 'to_stock' CHECK (
+        replenishment_strategy IN ('to_stock', 'to_order')
+    ),
     discontinued_at TIMESTAMPTZ
 );
 

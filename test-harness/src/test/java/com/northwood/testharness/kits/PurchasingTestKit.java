@@ -8,6 +8,7 @@ import com.northwood.purchasing.application.inbox.GoodsReceivedHandler;
 import com.northwood.purchasing.application.inbox.MakeVsBuyChangedHandler;
 import com.northwood.purchasing.application.inbox.ProductDiscontinuedHandler;
 import com.northwood.purchasing.application.inbox.ReplenishmentRequestedHandler;
+import com.northwood.purchasing.application.inbox.ReplenishmentStrategyChangedHandler;
 import com.northwood.purchasing.application.inbox.SupplierInvoiceApprovedHandler;
 import com.northwood.purchasing.application.inbox.SupplierInvoiceRejectedHandler;
 import com.northwood.purchasing.application.inbox.SupplierPaymentMadeHandler;
@@ -23,6 +24,7 @@ import com.northwood.testharness.inmemory.purchasing.InMemoryApprovedVendorQuery
 import com.northwood.testharness.inmemory.purchasing.InMemoryDiscontinuedProductLookup;
 import com.northwood.testharness.inmemory.purchasing.InMemoryProductApprovedVendorProjection;
 import com.northwood.testharness.inmemory.purchasing.InMemoryPurchasableProductLookup;
+import com.northwood.testharness.inmemory.purchasing.InMemoryToOrderProductLookup;
 import com.northwood.testharness.inmemory.purchasing.InMemoryPurchaseOrderPaymentProjection;
 import com.northwood.testharness.inmemory.purchasing.InMemoryPurchaseOrderReceiptProjection;
 import com.northwood.testharness.inmemory.purchasing.InMemoryPurchaseOrderRepository;
@@ -63,6 +65,7 @@ public final class PurchasingTestKit {
     public final InMemoryProductApprovedVendorProjection approvedVendorProjection = new InMemoryProductApprovedVendorProjection();
     public final InMemoryDiscontinuedProductLookup discontinuedProducts = new InMemoryDiscontinuedProductLookup();
     public final InMemoryPurchasableProductLookup purchasableProducts = new InMemoryPurchasableProductLookup();
+    public final InMemoryToOrderProductLookup toOrderProducts = new InMemoryToOrderProductLookup();
     public final InMemoryPurchaseOrderReceiptProjection receiptProjection;
     public final InMemoryPurchaseOrderPaymentProjection paymentProjection = new InMemoryPurchaseOrderPaymentProjection();
 
@@ -91,7 +94,8 @@ public final class PurchasingTestKit {
             orders, requisitions, suppliers, sagaManager, priceLookup, approvedVendorQuery, currentUser
         );
         this.requisitionService = new PurchaseRequisitionService(
-            requisitions, suppliers, purchaseOrderService, discontinuedProducts, purchasableProducts, currentUser, true
+            requisitions, suppliers, purchaseOrderService, discontinuedProducts, purchasableProducts,
+            toOrderProducts, currentUser, true
         );
 
         // No-op query port — the harness drives setPrice, not the enriched list view.
@@ -110,6 +114,7 @@ public final class PurchasingTestKit {
         bus.register(new ApprovedVendorListChangedHandler(inbox, approvedVendorProjection, json));
         bus.register(new ProductDiscontinuedHandler(inbox, discontinuedProducts, json));
         bus.register(new MakeVsBuyChangedHandler(inbox, purchasableProducts, json));
+        bus.register(new ReplenishmentStrategyChangedHandler(inbox, toOrderProducts, json));
     }
 
     public void advanceSagaWorker() {
