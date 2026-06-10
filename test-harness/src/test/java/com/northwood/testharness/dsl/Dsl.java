@@ -13,6 +13,7 @@ import com.northwood.testharness.dsl.Scenario.ActionStep;
 import com.northwood.testharness.dsl.Scenario.AssertStep;
 import com.northwood.testharness.dsl.Scenario.SeedStep;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -86,9 +87,43 @@ public final class Dsl {
             this.productName = productName;
         }
 
-        public SeedStep pricedAt(Money price) {
-            return world -> world.seedProduct(productCode, productName, price.amount());
+        public PricedProduct pricedAt(Money price) {
+            return new PricedProduct(productCode, productName, price);
         }
+    }
+
+    /**
+     * A priced product. Usable directly as a {@code given} seed, or refined with
+     * {@link #withPlanningFence} for the planning-time-fence path (REQ-SAL-037).
+     */
+    public static final class PricedProduct implements SeedStep {
+        private final String productCode;
+        private final String productName;
+        private final Money price;
+
+        private PricedProduct(String productCode, String productName, Money price) {
+            this.productCode = productCode;
+            this.productName = productName;
+            this.price = price;
+        }
+
+        /** Give the product a planning time fence of {@code fenceDays}. */
+        public SeedStep withPlanningFence(int fenceDays) {
+            return world -> {
+                world.seedProduct(productCode, productName, price.amount());
+                world.seedProductFence(productCode, fenceDays);
+            };
+        }
+
+        @Override
+        public void seed(World world) {
+            world.seedProduct(productCode, productName, price.amount());
+        }
+    }
+
+    /** Set the world clock (UTC start-of-day) the fulfilment worker reads for the planning-time fence. */
+    public static SeedStep clock_at(LocalDate date) {
+        return world -> world.setClockAt(date);
     }
 
     /** On-hand stock for a product; place it with {@link StockSeed#at}. */
@@ -168,6 +203,7 @@ public final class Dsl {
         private Percent deposit;
         private boolean cod;
         private boolean settle = true;
+        private LocalDate needBy;
 
         private OrderPlacement(String customerCode, String orderNumber) {
             this.customerCode = customerCode;
@@ -176,6 +212,17 @@ public final class Dsl {
 
         public OrderPlacement line(String productCode, Qty quantity) {
             lines.add(new World.OrderLineSpec(productCode, quantity.amount()));
+            return this;
+        }
+
+        /**
+         * Set the requested-delivery (need-by) date. Inert unless the product
+         * carries a planning time fence ({@code a_product(...).pricedAt(...)
+         * .withPlanningFence(days)}), in which case a far-future date parks the
+         * order at {@code awaiting_release} (REQ-SAL-013/037).
+         */
+        public OrderPlacement needBy(LocalDate date) {
+            this.needBy = date;
             return this;
         }
 
@@ -216,7 +263,11 @@ public final class Dsl {
             } else if (deposit != null) {
                 world.placeDepositOrder(orderNumber, customerCode, deposit.amount(), lines);
             } else if (settle) {
-                world.placeOrder(orderNumber, customerCode, lines);
+                if (needBy != null) {
+                    world.placeOrder(orderNumber, customerCode, needBy, lines);
+                } else {
+                    world.placeOrder(orderNumber, customerCode, lines);
+                }
             } else {
                 world.placeOrderWithoutSettling(orderNumber, customerCode, lines);
             }

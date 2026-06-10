@@ -176,13 +176,16 @@ world.
 |---|---|
 | `a_customer(code, name)` | `sales.customers.put(code, name, ACTIVE)` |
 | `a_product(code, name).pricedAt(Money)` | random `productId`; `sales.productCards.put(...)`; registers `code → productId` |
+| `a_product(code, name).pricedAt(Money).withPlanningFence(days)` | as above + `sales.lineSnapshots.withFence(productId, days)` (REQ-SAL-037) |
 | `stock_on_hand(productCode, Qty).at(Warehouse)` | `inventory.seedStock(productId, qty)` |
+| `clock_at(date)` | `sales.setClock(date @ UTC start-of-day)` — the worker's planning-fence clock |
 
 ### When — drive a domain action (the trigger)
 
 | DSL | Resolves to |
 |---|---|
 | `customer(code).places_order(orderNo).line(productCode, Qty)…` | builds `PlaceOrderCommand`; `sales.placeOrder`; registers `orderNo → orderId`; **settles** |
+| `customer(code).places_order(orderNo).needBy(date)…` | as above with a requested-delivery date — actionable only behind a planning fence (REQ-SAL-013) |
 | `warehouse(wh).ships(orderNo).line(productCode, Qty).at_unit_cost(Money)` | resolves `lineId`, `customerId`; builds `PostShipmentCommand`; `inventory.shipmentService.post`; **settles** |
 | `customer(code).pays(Money).against(orderNo)` / `.against_deposit_on(orderNo)` / `.against_balance_on(orderNo)` | resolves the COMMERCIAL / DEPOSIT / BALANCE invoice; builds `RecordCustomerPaymentCommand`; `finance.paymentService.recordCustomerPayment`; **settles** + stamps the allocation (trigger stand-in) |
 | `customer(code).places_order(orderNo).with_deposit(percent(N))…` | a deposit (part-payment) order — `PaymentTerms.DEPOSIT`, N% up front |
@@ -446,7 +449,7 @@ baseline) and the requirements it exercises. Build-out runs in the phases of §9
 | Cash-on-delivery | `OrderToCashCodPathDslTest` | `OrderToCashCodPathTest` | REQ-SAL-020 (COD), REQ-FIN-024/025 | ✅ |
 | First leg (place → reserve) | *(subsumed by happy-path DslTest)* | `OrderToCashFirstLegTest` | REQ-SAL-030/033, REQ-INV-020 | ⊆ |
 | Cancel + deposit refund | `OrderToCashCancelRefundPathDslTest` | `CancelRefundPathTest` | REQ-SAL-036, REQ-FIN-012/032 | ✅ |
-| Planning time fence (outcome subset) | `OrderToCashPlanningFenceDslTest` | `OrderToCashPlanningFenceTest` | REQ-SAL-013/037 | Phase A |
+| Planning time fence (outcome subset) | `OrderToCashPlanningFenceDslTest` | `OrderToCashPlanningFenceTest` | REQ-SAL-013/037 | ✅ |
 | Make-to-order (pegged WO) | `OrderToCashMakeToOrderPathDslTest` | `OrderToCashMakeToOrderPathTest` | REQ-INV-093, REQ-PROD-022 | Phase B |
 | Buy-to-order (pegged PO) | `OrderToCashBuyToOrderPathDslTest` | `OrderToCashBuyToOrderPathTest` | REQ-INV-093, REQ-PROD-022 | Phase B |
 | Sales-shortage → purchased top-up | `OrderToCashPurchasedShortagePathDslTest` | `OrderToCashPurchasedShortagePathTest` | REQ-XBC-030, REQ-INV-020/091 | Phase B |

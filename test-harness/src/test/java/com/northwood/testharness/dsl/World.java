@@ -22,6 +22,7 @@ import com.northwood.testharness.kits.InventoryTestKit;
 import com.northwood.testharness.kits.SalesTestKit;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -109,6 +110,27 @@ public final class World {
         return this;
     }
 
+    /**
+     * Give a product a planning time fence of {@code fenceDays} (REQ-SAL-037).
+     * The fulfilment worker then parks a far-future order of this product at
+     * {@code awaiting_release} until {@code need-by − fenceDays} (read against
+     * {@link #setClockAt}); within the fence it reserves immediately.
+     */
+    public World seedProductFence(String productCode, int fenceDays) {
+        sales.lineSnapshots.withFence(product(productCode).productId(), fenceDays);
+        return this;
+    }
+
+    /**
+     * Set the world clock the fulfilment worker reads for the planning-time-fence
+     * gate (UTC start-of-day of {@code date}). No real time passes; advancing the
+     * clock is how a fenced order's release is reached deterministically.
+     */
+    public World setClockAt(LocalDate date) {
+        sales.setClock(date.atStartOfDay(ZoneOffset.UTC).toInstant());
+        return this;
+    }
+
     // ============================================================
     // When — drive a real domain action, then settle (the trigger)
     // ============================================================
@@ -133,7 +155,19 @@ public final class World {
      * next settling action ({@link #cancel}) drains the parked event with it.
      */
     public World placeOrderWithoutSettling(String orderNumber, String customerCode, List<OrderLineSpec> lines) {
-        return placeOrder(orderNumber, customerCode, null, null, lines, false);
+        return placeOrder(orderNumber, customerCode, null, null, null, lines, false);
+    }
+
+    /**
+     * Place a standard order with an explicit requested-delivery (need-by) date,
+     * then {@link #settle()}. The date is actionable only through the planning
+     * time fence (REQ-SAL-013/037): for a product seeded with
+     * {@link #seedProductFence}, the worker parks the order at
+     * {@code awaiting_release} until {@code need-by − fence}, read against the
+     * world clock ({@link #setClockAt}). With no fence the date is inert.
+     */
+    public World placeOrder(String orderNumber, String customerCode, LocalDate needBy, List<OrderLineSpec> lines) {
+        return placeOrder(orderNumber, customerCode, null, null, needBy, lines, true);
     }
 
     /**
@@ -167,20 +201,21 @@ public final class World {
     public World placeOrder(
         String orderNumber, String customerCode, String paymentTerms,
         BigDecimal depositPercent, List<OrderLineSpec> lines) {
-        return placeOrder(orderNumber, customerCode, paymentTerms, depositPercent, lines, true);
+        return placeOrder(orderNumber, customerCode, paymentTerms, depositPercent, null, lines, true);
     }
 
     private World placeOrder(
         String orderNumber, String customerCode, String paymentTerms,
-        BigDecimal depositPercent, List<OrderLineSpec> lines, boolean settle) {
+        BigDecimal depositPercent, LocalDate needBy, List<OrderLineSpec> lines, boolean settle) {
         List<OrderLine> commandLines = new ArrayList<>();
         for (OrderLineSpec spec : lines) {
             SeededProduct p = product(spec.productCode());
             commandLines.add(new OrderLine(
                 p.productId(), p.code(), p.name(), spec.quantity(), null, BigDecimal.ZERO));
         }
+        LocalDate deliveryDate = needBy != null ? needBy : LocalDate.of(2026, 5, 20);
         UUID orderId = sales.placeOrder(new PlaceOrderCommand(
-            orderNumber, customerCode, LocalDate.of(2026, 5, 20),
+            orderNumber, customerCode, deliveryDate,
             CURRENCY, paymentTerms, depositPercent, commandLines));
         orderIdsByNumber.put(orderNumber, orderId);
         if (settle) {
