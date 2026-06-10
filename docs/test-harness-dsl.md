@@ -177,6 +177,7 @@ world.
 | `a_customer(code, name)` | `sales.customers.put(code, name, ACTIVE)` |
 | `a_product(code, name).pricedAt(Money)` | random `productId`; `sales.productCards.put(...)`; registers `code → productId` |
 | `a_product(code, name).pricedAt(Money).withPlanningFence(days)` | as above + `sales.lineSnapshots.withFence(productId, days)` (REQ-SAL-037) |
+| `a_product(code, name).pricedAt(Money).manufacturedToOrder()` | a sold, make-to-order product — manufactured + order-pegged (REQ-INV-093) |
 | `stock_on_hand(productCode, Qty).at(Warehouse)` | `inventory.seedStock(productId, qty)` (works for any seeded product) |
 | `clock_at(date)` | `sales.setClock(date @ UTC start-of-day)` — the worker's planning-fence clock |
 | `a_manufactured_product(code, name)` | mints id; registers; make-vs-buy = manufactured into inventory + manufacturing |
@@ -209,7 +210,9 @@ world.
 | `order(orderNo).is_completed()` | saga `COMPLETED` **and** status `COMPLETED` |
 | `a_commercial_invoice()` / `a_deposit_invoice()` / `a_balance_invoice()`.`for_order(orderNo).totalling(Money)` | a `CustomerInvoice` of that type exists for the order with that total |
 | `a_customer_payment().byMethod(Payment.Method.X).wasRecorded()` | finance recorded a customer payment by that method (COD auto-records a `CASH` payment) |
-| `a_replenishment_request(code).routedTo(T).because(R).ofQuantity(Qty).reaches(Status)` | inventory's `ReplenishmentRequest` for the product has that routing/reason/quantity and reached that status (REQ-INV-080/081) |
+| `a_replenishment_request(code).routedTo(T).because(R).ofQuantity(Qty).forOrder(no).reaches(Status)` | inventory's `ReplenishmentRequest` for the product has that routing/reason/quantity, is pegged to that order, and reached that status (REQ-INV-080/081/093) |
+| `a_stock_balance(code).shows(onHand, reserved, available)` | the product's ATP triple (pegged stock shows 0 available) |
+| `events_published_count(EVENT_TYPE, n)` | the event was published exactly `n` times across all kits (e.g. no-reservation-retry proof) |
 | `a_journal().of_type(SourceDocumentType).debiting(acct, Money).crediting(acct, Money).posted()` | finance posted a journal of that type with the given Dr/Cr lines (GL-posting / REQ-FIN-0xx detail) |
 | `gl_account(code).netsToZero()` | the account's Dr−Cr sum across every posted journal is zero (e.g. 2110 after a deposit + its refund) |
 | `events_published(EVENT_TYPE…)` | union of all kits' outboxes contains those `event_type`s |
@@ -458,7 +461,7 @@ baseline) and the requirements it exercises. Build-out runs in the phases of §9
 | First leg (place → reserve) | *(subsumed by happy-path DslTest)* | `OrderToCashFirstLegTest` | REQ-SAL-030/033, REQ-INV-020 | ⊆ |
 | Cancel + deposit refund | `OrderToCashCancelRefundPathDslTest` | `CancelRefundPathTest` | REQ-SAL-036, REQ-FIN-012/032 | ✅ |
 | Planning time fence (outcome subset) | `OrderToCashPlanningFenceDslTest` | `OrderToCashPlanningFenceTest` | REQ-SAL-013/037 | ✅ |
-| Make-to-order (pegged WO) | `OrderToCashMakeToOrderPathDslTest` | `OrderToCashMakeToOrderPathTest` | REQ-INV-093, REQ-PROD-022 | Phase B |
+| Make-to-order (pegged WO) | `OrderToCashMakeToOrderPathDslTest` | `OrderToCashMakeToOrderPathTest` | REQ-INV-093, REQ-PROD-022 | ✅ (real WO completion) |
 | Buy-to-order (pegged PO) | `OrderToCashBuyToOrderPathDslTest` | `OrderToCashBuyToOrderPathTest` | REQ-INV-093, REQ-PROD-022 | Phase B |
 | Sales-shortage → purchased top-up | `OrderToCashPurchasedShortagePathDslTest` | `OrderToCashPurchasedShortagePathTest` | REQ-XBC-030, REQ-INV-020/091 | Phase B |
 | Line amendment (add / remove) | `OrderToCashLineAmendmentDslTest` | `OrderToCashLineAmendmentTest` | REQ-SAL-010, REQ-INV-020 | Phase B |

@@ -6,6 +6,7 @@ import com.northwood.finance.domain.JournalEntry;
 import com.northwood.finance.domain.Payment;
 import com.northwood.inventory.application.dto.PostShipmentCommand;
 import com.northwood.inventory.application.dto.ShipmentLineRequest;
+import com.northwood.inventory.application.dto.StockBalanceView;
 import com.northwood.inventory.domain.ReplenishmentRequest;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.manufacturing.application.dto.CompleteOperationCommand;
@@ -199,6 +200,19 @@ public final class World {
     /** Set a product's reorder policy (point + quantity) on inventory's local snapshot (REQ-PROD-020). */
     public World seedReorderPolicy(String productCode, BigDecimal reorderPoint, BigDecimal reorderQuantity) {
         inventory.reorderPolicies.put(product(productCode).productId(), reorderPoint, reorderQuantity);
+        return this;
+    }
+
+    /**
+     * Mark an already-priced product as make-to-order (REQ-INV-093): manufactured
+     * make-vs-buy + order-pegged, so a sales-order line for it raises dedicated
+     * order-pegged supply routed to manufacturing rather than drawing from the pool.
+     */
+    public World markManufacturedToOrder(String productCode) {
+        UUID productId = product(productCode).productId();
+        sales.lineSnapshots.markOrderPegged(productId);
+        inventory.productReplenishment.put(productId, false, true);
+        manufacturing.replenishment.put(productId, false, true);
         return this;
     }
 
@@ -541,6 +555,28 @@ public final class World {
         return inventory.replenishmentRequests.all().stream()
             .filter(r -> productId.equals(r.productId()))
             .findFirst();
+    }
+
+    /** The on-hand / reserved / available balance for a product at the default warehouse (ATP). */
+    public StockBalanceView stockBalance(String productCode) {
+        UUID productId = product(productCode).productId();
+        return inventory.stockBalances
+            .findBalance(InventoryTestKit.DEFAULT_WAREHOUSE_ID, productId)
+            .orElseGet(() -> StockBalanceView.empty(InventoryTestKit.DEFAULT_WAREHOUSE_ID, productId));
+    }
+
+    /** How many times an event type was published across every wired kit's outbox (multiplicity, not just presence). */
+    public long publishedEventCount(String eventType) {
+        long count = 0;
+        for (InMemoryOutboxPort outbox : outboxes) {
+            count += outbox.all().stream().filter(r -> eventType.equals(r.getEventType())).count();
+        }
+        return count;
+    }
+
+    /** The engine UUID for a registered order number — for asserting peg / source-order links. */
+    public UUID salesOrderId(String orderNumber) {
+        return orderId(orderNumber);
     }
 
     // ============================================================

@@ -116,6 +116,18 @@ public final class Dsl {
             };
         }
 
+        /**
+         * Make the (sold) product make-to-order (REQ-INV-093): manufactured +
+         * order-pegged, so its sales-order line raises dedicated supply routed to
+         * manufacturing. Pair with {@code a_bom(...)} + {@code a_routing(...)}.
+         */
+        public SeedStep manufacturedToOrder() {
+            return world -> {
+                world.seedProduct(productCode, productName, price.amount());
+                world.markManufacturedToOrder(productCode);
+            };
+        }
+
         @Override
         public void seed(World world) {
             world.seedProduct(productCode, productName, price.amount());
@@ -643,6 +655,7 @@ public final class Dsl {
         private ReplenishmentRequest.TargetService target;
         private ReplenishmentRequest.Reason reason;
         private BigDecimal quantity;
+        private String peggedOrder;
 
         private ReplenishmentAssertion(String productCode) {
             this.productCode = productCode;
@@ -663,6 +676,12 @@ public final class Dsl {
             return this;
         }
 
+        /** Assert the request is pegged to the given order (source sales order header). */
+        public ReplenishmentAssertion forOrder(String orderNumber) {
+            this.peggedOrder = orderNumber;
+            return this;
+        }
+
         public AssertStep reaches(ReplenishmentRequest.Status status) {
             return world -> {
                 var request = world.replenishmentRequestFor(productCode);
@@ -678,9 +697,42 @@ public final class Dsl {
                     assertThat(r.requestedQuantity()).as("requested quantity for %s", productCode)
                         .isEqualByComparingTo(quantity);
                 }
+                if (peggedOrder != null) {
+                    assertThat(r.sourceSalesOrderHeaderId()).as("pegged order for %s", productCode)
+                        .isEqualTo(world.salesOrderId(peggedOrder));
+                }
                 assertThat(r.status()).as("replenishment status for %s", productCode).isEqualTo(status);
             };
         }
+    }
+
+    /** Assertion on a product's on-hand / reserved / available balance (ATP — pegged stock shows 0 available). */
+    public static StockBalanceAssertion a_stock_balance(String productCode) {
+        return new StockBalanceAssertion(productCode);
+    }
+
+    public static final class StockBalanceAssertion {
+        private final String productCode;
+
+        private StockBalanceAssertion(String productCode) {
+            this.productCode = productCode;
+        }
+
+        public AssertStep shows(Qty onHand, Qty reserved, Qty available) {
+            return world -> {
+                var balance = world.stockBalance(productCode);
+                assertThat(balance.onHand()).as("on-hand for %s", productCode).isEqualByComparingTo(onHand.amount());
+                assertThat(balance.reserved()).as("reserved for %s", productCode).isEqualByComparingTo(reserved.amount());
+                assertThat(balance.available()).as("available for %s", productCode).isEqualByComparingTo(available.amount());
+            };
+        }
+    }
+
+    /** The given event type was published exactly {@code times} across all kits (multiplicity, e.g. no-retry proof). */
+    public static AssertStep events_published_count(String eventType, long times) {
+        return world -> assertThat(world.publishedEventCount(eventType))
+            .as("times %s was published", eventType)
+            .isEqualTo(times);
     }
 
     /** The union of every kit's outbox contains each of the given {@code EVENT_TYPE}s. */
