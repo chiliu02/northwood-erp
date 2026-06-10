@@ -30,6 +30,7 @@ import com.northwood.testharness.inmemory.manufacturing.InMemoryBomLookup;
 import com.northwood.testharness.kits.FinanceTestKit;
 import com.northwood.testharness.kits.InventoryTestKit;
 import com.northwood.testharness.kits.ManufacturingTestKit;
+import com.northwood.testharness.kits.PurchasingTestKit;
 import com.northwood.testharness.kits.SalesTestKit;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -79,6 +80,7 @@ public final class World {
     public final InventoryTestKit inventory;
     public final FinanceTestKit finance;
     public final ManufacturingTestKit manufacturing;
+    public final PurchasingTestKit purchasing;
 
     // ── the registry: business identifier → engine identity / facts ──
     private final Map<String, SeededProduct> productsByCode = new HashMap<>();
@@ -96,12 +98,13 @@ public final class World {
         this.inventory = new InventoryTestKit(bus, json);
         this.finance = new FinanceTestKit(bus, json);
         this.manufacturing = new ManufacturingTestKit(bus, json);
+        this.purchasing = new PurchasingTestKit(bus, json);
 
         this.outboxes.addAll(List.of(
-            sales.outbox, inventory.outbox, finance.outbox, manufacturing.outbox));
+            sales.outbox, inventory.outbox, finance.outbox, manufacturing.outbox, purchasing.outbox));
         // Only kits with a saga worker tick; inventory + finance have none.
         this.sagaTickers.addAll(List.of(
-            sales::advanceSagaWorker, manufacturing::advanceSagaWorker));
+            sales::advanceSagaWorker, manufacturing::advanceSagaWorker, purchasing::advanceSagaWorker));
     }
 
     // ============================================================
