@@ -3,6 +3,7 @@ package com.northwood.testharness.dsl;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.northwood.finance.domain.CustomerInvoice;
+import com.northwood.finance.domain.Payment;
 import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.shared.domain.Currencies;
@@ -164,6 +165,7 @@ public final class Dsl {
         private final String orderNumber;
         private final List<World.OrderLineSpec> lines = new ArrayList<>();
         private Percent deposit;
+        private boolean cod;
         private boolean settle = true;
 
         private OrderPlacement(String customerCode, String orderNumber) {
@@ -187,6 +189,16 @@ public final class Dsl {
         }
 
         /**
+         * Cash-on-delivery terms: at shipment finance auto-creates the invoice
+         * and auto-records a full cash payment — there is no operator payment
+         * step, so the scenario has no {@code pays(...)} {@code when}.
+         */
+        public OrderPlacement cash_on_delivery() {
+            this.cod = true;
+            return this;
+        }
+
+        /**
          * The {@code settle()} escape hatch (doc §6): place the order but leave
          * the world un-settled, so a following action observes / acts on the
          * not-yet-processed order (e.g. cancel before the worker reserves stock).
@@ -198,7 +210,9 @@ public final class Dsl {
 
         @Override
         public void act(World world) {
-            if (deposit != null) {
+            if (cod) {
+                world.placeCodOrder(orderNumber, customerCode, lines);
+            } else if (deposit != null) {
                 world.placeDepositOrder(orderNumber, customerCode, deposit.amount(), lines);
             } else if (settle) {
                 world.placeOrder(orderNumber, customerCode, lines);
@@ -364,6 +378,29 @@ public final class Dsl {
                     .as("%s invoice total for order %s", type.dbValue(), orderNumber)
                     .isEqualByComparingTo(total.amount());
             };
+        }
+    }
+
+    /** Assertion that finance recorded a customer payment by a given method (COD auto-records a cash payment). */
+    public static CustomerPaymentAssertion a_customer_payment() {
+        return new CustomerPaymentAssertion();
+    }
+
+    public static final class CustomerPaymentAssertion {
+        private Payment.Method method;
+
+        private CustomerPaymentAssertion() {
+        }
+
+        public CustomerPaymentAssertion byMethod(Payment.Method method) {
+            this.method = method;
+            return this;
+        }
+
+        public AssertStep wasRecorded() {
+            return world -> assertThat(world.customerPayments())
+                .as("a customer payment by method %s", method)
+                .anyMatch(p -> p.paymentMethod() == method);
         }
     }
 

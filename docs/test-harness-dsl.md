@@ -184,7 +184,10 @@ world.
 |---|---|
 | `customer(code).places_order(orderNo).line(productCode, Qty)…` | builds `PlaceOrderCommand`; `sales.placeOrder`; registers `orderNo → orderId`; **settles** |
 | `warehouse(wh).ships(orderNo).line(productCode, Qty).at_unit_cost(Money)` | resolves `lineId`, `customerId`; builds `PostShipmentCommand`; `inventory.shipmentService.post`; **settles** |
-| `customer(code).pays(Money).against(orderNo)` | resolves `invoiceHeaderId`; builds `RecordCustomerPaymentCommand`; `finance.paymentService.recordCustomerPayment`; **settles** |
+| `customer(code).pays(Money).against(orderNo)` / `.against_deposit_on(orderNo)` / `.against_balance_on(orderNo)` | resolves the COMMERCIAL / DEPOSIT / BALANCE invoice; builds `RecordCustomerPaymentCommand`; `finance.paymentService.recordCustomerPayment`; **settles** + stamps the allocation (trigger stand-in) |
+| `customer(code).places_order(orderNo).with_deposit(percent(N))…` | a deposit (part-payment) order — `PaymentTerms.DEPOSIT`, N% up front |
+| `customer(code).places_order(orderNo).cash_on_delivery()…` | a COD order — invoice + full cash payment auto-recorded at shipment, no operator `pays` step |
+| `customer(code).places_order(orderNo)….without_settling()` | place but defer `settle()` (the §6 escape hatch) — act on the not-yet-processed order |
 | `customer(code).cancels(orderNo).because(reason)` | `sales.cancel(orderId, reason)`; **settles** |
 
 ### Then — assert the outcome
@@ -194,7 +197,8 @@ world.
 | `order(orderNo).reaches(SagaState)` | saga state == constant (e.g. `READY_TO_SHIP`) |
 | `order(orderNo).has_status(SalesOrder.Status)` | header-status projection |
 | `order(orderNo).is_completed()` | saga `COMPLETED` **and** status `COMPLETED` |
-| `a_commercial_invoice().for_order(orderNo).totalling(Money)` | a `CustomerInvoice` (type COMMERCIAL) exists for the order with that total |
+| `a_commercial_invoice()` / `a_deposit_invoice()` / `a_balance_invoice()`.`for_order(orderNo).totalling(Money)` | a `CustomerInvoice` of that type exists for the order with that total |
+| `a_customer_payment().byMethod(Payment.Method.X).wasRecorded()` | finance recorded a customer payment by that method (COD auto-records a `CASH` payment) |
 | `events_published(EVENT_TYPE…)` | union of all kits' outboxes contains those `event_type`s |
 
 ### Value helpers (tiny, scale-correct)
@@ -418,4 +422,51 @@ services/handlers/serde (§8).
 - **Scope creep guard.** The DSL is for cross-service *business outcomes*. Resist pulling
   delivery-mechanics or persistence assertions into it — those tiers exist (§8) and
   blurring them is how the abstraction starts lying.
-```
+
+---
+
+## 11. Requirement coverage — the DSL completeness target
+
+The goal: a `*DslTest` for every **cross-service business flow** in
+`docs/business-requirements.md`, plus the reporting read-views (REQ-RPT-*) and GL-posting
+detail (REQ-FIN-020…032) those flows produce. Single-context CRUD invariants (domain unit
+tests), the allocation/posting persistence mechanics (`Jdbc*IT`), and security/roles
+(API-filter tests) stay in their own tiers (§8) and are **out of scope** here.
+
+Each row pairs a DslTest with the hand-written harness test it mirrors (its known-green
+baseline) and the requirements it exercises. Build-out runs in the phases of §9's roadmap.
+
+| Flow | DslTest | Mirrors | REQs | Status |
+|---|---|---|---|---|
+| In-stock order-to-cash | `OrderToCashHappyPathDslTest` | `OrderToCashHappyPathTest` | REQ-XBC-010, REQ-FIN-023/024/025 | ✅ |
+| Deposit (part-payment) | `OrderToCashDepositPathDslTest` | `OrderToCashDepositPathTest` | REQ-SAL-020/021/022, REQ-FIN-030/031/032 | ✅ |
+| Cancellation / compensation | `OrderToCashCancellationPathDslTest` | `CancelCompensationTest` | REQ-XBC-090, REQ-SAL-036 | ✅ |
+| Cash-on-delivery | `OrderToCashCodPathDslTest` | `OrderToCashCodPathTest` | REQ-SAL-020 (COD), REQ-FIN-024/025 | ✅ |
+| First leg (place → reserve) | *(subsumed by happy-path DslTest)* | `OrderToCashFirstLegTest` | REQ-SAL-030/033, REQ-INV-020 | ⊆ |
+| Cancel + deposit refund | `OrderToCashCancelRefundPathDslTest` | `CancelRefundPathTest` | REQ-SAL-036, REQ-FIN-012/032 | Phase A |
+| Planning time fence (outcome subset) | `OrderToCashPlanningFenceDslTest` | `OrderToCashPlanningFenceTest` | REQ-SAL-013/037 | Phase A |
+| Make-to-order (pegged WO) | `OrderToCashMakeToOrderPathDslTest` | `OrderToCashMakeToOrderPathTest` | REQ-INV-093, REQ-PROD-022 | Phase B |
+| Buy-to-order (pegged PO) | `OrderToCashBuyToOrderPathDslTest` | `OrderToCashBuyToOrderPathTest` | REQ-INV-093, REQ-PROD-022 | Phase B |
+| Sales-shortage → purchased top-up | `OrderToCashPurchasedShortagePathDslTest` | `OrderToCashPurchasedShortagePathTest` | REQ-XBC-030, REQ-INV-020/091 | Phase B |
+| Line amendment (add / remove) | `OrderToCashLineAmendmentDslTest` | `OrderToCashLineAmendmentTest` | REQ-SAL-010, REQ-INV-020 | Phase B |
+| Stock replenishment — manufactured | `StockReplenishmentManufacturedPathDslTest` | `StockReplenishmentManufacturedPathTest` | REQ-XBC-080 (A, make), REQ-MFG-030, REQ-FIN-026/027 | Phase B |
+| Stock replenishment — purchased | `StockReplenishmentPurchasedPathDslTest` | `StockReplenishmentPurchasedPathTest` | REQ-XBC-080 (A, buy), REQ-INV-080/084 | Phase B |
+| Stock replenishment — sub-assembly | `StockReplenishmentSubAssemblyPathDslTest` | `StockReplenishmentSubAssemblyPathTest` | REQ-MFG-021/052/075, REQ-FIN-028 | Phase B |
+| Procure-to-pay (happy) | `PurchaseToPayHappyPathDslTest` | `PurchaseToPayHappyPathTest` | REQ-XBC-020, REQ-FIN-020/021/022 | Phase C |
+| Procure-to-pay (3-way-match reject) | `PurchaseToPayRejectionPathDslTest` | `PurchaseToPayRejectionPathTest` | REQ-PUR-050, REQ-FIN-051 | Phase C |
+| Requisition to-order guard | `PurchaseRequisitionToOrderGuardDslTest` | `PurchaseRequisitionToOrderGuardTest` | REQ-PUR-020, REQ-PROD-022 | Phase C |
+| Reporting read-views | *(per-view DslTests)* | — | REQ-RPT-001/010/020/040/050/060 | Phase D (feasibility TBD) |
+| WO priority cascade | `SetPriorityCascadeDslTest` | `SetPriorityCascadeTest` | REQ-MFG-070, REQ-RPT-020 | Phase E |
+
+Legend: ✅ shipped · ⊆ covered by another DslTest · Phase A–E per §9.
+
+**Build-out is smaller than the kit count suggests.** `ManufacturingTestKit`, `PurchasingTestKit`,
+the inventory goods-receipt + replenishment surface, and `InMemoryProductionPlanningProjection`
+**already exist and self-register on the bus** — so "wire a kit" means only *construct it in
+`World`* and fold its `advanceSagaWorker()` into a generalized, kit-list-driven `settle()` (the
+one load-bearing change, made first). **No new in-memory doubles are needed.** The single new
+primitive is a real work-order-completion action (`WorkOrderOperationService.completeOperation`)
+that replaces the `WorkOrderManufacturingCompleted` event three imperative tests currently forge —
+making the DSL ports *more* faithful than their originals. None of the manufacturing/purchasing/
+replenishment tests assert GL postings, so journal-assertion vocab is built once for `CancelRefund`
+and then reused to *add* GL-detail assertions to the finance-touching o2c + p2p flows.

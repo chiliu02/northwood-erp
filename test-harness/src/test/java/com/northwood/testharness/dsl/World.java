@@ -147,6 +147,17 @@ public final class World {
     }
 
     /**
+     * Place a cash-on-delivery order — {@link PaymentTerms#CASH_ON_DELIVERY}
+     * terms. There is no operator payment step: at shipment the saga walks
+     * straight to {@code completed} and finance auto-creates the invoice and
+     * auto-records a full {@link Payment.Method#CASH} payment from the single
+     * {@code SalesOrderShipped} event.
+     */
+    public World placeCodOrder(String orderNumber, String customerCode, List<OrderLineSpec> lines) {
+        return placeOrder(orderNumber, customerCode, PaymentTerms.CASH_ON_DELIVERY.dbValue(), null, lines);
+    }
+
+    /**
      * Place an order with explicit payment terms + optional deposit fraction,
      * then {@link #settle()}. {@code paymentTerms == null} inherits the
      * customer default; {@code depositPercent} is only meaningful for
@@ -326,6 +337,11 @@ public final class World {
     /** The order header's status fold. */
     public Optional<SalesOrder.Status> orderStatus(String orderNumber) {
         return sales.orderStatus(orderId(orderNumber));
+    }
+
+    /** Every customer payment finance has recorded. COD auto-records one at shipment; single-order scenarios. */
+    public List<Payment> customerPayments() {
+        return finance.payments.findAll();
     }
 
     /** The COMMERCIAL invoice raised for an order (single-invoice {@code on_shipment} flow), if any. */
