@@ -459,9 +459,9 @@ CREATE TABLE sales.sales_order_header (
     requested_delivery_date DATE,
     -- Single workflow status. Cross-cutting flags (stock/manufacturing/invoice/
     -- payment) live on reporting.sales_order_360_view and are derived from events.
-    status VARCHAR(30) NOT NULL DEFAULT 'draft' CHECK (
+    status VARCHAR(30) NOT NULL DEFAULT 'submitted' CHECK (
         status IN (
-            'draft', 'submitted', 'confirmed', 'in_fulfilment',
+            'submitted', 'in_fulfilment',
             'partially_shipped', 'shipped', 'completed', 'cancelled', 'rejected'
         )
     ),
@@ -527,8 +527,8 @@ CREATE TABLE sales.sales_order_line (
     line_total NUMERIC(18, 2) NOT NULL CHECK (line_total >= 0),
     line_status VARCHAR(30) NOT NULL DEFAULT 'open' CHECK (
         line_status IN (
-            'open', 'reserved', 'partially_reserved', 'waiting_for_production',
-            'ready_to_ship', 'partially_shipped', 'shipped', 'cancelled'
+            'open', 'reserved', 'partially_reserved',
+            'partially_shipped', 'shipped', 'cancelled'
         )
     ),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

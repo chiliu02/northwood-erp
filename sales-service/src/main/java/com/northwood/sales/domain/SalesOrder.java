@@ -69,19 +69,14 @@ public final class SalesOrder {
 
     /**
      * SalesOrder header fulfilment status. Mirrors the schema CHECK on
-     * {@code sales.sales_order_header.status}; values flagged
-     * <i>schema-prep</i> are accepted by the column but not currently produced
-     * by Java — kept on the enum so {@link #fromDb(String)} can parse them.
+     * {@code sales.sales_order_header.status} — every value here is produced by
+     * Java (no schema-prep placeholders).
      *
      * <p>Distinct from {@code SalesOrderFulfilmentSaga} state constants
      * (different domain — saga progress vs header lifecycle).
      */
     public enum Status {
-        /** Schema-prep — not currently produced by Java. */
-        DRAFT("draft"),
         SUBMITTED("submitted"),
-        /** Schema-prep — not currently produced by Java. */
-        CONFIRMED("confirmed"),
         IN_FULFILMENT("in_fulfilment"),
         /** Some — but not all — lines have shipped; a backorder remains. */
         PARTIALLY_SHIPPED("partially_shipped"),
@@ -110,19 +105,22 @@ public final class SalesOrder {
 
     /**
      * SalesOrderLine fulfilment status — the per-line state machine the header
-     * fold ({@link #recomputeStatus()}) rolls up. Mirrors the schema CHECK on
-     * {@code sales.sales_order_line.line_status}; values flagged
-     * <i>schema-prep</i> are accepted by the column but not currently produced
-     * by Java.
+     * fold ({@link #recomputeStatus()}) rolls up, on the shipment axis. Mirrors
+     * the schema CHECK on {@code sales.sales_order_line.line_status} — every
+     * value here is produced by Java.
+     *
+     * <p>A to-order line (make / buy) carries <b>no</b> production/receipt
+     * sub-state here: its supply progress lives in the fulfilment saga + the
+     * manufacturing work order / inventory replenishment + reporting's
+     * {@code manufacturing_status} / {@code stock_status}. The line itself moves
+     * {@code open → reserved → shipped} once its order-pegged supply is reserved,
+     * the same chain a stock line runs (see {@code docs/composed-state-machines.md}
+     * §11 — the fold never branches on product type).
      */
     public enum LineStatus {
         OPEN("open"),
         RESERVED("reserved"),
         PARTIALLY_RESERVED("partially_reserved"),
-        /** Schema-prep — not currently produced by Java (to-order extension). */
-        WAITING_FOR_PRODUCTION("waiting_for_production"),
-        /** Schema-prep — not currently produced by Java (to-order extension). */
-        READY_TO_SHIP("ready_to_ship"),
         PARTIALLY_SHIPPED("partially_shipped"),
         SHIPPED("shipped"),
         CANCELLED("cancelled");
@@ -732,8 +730,8 @@ public final class SalesOrder {
     private static int shipBand(LineStatus lineStatus) {
         return switch (lineStatus) {
             case OPEN -> BAND_NOT_STARTED;
-            case PARTIALLY_RESERVED, WAITING_FOR_PRODUCTION -> BAND_IN_PROGRESS;
-            case RESERVED, READY_TO_SHIP -> BAND_READY;
+            case PARTIALLY_RESERVED -> BAND_IN_PROGRESS;
+            case RESERVED -> BAND_READY;
             case PARTIALLY_SHIPPED -> BAND_PARTIALLY_SHIPPED;
             case SHIPPED -> BAND_SHIPPED;
             // cancelled is off the chain — filtered out before the fold reaches here.
