@@ -482,7 +482,7 @@ baseline) and the requirements it exercises. Build-out runs in the phases of §9
 | Stock replenishment — sub-assembly | `StockReplenishmentSubAssemblyPathDslTest` | `StockReplenishmentSubAssemblyPathTest` | REQ-MFG-021 | ✅ (outcome subset) |
 | Procure-to-pay (happy) | `PurchaseToPayHappyPathDslTest` | `PurchaseToPayHappyPathTest` | REQ-XBC-020, REQ-PUR-020/030/031 | ✅ (real goods receipt) |
 | Procure-to-pay (3-way-match reject) | `PurchaseToPayRejectionPathDslTest` | `PurchaseToPayRejectionPathTest` | REQ-PUR-050, REQ-FIN-051 | ✅ (real 3-way match) |
-| Requisition to-order guard | `PurchaseRequisitionToOrderGuardDslTest` | `PurchaseRequisitionToOrderGuardTest` | REQ-PUR-020, REQ-PROD-022 | Phase C |
+| Requisition to-order guard | `PurchaseRequisitionToOrderGuardDslTest` | `PurchaseRequisitionToOrderGuardTest` | REQ-PUR-020, REQ-PROD-022 | ✅ (guard subset) |
 | Reporting read-views | *(per-view DslTests)* | — | REQ-RPT-001/010/020/040/050/060 | Phase D (feasibility TBD) |
 | WO priority cascade | `SetPriorityCascadeDslTest` | `SetPriorityCascadeTest` | REQ-MFG-070, REQ-RPT-020 | Phase E |
 

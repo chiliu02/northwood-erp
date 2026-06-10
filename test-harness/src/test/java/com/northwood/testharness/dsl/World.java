@@ -20,8 +20,10 @@ import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderOperation;
 import com.northwood.manufacturing.domain.saga.WorkOrderSaga;
+import com.northwood.product.domain.ReplenishmentStrategy;
 import com.northwood.purchasing.application.dto.CreateRequisitionCommand;
 import com.northwood.purchasing.application.dto.RequisitionLineRequest;
+import com.northwood.purchasing.application.dto.StockReplenishmentCommand;
 import com.northwood.purchasing.domain.PurchaseOrder;
 import com.northwood.purchasing.domain.PurchaseOrderId;
 import com.northwood.purchasing.domain.PurchaseOrderLine;
@@ -98,6 +100,7 @@ public final class World {
     private final Map<String, SeededProduct> productsByCode = new HashMap<>();
     private final Map<String, UUID> orderIdsByNumber = new HashMap<>();
     private final Map<String, UUID> purchaseOrderByRequisition = new HashMap<>();
+    private String lastRequisitionOutcome;
 
     // settle()'s fixed point ticks every wired kit's saga worker and counts the
     // union of every wired kit's outbox, so a newly-wired kit auto-joins both.
@@ -250,6 +253,58 @@ public final class World {
         productsByCode.put(productCode, new SeededProduct(productId, productCode, productName, null));
         inventory.productReplenishment.put(productId, true, false);
         return this;
+    }
+
+    /** Seed a to-order product (REQ-PROD-022) — purchasing rejects it on a manual requisition (REQ-PUR-020). */
+    public World seedToOrderProduct(String productCode, String productName) {
+        UUID productId = UUID.randomUUID();
+        productsByCode.put(productCode, new SeededProduct(productId, productCode, productName, null));
+        purchasing.toOrderProducts.put(productId, ReplenishmentStrategy.TO_ORDER.dbValue());
+        return this;
+    }
+
+    /** Seed a to-stock product (the catalogue default — no strategy set, so the manual-purchase guard fails open). */
+    public World seedToStockProduct(String productCode, String productName) {
+        UUID productId = UUID.randomUUID();
+        productsByCode.put(productCode, new SeededProduct(productId, productCode, productName, null));
+        return this;
+    }
+
+    /**
+     * Attempt a manual requisition for a product, capturing the outcome
+     * ({@code accepted} or {@code rejected:<message>}) for assertion — no settle.
+     * The to-order guard rejects synchronously at the service-call boundary.
+     */
+    public World attemptManualRequisition(String prNumber, String productCode, BigDecimal quantity) {
+        SeededProduct p = product(productCode);
+        try {
+            purchasing.requisitionService.createManual(new CreateRequisitionCommand(
+                prNumber,
+                List.of(new RequisitionLineRequest(p.productId(), p.code(), p.name(), quantity, null))));
+            lastRequisitionOutcome = "accepted";
+        } catch (RuntimeException e) {
+            lastRequisitionOutcome = "rejected:" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+        }
+        return this;
+    }
+
+    /**
+     * Attempt the system order-pegged buy ({@code createForStockReplenishment}) for
+     * a product — the legitimate to-order purchase path, which the manual-purchase
+     * guard must not block. Captures {@code created} / {@code not_created}.
+     */
+    public World attemptPeggedReplenishmentRequisition(String prNumber, String productCode, BigDecimal quantity) {
+        SeededProduct p = product(productCode);
+        var prId = purchasing.requisitionService.createForStockReplenishment(new StockReplenishmentCommand(
+            prNumber, UUID.randomUUID(), UUID.randomUUID(),
+            List.of(new RequisitionLineRequest(p.productId(), p.code(), p.name(), quantity, null))));
+        lastRequisitionOutcome = prId.isPresent() ? "created" : "not_created";
+        return this;
+    }
+
+    /** The outcome of the last requisition attempt (for the to-order guard scenario). */
+    public Optional<String> lastRequisitionOutcome() {
+        return Optional.ofNullable(lastRequisitionOutcome);
     }
 
     /** Mark an already-registered product as purchased (make-vs-buy), routing its replenishment to purchasing. */

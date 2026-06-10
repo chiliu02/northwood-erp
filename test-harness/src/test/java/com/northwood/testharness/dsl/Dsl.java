@@ -287,6 +287,16 @@ public final class Dsl {
         }
     }
 
+    /** A to-order product (REQ-PROD-022) — purchasing rejects it on a manual requisition. */
+    public static SeedStep a_to_order_product(String productCode, String productName) {
+        return world -> world.seedToOrderProduct(productCode, productName);
+    }
+
+    /** A to-stock product (the catalogue default) — allowed on a manual requisition. */
+    public static SeedStep a_to_stock_product(String productCode, String productName) {
+        return world -> world.seedToStockProduct(productCode, productName);
+    }
+
     // ============================================================
     // When — drive a domain action (the trigger)
     // ============================================================
@@ -519,6 +529,68 @@ public final class Dsl {
         /** Approve the purchase order auto-created from the named requisition. */
         public ActionStep approves_the_po_for(String requisitionNumber) {
             return world -> world.approvePurchaseOrder(requisitionNumber, "approved");
+        }
+
+        /** Attempt a manual requisition, capturing the outcome (the to-order guard rejects synchronously). */
+        public RequisitionAttemptBuilder attempts_requisition(String requisitionNumber) {
+            return new RequisitionAttemptBuilder(requisitionNumber);
+        }
+    }
+
+    /** Attempts a manual requisition, capturing accepted/rejected rather than failing the scenario. */
+    public static final class RequisitionAttemptBuilder implements ActionStep {
+        private final String requisitionNumber;
+        private String productCode;
+        private Qty quantity;
+
+        private RequisitionAttemptBuilder(String requisitionNumber) {
+            this.requisitionNumber = requisitionNumber;
+        }
+
+        public RequisitionAttemptBuilder line(String productCode, Qty quantity) {
+            this.productCode = productCode;
+            this.quantity = quantity;
+            return this;
+        }
+
+        @Override
+        public void act(World world) {
+            world.attemptManualRequisition(requisitionNumber, productCode, quantity.amount());
+        }
+    }
+
+    /** The system (the order-pegged replenishment path), which may legitimately buy a to-order product. */
+    public static SystemActions the_system() {
+        return new SystemActions();
+    }
+
+    public static final class SystemActions {
+        private SystemActions() {
+        }
+
+        public PeggedBuyBuilder places_a_pegged_buy(String requisitionNumber) {
+            return new PeggedBuyBuilder(requisitionNumber);
+        }
+    }
+
+    public static final class PeggedBuyBuilder implements ActionStep {
+        private final String requisitionNumber;
+        private String productCode;
+        private Qty quantity;
+
+        private PeggedBuyBuilder(String requisitionNumber) {
+            this.requisitionNumber = requisitionNumber;
+        }
+
+        public PeggedBuyBuilder line(String productCode, Qty quantity) {
+            this.productCode = productCode;
+            this.quantity = quantity;
+            return this;
+        }
+
+        @Override
+        public void act(World world) {
+            world.attemptPeggedReplenishmentRequisition(requisitionNumber, productCode, quantity.amount());
         }
     }
 
@@ -963,6 +1035,36 @@ public final class Dsl {
         public AssertStep is_fully_paid() {
             return world -> assertThat(world.isPurchaseOrderFullyPaid(requisitionNumber))
                 .as("purchase order for %s fully paid", requisitionNumber).isTrue();
+        }
+    }
+
+    /** Assertion about the outcome of the last requisition attempt (the to-order guard scenario). */
+    public static RequisitionOutcomeAssertion the_requisition() {
+        return new RequisitionOutcomeAssertion();
+    }
+
+    public static final class RequisitionOutcomeAssertion {
+        private RequisitionOutcomeAssertion() {
+        }
+
+        public AssertStep was_rejected_as_to_order() {
+            return world -> {
+                var outcome = world.lastRequisitionOutcome();
+                assertThat(outcome).as("requisition outcome").isPresent();
+                assertThat(outcome.orElseThrow()).as("requisition rejected as to-order")
+                    .startsWith("rejected:")
+                    .containsIgnoringCase("to-order");
+            };
+        }
+
+        public AssertStep was_accepted() {
+            return world -> assertThat(world.lastRequisitionOutcome())
+                .as("requisition accepted").contains("accepted");
+        }
+
+        public AssertStep was_created() {
+            return world -> assertThat(world.lastRequisitionOutcome())
+                .as("requisition created").contains("created");
         }
     }
 
