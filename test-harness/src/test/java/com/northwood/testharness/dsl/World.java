@@ -16,9 +16,11 @@ import com.northwood.sales.domain.SalesOrderId;
 import com.northwood.sales.domain.SalesOrderLine;
 import com.northwood.shared.application.outbox.OutboxRow;
 import com.northwood.shared.domain.Currencies;
+import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.SynchronousBus;
 import com.northwood.testharness.kits.FinanceTestKit;
 import com.northwood.testharness.kits.InventoryTestKit;
+import com.northwood.testharness.kits.ManufacturingTestKit;
 import com.northwood.testharness.kits.SalesTestKit;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -67,10 +69,16 @@ public final class World {
     public final SalesTestKit sales;
     public final InventoryTestKit inventory;
     public final FinanceTestKit finance;
+    public final ManufacturingTestKit manufacturing;
 
     // ── the registry: business identifier → engine identity / facts ──
     private final Map<String, SeededProduct> productsByCode = new HashMap<>();
     private final Map<String, UUID> orderIdsByNumber = new HashMap<>();
+
+    // settle()'s fixed point ticks every wired kit's saga worker and counts the
+    // union of every wired kit's outbox, so a newly-wired kit auto-joins both.
+    private final List<InMemoryOutboxPort> outboxes = new ArrayList<>();
+    private final List<Runnable> sagaTickers = new ArrayList<>();
 
     public World() {
         ObjectMapper json = new ObjectMapper();
@@ -78,6 +86,13 @@ public final class World {
         this.sales = new SalesTestKit(bus, json);
         this.inventory = new InventoryTestKit(bus, json);
         this.finance = new FinanceTestKit(bus, json);
+        this.manufacturing = new ManufacturingTestKit(bus, json);
+
+        this.outboxes.addAll(List.of(
+            sales.outbox, inventory.outbox, finance.outbox, manufacturing.outbox));
+        // Only kits with a saga worker tick; inventory + finance have none.
+        this.sagaTickers.addAll(List.of(
+            sales::advanceSagaWorker, manufacturing::advanceSagaWorker));
     }
 
     // ============================================================
@@ -352,13 +367,19 @@ public final class World {
                 throw new IllegalStateException("settle() did not converge in 1000 cycles — infinite cascade?");
             }
             previousRows = totalOutboxRows();
-            sales.advanceSagaWorker();
+            for (Runnable ticker : sagaTickers) {
+                ticker.run();
+            }
             bus.drain();
         } while (totalOutboxRows() != previousRows);
     }
 
     private int totalOutboxRows() {
-        return sales.outbox.size() + inventory.outbox.size() + finance.outbox.size();
+        int sum = 0;
+        for (InMemoryOutboxPort outbox : outboxes) {
+            sum += outbox.size();
+        }
+        return sum;
     }
 
     // ============================================================
@@ -412,7 +433,7 @@ public final class World {
     /** Union of every kit's published + pending outbox event types — the {@code events_published(…)} basis. */
     public Set<String> publishedEventTypes() {
         Set<String> types = new LinkedHashSet<>();
-        for (var kitOutbox : List.of(sales.outbox, inventory.outbox, finance.outbox)) {
+        for (var kitOutbox : outboxes) {
             kitOutbox.all().stream().map(OutboxRow::getEventType).forEach(types::add);
         }
         return types;
