@@ -179,6 +179,8 @@ world.
 | `a_product(code, name).pricedAt(Money).withPlanningFence(days)` | as above + `sales.lineSnapshots.withFence(productId, days)` (REQ-SAL-037) |
 | `a_product(code, name).pricedAt(Money).manufacturedToOrder()` | a sold, make-to-order product — manufactured + order-pegged (REQ-INV-093) |
 | `a_product(code, name).pricedAt(Money).purchasedToOrder(supplierPrice)` | a sold, buy-to-order product — purchased + order-pegged + supplier price (REQ-INV-093) |
+| `a_product(code, name).pricedAt(Money).purchasedFrom(supplierPrice)` | a sold, purchased-supply product — purchased + supplier price, NOT pegged (REQ-INV-091) |
+| `a_purchasable_product(code, name).suppliedAt(Money)` / `a_to_order_product(code,name)` / `a_to_stock_product(code,name)` | a bought raw material / a to-order / a to-stock product |
 | `stock_on_hand(productCode, Qty).at(Warehouse)` | `inventory.seedStock(productId, qty)` (works for any seeded product) |
 | `clock_at(date)` | `sales.setClock(date @ UTC start-of-day)` — the worker's planning-fence clock |
 | `a_manufactured_product(code, name)` | mints id; registers; make-vs-buy = manufactured into inventory + manufacturing |
@@ -209,6 +211,8 @@ world.
 | `the_supplier().invoices(siNo).for_requisition(prNo).at_unit_price(Money)` | `finance.supplierInvoiceService.recordInvoice` (3-way match; >2% over forces failure); **settles** |
 | `a_reviewer().rejects_the_supplier_invoice().because(reason)` | `finance.supplierInvoiceService.manualReject` of the parked invoice; **settles** |
 | `the_supplier().is_paid(payNo).of(Money)` | `finance.paymentService.recordSupplierPayment`; **settles** |
+| `amend(orderNo).add_line(productCode, Qty)` / `.remove_line(productCode)` | `sales.service.addLine` / `removeLine` (resolves the live line id); **settles** |
+| `buyer().attempts_requisition(prNo).line(...)` / `the_system().places_a_pegged_buy(prNo).line(...)` | attempt a manual / order-pegged requisition, capturing accept/reject (the to-order guard) |
 
 ### Then — assert the outcome
 
@@ -475,8 +479,8 @@ baseline) and the requirements it exercises. Build-out runs in the phases of §9
 | Planning time fence (outcome subset) | `OrderToCashPlanningFenceDslTest` | `OrderToCashPlanningFenceTest` | REQ-SAL-013/037 | ✅ |
 | Make-to-order (pegged WO) | `OrderToCashMakeToOrderPathDslTest` | `OrderToCashMakeToOrderPathTest` | REQ-INV-093, REQ-PROD-022 | ✅ (real WO completion) |
 | Buy-to-order (pegged PO) | `OrderToCashBuyToOrderPathDslTest` | `OrderToCashBuyToOrderPathTest` | REQ-INV-093, REQ-PROD-022 | ✅ (real goods receipt) |
-| Sales-shortage → purchased top-up | `OrderToCashPurchasedShortagePathDslTest` | `OrderToCashPurchasedShortagePathTest` | REQ-XBC-030, REQ-INV-020/091 | Phase B |
-| Line amendment (add / remove) | `OrderToCashLineAmendmentDslTest` | `OrderToCashLineAmendmentTest` | REQ-SAL-010, REQ-INV-020 | Phase B |
+| Sales-shortage → purchased top-up | `OrderToCashPurchasedShortagePathDslTest` | `OrderToCashPurchasedShortagePathTest` | REQ-XBC-030, REQ-INV-020/091 | ✅ (real PR→PO→receipt) |
+| Line amendment (add / remove) | `OrderToCashLineAmendmentDslTest` | `OrderToCashLineAmendmentTest` | REQ-SAL-010, REQ-INV-020 | ✅ |
 | Stock replenishment — manufactured | `StockReplenishmentManufacturedPathDslTest` | `StockReplenishmentManufacturedPathTest` | REQ-XBC-080 (A, make), REQ-MFG-030, REQ-INV-080/084 | ✅ (real WO completion) |
 | Stock replenishment — purchased | `StockReplenishmentPurchasedPathDslTest` | `StockReplenishmentPurchasedPathTest` | REQ-XBC-080 (A, buy), REQ-PUR-020, REQ-INV-080/084 | ✅ (real goods receipt) |
 | Stock replenishment — sub-assembly | `StockReplenishmentSubAssemblyPathDslTest` | `StockReplenishmentSubAssemblyPathTest` | REQ-MFG-021 | ✅ (outcome subset) |

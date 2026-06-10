@@ -141,6 +141,18 @@ public final class Dsl {
             };
         }
 
+        /**
+         * Make the (sold) product purchased-supply (REQ-INV-091): purchased
+         * make-vs-buy with a supplier price but NOT order-pegged, so a shortage on
+         * it tops up the shared pool via a purchasing-routed replenishment.
+         */
+        public SeedStep purchasedFrom(Money supplierPrice) {
+            return world -> {
+                world.seedProduct(productCode, productName, price.amount());
+                world.markPurchasedSupply(productCode, supplierPrice.amount());
+            };
+        }
+
         @Override
         public void seed(World world) {
             world.seedProduct(productCode, productName, price.amount());
@@ -509,6 +521,27 @@ public final class Dsl {
     /** Goods are received (for real) against the purchase order replenishing a product, fulfilling the request. */
     public static ActionStep goods_received_for(String productCode) {
         return world -> world.receiveGoodsForReplenishment(productCode, "GR-" + productCode);
+    }
+
+    /** Amend an existing order's lines (add / remove). */
+    public static AmendActions amend(String orderNumber) {
+        return new AmendActions(orderNumber);
+    }
+
+    public static final class AmendActions {
+        private final String orderNumber;
+
+        private AmendActions(String orderNumber) {
+            this.orderNumber = orderNumber;
+        }
+
+        public ActionStep add_line(String productCode, Qty quantity) {
+            return world -> world.addOrderLine(orderNumber, productCode, quantity.amount());
+        }
+
+        public ActionStep remove_line(String productCode) {
+            return world -> world.removeOrderLine(orderNumber, productCode);
+        }
     }
 
     // ── procure-to-pay actors ──

@@ -29,8 +29,10 @@ import com.northwood.purchasing.domain.PurchaseOrderId;
 import com.northwood.purchasing.domain.PurchaseOrderLine;
 import com.northwood.purchasing.domain.events.PurchaseOrderCreated;
 import com.northwood.purchasing.domain.saga.PurchaseToPaySaga;
+import com.northwood.sales.application.dto.AddOrderLineCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand.OrderLine;
+import com.northwood.sales.application.dto.RemoveOrderLineCommand;
 import com.northwood.sales.domain.Customer;
 import com.northwood.sales.domain.PaymentTerms;
 import com.northwood.sales.domain.SalesOrder;
@@ -322,6 +324,18 @@ public final class World {
         UUID productId = product(productCode).productId();
         sales.lineSnapshots.markOrderPegged(productId);
         inventory.productReplenishment.put(productId, true, false);
+        seedSupplierPrice(productCode, supplierPrice);
+        return this;
+    }
+
+    /**
+     * Mark an already-priced (sold) product as purchased-supply (REQ-INV-091): a
+     * purchased make-vs-buy product with a supplier price but NOT order-pegged, so
+     * a sales-order shortage on it raises a {@code sales_order_shortage}
+     * replenishment routed to purchasing that tops up the shared pool.
+     */
+    public World markPurchasedSupply(String productCode, BigDecimal supplierPrice) {
+        markPurchased(productCode);
         seedSupplierPrice(productCode, supplierPrice);
         return this;
     }
@@ -649,6 +663,39 @@ public final class World {
      */
     public World cancel(String orderNumber, String reason) {
         sales.cancel(orderId(orderNumber), reason);
+        settle();
+        return this;
+    }
+
+    /**
+     * Add a line to an existing order through the real {@code SalesOrderService},
+     * then {@link #settle()} — inventory reserves the new line incrementally
+     * (REQ-SAL-010 amendment).
+     */
+    public World addOrderLine(String orderNumber, String productCode, BigDecimal quantity) {
+        SeededProduct p = product(productCode);
+        sales.service.addLine(new AddOrderLineCommand(
+            orderId(orderNumber), null, p.productId(), p.code(), p.name(), quantity, null, BigDecimal.ZERO));
+        settle();
+        return this;
+    }
+
+    /**
+     * Remove a line (by product) from an existing order through the real
+     * {@code SalesOrderService}, resolving the live line id from the aggregate,
+     * then {@link #settle()} — its reservation releases and any in-flight
+     * replenishment for it is cancelled.
+     */
+    public World removeOrderLine(String orderNumber, String productCode) {
+        UUID orderId = orderId(orderNumber);
+        UUID productId = product(productCode).productId();
+        UUID lineId = sales.orders.findById(SalesOrderId.of(orderId)).orElseThrow().lines().stream()
+            .filter(l -> productId.equals(l.productId()) && !l.isCancelled())
+            .map(SalesOrderLine::lineId)
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException(
+                "Order " + orderNumber + " has no live line for product " + productCode));
+        sales.service.removeLine(new RemoveOrderLineCommand(orderId, lineId, null));
         settle();
         return this;
     }
