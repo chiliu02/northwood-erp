@@ -1,4 +1,4 @@
-package com.northwood.testharness.dsl.o2c;
+package com.northwood.testharness.o2c;
 
 import static com.northwood.testharness.dsl.Dsl.a_customer;
 import static com.northwood.testharness.dsl.Dsl.a_product;

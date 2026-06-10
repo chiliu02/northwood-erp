@@ -266,7 +266,7 @@ possible.)
 
 ## 7. Worked o2c example — the full happy path
 
-The complete scenario, as it would live in `test-harness/.../dsl/o2c/`:
+The complete scenario, as it would live in `test-harness/.../o2c/` (alongside the hand-written o2c tests):
 
 ```java
 import static com.northwood.testharness.dsl.Scenario.scenario;
