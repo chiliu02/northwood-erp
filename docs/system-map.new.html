@@ -568,42 +568,66 @@ stateDiagram-v2
 </details>
 
 <details class="saga-block">
-  <summary><h3 id="sm-sales-order-line">SalesOrderLine — shipment-axis state machine</h3></summary>
-  <p class="desc">The authoritative per-line machine on the <strong>shipment axis</strong>. Inbound events advance the line's band; the header is then re-derived by the fold above. <code>cancelled</code> is off the chain (neutral — filtered from every fold). A line also carries an independent <em>invoice</em> axis and (projected from finance) a <em>pay</em> axis — see below.</p>
+  <summary><h3 id="sm-sales-order-line">SalesOrderLine — <code>line_status</code> chain (shipment axis)</h3></summary>
+  <p class="desc">The authoritative per-line machine <strong>is</strong> the <code>sales_order_line.line_status</code> column, mutated only by the aggregate (<code>markReserved</code> / <code>recordShipment</code> / <code>cancelLine</code>); the header is re-derived from it by the fold above. <strong>These six values are the complete set Java produces</strong> — there are <em>no</em> make/buy production states on the line (those live off the line — next block). <code>cancelled</code> is off the chain (neutral — filtered from every fold).</p>
   <div class="saga-graph"></div>
   <details class="mermaid-source">
     <summary>stateDiagram-v2 source</summary>
     <pre class="saga-src">
 stateDiagram-v2
     direction LR
-    [*] --> NOT_STARTED : SalesOrderPlaced / SalesOrderLineAdded
-    NOT_STARTED --> IN_PROGRESS : StockReserved [partial] / production begins
-    NOT_STARTED --> READY : StockReserved [fully reserved]
-    IN_PROGRESS --> READY : StockReserved [fully reserved] / produced
-    READY --> PARTIALLY_SHIPPED : ShipmentPosted [some units]
-    READY --> SHIPPED : ShipmentPosted [all units]
-    PARTIALLY_SHIPPED --> SHIPPED : ShipmentPosted [remaining units]
-    NOT_STARTED --> CANCELLED : SalesOrderLineRemoved
-    IN_PROGRESS --> CANCELLED : SalesOrderLineRemoved
-    READY --> CANCELLED : SalesOrderLineRemoved
-    SHIPPED --> [*]
-    CANCELLED --> [*]
+    [*] --> open : SalesOrderPlaced / SalesOrderLineAdded
+    open --> reserved : StockReserved [full cover]
+    open --> partially_reserved : StockReserved [short]
+    partially_reserved --> reserved : re-reservation [now full]
+    reserved --> partially_shipped : ShipmentPosted [some units]
+    reserved --> shipped : ShipmentPosted [all units]
+    partially_shipped --> shipped : ShipmentPosted [remaining]
+    open --> cancelled : SalesOrderLineRemoved
+    partially_reserved --> cancelled : SalesOrderLineRemoved
+    reserved --> cancelled : SalesOrderLineRemoved
+    shipped --> [*]
+    cancelled --> [*]
     </pre>
   </details>
   <div class="desc">
-    <strong>Variant coarsening (make / buy / stock → one band).</strong> Different product variants run different internal FSMs but each coarsens onto the same band via a monotone map, so the order fold never branches on product type:
-    <table class="csm-table">
-      <thead><tr><th>Band (fold sees this)</th><th>stock line</th><th>make-to-order</th><th>buy-to-order</th></tr></thead>
-      <tbody>
-        <tr><td class="band">NOT_STARTED</td><td><code>open</code></td><td><code>open</code></td><td><code>open</code></td></tr>
-        <tr><td class="band">IN_PROGRESS</td><td><code>partially_reserved</code></td><td><code>waiting_for_production</code></td><td><code>awaiting_receipt</code></td></tr>
-        <tr><td class="band">READY</td><td><code>reserved</code></td><td><code>ready_to_ship</code></td><td><code>ready_to_ship</code></td></tr>
-        <tr><td class="band">PARTIALLY_SHIPPED</td><td colspan="3" style="text-align:center"><code>partially_shipped</code></td></tr>
-        <tr><td class="band">SHIPPED</td><td colspan="3" style="text-align:center"><code>shipped</code></td></tr>
-      </tbody>
-    </table>
-    <strong>Multi-axis.</strong> A line's full state is a product of independent lattices — shipping, invoicing, and payment progress independently (invoice before ship, ship before invoice, or split each at unrelated quantities). The header carries the <em>ship</em> axis; <em>invoice</em> (<code>NOT_INVOICED ⊏ PARTIALLY_INVOICED ⊏ INVOICED</code>) and <em>pay</em> (<code>NOT_PAID ⊏ PARTIALLY_PAID ⊏ PAID</code>, owned by <code>finance.CustomerInvoice</code>, projected back) are orthogonal flags on the read model. Each axis is its own quantity-accumulation fold; <code>line_status</code> is <code>classify</code> over the quantity buckets (<code>shippedQty</code> vs <code>orderedQty</code>). <strong>Boundary:</strong> returns/credit notes decrease an axis → break the lattice monotonicity the fold assumes (out of scope today). Detail: <code>docs/composed-state-machines.md</code> §§11, 12.
+    <strong>A to-order line runs this <em>same</em> chain.</strong> Make-to-order / buy-to-order are built (<code>product.ReplenishmentStrategy.TO_ORDER</code>), but a to-order line carries <strong>no</strong> production/receipt value on <code>line_status</code>: it sits at <code>open</code> while its order-pegged supply is produced or purchased, moves to <code>reserved</code> when that supply lands and is pegged, then <code>shipped</code> — identical to a stock line. So the fold never branches on product type (<code>docs/composed-state-machines.md</code> §11).
+    <br><strong>Multi-axis.</strong> A line's full state is a product of independent lattices — shipping, invoicing, and payment progress independently (invoice before ship, ship before invoice, or split each at unrelated quantities). The header carries the <em>ship</em> axis; <em>invoice</em> (<code>NOT_INVOICED ⊏ PARTIALLY_INVOICED ⊏ INVOICED</code>) and <em>pay</em> (<code>NOT_PAID ⊏ PARTIALLY_PAID ⊏ PAID</code>, owned by <code>finance.CustomerInvoice</code>, projected back) are orthogonal flags on the read model. <strong>Boundary:</strong> returns/credit notes decrease an axis → break the lattice monotonicity the fold assumes (out of scope today). Detail: <code>docs/composed-state-machines.md</code> §§11, 12.
   </div>
+</details>
+
+<details class="saga-block">
+  <summary><h3 id="sm-sales-order-line-supply">SalesOrderLine — off-line supply states (any line awaiting supply)</h3></summary>
+  <p class="desc">When a line <strong>can't be immediately fully reserved</strong>, its supply is arranged off the line — the line sits at <code>open</code> while three <em>other</em> machines work, then moves <code>open → reserved</code> only when the supply lands. This happens across the <strong>four supply modes</strong> (make-vs-buy × stock-vs-order); only a <strong>fully-covered to-stock</strong> line skips it (<code>open → reserved</code> directly — see the chain above). Two orthogonal axes set the cell: <strong>make vs buy</strong> (a manufacturing work order vs a purchasing PO → "awaiting production" vs "awaiting receipt") and <strong>to-stock vs to-order</strong> (a short line replenishes the <em>shared pool</em>, §2.35 <code>sales_order_shortage</code>; a to-order line raises <em>pegged</em> supply earmarked to the line). The labels are <strong>model-only</strong>: <code>waiting_for_production</code> / <code>awaiting_receipt</code> appear nowhere in Java or SQL, and <code>ready_to_ship</code> exists only as a saga state + event + 360 column.</p>
+  <table class="csm-table">
+    <thead><tr><th>Model label</th><th>make-to-stock (short)</th><th>buy-to-stock (short)</th><th>make-to-order</th><th>buy-to-order</th><th>tracked in code as</th></tr></thead>
+    <tbody>
+      <tr><td class="band">awaiting supply</td>
+        <td><code>waiting_for_production</code><br><span style="opacity:.6">(WO → pool)</span></td>
+        <td><code>awaiting_receipt</code><br><span style="opacity:.6">(PO → pool)</span></td>
+        <td><code>waiting_for_production</code><br><span style="opacity:.6">(pegged WO)</span></td>
+        <td><code>awaiting_receipt</code><br><span style="opacity:.6">(pegged PO)</span></td>
+        <td>sales saga <code>stock_reservation_incomplete</code> · <code>inventory.replenishment_request.status</code> (<code>requested</code>/<code>dispatched</code>) · <code>manufacturing.work_order.status</code> (make) / <code>purchasing.purchase_order.status</code> (buy) · reporting <code>manufacturing_status</code> / <code>stock_status</code></td></tr>
+      <tr><td class="band">supply secured</td>
+        <td colspan="4" style="text-align:center"><code>ready_to_ship</code> <span style="opacity:.6">(all four modes; also reached directly by a fully-covered to-stock line)</span></td>
+        <td>sales saga state <code>ready_to_ship</code> · event <code>sales.SalesOrderReadyToShip</code> · reporting <code>sales_order_360_view.order_status='ready_to_ship'</code></td></tr>
+    </tbody>
+  </table>
+  <div class="desc">The columns differ only on the two supply axes (production-vs-receipt = make-vs-buy; pool-vs-pegged = stock-vs-order) — the off-line state <em>shape</em> is identical, so the order fold (which only sees <code>line_status</code>) never branches on it. On <code>inventory.ReplenishmentFulfilled</code> the saga drops the line from its outstanding set and re-reserves; only <em>then</em> does <code>line_status</code> move <code>open → reserved</code> — it never passes through a "production" value. The orchestration that owns these states is the saga block below. Detail: <code>docs/composed-state-machines.md</code> §11.4 + §2.35.</div>
+</details>
+
+<details class="saga-block">
+  <summary><h3 id="sm-sales-order-line-axes">SalesOrderLine — the other two axes (off the line)</h3></summary>
+  <p class="desc">The line's full state is a product of <strong>three independent axes</strong> (§12): <em>ship</em>, <em>invoice</em>, <em>pay</em> — orthogonal because you can invoice before shipping, ship before invoicing, or split each at unrelated quantities. Only the <strong>ship</strong> axis is on <code>sales_order_line</code> — it is the one axis whose deltas (shipment lines) carry <code>salesOrderLineId + qty</code> and are sales-owned. The <em>invoice</em> and <em>pay</em> axes <strong>cross-cut the lines</strong> and are owned by <code>finance</code>, so per <em>deltas get aggregates, totals get projections</em> they live off the SO line — invoice at line grain in finance, pay only at order grain. Where each axis lives at each grain:</p>
+  <table class="csm-table">
+    <thead><tr><th>Axis</th><th>line grain (per SO line)</th><th>order grain (rollup)</th></tr></thead>
+    <tbody>
+      <tr><td class="band">ship</td><td><code>sales.sales_order_line.line_status</code> + <code>shipped_quantity</code> <span style="opacity:.6">(on the SO line ✓)</span></td><td>header <code>status</code> (the fold) · reporting <code>360.shipment_status</code></td></tr>
+      <tr><td class="band">invoice</td><td><code>finance.customer_invoice_line.sales_order_line_id</code> + <code>quantity</code> <span style="opacity:.6">(nullable — deposit / balance synthetic lines carry no SO line)</span></td><td>reporting <code>360.invoice_status</code> / <code>invoiced_amount</code></td></tr>
+      <tr><td class="band">pay</td><td><span style="opacity:.6">— none: payments settle <em>invoices</em>, not lines</span></td><td><code>finance.payment_allocation</code> (per invoice) · reporting <code>360.payment_status</code> / <code>paid_amount</code></td></tr>
+    </tbody>
+  </table>
+  <div class="desc">All three converge at the <strong>order level on the 360</strong>, where completion is the conservation reconciliation <code>ordered = shipped = invoiced = paid</code> (§12.6) — and because an invoice sits structurally between ship and pay (<code>shipped ∧ paid ⇒ invoiced</code>), the order's <code>completed</code> is <code>shipped ∧ paid_amount ≥ total</code>. <strong>Boundary:</strong> returns / credit notes decrease an axis → break the monotonicity the fold assumes (out of scope). Detail: <code>docs/composed-state-machines.md</code> §§12, 12.6.</div>
 </details>
 
 <details class="saga-block">
