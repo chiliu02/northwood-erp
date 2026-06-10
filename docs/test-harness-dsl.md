@@ -441,6 +441,27 @@ Small, because the engine exists. Suggested slices:
 Non-negotiable in every slice: the DSL adds **no** production code and drives only real
 services/handlers/serde (§8).
 
+### Build-out status — complete
+
+The roadmap above grew into a full coverage build-out (tracked per-flow in §11). **Every
+cross-service harness test** (`o2c` / `p2p` / `replenishment` / `projection`) now has a
+`*DslTest` twin — 23 DSL test methods, green alongside the imperative suite (a full
+no-selector `mvn test -pl test-harness` runs both: 48 tests, 0 failures). The build grew
+`World` to wire all five service kits (sales / inventory / finance / manufacturing /
+purchasing) plus reporting's production board, behind a kit-list-driven `settle()`.
+
+Several ports are **more faithful than their imperative twins**: where the hand-written
+tests *forge* a `WorkOrderManufacturingCompleted` / `GoodsReceived` event or shortcut a
+replenishment via `markFulfilled`, the DSL drives the **real** `WorkOrderOperationService`
+completion and the **real** `GoodsReceiptService` receipt — the DSL's "forge nothing" rule
+made the ports stricter, not looser. Three tests are deliberately ported as the
+business-outcome **subset** (sub-assembly, priority cascade, to-order guard); the
+below-altitude saga-field / outbox-drain probes stay with the imperative tests.
+
+Per slice 4's decision: the DSL is kept **alongside** the imperative suite (twins, not a
+migration) so each flow is exercised both ways. New cross-service requirements should adopt
+the DSL.
+
 ---
 
 ## 10. Open decisions
@@ -470,7 +491,8 @@ tests), the allocation/posting persistence mechanics (`Jdbc*IT`), and security/r
 (API-filter tests) stay in their own tiers (§8) and are **out of scope** here.
 
 Each row pairs a DslTest with the hand-written harness test it mirrors (its known-green
-baseline) and the requirements it exercises. Build-out runs in the phases of §9's roadmap.
+baseline) and the requirements it exercises. **The build-out is complete** — every row is
+shipped (✅) or subsumed (⊆); see §9's *Build-out status*.
 
 | Flow | DslTest | Mirrors | REQs | Status |
 |---|---|---|---|---|
@@ -493,7 +515,10 @@ baseline) and the requirements it exercises. Build-out runs in the phases of §9
 | Requisition to-order guard | `PurchaseRequisitionToOrderGuardDslTest` | `PurchaseRequisitionToOrderGuardTest` | REQ-PUR-020, REQ-PROD-022 | ✅ (guard subset) |
 | WO priority cascade (mfg → reporting board) | `SetPriorityCascadeDslTest` | `SetPriorityCascadeTest` | REQ-MFG-070, REQ-RPT-020 | ✅ (outcome subset) |
 
-Legend: ✅ shipped · ⊆ covered by another DslTest · Phase A–E per §9.
+Legend: ✅ shipped · ⊆ covered by another DslTest. **All target flows are ✅** — every
+cross-service harness test now has a DslTest twin (or is subsumed). Parenthesised notes
+(e.g. *real WO completion*, *outcome subset*) flag where a port is more faithful than its
+imperative twin or deliberately ports only the business-outcome subset (§9 build-out status).
 
 **Build-out is smaller than the kit count suggests.** `ManufacturingTestKit`, `PurchasingTestKit`,
 the inventory goods-receipt + replenishment surface, and `InMemoryProductionPlanningProjection`
