@@ -152,7 +152,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
         }
 
         @Test void reserved_with_outstanding_amended_line_stays_incomplete() {
-            // §1G ordering guard: a SalesOrderLineReservationChanged (short) landed
+            // Ordering guard: a SalesOrderLineReservationChanged (short) landed
             // first and registered an outstanding amended line; a now-arriving
             // 'reserved' for the original lines must not clobber it to ready_to_ship.
             SalesOrderFulfilmentSaga saga = sagaInState(STOCK_RESERVATION_REQUESTED,

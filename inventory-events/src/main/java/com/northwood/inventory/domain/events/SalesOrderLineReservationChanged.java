@@ -6,7 +6,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Inventory's per-line reply to a sales-order line amendment (§1G). Emitted when
+ * Inventory's per-line reply to a sales-order line amendment. Emitted when
  * inventory has incrementally reserved an added line, delta-adjusted a changed
  * line, or released a removed line on an already-reserved order. Lets the
  * fulfilment saga reconcile its outstanding-line set:

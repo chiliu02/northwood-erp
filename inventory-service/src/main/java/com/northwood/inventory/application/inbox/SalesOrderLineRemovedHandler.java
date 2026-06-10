@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Idempotent inbox handler for {@code sales.SalesOrderLineRemoved} (§1G line
+ * Idempotent inbox handler for {@code sales.SalesOrderLineRemoved} (line
  * amendment). Releases the removed line's reservation back to the free pool
  * (no-op if the order has no live reservation for that line).
  */

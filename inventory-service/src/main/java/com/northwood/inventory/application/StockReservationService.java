@@ -191,7 +191,7 @@ public class StockReservationService {
     }
 
     // ============================================================
-    // §1G line amendment — incremental per-line reserve / release / delta.
+    // line amendment — incremental per-line reserve / release / delta.
     //
     // Each op no-ops when the order has no live reservation yet: the amendment
     // raced ahead of inventory's first reservation, and the eventual
@@ -266,7 +266,7 @@ public class StockReservationService {
         // an order rejection.
         emitLineReservationChanged(salesOrderId, salesOrderLineId, l.productId(),
             BigDecimal.ZERO, BigDecimal.ZERO, StockReservation.Status.RELEASED.dbValue());
-        // §1G Slice C: if the removed line was short and awaiting supply, cancel
+        // If the removed line was short and awaiting supply, cancel
         // its in-flight replenishment so it doesn't fulfil into the pool for a
         // line that no longer exists. A fulfilled request is excluded by the
         // finder (its stock already landed; the line was re-reserved + released).

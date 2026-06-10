@@ -9,9 +9,9 @@ existing invariants (`deltas get aggregates, totals get projections`; the DDD ag
 root + read-model projection split).
 
 > Status: **adopted convention** — opened 2026-06-09 as a design note, implemented and adopted
-> 2026-06-10 (§2.29); registered in `CLAUDE.md` → *Pointers*. Consult it when modelling any
+> 2026-06-10; registered in `CLAUDE.md` → *Pointers*. Consult it when modelling any
 > master-detail status / completion rollup. The worked example uses the real
-> `SalesOrder.Status` / `SalesOrder.LineStatus` enums. **Implemented (§2.29, 2026-06-10):** the
+> `SalesOrder.Status` / `SalesOrder.LineStatus` enums. **Implemented (2026-06-10):** the
 > header ship-axis fold is `SalesOrder.recomputeStatus()` — the single writer of `status`, with
 > `markReserved` wired and the blind projection retired (§14.2 gaps 1 & 2 closed). The multi-axis
 > invoice/pay separation (gap 3) is **resolved by design** — those axes fold over the
@@ -255,9 +255,9 @@ Two rules fall out of keeping them separate:
 
 ## 5. The header is a pure fold region *plus* three order-level terminals
 
-> **Updated 2026-06-10 (§2.45).** An earlier draft of this section modelled the header as a
+> **Updated 2026-06-10.** An earlier draft of this section modelled the header as a
 > *two-tier* machine — an "autonomous front FSM" (`SUBMITTED → IN_FULFILMENT`) sitting in
-> front of a derived region. The §2.45 convergence collapsed that picture: there is no
+> front of a derived region. The convergence collapsed that picture: there is no
 > autonomous front. The whole ship progression **is** the fold, and the only non-fold states
 > are the three top-down terminals. The two-tier framing is retained below only as the
 > *before* of the arc.
@@ -283,7 +283,7 @@ The header status is **two categories, nothing more**:
   cross-axis invoice/pay inputs live *off* the SO line (§12.6), so it cannot be a fold output;
   it is set by `complete()` only after the fold has reached `SHIPPED`.
 
-**Why this is the right shape — the lossy-fold argument (the §2.45 payoff).** A `meet/join`
+**Why this is the right shape — the lossy-fold argument.** A `meet/join`
 fold of N lines down to one scalar is **inherently lossy**: `{l1=RESERVED, l2=OPEN}` and
 `{l1=OPEN, l2=RESERVED}` both collapse to `PARTIALLY_RESERVED`. So the header can *never* be
 the gating oracle for arbitrary line-level policy — only for `meet/join`-expressible
@@ -369,8 +369,8 @@ and downstream consumers?** Yes → aggregate (7.2). No → projection (7.3).
 
 ## 8. Where the model meets the code today
 
-The codebase implements the **faithful ship-axis fold** of this model (§2.29 Slice A
-2026-06-10, brought to the brainless-fold end-state by **§2.45** 2026-06-10); the multi-axis
+The codebase implements the **faithful ship-axis fold** of this model (a brainless fold,
+2026-06-10); the multi-axis
 invoice/pay separation is realized at the order level rather than on the SO line, for the
 reason worked out in **§12.6** (full accounting + severity in **§14**):
 
@@ -548,7 +548,7 @@ pay for the product when the order genuinely reports per-kind progress.
 For the SO rollup *right now* the question doesn't even arise: under **make-to-stock**, an
 SO line fulfils **identically** whether the product is made or bought — reserve from stock →
 ship. The make-vs-buy decision lives upstream in **inventory / replenishment**, a different
-aggregate (`project_make_to_stock_rationale`, the §2.35 mfg↔purchasing decoupling), and the
+aggregate (`project_make_to_stock_rationale`, the mfg↔purchasing decoupling), and the
 SO line never sees it. So `L_make = L_buy` at the SO-line level and every line runs the one
 chain.
 
@@ -721,7 +721,7 @@ M  =  M_ship  ×  M_invoice  ×  M_pay
 ```
 
 **Shipment axis** — one coarse **band** (what the order fold sees) onto which the three
-variant chains coarsen via monotone `g_v` (§11). Since **§2.45** the band names *are* the
+variant chains coarsen via monotone `g_v` (§11). The band names *are* the
 `SalesOrderLine.LineStatus` vocabulary (and, equivalently, the header `Status` fold region —
 the fold is brainless, header ≡ line, §5/§8). The code carries them as `BAND_OPEN ⊏
 BAND_PARTIALLY_RESERVED ⊏ BAND_RESERVED ⊏ BAND_PARTIALLY_SHIPPED ⊏ BAND_SHIPPED`:
@@ -867,11 +867,11 @@ One column can't carry both — exactly why they're orthogonal regions, not one 
 
 ---
 
-## 14. Gap analysis — model vs. codebase (resolved by §2.29 + §2.45, 2026-06-10)
+## 14. Gap analysis — model vs. codebase (resolved 2026-06-10)
 
 §8 sketched where the model meets the code; this is the full accounting. The gaps below were
-the *pre-§2.29* state; §2.29 (Slices A + B) closed gaps 1 & 2 and resolved gap 3 by design,
-and **§2.45** finished the arc — the faithful brainless fold + line-predicate gates (§14.4).
+the *pre-convergence* state; the first pass closed gaps 1 & 2 and resolved gap 3 by design,
+and a later pass finished the arc — the faithful brainless fold + line-predicate gates (§14.4).
 The **headline before**: the composed-state machine was fragmented across three writers where
 the model has one. **After:** the aggregate is the single writer of the ship-axis fold (the
 header ship-vocabulary now *equals* the line vocabulary); the invoice/pay axes are
@@ -885,12 +885,12 @@ document-chain folds owned by finance + the 360 (§12.6).
 
 ### 14.1 Gap by model pillar — resolution
 
-| Model pillar (ideal) | Resolution (§2.29) | Status |
+| Model pillar (ideal) | Resolution | Status |
 |---|---|---|
-| **Header status = `classify(lines)`** single fold (§13.3) | `SalesOrder.recomputeStatus()` re-derives the ship-axis status after every mutation | ✅ closed (Slice A) |
-| **Single writer, status derived not stored** (§9) | blind `markStatus` retired; aggregate is sole writer (fold + guarded terminals) | ✅ closed (Slice A) |
-| **Line is the authoritative state machine** (§8) | `markReserved` wired from `StockReservedHandler` → `recordReservation`; line carries the `reserved`/`partially_reserved` band, fold derives the matching header rung (§2.45 — no longer coarsened into one `IN_FULFILMENT`) | ✅ closed (Slice A; faithful §2.45) |
-| **Multi-axis product** `M_ship × M_invoice × M_pay` (§12) | ship axis folds over SO lines (aggregate); invoice/pay fold over the fulfilment-document chain (finance + 360), **not** the SO line — the per-event-triple model (§12.6). `COMPLETED` is the saga's cross-aggregate meet, with `complete()` asserting the `ordered = shipped` leg | ✅ resolved by design (Slice B) |
+| **Header status = `classify(lines)`** single fold (§13.3) | `SalesOrder.recomputeStatus()` re-derives the ship-axis status after every mutation | ✅ closed |
+| **Single writer, status derived not stored** (§9) | blind `markStatus` retired; aggregate is sole writer (fold + guarded terminals) | ✅ closed |
+| **Line is the authoritative state machine** (§8) | `markReserved` wired from `StockReservedHandler` → `recordReservation`; line carries the `reserved`/`partially_reserved` band, fold derives the matching header rung (no longer coarsened into one `IN_FULFILMENT`) | ✅ closed (faithful fold) |
+| **Multi-axis product** `M_ship × M_invoice × M_pay` (§12) | ship axis folds over SO lines (aggregate); invoice/pay fold over the fulfilment-document chain (finance + 360), **not** the SO line — the per-event-triple model (§12.6). `COMPLETED` is the saga's cross-aggregate meet, with `complete()` asserting the `ordered = shipped` leg | ✅ resolved by design |
 | **Variant coarsening** make/buy → common band (§11) | to-order is **built** (`ReplenishmentStrategy.TO_ORDER`), and validates §11 even more strongly: the line needs *no* variant states — production lives off the line, so a to-order line runs the same `open → reserved → shipped` chain. The model-only `WAITING_FOR_PRODUCTION` / `READY_TO_SHIP` were removed | ✅ built (no line bands) |
 | **Quantity-bucket `Σ`-folds** (§2.3) | `shippedQty` + `reservedQty` now both accumulate; `manufacturingRequiredQty` still unwired (MTS) | ✅ mostly closed |
 | **Cancelled-neutrality in the fold** | the status fold filters cancelled lines (property-tested) | ✅ closed |
@@ -902,16 +902,16 @@ document-chain folds owned by finance + the 360 (§12.6).
    writer of the derived region, and the absorbing terminals are guarded transitions
    (`cancel` / `reject` / `complete`). The blind `markStatus` projection is **deleted**, so the
    §9 *independently-writable status* anti-pattern is gone — there is no second writer to
-   desync. ✅ **Closed (Slice A).**
+   desync. ✅ **Closed.**
 
 2. **In-progress band on the line (was Medium).** `markReserved` is wired from
    `StockReservedHandler` via `SalesOrderService.recordReservation`, so the line authoritatively
    carries `reserved` / `partially_reserved` and the fold derives the matching header rung from
-   it (Option 2, not "document the split"; §2.45 made the fold faithful so the line bands map
+   it (Option 2, not "document the split"; the faithful fold maps the line bands
    1:1 to header bands rather than collapsing into one `IN_FULFILMENT`). `reservedQuantity` is no
    longer dead. The Saga still owns the states the line cannot represent
    (awaiting-replenishment, ready-to-ship) — those are *process* state by design (§5).
-   ✅ **Closed (Slice A; faithful §2.45).**
+   ✅ **Closed.**
 
 3. **Multi-axis — resolved by recognising the axes fold over different detail sets (was
    Medium).** The fix is *not* an `invoicedQuantity` bucket on the SO line. Per §12.6, the order
@@ -926,16 +926,16 @@ document-chain folds owned by finance + the 360 (§12.6).
    guarded `complete()`, which asserts the one leg the aggregate owns (`ordered = shipped`) —
    and because invoice sits structurally between ship and pay, `shipped ∧ paid ⇒ invoiced`, so
    the 360's `completed = shipped ∧ paid_amount ≥ total` is the complete meet. ✅ **Resolved by
-   design (Slice B).** Putting the invoice axis on the SO line would have contradicted
+   design.** Putting the invoice axis on the SO line would have contradicted
    *deltas get aggregates, totals get projections* (§12.4 #4) and could not be populated for
    value-based deposit/balance invoices.
 
-### 14.3 §2.45 — the faithful fold + line-predicate gates (finishing the arc, 2026-06-10)
+### 14.3 The faithful fold + line-predicate gates (finishing the arc, 2026-06-10)
 
-§2.29 made the aggregate the single writer but still (a) **coarsened** the fold — line
+The first pass made the aggregate the single writer but still (a) **coarsened** the fold — line
 `partially_reserved` / `reserved` were lumped into one header `IN_FULFILMENT` — and (b)
-**gated on the header enum** (`NON_CANCELLABLE_STATUSES` / `AMENDABLE_STATUSES`). §2.45 finishes
-the convergence:
+**gated on the header enum** (`NON_CANCELLABLE_STATUSES` / `AMENDABLE_STATUSES`). The convergence
+finishes it:
 
 - **Brainless faithful fold.** `SalesOrder.Status` *is* the fold region
   `open ⊏ partially_reserved ⊏ reserved ⊏ partially_shipped ⊏ shipped` — the header
@@ -963,7 +963,7 @@ the convergence:
   `WAITING_FOR_PRODUCTION` / `READY_TO_SHIP` line-status values were **removed** (model-only).
 - **Reversals (returns / credit notes, §12.4 #2)** — break per-axis monotonicity; out of scope
   (`project_credit_notes_low_priority`).
-- **Third status vocabulary on the read model (§2.45 option C, deferred).** `reporting`'s
+- **Third status vocabulary on the read model (option C, deferred).** `reporting`'s
   `sales_order_360_view.order_status` speaks its *own* words
   (`pending → submitted → ready_to_ship → shipped → completed → cancelled`), seeded and advanced
   by the 360 projection's CASE logic — it does **not** read the sales header status string.

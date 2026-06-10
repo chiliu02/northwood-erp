@@ -48,7 +48,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
     extends SagaManager<SalesOrderFulfilmentSaga, SalesOrderFulfilmentSagaPort>
     implements SalesOrderFulfilmentSagaManager {
 
-    /** Saga states in which a §1G line-amendment reservation reply is reconciled. */
+    /** Saga states in which a line-amendment reservation reply is reconciled. */
     private static final Set<String> RESERVATION_PHASE_STATES = Set.of(
         STOCK_RESERVATION_REQUESTED, READY_TO_SHIP, STOCK_RESERVATION_INCOMPLETE
     );
@@ -135,7 +135,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
         SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, StockReserved.EVENT_TYPE);
         if (StockReserved.STATUS_RESERVED.equals(reservationStatus)
             && !readData(saga).outstandingReplenishmentLineIds().isEmpty()) {
-            // §1G ordering guard: a line-amendment reply (SalesOrderLineReservationChanged,
+            // Ordering guard: a line-amendment reply (SalesOrderLineReservationChanged,
             // partitioned by sales_order_id) can land before this StockReserved
             // (partitioned by reservation_id) and register an outstanding amended
             // short line. Don't clobber that with ready_to_ship — stay parked at
@@ -287,7 +287,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
                 saga.sagaId(), salesOrderHeaderId, saga.state(), salesOrderLineId);
             return saga.state();
         }
-        // Only reject for a line still in the outstanding set. §1G: a line removed
+        // Only reject for a line still in the outstanding set. A line removed
         // by amendment is dropped from the set first (the released reply lands
         // before this cancel), so its in-flight replenishment cancellation is a
         // benign no-op here — the order was deliberately amended, not unsourceable.

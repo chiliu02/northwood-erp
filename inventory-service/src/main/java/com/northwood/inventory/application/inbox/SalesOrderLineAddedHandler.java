@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Idempotent inbox handler for {@code sales.SalesOrderLineAdded} (§1G line
+ * Idempotent inbox handler for {@code sales.SalesOrderLineAdded} (line
  * amendment). Reserves the newly-added line against the order's existing
  * reservation (no-op if the order isn't reserved yet — the line is then covered
  * by the initial/retried whole-order reservation).

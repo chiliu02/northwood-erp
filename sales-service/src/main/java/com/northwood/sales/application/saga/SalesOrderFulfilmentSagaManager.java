@@ -46,7 +46,7 @@ public interface SalesOrderFulfilmentSagaManager {
      * The order's snapshotted commercial payment terms (wire-format
      * {@code on_shipment} / {@code prepayment} / {@code deposit} …), or empty if
      * no saga row exists / none was stamped. Read-only — used by the application
-     * service to apply the §1G finance guard: prepayment/deposit orders raise
+     * service to apply the finance guard: prepayment/deposit orders raise
      * their invoice <em>before</em> reservation, so they are not amendable past
      * {@code started} even though on-shipment orders are.
      */
@@ -144,7 +144,7 @@ public interface SalesOrderFulfilmentSagaManager {
 
     /**
      * Apply {@code inventory.SalesOrderLineReservationChanged} — inventory's
-     * per-line reply to a line amendment (§1G). Reconciles the saga's
+     * per-line reply to a line amendment. Reconciles the saga's
      * outstanding-replenishment set:
      * <ul>
      *   <li>{@code lineIsShort} — the amended line couldn't be fully reserved

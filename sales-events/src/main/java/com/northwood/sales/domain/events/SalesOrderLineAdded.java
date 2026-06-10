@@ -19,7 +19,7 @@ import java.util.UUID;
  * <p>{@code newOrderTotal} is the order's recomputed header total <i>after</i>
  * the amendment (the aggregate runs {@code recomputeTotals()} before emitting),
  * so the reporting 360 projection can refresh {@code total_amount} /
- * {@code outstanding_amount} without re-reading sales — §1G.3.
+ * {@code outstanding_amount} without re-reading sales.
  */
 public record SalesOrderLineAdded(
     UUID eventId,

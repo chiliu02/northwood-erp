@@ -120,7 +120,7 @@ public final class SalesTestKit {
     }
 
     public Optional<SalesOrder.Status> orderStatus(UUID salesOrderId) {
-        // Header status is now the aggregate's single-writer fold (§2.29), not a
+        // Header status is now the aggregate's single-writer fold, not a
         // separate projection — read it straight off the SalesOrder.
         return orders.findById(SalesOrderId.of(salesOrderId)).map(SalesOrder::status);
     }

@@ -25,8 +25,8 @@ import tools.jackson.databind.ObjectMapper;
  * lines came back short, asks the manager to advance the saga, then records the
  * reservation outcome onto the {@code SalesOrder} aggregate — each line's
  * reserved quantity moves it onto the reservation band and the header fold
- * re-derives {@code 'reserved'} / {@code 'partially_reserved'} (§2.29 item 2: the
- * line carries the authoritative in-progress band, replacing the former blind
+ * re-derives {@code 'reserved'} / {@code 'partially_reserved'} (the line
+ * carries the authoritative in-progress band, replacing the former blind
  * {@code markStatus(IN_FULFILMENT)} projection write). When the manager reports
  * a full-reservation shortcut to {@code ready_to_ship}, emits
  * {@code sales.SalesOrderReadyToShip} so reporting can advance

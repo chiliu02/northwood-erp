@@ -65,7 +65,7 @@ public interface StockReservationRepository {
     void deleteHeaderAndLines(UUID stockReservationHeaderId);
 
     // ------------------------------------------------------------
-    // §1G line amendment — per-line incremental reserve / release / delta.
+    // line amendment — per-line incremental reserve / release / delta.
     // ------------------------------------------------------------
 
     /** The live (non-{@code released}) reservation header id for a sales order, if any. */

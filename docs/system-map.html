@@ -762,7 +762,7 @@ window.NORTHWOOD_EVENTS = [
       { dest: "inventory", name: "inventory.sales-order-line-added",
         desc: `<code>SalesOrderLineAddedHandler</code> → <code>StockReservationService.applyLineAdded</code>: reserves the new line against the order's live reservation, appends a <code>inventory.stock_reservation_line</code> (stamped with <code>sales_order_line_id</code>) and bumps <code>stock_balance.reserved_quantity</code>; on a short line raises <code>ReplenishmentRequest(reason=sales_order_shortage)</code> in-tx. <strong>No-op when no live reservation exists</strong> (the amendment raced ahead of the initial whole-order reservation — the added line is then covered by the initial/retried reservation via sales' <code>LineSnapshot</code>). Emits <code>inventory.SalesOrderLineReservationChanged</code>. Partition-keyed on <code>aggregateId</code> (sales-order id) so it lands strictly after <code>SalesOrderPlaced</code>.` },
       { dest: "reporting", name: "reporting.sales-order-360.line-added",
-        desc: `<code>SalesOrderLineAddedHandler</code> → <code>SalesOrder360Projection.recordAmendedTotal</code>: refreshes the 360 header money (<code>total_amount</code> + re-derived <code>outstanding_amount</code> = total − paid) from the post-amendment order total the event carries (<code>newOrderTotal</code>) — §1G.3, so the order-detail Money panel tracks amendments instead of resting at the placement total. Partition-keyed on <code>aggregateId</code>.` },
+        desc: `<code>SalesOrderLineAddedHandler</code> → <code>SalesOrder360Projection.recordAmendedTotal</code>: refreshes the 360 header money (<code>total_amount</code> + re-derived <code>outstanding_amount</code> = total − paid) from the post-amendment order total the event carries (<code>newOrderTotal</code>), so the order-detail Money panel tracks amendments instead of resting at the placement total. Partition-keyed on <code>aggregateId</code>.` },
     ]
   },
   {
@@ -773,7 +773,7 @@ window.NORTHWOOD_EVENTS = [
       { dest: "inventory", name: "inventory.sales-order-line-quantity-changed",
         desc: `<code>SalesOrderLineQuantityChangedHandler</code> → <code>StockReservationService.applyLineQuantityChanged</code>: reserves the <em>delta</em> on a quantity increase / releases it on a decrease against the live reservation line. A pure price change rides this event with an unchanged quantity, so a zero delta is a no-op; also a no-op when no live reservation exists. Emits <code>inventory.SalesOrderLineReservationChanged</code>. Partition-keyed on <code>aggregateId</code>.` },
       { dest: "reporting", name: "reporting.sales-order-360.line-quantity-changed",
-        desc: `<code>SalesOrderLineQuantityChangedHandler</code> → <code>SalesOrder360Projection.recordAmendedTotal</code>: refreshes the 360 header money (<code>total_amount</code> + re-derived <code>outstanding_amount</code>) from the post-amendment order total (<code>newOrderTotal</code>) — a quantity or price change moves the total — §1G.3. Partition-keyed on <code>aggregateId</code>.` },
+        desc: `<code>SalesOrderLineQuantityChangedHandler</code> → <code>SalesOrder360Projection.recordAmendedTotal</code>: refreshes the 360 header money (<code>total_amount</code> + re-derived <code>outstanding_amount</code>) from the post-amendment order total (<code>newOrderTotal</code>) — a quantity or price change moves the total. Partition-keyed on <code>aggregateId</code>.` },
     ]
   },
   {
@@ -784,7 +784,7 @@ window.NORTHWOOD_EVENTS = [
       { dest: "inventory", name: "inventory.sales-order-line-removed",
         desc: `<code>SalesOrderLineRemovedHandler</code> → <code>StockReservationService.applyLineRemoved</code>: releases that line's reservation back to the free pool (soft <code>released</code>) and cancels any open (<code>requested</code>/<code>dispatched</code>) <code>ReplenishmentRequest</code> for the removed line — a <code>fulfilled</code> one is left alone (its stock already landed). The <code>released</code> <code>SalesOrderLineReservationChanged</code> reply is emitted <strong>before</strong> the cancel so the saga drops the line from its outstanding set first (the resulting <code>inventory.ReplenishmentCancelled</code> is then a benign no-op rather than a reject). No-op when no live reservation exists. Partition-keyed on <code>aggregateId</code>.` },
       { dest: "reporting", name: "reporting.sales-order-360.line-removed",
-        desc: `<code>SalesOrderLineRemovedHandler</code> → <code>SalesOrder360Projection.recordAmendedTotal</code>: refreshes the 360 header money (<code>total_amount</code> + re-derived <code>outstanding_amount</code>) from the post-amendment order total (<code>newOrderTotal</code>) — the soft-cancelled line drops out of the total — §1G.3. Partition-keyed on <code>aggregateId</code>.` },
+        desc: `<code>SalesOrderLineRemovedHandler</code> → <code>SalesOrder360Projection.recordAmendedTotal</code>: refreshes the 360 header money (<code>total_amount</code> + re-derived <code>outstanding_amount</code>) from the post-amendment order total (<code>newOrderTotal</code>) — the soft-cancelled line drops out of the total. Partition-keyed on <code>aggregateId</code>.` },
     ]
   },
   {

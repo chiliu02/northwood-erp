@@ -19,7 +19,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * In-memory backing for {@link StockReservationRepository}. Drains the
  * aggregate's pending events to the outbox on save, mirroring the Jdbc adapter.
- * Models per-line state (for the §1G line-amendment ops) in {@link Line}.
+ * Models per-line state (for the line-amendment ops) in {@link Line}.
  */
 public final class InMemoryStockReservationRepository implements StockReservationRepository {
 
@@ -158,7 +158,7 @@ public final class InMemoryStockReservationRepository implements StockReservatio
     }
 
     // ------------------------------------------------------------
-    // §1G line amendment
+    // line amendment
     // ------------------------------------------------------------
 
     @Override

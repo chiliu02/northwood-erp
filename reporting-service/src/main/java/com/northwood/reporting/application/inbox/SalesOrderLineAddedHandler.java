@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Inbox handler for {@code sales.SalesOrderLineAdded} (§1G.3). Refreshes the
+ * Inbox handler for {@code sales.SalesOrderLineAdded}. Refreshes the
  * 360 header money: the added line changed the order total, so overwrite
  * {@code total_amount} / {@code outstanding_amount} with the post-amendment
  * figure the event carries. (Inventory consumes the same event to reserve the

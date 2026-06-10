@@ -645,8 +645,8 @@ public final class SalesOrder {
     }
 
     /**
-     * Record inventory's stock-reservation outcome onto the live lines (§2.29
-     * item 2). Each entry maps a {@code line_number} to the quantity inventory
+     * Record inventory's stock-reservation outcome onto the live lines. Each
+     * entry maps a {@code line_number} to the quantity inventory
      * reserved for it, moving the line onto the reservation band via
      * {@link SalesOrderLine#markReserved}; the header is then re-derived
      * ({@link #recomputeStatus()}) so reserved lines lift the order to

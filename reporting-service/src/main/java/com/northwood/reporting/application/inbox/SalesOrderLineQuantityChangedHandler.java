@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Inbox handler for {@code sales.SalesOrderLineQuantityChanged} (§1G.3).
+ * Inbox handler for {@code sales.SalesOrderLineQuantityChanged}.
  * Refreshes the 360 header money: a quantity (or price) change moved the order
  * total, so overwrite {@code total_amount} / {@code outstanding_amount} with the
  * post-amendment figure the event carries.

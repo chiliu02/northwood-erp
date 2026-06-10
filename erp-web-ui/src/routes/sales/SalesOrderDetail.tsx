@@ -78,7 +78,7 @@ const NON_CANCELLABLE = ["shipped", "completed", "cancelled", "rejected"];
  * — it carries no line rows).
  *
  * <p>The Lines tab is editable while the order is pre-reservation (line
- * amendment, §1G slice A): add / change quantity / remove (sales_clerk) and
+ * amendment): add / change quantity / remove (sales_clerk) and
  * change price (sales_manager), each routed through /api/sales-cmd with an
  * If-Match version for optimistic concurrency. The server is the source of
  * truth — it returns 409 once the amendable window has closed.
@@ -539,7 +539,7 @@ export function SalesOrderDetail() {
           {
             key: "audit",
             label: "Audit",
-            content: <AuditTab aggregateId={id} />,
+            content: <AuditTab aggregateId={id} entity="order" />,
           },
         ]}
       />

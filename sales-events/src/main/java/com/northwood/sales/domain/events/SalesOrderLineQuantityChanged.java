@@ -19,7 +19,7 @@ import java.util.UUID;
  *
  * <p>{@code newOrderTotal} is the order's recomputed header total <i>after</i>
  * the change, so the reporting 360 projection can refresh {@code total_amount} /
- * {@code outstanding_amount} — §1G.3.
+ * {@code outstanding_amount}.
  */
 public record SalesOrderLineQuantityChanged(
     UUID eventId,

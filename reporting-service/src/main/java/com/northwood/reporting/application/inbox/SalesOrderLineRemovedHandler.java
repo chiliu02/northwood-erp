@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Inbox handler for {@code sales.SalesOrderLineRemoved} (§1G.3). Refreshes the
+ * Inbox handler for {@code sales.SalesOrderLineRemoved}. Refreshes the
  * 360 header money: a removed (soft-cancelled) line drops out of the order
  * total, so overwrite {@code total_amount} / {@code outstanding_amount} with the
  * post-amendment figure the event carries.

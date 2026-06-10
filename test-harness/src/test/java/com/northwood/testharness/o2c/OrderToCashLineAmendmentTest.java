@@ -24,9 +24,9 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §1G line amendment end-to-end through sales + inventory + the fulfilment saga.
+ * Line amendment end-to-end through sales + inventory + the fulfilment saga.
  *
- * <p>Exercises the incremental reservation path (Slices B/C): a line added to an
+ * <p>Exercises the incremental reservation path: a line added to an
  * already-reserved order is reserved incrementally (the order stays
  * {@code ready_to_ship}); a short line removed from a shortage-parked order
  * releases its reservation, cancels its in-flight replenishment, and un-parks

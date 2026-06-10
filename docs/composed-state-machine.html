@@ -7,8 +7,8 @@
 <!-- Sibling to system-map.html, NOT a replacement for it.
 
      This page visualises the sales-order fulfilment composed state machine
-     described in docs/composed-state-machines.md. As of §2.29 + §2.45
-     (2026-06-10) it is AS-BUILT, not a target: a single faithful classify()
+     described in docs/composed-state-machines.md. As of 2026-06-10 it is
+     AS-BUILT, not a target: a single faithful classify()
      fold on the aggregate (header ship-vocabulary == line vocabulary); the
      in-progress band carried on the line; the invoice/pay axes off the SO line
      (§12.6); completed as a cross-axis meet; gates read line predicates. See
@@ -160,7 +160,7 @@
 </p>
 
 <div class="banner">
-  <strong>As-built after §2.29 + §2.45 (2026-06-10).</strong> A single faithful
+  <strong>As-built (2026-06-10).</strong> A single faithful
   <code>classify()</code> fold on the aggregate (no blind <code>markStatus</code> writer), the
   in-progress band carried on the line and mapped 1:1 to the header rung, the invoice/pay axes
   off the SO line (§12.6), <code>completed</code> as a cross-axis meet, and cancel/amend gates
@@ -173,7 +173,7 @@
 <h2>1 · The order header — a brainless fold plus three terminals</h2>
 <p>
   The header carries <strong>one</strong> <code>SalesOrder.Status</code>, which tracks the
-  <strong>shipment axis</strong>. Since <strong>§2.45</strong> the fold is <em>faithful</em>:
+  <strong>shipment axis</strong>. The fold is <em>faithful</em>:
   the header ship-vocabulary <strong>equals</strong> the line vocabulary — five
   <span class="pill derived">fold-region</span> states
   (<code>open ⊏ partially_reserved ⊏ reserved ⊏ partially_shipped ⊏ shipped</code>, the
@@ -280,8 +280,8 @@ A soft-removed line -> CANCELLED (neutral: filtered from every fold).</pre></det
   the <strong>same band</strong> via a monotone map <code>g<sub>v</sub></code> (§11). The order
   fold sees only the band, so it never branches on product type. A stock line in
   <code>reserved</code>, a make line in <code>ready_to_ship</code>, and a buy line in
-  <code>ready_to_ship</code> all coarsen to the <code>reserved</code> band. Since
-  <strong>§2.45</strong> the band names <em>are</em> the <code>LineStatus</code> vocabulary
+  <code>ready_to_ship</code> all coarsen to the <code>reserved</code> band. The
+  band names <em>are</em> the <code>LineStatus</code> vocabulary
   (and, equivalently, the header fold region — header ≡ line).
 </p>
 
@@ -349,7 +349,7 @@ classify(order) =
   Both meet and join are commutative ⇒ the result is order-insensitive (shuffle / replay / batch
   re-grouping can't change it). One writer: the aggregate's <code>recomputeStatus()</code>, called
   after every line mutation, with the invariant <code>stored status == classify(lines)</code>.
-  The header ship-vocabulary equals the line vocabulary (§2.45); <strong>gates read the lines</strong>
+  The header ship-vocabulary equals the line vocabulary; <strong>gates read the lines</strong>
   (<code>anyLineShipped()</code> + <code>isTerminal()</code>), not the header — the fold is lossy.
 </p>
 
@@ -415,12 +415,12 @@ classify(order) =
 </p>
 
 <!-- ============================================================= -->
-<h2>6 · What changed (§2.29 + §2.45, shipped 2026-06-10)</h2>
+<h2>6 · What changed (shipped 2026-06-10)</h2>
 <table>
-  <thead><tr><th>Before (pre-§2.29 fragmentation)</th><th>Now — as-built</th></tr></thead>
+  <thead><tr><th>Before (the prior fragmentation)</th><th>Now — as-built</th></tr></thead>
   <tbody>
     <tr><td>Status written by 3 owners: aggregate + blind <code>markStatus</code> projection + Saga</td><td>One owner: <code>recomputeStatus()</code> = <code>classify(lines)</code> on the aggregate</td></tr>
-    <tr><td>Fold reduced to a single <code>allMatch(SHIPPED)</code> in <code>recordShipped</code></td><td><code>open…shipped</code> all derived from the faithful ship-axis fold (header ≡ line vocabulary, §2.45)</td></tr>
+    <tr><td>Fold reduced to a single <code>allMatch(SHIPPED)</code> in <code>recordShipped</code></td><td><code>open…shipped</code> all derived from the faithful ship-axis fold (header ≡ line vocabulary)</td></tr>
     <tr><td>In-progress band lives only in the Saga; line’s <code>reserved</code> unwired; header coarsens to one <code>IN_FULFILMENT</code></td><td>Line carries the full band (<code>markReserved</code> wired); the fold maps it 1:1 to <code>partially_reserved</code> / <code>reserved</code></td></tr>
     <tr><td>Gates keyed on a header-status allow-list (<code>NON_CANCELLABLE_STATUSES</code> / <code>AMENDABLE_STATUSES</code>)</td><td>Gates read line predicates (<code>anyLineShipped()</code> + <code>isTerminal()</code>) — the lossy header is not the oracle</td></tr>
     <tr><td>No invoice axis on the order; <code>COMPLETED</code> is a payment-event jump</td><td>Invoice/pay are orthogonal axes off the SO line (§12.6); <code>completed</code> is the cross-axis meet</td></tr>
@@ -430,7 +430,7 @@ classify(order) =
 
 <footer>
   Generated from <code>docs/composed-state-machines.md</code> (§§2, 5, 11, 12, 13, 14). As-built
-  after §2.29 + §2.45 (2026-06-10). Canonical as-built map: <code>system-map.html</code>.
+  2026-06-10. Canonical as-built map: <code>system-map.html</code>.
 </footer>
 
 <script type="module">

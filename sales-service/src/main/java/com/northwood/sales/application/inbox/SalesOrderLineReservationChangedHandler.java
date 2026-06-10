@@ -10,7 +10,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Sales-side fan-in for {@code inventory.SalesOrderLineReservationChanged} — the
- * per-line reply to a §1G line amendment. Delegates to
+ * per-line reply to a line amendment. Delegates to
  * {@link SalesOrderFulfilmentSagaManager#applyLineReservationChanged} which
  * reconciles the saga's outstanding-replenishment set: a short amended line
  * (shortage &gt; 0) registers as outstanding and parks the saga at

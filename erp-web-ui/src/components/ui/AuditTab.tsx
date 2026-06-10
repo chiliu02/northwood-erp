@@ -17,6 +17,14 @@ interface AuditEntry {
 
 interface AuditTabProps {
   aggregateId: string | undefined;
+  /**
+   * Noun for the caption ("Events for this {entity}, newest first."). The
+   * audit query keys on aggregate_id alone, so the timeline also includes
+   * saga-aggregate events that carry this id (e.g. StockReservationRequested
+   * on a sales order) — hence "for this", not "emitted by this aggregate".
+   * Defaults to "record" for callers without a more specific noun.
+   */
+  entity?: string;
 }
 
 /**
@@ -26,7 +34,7 @@ interface AuditTabProps {
  * Aggregate column from the system table since every row shares the
  * same aggregate.
  */
-export function AuditTab({ aggregateId }: AuditTabProps) {
+export function AuditTab({ aggregateId, entity = "record" }: AuditTabProps) {
   const query = useQuery({
     queryKey: ["audit-log", aggregateId],
     queryFn: () => apiGet<AuditEntry[]>(`/api/audit?aggregateId=${aggregateId}`),
@@ -36,7 +44,7 @@ export function AuditTab({ aggregateId }: AuditTabProps) {
   return (
     <div className="rounded-md border border-border-default bg-bg-surface">
       <div className="flex items-center justify-between border-b border-border-default px-4 py-2 text-xs text-text-muted">
-        <span>Events emitted by this aggregate, newest first.</span>
+        <span>Events for this {entity}, newest first.</span>
         {aggregateId && (
           <Link
             to={`/system/audit-log?aggregateId=${aggregateId}`}

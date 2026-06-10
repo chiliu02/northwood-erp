@@ -168,7 +168,7 @@ class SalesOrderTest {
     class Cancel {
 
         private static SalesOrder reconstituteWithStatus(SalesOrder.Status status) {
-            // Gates read the lines (§2.45), so for a ship-state header the line
+            // Gates read the lines, so for a ship-state header the line
             // must actually be shipped — fake-header-only fixtures no longer drive
             // the cancel/amend guards.
             SalesOrderLine l = line(BigDecimal.ONE, new BigDecimal("100"));
@@ -309,7 +309,7 @@ class SalesOrderTest {
             assertThat(so.subtotalAmount()).isEqualByComparingTo(new BigDecimal("150.00"));
             List<DomainEvent> events = so.pullPendingEvents();
             assertThat(events).hasSize(1).first().isInstanceOf(SalesOrderLineAdded.class);
-            // §1G.3: the event carries the recomputed order total for the 360.
+            // The event carries the recomputed order total for the 360.
             assertThat(((SalesOrderLineAdded) events.get(0)).newOrderTotal())
                 .isEqualByComparingTo(new BigDecimal("150.00"));
         }
@@ -326,7 +326,7 @@ class SalesOrderTest {
             SalesOrderLineQuantityChanged e = (SalesOrderLineQuantityChanged) events.get(0);
             assertThat(e.previousQuantity()).isEqualByComparingTo(new BigDecimal("1"));
             assertThat(e.newQuantity()).isEqualByComparingTo(new BigDecimal("3"));
-            // §1G.3: 3*90 = 270
+            // 3*90 = 270
             assertThat(e.newOrderTotal()).isEqualByComparingTo(new BigDecimal("270.00"));
         }
 
@@ -345,7 +345,7 @@ class SalesOrderTest {
                 .isTrue();
             List<DomainEvent> events = so.pullPendingEvents();
             assertThat(events).hasSize(1).first().isInstanceOf(SalesOrderLineRemoved.class);
-            // §1G.3: removed line (2*25) drops out → 1*100 = 100
+            // removed line (2*25) drops out → 1*100 = 100
             assertThat(((SalesOrderLineRemoved) events.get(0)).newOrderTotal())
                 .isEqualByComparingTo(new BigDecimal("100.00"));
         }
@@ -366,7 +366,7 @@ class SalesOrderTest {
         }
 
         @Test void amend_rejected_once_shipped() {
-            // §2.45: the amend guard reads the lines, so the line must be shipped.
+            // The amend guard reads the lines, so the line must be shipped.
             SalesOrderLine shipped = lineWithId(UUID.randomUUID(), new BigDecimal("1"), new BigDecimal("100.00"));
             shipped.recordShipment(BigDecimal.ONE);
             SalesOrder so = amendable(SalesOrder.Status.SHIPPED, List.of(shipped));
@@ -468,8 +468,8 @@ class SalesOrderTest {
     }
 
     /**
-     * Properties of the status fold {@code ρ = classify(meet, join)} (§2.29 item 1,
-     * docs/composed-state-machines.md §3): the header status is a pure function of
+     * Properties of the status fold {@code ρ = classify(meet, join)}
+     * (docs/composed-state-machines.md §3): the header status is a pure function of
      * the live-line multiset, invariant under order/insert/batch, neutral to
      * cancelled lines, and monotone through the forward flow.
      */

@@ -87,7 +87,7 @@ class SalesOrderServiceAmendTest {
     }
 
     @Test void addLine_allowed_when_ready_to_ship() {
-        // Slice B widened the window to the reserved order (inventory reconciles
+        // The amendable window extends to the reserved order (inventory reconciles
         // the change incrementally).
         when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
             new CatalogPrice(new BigDecimal("25.00"), Currencies.AUD, null, 0)

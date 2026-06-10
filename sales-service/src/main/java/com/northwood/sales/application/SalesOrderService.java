@@ -247,16 +247,16 @@ public class SalesOrderService {
 
     /**
      * Fulfilment-saga states in which line amendment is currently permitted.
-     * {@code started} / {@code awaiting_release} (Slice A) — nothing reserved
+     * {@code started} / {@code awaiting_release} — nothing reserved
      * yet, a pure sales-side edit. {@code stock_reservation_requested} /
-     * {@code ready_to_ship} (Slice B) — inventory reconciles the change
+     * {@code ready_to_ship} — inventory reconciles the change
      * incrementally (reserve the added line / release the removed line / delta
      * the quantity) and the saga reconciles its outstanding-line set via
      * {@code SalesOrderLineReservationChanged}. {@code stock_reservation_incomplete}
-     * (Slice C) — amend a shortage-parked order: inventory reconciles incrementally
+     * — amend a shortage-parked order: inventory reconciles incrementally
      * (a removed short line cancels its in-flight replenishment) and the saga's
      * outstanding-set plumbing absorbs the change. The finance-invoiced window
-     * (a pre-shipment invoice exists) stays out — Slice D.
+     * (a pre-shipment invoice exists) stays out.
      */
     private static final Set<String> AMENDABLE_SAGA_STATES = Set.of(
         SalesOrderFulfilmentSaga.STARTED,
@@ -268,11 +268,11 @@ public class SalesOrderService {
 
     /**
      * Reserve-phase states that are <em>past</em> invoice creation for
-     * prepayment/deposit orders (Slice D finance guard). These terms raise their
+     * prepayment/deposit orders (finance guard). These terms raise their
      * invoice up front — before stock reservation — so by the time a
      * prepayment/deposit order reaches any of these states a pre-shipment invoice
      * already exists and amending the lines would desync it (post-invoice
-     * amendment needs the credit-note flow, §3.2). On-shipment orders carry no
+     * amendment needs the credit-note flow). On-shipment orders carry no
      * invoice until shipment, so they stay amendable here. {@code started} is
      * excluded — it precedes the invoice request for every term.
      */
@@ -467,9 +467,9 @@ public class SalesOrderService {
                 "Sales order " + order.id().value() + " fulfilment is at '" + state
                 + "'; lines can only be amended before goods ship");
         }
-        // Finance guard (Slice D): prepayment/deposit orders invoice up front, so
+        // Finance guard: prepayment/deposit orders invoice up front, so
         // once past `started` they already carry a pre-shipment invoice — block
-        // the amendment (post-invoice amendment needs the credit-note flow, §3.2).
+        // the amendment (post-invoice amendment needs the credit-note flow).
         if (POST_UPFRONT_INVOICE_STATES.contains(state) && hasUpfrontInvoiceTerms(order.id().value())) {
             throw new OrderNotAmendableException(
                 "Sales order " + order.id().value() + " has a pre-shipment invoice "
@@ -602,7 +602,7 @@ public class SalesOrderService {
 
     /**
      * Reflect inventory's stock-reservation outcome onto the {@link SalesOrder}
-     * aggregate (§2.29 item 2): loads the order, applies the per-line reserved
+     * aggregate: loads the order, applies the per-line reserved
      * quantities ({@code line_number → reservedQuantity}) onto the lines, and
      * saves — the repository persists the line reservation band + the re-derived
      * header status in the same transaction. Called from the inbox handler that
@@ -622,7 +622,7 @@ public class SalesOrderService {
     }
 
     /**
-     * Mark the order {@code completed} (§2.29: a guarded aggregate transition,
+     * Mark the order {@code completed} (a guarded aggregate transition,
      * replacing the former blind {@code markStatus(COMPLETED)}). Loads the order,
      * calls {@link SalesOrder#complete()} (which asserts it has fully shipped),
      * and saves. Called from the inbox handlers when the fulfilment saga reaches

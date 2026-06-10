@@ -9,8 +9,8 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Idempotent inbox handler for {@code sales.SalesOrderLineQuantityChanged} (§1G
- * line amendment). Delta-adjusts the line's reservation — reserves the increase
+ * Idempotent inbox handler for {@code sales.SalesOrderLineQuantityChanged} (line
+ * amendment). Delta-adjusts the line's reservation — reserves the increase
  * (raising a replenishment if short) or releases the decrease. A pure price
  * change (unchanged quantity) is a no-op delta. No-op if the order has no live
  * reservation for that line.

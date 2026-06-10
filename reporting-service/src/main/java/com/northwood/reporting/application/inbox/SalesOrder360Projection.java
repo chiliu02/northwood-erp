@@ -33,7 +33,7 @@ public interface SalesOrder360Projection {
         String actorUserId);
 
     /**
-     * Refresh the header money after a sales-order line amendment (§1G.3): set
+     * Refresh the header money after a sales-order line amendment: set
      * {@code total_amount} to the order's recomputed total and re-derive
      * {@code outstanding_amount} ({@code total − paid_amount}). All three
      * line-amendment events ({@code SalesOrderLineAdded} /
