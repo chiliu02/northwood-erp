@@ -101,9 +101,9 @@ class SalesOrderTest {
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
-        @Test void initial_status_is_submitted() {
+        @Test void initial_status_is_open() {
             SalesOrder so = placeWithLines(List.of(line(BigDecimal.ONE, BigDecimal.TEN)));
-            assertThat(so.status()).isEqualTo(SalesOrder.Status.SUBMITTED);
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.OPEN);
         }
 
         @Test void emits_SalesOrderPlaced_with_full_line_set() {
@@ -168,6 +168,13 @@ class SalesOrderTest {
     class Cancel {
 
         private static SalesOrder reconstituteWithStatus(SalesOrder.Status status) {
+            // Gates read the lines (§2.45), so for a ship-state header the line
+            // must actually be shipped — fake-header-only fixtures no longer drive
+            // the cancel/amend guards.
+            SalesOrderLine l = line(BigDecimal.ONE, new BigDecimal("100"));
+            if (status == SalesOrder.Status.SHIPPED || status == SalesOrder.Status.PARTIALLY_SHIPPED) {
+                l.recordShipment(BigDecimal.ONE);
+            }
             return SalesOrder.reconstitute(
                 SalesOrderId.of(UUID.randomUUID()),
                 "SO-CXL-001",
@@ -178,12 +185,12 @@ class SalesOrderTest {
                 new BigDecimal("100"), BigDecimal.ZERO, new BigDecimal("100"),
                 null,
                 1L,
-                List.of(line(BigDecimal.ONE, new BigDecimal("100")))
+                List.of(l)
             );
         }
 
-        @Test void cancellable_when_submitted() {
-            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.SUBMITTED);
+        @Test void cancellable_when_open() {
+            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.OPEN);
             so.cancel("customer changed mind");
             assertThat(so.status()).isEqualTo(SalesOrder.Status.CANCELLED);
             assertThat(so.cancelledAt()).isNotNull();
@@ -191,8 +198,8 @@ class SalesOrderTest {
                 .first().isInstanceOf(SalesOrderCancellationRequested.class);
         }
 
-        @Test void cancellable_when_in_fulfilment() {
-            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.IN_FULFILMENT);
+        @Test void cancellable_when_reserved() {
+            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.RESERVED);
             so.cancel("supply chain disruption");
             assertThat(so.status()).isEqualTo(SalesOrder.Status.CANCELLED);
         }
@@ -223,7 +230,7 @@ class SalesOrderTest {
         }
 
         @Test void cancel_event_carries_reason_and_order_number() {
-            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.SUBMITTED);
+            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.OPEN);
             so.cancel("test reason");
             DomainEvent event = so.pullPendingEvents().get(0);
             assertThat(event).isInstanceOf(SalesOrderCancellationRequested.class);
@@ -242,7 +249,7 @@ class SalesOrderTest {
                 "SO-X",
                 CUSTOMER, "C", "Cust",
                 LocalDate.now(), null,
-                SalesOrder.Status.IN_FULFILMENT,
+                SalesOrder.Status.RESERVED,
                 Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT, null,
                 new BigDecimal("100"), BigDecimal.ZERO, new BigDecimal("100"),
                 null,
@@ -250,7 +257,7 @@ class SalesOrderTest {
                 List.of(line(BigDecimal.ONE, new BigDecimal("100")))
             );
             assertThat(so.pullPendingEvents()).isEmpty();
-            assertThat(so.status()).isEqualTo(SalesOrder.Status.IN_FULFILMENT);
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.RESERVED);
             assertThat(so.version()).isEqualTo(3L);
         }
     }
@@ -291,7 +298,7 @@ class SalesOrderTest {
         }
 
         @Test void add_line_appends_recomputes_and_emits() {
-            SalesOrder so = amendable(SalesOrder.Status.SUBMITTED,
+            SalesOrder so = amendable(SalesOrder.Status.OPEN,
                 List.of(lineWithId(UUID.randomUUID(), new BigDecimal("1"), new BigDecimal("100.00"))));
             SalesOrderLine added = so.addLine(PRODUCT, "FG-CHAIR-001", "Chair",
                 new BigDecimal("2"), new BigDecimal("25.00"), BigDecimal.ZERO);
@@ -309,7 +316,7 @@ class SalesOrderTest {
 
         @Test void change_line_updates_quantity_and_price_and_emits() {
             UUID lineId = UUID.randomUUID();
-            SalesOrder so = amendable(SalesOrder.Status.SUBMITTED,
+            SalesOrder so = amendable(SalesOrder.Status.OPEN,
                 List.of(lineWithId(lineId, new BigDecimal("1"), new BigDecimal("100.00"))));
             so.changeLine(lineId, new BigDecimal("3"), new BigDecimal("90.00"));
 
@@ -326,7 +333,7 @@ class SalesOrderTest {
         @Test void remove_line_softcancels_excludes_from_totals_and_emits() {
             UUID keep = UUID.randomUUID();
             UUID drop = UUID.randomUUID();
-            SalesOrder so = amendable(SalesOrder.Status.SUBMITTED, List.of(
+            SalesOrder so = amendable(SalesOrder.Status.OPEN, List.of(
                 lineWithId(keep, new BigDecimal("1"), new BigDecimal("100.00")),
                 lineWithId(drop, new BigDecimal("2"), new BigDecimal("25.00"))
             ));
@@ -345,29 +352,31 @@ class SalesOrderTest {
 
         @Test void remove_last_live_line_throws() {
             UUID only = UUID.randomUUID();
-            SalesOrder so = amendable(SalesOrder.Status.SUBMITTED,
+            SalesOrder so = amendable(SalesOrder.Status.OPEN,
                 List.of(lineWithId(only, new BigDecimal("1"), new BigDecimal("100.00"))));
             assertThatThrownBy(() -> so.removeLine(only))
                 .isInstanceOf(IllegalStateException.class);
         }
 
         @Test void change_unknown_line_throws_line_not_found() {
-            SalesOrder so = amendable(SalesOrder.Status.SUBMITTED,
+            SalesOrder so = amendable(SalesOrder.Status.OPEN,
                 List.of(lineWithId(UUID.randomUUID(), new BigDecimal("1"), new BigDecimal("100.00"))));
             assertThatThrownBy(() -> so.changeLine(UUID.randomUUID(), new BigDecimal("2"), new BigDecimal("10")))
                 .isInstanceOf(SalesOrder.LineNotFoundException.class);
         }
 
         @Test void amend_rejected_once_shipped() {
-            SalesOrder so = amendable(SalesOrder.Status.SHIPPED,
-                List.of(lineWithId(UUID.randomUUID(), new BigDecimal("1"), new BigDecimal("100.00"))));
+            // §2.45: the amend guard reads the lines, so the line must be shipped.
+            SalesOrderLine shipped = lineWithId(UUID.randomUUID(), new BigDecimal("1"), new BigDecimal("100.00"));
+            shipped.recordShipment(BigDecimal.ONE);
+            SalesOrder so = amendable(SalesOrder.Status.SHIPPED, List.of(shipped));
             assertThatThrownBy(() -> so.addLine(PRODUCT, "X", "X", BigDecimal.ONE, BigDecimal.TEN, BigDecimal.ZERO))
                 .isInstanceOf(SalesOrder.OrderNotAmendableException.class);
         }
 
-        @Test void amendable_when_in_fulfilment() {
+        @Test void amendable_when_reserved() {
             UUID lineId = UUID.randomUUID();
-            SalesOrder so = amendable(SalesOrder.Status.IN_FULFILMENT,
+            SalesOrder so = amendable(SalesOrder.Status.RESERVED,
                 List.of(lineWithId(lineId, new BigDecimal("1"), new BigDecimal("100.00"))));
             so.changeLine(lineId, new BigDecimal("5"), new BigDecimal("100.00"));
             assertThat(so.subtotalAmount()).isEqualByComparingTo(new BigDecimal("500.00"));
@@ -491,29 +500,38 @@ class SalesOrderTest {
                 l.lineId(), l.productId(), l.productSku(), l.productName(), qty, new BigDecimal("10.00"));
         }
 
-        @Test void all_open_is_submitted() {
-            assertThat(twoOpenLines().status()).isEqualTo(SalesOrder.Status.SUBMITTED);
+        @Test void all_open_is_open() {
+            assertThat(twoOpenLines().status()).isEqualTo(SalesOrder.Status.OPEN);
         }
 
-        @Test void any_reserved_line_lifts_to_in_fulfilment() {
+        @Test void one_fully_reserved_one_open_is_partially_reserved() {
             SalesOrder so = twoOpenLines();
-            // reserve just line 0 (line_number 10), leave line 1 (20) open
+            // reserve just line 0 (line_number 10) in full, leave line 1 (20) open:
+            // meet=open, join=reserved → straddle → partially_reserved at the order.
             so.recordReservation(Map.of(10, new BigDecimal("2")));
-            assertThat(so.status()).isEqualTo(SalesOrder.Status.IN_FULFILMENT);
+            assertThat(so.lines().get(0).lineStatus()).isEqualTo(SalesOrder.LineStatus.RESERVED);
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.PARTIALLY_RESERVED);
         }
 
-        @Test void partial_reservation_is_in_fulfilment() {
+        @Test void all_lines_reserved_is_reserved() {
+            SalesOrder so = twoOpenLines();
+            // reserve both lines in full → meet=join=reserved → reserved.
+            so.recordReservation(Map.of(10, new BigDecimal("2"), 20, new BigDecimal("5")));
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.RESERVED);
+        }
+
+        @Test void partial_reservation_is_partially_reserved() {
             SalesOrder so = twoOpenLines();
             so.recordReservation(Map.of(10, new BigDecimal("1"), 20, new BigDecimal("3")));
             assertThat(so.lines().get(0).lineStatus()).isEqualTo(SalesOrder.LineStatus.PARTIALLY_RESERVED);
-            assertThat(so.status()).isEqualTo(SalesOrder.Status.IN_FULFILMENT);
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.PARTIALLY_RESERVED);
         }
 
         @Test void zero_reservation_leaves_line_open() {
             SalesOrder so = twoOpenLines();
             so.recordReservation(Map.of(10, BigDecimal.ZERO));
             assertThat(so.lines().get(0).lineStatus()).isEqualTo(SalesOrder.LineStatus.OPEN);
-            assertThat(so.status()).isEqualTo(SalesOrder.Status.SUBMITTED);
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.OPEN);
         }
 
         @Test void order_insensitivity_status_independent_of_line_order() {
@@ -532,13 +550,13 @@ class SalesOrderTest {
             SalesOrder so = SalesOrder.reconstitute(
                 SalesOrderId.of(UUID.randomUUID()), "SO-FOLD-001",
                 CUSTOMER, "C", "Cust", LocalDate.now(), null,
-                SalesOrder.Status.SUBMITTED, Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT, null,
+                SalesOrder.Status.OPEN, Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT, null,
                 new BigDecimal("700"), BigDecimal.ZERO, new BigDecimal("700"), null, 1L,
                 List.of(reservableLine(keep, new BigDecimal("2")), reservableLine(drop, new BigDecimal("5"))));
             so.removeLine(drop);
-            // Only the live line remains; it is still open → submitted (the
+            // Only the live line remains; it is still open → open (the
             // cancelled line contributes nothing to the rollup).
-            assertThat(so.status()).isEqualTo(SalesOrder.Status.SUBMITTED);
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.OPEN);
         }
 
         @Test void all_live_shipped_completes_ship_axis_even_with_a_removed_line() {
@@ -547,7 +565,7 @@ class SalesOrderTest {
             SalesOrder so = SalesOrder.reconstitute(
                 SalesOrderId.of(UUID.randomUUID()), "SO-FOLD-002",
                 CUSTOMER, "C", "Cust", LocalDate.now(), null,
-                SalesOrder.Status.SUBMITTED, Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT, null,
+                SalesOrder.Status.OPEN, Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT, null,
                 new BigDecimal("700"), BigDecimal.ZERO, new BigDecimal("700"), null, 1L,
                 List.of(reservableLine(keep, new BigDecimal("2")), reservableLine(drop, new BigDecimal("5"))));
             so.removeLine(drop);

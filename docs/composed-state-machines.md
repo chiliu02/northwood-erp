@@ -170,8 +170,9 @@ classify(m, M) =
 
 Concretely for shipment: if every live line is `SHIPPED` → order `SHIPPED`; if some are
 `SHIPPED` and others aren't → order `PARTIALLY_SHIPPED`; if none have shipped → the order
-sits at whatever the meet of the earlier chain says (`IN_FULFILMENT`-ish). This is the
-generalisation of the single line in `SalesOrder.recordShipped`:
+sits at whatever the earlier rung of the same fold says (`RESERVED` if every line is
+reserved, `PARTIALLY_RESERVED` if some are, else `OPEN`). This is the generalisation of the
+single line in `SalesOrder.recordShipped`:
 
 ```java
 boolean orderFullyShipped = lines.stream().allMatch(l -> l.lineStatus() == LineStatus.SHIPPED);
@@ -252,37 +253,54 @@ Two rules fall out of keeping them separate:
 
 ---
 
-## 5. The header is two-tier: an autonomous FSM *then* a derived region
+## 5. The header is a pure fold region *plus* three order-level terminals
 
-A subtlety the raw fold misses: `SalesOrder.Status` is **not** purely a function of the
-lines. Its early states are header-level lifecycle that the lines say nothing about:
+> **Updated 2026-06-10 (§2.45).** An earlier draft of this section modelled the header as a
+> *two-tier* machine — an "autonomous front FSM" (`SUBMITTED → IN_FULFILMENT`) sitting in
+> front of a derived region. The §2.45 convergence collapsed that picture: there is no
+> autonomous front. The whole ship progression **is** the fold, and the only non-fold states
+> are the three top-down terminals. The two-tier framing is retained below only as the
+> *before* of the arc.
+
+The header status is **two categories, nothing more**:
 
 ```
-DRAFT? → SUBMITTED → CONFIRMED? → IN_FULFILMENT → [ derived region ] → COMPLETED
-                                       │
-                                       └── PARTIALLY_SHIPPED / SHIPPED   ← ρ(lines)
-   cancel ⇒ CANCELLED   (absorbing, any pre-ship state)
-   reject ⇒ REJECTED    (absorbing)
+   fold region (bottom-up, ρ(lines)):
+     OPEN ⊏ PARTIALLY_RESERVED ⊏ RESERVED ⊏ PARTIALLY_SHIPPED ⊏ SHIPPED
+
+   order-level terminals (top-down commands, absorbing):
+     cancel()   ⇒ CANCELLED     reject() ⇒ REJECTED     complete() ⇒ COMPLETED
 ```
 
-So the parent is a **layered / hierarchical** machine:
+- The **fold region** is *entirely* `ρ(lines)` — even `OPEN` is just the bottom rung (every
+  live line `open`), not a separate lifecycle state the lines say nothing about. The header
+  ship-vocabulary therefore **equals** the line vocabulary (§13.3): the "all" rungs sit on
+  `meet` (`RESERVED`, `SHIPPED`), the "some" rungs on `join` (`PARTIALLY_RESERVED`,
+  `PARTIALLY_SHIPPED`). `recomputeStatus()` is the sole writer.
+- The **three terminals** are top-down order-level commands (§4 bottom-up vs top-down). They
+  are absorbing: `recomputeStatus()` early-returns while the header is in one of them, so a
+  late line mutation can never undo a terminal. `COMPLETED` is one of these terminals — its
+  cross-axis invoice/pay inputs live *off* the SO line (§12.6), so it cannot be a fold output;
+  it is set by `complete()` only after the fold has reached `SHIPPED`.
 
-- An **autonomous header FSM** owns the front (`SUBMITTED → IN_FULFILMENT`) and the
-  absorbing terminals (`CANCELLED`, `REJECTED`, `COMPLETED`). These transitions are driven
-  by header-level commands and the Saga, not by line states.
-- A **derived sub-region** (active only during fulfilment) where the status *is* `ρ(lines)`
-  — this is where `IN_FULFILMENT` / `PARTIALLY_SHIPPED` / `SHIPPED` come from.
-
-The clean mental model: the header is a Model-A composition of **two regions** — a
-*lifecycle* region (autonomous) and a *fulfilment-progress* region (derived from lines via
-Model B) — with a precedence rule that the lifecycle region's terminal states win. This
-two-tier shape is why you can't just write `headerStatus = ρ(lines)` and be done; the fold
-governs one region of a larger machine.
+**Why this is the right shape — the lossy-fold argument (the §2.45 payoff).** A `meet/join`
+fold of N lines down to one scalar is **inherently lossy**: `{l1=RESERVED, l2=OPEN}` and
+`{l1=OPEN, l2=RESERVED}` both collapse to `PARTIALLY_RESERVED`. So the header can *never* be
+the gating oracle for arbitrary line-level policy — only for `meet/join`-expressible
+questions. The consequence (load-bearing): **each gate reads the authoritative source at the
+grain it needs.** The lines carry the detail, so cancel/amend read **line predicates**
+(`anyLineShipped()` + `isTerminal()` in `SalesOrder`), not a header-status allow-list. The
+header status is a pure **derived label** — display/projection, not a gating vocabulary. A
+future policy change ("allow cancel at `partially_reserved`") becomes a one-line
+line-predicate edit, with no enum migration. This is *deltas get aggregates, totals get
+projections* applied to **state**: the lines are the deltas (the source of truth), the header
+status is a total (a projection of line state).
 
 This also cleanly separates from the **Saga** state machine: `SalesOrderFulfilmentSaga`
 state is *process progress* (a third machine), deliberately distinct from both the header
-lifecycle and the line rollup — see `docs/sagas.md` → *Aggregate vs Saga*. Three machines,
-three owners: line FSM (per line), header FSM+fold (the aggregate), saga FSM (the process).
+status and the line rollup — see `docs/sagas.md` → *Aggregate vs Saga*. Three machines,
+three owners: line FSM (per line), header fold + terminals (the aggregate), saga FSM (the
+process).
 
 ---
 
@@ -351,21 +369,33 @@ and downstream consumers?** Yes → aggregate (7.2). No → projection (7.3).
 
 ## 8. Where the model meets the code today
 
-The codebase implements the **ship-axis fold** of this model (§2.29 Slice A, 2026-06-10);
-the multi-axis invoice/pay separation is realized at the order level rather than on the SO
-line, for the reason worked out in **§12.6** (full accounting + severity in **§14**):
+The codebase implements the **faithful ship-axis fold** of this model (§2.29 Slice A
+2026-06-10, brought to the brainless-fold end-state by **§2.45** 2026-06-10); the multi-axis
+invoice/pay separation is realized at the order level rather than on the SO line, for the
+reason worked out in **§12.6** (full accounting + severity in **§14**):
 
 - ✅ Lines are the authoritative state machines (`SalesOrderLine.lineStatus`, mutated only
   by the aggregate via `markReserved` / `recordShipment` / `cancelLine`). `markReserved` is
   now wired (`StockReservedHandler` → `recordReservation`), so the line carries the
   `RESERVED` / `PARTIALLY_RESERVED` band in production, not just the terminal ship states.
-- ✅ Header status **is** the general fold: `SalesOrder.recomputeStatus()` re-derives
-  `SUBMITTED → IN_FULFILMENT → PARTIALLY_SHIPPED → SHIPPED` from the live-line multiset via
-  `classify(meet, join)` after *every* mutation (place / amend / reserve / ship). The old
-  `allMatch(SHIPPED)` is now this fold's `meet == SHIPPED`.
-- ✅ The aggregate is the **sole writer** of `status`: the derived region comes from the
-  fold; the absorbing terminals are guarded transitions (`cancel` / `reject` / `complete`).
-  The former blind `SalesOrderHeaderStatusProjection.markStatus(...)` is **retired**.
+  **The lines are the single source of truth; the header is a derived label.**
+- ✅ Header status **is** the faithful fold, and its ship-vocabulary now **equals** the line
+  vocabulary: `SalesOrder.recomputeStatus()` re-derives
+  `OPEN → PARTIALLY_RESERVED → RESERVED → PARTIALLY_SHIPPED → SHIPPED` from the live-line
+  multiset via `classify(meet, join)` after *every* mutation (place / amend / reserve /
+  ship). The "all" rungs sit on `meet` (`RESERVED`, `SHIPPED`), the "some" rungs on `join`
+  (`PARTIALLY_RESERVED`, `PARTIALLY_SHIPPED`). The old `allMatch(SHIPPED)` is this fold's
+  `meet == SHIPPED`; the former coarsening (line `partially_reserved`/`reserved` both lumped
+  into one header `IN_FULFILMENT`) is gone.
+- ✅ The aggregate is the **sole writer** of `status`: the fold region comes from the fold;
+  the three order-level terminals are guarded top-down transitions (`cancel` / `reject` /
+  `complete`). The former blind `SalesOrderHeaderStatusProjection.markStatus(...)` is
+  **retired**.
+- ✅ **Gates read the lines, not the header.** `cancel` / `reject` / `assertAmendable` read
+  the line predicates `anyLineShipped()` + `isTerminal()` (cancellable ≡ amendable, derived
+  from one source so they can't drift), not a header-status allow-list — because the fold is
+  lossy and so the header can't be the gating oracle (§5). The former
+  `NON_CANCELLABLE_STATUSES` / `AMENDABLE_STATUSES` header-enum sets are gone.
 - ✅ Quantity-bucket sub-composition exists (`shippedQuantity` vs `orderedQuantity` →
   line `SHIPPED` vs `PARTIALLY_SHIPPED`).
 - ✅ Cancelled-neutrality is honoured for both *totals* (`recomputeTotals` skips cancelled)
@@ -691,20 +721,25 @@ M  =  M_ship  ×  M_invoice  ×  M_pay
 ```
 
 **Shipment axis** — one coarse **band** (what the order fold sees) onto which the three
-variant chains coarsen via monotone `g_v` (§11):
+variant chains coarsen via monotone `g_v` (§11). Since **§2.45** the band names *are* the
+`SalesOrderLine.LineStatus` vocabulary (and, equivalently, the header `Status` fold region —
+the fold is brainless, header ≡ line, §5/§8). The code carries them as `BAND_OPEN ⊏
+BAND_PARTIALLY_RESERVED ⊏ BAND_RESERVED ⊏ BAND_PARTIALLY_SHIPPED ⊏ BAND_SHIPPED`:
 
-| Band `M_ship` (fold sees this) | stock line `g_stock` | make-to-order `g_make` | buy-to-order `g_buy` |
+| Band `M_ship` (= LineStatus = header fold region) | stock line `g_stock` | make-to-order `g_make` | buy-to-order `g_buy` |
 |---|---|---|---|
-| `NOT_STARTED` | `open` | `open` | `open` |
-| `IN_PROGRESS` | `partially_reserved` | `waiting_for_production` | `awaiting_receipt` |
-| `READY` | `reserved` | `ready_to_ship` | `ready_to_ship` |
-| `PARTIALLY_SHIPPED` | `partially_shipped` | `partially_shipped` | `partially_shipped` |
-| `SHIPPED` | `shipped` | `shipped` | `shipped` |
+| `open` | `open` | `open` | `open` |
+| `partially_reserved` | `partially_reserved` | `waiting_for_production` | `awaiting_receipt` |
+| `reserved` | `reserved` | `ready_to_ship` | `ready_to_ship` |
+| `partially_shipped` | `partially_shipped` | `partially_shipped` | `partially_shipped` |
+| `shipped` | `shipped` | `shipped` | `shipped` |
 
-Total order `NOT_STARTED ⊏ IN_PROGRESS ⊏ READY ⊏ PARTIALLY_SHIPPED ⊏ SHIPPED`; `cancelled`
+Total order `open ⊏ partially_reserved ⊏ reserved ⊏ partially_shipped ⊏ shipped`; `cancelled`
 is **off the chain** (neutral — filtered from the fold). A stock line in `reserved`, a make
-line in `ready_to_ship`, and a buy line in `ready_to_ship` all coarsen to `READY`, so the
-order fold treats them identically and never branches on product type.
+line in `ready_to_ship`, and a buy line in `ready_to_ship` all coarsen to the `reserved`
+band (the SO line itself carries `reserved` once order-pegged supply is reserved — the
+`ready_to_ship` / `awaiting_receipt` names are illustrative *off-line* model states, §11.4),
+so the order fold treats them identically and never branches on product type.
 
 **Invoice + payment axes:**
 
@@ -720,12 +755,12 @@ Full per-line lattice = `5 × 3 × 3` points (cancel aside); coupling rules
 
 ```
 band_ship(line) =
-    SHIPPED            if shippedQty == orderedQty
-    PARTIALLY_SHIPPED  if 0 < shippedQty < orderedQty
-    READY              if shippedQty == 0  ∧  (reserved|produced)Qty == orderedQty
-    IN_PROGRESS        if partial reservation / in production
-    NOT_STARTED        otherwise
-    CANCELLED          if line soft-removed        (neutral)
+    shipped             if shippedQty == orderedQty
+    partially_shipped   if 0 < shippedQty < orderedQty
+    reserved            if shippedQty == 0  ∧  (reserved|produced)Qty == orderedQty
+    partially_reserved  if partial reservation / in production
+    open                otherwise
+    cancelled           if line soft-removed        (neutral)
 
 band_invoice(line) =
     INVOICED           if invoicedQty == orderedQty
@@ -736,36 +771,43 @@ band_invoice(line) =
 ### 13.3 Order-level `classify` (line multiset → `SalesOrder.Status`)
 
 The header carries **one** status column = the **ship axis** (other axes are orthogonal
-projection flags). Two-tier (§5): lifecycle/terminal overrides wrap a derived region. Over
-the **live** lines (cancel filtered), per axis compute `meet = ⊓ bands`, `join = ⊔ bands`:
+projection flags). The fold region + three top-down terminals (§5). The terminals are
+absorbing: `recomputeStatus()` early-returns while the header is `CANCELLED`/`REJECTED`/
+`COMPLETED`, so the fold below is consulted only outside them. Over the **live** lines
+(cancel filtered), compute `meet = ⊓ bands`, `join = ⊔ bands`:
 
 ```
-classify(order) =
-    CANCELLED          if cancel-command issued   OR   no live lines remain
-    REJECTED           if reject-command issued
-    COMPLETED          if meet_ship    == SHIPPED            // every line fully shipped …
-                          ∧ meet_invoice == INVOICED         // … invoiced …
-                          ∧ meet_pay     == PAID              // … and paid   (cross-axis join)
-    SHIPPED            if meet_ship == SHIPPED                // all shipped, not yet fully invoiced/paid
-    PARTIALLY_SHIPPED  if join_ship ⊒ PARTIALLY_SHIPPED       // ≥1 unit shipped anywhere, not all done
-    IN_FULFILMENT      if join_ship ⊒ IN_PROGRESS             // work underway, nothing shipped yet
-    SUBMITTED          otherwise                              // every live line still NOT_STARTED
+classify(order) =                         // — top-down terminals (absorbing, set by commands) —
+    CANCELLED          if cancel()  issued   OR   no live lines remain
+    REJECTED           if reject()  issued
+    COMPLETED          if complete() issued  (asserts the fold below == shipped first;
+                          the cross-axis invoiced ∧ paid meet is the saga/360, off the SO line — §12.6)
+                                              // — fold region (brainless meet/join of the line bands) —
+    shipped            if meet == shipped                    // every live line fully shipped
+    partially_shipped  if join ⊒ partially_shipped           // ≥1 unit shipped anywhere, not all done
+    reserved           if meet ⊒ reserved                    // every live line reserved or beyond, none shipped
+    partially_reserved if join ⊒ partially_reserved          // some line reserved, not all
+    open               otherwise                             // every live line still open
 ```
 
-`meet_ship == SHIPPED` ⟺ "*all* live lines fully shipped"; `join_ship ⊒ PARTIALLY_SHIPPED`
-⟺ "*at least one* line shipped ≥1 unit." Both commutative ⇒ order-insensitive.
+`meet == shipped` ⟺ "*all* live lines fully shipped"; `meet ⊒ reserved` ⟺ "*all* live lines
+reserved or beyond"; `join ⊒ partially_*` ⟺ "*at least one* line has reached that band." All
+commutative ⇒ order-insensitive. The header ship-vocabulary equals the line vocabulary, so
+the `partially_*` names mean *within-line-quantity* partial at the line and *cross-line
+straddle* at the order — the same `classify` shape one level up (fractal, §2.3).
 
 ### 13.4 Example A — homogeneous stock lines (base case, §2)
 
 SO: line1 = 10×A (stock), line2 = 5×B (stock).
 
-| t | line1 band | line2 band | `meet_ship` / `join_ship` | header `status` |
+| t | line1 band | line2 band | `meet` / `join` | header `status` |
 |---|---|---|---|---|
-| place | NOT_STARTED | NOT_STARTED | NOT_STARTED / NOT_STARTED | **SUBMITTED** |
-| both reserved | READY | READY | READY / READY | **IN_FULFILMENT** |
-| ship line1 (10A) | SHIPPED | READY | READY / SHIPPED | **PARTIALLY_SHIPPED** |
-| ship line2 (5B) | SHIPPED | SHIPPED | SHIPPED / SHIPPED | **SHIPPED** |
-| invoiced + paid | — | — | (+ invoice=INVOICED, pay=PAID) | **COMPLETED** |
+| place | open | open | open / open | **open** |
+| line1 reserved only | reserved | open | open / reserved | **partially_reserved** |
+| both reserved | reserved | reserved | reserved / reserved | **reserved** |
+| ship line1 (10A) | shipped | reserved | reserved / shipped | **partially_shipped** |
+| ship line2 (5B) | shipped | shipped | shipped / shipped | **shipped** |
+| invoiced + paid (saga/360) | — | — | (+ invoice=INVOICED, pay=PAID, off-line — §12.6) | **completed** |
 
 ### 13.5 Example B — make vs buy heterogeneity (§11)
 
@@ -774,18 +816,19 @@ states, but the fold only sees the band:
 
 | t | line1 (make) concrete → band | line2 (buy) concrete → band | `meet`/`join` | header |
 |---|---|---|---|---|
-| place | `open` → NOT_STARTED | `open` → NOT_STARTED | NS / NS | **SUBMITTED** |
-| both started | `waiting_for_production` → IN_PROGRESS | `awaiting_receipt` → IN_PROGRESS | IP / IP | **IN_FULFILMENT** |
-| line1 produced | `ready_to_ship` → READY | `awaiting_receipt` → IN_PROGRESS | IP / READY | **IN_FULFILMENT** |
-| ship line1 | `shipped` → SHIPPED | `ready_to_ship` → READY | READY / SHIPPED | **PARTIALLY_SHIPPED** |
+| place | `open` → open | `open` → open | open / open | **open** |
+| both started | `waiting_for_production` → partially_reserved | `awaiting_receipt` → partially_reserved | p_res / p_res | **partially_reserved** |
+| line1 produced | `ready_to_ship` → reserved | `awaiting_receipt` → partially_reserved | p_res / reserved | **partially_reserved** |
+| ship line1 | `shipped` → shipped | `ready_to_ship` → reserved | reserved / shipped | **partially_shipped** |
 
-At "both started," `g_make(waiting_for_production) = g_buy(awaiting_receipt) = IN_PROGRESS` —
-heterogeneity is **erased before the fold**, so `classify` is identical to the homogeneous
-case.
+At "both started," `g_make(waiting_for_production) = g_buy(awaiting_receipt) =
+partially_reserved` — heterogeneity is **erased before the fold**, so `classify` is identical
+to the homogeneous case. (These illustrative off-line model states coarsen to the band; the
+SO line itself carries only `open`/`partially_reserved`/`reserved`/… — §11.4.)
 
 **Stratified per-kind reporting (§11.3):** if the header must report per-kind rather than
 one scalar, partition `{line1}` make-group / `{line2}` buy-group, fold each →
-`(make: SHIPPED, buy: READY)`, present the **pair** (Model A product over two Model B folds).
+`(make: shipped, buy: reserved)`, present the **pair** (Model A product over two Model B folds).
 Pay for the product only when you actually report per-kind.
 
 ### 13.6 Example C — multi-axis partial ship + invoice (§12)
@@ -795,13 +838,13 @@ SO: line1 = 10×A, line2 = 10×B (stock). Shipment of **2×A + 4×B**; a separat
 
 | line | ordered | shipped → `band_ship` | invoiced → `band_invoice` |
 |---|---|---|---|
-| line1 (A) | 10 | 2 → PARTIALLY_SHIPPED | 5 → PARTIALLY_INVOICED |
-| line2 (B) | 10 | 4 → PARTIALLY_SHIPPED | 0 → NOT_INVOICED |
+| line1 (A) | 10 | 2 → partially_shipped | 5 → PARTIALLY_INVOICED |
+| line2 (B) | 10 | 4 → partially_shipped | 0 → NOT_INVOICED |
 
 Two **independent** componentwise folds:
 
 ```
-ship axis :   meet = PARTIALLY_SHIPPED,  join = PARTIALLY_SHIPPED   →  header.status     = PARTIALLY_SHIPPED
+ship axis :   meet = partially_shipped,  join = partially_shipped   →  header.status     = partially_shipped
 invoice axis: meet = NOT_INVOICED,       join = PARTIALLY_INVOICED  →  header.invoiceFlag = PARTIALLY_INVOICED
 ```
 
@@ -824,17 +867,19 @@ One column can't carry both — exactly why they're orthogonal regions, not one 
 
 ---
 
-## 14. Gap analysis — model vs. codebase (resolved by §2.29, 2026-06-10)
+## 14. Gap analysis — model vs. codebase (resolved by §2.29 + §2.45, 2026-06-10)
 
 §8 sketched where the model meets the code; this is the full accounting. The gaps below were
-the *pre-§2.29* state; §2.29 (Slices A + B) closed gaps 1 & 2 and resolved gap 3 by design.
+the *pre-§2.29* state; §2.29 (Slices A + B) closed gaps 1 & 2 and resolved gap 3 by design,
+and **§2.45** finished the arc — the faithful brainless fold + line-predicate gates (§14.4).
 The **headline before**: the composed-state machine was fragmented across three writers where
-the model has one. **After:** the aggregate is the single writer of the ship-axis fold; the
-invoice/pay axes are document-chain folds owned by finance + the 360 (§12.6).
+the model has one. **After:** the aggregate is the single writer of the ship-axis fold (the
+header ship-vocabulary now *equals* the line vocabulary); the invoice/pay axes are
+document-chain folds owned by finance + the 360 (§12.6).
 
 | Who writes header status | Mechanism | States |
 |---|---|---|
-| **The aggregate** (`SalesOrder`) — *now the sole writer* | `recomputeStatus()` fold (derived region) + guarded `cancel` / `reject` / `complete` (terminals) | all of `SUBMITTED` / `IN_FULFILMENT` / `PARTIALLY_SHIPPED` / `SHIPPED` / `COMPLETED` / `CANCELLED` / `REJECTED` |
+| **The aggregate** (`SalesOrder`) — *the sole writer* | `recomputeStatus()` brainless fold (fold region) + guarded `cancel` / `reject` / `complete` (top-down terminals) | fold region `open` / `partially_reserved` / `reserved` / `partially_shipped` / `shipped` + terminals `completed` / `cancelled` / `rejected` |
 | ~~A blind projection (`markStatus`)~~ | **retired** — `SalesOrderHeaderStatusProjection` deleted | — |
 | **The Saga** (`SalesOrderFulfilmentSaga`) | still owns *process* progress (reservation / replenishment / per-triple sequencing) — a distinct machine (§5), feeds the aggregate via guarded transitions | saga states, not header status |
 
@@ -844,7 +889,7 @@ invoice/pay axes are document-chain folds owned by finance + the 360 (§12.6).
 |---|---|---|
 | **Header status = `classify(lines)`** single fold (§13.3) | `SalesOrder.recomputeStatus()` re-derives the ship-axis status after every mutation | ✅ closed (Slice A) |
 | **Single writer, status derived not stored** (§9) | blind `markStatus` retired; aggregate is sole writer (fold + guarded terminals) | ✅ closed (Slice A) |
-| **Line is the authoritative state machine** (§8) | `markReserved` wired from `StockReservedHandler` → `recordReservation`; line carries the `RESERVED`/`PARTIALLY_RESERVED` band, fold derives `IN_FULFILMENT` | ✅ closed (Slice A) |
+| **Line is the authoritative state machine** (§8) | `markReserved` wired from `StockReservedHandler` → `recordReservation`; line carries the `reserved`/`partially_reserved` band, fold derives the matching header rung (§2.45 — no longer coarsened into one `IN_FULFILMENT`) | ✅ closed (Slice A; faithful §2.45) |
 | **Multi-axis product** `M_ship × M_invoice × M_pay` (§12) | ship axis folds over SO lines (aggregate); invoice/pay fold over the fulfilment-document chain (finance + 360), **not** the SO line — the per-event-triple model (§12.6). `COMPLETED` is the saga's cross-aggregate meet, with `complete()` asserting the `ordered = shipped` leg | ✅ resolved by design (Slice B) |
 | **Variant coarsening** make/buy → common band (§11) | to-order is **built** (`ReplenishmentStrategy.TO_ORDER`), and validates §11 even more strongly: the line needs *no* variant states — production lives off the line, so a to-order line runs the same `open → reserved → shipped` chain. The model-only `WAITING_FOR_PRODUCTION` / `READY_TO_SHIP` were removed | ✅ built (no line bands) |
 | **Quantity-bucket `Σ`-folds** (§2.3) | `shippedQty` + `reservedQty` now both accumulate; `manufacturingRequiredQty` still unwired (MTS) | ✅ mostly closed |
@@ -861,10 +906,12 @@ invoice/pay axes are document-chain folds owned by finance + the 360 (§12.6).
 
 2. **In-progress band on the line (was Medium).** `markReserved` is wired from
    `StockReservedHandler` via `SalesOrderService.recordReservation`, so the line authoritatively
-   carries `RESERVED` / `PARTIALLY_RESERVED` and the fold derives `IN_FULFILMENT` from it
-   (Option 2, not "document the split"). `reservedQuantity` is no longer dead. The Saga still
-   owns the states the line cannot represent (awaiting-replenishment, ready-to-ship) — those are
-   *process* state by design (§5). ✅ **Closed (Slice A).**
+   carries `reserved` / `partially_reserved` and the fold derives the matching header rung from
+   it (Option 2, not "document the split"; §2.45 made the fold faithful so the line bands map
+   1:1 to header bands rather than collapsing into one `IN_FULFILMENT`). `reservedQuantity` is no
+   longer dead. The Saga still owns the states the line cannot represent
+   (awaiting-replenishment, ready-to-ship) — those are *process* state by design (§5).
+   ✅ **Closed (Slice A; faithful §2.45).**
 
 3. **Multi-axis — resolved by recognising the axes fold over different detail sets (was
    Medium).** The fix is *not* an `invoicedQuantity` bucket on the SO line. Per §12.6, the order
@@ -883,7 +930,32 @@ invoice/pay axes are document-chain folds owned by finance + the 360 (§12.6).
    *deltas get aggregates, totals get projections* (§12.4 #4) and could not be populated for
    value-based deposit/balance invoices.
 
-### 14.3 What stays deferred
+### 14.3 §2.45 — the faithful fold + line-predicate gates (finishing the arc, 2026-06-10)
+
+§2.29 made the aggregate the single writer but still (a) **coarsened** the fold — line
+`partially_reserved` / `reserved` were lumped into one header `IN_FULFILMENT` — and (b)
+**gated on the header enum** (`NON_CANCELLABLE_STATUSES` / `AMENDABLE_STATUSES`). §2.45 finishes
+the convergence:
+
+- **Brainless faithful fold.** `SalesOrder.Status` *is* the fold region
+  `open ⊏ partially_reserved ⊏ reserved ⊏ partially_shipped ⊏ shipped` — the header
+  ship-vocabulary **equals** the line vocabulary (§13.3). `SUBMITTED → open`; `IN_FULFILMENT`
+  split into `partially_reserved` / `reserved` (the "all" rung on `meet`, the "some" rung on
+  `join`). The header is the lossy `meet/join` of the lines and nothing more — a derived label.
+- **Gates read the lines.** Cancel / reject / amend read line predicates (`anyLineShipped()`
+  + `isTerminal()`), not a header-status allow-list — because the fold is lossy, the header
+  can't be the gating oracle (§5). `NON_CANCELLABLE_STATUSES` / `AMENDABLE_STATUSES` are gone;
+  cancellable ≡ amendable, derived from one source. A future policy change ("allow cancel at
+  `partially_reserved`") is a one-line predicate edit — no enum migration.
+- **Bottom-up fold vs top-down terminals stay split (§4/§5).** The fold governs the *ship
+  progression* (bottom-up, line→header). `cancel` / `reject` / `complete` stay **order-level**
+  top-down commands setting the three absorbing terminals; they are *not* pushed onto lines (a
+  line can be soft-removed/edited and then folds normally; cancelling the *order* is a different
+  act). `complete()` still asserts the fold == `shipped`; its cross-axis invoice/pay inputs live
+  off the SO line (§12.6), so `completed` is one of the three order-level terminals, not a fold
+  output — which also dissolves the old "`COMPLETED` can't fold" worry.
+
+### 14.4 What stays deferred
 
 - **Per-kind status *reporting* on the header (§11.3)** — to-order itself is built, but the
   stratified product (reporting make-progress vs buy-progress separately on the order) is not
@@ -891,6 +963,14 @@ invoice/pay axes are document-chain folds owned by finance + the 360 (§12.6).
   `WAITING_FOR_PRODUCTION` / `READY_TO_SHIP` line-status values were **removed** (model-only).
 - **Reversals (returns / credit notes, §12.4 #2)** — break per-axis monotonicity; out of scope
   (`project_credit_notes_low_priority`).
+- **Third status vocabulary on the read model (§2.45 option C, deferred).** `reporting`'s
+  `sales_order_360_view.order_status` speaks its *own* words
+  (`pending → submitted → ready_to_ship → shipped → completed → cancelled`), seeded and advanced
+  by the 360 projection's CASE logic — it does **not** read the sales header status string.
+  Unifying that read-model vocabulary with the header fold ladder is a separate slice; until
+  then the aggregate and the 360 deliberately diverge (the aggregate is `open` / `reserved` /
+  …; the 360 stays `submitted` / `ready_to_ship` / …). The erp-web-ui `SalesOrderDetail` cancel/
+  amend gates read the 360 `order_status`, so they are unaffected by the header rename.
 
 **Net:** the codebase now concentrates the ship-axis machine in one aggregate fold (single
 writer, line-authoritative, property-tested) and locates the invoice/pay axes where the

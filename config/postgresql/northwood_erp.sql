@@ -459,9 +459,14 @@ CREATE TABLE sales.sales_order_header (
     requested_delivery_date DATE,
     -- Single workflow status. Cross-cutting flags (stock/manufacturing/invoice/
     -- payment) live on reporting.sales_order_360_view and are derived from events.
-    status VARCHAR(30) NOT NULL DEFAULT 'submitted' CHECK (
+    -- Header status is a brainless meet/join fold of the line ship-bands, so the
+    -- ship-vocabulary equals sales_order_line.line_status: open ⊏ partially_reserved
+    -- ⊏ reserved ⊏ partially_shipped ⊏ shipped. The three order-level terminals
+    -- (completed/cancelled/rejected) sit on top, set by top-down commands.
+    -- See SalesOrder.java + docs/composed-state-machines.md §13.
+    status VARCHAR(30) NOT NULL DEFAULT 'open' CHECK (
         status IN (
-            'submitted', 'in_fulfilment',
+            'open', 'partially_reserved', 'reserved',
             'partially_shipped', 'shipped', 'completed', 'cancelled', 'rejected'
         )
     ),

@@ -12,10 +12,8 @@ import com.northwood.shared.domain.Assert;
 import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import com.northwood.shared.domain.LineNumbering;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
@@ -32,16 +30,30 @@ import java.util.UUID;
  * shipment, invoice) belong on the read model fed by saga events, not on the
  * aggregate itself.
  *
- * <p><b>Header status is a fold over the lines — the aggregate is its sole
- * writer.</b> {@link #recomputeStatus()} derives the ship-axis status
- * ({@code submitted} → {@code in_fulfilment} → {@code partially_shipped} →
- * {@code shipped}) from the live line states after every mutation — the
- * {@code classify(meet, join)} rollup of {@code docs/composed-state-machines.md}
- * §13.3 — and the absorbing lifecycle terminals are intent-named guarded
- * transitions: {@link #cancel} ({@code cancelled}), {@link #reject}
- * ({@code rejected}), {@link #complete} ({@code completed}). There is no blind
- * {@code UPDATE status} from a projection: the former
- * {@code SalesOrderHeaderStatusProjection} is retired.
+ * <p><b>Header status is a brainless fold over the lines — the aggregate is its
+ * sole writer.</b> The lines are the single source of truth; the header status
+ * is a <i>derived label</i>, a projection of line state (<i>deltas get
+ * aggregates, totals get projections</i> applied to <b>state</b>).
+ * {@link #recomputeStatus()} is the faithful {@code classify(meet, join)} fold
+ * of the line ship-bands ({@code docs/composed-state-machines.md} §13.3), so the
+ * header ship-vocabulary <b>equals</b> the line vocabulary:
+ * {@code open ⊏ partially_reserved ⊏ reserved ⊏ partially_shipped ⊏ shipped}.
+ * The "all" rungs sit on {@code meet} ({@code reserved}, {@code shipped}); the
+ * "some" rungs on {@code join} ({@code partially_reserved},
+ * {@code partially_shipped}). On top of that fold region sit three absorbing
+ * <b>order-level terminals</b> — top-down commands the fold must never override:
+ * {@link #cancel} ({@code cancelled}), {@link #reject} ({@code rejected}),
+ * {@link #complete} ({@code completed}). There is no blind {@code UPDATE status}
+ * from a projection: the former {@code SalesOrderHeaderStatusProjection} is
+ * retired.
+ *
+ * <p><b>Gates read the lines, not the header.</b> A {@code meet/join} fold to a
+ * single scalar is inherently lossy, so the header can never be the gating oracle
+ * for line-level policy. Cancel and amend therefore read <i>line predicates</i>
+ * ({@link #anyLineShipped()} + {@link #isTerminal()}), not a header-status
+ * allow-list — a policy change ("allow cancel at partially_reserved") becomes a
+ * one-line predicate edit, no enum migration. Cancellable ≡ amendable, both
+ * derived from the same two predicates so they cannot drift.
  *
  * <p>Mutations are intent-named methods that emit domain events captured by
  * the application service for outbox publication.
@@ -72,17 +84,39 @@ public final class SalesOrder {
      * {@code sales.sales_order_header.status} — every value here is produced by
      * Java (no schema-prep placeholders).
      *
+     * <p>Two categories (see the class Javadoc):
+     * <ul>
+     *   <li><b>Fold region</b> — {@code OPEN · PARTIALLY_RESERVED · RESERVED ·
+     *       PARTIALLY_SHIPPED · SHIPPED}: a pure {@code meet/join} fold of the
+     *       live-line ship-bands, so the header ship-vocabulary <b>equals</b> the
+     *       {@link LineStatus} vocabulary ({@link #recomputeStatus()} is the sole
+     *       writer). The {@code partially_*} names mean within-line-quantity
+     *       partial at the line and cross-line straddle at the order — same
+     *       {@code classify} shape, fractal (§2.3).</li>
+     *   <li><b>Order-level terminals</b> — {@code COMPLETED · CANCELLED ·
+     *       REJECTED}: top-down, absorbing decisions the fold must never override
+     *       ({@link #complete} / {@link #cancel} / {@link #reject}).</li>
+     * </ul>
+     *
      * <p>Distinct from {@code SalesOrderFulfilmentSaga} state constants
      * (different domain — saga progress vs header lifecycle).
      */
     public enum Status {
-        SUBMITTED("submitted"),
-        IN_FULFILMENT("in_fulfilment"),
-        /** Some — but not all — lines have shipped; a backorder remains. */
+        /** Fold region — no live line has begun supply (every live line {@code open}). */
+        OPEN("open"),
+        /** Fold region — some (not all) live lines reserved ({@code join ⊒ partially_reserved}, {@code meet ⊏ reserved}). */
+        PARTIALLY_RESERVED("partially_reserved"),
+        /** Fold region — every live line reserved ({@code meet ⊒ reserved}), none shipped. */
+        RESERVED("reserved"),
+        /** Fold region — some (not all) live lines have shipped; a backorder remains ({@code join ⊒ partially_shipped}). */
         PARTIALLY_SHIPPED("partially_shipped"),
+        /** Fold region — every live line fully shipped ({@code meet == shipped}). */
         SHIPPED("shipped"),
+        /** Order-level terminal — fully settled (top-down; {@link #complete}). */
         COMPLETED("completed"),
+        /** Order-level terminal — customer-cancelled (top-down; {@link #cancel}). */
         CANCELLED("cancelled"),
+        /** Order-level terminal — system-rejected, unsourceable (top-down; {@link #reject}). */
         REJECTED("rejected");
 
         private final String dbValue;
@@ -187,28 +221,14 @@ public final class SalesOrder {
     private final List<SalesOrderLine> lines;
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
 
-    /** Statuses past which a cancel is rejected with 409 (already shipped / paid / terminal). */
-    private static final Set<Status> NON_CANCELLABLE_STATUSES =
-        EnumSet.of(Status.PARTIALLY_SHIPPED, Status.SHIPPED, Status.COMPLETED, Status.CANCELLED, Status.REJECTED);
-
-    /**
-     * Header statuses in which line amendment (add / change / remove) is allowed
-     * — the coarse domain guard. Twin of {@link #NON_CANCELLABLE_STATUSES}: a
-     * line can only change while the order is still being fulfilled, never once
-     * it has shipped, completed, been cancelled, or rejected. The finer
-     * saga-state window (only before stock is reserved, this slice) is enforced
-     * by the application service, which knows the fulfilment saga's state.
-     */
-    private static final Set<Status> AMENDABLE_STATUSES =
-        EnumSet.of(Status.SUBMITTED, Status.IN_FULFILMENT);
-
     // Ship-progress lattice M_ship (docs/composed-state-machines.md §13.1): the
-    // coarse band a line status maps onto for the header fold. Ordered so meet/
-    // join are plain int min/max. `cancelled` is off the chain (filtered before
-    // the fold), so it has no band.
-    private static final int BAND_NOT_STARTED = 0;
-    private static final int BAND_IN_PROGRESS = 1;
-    private static final int BAND_READY = 2;
+    // band a line status maps onto for the header fold. The fold region of
+    // {@link Status} shares this vocabulary 1:1, so the bands carry the line
+    // names. Ordered so meet/join are plain int min/max. `cancelled` is off the
+    // chain (filtered before the fold), so it has no band.
+    private static final int BAND_OPEN = 0;
+    private static final int BAND_PARTIALLY_RESERVED = 1;
+    private static final int BAND_RESERVED = 2;
     private static final int BAND_PARTIALLY_SHIPPED = 3;
     private static final int BAND_SHIPPED = 4;
 
@@ -234,7 +254,7 @@ public final class SalesOrder {
             Assert.notNull(customerName, "customerName"),
             LocalDate.now(),
             requestedDeliveryDate,
-            Status.SUBMITTED,
+            Status.OPEN,
             Assert.notNull(currencyCode, "currencyCode"),
             exchangeRate == null ? BigDecimal.ONE : exchangeRate,
             Assert.notNull(paymentTerms, "paymentTerms"),
@@ -344,7 +364,8 @@ public final class SalesOrder {
      * {@code shipped} or {@code partially_shipped}. The header moves to
      * {@code shipped} only when every line is fully shipped, else to
      * {@code partially_shipped}; either way the order is no longer cancellable
-     * via the simple cancel path (see {@link #NON_CANCELLABLE_STATUSES}). The
+     * via the simple cancel path (a live line has shipped — see
+     * {@link #anyLineShipped()} / {@link #cancel}). The
      * returned {@link ShipmentOutcome#orderFullyShipped()} (also stamped on the
      * emitted {@link SalesOrderShipped}) tells the caller whether this shipment
      * completed the order — the saga gates {@code goods_shipped} on it.
@@ -427,9 +448,15 @@ public final class SalesOrder {
     }
 
     /**
-     * Cancel this order. Allowed only while the header status is in a
-     * pre-shipped state — once goods have shipped, cancellation requires the
-     * credit-note / return-goods flow which is out of scope.
+     * Cancel this order. A top-down, order-level command — allowed only while no
+     * live line has shipped and the order has not already reached a terminal.
+     * Once goods have shipped, cancellation requires the credit-note /
+     * return-goods flow which is out of scope.
+     *
+     * <p>The guard reads the <i>lines</i> ({@link #anyLineShipped()}), not a
+     * header-status allow-list: the header is a lossy fold, so it can't be the
+     * gating oracle (see the class Javadoc). {@link #isTerminal()} blocks a
+     * re-cancel.
      *
      * <p>Idempotent in the sense that calling cancel on an already-cancelled
      * order throws — the application service translates this to HTTP 409. If
@@ -439,7 +466,7 @@ public final class SalesOrder {
      *         completed, been cancelled, or rejected.
      */
     public void cancel(String reason) {
-        if (NON_CANCELLABLE_STATUSES.contains(status)) {
+        if (isTerminal() || anyLineShipped()) {
             throw new OrderNotCancellableException(id, status);
         }
         this.status = Status.CANCELLED;
@@ -484,10 +511,11 @@ public final class SalesOrder {
      * emits {@link SalesOrderCancellationRequested} so inventory releases any
      * partial reservation; unlike cancel it lands in {@code rejected}
      * (system-driven) rather than {@code cancelled} (customer-driven). Idempotent
-     * and defensive: a no-op once the order has shipped or reached any terminal.
+     * and defensive: a no-op once a live line has shipped or the order reached
+     * any terminal (the same line-predicate guard as {@link #cancel}).
      */
     public void reject(String reason) {
-        if (NON_CANCELLABLE_STATUSES.contains(status)) {
+        if (isTerminal() || anyLineShipped()) {
             return;
         }
         this.status = Status.REJECTED;
@@ -621,9 +649,9 @@ public final class SalesOrder {
      * item 2). Each entry maps a {@code line_number} to the quantity inventory
      * reserved for it, moving the line onto the reservation band via
      * {@link SalesOrderLine#markReserved}; the header is then re-derived
-     * ({@link #recomputeStatus()}) so a reserved line lifts the order to
-     * {@code in_fulfilment} through the fold rather than a blind projection
-     * write. Cancelled (removed) lines are skipped; line numbers absent from the
+     * ({@link #recomputeStatus()}) so reserved lines lift the order to
+     * {@code partially_reserved} / {@code reserved} through the fold rather than a
+     * blind projection write. Cancelled (removed) lines are skipped; line numbers absent from the
      * map are left untouched. Emits no event — the reservation is inventory's
      * fact; this is the sales aggregate reflecting it so the line carries the
      * authoritative in-progress band.
@@ -641,10 +669,41 @@ public final class SalesOrder {
         recomputeStatus();
     }
 
+    /**
+     * Coarse domain guard for the line-amendment mutators — the twin of
+     * {@link #cancel}'s guard (cancellable ≡ amendable). Reads the same two line
+     * predicates: a line may change while no live line has shipped
+     * ({@link #anyLineShipped()}) and the order is not terminal
+     * ({@link #isTerminal()}). The finer saga-state window (only before stock is
+     * reserved) is enforced by the application service, which knows the
+     * fulfilment saga's state.
+     */
     private void assertAmendable() {
-        if (!AMENDABLE_STATUSES.contains(status)) {
+        if (isTerminal() || anyLineShipped()) {
             throw new OrderNotAmendableException(id, status);
         }
+    }
+
+    /**
+     * True once any live line has shipped ({@code band ⊒ partially_shipped}) — the
+     * point past which cancel/amend require the credit-note flow. Reads the lines
+     * directly (the authoritative grain), not the lossy header fold.
+     */
+    private boolean anyLineShipped() {
+        for (SalesOrderLine line : lines) {
+            if (line.isCancelled()) {
+                continue;
+            }
+            if (shipBand(line.lineStatus()) >= BAND_PARTIALLY_SHIPPED) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** True once the header has reached an absorbing order-level terminal. */
+    private boolean isTerminal() {
+        return status == Status.CANCELLED || status == Status.REJECTED || status == Status.COMPLETED;
     }
 
     private SalesOrderLine activeLine(UUID lineId) {
@@ -673,23 +732,27 @@ public final class SalesOrder {
 
     /**
      * Re-derive the header {@code status} from the live-line multiset — the
-     * ship-axis {@code classify(meet, join)} fold of
+     * faithful ship-axis {@code classify(meet, join)} fold of
      * {@code docs/composed-state-machines.md} §13.3, sibling to
      * {@link #recomputeTotals()} and called from the same mutators. Sole writer
-     * of the derived region; the absorbing lifecycle terminals
+     * of the fold region; the absorbing order-level terminals
      * ({@code cancelled} / {@code completed} / {@code rejected}) are left
-     * untouched — a fold must never undo a top-down terminal (§4/§5).
+     * untouched — a bottom-up fold must never undo a top-down terminal (§4/§5).
      *
+     * <p>The header ship-vocabulary equals the {@link LineStatus} vocabulary, so
+     * the ladder reads straight off {@code meet}/{@code join} of the bands:
      * <ul>
      *   <li>no live lines remain → {@code cancelled} (the removed-the-last-line
      *       edge; {@link #removeLine} guards against it — this is defensive);</li>
      *   <li>every live line {@code shipped} ({@code meet == SHIPPED}) →
      *       {@code shipped};</li>
-     *   <li>at least one line shipped ≥1 unit ({@code join ⊒ partially_shipped})
+     *   <li>some (not all) live lines shipped ({@code join ⊒ partially_shipped})
      *       → {@code partially_shipped};</li>
-     *   <li>at least one line reserved / in progress ({@code join ⊒ in_progress})
-     *       → {@code in_fulfilment};</li>
-     *   <li>otherwise (every live line still {@code open}) → {@code submitted}.</li>
+     *   <li>every live line reserved or beyond ({@code meet ⊒ reserved}) →
+     *       {@code reserved};</li>
+     *   <li>some (not all) live lines reserved ({@code join ⊒ partially_reserved})
+     *       → {@code partially_reserved};</li>
+     *   <li>otherwise (every live line still {@code open}) → {@code open}.</li>
      * </ul>
      *
      * <p>Cancelled lines are filtered (monoid-neutral), the same way
@@ -697,7 +760,7 @@ public final class SalesOrder {
      * line order, insert order, and how shipments were batched.
      */
     private void recomputeStatus() {
-        if (status == Status.CANCELLED || status == Status.REJECTED || status == Status.COMPLETED) {
+        if (isTerminal()) {
             return;
         }
         int meet = Integer.MAX_VALUE;
@@ -718,10 +781,12 @@ public final class SalesOrder {
             next = Status.SHIPPED;
         } else if (join >= BAND_PARTIALLY_SHIPPED) {
             next = Status.PARTIALLY_SHIPPED;
-        } else if (join >= BAND_IN_PROGRESS) {
-            next = Status.IN_FULFILMENT;
+        } else if (meet >= BAND_RESERVED) {
+            next = Status.RESERVED;
+        } else if (join >= BAND_PARTIALLY_RESERVED) {
+            next = Status.PARTIALLY_RESERVED;
         } else {
-            next = Status.SUBMITTED;
+            next = Status.OPEN;
         }
         this.status = next;
     }
@@ -729,9 +794,9 @@ public final class SalesOrder {
     /** Coarsen a live line's status onto the ship-progress lattice {@code M_ship} (§13.1). */
     private static int shipBand(LineStatus lineStatus) {
         return switch (lineStatus) {
-            case OPEN -> BAND_NOT_STARTED;
-            case PARTIALLY_RESERVED -> BAND_IN_PROGRESS;
-            case RESERVED -> BAND_READY;
+            case OPEN -> BAND_OPEN;
+            case PARTIALLY_RESERVED -> BAND_PARTIALLY_RESERVED;
+            case RESERVED -> BAND_RESERVED;
             case PARTIALLY_SHIPPED -> BAND_PARTIALLY_SHIPPED;
             case SHIPPED -> BAND_SHIPPED;
             // cancelled is off the chain — filtered out before the fold reaches here.

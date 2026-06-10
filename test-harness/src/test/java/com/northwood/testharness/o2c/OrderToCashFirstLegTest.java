@@ -86,8 +86,8 @@ class OrderToCashFirstLegTest {
         assertThat(sagaAfterReserve.state()).isEqualTo(SalesOrderFulfilmentSaga.READY_TO_SHIP);
 
         assertThat(sales.orderStatus(orderId))
-            .as("order header status projected to in_fulfilment")
-            .contains(SalesOrder.Status.IN_FULFILMENT);
+            .as("order header folds to reserved — every line fully reserved")
+            .contains(SalesOrder.Status.RESERVED);
 
         assertThat(sales.outbox.all())
             .extracting(OutboxRow::getEventType)

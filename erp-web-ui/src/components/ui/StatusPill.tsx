@@ -41,6 +41,7 @@ export function statusForOrder(status: string | null | undefined): { label: stri
   switch ((status ?? "").toLowerCase()) {
     case "draft":
     case "submitted":
+    case "open":
     case "pending":
       return { label: titleCase(status!), tone: "info" };
     case "in_fulfilment":

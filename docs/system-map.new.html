@@ -462,7 +462,7 @@
     <tr><td><code>awaiting_prepayment_invoice</code> + <code>invoice_created</code> + <code>prepaid</code></td><td><strong>collapsed → <code>awaiting_prepayment</code></strong></td><td>one prepayment <strong>gate</strong>; the invoice/paid intermediates are derivable from the invoice/pay axes</td></tr>
     <tr><td><code>stock_reservation_requested</code></td><td><strong>kept</strong></td><td>reservation in flight</td></tr>
     <tr><td><code>stock_reservation_incomplete</code></td><td><strong>kept</strong></td><td>shortage <strong>retry loop</strong> + outstanding-set</td></tr>
-    <tr><td><code>ready_to_ship</code></td><td><strong>renamed → <code>supply_secured</code></strong></td><td>was a status-mirror (= all lines <code>READY</code>); now the orchestration's success terminal</td></tr>
+    <tr><td><code>ready_to_ship</code></td><td><strong>renamed → <code>supply_secured</code></strong></td><td>was a status-mirror (= all lines <code>reserved</code>); now the orchestration's success terminal</td></tr>
     <tr><td><code>goods_shipped</code></td><td><strong>removed</strong></td><td>status-mirror (= <code>meet_ship == SHIPPED</code>) → event-reactive</td></tr>
     <tr><td><code>partially_shipped</code></td><td><strong>removed</strong></td><td>status-mirror (= <code>join_ship ⊒ PARTIALLY_SHIPPED</code>)</td></tr>
     <tr><td><code>invoice_partially_paid</code></td><td><strong>removed</strong></td><td>status-mirror (pay axis partial)</td></tr>
@@ -477,7 +477,7 @@
 <table class="csm-table">
   <thead><tr><th>Event (→ sales consumer)</th><th>Old effect</th><th>New (composed) effect</th></tr></thead>
   <tbody>
-    <tr><td><code>StockReserved</code></td><td>saga → <code>ready_to_ship</code>/<code>incomplete</code>; <strong>flips header → <code>in_fulfilment</code></strong></td><td><code>markReserved</code> sets line band <code>READY</code>/<code>IN_PROGRESS</code>; header <strong>re-derived</strong>; process tracks short lines</td></tr>
+    <tr><td><code>StockReserved</code></td><td>saga → <code>ready_to_ship</code>/<code>incomplete</code>; <strong>flips header → <code>in_fulfilment</code></strong></td><td><code>markReserved</code> sets line band <code>reserved</code>/<code>partially_reserved</code>; header <strong>re-derived</strong> to the matching rung; process tracks short lines</td></tr>
     <tr><td><code>ShipmentPosted</code></td><td><code>recordShipped</code> <strong>flips header → <code>shipped</code>/<code>partially_shipped</code></strong>; saga → <code>goods_shipped</code></td><td><code>recordShipped</code> moves line band; header <strong>re-derived</strong> (<code>meet_ship</code>); process records milestone</td></tr>
     <tr><td><code>CustomerInvoiceCreated</code></td><td>saga → <code>invoice_created</code></td><td>advances line <strong>invoice axis</strong>; <code>completed</code> needs cross-axis meet</td></tr>
     <tr><td><code>CustomerPaymentReceived</code></td><td>saga; on full settle <strong>flips header → <code>completed</code></strong></td><td>advances <strong>pay axis</strong>; cross-axis meet ⇒ <code>classify</code> derives <code>completed</code></td></tr>
@@ -485,8 +485,8 @@
     <tr><td><code>ReplenishmentCancelled</code></td><td>saga → <code>rejected</code>; <strong>flips header → <code>rejected</code></strong></td><td><code>reject</code> <strong>command</strong> (absorbing override); release partial reservation</td></tr>
     <tr><td><code>InventorySalesOrderCancellationApplied</code></td><td>saga <code>compensating → compensated</code></td><td>header already <code>CANCELLED</code> (command); records ack; emits <code>SalesOrderCompensated</code></td></tr>
     <tr><td><code>SalesOrderLineReservationChanged</code></td><td>reconciles saga outstanding set; parks/unparks</td><td>updates amended line's reserved qty + <strong>band</strong>; header <strong>re-derived</strong></td></tr>
-    <tr><td><code>SalesOrderReadyToShip</code> (→ 360)</td><td><code>order_status → ready_to_ship</code> (saga shortcut)</td><td>reporting-side <strong>derived label</strong> (= all lines <code>READY</code>); header stays <code>in_fulfilment</code></td></tr>
-    <tr><td><code>SalesOrderPlaced</code> (→ 360)</td><td>creates 360 row</td><td>+ all lines <code>NOT_STARTED</code> ⇒ header classifies <code>submitted</code></td></tr>
+    <tr><td><code>SalesOrderReadyToShip</code> (→ 360)</td><td><code>order_status → ready_to_ship</code> (saga shortcut)</td><td>reporting-side <strong>derived label</strong> (= all lines <code>reserved</code>); header folds to <code>reserved</code></td></tr>
+    <tr><td><code>SalesOrderPlaced</code> (→ 360)</td><td>creates 360 row</td><td>+ all lines <code>open</code> ⇒ header classifies <code>open</code></td></tr>
   </tbody>
 </table>
 <p style="font-size:0.86rem;color:var(--muted)">Through-line: every "flips/advances status" became "update a line axis → <code>classify(lines)</code> re-derives the header." The saga survives as a <em>sequencer</em> (the pruned 7-state machine) but no longer owns the status.</p>
@@ -511,7 +511,7 @@
 <div class="tree-wrap" id="event-tree"></div>
 
 <h2>State machines</h2>
-<p>The <strong>Sales Order</strong> leads as a <strong>composed state machine</strong> (header status = a fold over its line states — the ideal model of <code>docs/composed-state-machines.md</code>), shown as three diagrams: the two-tier <em>header</em> machine, the per-<em>line</em> shipment-axis machine, and the <em>pruned fulfilment orchestration</em> — the process reduced to the states a fold can't express (timers, the prepayment gate, the reservation / shortage-retry loop), since its old status-mirror states now live in the line bands. The remaining three are process orchestrators — the make-to-stock <code>WorkOrder</code> Saga, the <code>PurchaseToPay</code> Saga, and the <code>ReplenishmentRequest</code> aggregate (a saga-shaped orchestrator that's a regular domain aggregate, deliberately not a Saga — see <code>WorkOrderReleaseService.releaseForReplenishment</code> Javadoc). This page embeds only the forward flow; the full source-of-truth diagrams and their compensation views live in the per-saga design docs. <strong>Each diagram is interactive</strong> — <strong>drag a state</strong> to rearrange it, scroll to zoom, drag the canvas to pan, and hit <em>Re-layout</em> to snap back to the auto-arranged flow. The graphs are built by parsing the <code>stateDiagram-v2</code> source kept (collapsed) under each one.</p>
+<p>The <strong>Sales Order</strong> leads as a <strong>composed state machine</strong> (header status = a brainless fold over its line states — the ideal model of <code>docs/composed-state-machines.md</code>), shown as three diagrams: the <em>header</em> machine (fold region + three order-level terminals), the per-<em>line</em> shipment-axis machine, and the <em>pruned fulfilment orchestration</em> — the process reduced to the states a fold can't express (timers, the prepayment gate, the reservation / shortage-retry loop), since its old status-mirror states now live in the line bands. The remaining three are process orchestrators — the make-to-stock <code>WorkOrder</code> Saga, the <code>PurchaseToPay</code> Saga, and the <code>ReplenishmentRequest</code> aggregate (a saga-shaped orchestrator that's a regular domain aggregate, deliberately not a Saga — see <code>WorkOrderReleaseService.releaseForReplenishment</code> Javadoc). This page embeds only the forward flow; the full source-of-truth diagrams and their compensation views live in the per-saga design docs. <strong>Each diagram is interactive</strong> — <strong>drag a state</strong> to rearrange it, scroll to zoom, drag the canvas to pan, and hit <em>Re-layout</em> to snap back to the auto-arranged flow. The graphs are built by parsing the <code>stateDiagram-v2</code> source kept (collapsed) under each one.</p>
 
 <style>
   /* composed-state-machine supporting blocks (scoped helpers) */
@@ -526,11 +526,11 @@
 
 <details class="saga-block">
   <summary><h3 id="sm-sales-order-header">SalesOrder — header composed state machine</h3></summary>
-  <p class="desc">One row per customer order. The header status is <strong>not an autonomous machine</strong> — it is a <strong>pure fold over the order's line states</strong>, recomputed by <code>SalesOrder.recomputeStatus()</code> (sibling to <code>recomputeTotals()</code>) after every line mutation, with the invariant <code>stored status == classify(lines)</code>. Four states are <em>derived</em> from the ship-axis fold, two are absorbing <em>command</em> overrides (cancel/reject — refused once any goods have shipped), and <code>COMPLETED</code> is a <em>cross-axis meet</em> (shipped ∧ invoiced ∧ paid). There is no blind <code>markStatus</code> writer; the fulfilment <em>process</em> still sequences cross-service steps but does not write this column.</p>
+  <p class="desc">One row per customer order. The header status is a <strong>brainless fold over the order's line states</strong> — the lines are the single source of truth, the header a <em>derived label</em>. Recomputed by <code>SalesOrder.recomputeStatus()</code> (sibling to <code>recomputeTotals()</code>) after every line mutation, with the invariant <code>stored status == classify(lines)</code>. The fold is <strong>faithful</strong> (§2.45): the header ship-vocabulary <strong>equals</strong> the line vocabulary — five <em>fold-region</em> states (<code>open ⊏ partially_reserved ⊏ reserved ⊏ partially_shipped ⊏ shipped</code>, the "all" rungs on <code>meet</code>, the "some" rungs on <code>join</code>) plus three absorbing <em>order-level terminals</em> (<code>cancelled</code> / <code>rejected</code> top-down commands; <code>completed</code> a cross-axis meet asserting the fold == <code>shipped</code> first, its invoice/pay inputs off the SO line). There is no blind <code>markStatus</code> writer. <strong>Gates read the lines, not the header</strong> (the fold is lossy, so the header can't be the gating oracle): cancel/amend read line predicates (<code>anyLineShipped()</code> + <code>isTerminal()</code>), not a status allow-list.</p>
   <div class="csm-legend">
-    <span><span class="sw" style="background:#e8f5e9;border-color:#1a7f37"></span>derived — output of <code>classify(lines)</code> on the ship axis</span>
-    <span><span class="sw" style="background:#ffebe9;border-color:#cf222e"></span>command — absorbing override (cancel / reject)</span>
-    <span><span class="sw" style="background:#ddf4ff;border-color:#0969da"></span>cross-axis — requires ship ∧ invoice ∧ pay</span>
+    <span><span class="sw" style="background:#e8f5e9;border-color:#1a7f37"></span>fold region — output of <code>classify(lines)</code> on the ship axis</span>
+    <span><span class="sw" style="background:#ffebe9;border-color:#cf222e"></span>terminal — absorbing top-down command (cancel / reject)</span>
+    <span><span class="sw" style="background:#ddf4ff;border-color:#0969da"></span>terminal — cross-axis (complete: ship ∧ invoice ∧ pay)</span>
   </div>
   <div class="saga-graph"></div>
   <details class="mermaid-source">
@@ -538,32 +538,37 @@
     <pre class="saga-src">
 stateDiagram-v2
     direction TB
-    [*] --> SUBMITTED : placeOrder
-    SUBMITTED --> IN_FULFILMENT : classify [a line leaves NOT_STARTED]
-    IN_FULFILMENT --> PARTIALLY_SHIPPED : classify [some units shipped]
-    IN_FULFILMENT --> SHIPPED : classify [every line fully shipped]
-    PARTIALLY_SHIPPED --> SHIPPED : classify [every line fully shipped]
-    SHIPPED --> COMPLETED : classify [invoiced AND paid - cross-axis meet]
-    PARTIALLY_SHIPPED --> COMPLETED : classify [settled early - prepay / COD]
-    SUBMITTED --> CANCELLED : cancel cmd
-    IN_FULFILMENT --> CANCELLED : cancel cmd
-    SUBMITTED --> REJECTED : reject cmd
-    COMPLETED --> [*]
-    CANCELLED --> [*]
-    REJECTED --> [*]
+    [*] --> open : placeOrder
+    open --> partially_reserved : classify [some lines reserved]
+    open --> reserved : classify [every line reserved at once]
+    partially_reserved --> reserved : classify [now every line reserved]
+    reserved --> partially_shipped : classify [some units shipped]
+    reserved --> shipped : classify [every line fully shipped]
+    partially_reserved --> partially_shipped : classify [some units shipped]
+    partially_shipped --> shipped : classify [every line fully shipped]
+    shipped --> completed : complete cmd [invoiced AND paid - cross-axis meet]
+    partially_shipped --> completed : complete cmd [settled early - prepay / COD]
+    open --> cancelled : cancel cmd
+    partially_reserved --> cancelled : cancel cmd
+    reserved --> cancelled : cancel cmd
+    open --> rejected : reject cmd
+    completed --> [*]
+    cancelled --> [*]
+    rejected --> [*]
     </pre>
   </details>
   <div class="desc">
-    <strong>The fold — <code>classify</code> (order level).</strong> Over the live lines (cancelled filtered), per axis compute <code>meet = ⊓ bands</code>, <code>join = ⊔ bands</code>:
+    <strong>The fold — <code>classify</code> (order level).</strong> Over the live lines (cancelled filtered) compute <code>meet = ⊓ bands</code>, <code>join = ⊔ bands</code>; the terminals are top-down commands the fold early-returns on:
     <pre class="csm-code">classify(order) =
-  CANCELLED          if cancel cmd OR no live lines
-  REJECTED           if reject cmd
-  COMPLETED          if meet_ship == SHIPPED ∧ meet_invoice == INVOICED ∧ meet_pay == PAID
-  SHIPPED            if meet_ship == SHIPPED                 // all lines fully shipped
-  PARTIALLY_SHIPPED  if join_ship ⊒ PARTIALLY_SHIPPED        // ≥1 unit shipped anywhere
-  IN_FULFILMENT      if join_ship ⊒ IN_PROGRESS              // work underway, nothing shipped
-  SUBMITTED          otherwise                               // every live line NOT_STARTED</pre>
-    <code>meet</code>/<code>join</code> are commutative ⇒ the result is order-insensitive (shuffle / replay / shipment re-batching can't change it). Full algebra: <code>docs/composed-state-machines.md</code> §§2, 13.
+  cancelled           if cancel() OR no live lines        // top-down terminals
+  rejected            if reject()
+  completed           if complete()  (asserts fold == shipped; invoice∧pay meet off-line — §12.6)
+  shipped             if meet == shipped                  // every live line fully shipped
+  partially_shipped   if join ⊒ partially_shipped         // ≥1 unit shipped anywhere
+  reserved            if meet ⊒ reserved                  // every live line reserved, none shipped
+  partially_reserved  if join ⊒ partially_reserved        // some line reserved, not all
+  open                otherwise                            // every live line open</pre>
+    <code>meet</code>/<code>join</code> are commutative ⇒ the result is order-insensitive (shuffle / replay / shipment re-batching can't change it). The header ship-vocabulary equals the line vocabulary, so <code>partially_*</code> means within-line-quantity partial at the line and cross-line straddle at the order (fractal). Full algebra: <code>docs/composed-state-machines.md</code> §§2, 5, 13.
   </div>
 </details>
 
@@ -649,7 +654,7 @@ stateDiagram-v2
     awaiting_prepayment --> stock_reservation_requested : prepayment settled [up-front invoice created and paid, no fence]
     awaiting_prepayment --> awaiting_release : prepayment settled [planning fence]
     awaiting_release --> stock_reservation_requested : release date reached
-    stock_reservation_requested --> supply_secured : StockReserved [all lines reserved - lines reach READY]
+    stock_reservation_requested --> supply_secured : StockReserved [all lines reserved - lines reach the reserved band]
     stock_reservation_requested --> stock_reservation_incomplete : StockReserved [shortage - inventory raised replenishment in-tx]
     stock_reservation_incomplete --> stock_reservation_requested : ReplenishmentFulfilled [shortage topped up - retry]
     stock_reservation_incomplete --> supply_secured : ReplenishmentFulfilled [order-pegged, reserved on completion]
@@ -956,7 +961,7 @@ window.NORTHWOOD_EVENTS = [
       { dest: "inventory", name: "inventory.sales-order-line-facts",
         desc: `Seeds <code>inventory.sales_order_line_facts</code> (sales_order_header_id, sales_order_line_id, product_id) — used by shipment-line validation` },
       { dest: "reporting", name: "reporting.sales-order-360.order-placed",
-        desc: `Creates <code>reporting.sales_order_360_view</code> row (order_number, customer_id, customer_name, order_date, requested_delivery_date, currency_code, total_amount, order_status, payment_terms). All lines start at the <code>NOT_STARTED</code> band, so the composed header classifies as <code>submitted</code>.` },
+        desc: `Creates <code>reporting.sales_order_360_view</code> row (order_number, customer_id, customer_name, order_date, requested_delivery_date, currency_code, total_amount, order_status, payment_terms). All lines start at the <code>open</code> band, so the composed header classifies as <code>open</code>.` },
       { dest: "reporting", name: "reporting.dashboard.sales-order-placed",
         desc: `<code>reporting.financial_dashboard_daily.sales_orders_placed_count</code> (per dashboard_date, currency_code)` },
     ]

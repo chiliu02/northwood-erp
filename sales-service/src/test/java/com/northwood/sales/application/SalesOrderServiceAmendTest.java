@@ -52,7 +52,7 @@ class SalesOrderServiceAmendTest {
     void setUp() {
         service = new SalesOrderService(orders, sagaManager, customers, productCards);
         Mockito.lenient().when(orders.findById(SalesOrderId.of(ORDER_ID)))
-            .thenReturn(Optional.of(order(SalesOrder.Status.SUBMITTED, 2L)));
+            .thenReturn(Optional.of(order(SalesOrder.Status.OPEN, 2L)));
     }
 
     private static SalesOrder order(SalesOrder.Status status, long version) {

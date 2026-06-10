@@ -36,7 +36,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Real-Postgres test for {@link JdbcSalesOrderRepository}
- * (header + lines). Seeded via {@code reconstitute(SUBMITTED, version=0)}.
+ * (header + lines). Seeded via {@code reconstitute(OPEN, version=0)}.
  * Covers: insert→findById round-trip of header + line incl. enum
  * dbValue()/fromDb() + the {@code customer_id} FK; {@code cancel()} persisted via
  * the update path (status + cancelled_at) + the {@code SalesOrderCancellationRequested}
@@ -106,7 +106,7 @@ class JdbcSalesOrderRepositoryIT {
         SalesOrder r = REPO.findById(order.id()).orElseThrow();
         assertThat(r.orderNumber()).isEqualTo("SO-RT-001");
         assertThat(r.customerId()).isEqualTo(CUSTOMER_ID);
-        assertThat(r.status()).isEqualTo(SalesOrder.Status.SUBMITTED);
+        assertThat(r.status()).isEqualTo(SalesOrder.Status.OPEN);
         assertThat(r.currencyCode()).isEqualTo("AUD");
         assertThat(r.totalAmount()).isEqualByComparingTo("100.00");
         assertThat(r.version()).isEqualTo(1L);
@@ -159,7 +159,7 @@ class JdbcSalesOrderRepositoryIT {
             BigDecimal.ZERO, BigDecimal.ZERO, SalesOrder.LineStatus.OPEN);
         return SalesOrder.reconstitute(
             SalesOrderId.newId(), orderNumber, CUSTOMER_ID, "CUST-SO-IT", "Customer IT",
-            LocalDate.now(), null, SalesOrder.Status.SUBMITTED, "AUD", BigDecimal.ONE,
+            LocalDate.now(), null, SalesOrder.Status.OPEN, "AUD", BigDecimal.ONE,
             PaymentTerms.ON_SHIPMENT, null,
             new BigDecimal("100.00"), BigDecimal.ZERO, new BigDecimal("100.00"),
             null, 0L, List.of(line));

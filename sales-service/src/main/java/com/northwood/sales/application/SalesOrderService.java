@@ -608,8 +608,8 @@ public class SalesOrderService {
      * header status in the same transaction. Called from the inbox handler that
      * consumes inventory's {@code StockReserved}, replacing the former blind
      * {@code markStatus(IN_FULFILMENT)} projection write: the header now reaches
-     * {@code in_fulfilment} as the fold of reserved lines, not an independent
-     * column write. No-op-safe if the order vanished (defensive — the saga
+     * {@code reserved} / {@code partially_reserved} as the fold of reserved lines,
+     * not an independent column write. No-op-safe if the order vanished (defensive — the saga
      * exists for an existing order).
      */
     @Transactional

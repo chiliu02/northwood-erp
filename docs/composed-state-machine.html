@@ -3,15 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Northwood — Composed State Machine (ideal / target model)</title>
+<title>Northwood — Composed State Machine (as-built)</title>
 <!-- Sibling to system-map.html, NOT a replacement for it.
 
-     This page visualises the IDEAL sales-order fulfilment composed state
-     machine described in docs/composed-state-machines.md — i.e. the target
-     after the dev-todo §2.29 gaps are fixed (single classify() fold on the
-     aggregate; the in-progress band carried on the line; the invoice/pay
-     axes separated; COMPLETED as a cross-axis meet). It is a design target,
-     not a map of the code as it runs today — see §14 of the doc for the gap.
+     This page visualises the sales-order fulfilment composed state machine
+     described in docs/composed-state-machines.md. As of §2.29 + §2.45
+     (2026-06-10) it is AS-BUILT, not a target: a single faithful classify()
+     fold on the aggregate (header ship-vocabulary == line vocabulary); the
+     in-progress band carried on the line; the invoice/pay axes off the SO line
+     (§12.6); completed as a cross-axis meet; gates read line predicates. See
+     §14 of the doc for the closed-gap accounting.
 
      Self-contained: all diagrams are inline Mermaid stateDiagram-v2 sources.
      Mermaid loads from a CDN (modern browsers permit HTTPS from file://); if
@@ -150,70 +151,80 @@
 </head>
 <body>
 
-<h1>Composed State Machine — ideal / target model</h1>
+<h1>Composed State Machine — as-built</h1>
 <p class="lede">
-  The sales-order fulfilment state machine as it <em>should</em> be — a parent (order) status
-  that is a <strong>pure fold over its line states</strong>, with the per-line progress split
-  into independent axes. This is the target described in
-  <code>docs/composed-state-machines.md</code>; the live code is a narrower special case.
+  The sales-order fulfilment state machine as it runs — a parent (order) status that is a
+  <strong>brainless fold over its line states</strong> (header ship-vocabulary == line
+  vocabulary), with the per-line progress split into independent axes. Described in
+  <code>docs/composed-state-machines.md</code>.
 </p>
 
 <div class="banner">
-  <strong>This is a design target, not the current code.</strong> It depicts the model after the
-  <code>dev-todo §2.29</code> gaps are closed: one <code>classify()</code> fold on the aggregate
-  (no blind <code>markStatus</code> writer), the in-progress band carried on the line, the
-  invoice/pay axes separated, and <code>COMPLETED</code> as a cross-axis meet. For where today's
-  code differs, see <code>composed-state-machines.md</code> §14. The canonical as-built map remains
+  <strong>As-built after §2.29 + §2.45 (2026-06-10).</strong> A single faithful
+  <code>classify()</code> fold on the aggregate (no blind <code>markStatus</code> writer), the
+  in-progress band carried on the line and mapped 1:1 to the header rung, the invoice/pay axes
+  off the SO line (§12.6), <code>completed</code> as a cross-axis meet, and cancel/amend gates
+  reading line predicates rather than a header allow-list. Closed-gap accounting:
+  <code>composed-state-machines.md</code> §14. The canonical as-built map remains
   <code>system-map.html</code>.
 </div>
 
 <!-- ============================================================= -->
-<h2>1 · The order header — a two-tier statechart</h2>
+<h2>1 · The order header — a brainless fold plus three terminals</h2>
 <p>
   The header carries <strong>one</strong> <code>SalesOrder.Status</code>, which tracks the
-  <strong>shipment axis</strong>. Four of its states are <span class="pill derived">derived</span>
-  outputs of the line fold (<code>classify</code>, §2); two are
-  <span class="pill command">command</span> overrides that absorb the machine; one
-  (<code>COMPLETED</code>) is a <span class="pill cross">cross-axis meet</span> requiring all
-  axes saturated. Cancel is rejected once any goods have shipped — so the only edges into
-  <code>CANCELLED</code> leave <code>SUBMITTED</code> / <code>IN_FULFILMENT</code>.
+  <strong>shipment axis</strong>. Since <strong>§2.45</strong> the fold is <em>faithful</em>:
+  the header ship-vocabulary <strong>equals</strong> the line vocabulary — five
+  <span class="pill derived">fold-region</span> states
+  (<code>open ⊏ partially_reserved ⊏ reserved ⊏ partially_shipped ⊏ shipped</code>, the
+  output of <code>classify(lines)</code>, §2) plus three absorbing
+  <span class="pill command">terminal</span> commands; <code>completed</code> is a
+  <span class="pill cross">cross-axis meet</span> (assert fold == <code>shipped</code>, then
+  invoiced ∧ paid off-line). The lines are the single source of truth; the header is a derived
+  label, so <strong>gates read the lines, not the header</strong> (the fold is lossy). Cancel is
+  rejected once any goods have shipped — its guard is the line predicate
+  <code>anyLineShipped()</code>, not a status allow-list.
 </p>
 
 <div class="diagram">
 <pre class="mermaid">
 stateDiagram-v2
   direction LR
-  [*] --> SUBMITTED
-  SUBMITTED --> IN_FULFILMENT : a line begins progress
-  IN_FULFILMENT --> PARTIALLY_SHIPPED : some units shipped
-  IN_FULFILMENT --> SHIPPED : every line fully shipped
-  PARTIALLY_SHIPPED --> SHIPPED : every line fully shipped
-  SHIPPED --> COMPLETED : invoiced AND paid
-  PARTIALLY_SHIPPED --> COMPLETED : settled early (prepay / COD)
-  SUBMITTED --> CANCELLED : cancel cmd
-  IN_FULFILMENT --> CANCELLED : cancel cmd
-  SUBMITTED --> REJECTED : reject cmd
-  COMPLETED --> [*]
-  CANCELLED --> [*]
-  REJECTED --> [*]
+  [*] --> open
+  open --> partially_reserved : some lines reserved
+  open --> reserved : every line reserved at once
+  partially_reserved --> reserved : now every line reserved
+  reserved --> partially_shipped : some units shipped
+  reserved --> shipped : every line fully shipped
+  partially_reserved --> partially_shipped : some units shipped
+  partially_shipped --> shipped : every line fully shipped
+  shipped --> completed : invoiced AND paid (complete cmd)
+  partially_shipped --> completed : settled early (prepay / COD)
+  open --> cancelled : cancel cmd
+  partially_reserved --> cancelled : cancel cmd
+  reserved --> cancelled : cancel cmd
+  open --> rejected : reject cmd
+  completed --> [*]
+  cancelled --> [*]
+  rejected --> [*]
 
   classDef shipfold fill:#e8f5e9,stroke:#1a7f37,color:#13532a
   classDef command fill:#ffebe9,stroke:#cf222e,color:#8a1d24
   classDef crossaxis fill:#ddf4ff,stroke:#0969da,color:#0a4a8a
-  class SUBMITTED,IN_FULFILMENT,PARTIALLY_SHIPPED,SHIPPED shipfold
-  class CANCELLED,REJECTED command
-  class COMPLETED crossaxis
+  class open,partially_reserved,reserved,partially_shipped,shipped shipfold
+  class cancelled,rejected command
+  class completed crossaxis
 </pre>
-<details class="src"><summary>stateDiagram source (offline fallback)</summary><pre>SUBMITTED --(line begins)--&gt; IN_FULFILMENT --(some shipped)--&gt; PARTIALLY_SHIPPED --(all shipped)--&gt; SHIPPED --(invoiced AND paid)--&gt; COMPLETED
-IN_FULFILMENT --(all shipped)--&gt; SHIPPED
-cancel cmd: SUBMITTED|IN_FULFILMENT --&gt; CANCELLED   (absorbing; refused once shipped)
-reject cmd: SUBMITTED --&gt; REJECTED                 (absorbing)
-PARTIALLY_SHIPPED --(settled early)--&gt; COMPLETED</pre></details>
+<details class="src"><summary>stateDiagram source (offline fallback)</summary><pre>open --(some reserved)--&gt; partially_reserved --(all reserved)--&gt; reserved --(some shipped)--&gt; partially_shipped --(all shipped)--&gt; shipped --(invoiced AND paid)--&gt; completed
+reserved --(all shipped)--&gt; shipped
+cancel cmd: open|partially_reserved|reserved --&gt; cancelled   (absorbing; refused once any line shipped)
+reject cmd: open --&gt; rejected                                 (absorbing)
+partially_shipped --(settled early)--&gt; completed</pre></details>
 </div>
 <div class="legend">
-  <span><span class="swatch" style="background:#e8f5e9;border-color:#1a7f37"></span>derived — output of the ship-axis fold <code>classify(lines)</code></span>
-  <span><span class="swatch" style="background:#ffebe9;border-color:#cf222e"></span>command — absorbing override (cancel / reject)</span>
-  <span><span class="swatch" style="background:#ddf4ff;border-color:#0969da"></span>cross-axis — requires ship ∧ invoice ∧ pay</span>
+  <span><span class="swatch" style="background:#e8f5e9;border-color:#1a7f37"></span>fold region — output of the ship-axis fold <code>classify(lines)</code></span>
+  <span><span class="swatch" style="background:#ffebe9;border-color:#cf222e"></span>terminal — absorbing top-down command (cancel / reject)</span>
+  <span><span class="swatch" style="background:#ddf4ff;border-color:#0969da"></span>terminal — cross-axis (complete: ship ∧ invoice ∧ pay)</span>
 </div>
 
 <!-- ============================================================= -->
@@ -269,26 +280,30 @@ A soft-removed line -> CANCELLED (neutral: filtered from every fold).</pre></det
   the <strong>same band</strong> via a monotone map <code>g<sub>v</sub></code> (§11). The order
   fold sees only the band, so it never branches on product type. A stock line in
   <code>reserved</code>, a make line in <code>ready_to_ship</code>, and a buy line in
-  <code>ready_to_ship</code> all coarsen to <code>READY</code>.
+  <code>ready_to_ship</code> all coarsen to the <code>reserved</code> band. Since
+  <strong>§2.45</strong> the band names <em>are</em> the <code>LineStatus</code> vocabulary
+  (and, equivalently, the header fold region — header ≡ line).
 </p>
 
 <table>
   <thead>
-    <tr><th>Band <code>M_ship</code> (fold sees this)</th><th>stock line</th><th>make-to-order</th><th>buy-to-order</th></tr>
+    <tr><th>Band <code>M_ship</code> (= LineStatus = header fold region)</th><th>stock line</th><th>make-to-order</th><th>buy-to-order</th></tr>
   </thead>
   <tbody>
-    <tr><td class="band">NOT_STARTED</td><td><code>open</code></td><td><code>open</code></td><td><code>open</code></td></tr>
-    <tr><td class="band">IN_PROGRESS</td><td><code>partially_reserved</code></td><td><code>waiting_for_production</code></td><td><code>awaiting_receipt</code></td></tr>
-    <tr><td class="band">READY</td><td><code>reserved</code></td><td><code>ready_to_ship</code></td><td><code>ready_to_ship</code></td></tr>
-    <tr><td class="band">PARTIALLY_SHIPPED</td><td><code>partially_shipped</code></td><td><code>partially_shipped</code></td><td><code>partially_shipped</code></td></tr>
-    <tr><td class="band">SHIPPED</td><td><code>shipped</code></td><td><code>shipped</code></td><td><code>shipped</code></td></tr>
+    <tr><td class="band">open</td><td><code>open</code></td><td><code>open</code></td><td><code>open</code></td></tr>
+    <tr><td class="band">partially_reserved</td><td><code>partially_reserved</code></td><td><code>waiting_for_production</code></td><td><code>awaiting_receipt</code></td></tr>
+    <tr><td class="band">reserved</td><td><code>reserved</code></td><td><code>ready_to_ship</code></td><td><code>ready_to_ship</code></td></tr>
+    <tr><td class="band">partially_shipped</td><td><code>partially_shipped</code></td><td><code>partially_shipped</code></td><td><code>partially_shipped</code></td></tr>
+    <tr><td class="band">shipped</td><td><code>shipped</code></td><td><code>shipped</code></td><td><code>shipped</code></td></tr>
   </tbody>
 </table>
 <p style="font-size:0.86rem;color:var(--muted)">
-  Total order <code>NOT_STARTED ⊏ IN_PROGRESS ⊏ READY ⊏ PARTIALLY_SHIPPED ⊏ SHIPPED</code>;
-  <code>cancelled</code> is off the chain (neutral — filtered from the fold). The make/buy
-  apparatus rides on the future to-order extension (<code>dev-todo §2.43</code>); MTS lines all
-  use the <em>stock</em> column today.
+  Total order <code>open ⊏ partially_reserved ⊏ reserved ⊏ partially_shipped ⊏ shipped</code>;
+  <code>cancelled</code> is off the chain (neutral — filtered from the fold). To-order is
+  <strong>built</strong> (<code>ReplenishmentStrategy.TO_ORDER</code>), and the SO line carries
+  <em>no</em> production states — the <code>waiting_for_production</code> / <code>ready_to_ship</code>
+  names are illustrative off-line model states; a to-order line runs the same
+  <code>open → reserved → shipped</code> chain as a stock line.
 </p>
 
 <!-- ============================================================= -->
@@ -297,13 +312,13 @@ A soft-removed line -> CANCELLED (neutral: filtered from every fold).</pre></det
   <div>
     <h3>Line level — quantity buckets → band</h3>
     <pre class="code">band_ship(line) =
-    SHIPPED            if shippedQty == orderedQty
-    PARTIALLY_SHIPPED  if 0 &lt; shippedQty &lt; orderedQty
-    READY              if shippedQty == 0
+    shipped             if shippedQty == orderedQty
+    partially_shipped   if 0 &lt; shippedQty &lt; orderedQty
+    reserved            if shippedQty == 0
                           ∧ allocatedQty == orderedQty
-    IN_PROGRESS        if partial reservation / in production
-    NOT_STARTED        otherwise
-    CANCELLED          if line soft-removed     (neutral)
+    partially_reserved  if partial reservation / in production
+    open                otherwise
+    cancelled           if line soft-removed    (neutral)
 
 band_invoice(line) =
     INVOICED           if invoicedQty == orderedQty
@@ -316,23 +331,26 @@ band_invoice(line) =
 // meet_a = ⊓ bands_a,  join_a = ⊔ bands_a
 
 classify(order) =
-  CANCELLED          if cancel cmd OR no live lines
-  REJECTED           if reject cmd
-  COMPLETED          if meet_ship    == SHIPPED
-                        ∧ meet_invoice == INVOICED
-                        ∧ meet_pay     == PAID
-  SHIPPED            if meet_ship == SHIPPED
-  PARTIALLY_SHIPPED  if join_ship ⊒ PARTIALLY_SHIPPED
-  IN_FULFILMENT      if join_ship ⊒ IN_PROGRESS
-  SUBMITTED          otherwise</pre>
+  cancelled           if cancel() OR no live lines   // top-down terminals
+  rejected            if reject()
+  completed           if complete()  (asserts fold==shipped;
+                        invoice∧pay meet off-line — §12.6)
+  shipped             if meet == shipped
+  partially_shipped   if join ⊒ partially_shipped
+  reserved            if meet ⊒ reserved
+  partially_reserved  if join ⊒ partially_reserved
+  open                otherwise</pre>
   </div>
 </div>
 <p style="font-size:0.86rem;color:var(--muted)">
-  <code>meet_ship == SHIPPED</code> ⟺ <em>all</em> live lines fully shipped;
-  <code>join_ship ⊒ PARTIALLY_SHIPPED</code> ⟺ <em>at least one</em> line shipped ≥ 1 unit.
+  <code>meet == shipped</code> ⟺ <em>all</em> live lines fully shipped;
+  <code>meet ⊒ reserved</code> ⟺ <em>all</em> live lines reserved or beyond;
+  <code>join ⊒ partially_*</code> ⟺ <em>at least one</em> line has reached that band.
   Both meet and join are commutative ⇒ the result is order-insensitive (shuffle / replay / batch
   re-grouping can't change it). One writer: the aggregate's <code>recomputeStatus()</code>, called
   after every line mutation, with the invariant <code>stored status == classify(lines)</code>.
+  The header ship-vocabulary equals the line vocabulary (§2.45); <strong>gates read the lines</strong>
+  (<code>anyLineShipped()</code> + <code>isTerminal()</code>), not the header — the fold is lossy.
 </p>
 
 <!-- ============================================================= -->
@@ -343,11 +361,12 @@ classify(order) =
 <table>
   <thead><tr><th>step</th><th>line 1 band</th><th>line 2 band</th><th>meet / join (ship)</th><th>header status</th></tr></thead>
   <tbody>
-    <tr><td>place</td><td>NOT_STARTED</td><td>NOT_STARTED</td><td>NOT_STARTED / NOT_STARTED</td><td><span class="pill derived">SUBMITTED</span></td></tr>
-    <tr><td>both reserved</td><td>READY</td><td>READY</td><td>READY / READY</td><td><span class="pill derived">IN_FULFILMENT</span></td></tr>
-    <tr><td>ship line 1</td><td>SHIPPED</td><td>READY</td><td>READY / SHIPPED</td><td><span class="pill derived">PARTIALLY_SHIPPED</span></td></tr>
-    <tr><td>ship line 2</td><td>SHIPPED</td><td>SHIPPED</td><td>SHIPPED / SHIPPED</td><td><span class="pill derived">SHIPPED</span></td></tr>
-    <tr><td>invoiced + paid</td><td>—</td><td>—</td><td>+ invoice=INVOICED, pay=PAID</td><td><span class="pill cross">COMPLETED</span></td></tr>
+    <tr><td>place</td><td>open</td><td>open</td><td>open / open</td><td><span class="pill derived">open</span></td></tr>
+    <tr><td>line 1 reserved only</td><td>reserved</td><td>open</td><td>open / reserved</td><td><span class="pill derived">partially_reserved</span></td></tr>
+    <tr><td>both reserved</td><td>reserved</td><td>reserved</td><td>reserved / reserved</td><td><span class="pill derived">reserved</span></td></tr>
+    <tr><td>ship line 1</td><td>shipped</td><td>reserved</td><td>reserved / shipped</td><td><span class="pill derived">partially_shipped</span></td></tr>
+    <tr><td>ship line 2</td><td>shipped</td><td>shipped</td><td>shipped / shipped</td><td><span class="pill derived">shipped</span></td></tr>
+    <tr><td>invoiced + paid (off-line)</td><td>—</td><td>—</td><td>+ invoice=INVOICED, pay=PAID</td><td><span class="pill cross">completed</span></td></tr>
   </tbody>
 </table>
 
@@ -356,17 +375,19 @@ classify(order) =
 <table>
   <thead><tr><th>step</th><th>line 1 (make) → band</th><th>line 2 (buy) → band</th><th>meet / join</th><th>header</th></tr></thead>
   <tbody>
-    <tr><td>place</td><td><code>open</code> → NOT_STARTED</td><td><code>open</code> → NOT_STARTED</td><td>NS / NS</td><td><span class="pill derived">SUBMITTED</span></td></tr>
-    <tr><td>both started</td><td><code>waiting_for_production</code> → IN_PROGRESS</td><td><code>awaiting_receipt</code> → IN_PROGRESS</td><td>IP / IP</td><td><span class="pill derived">IN_FULFILMENT</span></td></tr>
-    <tr><td>line 1 produced</td><td><code>ready_to_ship</code> → READY</td><td><code>awaiting_receipt</code> → IN_PROGRESS</td><td>IP / READY</td><td><span class="pill derived">IN_FULFILMENT</span></td></tr>
-    <tr><td>ship line 1</td><td><code>shipped</code> → SHIPPED</td><td><code>ready_to_ship</code> → READY</td><td>READY / SHIPPED</td><td><span class="pill derived">PARTIALLY_SHIPPED</span></td></tr>
+    <tr><td>place</td><td><code>open</code> → open</td><td><code>open</code> → open</td><td>open / open</td><td><span class="pill derived">open</span></td></tr>
+    <tr><td>both started</td><td><code>waiting_for_production</code> → partially_reserved</td><td><code>awaiting_receipt</code> → partially_reserved</td><td>p_res / p_res</td><td><span class="pill derived">partially_reserved</span></td></tr>
+    <tr><td>line 1 produced</td><td><code>ready_to_ship</code> → reserved</td><td><code>awaiting_receipt</code> → partially_reserved</td><td>p_res / reserved</td><td><span class="pill derived">partially_reserved</span></td></tr>
+    <tr><td>ship line 1</td><td><code>shipped</code> → shipped</td><td><code>ready_to_ship</code> → reserved</td><td>reserved / shipped</td><td><span class="pill derived">partially_shipped</span></td></tr>
   </tbody>
 </table>
 <p style="font-size:0.86rem;color:var(--muted)">
   At “both started” the two lines are in different concrete states
   (<code>waiting_for_production</code> vs <code>awaiting_receipt</code>) but
-  <code>g<sub>make</sub></code> and <code>g<sub>buy</sub></code> both map them to
-  <code>IN_PROGRESS</code> — heterogeneity is erased <em>before</em> the fold.
+  <code>g<sub>make</sub></code> and <code>g<sub>buy</sub></code> both map them to the
+  <code>partially_reserved</code> band — heterogeneity is erased <em>before</em> the fold.
+  (These illustrative off-line model states coarsen to the band; the SO line itself carries
+  only <code>open</code>/<code>partially_reserved</code>/<code>reserved</code>/…)
 </p>
 
 <h3>C · Multi-axis: partial ship + non-aligned partial invoice</h3>
@@ -377,11 +398,11 @@ classify(order) =
 <table>
   <thead><tr><th>line</th><th>ordered</th><th>shipped → <span class="axis-ship">band_ship</span></th><th>invoiced → <span class="axis-inv">band_invoice</span></th></tr></thead>
   <tbody>
-    <tr><td>line 1 (A)</td><td>10</td><td>2 → <span class="axis-ship">PARTIALLY_SHIPPED</span></td><td>5 → <span class="axis-inv">PARTIALLY_INVOICED</span></td></tr>
-    <tr><td>line 2 (B)</td><td>10</td><td>4 → <span class="axis-ship">PARTIALLY_SHIPPED</span></td><td>0 → <span class="axis-inv">NOT_INVOICED</span></td></tr>
+    <tr><td>line 1 (A)</td><td>10</td><td>2 → <span class="axis-ship">partially_shipped</span></td><td>5 → <span class="axis-inv">PARTIALLY_INVOICED</span></td></tr>
+    <tr><td>line 2 (B)</td><td>10</td><td>4 → <span class="axis-ship">partially_shipped</span></td><td>0 → <span class="axis-inv">NOT_INVOICED</span></td></tr>
   </tbody>
 </table>
-<pre class="code"><span class="axis-ship">ship axis</span>    : meet = PARTIALLY_SHIPPED, join = PARTIALLY_SHIPPED  →  header.status      = PARTIALLY_SHIPPED
+<pre class="code"><span class="axis-ship">ship axis</span>    : meet = partially_shipped, join = partially_shipped  →  header.status      = partially_shipped
 <span class="axis-inv">invoice axis</span> : meet = NOT_INVOICED,      join = PARTIALLY_INVOICED →  header.invoiceFlag = PARTIALLY_INVOICED</pre>
 <p style="font-size:0.86rem;color:var(--muted)">
   Two independent componentwise folds; one status column can't carry both — which is exactly why
@@ -394,21 +415,22 @@ classify(order) =
 </p>
 
 <!-- ============================================================= -->
-<h2>6 · What changes vs. today</h2>
+<h2>6 · What changed (§2.29 + §2.45, shipped 2026-06-10)</h2>
 <table>
-  <thead><tr><th>Today (system-map.html / §14)</th><th>This target model</th></tr></thead>
+  <thead><tr><th>Before (pre-§2.29 fragmentation)</th><th>Now — as-built</th></tr></thead>
   <tbody>
     <tr><td>Status written by 3 owners: aggregate + blind <code>markStatus</code> projection + Saga</td><td>One owner: <code>recomputeStatus()</code> = <code>classify(lines)</code> on the aggregate</td></tr>
-    <tr><td>Fold reduced to a single <code>allMatch(SHIPPED)</code> in <code>recordShipped</code></td><td>SUBMITTED…SHIPPED all derived from the ship-axis fold</td></tr>
-    <tr><td>In-progress band lives only in the Saga; line’s <code>RESERVED</code>/<code>READY</code> unwired</td><td>Line carries the full band (<code>markReserved</code> wired); the fold can see it</td></tr>
-    <tr><td>No invoice axis on the order; <code>COMPLETED</code> is a payment-event jump</td><td>Invoice/pay are orthogonal axes; <code>COMPLETED</code> is the cross-axis meet</td></tr>
+    <tr><td>Fold reduced to a single <code>allMatch(SHIPPED)</code> in <code>recordShipped</code></td><td><code>open…shipped</code> all derived from the faithful ship-axis fold (header ≡ line vocabulary, §2.45)</td></tr>
+    <tr><td>In-progress band lives only in the Saga; line’s <code>reserved</code> unwired; header coarsens to one <code>IN_FULFILMENT</code></td><td>Line carries the full band (<code>markReserved</code> wired); the fold maps it 1:1 to <code>partially_reserved</code> / <code>reserved</code></td></tr>
+    <tr><td>Gates keyed on a header-status allow-list (<code>NON_CANCELLABLE_STATUSES</code> / <code>AMENDABLE_STATUSES</code>)</td><td>Gates read line predicates (<code>anyLineShipped()</code> + <code>isTerminal()</code>) — the lossy header is not the oracle</td></tr>
+    <tr><td>No invoice axis on the order; <code>COMPLETED</code> is a payment-event jump</td><td>Invoice/pay are orthogonal axes off the SO line (§12.6); <code>completed</code> is the cross-axis meet</td></tr>
     <tr><td>No <code>status == classify(lines)</code> invariant</td><td>Invariant enforced + property-tested (shuffle / replay / cancel-neutrality)</td></tr>
   </tbody>
 </table>
 
 <footer>
-  Generated from <code>docs/composed-state-machines.md</code> (§§2, 5, 11, 12, 13, 14). Target model,
-  pending <code>dev-todo §2.29</code>. Canonical as-built map: <code>system-map.html</code>.
+  Generated from <code>docs/composed-state-machines.md</code> (§§2, 5, 11, 12, 13, 14). As-built
+  after §2.29 + §2.45 (2026-06-10). Canonical as-built map: <code>system-map.html</code>.
 </footer>
 
 <script type="module">

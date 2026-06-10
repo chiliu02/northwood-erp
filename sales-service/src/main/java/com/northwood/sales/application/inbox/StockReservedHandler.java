@@ -25,8 +25,8 @@ import tools.jackson.databind.ObjectMapper;
  * lines came back short, asks the manager to advance the saga, then records the
  * reservation outcome onto the {@code SalesOrder} aggregate — each line's
  * reserved quantity moves it onto the reservation band and the header fold
- * re-derives {@code 'in_fulfilment'} (§2.29 item 2: the line carries the
- * authoritative in-progress band, replacing the former blind
+ * re-derives {@code 'reserved'} / {@code 'partially_reserved'} (§2.29 item 2: the
+ * line carries the authoritative in-progress band, replacing the former blind
  * {@code markStatus(IN_FULFILMENT)} projection write). When the manager reports
  * a full-reservation shortcut to {@code ready_to_ship}, emits
  * {@code sales.SalesOrderReadyToShip} so reporting can advance
@@ -88,7 +88,7 @@ public class StockReservedHandler extends AbstractInboxHandler<StockReserved> {
      * Per-line reserved quantity keyed by {@code line_number}, as inventory
      * reported it. Fed to {@link SalesOrderService#recordReservation} so the
      * aggregate moves each line onto the reservation band and the header fold
-     * derives {@code in_fulfilment}. Positional line-number correlation, the same
+     * derives {@code reserved} / {@code partially_reserved}. Positional line-number correlation, the same
      * basis the rest of the fulfilment flow uses.
      */
     private static Map<Integer, BigDecimal> reservedByLineNumber(StockReserved payload) {

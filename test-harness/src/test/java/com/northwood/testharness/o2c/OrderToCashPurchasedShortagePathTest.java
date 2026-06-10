@@ -138,8 +138,8 @@ class OrderToCashPurchasedShortagePathTest {
             .as("post-fulfilment saga should be ready_to_ship — order survived")
             .isEqualTo(SalesOrderFulfilmentSaga.READY_TO_SHIP);
         assertThat(sales.orderStatus(orderId))
-            .as("order header projected to in_fulfilment after retry")
-            .contains(SalesOrder.Status.IN_FULFILMENT);
+            .as("order header folds to reserved after retry — line fully reserved")
+            .contains(SalesOrder.Status.RESERVED);
         assertThat(inventory.outbox.all())
             .extracting(OutboxRow::getEventType)
             .contains(ReplenishmentFulfilled.EVENT_TYPE);
