@@ -185,6 +185,7 @@ world.
 | `a_bom(fgCode).withRawLine(rawCode, Qty).withSubAssembly(subCode, Qty)…` | a multi-level active BOM (raw + sub-assembly lines) via `manufacturing.bomLookup.put(...)` + `putIdentity(...)` |
 | `a_routing(fgCode).singleOp()` | `manufacturing.routings.putSingleOp(fgId)` |
 | `reorder_policy(code).point(Qty).quantity(Qty)` | `inventory.reorderPolicies.put(id, point, qty)` (REQ-PROD-020) |
+| `a_purchasable_product(code, name).suppliedAt(Money)` | a bought raw material — make-vs-buy = purchased + the default supplier's price |
 
 ### When — drive a domain action (the trigger)
 
@@ -200,6 +201,7 @@ world.
 | `customer(code).cancels(orderNo).because(reason)` | `sales.cancel(orderId, reason)`; **settles** |
 | `reorder_point_breached(productCode)` | `inventory.replenishmentDetection.checkAfterOnHandDecrement(...)`; **settles** (releases + reserves a make-to-stock WO) |
 | `work_order_for(fgCode).completes_manufacturing()` | resolves the WO from its replenishment request; completes every operation through the **real** `WorkOrderOperationService` (no forged event); **settles** |
+| `goods_received_for(productCode)` | posts a full-quantity goods receipt against the product's replenishment PO through the **real** `GoodsReceiptService` (no forged event); **settles** |
 
 ### Then — assert the outcome
 
@@ -467,7 +469,7 @@ baseline) and the requirements it exercises. Build-out runs in the phases of §9
 | Sales-shortage → purchased top-up | `OrderToCashPurchasedShortagePathDslTest` | `OrderToCashPurchasedShortagePathTest` | REQ-XBC-030, REQ-INV-020/091 | Phase B |
 | Line amendment (add / remove) | `OrderToCashLineAmendmentDslTest` | `OrderToCashLineAmendmentTest` | REQ-SAL-010, REQ-INV-020 | Phase B |
 | Stock replenishment — manufactured | `StockReplenishmentManufacturedPathDslTest` | `StockReplenishmentManufacturedPathTest` | REQ-XBC-080 (A, make), REQ-MFG-030, REQ-INV-080/084 | ✅ (real WO completion) |
-| Stock replenishment — purchased | `StockReplenishmentPurchasedPathDslTest` | `StockReplenishmentPurchasedPathTest` | REQ-XBC-080 (A, buy), REQ-INV-080/084 | Phase B |
+| Stock replenishment — purchased | `StockReplenishmentPurchasedPathDslTest` | `StockReplenishmentPurchasedPathTest` | REQ-XBC-080 (A, buy), REQ-PUR-020, REQ-INV-080/084 | ✅ (real goods receipt) |
 | Stock replenishment — sub-assembly | `StockReplenishmentSubAssemblyPathDslTest` | `StockReplenishmentSubAssemblyPathTest` | REQ-MFG-021 | ✅ (outcome subset) |
 | Procure-to-pay (happy) | `PurchaseToPayHappyPathDslTest` | `PurchaseToPayHappyPathTest` | REQ-XBC-020, REQ-FIN-020/021/022 | Phase C |
 | Procure-to-pay (3-way-match reject) | `PurchaseToPayRejectionPathDslTest` | `PurchaseToPayRejectionPathTest` | REQ-PUR-050, REQ-FIN-051 | Phase C |

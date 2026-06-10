@@ -246,6 +246,34 @@ public final class Dsl {
         }
     }
 
+    /** A purchasable product (a bought raw material); give it a supplier price with {@link PurchasableProductSeed#suppliedAt}. */
+    public static PurchasableProductSeed a_purchasable_product(String productCode, String productName) {
+        return new PurchasableProductSeed(productCode, productName);
+    }
+
+    public static final class PurchasableProductSeed implements SeedStep {
+        private final String productCode;
+        private final String productName;
+
+        private PurchasableProductSeed(String productCode, String productName) {
+            this.productCode = productCode;
+            this.productName = productName;
+        }
+
+        /** Publish the default supplier's unit price for the product. */
+        public SeedStep suppliedAt(Money unitPrice) {
+            return world -> {
+                world.seedPurchasableProduct(productCode, productName);
+                world.seedSupplierPrice(productCode, unitPrice.amount());
+            };
+        }
+
+        @Override
+        public void seed(World world) {
+            world.seedPurchasableProduct(productCode, productName);
+        }
+    }
+
     // ============================================================
     // When — drive a domain action (the trigger)
     // ============================================================
@@ -448,6 +476,11 @@ public final class Dsl {
     /** Inventory's reorder-point monitor finds this product below its reorder point and raises replenishment. */
     public static ActionStep reorder_point_breached(String productCode) {
         return world -> world.triggerReorderCheck(productCode);
+    }
+
+    /** Goods are received (for real) against the purchase order replenishing a product, fulfilling the request. */
+    public static ActionStep goods_received_for(String productCode) {
+        return world -> world.receiveGoodsForReplenishment(productCode, "GR-" + productCode);
     }
 
     /** The stock work order replenishing a product; drive it through completion. */

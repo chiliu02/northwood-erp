@@ -4,6 +4,8 @@ import com.northwood.finance.application.dto.RecordCustomerPaymentCommand;
 import com.northwood.finance.domain.CustomerInvoice;
 import com.northwood.finance.domain.JournalEntry;
 import com.northwood.finance.domain.Payment;
+import com.northwood.inventory.application.dto.GoodsReceiptLineRequest;
+import com.northwood.inventory.application.dto.PostGoodsReceiptCommand;
 import com.northwood.inventory.application.dto.PostShipmentCommand;
 import com.northwood.inventory.application.dto.ShipmentLineRequest;
 import com.northwood.inventory.application.dto.StockBalanceView;
@@ -15,6 +17,9 @@ import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderOperation;
 import com.northwood.manufacturing.domain.saga.WorkOrderSaga;
+import com.northwood.purchasing.domain.PurchaseOrder;
+import com.northwood.purchasing.domain.PurchaseOrderId;
+import com.northwood.purchasing.domain.PurchaseOrderLine;
 import com.northwood.sales.application.dto.PlaceOrderCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand.OrderLine;
 import com.northwood.sales.domain.Customer;
@@ -226,6 +231,63 @@ public final class World {
         sales.lineSnapshots.markOrderPegged(productId);
         inventory.productReplenishment.put(productId, false, true);
         manufacturing.replenishment.put(productId, false, true);
+        return this;
+    }
+
+    // ── purchasing: purchasable products, supplier prices, goods receipts ──
+
+    /** Seed a purchasable product (a bought raw material): mints + registers it and marks make-vs-buy = purchased. */
+    public World seedPurchasableProduct(String productCode, String productName) {
+        UUID productId = UUID.randomUUID();
+        productsByCode.put(productCode, new SeededProduct(productId, productCode, productName, null));
+        inventory.productReplenishment.put(productId, true, false);
+        return this;
+    }
+
+    /** Mark an already-registered product as purchased (make-vs-buy), routing its replenishment to purchasing. */
+    public World markPurchased(String productCode) {
+        inventory.productReplenishment.put(product(productCode).productId(), true, false);
+        return this;
+    }
+
+    /** Publish the default supplier's (SUP-001) price for a product so requisitions/POs can price it. */
+    public World seedSupplierPrice(String productCode, BigDecimal unitPrice) {
+        UUID supplierId = purchasing.suppliers.findByCode("SUP-001").orElseThrow().id().value();
+        purchasing.priceLookup.put(supplierId, product(productCode).productId(), CURRENCY, unitPrice);
+        return this;
+    }
+
+    /**
+     * Post a (real) goods receipt against the purchase order replenishing a
+     * product, for the full ordered quantity, then {@link #settle()}. Drives the
+     * real {@code GoodsReceiptService.post} (no forged {@code GoodsReceived}),
+     * which bumps on-hand and fulfils the linked replenishment request.
+     */
+    public World receiveGoodsForReplenishment(String productCode, String goodsReceiptNumber) {
+        ReplenishmentRequest request = replenishmentRequestFor(productCode)
+            .orElseThrow(() -> new IllegalStateException("No replenishment request for product " + productCode));
+        UUID poId = request.linkedPurchaseOrderId();
+        if (poId == null) {
+            throw new IllegalStateException("Replenishment for " + productCode + " is not linked to a purchase order");
+        }
+        receiveGoods(goodsReceiptNumber, poId);
+        return this;
+    }
+
+    /** Post a full-quantity goods receipt against a purchase order through the real service, then settle. */
+    public World receiveGoods(String goodsReceiptNumber, UUID purchaseOrderId) {
+        PurchaseOrder po = purchasing.orders.findById(PurchaseOrderId.of(purchaseOrderId))
+            .orElseThrow(() -> new IllegalStateException("Purchase order " + purchaseOrderId + " not found"));
+        List<GoodsReceiptLineRequest> lines = new ArrayList<>();
+        for (PurchaseOrderLine line : po.lines()) {
+            lines.add(new GoodsReceiptLineRequest(
+                line.id(), line.productId(), line.productSku(), line.productName(),
+                line.orderedQuantity(), line.unitPrice()));
+        }
+        inventory.goodsReceiptService.post(new PostGoodsReceiptCommand(
+            goodsReceiptNumber, po.id().value(), po.purchaseOrderNumber(),
+            po.supplierId(), po.supplierName(), WarehouseCodes.MAIN, lines));
+        settle();
         return this;
     }
 
