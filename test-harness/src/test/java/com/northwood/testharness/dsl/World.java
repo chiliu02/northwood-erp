@@ -124,6 +124,18 @@ public final class World {
     }
 
     /**
+     * Place a standard order but <em>do not</em> {@link #settle()} — the
+     * {@code .without_settling()} escape hatch (doc §6). Leaves the saga at its
+     * freshly-{@code started} state with {@code SalesOrderPlaced} still pending,
+     * so a test can act on the not-yet-processed order — e.g. cancel before the
+     * worker reserves stock (the {@code CancelCompensationTest} branch). The
+     * next settling action ({@link #cancel}) drains the parked event with it.
+     */
+    public World placeOrderWithoutSettling(String orderNumber, String customerCode, List<OrderLineSpec> lines) {
+        return placeOrder(orderNumber, customerCode, null, null, lines, false);
+    }
+
+    /**
      * Place a deposit (part-payment) order — {@link PaymentTerms#DEPOSIT} terms
      * with the given up-front fraction (e.g. {@code 50} for 50%). The worker
      * raises a deposit invoice at placement and the saga parks at
@@ -143,6 +155,12 @@ public final class World {
     public World placeOrder(
         String orderNumber, String customerCode, String paymentTerms,
         BigDecimal depositPercent, List<OrderLineSpec> lines) {
+        return placeOrder(orderNumber, customerCode, paymentTerms, depositPercent, lines, true);
+    }
+
+    private World placeOrder(
+        String orderNumber, String customerCode, String paymentTerms,
+        BigDecimal depositPercent, List<OrderLineSpec> lines, boolean settle) {
         List<OrderLine> commandLines = new ArrayList<>();
         for (OrderLineSpec spec : lines) {
             SeededProduct p = product(spec.productCode());
@@ -153,7 +171,9 @@ public final class World {
             orderNumber, customerCode, LocalDate.of(2026, 5, 20),
             CURRENCY, paymentTerms, depositPercent, commandLines));
         orderIdsByNumber.put(orderNumber, orderId);
-        settle();
+        if (settle) {
+            settle();
+        }
         return this;
     }
 
@@ -236,6 +256,21 @@ public final class World {
     private CustomerInvoice requireInvoice(String orderNumber, CustomerInvoice.InvoiceType type) {
         return invoiceOfType(orderNumber, type).orElseThrow(() -> new IllegalStateException(
             "No " + type.dbValue() + " invoice for order " + orderNumber + " — cannot pay"));
+    }
+
+    /**
+     * Cancel an order through the real {@code SalesOrderService}, then
+     * {@link #settle()} — which drives the compensation Saga to quiescence:
+     * sales emits {@code SalesOrderCancellationRequested}, inventory releases any
+     * reservation and acks with {@code InventorySalesOrderCancellationApplied},
+     * and the saga reaches {@code compensated} (emitting
+     * {@code SalesOrderCompensated}). The order header folds to
+     * {@link SalesOrder.Status#CANCELLED}.
+     */
+    public World cancel(String orderNumber, String reason) {
+        sales.cancel(orderId(orderNumber), reason);
+        settle();
+        return this;
     }
 
     // ============================================================

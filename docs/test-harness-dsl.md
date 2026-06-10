@@ -370,19 +370,30 @@ Small, because the engine exists. Suggested slices:
 2. ✅ **Given/When/Then builders for o2c** — the vocabulary in §5, only what the happy path
    needs. Land `OrderToCashHappyPathDsl` (§7) green alongside the existing test. Shipped:
    `Scenario` + `Dsl` + `OrderToCashHappyPathDsl`.
-3. ✅ **Port one more path** — the deposit branch (`OrderToCashDepositPathTest`), which
-   pressure-tests the vocabulary hardest: two invoice types, two payments, and the
-   `maintain_allocation_totals` trigger stand-in. Shipped: `OrderToCashDepositPathDsl`, with
-   new branch vocabulary `with_deposit(percent(50))`, `pays(…).against_deposit_on/
-   against_balance_on(…)`, and `a_deposit_invoice()` / `a_balance_invoice()`. The auto-settle
-   model held cleanly — each step settles to a parked saga state (`deposit_invoiced`,
-   `ready_to_ship`), so no `.without_settling()` escape hatch was needed. The faithfulness
-   seam that surfaced: `settle()` runs the deposit payment all the way through to
-   `ready_to_ship` (the worker reserves stock once the deposit settles), and `World.payInvoice`
-   stamps the allocation *after* settling — the per-payment stand-in for the production trigger
-   so a later balance payment computes order-level settlement correctly. (Cancellation/
-   compensation remains an open branch to port when its vocabulary is needed — it will likely
-   be the one that forces `.without_settling()`, since the original cancels pre-worker.)
+3. ✅ **Port two more paths** — the deposit branch and the cancellation/compensation branch.
+
+   - **Deposit** (`OrderToCashDepositPathTest` → `OrderToCashDepositPathDsl`) pressure-tests the
+     vocabulary hardest: two invoice types, two payments, and the `maintain_allocation_totals`
+     trigger stand-in. New branch vocabulary `with_deposit(percent(50))`,
+     `pays(…).against_deposit_on/against_balance_on(…)`, `a_deposit_invoice()` /
+     `a_balance_invoice()`. The auto-settle model held cleanly — each step settles to a parked
+     saga state (`deposit_invoiced`, `ready_to_ship`), so no escape hatch was needed. The
+     faithfulness seam that surfaced: `settle()` runs the deposit payment all the way through to
+     `ready_to_ship` (the worker reserves stock once the deposit settles), and `World.payInvoice`
+     stamps the allocation *after* settling — the per-payment stand-in for the production trigger
+     so a later balance payment computes order-level settlement correctly.
+
+   - **Cancellation/compensation** (`CancelCompensationTest` → `OrderToCashCancellationPathDsl`)
+     **forced the `.without_settling()` escape hatch (§6) — exactly as predicted.** The
+     hand-written test cancels a *freshly-placed* order before the worker reserves stock; the
+     auto-settle default would advance the saga to `ready_to_ship` and change the branch.
+     `places_order(…).without_settling()` parks the saga at `started` with `SalesOrderPlaced`
+     still pending; `customer(…).cancels(order).because(reason)` then settles, draining the
+     parked placement alongside the cancellation and driving compensation to `compensated`
+     (status → `CANCELLED`, events `SalesOrderCancellationRequested` →
+     `InventorySalesOrderCancellationApplied` → `SalesOrderCompensated`). This is the lone
+     branch so far where the timing abstraction needed a knob — and the escape hatch was already
+     designed for it.
 4. **Decide rollout** — once the vocabulary holds across 2–3 paths, either migrate the o2c
    suite or keep the DSL for *new* requirements only and leave the existing tests. (Lean:
    new requirements adopt it; migrate opportunistically.)

@@ -25,10 +25,11 @@ import java.util.List;
  * warehouse codes, saga states, and {@code EVENT_TYPE}s a scenario asserts
  * against are the real constants, static-imported directly.
  *
- * <p>Slice 3: the o2c happy path plus the deposit (part-payment) branch —
+ * <p>Slice 3: the o2c happy path, the deposit (part-payment) branch —
  * {@code with_deposit(percent(50))}, {@code pays(…).against_deposit_on/against_balance_on(…)},
- * and {@code a_deposit_invoice()} / {@code a_balance_invoice()}. Other branches
- * (cancellation/compensation) extend the same vocabulary as they are ported.
+ * {@code a_deposit_invoice()} / {@code a_balance_invoice()} — and the
+ * cancellation/compensation branch — {@code places_order(…).without_settling()}
+ * (the doc §6 escape hatch) + {@code customer(…).cancels(order).because(reason)}.
  */
 public final class Dsl {
 
@@ -137,6 +138,24 @@ public final class Dsl {
         public PaymentBuilder pays(Money amount) {
             return new PaymentBuilder(amount);
         }
+
+        /** Cancel one of the customer's orders; state the {@code .because(reason)}. */
+        public Cancellation cancels(String orderNumber) {
+            return new Cancellation(orderNumber);
+        }
+    }
+
+    /** Cancels an order with a reason on {@code act}. */
+    public static final class Cancellation {
+        private final String orderNumber;
+
+        private Cancellation(String orderNumber) {
+            this.orderNumber = orderNumber;
+        }
+
+        public ActionStep because(String reason) {
+            return world -> world.cancel(orderNumber, reason);
+        }
     }
 
     /** Accumulates order lines, then places the order on {@code act}. */
@@ -145,6 +164,7 @@ public final class Dsl {
         private final String orderNumber;
         private final List<World.OrderLineSpec> lines = new ArrayList<>();
         private Percent deposit;
+        private boolean settle = true;
 
         private OrderPlacement(String customerCode, String orderNumber) {
             this.customerCode = customerCode;
@@ -166,12 +186,24 @@ public final class Dsl {
             return this;
         }
 
+        /**
+         * The {@code settle()} escape hatch (doc §6): place the order but leave
+         * the world un-settled, so a following action observes / acts on the
+         * not-yet-processed order (e.g. cancel before the worker reserves stock).
+         */
+        public OrderPlacement without_settling() {
+            this.settle = false;
+            return this;
+        }
+
         @Override
         public void act(World world) {
-            if (deposit == null) {
+            if (deposit != null) {
+                world.placeDepositOrder(orderNumber, customerCode, deposit.amount(), lines);
+            } else if (settle) {
                 world.placeOrder(orderNumber, customerCode, lines);
             } else {
-                world.placeDepositOrder(orderNumber, customerCode, deposit.amount(), lines);
+                world.placeOrderWithoutSettling(orderNumber, customerCode, lines);
             }
         }
     }
