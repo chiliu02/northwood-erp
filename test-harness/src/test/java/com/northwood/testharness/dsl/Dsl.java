@@ -177,20 +177,32 @@ public final class Dsl {
         return world -> world.seedRawMaterial(productCode, productName);
     }
 
-    /** A single-component active BOM for a manufactured product; add the line with {@link BomSeed#withRawLine}. */
+    /** An active BOM for a manufactured product; add lines with {@link BomSeed#withRawLine} / {@link BomSeed#withSubAssembly}. */
     public static BomSeed a_bom(String fgCode) {
         return new BomSeed(fgCode);
     }
 
-    public static final class BomSeed {
+    public static final class BomSeed implements SeedStep {
         private final String fgCode;
+        private final List<World.BomLineSpec> lines = new ArrayList<>();
 
         private BomSeed(String fgCode) {
             this.fgCode = fgCode;
         }
 
-        public SeedStep withRawLine(String rawCode, Qty qtyPerUnit) {
-            return world -> world.seedBom(fgCode, rawCode, qtyPerUnit.amount());
+        public BomSeed withRawLine(String rawCode, Qty qtyPerUnit) {
+            lines.add(new World.BomLineSpec(rawCode, qtyPerUnit.amount(), false));
+            return this;
+        }
+
+        public BomSeed withSubAssembly(String subAssemblyCode, Qty qtyPerUnit) {
+            lines.add(new World.BomLineSpec(subAssemblyCode, qtyPerUnit.amount(), true));
+            return this;
+        }
+
+        @Override
+        public void seed(World world) {
+            world.seedBom(fgCode, lines);
         }
     }
 
@@ -702,6 +714,35 @@ public final class Dsl {
                         .isEqualTo(world.salesOrderId(peggedOrder));
                 }
                 assertThat(r.status()).as("replenishment status for %s", productCode).isEqualTo(status);
+            };
+        }
+    }
+
+    /** Assertion about the work order producing a product (released? make-to-stock?). */
+    public static WorkOrderAssertion a_work_order_for(String productCode) {
+        return new WorkOrderAssertion(productCode);
+    }
+
+    public static final class WorkOrderAssertion {
+        private final String productCode;
+
+        private WorkOrderAssertion(String productCode) {
+            this.productCode = productCode;
+        }
+
+        /** A work order producing this product was released. */
+        public AssertStep wasCreated() {
+            return world -> assertThat(world.workOrderForProduct(productCode))
+                .as("a work order for %s", productCode).isPresent();
+        }
+
+        /** A work order producing this product exists and is make-to-stock (no sales-order peg). */
+        public AssertStep isMakeToStock() {
+            return world -> {
+                var saga = world.workOrderSagaForProduct(productCode);
+                assertThat(saga).as("a work order saga for %s", productCode).isPresent();
+                assertThat(saga.orElseThrow().salesOrderHeaderId())
+                    .as("make-to-stock (no sales order) for %s", productCode).isNull();
             };
         }
     }

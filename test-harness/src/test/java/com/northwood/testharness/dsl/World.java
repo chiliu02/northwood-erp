@@ -9,10 +9,12 @@ import com.northwood.inventory.application.dto.ShipmentLineRequest;
 import com.northwood.inventory.application.dto.StockBalanceView;
 import com.northwood.inventory.domain.ReplenishmentRequest;
 import com.northwood.inventory.domain.WarehouseCodes;
+import com.northwood.manufacturing.application.BomLookup;
 import com.northwood.manufacturing.application.dto.CompleteOperationCommand;
 import com.northwood.manufacturing.domain.WorkOrder;
 import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderOperation;
+import com.northwood.manufacturing.domain.saga.WorkOrderSaga;
 import com.northwood.sales.application.dto.PlaceOrderCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand.OrderLine;
 import com.northwood.sales.domain.Customer;
@@ -178,15 +180,23 @@ public final class World {
     }
 
     /**
-     * Give a manufactured product a single-component active BOM ({@code qtyPerUnit}
-     * of {@code rawCode} per finished unit) and register the product's identity for
-     * work-order release. Both products must already be seeded.
+     * Give a manufactured product an active BOM from its component lines (raw
+     * materials and/or sub-assemblies) and register the product's identity for
+     * work-order release. Every component product must already be seeded.
      */
-    public World seedBom(String fgCode, String rawCode, BigDecimal qtyPerUnit) {
+    public World seedBom(String fgCode, List<BomLineSpec> lines) {
         SeededProduct fg = product(fgCode);
-        SeededProduct raw = product(rawCode);
-        manufacturing.bomLookup.put(fg.productId(), UUID.randomUUID(),
-            InMemoryBomLookup.rawLine(raw.productId(), raw.code(), raw.name(), qtyPerUnit, BigDecimal.ZERO));
+        List<BomLookup.Component> components = new ArrayList<>();
+        for (BomLineSpec line : lines) {
+            SeededProduct component = product(line.componentCode());
+            components.add(line.subAssembly()
+                ? InMemoryBomLookup.subAssemblyLine(
+                    component.productId(), component.code(), component.name(), line.qtyPerUnit(), BigDecimal.ZERO)
+                : InMemoryBomLookup.rawLine(
+                    component.productId(), component.code(), component.name(), line.qtyPerUnit(), BigDecimal.ZERO));
+        }
+        manufacturing.bomLookup.put(
+            fg.productId(), UUID.randomUUID(), components.toArray(new BomLookup.Component[0]));
         manufacturing.bomLookup.putIdentity(fg.productId(), fg.code(), fg.name());
         return this;
     }
@@ -557,6 +567,23 @@ public final class World {
             .findFirst();
     }
 
+    /** The fulfilment saga of the work order producing a product (resolved via the saga set), if any. */
+    public Optional<WorkOrderSaga> workOrderSagaForProduct(String productCode) {
+        UUID productId = product(productCode).productId();
+        return manufacturing.sagas.all().stream()
+            .filter(s -> s.workOrderId() != null)
+            .filter(s -> manufacturing.workOrders.findById(WorkOrderId.of(s.workOrderId()))
+                .map(wo -> productId.equals(wo.finishedProductId()))
+                .orElse(false))
+            .findFirst();
+    }
+
+    /** The work order producing a product, if one has been released (root or sub-assembly child). */
+    public Optional<WorkOrder> workOrderForProduct(String productCode) {
+        return workOrderSagaForProduct(productCode)
+            .flatMap(s -> manufacturing.workOrders.findById(WorkOrderId.of(s.workOrderId())));
+    }
+
     /** The on-hand / reserved / available balance for a product at the default warehouse (ATP). */
     public StockBalanceView stockBalance(String productCode) {
         UUID productId = product(productCode).productId();
@@ -608,6 +635,9 @@ public final class World {
 
     /** A shipment line named in business terms: a product code, quantity, and unit cost. */
     public record ShipLineSpec(String productCode, BigDecimal quantity, BigDecimal unitCost) {}
+
+    /** A BOM line: a component product code, qty per parent unit, and whether it is a sub-assembly (vs a raw material). */
+    public record BomLineSpec(String componentCode, BigDecimal qtyPerUnit, boolean subAssembly) {}
 
     /** A seeded product's engine identity + the facts an order / shipment line needs. */
     private record SeededProduct(UUID productId, String code, String name, BigDecimal salesPrice) {}

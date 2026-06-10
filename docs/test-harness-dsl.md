@@ -182,7 +182,7 @@ world.
 | `clock_at(date)` | `sales.setClock(date @ UTC start-of-day)` — the worker's planning-fence clock |
 | `a_manufactured_product(code, name)` | mints id; registers; make-vs-buy = manufactured into inventory + manufacturing |
 | `a_raw_material(code, name)` | mints id; registers a BOM-component product |
-| `a_bom(fgCode).withRawLine(rawCode, Qty)` | `manufacturing.bomLookup.put(...)` + `putIdentity(...)` — a single-component active BOM |
+| `a_bom(fgCode).withRawLine(rawCode, Qty).withSubAssembly(subCode, Qty)…` | a multi-level active BOM (raw + sub-assembly lines) via `manufacturing.bomLookup.put(...)` + `putIdentity(...)` |
 | `a_routing(fgCode).singleOp()` | `manufacturing.routings.putSingleOp(fgId)` |
 | `reorder_policy(code).point(Qty).quantity(Qty)` | `inventory.reorderPolicies.put(id, point, qty)` (REQ-PROD-020) |
 
@@ -212,6 +212,7 @@ world.
 | `a_customer_payment().byMethod(Payment.Method.X).wasRecorded()` | finance recorded a customer payment by that method (COD auto-records a `CASH` payment) |
 | `a_replenishment_request(code).routedTo(T).because(R).ofQuantity(Qty).forOrder(no).reaches(Status)` | inventory's `ReplenishmentRequest` for the product has that routing/reason/quantity, is pegged to that order, and reached that status (REQ-INV-080/081/093) |
 | `a_stock_balance(code).shows(onHand, reserved, available)` | the product's ATP triple (pegged stock shows 0 available) |
+| `a_work_order_for(code).wasCreated()` / `.isMakeToStock()` | a work order producing the product was released (and carries no sales-order peg) |
 | `events_published_count(EVENT_TYPE, n)` | the event was published exactly `n` times across all kits (e.g. no-reservation-retry proof) |
 | `a_journal().of_type(SourceDocumentType).debiting(acct, Money).crediting(acct, Money).posted()` | finance posted a journal of that type with the given Dr/Cr lines (GL-posting / REQ-FIN-0xx detail) |
 | `gl_account(code).netsToZero()` | the account's Dr−Cr sum across every posted journal is zero (e.g. 2110 after a deposit + its refund) |
@@ -467,7 +468,7 @@ baseline) and the requirements it exercises. Build-out runs in the phases of §9
 | Line amendment (add / remove) | `OrderToCashLineAmendmentDslTest` | `OrderToCashLineAmendmentTest` | REQ-SAL-010, REQ-INV-020 | Phase B |
 | Stock replenishment — manufactured | `StockReplenishmentManufacturedPathDslTest` | `StockReplenishmentManufacturedPathTest` | REQ-XBC-080 (A, make), REQ-MFG-030, REQ-INV-080/084 | ✅ (real WO completion) |
 | Stock replenishment — purchased | `StockReplenishmentPurchasedPathDslTest` | `StockReplenishmentPurchasedPathTest` | REQ-XBC-080 (A, buy), REQ-INV-080/084 | Phase B |
-| Stock replenishment — sub-assembly | `StockReplenishmentSubAssemblyPathDslTest` | `StockReplenishmentSubAssemblyPathTest` | REQ-MFG-021/052/075, REQ-FIN-028 | Phase B |
+| Stock replenishment — sub-assembly | `StockReplenishmentSubAssemblyPathDslTest` | `StockReplenishmentSubAssemblyPathTest` | REQ-MFG-021 | ✅ (outcome subset) |
 | Procure-to-pay (happy) | `PurchaseToPayHappyPathDslTest` | `PurchaseToPayHappyPathTest` | REQ-XBC-020, REQ-FIN-020/021/022 | Phase C |
 | Procure-to-pay (3-way-match reject) | `PurchaseToPayRejectionPathDslTest` | `PurchaseToPayRejectionPathTest` | REQ-PUR-050, REQ-FIN-051 | Phase C |
 | Requisition to-order guard | `PurchaseRequisitionToOrderGuardDslTest` | `PurchaseRequisitionToOrderGuardTest` | REQ-PUR-020, REQ-PROD-022 | Phase C |
