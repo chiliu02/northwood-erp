@@ -274,7 +274,7 @@ import static com.northwood.testharness.dsl.Dsl.*;          // a_customer, money
 import static com.northwood.inventory.domain.WarehouseCodes.MAIN;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.*;  // READY_TO_SHIP, …
 
-class OrderToCashHappyPathDsl {
+class OrderToCashHappyPathDslTest {
 
     @Test
     void in_stock_order_ships_invoices_and_settles_in_full() {
@@ -366,13 +366,13 @@ Small, because the engine exists. Suggested slices:
 1. ✅ **`World` + registry + `settle()`** — wrap the three kits; prove `settle()` reproduces
    the happy path's saga progression with zero hand-drains. (Re-derive
    `OrderToCashHappyPathTest`'s assertions through `World` directly, no fluent sugar yet.)
-   Shipped: `World` + `OrderToCashHappyPathWorldTest`.
+   Shipped: `World` + `WorldTest`.
 2. ✅ **Given/When/Then builders for o2c** — the vocabulary in §5, only what the happy path
-   needs. Land `OrderToCashHappyPathDsl` (§7) green alongside the existing test. Shipped:
-   `Scenario` + `Dsl` + `OrderToCashHappyPathDsl`.
+   needs. Land `OrderToCashHappyPathDslTest` (§7) green alongside the existing test. Shipped:
+   `Scenario` + `Dsl` + `OrderToCashHappyPathDslTest`.
 3. ✅ **Port two more paths** — the deposit branch and the cancellation/compensation branch.
 
-   - **Deposit** (`OrderToCashDepositPathTest` → `OrderToCashDepositPathDsl`) pressure-tests the
+   - **Deposit** (`OrderToCashDepositPathTest` → `OrderToCashDepositPathDslTest`) pressure-tests the
      vocabulary hardest: two invoice types, two payments, and the `maintain_allocation_totals`
      trigger stand-in. New branch vocabulary `with_deposit(percent(50))`,
      `pays(…).against_deposit_on/against_balance_on(…)`, `a_deposit_invoice()` /
@@ -383,7 +383,7 @@ Small, because the engine exists. Suggested slices:
      stamps the allocation *after* settling — the per-payment stand-in for the production trigger
      so a later balance payment computes order-level settlement correctly.
 
-   - **Cancellation/compensation** (`CancelCompensationTest` → `OrderToCashCancellationPathDsl`)
+   - **Cancellation/compensation** (`CancelCompensationTest` → `OrderToCashCancellationPathDslTest`)
      **forced the `.without_settling()` escape hatch (§6) — exactly as predicted.** The
      hand-written test cancels a *freshly-placed* order before the worker reserves stock; the
      auto-settle default would advance the saga to `ready_to_ship` and change the branch.

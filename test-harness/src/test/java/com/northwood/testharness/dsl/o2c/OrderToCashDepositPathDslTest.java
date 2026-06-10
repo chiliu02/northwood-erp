@@ -1,4 +1,4 @@
-package com.northwood.testharness.dsl;
+package com.northwood.testharness.dsl.o2c;
 
 import static com.northwood.testharness.dsl.Dsl.a_balance_invoice;
 import static com.northwood.testharness.dsl.Dsl.a_customer;
@@ -46,7 +46,7 @@ import org.junit.jupiter.api.Test;
  * {@code pays(…).against_deposit_on/against_balance_on(…)}, and
  * {@code a_deposit_invoice()} / {@code a_balance_invoice()}.
  */
-class OrderToCashDepositPathDsl {
+class OrderToCashDepositPathDslTest {
 
     @Test
     void deposit_order_completes_across_two_invoices_and_payments() {

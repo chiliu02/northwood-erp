@@ -44,7 +44,7 @@ import tools.jackson.databind.ObjectMapper;
  * the methods here are plain imperative seed / action / resolver calls. Their
  * job is to prove that {@code settle()} reproduces the happy path's saga
  * progression with <em>zero</em> hand-placed drains
- * ({@code OrderToCashHappyPathWorldTest}). The fluent builders (§5/§7 of the
+ * ({@code WorldTest}). The fluent builders (§5/§7 of the
  * doc) land in slice 2 on top of this World unchanged.
  *
  * <p><b>Faithfulness invariant.</b> The World abstracts <em>naming and

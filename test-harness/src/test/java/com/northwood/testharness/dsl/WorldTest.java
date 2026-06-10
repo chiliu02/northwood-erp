@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
  * prove {@code settle()} faithfully reproduces the saga progression. The fluent
  * builders land in slice 2 on top of this same World.
  */
-class OrderToCashHappyPathWorldTest {
+class WorldTest {
 
     @Test
     void place_order_to_completed_through_world_with_zero_hand_drains() {

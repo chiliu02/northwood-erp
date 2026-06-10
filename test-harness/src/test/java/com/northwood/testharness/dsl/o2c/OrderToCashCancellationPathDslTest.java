@@ -1,4 +1,4 @@
-package com.northwood.testharness.dsl;
+package com.northwood.testharness.dsl.o2c;
 
 import static com.northwood.testharness.dsl.Dsl.a_customer;
 import static com.northwood.testharness.dsl.Dsl.a_product;
@@ -35,7 +35,7 @@ import org.junit.jupiter.api.Test;
  * run under every step — only the timing (the placement's deferred settle) and
  * naming are abstracted; the compensation behaviour is unforged.
  */
-class OrderToCashCancellationPathDsl {
+class OrderToCashCancellationPathDslTest {
 
     @Test
     void cancelling_a_freshly_placed_order_compensates_and_releases() {

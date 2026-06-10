@@ -1,4 +1,4 @@
-package com.northwood.testharness.dsl;
+package com.northwood.testharness.dsl.o2c;
 
 import static com.northwood.testharness.dsl.Dsl.a_commercial_invoice;
 import static com.northwood.testharness.dsl.Dsl.a_customer;
@@ -33,12 +33,12 @@ import org.junit.jupiter.api.Test;
  * no positional command records.
  *
  * <p>Same behaviour as {@code o2c/OrderToCashHappyPathTest} and
- * {@code OrderToCashHappyPathWorldTest} — the real services, saga worker,
+ * {@code WorldTest} — the real services, saga worker,
  * inbox handlers, and Jackson 3 serde run underneath every step — but every
  * line here is either the requirement ({@code given/when/then}) or a real
  * constant. Compare to the hand-written test to see the noise that's gone.
  */
-class OrderToCashHappyPathDsl {
+class OrderToCashHappyPathDslTest {
 
     @Test
     void in_stock_order_ships_invoices_and_settles_in_full() {
