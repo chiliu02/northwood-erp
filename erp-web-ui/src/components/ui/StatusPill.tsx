@@ -53,6 +53,7 @@ export function statusForOrder(status: string | null | undefined): { label: stri
     case "partially_paid":
     case "partially_reserved":
     case "partially_shipped":
+    case "not_available":
       return { label: titleCase(status!), tone: "warn" };
     case "shipped":
     case "completed":

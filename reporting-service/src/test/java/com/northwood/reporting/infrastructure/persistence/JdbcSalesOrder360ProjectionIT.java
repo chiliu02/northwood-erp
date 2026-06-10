@@ -37,7 +37,7 @@ import org.testcontainers.utility.DockerImageName;
  * completes it — it never reads {@code 'completed'} while shipment is still
  * pending. Also covers the deposit/pegged/refund derivations: a paid deposit does
  * not complete the order (its balance is still due), reaching {@code ready_to_ship}
- * lifts a pegged buy-to-order line out of {@code 'failed'} stock, and cancelling a
+ * lifts a pegged buy-to-order line out of {@code 'not_available'} stock, and cancelling a
  * paid order releases its reservation and marks the payment {@code 'refunded'}.
  */
 class JdbcSalesOrder360ProjectionIT {
@@ -223,14 +223,16 @@ class JdbcSalesOrder360ProjectionIT {
     }
 
     @Test
-    void ready_to_ship_lifts_a_pegged_line_out_of_failed_stock() {
+    void ready_to_ship_lifts_a_pegged_line_out_of_not_available_stock() {
         UUID id = UUID.randomUUID();
         createOrder(id);
-        // Buy-to-order: the immediate reservation fails (0 free stock); the
-        // dedicated supply is pegged at goods-receipt and the saga is advanced via
-        // ReplenishmentFulfilled — no fresh inventory.StockReserved ever arrives.
+        // Buy-to-order: nothing reserves from stock (0 free); the dedicated supply
+        // is pegged at goods-receipt and the saga is advanced via
+        // ReplenishmentFulfilled — no fresh inventory.StockReserved ever arrives. The
+        // zero-reserved 'failed' outcome surfaces as 'not_available' (awaiting supply,
+        // not terminal), not a red 'failed' lozenge.
         PROJECTION.recordStockReserved(id, StockReserved.STATUS_FAILED, Instant.now(), "system");
-        assertThat(stockStatus(id)).isEqualTo("failed");
+        assertThat(stockStatus(id)).isEqualTo("not_available");
 
         PROJECTION.recordReadyToShip(id, Instant.now(), "system");
         assertThat(stockStatus(id)).isEqualTo("reserved");
@@ -303,7 +305,7 @@ class JdbcSalesOrder360ProjectionIT {
         createOrder(id); // total 650.00, outstanding 650.00
         assertThat(totalAmount(id)).isEqualByComparingTo(new BigDecimal("650.00"));
 
-        // §1G.3: a line addition raised the order total → total + outstanding refresh.
+        // a line addition raised the order total → total + outstanding refresh.
         PROJECTION.recordAmendedTotal(id, new BigDecimal("840.00"), Instant.now(),
             "sales.SalesOrderLineAdded", "emma");
         assertThat(totalAmount(id)).isEqualByComparingTo(new BigDecimal("840.00"));

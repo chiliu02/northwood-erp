@@ -2,6 +2,7 @@ package com.northwood.reporting.infrastructure.persistence;
 
 
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
+import com.northwood.inventory.domain.events.StockReserved;
 import com.northwood.reporting.application.inbox.SalesOrder360Projection;
 import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
@@ -23,6 +24,14 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
 
     /** Sentinel zero-UUID used for stub rows (NOT NULL customer_id). */
     private static final UUID STUB_CUSTOMER_ID = new UUID(0L, 0L);
+
+    /**
+     * Stock lozenge shown for a zero-reserved-awaiting-supply reservation outcome,
+     * replacing the misleading {@code 'failed'}: at reservation time nothing-from-stock
+     * is never terminal (inventory has raised a replenishment; a to_order line is
+     * zero-from-stock by design). True failure surfaces later via order rejection.
+     */
+    private static final String STOCK_STATUS_NOT_AVAILABLE = "not_available";
 
     private final JdbcTemplate jdbc;
 
@@ -130,7 +139,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                       'pending', 'pending',
                       'AUD', ?, ?, ?, ?, ?)
             ON CONFLICT (sales_order_header_id) DO UPDATE SET
-                -- §1G.3: a line amendment changed the order total. Overwrite
+                -- a line amendment changed the order total. Overwrite
                 -- total_amount with the recomputed figure carried on the event
                 -- and re-derive outstanding (total − already-paid). paid/invoiced
                 -- are untouched (an amendment is pre-shipment; nothing is paid yet
@@ -204,6 +213,14 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
     @Override
     @Transactional
     public void recordStockReserved(UUID salesOrderHeaderId, String stockStatus, Instant occurredAt, String actorUserId) {
+        // A zero-reserved reservation outcome ('failed') is not terminal — inventory
+        // has already raised a replenishment and the saga parks awaiting supply (a
+        // to_order line is zero-from-stock by design). Surface it as 'not_available'
+        // rather than a red 'failed' lozenge; true failure surfaces later via order
+        // rejection (order_status), not the stock axis.
+        String displayStockStatus = StockReserved.STATUS_FAILED.equals(stockStatus)
+            ? STOCK_STATUS_NOT_AVAILABLE
+            : stockStatus;
         jdbc.update("""
             INSERT INTO reporting.sales_order_360_view (
                 sales_order_header_id, order_number,
@@ -222,7 +239,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                       'inventory.StockReserved', ?, ?)
             ON CONFLICT (sales_order_header_id) DO UPDATE SET
                 -- Reflect the reservation outcome (reserved / partially_reserved
-                -- / failed). 'reserved' (full cover) is sticky — a later partial
+                -- / not_available). 'reserved' (full cover) is sticky — a later partial
                 -- or stale event must not roll it back; a partial is otherwise
                 -- overwritten by a subsequent full reservation (make-to-order
                 -- re-reserves once the shortage is produced). The Stock lozenge
@@ -247,7 +264,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                 last_modified_by = COALESCE(EXCLUDED.last_modified_by, sales_order_360_view.last_modified_by),
                 updated_at = now()
             """,
-            salesOrderHeaderId, STUB_CUSTOMER_ID, stockStatus,
+            salesOrderHeaderId, STUB_CUSTOMER_ID, displayStockStatus,
             Timestamp.from(occurredAt == null ? Instant.now() : occurredAt),
             actorUserId
         );
@@ -295,7 +312,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                 -- Reaching ready_to_ship means every line is reserved (drawn from
                 -- stock, produced, or pegged off a buy/make-to-order receipt), so
                 -- the Stock lozenge is 'reserved' from here. This is the only path
-                -- that flips a buy-to-order line out of 'failed': its dedicated
+                -- that flips a buy-to-order line out of 'not_available': its dedicated
                 -- supply is pegged at goods-receipt and signalled to the saga via
                 -- ReplenishmentFulfilled, not via a fresh inventory.StockReserved,
                 -- so recordStockReserved never re-runs for it. A 'reserved' stays
@@ -304,7 +321,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                 stock_status = CASE
                     WHEN sales_order_360_view.order_status IN ('cancelled', 'rejected')
                         THEN sales_order_360_view.stock_status
-                    WHEN sales_order_360_view.stock_status IN ('pending', 'failed', 'partially_reserved')
+                    WHEN sales_order_360_view.stock_status IN ('pending', 'not_available', 'failed', 'partially_reserved')
                         THEN 'reserved'
                     ELSE sales_order_360_view.stock_status
                 END,
