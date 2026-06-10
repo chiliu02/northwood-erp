@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.northwood.finance.domain.CustomerInvoice;
 import com.northwood.finance.domain.JournalEntry;
 import com.northwood.finance.domain.Payment;
+import com.northwood.inventory.domain.ReplenishmentRequest;
 import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.shared.domain.Currencies;
@@ -149,6 +150,75 @@ public final class Dsl {
          */
         public SeedStep at(String warehouseCode) {
             return world -> world.seedStock(productCode, quantity.amount());
+        }
+    }
+
+    // ── manufacturing seeds (make-to-stock products, BOMs, routings, policy) ──
+
+    /** A manufactured (make-to-stock) product — replenished by a work order, not sold. */
+    public static SeedStep a_manufactured_product(String productCode, String productName) {
+        return world -> world.seedManufacturedProduct(productCode, productName);
+    }
+
+    /** A raw-material product (a BOM component). */
+    public static SeedStep a_raw_material(String productCode, String productName) {
+        return world -> world.seedRawMaterial(productCode, productName);
+    }
+
+    /** A single-component active BOM for a manufactured product; add the line with {@link BomSeed#withRawLine}. */
+    public static BomSeed a_bom(String fgCode) {
+        return new BomSeed(fgCode);
+    }
+
+    public static final class BomSeed {
+        private final String fgCode;
+
+        private BomSeed(String fgCode) {
+            this.fgCode = fgCode;
+        }
+
+        public SeedStep withRawLine(String rawCode, Qty qtyPerUnit) {
+            return world -> world.seedBom(fgCode, rawCode, qtyPerUnit.amount());
+        }
+    }
+
+    /** A single-operation active routing for a manufactured product. */
+    public static RoutingSeed a_routing(String fgCode) {
+        return new RoutingSeed(fgCode);
+    }
+
+    public static final class RoutingSeed {
+        private final String fgCode;
+
+        private RoutingSeed(String fgCode) {
+            this.fgCode = fgCode;
+        }
+
+        public SeedStep singleOp() {
+            return world -> world.seedSingleOpRouting(fgCode);
+        }
+    }
+
+    /** A reorder policy for a product; set the point then the {@link ReorderPolicySeed#quantity}. */
+    public static ReorderPolicySeed reorder_policy(String productCode) {
+        return new ReorderPolicySeed(productCode);
+    }
+
+    public static final class ReorderPolicySeed {
+        private final String productCode;
+        private Qty point;
+
+        private ReorderPolicySeed(String productCode) {
+            this.productCode = productCode;
+        }
+
+        public ReorderPolicySeed point(Qty point) {
+            this.point = point;
+            return this;
+        }
+
+        public SeedStep quantity(Qty quantity) {
+            return world -> world.seedReorderPolicy(productCode, point.amount(), quantity.amount());
         }
     }
 
@@ -351,6 +421,29 @@ public final class Dsl {
         }
     }
 
+    /** Inventory's reorder-point monitor finds this product below its reorder point and raises replenishment. */
+    public static ActionStep reorder_point_breached(String productCode) {
+        return world -> world.triggerReorderCheck(productCode);
+    }
+
+    /** The stock work order replenishing a product; drive it through completion. */
+    public static WorkOrderAction work_order_for(String fgCode) {
+        return new WorkOrderAction(fgCode);
+    }
+
+    public static final class WorkOrderAction {
+        private final String fgCode;
+
+        private WorkOrderAction(String fgCode) {
+            this.fgCode = fgCode;
+        }
+
+        /** Complete every operation through the real operation service (no forged completion event). */
+        public ActionStep completes_manufacturing() {
+            return world -> world.completeWorkOrder(fgCode, new BigDecimal("45"));
+        }
+    }
+
     // ============================================================
     // Then — assert the outcome
     // ============================================================
@@ -534,6 +627,59 @@ public final class Dsl {
                     .reduce(BigDecimal.ZERO, BigDecimal::add))
                 .as("GL account %s nets to zero", accountCode)
                 .isEqualByComparingTo(BigDecimal.ZERO);
+        }
+    }
+
+    /**
+     * Assertion about the replenishment request inventory raised for a product —
+     * its routing, reason, quantity, and lifecycle status (REQ-INV-080/081).
+     */
+    public static ReplenishmentAssertion a_replenishment_request(String productCode) {
+        return new ReplenishmentAssertion(productCode);
+    }
+
+    public static final class ReplenishmentAssertion {
+        private final String productCode;
+        private ReplenishmentRequest.TargetService target;
+        private ReplenishmentRequest.Reason reason;
+        private BigDecimal quantity;
+
+        private ReplenishmentAssertion(String productCode) {
+            this.productCode = productCode;
+        }
+
+        public ReplenishmentAssertion routedTo(ReplenishmentRequest.TargetService target) {
+            this.target = target;
+            return this;
+        }
+
+        public ReplenishmentAssertion because(ReplenishmentRequest.Reason reason) {
+            this.reason = reason;
+            return this;
+        }
+
+        public ReplenishmentAssertion ofQuantity(Qty quantity) {
+            this.quantity = quantity.amount();
+            return this;
+        }
+
+        public AssertStep reaches(ReplenishmentRequest.Status status) {
+            return world -> {
+                var request = world.replenishmentRequestFor(productCode);
+                assertThat(request).as("replenishment request for %s", productCode).isPresent();
+                ReplenishmentRequest r = request.orElseThrow();
+                if (target != null) {
+                    assertThat(r.targetService()).as("target service for %s", productCode).isEqualTo(target);
+                }
+                if (reason != null) {
+                    assertThat(r.reason()).as("reason for %s", productCode).isEqualTo(reason);
+                }
+                if (quantity != null) {
+                    assertThat(r.requestedQuantity()).as("requested quantity for %s", productCode)
+                        .isEqualByComparingTo(quantity);
+                }
+                assertThat(r.status()).as("replenishment status for %s", productCode).isEqualTo(status);
+            };
         }
     }
 

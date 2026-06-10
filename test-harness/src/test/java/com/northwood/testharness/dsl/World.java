@@ -6,7 +6,12 @@ import com.northwood.finance.domain.JournalEntry;
 import com.northwood.finance.domain.Payment;
 import com.northwood.inventory.application.dto.PostShipmentCommand;
 import com.northwood.inventory.application.dto.ShipmentLineRequest;
+import com.northwood.inventory.domain.ReplenishmentRequest;
 import com.northwood.inventory.domain.WarehouseCodes;
+import com.northwood.manufacturing.application.dto.CompleteOperationCommand;
+import com.northwood.manufacturing.domain.WorkOrder;
+import com.northwood.manufacturing.domain.WorkOrderId;
+import com.northwood.manufacturing.domain.WorkOrderOperation;
 import com.northwood.sales.application.dto.PlaceOrderCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand.OrderLine;
 import com.northwood.sales.domain.Customer;
@@ -18,6 +23,7 @@ import com.northwood.shared.application.outbox.OutboxRow;
 import com.northwood.shared.domain.Currencies;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.SynchronousBus;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryBomLookup;
 import com.northwood.testharness.kits.FinanceTestKit;
 import com.northwood.testharness.kits.InventoryTestKit;
 import com.northwood.testharness.kits.ManufacturingTestKit;
@@ -143,6 +149,56 @@ public final class World {
      */
     public World setClockAt(LocalDate date) {
         sales.setClock(date.atStartOfDay(ZoneOffset.UTC).toInstant());
+        return this;
+    }
+
+    // ── manufacturing: make-to-stock products, BOMs, routings, reorder policy ──
+
+    /**
+     * Seed a manufactured (make-to-stock) product: mints its id, registers it,
+     * and snapshots its make-vs-buy classification (manufactured) into both
+     * inventory (routes replenishment to manufacturing) and manufacturing (the
+     * dispatcher's filter). No sales price card — it is replenished to stock,
+     * not sold here.
+     */
+    public World seedManufacturedProduct(String productCode, String productName) {
+        UUID productId = UUID.randomUUID();
+        productsByCode.put(productCode, new SeededProduct(productId, productCode, productName, null));
+        inventory.productReplenishment.put(productId, false, true);
+        manufacturing.replenishment.put(productId, false, true);
+        return this;
+    }
+
+    /** Seed a raw-material product (a BOM component): mints its id and registers it. */
+    public World seedRawMaterial(String productCode, String productName) {
+        UUID productId = UUID.randomUUID();
+        productsByCode.put(productCode, new SeededProduct(productId, productCode, productName, null));
+        return this;
+    }
+
+    /**
+     * Give a manufactured product a single-component active BOM ({@code qtyPerUnit}
+     * of {@code rawCode} per finished unit) and register the product's identity for
+     * work-order release. Both products must already be seeded.
+     */
+    public World seedBom(String fgCode, String rawCode, BigDecimal qtyPerUnit) {
+        SeededProduct fg = product(fgCode);
+        SeededProduct raw = product(rawCode);
+        manufacturing.bomLookup.put(fg.productId(), UUID.randomUUID(),
+            InMemoryBomLookup.rawLine(raw.productId(), raw.code(), raw.name(), qtyPerUnit, BigDecimal.ZERO));
+        manufacturing.bomLookup.putIdentity(fg.productId(), fg.code(), fg.name());
+        return this;
+    }
+
+    /** Give a manufactured product a single-operation active routing. */
+    public World seedSingleOpRouting(String fgCode) {
+        manufacturing.routings.putSingleOp(product(fgCode).productId());
+        return this;
+    }
+
+    /** Set a product's reorder policy (point + quantity) on inventory's local snapshot (REQ-PROD-020). */
+    public World seedReorderPolicy(String productCode, BigDecimal reorderPoint, BigDecimal reorderQuantity) {
+        inventory.reorderPolicies.put(product(productCode).productId(), reorderPoint, reorderQuantity);
         return this;
     }
 
@@ -335,6 +391,46 @@ public final class World {
         return this;
     }
 
+    /**
+     * Fire inventory's reorder-point detection for a product (the entry point the
+     * shipment / adjustment services call after every on-hand decrement), then
+     * {@link #settle()}. If on-hand is below the reorder point, inventory raises a
+     * {@code ReplenishmentRequest} and the cascade dispatches it — a manufactured
+     * product releases a stock work order and reserves its raw materials, parking
+     * the work-order saga at {@code raw_materials_reserved}.
+     */
+    public World triggerReorderCheck(String productCode) {
+        inventory.replenishmentDetection.checkAfterOnHandDecrement(
+            InventoryTestKit.DEFAULT_WAREHOUSE_ID, product(productCode).productId());
+        settle();
+        return this;
+    }
+
+    /**
+     * Drive the (real) completion of the stock work order replenishing a product:
+     * resolves the work order from the product's dispatched replenishment request,
+     * completes every operation through the real {@code WorkOrderOperationService}
+     * (no forged completion event), then {@link #settle()} so inventory bumps the
+     * finished-good stock and marks the replenishment fulfilled.
+     */
+    public World completeWorkOrder(String fgCode, BigDecimal actualMinutes) {
+        ReplenishmentRequest request = replenishmentRequestFor(fgCode)
+            .orElseThrow(() -> new IllegalStateException("No replenishment request for product " + fgCode));
+        UUID workOrderId = request.dispatchedAggregateId();
+        if (workOrderId == null) {
+            throw new IllegalStateException(
+                "Replenishment for " + fgCode + " has not been dispatched to a work order");
+        }
+        WorkOrder workOrder = manufacturing.workOrders.findById(WorkOrderId.of(workOrderId))
+            .orElseThrow(() -> new IllegalStateException("Work order " + workOrderId + " not found"));
+        for (WorkOrderOperation op : workOrder.operations()) {
+            manufacturing.operationService.completeOperation(
+                new CompleteOperationCommand(workOrderId, op.operationSequence(), actualMinutes));
+        }
+        settle();
+        return this;
+    }
+
     // ============================================================
     // settle() — the one faithfulness primitive
     // ============================================================
@@ -437,6 +533,14 @@ public final class World {
             kitOutbox.all().stream().map(OutboxRow::getEventType).forEach(types::add);
         }
         return types;
+    }
+
+    /** The replenishment request inventory raised for a product, if any (reorder-point or shortage driven). */
+    public Optional<ReplenishmentRequest> replenishmentRequestFor(String productCode) {
+        UUID productId = product(productCode).productId();
+        return inventory.replenishmentRequests.all().stream()
+            .filter(r -> productId.equals(r.productId()))
+            .findFirst();
     }
 
     // ============================================================
