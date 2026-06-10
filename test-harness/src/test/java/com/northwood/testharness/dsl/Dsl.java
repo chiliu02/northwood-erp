@@ -128,6 +128,18 @@ public final class Dsl {
             };
         }
 
+        /**
+         * Make the (sold) product buy-to-order (REQ-INV-093): purchased +
+         * order-pegged with the given default-supplier price, so its sales-order
+         * line raises dedicated supply routed to purchasing.
+         */
+        public SeedStep purchasedToOrder(Money supplierPrice) {
+            return world -> {
+                world.seedProduct(productCode, productName, price.amount());
+                world.markPurchasedToOrder(productCode, supplierPrice.amount());
+            };
+        }
+
         @Override
         public void seed(World world) {
             world.seedProduct(productCode, productName, price.amount());

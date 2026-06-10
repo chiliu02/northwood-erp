@@ -250,6 +250,19 @@ public final class World {
         return this;
     }
 
+    /**
+     * Mark an already-priced product as buy-to-order (REQ-INV-093): purchased
+     * make-vs-buy + order-pegged + a default-supplier price, so a sales-order line
+     * raises dedicated order-pegged supply routed to purchasing.
+     */
+    public World markPurchasedToOrder(String productCode, BigDecimal supplierPrice) {
+        UUID productId = product(productCode).productId();
+        sales.lineSnapshots.markOrderPegged(productId);
+        inventory.productReplenishment.put(productId, true, false);
+        seedSupplierPrice(productCode, supplierPrice);
+        return this;
+    }
+
     /** Publish the default supplier's (SUP-001) price for a product so requisitions/POs can price it. */
     public World seedSupplierPrice(String productCode, BigDecimal unitPrice) {
         UUID supplierId = purchasing.suppliers.findByCode("SUP-001").orElseThrow().id().value();

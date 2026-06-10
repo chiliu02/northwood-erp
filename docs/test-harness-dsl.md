@@ -178,6 +178,7 @@ world.
 | `a_product(code, name).pricedAt(Money)` | random `productId`; `sales.productCards.put(...)`; registers `code → productId` |
 | `a_product(code, name).pricedAt(Money).withPlanningFence(days)` | as above + `sales.lineSnapshots.withFence(productId, days)` (REQ-SAL-037) |
 | `a_product(code, name).pricedAt(Money).manufacturedToOrder()` | a sold, make-to-order product — manufactured + order-pegged (REQ-INV-093) |
+| `a_product(code, name).pricedAt(Money).purchasedToOrder(supplierPrice)` | a sold, buy-to-order product — purchased + order-pegged + supplier price (REQ-INV-093) |
 | `stock_on_hand(productCode, Qty).at(Warehouse)` | `inventory.seedStock(productId, qty)` (works for any seeded product) |
 | `clock_at(date)` | `sales.setClock(date @ UTC start-of-day)` — the worker's planning-fence clock |
 | `a_manufactured_product(code, name)` | mints id; registers; make-vs-buy = manufactured into inventory + manufacturing |
@@ -465,7 +466,7 @@ baseline) and the requirements it exercises. Build-out runs in the phases of §9
 | Cancel + deposit refund | `OrderToCashCancelRefundPathDslTest` | `CancelRefundPathTest` | REQ-SAL-036, REQ-FIN-012/032 | ✅ |
 | Planning time fence (outcome subset) | `OrderToCashPlanningFenceDslTest` | `OrderToCashPlanningFenceTest` | REQ-SAL-013/037 | ✅ |
 | Make-to-order (pegged WO) | `OrderToCashMakeToOrderPathDslTest` | `OrderToCashMakeToOrderPathTest` | REQ-INV-093, REQ-PROD-022 | ✅ (real WO completion) |
-| Buy-to-order (pegged PO) | `OrderToCashBuyToOrderPathDslTest` | `OrderToCashBuyToOrderPathTest` | REQ-INV-093, REQ-PROD-022 | Phase B |
+| Buy-to-order (pegged PO) | `OrderToCashBuyToOrderPathDslTest` | `OrderToCashBuyToOrderPathTest` | REQ-INV-093, REQ-PROD-022 | ✅ (real goods receipt) |
 | Sales-shortage → purchased top-up | `OrderToCashPurchasedShortagePathDslTest` | `OrderToCashPurchasedShortagePathTest` | REQ-XBC-030, REQ-INV-020/091 | Phase B |
 | Line amendment (add / remove) | `OrderToCashLineAmendmentDslTest` | `OrderToCashLineAmendmentTest` | REQ-SAL-010, REQ-INV-020 | Phase B |
 | Stock replenishment — manufactured | `StockReplenishmentManufacturedPathDslTest` | `StockReplenishmentManufacturedPathTest` | REQ-XBC-080 (A, make), REQ-MFG-030, REQ-INV-080/084 | ✅ (real WO completion) |
