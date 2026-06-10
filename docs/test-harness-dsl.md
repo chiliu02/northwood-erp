@@ -363,14 +363,26 @@ domain unit tests (invariants) · acceptance DSL (cross-service outcomes) · `Jd
 
 Small, because the engine exists. Suggested slices:
 
-1. **`World` + registry + `settle()`** — wrap the three kits; prove `settle()` reproduces
+1. ✅ **`World` + registry + `settle()`** — wrap the three kits; prove `settle()` reproduces
    the happy path's saga progression with zero hand-drains. (Re-derive
    `OrderToCashHappyPathTest`'s assertions through `World` directly, no fluent sugar yet.)
-2. **Given/When/Then builders for o2c** — the vocabulary in §5, only what the happy path
-   needs. Land `OrderToCashHappyPathDsl` (§7) green alongside the existing test.
-3. **Port one more path** — `OrderToCashDepositPathTest` or `CancelCompensationTest` — to
-   pressure-test the vocabulary against a branch (deposit invoice / compensation). Branches
-   are where a too-thin DSL cracks; find that early.
+   Shipped: `World` + `OrderToCashHappyPathWorldTest`.
+2. ✅ **Given/When/Then builders for o2c** — the vocabulary in §5, only what the happy path
+   needs. Land `OrderToCashHappyPathDsl` (§7) green alongside the existing test. Shipped:
+   `Scenario` + `Dsl` + `OrderToCashHappyPathDsl`.
+3. ✅ **Port one more path** — the deposit branch (`OrderToCashDepositPathTest`), which
+   pressure-tests the vocabulary hardest: two invoice types, two payments, and the
+   `maintain_allocation_totals` trigger stand-in. Shipped: `OrderToCashDepositPathDsl`, with
+   new branch vocabulary `with_deposit(percent(50))`, `pays(…).against_deposit_on/
+   against_balance_on(…)`, and `a_deposit_invoice()` / `a_balance_invoice()`. The auto-settle
+   model held cleanly — each step settles to a parked saga state (`deposit_invoiced`,
+   `ready_to_ship`), so no `.without_settling()` escape hatch was needed. The faithfulness
+   seam that surfaced: `settle()` runs the deposit payment all the way through to
+   `ready_to_ship` (the worker reserves stock once the deposit settles), and `World.payInvoice`
+   stamps the allocation *after* settling — the per-payment stand-in for the production trigger
+   so a later balance payment computes order-level settlement correctly. (Cancellation/
+   compensation remains an open branch to port when its vocabulary is needed — it will likely
+   be the one that forces `.without_settling()`, since the original cancels pre-worker.)
 4. **Decide rollout** — once the vocabulary holds across 2–3 paths, either migrate the o2c
    suite or keep the DSL for *new* requirements only and leave the existing tests. (Lean:
    new requirements adopt it; migrate opportunistically.)

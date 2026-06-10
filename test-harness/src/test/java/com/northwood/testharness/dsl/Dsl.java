@@ -2,6 +2,7 @@ package com.northwood.testharness.dsl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.northwood.finance.domain.CustomerInvoice;
 import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.shared.domain.Currencies;
@@ -24,8 +25,10 @@ import java.util.List;
  * warehouse codes, saga states, and {@code EVENT_TYPE}s a scenario asserts
  * against are the real constants, static-imported directly.
  *
- * <p>Slice 2: only the o2c happy path's vocabulary. Branch terms (deposit,
- * cancellation) land when a branch path is ported (slice 3).
+ * <p>Slice 3: the o2c happy path plus the deposit (part-payment) branch —
+ * {@code with_deposit(percent(50))}, {@code pays(…).against_deposit_on/against_balance_on(…)},
+ * and {@code a_deposit_invoice()} / {@code a_balance_invoice()}. Other branches
+ * (cancellation/compensation) extend the same vocabulary as they are ported.
  */
 public final class Dsl {
 
@@ -48,6 +51,14 @@ public final class Dsl {
 
     /** A quantity, kept as a thin VO so {@code qty(3)} reads right at call sites. */
     public record Qty(BigDecimal amount) {}
+
+    /** {@code percent(50)} → a 50% up-front fraction for a deposit order. */
+    public static Percent percent(long value) {
+        return new Percent(new BigDecimal(value));
+    }
+
+    /** A percentage, kept as a thin VO so {@code with_deposit(percent(50))} reads right. */
+    public record Percent(BigDecimal amount) {}
 
     // ============================================================
     // Given — seed the world (the guard)
@@ -133,6 +144,7 @@ public final class Dsl {
         private final String customerCode;
         private final String orderNumber;
         private final List<World.OrderLineSpec> lines = new ArrayList<>();
+        private Percent deposit;
 
         private OrderPlacement(String customerCode, String orderNumber) {
             this.customerCode = customerCode;
@@ -144,13 +156,27 @@ public final class Dsl {
             return this;
         }
 
+        /**
+         * Make this a deposit (part-payment) order: {@code deposit} is invoiced
+         * + paid up front, the balance invoiced at shipment. Omit for standard
+         * {@code on_shipment} terms.
+         */
+        public OrderPlacement with_deposit(Percent deposit) {
+            this.deposit = deposit;
+            return this;
+        }
+
         @Override
         public void act(World world) {
-            world.placeOrder(orderNumber, customerCode, lines);
+            if (deposit == null) {
+                world.placeOrder(orderNumber, customerCode, lines);
+            } else {
+                world.placeDepositOrder(orderNumber, customerCode, deposit.amount(), lines);
+            }
         }
     }
 
-    /** Resolves the order's commercial invoice and records the payment on {@code act}. */
+    /** Resolves an order's invoice (commercial / deposit / balance) and records the payment on {@code act}. */
     public static final class PaymentBuilder {
         private final Money amount;
 
@@ -158,8 +184,19 @@ public final class Dsl {
             this.amount = amount;
         }
 
+        /** Pay the order's COMMERCIAL invoice (the single-invoice {@code on_shipment} flow). */
         public ActionStep against(String orderNumber) {
             return world -> world.pay("PAY-" + orderNumber, orderNumber, amount.amount());
+        }
+
+        /** Pay the up-front DEPOSIT invoice on a deposit order. */
+        public ActionStep against_deposit_on(String orderNumber) {
+            return world -> world.payDeposit("PAY-DEP-" + orderNumber, orderNumber, amount.amount());
+        }
+
+        /** Pay the BALANCE invoice raised at shipment on a deposit order. */
+        public ActionStep against_balance_on(String orderNumber) {
+            return world -> world.payBalance("PAY-BAL-" + orderNumber, orderNumber, amount.amount());
         }
     }
 
@@ -260,27 +297,39 @@ public final class Dsl {
     }
 
     /** Assertion that a COMMERCIAL invoice exists for an order with a given total. */
-    public static CommercialInvoiceAssertion a_commercial_invoice() {
-        return new CommercialInvoiceAssertion();
+    public static InvoiceAssertion a_commercial_invoice() {
+        return new InvoiceAssertion(CustomerInvoice.InvoiceType.COMMERCIAL);
     }
 
-    public static final class CommercialInvoiceAssertion {
+    /** Assertion that a DEPOSIT invoice (up-front part-payment) exists for an order with a given total. */
+    public static InvoiceAssertion a_deposit_invoice() {
+        return new InvoiceAssertion(CustomerInvoice.InvoiceType.DEPOSIT);
+    }
+
+    /** Assertion that a BALANCE invoice (the remainder, raised at shipment) exists for an order with a given total. */
+    public static InvoiceAssertion a_balance_invoice() {
+        return new InvoiceAssertion(CustomerInvoice.InvoiceType.BALANCE);
+    }
+
+    public static final class InvoiceAssertion {
+        private final CustomerInvoice.InvoiceType type;
         private String orderNumber;
 
-        private CommercialInvoiceAssertion() {
+        private InvoiceAssertion(CustomerInvoice.InvoiceType type) {
+            this.type = type;
         }
 
-        public CommercialInvoiceAssertion for_order(String orderNumber) {
+        public InvoiceAssertion for_order(String orderNumber) {
             this.orderNumber = orderNumber;
             return this;
         }
 
         public AssertStep totalling(Money total) {
             return world -> {
-                var invoice = world.commercialInvoice(orderNumber);
-                assertThat(invoice).as("commercial invoice for order %s", orderNumber).isPresent();
+                var invoice = world.invoiceOfType(orderNumber, type);
+                assertThat(invoice).as("%s invoice for order %s", type.dbValue(), orderNumber).isPresent();
                 assertThat(invoice.orElseThrow().totalAmount())
-                    .as("commercial invoice total for order %s", orderNumber)
+                    .as("%s invoice total for order %s", type.dbValue(), orderNumber)
                     .isEqualByComparingTo(total.amount());
             };
         }

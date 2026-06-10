@@ -9,6 +9,7 @@ import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.sales.application.dto.PlaceOrderCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand.OrderLine;
 import com.northwood.sales.domain.Customer;
+import com.northwood.sales.domain.PaymentTerms;
 import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.SalesOrderId;
 import com.northwood.sales.domain.SalesOrderLine;
@@ -112,12 +113,36 @@ public final class World {
     // ============================================================
 
     /**
-     * Place an order through the real {@code SalesOrderService}, register
-     * {@code orderNumber → salesOrderId}, then {@link #settle()}. Lines are
-     * {@code (productCode, qty)}; unit price + tax are left null so the service
-     * prices each line off the catalog card (matching the hand-written test).
+     * Place a standard ({@code on_shipment}-terms) order through the real
+     * {@code SalesOrderService}, register {@code orderNumber → salesOrderId},
+     * then {@link #settle()}. Lines are {@code (productCode, qty)}; unit price +
+     * tax are left null so the service prices each line off the catalog card
+     * (matching the hand-written test).
      */
     public World placeOrder(String orderNumber, String customerCode, List<OrderLineSpec> lines) {
+        return placeOrder(orderNumber, customerCode, null, null, lines);
+    }
+
+    /**
+     * Place a deposit (part-payment) order — {@link PaymentTerms#DEPOSIT} terms
+     * with the given up-front fraction (e.g. {@code 50} for 50%). The worker
+     * raises a deposit invoice at placement and the saga parks at
+     * {@code deposit_invoiced} until the deposit is paid ({@link #payDeposit}).
+     */
+    public World placeDepositOrder(
+        String orderNumber, String customerCode, BigDecimal depositPercent, List<OrderLineSpec> lines) {
+        return placeOrder(orderNumber, customerCode, PaymentTerms.DEPOSIT.dbValue(), depositPercent, lines);
+    }
+
+    /**
+     * Place an order with explicit payment terms + optional deposit fraction,
+     * then {@link #settle()}. {@code paymentTerms == null} inherits the
+     * customer default; {@code depositPercent} is only meaningful for
+     * {@link PaymentTerms#DEPOSIT} and stays null otherwise.
+     */
+    public World placeOrder(
+        String orderNumber, String customerCode, String paymentTerms,
+        BigDecimal depositPercent, List<OrderLineSpec> lines) {
         List<OrderLine> commandLines = new ArrayList<>();
         for (OrderLineSpec spec : lines) {
             SeededProduct p = product(spec.productCode());
@@ -125,7 +150,8 @@ public final class World {
                 p.productId(), p.code(), p.name(), spec.quantity(), null, BigDecimal.ZERO));
         }
         UUID orderId = sales.placeOrder(new PlaceOrderCommand(
-            orderNumber, customerCode, LocalDate.of(2026, 5, 20), CURRENCY, null, commandLines));
+            orderNumber, customerCode, LocalDate.of(2026, 5, 20),
+            CURRENCY, paymentTerms, depositPercent, commandLines));
         orderIdsByNumber.put(orderNumber, orderId);
         settle();
         return this;
@@ -162,20 +188,54 @@ public final class World {
     }
 
     /**
-     * Record a customer payment against an order's commercial invoice through
+     * Record a customer payment against an order's COMMERCIAL invoice through
      * the real {@code PaymentService}, then {@link #settle()}. Resolves the
      * invoice header id from finance by walking back from the order number.
      */
     public World pay(String paymentNumber, String orderNumber, BigDecimal amount) {
-        UUID invoiceHeaderId = commercialInvoice(orderNumber)
-            .orElseThrow(() -> new IllegalStateException(
-                "No commercial invoice for order " + orderNumber + " — cannot pay"))
-            .id().value();
+        return payInvoice(paymentNumber, requireInvoice(orderNumber, CustomerInvoice.InvoiceType.COMMERCIAL), amount);
+    }
+
+    /**
+     * Record the up-front payment against an order's DEPOSIT invoice (the
+     * {@link PaymentTerms#DEPOSIT} flow), then {@link #settle()} — which drives
+     * the saga {@code deposit_invoiced → deposit_paid} and on to
+     * {@code ready_to_ship} once stock reserves.
+     */
+    public World payDeposit(String paymentNumber, String orderNumber, BigDecimal amount) {
+        return payInvoice(paymentNumber, requireInvoice(orderNumber, CustomerInvoice.InvoiceType.DEPOSIT), amount);
+    }
+
+    /**
+     * Record the settling payment against an order's BALANCE invoice (raised at
+     * shipment on a deposit order), then {@link #settle()} — completing the order.
+     */
+    public World payBalance(String paymentNumber, String orderNumber, BigDecimal amount) {
+        return payInvoice(paymentNumber, requireInvoice(orderNumber, CustomerInvoice.InvoiceType.BALANCE), amount);
+    }
+
+    /**
+     * Record a payment against a resolved invoice through the real
+     * {@code PaymentService}, {@link #settle()}, then stamp the allocation as
+     * the stand-in for the {@code maintain_allocation_totals} DB trigger (which
+     * the in-memory finance kit does not model — see {@code FinanceTestKit}).
+     * The stamp lands after settling so a <em>later</em> payment against another
+     * invoice on the same order (deposit → balance) reads this one as fully paid
+     * when it computes order-level settlement; for a single-payment order it is
+     * a harmless post-completion bookkeeping update.
+     */
+    private World payInvoice(String paymentNumber, CustomerInvoice invoice, BigDecimal amount) {
         finance.paymentService.recordCustomerPayment(new RecordCustomerPaymentCommand(
-            paymentNumber, invoiceHeaderId, amount,
+            paymentNumber, invoice.id().value(), amount,
             Payment.Method.BANK_TRANSFER.dbValue(), LocalDate.of(2026, 5, 20)));
         settle();
+        finance.customerInvoices.recordAllocation(invoice.id().value(), amount);
         return this;
+    }
+
+    private CustomerInvoice requireInvoice(String orderNumber, CustomerInvoice.InvoiceType type) {
+        return invoiceOfType(orderNumber, type).orElseThrow(() -> new IllegalStateException(
+            "No " + type.dbValue() + " invoice for order " + orderNumber + " — cannot pay"));
     }
 
     // ============================================================
@@ -233,12 +293,27 @@ public final class World {
         return sales.orderStatus(orderId(orderNumber));
     }
 
-    /** The COMMERCIAL invoice raised for an order, if finance has created one. */
+    /** The COMMERCIAL invoice raised for an order (single-invoice {@code on_shipment} flow), if any. */
     public Optional<CustomerInvoice> commercialInvoice(String orderNumber) {
+        return invoiceOfType(orderNumber, CustomerInvoice.InvoiceType.COMMERCIAL);
+    }
+
+    /** The DEPOSIT invoice raised at placement on a deposit order, if any. */
+    public Optional<CustomerInvoice> depositInvoice(String orderNumber) {
+        return invoiceOfType(orderNumber, CustomerInvoice.InvoiceType.DEPOSIT);
+    }
+
+    /** The BALANCE invoice raised at shipment on a deposit order, if any. */
+    public Optional<CustomerInvoice> balanceInvoice(String orderNumber) {
+        return invoiceOfType(orderNumber, CustomerInvoice.InvoiceType.BALANCE);
+    }
+
+    /** The invoice of a given type raised for an order, if finance has created one. */
+    public Optional<CustomerInvoice> invoiceOfType(String orderNumber, CustomerInvoice.InvoiceType type) {
         UUID orderId = orderId(orderNumber);
         return finance.customerInvoices.findAll().stream()
             .filter(inv -> orderId.equals(inv.salesOrderHeaderId()))
-            .filter(inv -> inv.invoiceType() == CustomerInvoice.InvoiceType.COMMERCIAL)
+            .filter(inv -> inv.invoiceType() == type)
             .findFirst();
     }
 
