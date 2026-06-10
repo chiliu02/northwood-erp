@@ -199,6 +199,8 @@ world.
 | `order(orderNo).is_completed()` | saga `COMPLETED` **and** status `COMPLETED` |
 | `a_commercial_invoice()` / `a_deposit_invoice()` / `a_balance_invoice()`.`for_order(orderNo).totalling(Money)` | a `CustomerInvoice` of that type exists for the order with that total |
 | `a_customer_payment().byMethod(Payment.Method.X).wasRecorded()` | finance recorded a customer payment by that method (COD auto-records a `CASH` payment) |
+| `a_journal().of_type(SourceDocumentType).debiting(acct, Money).crediting(acct, Money).posted()` | finance posted a journal of that type with the given Dr/Cr lines (GL-posting / REQ-FIN-0xx detail) |
+| `gl_account(code).netsToZero()` | the account's Dr−Cr sum across every posted journal is zero (e.g. 2110 after a deposit + its refund) |
 | `events_published(EVENT_TYPE…)` | union of all kits' outboxes contains those `event_type`s |
 
 ### Value helpers (tiny, scale-correct)
@@ -443,7 +445,7 @@ baseline) and the requirements it exercises. Build-out runs in the phases of §9
 | Cancellation / compensation | `OrderToCashCancellationPathDslTest` | `CancelCompensationTest` | REQ-XBC-090, REQ-SAL-036 | ✅ |
 | Cash-on-delivery | `OrderToCashCodPathDslTest` | `OrderToCashCodPathTest` | REQ-SAL-020 (COD), REQ-FIN-024/025 | ✅ |
 | First leg (place → reserve) | *(subsumed by happy-path DslTest)* | `OrderToCashFirstLegTest` | REQ-SAL-030/033, REQ-INV-020 | ⊆ |
-| Cancel + deposit refund | `OrderToCashCancelRefundPathDslTest` | `CancelRefundPathTest` | REQ-SAL-036, REQ-FIN-012/032 | Phase A |
+| Cancel + deposit refund | `OrderToCashCancelRefundPathDslTest` | `CancelRefundPathTest` | REQ-SAL-036, REQ-FIN-012/032 | ✅ |
 | Planning time fence (outcome subset) | `OrderToCashPlanningFenceDslTest` | `OrderToCashPlanningFenceTest` | REQ-SAL-013/037 | Phase A |
 | Make-to-order (pegged WO) | `OrderToCashMakeToOrderPathDslTest` | `OrderToCashMakeToOrderPathTest` | REQ-INV-093, REQ-PROD-022 | Phase B |
 | Buy-to-order (pegged PO) | `OrderToCashBuyToOrderPathDslTest` | `OrderToCashBuyToOrderPathTest` | REQ-INV-093, REQ-PROD-022 | Phase B |

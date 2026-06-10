@@ -2,6 +2,7 @@ package com.northwood.testharness.dsl;
 
 import com.northwood.finance.application.dto.RecordCustomerPaymentCommand;
 import com.northwood.finance.domain.CustomerInvoice;
+import com.northwood.finance.domain.JournalEntry;
 import com.northwood.finance.domain.Payment;
 import com.northwood.inventory.application.dto.PostShipmentCommand;
 import com.northwood.inventory.application.dto.ShipmentLineRequest;
@@ -342,6 +343,11 @@ public final class World {
     /** Every customer payment finance has recorded. COD auto-records one at shipment; single-order scenarios. */
     public List<Payment> customerPayments() {
         return finance.payments.findAll();
+    }
+
+    /** Every journal entry finance has posted — the basis for GL-posting (Dr/Cr) assertions. */
+    public List<JournalEntry> journalEntries() {
+        return finance.journalEntries.all();
     }
 
     /** The COMMERCIAL invoice raised for an order (single-invoice {@code on_shipment} flow), if any. */

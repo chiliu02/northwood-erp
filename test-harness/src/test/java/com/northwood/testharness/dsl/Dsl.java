@@ -3,6 +3,7 @@ package com.northwood.testharness.dsl;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.northwood.finance.domain.CustomerInvoice;
+import com.northwood.finance.domain.JournalEntry;
 import com.northwood.finance.domain.Payment;
 import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
@@ -401,6 +402,87 @@ public final class Dsl {
             return world -> assertThat(world.customerPayments())
                 .as("a customer payment by method %s", method)
                 .anyMatch(p -> p.paymentMethod() == method);
+        }
+    }
+
+    /**
+     * Assertion that finance posted a journal of a given source-document type
+     * with a specific debit and credit line — the GL-posting (REQ-FIN-0xx) check.
+     */
+    public static JournalAssertion a_journal() {
+        return new JournalAssertion();
+    }
+
+    public static final class JournalAssertion {
+        private JournalEntry.SourceDocumentType type;
+        private String debitAccount;
+        private Money debitAmount;
+        private String creditAccount;
+        private Money creditAmount;
+
+        private JournalAssertion() {
+        }
+
+        public JournalAssertion of_type(JournalEntry.SourceDocumentType type) {
+            this.type = type;
+            return this;
+        }
+
+        public JournalAssertion debiting(String account, Money amount) {
+            this.debitAccount = account;
+            this.debitAmount = amount;
+            return this;
+        }
+
+        public JournalAssertion crediting(String account, Money amount) {
+            this.creditAccount = account;
+            this.creditAmount = amount;
+            return this;
+        }
+
+        public AssertStep posted() {
+            return world -> {
+                var entry = world.journalEntries().stream()
+                    .filter(e -> e.sourceDocumentType() == type)
+                    .findFirst();
+                assertThat(entry).as("a %s journal", type).isPresent();
+                var lines = entry.orElseThrow().lines();
+                assertThat(lines.stream()
+                        .filter(l -> debitAccount.equals(l.accountCode()))
+                        .map(l -> l.debitAmount())
+                        .reduce(BigDecimal.ZERO, BigDecimal::add))
+                    .as("%s debit to %s", type, debitAccount)
+                    .isEqualByComparingTo(debitAmount.amount());
+                assertThat(lines.stream()
+                        .filter(l -> creditAccount.equals(l.accountCode()))
+                        .map(l -> l.creditAmount())
+                        .reduce(BigDecimal.ZERO, BigDecimal::add))
+                    .as("%s credit to %s", type, creditAccount)
+                    .isEqualByComparingTo(creditAmount.amount());
+            };
+        }
+    }
+
+    /** A GL account; assert it nets to zero across every posted journal (e.g. 2110 after deposit + refund). */
+    public static GlAccountAssertion gl_account(String accountCode) {
+        return new GlAccountAssertion(accountCode);
+    }
+
+    public static final class GlAccountAssertion {
+        private final String accountCode;
+
+        private GlAccountAssertion(String accountCode) {
+            this.accountCode = accountCode;
+        }
+
+        public AssertStep netsToZero() {
+            return world -> assertThat(world.journalEntries().stream()
+                    .flatMap(e -> e.lines().stream())
+                    .filter(l -> accountCode.equals(l.accountCode()))
+                    .map(l -> l.debitAmount().subtract(l.creditAmount()))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add))
+                .as("GL account %s nets to zero", accountCode)
+                .isEqualByComparingTo(BigDecimal.ZERO);
         }
     }
 
