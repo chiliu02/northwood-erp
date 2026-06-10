@@ -188,6 +188,7 @@ world.
 | `a_bom(fgCode).withRawLine(rawCode, Qty).withSubAssembly(subCode, Qty)…` | a multi-level active BOM (raw + sub-assembly lines) via `manufacturing.bomLookup.put(...)` + `putIdentity(...)` |
 | `a_routing(fgCode).singleOp()` | `manufacturing.routings.putSingleOp(fgId)` |
 | `reorder_policy(code).point(Qty).quantity(Qty)` | `inventory.reorderPolicies.put(id, point, qty)` (REQ-PROD-020) |
+| `a_work_order(woNo).forProduct(sku, name).plannedQuantity(Qty).released()` | seed a released work order (wraps the 15-arg `WorkOrder.reconstitute`) |
 | `a_purchasable_product(code, name).suppliedAt(Money)` | a bought raw material — make-vs-buy = purchased + the default supplier's price |
 
 ### When — drive a domain action (the trigger)
@@ -213,6 +214,7 @@ world.
 | `the_supplier().is_paid(payNo).of(Money)` | `finance.paymentService.recordSupplierPayment`; **settles** |
 | `amend(orderNo).add_line(productCode, Qty)` / `.remove_line(productCode)` | `sales.service.addLine` / `removeLine` (resolves the live line id); **settles** |
 | `buyer().attempts_requisition(prNo).line(...)` / `the_system().places_a_pegged_buy(prNo).line(...)` | attempt a manual / order-pegged requisition, capturing accept/reject (the to-order guard) |
+| `planner().sets_priority_of(woNo).to(priority)` | `manufacturing.prioritisationService.setPriority`; **settles** (cascades to the board) |
 
 ### Then — assert the outcome
 
@@ -228,6 +230,8 @@ world.
 | `a_work_order_for(code).wasCreated()` / `.isMakeToStock()` | a work order producing the product was released (and carries no sales-order peg) |
 | `a_purchase_order_for(prNo).reaches(PurchaseToPaySaga.STATE)` / `.is_fully_paid()` | the requisition's PO saga reached that state / the PO is fully paid |
 | `a_supplier_invoice().reaches(SupplierInvoice.Status)` | the supplier invoice on file reached that status (APPROVED / THREE_WAY_MATCH_FAILED / CANCELLED) |
+| `production_board(woNo).has_priority(priority)` | reporting's production-planning board projected that priority for the work order (REQ-RPT-020) |
+| `the_requisition().was_rejected_as_to_order()` / `.was_accepted()` / `.was_created()` | the last requisition attempt's outcome (the to-order guard) |
 | `events_published_count(EVENT_TYPE, n)` | the event was published exactly `n` times across all kits (e.g. no-reservation-retry proof) |
 | `a_journal().of_type(SourceDocumentType).debiting(acct, Money).crediting(acct, Money).posted()` | finance posted a journal of that type with the given Dr/Cr lines (GL-posting / REQ-FIN-0xx detail) |
 | `gl_account(code).netsToZero()` | the account's Dr−Cr sum across every posted journal is zero (e.g. 2110 after a deposit + its refund) |
@@ -487,8 +491,7 @@ baseline) and the requirements it exercises. Build-out runs in the phases of §9
 | Procure-to-pay (happy) | `PurchaseToPayHappyPathDslTest` | `PurchaseToPayHappyPathTest` | REQ-XBC-020, REQ-PUR-020/030/031 | ✅ (real goods receipt) |
 | Procure-to-pay (3-way-match reject) | `PurchaseToPayRejectionPathDslTest` | `PurchaseToPayRejectionPathTest` | REQ-PUR-050, REQ-FIN-051 | ✅ (real 3-way match) |
 | Requisition to-order guard | `PurchaseRequisitionToOrderGuardDslTest` | `PurchaseRequisitionToOrderGuardTest` | REQ-PUR-020, REQ-PROD-022 | ✅ (guard subset) |
-| Reporting read-views | *(per-view DslTests)* | — | REQ-RPT-001/010/020/040/050/060 | Phase D (feasibility TBD) |
-| WO priority cascade | `SetPriorityCascadeDslTest` | `SetPriorityCascadeTest` | REQ-MFG-070, REQ-RPT-020 | Phase E |
+| WO priority cascade (mfg → reporting board) | `SetPriorityCascadeDslTest` | `SetPriorityCascadeTest` | REQ-MFG-070, REQ-RPT-020 | ✅ (outcome subset) |
 
 Legend: ✅ shipped · ⊆ covered by another DslTest · Phase A–E per §9.
 

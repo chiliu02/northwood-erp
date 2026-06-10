@@ -29,6 +29,7 @@ import com.northwood.purchasing.domain.PurchaseOrderId;
 import com.northwood.purchasing.domain.PurchaseOrderLine;
 import com.northwood.purchasing.domain.events.PurchaseOrderCreated;
 import com.northwood.purchasing.domain.saga.PurchaseToPaySaga;
+import com.northwood.reporting.application.inbox.BoardWorkOrderPriorityChangedHandler;
 import com.northwood.sales.application.dto.AddOrderLineCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand;
 import com.northwood.sales.application.dto.PlaceOrderCommand.OrderLine;
@@ -40,9 +41,11 @@ import com.northwood.sales.domain.SalesOrderId;
 import com.northwood.sales.domain.SalesOrderLine;
 import com.northwood.shared.application.outbox.OutboxRow;
 import com.northwood.shared.domain.Currencies;
+import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.SynchronousBus;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryBomLookup;
+import com.northwood.testharness.inmemory.reporting.InMemoryProductionPlanningProjection;
 import com.northwood.testharness.kits.FinanceTestKit;
 import com.northwood.testharness.kits.InventoryTestKit;
 import com.northwood.testharness.kits.ManufacturingTestKit;
@@ -97,11 +100,14 @@ public final class World {
     public final FinanceTestKit finance;
     public final ManufacturingTestKit manufacturing;
     public final PurchasingTestKit purchasing;
+    /** Reporting's production-planning board read model (no formal reporting kit yet). */
+    public final InMemoryProductionPlanningProjection productionBoard = new InMemoryProductionPlanningProjection();
 
     // ── the registry: business identifier → engine identity / facts ──
     private final Map<String, SeededProduct> productsByCode = new HashMap<>();
     private final Map<String, UUID> orderIdsByNumber = new HashMap<>();
     private final Map<String, UUID> purchaseOrderByRequisition = new HashMap<>();
+    private final Map<String, UUID> workOrderIdsByNumber = new HashMap<>();
     private String lastRequisitionOutcome;
 
     // settle()'s fixed point ticks every wired kit's saga worker and counts the
@@ -117,6 +123,10 @@ public final class World {
         this.finance = new FinanceTestKit(bus, json);
         this.manufacturing = new ManufacturingTestKit(bus, json);
         this.purchasing = new PurchasingTestKit(bus, json);
+
+        // Reporting read-side: register the production-planning board's priority
+        // handler (no formal reporting kit yet; read-only, so no outbox to settle).
+        bus.register(new BoardWorkOrderPriorityChangedHandler(new InMemoryInboxPort(), productionBoard, json));
 
         this.outboxes.addAll(List.of(
             sales.outbox, inventory.outbox, finance.outbox, manufacturing.outbox, purchasing.outbox));
@@ -842,6 +852,49 @@ public final class World {
             kitOutbox.all().stream().map(OutboxRow::getEventType).forEach(types::add);
         }
         return types;
+    }
+
+    // ── manufacturing → reporting: work-order priority cascade ──
+
+    /**
+     * Seed a released work order directly into manufacturing (REQ-MFG-070 needs an
+     * existing WO to reprioritise), registering {@code workOrderNumber → workOrderId}.
+     * Wraps the aggregate's 15-arg {@code reconstitute} so scenarios name only the
+     * business facts.
+     */
+    public World seedReleasedWorkOrder(String workOrderNumber, String sku, String name, BigDecimal plannedQuantity) {
+        WorkOrder workOrder = WorkOrder.reconstitute(
+            WorkOrderId.newId(), workOrderNumber,
+            UUID.randomUUID(), UUID.randomUUID(), null, null,
+            UUID.randomUUID(), sku, name,
+            UUID.randomUUID(), plannedQuantity,
+            WorkOrder.Status.RELEASED, WorkOrder.MaterialStatus.RESERVATION_PENDING,
+            BigDecimal.ZERO, null, null,
+            0L,
+            List.of(), List.of());
+        manufacturing.workOrders.seed(workOrder);
+        workOrderIdsByNumber.put(workOrderNumber, workOrder.id().value());
+        return this;
+    }
+
+    /** Set a work order's priority (REQ-MFG-070), then {@link #settle()} — it cascades to the production board. */
+    public World setWorkOrderPriority(String workOrderNumber, String priority, String reason) {
+        manufacturing.prioritisationService.setPriority(workOrderId(workOrderNumber), priority, reason);
+        settle();
+        return this;
+    }
+
+    /** The priority the reporting production-planning board projected for a work order, if any. */
+    public Optional<String> boardPriorityOf(String workOrderNumber) {
+        return productionBoard.priorityOf(workOrderId(workOrderNumber));
+    }
+
+    private UUID workOrderId(String workOrderNumber) {
+        UUID id = workOrderIdsByNumber.get(workOrderNumber);
+        if (id == null) {
+            throw new IllegalStateException("Unknown work order number: " + workOrderNumber + " — seed it first");
+        }
+        return id;
     }
 
     /** The replenishment request inventory raised for a product, if any (reorder-point or shortage driven). */

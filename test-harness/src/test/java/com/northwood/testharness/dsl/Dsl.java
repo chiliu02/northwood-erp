@@ -309,6 +309,37 @@ public final class Dsl {
         return world -> world.seedToStockProduct(productCode, productName);
     }
 
+    /** A released work order to reprioritise; describe it with {@code forProduct(...).plannedQuantity(...).released()}. */
+    public static WorkOrderSeed a_work_order(String workOrderNumber) {
+        return new WorkOrderSeed(workOrderNumber);
+    }
+
+    public static final class WorkOrderSeed {
+        private final String workOrderNumber;
+        private String sku;
+        private String name;
+        private Qty plannedQuantity;
+
+        private WorkOrderSeed(String workOrderNumber) {
+            this.workOrderNumber = workOrderNumber;
+        }
+
+        public WorkOrderSeed forProduct(String sku, String name) {
+            this.sku = sku;
+            this.name = name;
+            return this;
+        }
+
+        public WorkOrderSeed plannedQuantity(Qty quantity) {
+            this.plannedQuantity = quantity;
+            return this;
+        }
+
+        public SeedStep released() {
+            return world -> world.seedReleasedWorkOrder(workOrderNumber, sku, name, plannedQuantity.amount());
+        }
+    }
+
     // ============================================================
     // When — drive a domain action (the trigger)
     // ============================================================
@@ -521,6 +552,32 @@ public final class Dsl {
     /** Goods are received (for real) against the purchase order replenishing a product, fulfilling the request. */
     public static ActionStep goods_received_for(String productCode) {
         return world -> world.receiveGoodsForReplenishment(productCode, "GR-" + productCode);
+    }
+
+    /** A production planner who can reprioritise a work order. */
+    public static PlannerActions planner() {
+        return new PlannerActions();
+    }
+
+    public static final class PlannerActions {
+        private PlannerActions() {
+        }
+
+        public PriorityBuilder sets_priority_of(String workOrderNumber) {
+            return new PriorityBuilder(workOrderNumber);
+        }
+    }
+
+    public static final class PriorityBuilder {
+        private final String workOrderNumber;
+
+        private PriorityBuilder(String workOrderNumber) {
+            this.workOrderNumber = workOrderNumber;
+        }
+
+        public ActionStep to(String priority) {
+            return world -> world.setWorkOrderPriority(workOrderNumber, priority, "reprioritised");
+        }
     }
 
     /** Amend an existing order's lines (add / remove). */
@@ -1068,6 +1125,24 @@ public final class Dsl {
         public AssertStep is_fully_paid() {
             return world -> assertThat(world.isPurchaseOrderFullyPaid(requisitionNumber))
                 .as("purchase order for %s fully paid", requisitionNumber).isTrue();
+        }
+    }
+
+    /** Assertion about the reporting production-planning board's projected priority for a work order. */
+    public static ProductionBoardAssertion production_board(String workOrderNumber) {
+        return new ProductionBoardAssertion(workOrderNumber);
+    }
+
+    public static final class ProductionBoardAssertion {
+        private final String workOrderNumber;
+
+        private ProductionBoardAssertion(String workOrderNumber) {
+            this.workOrderNumber = workOrderNumber;
+        }
+
+        public AssertStep has_priority(String priority) {
+            return world -> assertThat(world.boardPriorityOf(workOrderNumber))
+                .as("production board priority for %s", workOrderNumber).contains(priority);
         }
     }
 
