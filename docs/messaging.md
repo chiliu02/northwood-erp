@@ -42,6 +42,42 @@ The non-guarantees above bite hardest on **sagas** — cross-aggregate coordinat
 
 Bottom line: cross-aggregate and cross-topic reordering is *expected*, and the two patterns differ in how much they can be trusted. Pattern 1 leans on causality (a durable row committed upstream) — a structural property that holds by construction. Pattern 2 leans on convergent, idempotent design — a per-handler discipline that has to be implemented *and* verified each time, not something the framework guarantees. So a missing source-state guard is a real (if usually downstream-contained) defect class, not a non-issue.
 
+### Cross-aggregate ordering audit — the residual hazard class
+
+A skeptical pass over every **join point** — a handler or projection that, while processing event B, reads or decides on state established by a *different* aggregate's event stream A — looking for unhandled out-of-order hazards (agent fan-out across all seven services + direct verification of the live ones). It sharpens the boundary above into one nameable conclusion: **pattern 1 holds cleanly for saga rows; every genuine residual sits at one seam — a handler reading a projection that a *different topic's* stream maintains.** Pattern 1 doesn't reach there (the prerequisite isn't committed upstream in B's own causal chain — it's a read-model another stream owns and can lag), so those sites fall back on pattern 2, which is only as careful as the individual handler.
+
+> The aggregate- and event-level causal-dependency map this audit walks — every join point, the durable FK field that records each dependency, and the per-event partition-key analysis (can a single root-aggregate-id key serve a whole causal chain?) — lives in [`causal-dependency.html`](causal-dependency.html).
+
+**Genuine residuals** — out-of-order can cause a wrong/lost outcome that isn't auto-recovered:
+
+| Site | Cross-topic prerequisite | Effect on disorder | Status |
+|---|---|---|---|
+| `finance.JdbcPurchaseOrderLineFactsProjection.applyGoodsReceived` | `po_line_facts` row seeded by `purchasing.PurchaseOrderCreated`, incremented by `inventory.GoodsReceived` (two topics) | `UPDATE … received += ?` matches 0 rows → **WARN + receipt dropped** → the 3-way match reads `received = 0` → supplier invoice mis-matches | **Open, verified.** Low-probability (goods arrive long after the PO, so the PO event is normally consumed first), but lossy and acknowledged in-code. No trivial upsert-seed — `GoodsReceived` lacks the PO-line facts (sku, ordered qty, price) needed to create the row. |
+| `inventory.PurchaseOrderCreatedHandler` (PR→PO link) | `replenishment_request.linked_purchase_order_id` set off `…ReplenishmentDispatched` | lookup empty → PR→PO link skipped → a later `GoodsReceived` can't peg the receipt back to the request | **Open, documented.** A code comment acknowledges the cross-partition race; deferred until observed. |
+
+**Contained** — the aggregate's own terminal guard absorbs it. A late event still runs a side-effect, but `SalesOrder.recomputeStatus()` early-returns `if (isTerminal())`, so the header stays correct and only line-band cosmetics drift:
+
+| Site | Unconditional side-effect on a late event | Why contained |
+|---|---|---|
+| `sales.StockReservedHandler.recordReservation` | marks lines reserved even on a cancelled order | header fold guards terminal → cosmetic line drift only (the saga transition itself is now guarded — see *Fixed*) |
+| `sales.ShipmentPostedHandler.recordShipped` | marks lines shipped + emits `SalesOrderShipped` | header fold guards terminal; the `SalesOrderShipped` tail is gated unreachable by the shipment picker, which honours `order_status = cancelled` |
+
+**Fixed** (commit on `main`): `sales.JdbcSalesOrderFulfilmentSagaManager.applyStockReserved` — the sole forward `apply*` method (of ~15 across the three sagas) missing a source-state guard; a late `StockReserved` after a cancel could resurrect a `compensating` saga and strand its compensation. Now guarded by `STOCK_RESERVED_SOURCE_STATES`.
+
+**Checked and dismissed** — recorded so a future reader doesn't re-flag them:
+
+- `inventory.{Manufacturing,Purchasing}ReplenishmentDispatchedHandler` — **causal-safe**: the `replenishment_request` is inventory-*local*, committed before `ReplenishmentRequested` is even emitted, so a dispatch can never precede it.
+- `reporting.JdbcSalesOrder360Projection.recordInvoice` / `recordPayment` — accumulation is correct (distinct per-shipment invoices legitimately add), and the **inbox dedup** collapses duplicate eventIds, so no double-count.
+- `finance.ShipmentDeferredRevenueHandler` — only acts on prepayment/deposit invoices, which are created far upstream of shipment → **causally present** when `ShipmentPosted` lands.
+- `manufacturing.WorkOrderReleaseService` (BOM/Routing) — already guarded by the prior `findActiveBomIdentity` check (which emits `ReplenishmentUndispatchable`); the residual `orElseThrow` is retryable, not silent.
+- `manufacturing.GoodsReceivedHandler` / `unparkOrNarrowShortage` — candidate sagas are queried from the DB first; the `findBySagaId(...).orElse(null)` is a defensive TOCTOU no-op, not a missing-prerequisite read.
+- `manufacturing.ReplenishmentRequestedHandler` (no active BOM) — emits `ReplenishmentUndispatchable` → inventory cancels the request; **order-tolerant**, operator-recoverable.
+- `inventory.RawMaterialShortageDetectedHandler` — the component's `product_card` causally exists by the time it shorts; the make-vs-buy-flag staleness is a **documented fail-open**.
+- `purchasing.ReplenishmentRequestedHandler` — `isPurchasable` / `isToOrder` / `isDiscontinued` are **documented designed-tolerant** fail-open lookups (missing row → safe default).
+- `purchasing.JdbcProductApprovedVendorProjection.replaceFor` + the `product_card` projections in sales/inventory/finance/manufacturing — `ON CONFLICT DO UPDATE` / replace-all upserts + inbox dedup → eventual-consistency convergence; a stale approved-vendor pick is best-effort and manually correctable.
+
+**The boundary, named:** the safety argument is sharp and bounded — **cross-topic projection prerequisites** are where it ends. Saga-row prerequisites are causal (pattern 1, structural). A read-model maintained by an *independent topic* is not, and there a handler must either tolerate the prerequisite being absent (upsert-seed / idempotent convergence — what nearly every projection does) or accept a documented lossy/deferred edge (the two open sites above). No site **outside** this seam was found unhandled — but that is "no *known* unhandled case after this audit," not a proof that none exist.
+
 ## Reliability & idempotency: guarantees and where they're tested
 
 Reliable delivery + idempotent consumption are the cornerstone of this architecture, so this matrix is the index for the detailed sections that follow: every guarantee, the mechanism that provides it, and the test that covers it. The **doc-only** rows are inherently not unit-testable (you can't deterministically crash a process mid-commit) — each is absorbed by a mechanism that *is* tested, noted in the row.
