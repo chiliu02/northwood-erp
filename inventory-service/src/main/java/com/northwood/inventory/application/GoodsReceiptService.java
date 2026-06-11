@@ -15,6 +15,7 @@ import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.ReplenishmentRequest;
 import com.northwood.inventory.domain.ReplenishmentRequestRepository;
 import com.northwood.shared.application.exception.BadRequestException;
+import com.northwood.shared.application.exception.ConflictException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -79,6 +80,42 @@ public class GoodsReceiptService {
         }
     }
 
+    /**
+     * Thrown when a goods receipt for a PO linked to an {@code order_pegged}
+     * ({@code to_order}) replenishment receives <em>more</em> than the pegged
+     * quantity. A to-order line raises dedicated, order-pegged supply for the
+     * exact line quantity, and its receipt is reserved straight to the
+     * originating sales-order line (the atomic receipt+reserve peg below). The
+     * excess beyond the peg would instead land in free ATP where no order can
+     * reserve it — every to-order line raises its own supply and never draws
+     * from the shared pool — orphaning as dead inventory. This is the
+     * receipt-side twin of {@code purchasing}'s manual-requisition guard
+     * ({@code ToOrderProductManualPurchaseException}). Mapped to HTTP 409.
+     */
+    public static class ToOrderOverReceiptException extends ConflictException {
+        public static final String CODE = "GOODS_RECEIPT_TO_ORDER_OVER_RECEIPT";
+        private final String productSku;
+        private final BigDecimal peggedQuantity;
+        private final BigDecimal receivedQuantity;
+        public ToOrderOverReceiptException(String productSku, BigDecimal peggedQuantity, BigDecimal receivedQuantity) {
+            super(CODE, "Over-receipt on to-order product sku=" + productSku + ": received "
+                + receivedQuantity + " against an order-pegged quantity of " + peggedQuantity
+                + ". A to-order product raises dedicated supply for the exact line quantity and its "
+                + "receipt is reserved straight to the originating sales-order line; the excess would "
+                + "land in free stock where no order can reserve it (every to-order line raises its own "
+                + "supply), orphaning as dead inventory. Receive only the pegged quantity.");
+            this.productSku = productSku;
+            this.peggedQuantity = peggedQuantity;
+            this.receivedQuantity = receivedQuantity;
+        }
+        public String productSku() { return productSku; }
+        public BigDecimal peggedQuantity() { return peggedQuantity; }
+        public BigDecimal receivedQuantity() { return receivedQuantity; }
+        @Override public Map<String, Object> params() {
+            return Map.of("productSku", productSku, "peggedQuantity", peggedQuantity, "receivedQuantity", receivedQuantity);
+        }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(GoodsReceiptService.class);
 
     private final GoodsReceiptRepository goodsReceipts;
@@ -135,6 +172,38 @@ public class GoodsReceiptService {
             }
         }
 
+        // Resolve a linked, still-open replenishment once — used by both the
+        // to-order over-receipt guard (below, before any stock mutation) and the
+        // peg/fulfil step further down. Linked at PurchaseOrderCreated time by
+        // PurchaseOrderCreatedHandler.
+        Optional<ReplenishmentRequest> linkedReplenishment = command.purchaseOrderHeaderId() == null
+            ? Optional.empty()
+            : replenishmentRequests.findByLinkedPurchaseOrderId(command.purchaseOrderHeaderId())
+                .filter(r -> r.status() == ReplenishmentRequest.Status.DISPATCHED);
+
+        // To-order over-receipt guard. An order-pegged replenishment is raised
+        // for the exact line quantity and its receipt is reserved straight to the
+        // SO line; receiving MORE than the peg would credit the excess into free
+        // ATP where no order can reserve it (every to-order line raises its own
+        // supply), orphaning it as dead stock. Fail fast — before the on_hand
+        // credit — so a rejected over-receipt leaves no trace.
+        linkedReplenishment
+            .filter(r -> r.reason() == ReplenishmentRequest.Reason.ORDER_PEGGED)
+            .ifPresent(r -> {
+                BigDecimal receivedForProduct = command.lines().stream()
+                    .filter(l -> l.productId().equals(r.productId()))
+                    .map(GoodsReceiptLineRequest::receivedQuantity)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+                if (receivedForProduct.compareTo(r.requestedQuantity()) > 0) {
+                    String sku = command.lines().stream()
+                        .filter(l -> l.productId().equals(r.productId()))
+                        .map(GoodsReceiptLineRequest::productSku)
+                        .findFirst()
+                        .orElse(r.productId().toString());
+                    throw new ToOrderOverReceiptException(sku, r.requestedQuantity(), receivedForProduct);
+                }
+            });
+
         List<GoodsReceiptLine> lines = new ArrayList<>();
         for (GoodsReceiptLineRequest line : command.lines()) {
             BigDecimal unitCost = line.unitCost() == null ? BigDecimal.ZERO : line.unitCost();
@@ -174,11 +243,9 @@ public class GoodsReceiptService {
         }
 
         // If this receipt is for a PO linked to a replenishment, fulfil the
-        // replenishment (emits inventory.ReplenishmentFulfilled). Linked at
-        // PurchaseOrderCreated time by PurchaseOrderCreatedHandler.
-        if (command.purchaseOrderHeaderId() != null) {
-            replenishmentRequests.findByLinkedPurchaseOrderId(command.purchaseOrderHeaderId())
-                .filter(r -> r.status() == ReplenishmentRequest.Status.DISPATCHED)
+        // replenishment (emits inventory.ReplenishmentFulfilled). Resolved once
+        // above (linkedReplenishment).
+        linkedReplenishment
                 .ifPresent(r -> {
                     // Buy-to-order atomic peg — symmetric to the
                     // make-to-order WO-completion peg. The received goods for an
@@ -213,7 +280,6 @@ public class GoodsReceiptService {
                     log.info("fulfilled replenishment_request={} via goods_receipt for purchase_order={}",
                         r.id().value(), command.purchaseOrderHeaderId());
                 });
-        }
 
         log.info("posted goods_receipt {} for purchase_order={} ({} line(s)) at warehouse={}",
             receipt.goodsReceiptNumber(), command.purchaseOrderHeaderId(),

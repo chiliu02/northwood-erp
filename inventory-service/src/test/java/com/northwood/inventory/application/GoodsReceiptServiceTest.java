@@ -176,6 +176,64 @@ class GoodsReceiptServiceTest {
         assertThat(req.status()).isEqualTo(ReplenishmentRequest.Status.FULFILLED);
     }
 
+    @Test void order_pegged_over_receipt_rejects_before_any_stock_mutation() {
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
+        ReplenishmentRequest req = dispatchedForPo(ReplenishmentRequest.requestForOrderPegged(
+            PRODUCT_1, WAREHOUSE, new BigDecimal("100"), ReplenishmentRequest.TargetService.PURCHASING,
+            UUID.randomUUID(), UUID.randomUUID()));
+        when(replenishmentRequests.findByLinkedPurchaseOrderId(PO)).thenReturn(Optional.of(req));
+
+        // Received 120 against a 100-unit order-pegged replenishment — the 20-unit
+        // excess would orphan in free stock.
+        assertThatThrownBy(() -> service.post(cmd(WarehouseCodes.MAIN, List.of(
+            new GoodsReceiptLineRequest(null, PRODUCT_1, "RM-1", "Raw 1",
+                new BigDecimal("120"), new BigDecimal("2.50"))
+        ))))
+            .isInstanceOf(GoodsReceiptService.ToOrderOverReceiptException.class)
+            .hasMessageContaining("RM-1")
+            .hasMessageContaining("120")
+            .hasMessageContaining("100");
+
+        verify(receipts, never()).save(any());
+        verify(stockBalances, never()).bump(any(), any(), any());
+        verify(stockBalances, never()).tryReserveOnHand(any(), any(), any());
+        verify(replenishmentRequests, never()).save(any());
+    }
+
+    @Test void order_pegged_exact_receipt_is_allowed() {
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
+        ReplenishmentRequest req = dispatchedForPo(ReplenishmentRequest.requestForOrderPegged(
+            PRODUCT_1, WAREHOUSE, new BigDecimal("100"), ReplenishmentRequest.TargetService.PURCHASING,
+            UUID.randomUUID(), UUID.randomUUID()));
+        when(replenishmentRequests.findByLinkedPurchaseOrderId(PO)).thenReturn(Optional.of(req));
+        when(stockBalances.tryReserveOnHand(WAREHOUSE, PRODUCT_1, new BigDecimal("100"))).thenReturn(true);
+
+        service.post(cmd(WarehouseCodes.MAIN, List.of(
+            new GoodsReceiptLineRequest(null, PRODUCT_1, "RM-1", "Raw 1",
+                new BigDecimal("100"), new BigDecimal("2.50"))
+        )));
+
+        verify(stockBalances).bump(WAREHOUSE, PRODUCT_1, new BigDecimal("100"));
+        assertThat(req.status()).isEqualTo(ReplenishmentRequest.Status.FULFILLED);
+    }
+
+    @Test void non_pegged_over_receipt_is_allowed_pool_replenishment_tolerates_extra() {
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
+        ReplenishmentRequest req = dispatchedForPo(ReplenishmentRequest.requestForSalesOrderShortage(
+            PRODUCT_1, WAREHOUSE, new BigDecimal("100"), ReplenishmentRequest.TargetService.PURCHASING,
+            UUID.randomUUID(), UUID.randomUUID()));
+        when(replenishmentRequests.findByLinkedPurchaseOrderId(PO)).thenReturn(Optional.of(req));
+
+        // A to-stock (fungible) replenishment may legitimately over-receive — the
+        // excess tops up the shared pool, it doesn't orphan. Guard must not fire.
+        service.post(cmd(WarehouseCodes.MAIN, List.of(
+            new GoodsReceiptLineRequest(null, PRODUCT_1, "RM-1", "Raw 1",
+                new BigDecimal("120"), new BigDecimal("2.50"))
+        )));
+
+        verify(stockBalances).bump(WAREHOUSE, PRODUCT_1, new BigDecimal("120"));
+    }
+
     @Test void non_pegged_linked_replenishment_fulfils_without_reserving() {
         when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
         ReplenishmentRequest req = dispatchedForPo(ReplenishmentRequest.requestForSalesOrderShortage(
