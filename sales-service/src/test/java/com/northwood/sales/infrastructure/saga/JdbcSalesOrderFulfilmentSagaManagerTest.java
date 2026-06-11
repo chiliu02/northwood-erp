@@ -164,6 +164,22 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             assertThat(state).isEqualTo(STOCK_RESERVATION_INCOMPLETE);
             assertThat(saga.state()).isEqualTo(STOCK_RESERVATION_INCOMPLETE);
         }
+
+        @Test void late_reply_after_compensation_is_ignored() {
+            // A StockReserved in flight when the order was cancelled lands after
+            // the saga reached compensating. Source-state guard: it must NOT
+            // resurrect the saga to ready_to_ship — that would both revive a
+            // cancelled order and strand its compensation (applyInventoryCancellationApplied
+            // only advances to compensated from compensating). The reply is a no-op.
+            SalesOrderFulfilmentSaga saga = sagaInState(COMPENSATING);
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyStockReserved(SO, "reserved", Set.of());
+
+            assertThat(state).isEqualTo(COMPENSATING);
+            assertThat(saga.state()).isEqualTo(COMPENSATING);
+            verify(sagas, never()).update(any());
+        }
     }
 
     @Nested
