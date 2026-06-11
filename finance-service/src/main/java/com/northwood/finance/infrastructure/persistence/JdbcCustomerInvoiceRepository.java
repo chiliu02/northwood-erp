@@ -26,6 +26,7 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
         CustomerInvoiceId.of(rs.getObject("customer_invoice_header_id", UUID.class)),
         rs.getString("invoice_number"),
         rs.getObject("sales_order_header_id", UUID.class),
+        rs.getObject("shipment_header_id", UUID.class),
         rs.getObject("customer_id", UUID.class),
         rs.getString("customer_code"),
         rs.getString("customer_name"),
@@ -66,7 +67,7 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
     @Override
     public Optional<CustomerInvoice> findById(CustomerInvoiceId id) {
         List<CustomerInvoice> matches = jdbc.query("""
-            SELECT customer_invoice_header_id, invoice_number, sales_order_header_id,
+            SELECT customer_invoice_header_id, invoice_number, sales_order_header_id, shipment_header_id,
                    customer_id, customer_code, customer_name,
                    currency_code, subtotal_amount, tax_amount, total_amount,
                    status, invoice_type, version
@@ -86,7 +87,7 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
             ORDER BY line_number
             """, LINE_MAPPER, id.value());
         return Optional.of(CustomerInvoice.reconstitute(
-            stub.id(), stub.invoiceNumber(), stub.salesOrderHeaderId(),
+            stub.id(), stub.invoiceNumber(), stub.salesOrderHeaderId(), stub.shipmentHeaderId(),
             stub.customerId(), stub.customerCode(), stub.customerName(),
             stub.currencyCode(),
             stub.subtotalAmount(), stub.taxAmount(), stub.totalAmount(),
@@ -101,7 +102,7 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
         // Header-only — list views don't render line detail. Drilling into a
         // single invoice triggers findById which loads lines.
         return jdbc.query("""
-            SELECT customer_invoice_header_id, invoice_number, sales_order_header_id,
+            SELECT customer_invoice_header_id, invoice_number, sales_order_header_id, shipment_header_id,
                    customer_id, customer_code, customer_name,
                    currency_code, subtotal_amount, tax_amount, total_amount,
                    status, invoice_type, version
@@ -218,14 +219,14 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
         Timestamp postedAt = ci.status() == CustomerInvoice.Status.POSTED ? Timestamp.from(Instant.now()) : null;
         jdbc.update("""
             INSERT INTO finance.customer_invoice_header (
-                customer_invoice_header_id, invoice_number, sales_order_header_id,
+                customer_invoice_header_id, invoice_number, sales_order_header_id, shipment_header_id,
                 customer_id, customer_code, customer_name,
                 currency_code, subtotal_amount, tax_amount, total_amount,
                 status, invoice_type, version, posted_at,
                 created_by, last_modified_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            ci.id().value(), ci.invoiceNumber(), ci.salesOrderHeaderId(),
+            ci.id().value(), ci.invoiceNumber(), ci.salesOrderHeaderId(), ci.shipmentHeaderId(),
             ci.customerId(), ci.customerCode(), ci.customerName(),
             ci.currencyCode(),
             ci.subtotalAmount(), ci.taxAmount(), ci.totalAmount(),

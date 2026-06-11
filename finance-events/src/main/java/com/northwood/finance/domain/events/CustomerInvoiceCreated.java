@@ -12,12 +12,19 @@ import java.util.UUID;
  *
  * <p>Sales' fulfilment saga consumes this and advances
  * {@code goods_shipped → invoice_created (current_step=wait_for_payment)}.
+ *
+ * <p>{@code shipmentHeaderId} is the {@code inventory} shipment this invoice was
+ * created from ({@code sales.SalesOrderShipped.shipmentHeaderId}) — the
+ * commercial/balance leg of the {@code (shipment, invoice, payment)} fulfilment
+ * triple. <b>Null</b> for prepayment/deposit invoices, which are created at
+ * order placement before any shipment exists.
  */
 public record CustomerInvoiceCreated(
     UUID eventId,
     UUID aggregateId,
     String invoiceNumber,
     UUID salesOrderHeaderId,
+    UUID shipmentHeaderId,
     UUID customerId,
     String customerCode,
     String customerName,

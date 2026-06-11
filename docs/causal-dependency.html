@@ -207,7 +207,7 @@ Each arrow is a causal dependency; <strong>hover an edge to reveal its label</st
 </figcaption>
 </figure>
 
-<h2>Diagram 3 — The fulfilment triple, and where it breaks (Gap A)</h2>
+<h2>Diagram 3 — The fulfilment triple, now fully tracked (Gap A resolved)</h2>
 <figure class="figure">
 <div class="mermaid">
 flowchart LR
@@ -222,13 +222,11 @@ flowchart LR
 
   SO -->|sales_order_header_id ✓| SH
   SO -->|sales_order_header_id ✓| CI
-  SH -.->|shipment_header_id ✗ MISSING| CI
+  SH -->|shipment_header_id ✓| CI
   CI -->|customer_invoice_header_id ✓| PM
-
-  linkStyle 2 stroke:#cf222e,stroke-width:2.5px,stroke-dasharray:6 4;
 </div>
 <figcaption>
-For an on-shipment order shipped in parts, each <code>Shipment</code> raises one <code>CustomerInvoice</code> and each invoice is settled by a <code>Payment</code> — the <strong>(shipment, invoice, payment) fulfilment triple</strong> of <code>docs/composed-state-machines.html</code>. Every link is recorded <em>except</em> Shipment→CustomerInvoice: the invoice stores <code>sales_order_header_id</code> but not <code>shipment_header_id</code>, so the triple can be reassembled only from event history, not the database.
+For an on-shipment order shipped in parts, each <code>Shipment</code> raises one <code>CustomerInvoice</code> and each invoice is settled by a <code>Payment</code> — the <strong>(shipment, invoice, payment) fulfilment triple</strong> of <code>docs/composed-state-machines.html</code>. <strong>Every link is now recorded in the database</strong>: §2.53 added the nullable <code>customer_invoice_header.shipment_header_id</code> (populated from <code>SalesOrderShipped.shipmentHeaderId</code> for commercial/balance invoices; null for prepayment/deposit invoices raised before any shipment), so the triple is reconstructable from the data, not only from event history.
 </figcaption>
 </figure>
 
@@ -259,7 +257,7 @@ For an on-shipment order shipped in parts, each <code>Shipment</code> raises one
 <tr><td>Supplier → SupplierInvoice</td><td>record (snapshot)</td><td><code>supplier_invoice_header.supplier_id</code></td><td><span class="pill v-typed">typed</span></td></tr>
 <tr><td>GoodsReceipt → ReplenishmentRequest (fulfil)</td><td><code>inventory.GoodsReceived</code></td><td>none direct; via <code>replenishment_request.linked_purchase_order_id</code> = GR's PO</td><td><span class="pill v-transitive">transitive</span></td></tr>
 <tr><td>SalesOrder → CustomerInvoice</td><td><code>sales.SalesOrderShipped</code> / <code>sales.PrepaymentInvoiceRequested</code> / <code>sales.DepositInvoiceRequested</code></td><td><code>customer_invoice_header.sales_order_header_id</code> + <code>customer_id</code></td><td><span class="pill v-typed">typed</span></td></tr>
-<tr><td><strong>Shipment → CustomerInvoice</strong></td><td><code>sales.SalesOrderShipped</code> (carries <code>shipmentHeaderId</code>)</td><td><strong>none</strong> — only <code>sales_order_header_id</code> is stored</td><td><span class="pill v-missing">MISSING</span> (gap A)</td></tr>
+<tr><td>Shipment → CustomerInvoice</td><td><code>sales.SalesOrderShipped</code> (carries <code>shipmentHeaderId</code>)</td><td><code>customer_invoice_header.shipment_header_id</code> (nullable — null for prepayment/deposit)</td><td><span class="pill v-typed">typed</span></td></tr>
 <tr><td>Shipment → SalesOrder (record shipped)</td><td><code>inventory.ShipmentPosted</code></td><td><code>shipment_header.sales_order_header_id</code> (reverse ref)</td><td><span class="pill v-typed">typed</span></td></tr>
 <tr><td>Shipment → StockReservation (consume)</td><td>in-tx at shipment post (<em>command</em>)</td><td>none direct; both carry <code>sales_order_header_id</code> (1:1 reservation/SO)</td><td><span class="pill v-transitive">transitive</span></td></tr>
 <tr><td>CustomerInvoice → Payment</td><td><em>command</em> (record payment); COD auto via <code>sales.SalesOrderShipped</code></td><td><code>payment_allocation.customer_invoice_header_id</code> (FK)</td><td><span class="pill v-xor">xor</span></td></tr>
@@ -271,7 +269,7 @@ For an on-shipment order shipped in parts, each <code>Shipment</code> raises one
 </table>
 
 <h2>Verdict</h2>
-<p>The codebase is <strong>almost fully explicit</strong>: every business-meaningful causal edge is recorded by a typed/xor field on the caused aggregate, with three <em>acceptable</em> relaxations and <strong>two genuine gaps</strong>.</p>
+<p>The codebase is <strong>almost fully explicit</strong>: every business-meaningful causal edge is recorded by a typed/xor field on the caused aggregate, with three <em>acceptable</em> relaxations and <strong>one remaining gap</strong> (gap A resolved §2.53; gap B below is a low-priority design question).</p>
 <p><strong>Acceptable relaxations</strong> (no action):</p>
 <ul>
 <li><strong>Transitive links</strong> (GoodsReceipt→ReplenishmentRequest via PO; Shipment→StockReservation via SO; Payment→Order via invoice) are reconstructable through exactly one documented hop and each has a supporting index. Direct duplication would be redundant.</li>
@@ -280,9 +278,9 @@ For an on-shipment order shipped in parts, each <code>Shipment</code> raises one
 
 <h2>Gaps — causal dependencies not explicitly tracked</h2>
 
-<h3>Gap A (real, MEDIUM) — <code>CustomerInvoice</code> does not record the <code>Shipment</code> it was raised from</h3>
-<div class="callout gap">
-A commercial / balance <code>CustomerInvoice</code> is created from <code>sales.SalesOrderShipped</code>, <strong>one invoice per shipment</strong>. The event payload carries <code>shipmentHeaderId</code>, but <code>finance.customer_invoice_header</code> stores only <code>sales_order_header_id</code> — <strong>not</strong> <code>shipment_header_id</code>. So for a partially-shipped on-shipment order (several shipments → several per-shipment invoices for one SO), you <strong>cannot tell from data which invoice settles which shipment</strong>. This is exactly the <code>(shipment, invoice, payment)</code> fulfilment triple <code>docs/composed-state-machines.html</code> builds the invoice/pay rollup on — the triple is currently reconstructable only from event history, not the database. The producing data already exists on the event; it is simply dropped at persist time. <strong>→ dev-todo §2.53.</strong>
+<h3>Gap A (RESOLVED §2.53) — <code>CustomerInvoice</code> now records the <code>Shipment</code> it was raised from</h3>
+<div class="callout rule">
+<strong>Resolved 2026-06-11 (§2.53).</strong> A commercial / balance <code>CustomerInvoice</code> is created from <code>sales.SalesOrderShipped</code>, <strong>one invoice per shipment</strong>. The event payload carries <code>shipmentHeaderId</code>; §2.53 added a nullable <code>finance.customer_invoice_header.shipment_header_id</code> (cross-context UUID, no FK, indexed) populated from it in <code>CustomerInvoiceService.createFromShippedOrder</code> and carried on the <code>CustomerInvoice</code> aggregate + <code>CustomerInvoiceCreated</code> payload. Null for prepayment/deposit invoices (created at placement before any shipment). So for a partially-shipped on-shipment order (several shipments → several per-shipment invoices for one SO) the <code>(shipment, invoice, payment)</code> fulfilment triple <code>docs/composed-state-machines.html</code> builds its invoice/pay rollup on is now reconstructable from the database, not only from event history.
 </div>
 
 <h3>Gap B (design question, LOW) — <code>ReplenishmentRequest(work_order_shortage)</code> does not record the triggering <code>WorkOrder</code></h3>
@@ -414,7 +412,7 @@ When a work order's raw materials are short, inventory raises a <code>Replenishm
     E('GoodsReceipt', 'SupplierInvoice', 'goods_receipt_header_id', null, 'inventory.GoodsReceived (3-way match)'),
     E('SalesOrder', 'Shipment', 'sales_order_header_id', null, 'command (post shipment)'),
     E('SalesOrder', 'CustomerInvoice', 'sales_order_header_id', null, 'sales.SalesOrderShipped / PrepaymentInvoiceRequested / DepositInvoiceRequested'),
-    E('Shipment', 'CustomerInvoice', 'MISSING shipment_header_id', 'missing', 'sales.SalesOrderShipped (carries shipmentHeaderId)'),
+    E('Shipment', 'CustomerInvoice', 'shipment_header_id', null, 'sales.SalesOrderShipped (carries shipmentHeaderId)'),
     E('CustomerInvoice', 'Payment', 'customer_invoice_header_id', null, 'command (record payment); COD auto via sales.SalesOrderShipped'),
     E('SupplierInvoice', 'Payment', 'supplier_invoice_header_id', null, 'command (record payment)'),
     E('Payment', 'JournalEntry', 'source_document_id', null, 'finance.CustomerPaymentReceived / SupplierPaymentMade'),

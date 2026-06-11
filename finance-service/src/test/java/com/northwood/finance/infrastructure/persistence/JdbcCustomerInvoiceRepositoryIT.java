@@ -55,6 +55,8 @@ class JdbcCustomerInvoiceRepositoryIT {
             .withUsername("postgres")
             .withPassword("postgres");
 
+    private static final UUID SHIPMENT = UUID.randomUUID();
+
     private static HikariDataSource DATA_SOURCE;
     private static JdbcTemplate JDBC;
     private static TransactionTemplate TX;
@@ -109,6 +111,7 @@ class JdbcCustomerInvoiceRepositoryIT {
         CustomerInvoice r = REPO.findById(ci.id()).orElseThrow();
         assertThat(r.invoiceNumber()).isEqualTo("INV-RT-001");
         assertThat(r.salesOrderHeaderId()).isEqualTo(salesOrderId);
+        assertThat(r.shipmentHeaderId()).isEqualTo(SHIPMENT);
         assertThat(r.customerId()).isEqualTo(customerId);
         assertThat(r.status()).isEqualTo(CustomerInvoice.Status.POSTED);
         assertThat(r.currencyCode()).isEqualTo("AUD");
@@ -167,7 +170,7 @@ class JdbcCustomerInvoiceRepositoryIT {
             new BigDecimal("2"), new BigDecimal("50.000000"), BigDecimal.ZERO, BigDecimal.ZERO,
             new BigDecimal("100.00"));
         return CustomerInvoice.create(
-            invoiceNumber, salesOrderId, customerId, "CUST-INV-IT", "Customer IT", "AUD", List.of(line));
+            invoiceNumber, salesOrderId, SHIPMENT, customerId, "CUST-INV-IT", "Customer IT", "AUD", List.of(line));
     }
 
     private void save(CustomerInvoice ci) {

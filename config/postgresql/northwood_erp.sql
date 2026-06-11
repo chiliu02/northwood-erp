@@ -2191,6 +2191,14 @@ CREATE TABLE finance.customer_invoice_header (
     customer_invoice_header_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     invoice_number VARCHAR(50) NOT NULL UNIQUE,
     sales_order_header_id UUID NOT NULL,
+    -- The inventory shipment this invoice was created from
+    -- (sales.SalesOrderShipped.shipmentHeaderId) — the commercial/balance leg of
+    -- the (shipment, invoice, payment) fulfilment triple. Cross-context UUID, no
+    -- FK. NULL for prepayment/deposit invoices, created at order placement before
+    -- any shipment exists; for a partially-shipped on-shipment order (several
+    -- shipments → several invoices) this is what links each invoice to its
+    -- shipment in the DB rather than only via event history.
+    shipment_header_id UUID,
     customer_id UUID NOT NULL,
     customer_code VARCHAR(50),
     customer_name VARCHAR(200) NOT NULL,
@@ -2266,6 +2274,9 @@ CREATE TABLE finance.customer_invoice_line (
 CREATE INDEX idx_customer_invoice_header_sales_order_header_id ON finance.customer_invoice_header(sales_order_header_id);
 CREATE INDEX idx_customer_invoice_header_customer_id ON finance.customer_invoice_header(customer_id);
 CREATE INDEX idx_customer_invoice_header_status ON finance.customer_invoice_header(status);
+-- Partial index — only shipment-time (commercial/balance) invoices carry a
+-- shipment_header_id; prepayment/deposit rows are NULL and excluded.
+CREATE INDEX idx_customer_invoice_header_shipment_header_id ON finance.customer_invoice_header(shipment_header_id) WHERE shipment_header_id IS NOT NULL;
 
 CREATE TABLE finance.supplier_invoice_header (
     supplier_invoice_header_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),

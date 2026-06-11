@@ -125,6 +125,16 @@ public final class CustomerInvoice {
     private final CustomerInvoiceId id;
     private final String invoiceNumber;
     private final UUID salesOrderHeaderId;
+    /**
+     * The inventory shipment this invoice was created from (the
+     * {@code SalesOrderShipped.shipmentHeaderId}). Non-null only for
+     * shipment-time invoices ({@link InvoiceType#COMMERCIAL} /
+     * {@link InvoiceType#BALANCE}); null for prepayment/deposit invoices created
+     * at order placement before any shipment. Cross-context UUID — no FK.
+     * Records the commercial/balance leg of the
+     * {@code (shipment, invoice, payment)} fulfilment triple.
+     */
+    private final UUID shipmentHeaderId;
     private final UUID customerId;
     private final String customerCode;
     private final String customerName;
@@ -142,13 +152,14 @@ public final class CustomerInvoice {
     public static CustomerInvoice create(
         String invoiceNumber,
         UUID salesOrderHeaderId,
+        UUID shipmentHeaderId,
         UUID customerId,
         String customerCode,
         String customerName,
         String currencyCode,
         List<CustomerInvoiceLine> lines
     ) {
-        return build(InvoiceType.COMMERCIAL, invoiceNumber, salesOrderHeaderId,
+        return build(InvoiceType.COMMERCIAL, invoiceNumber, salesOrderHeaderId, shipmentHeaderId,
             customerId, customerCode, customerName, currencyCode, lines);
     }
 
@@ -168,7 +179,8 @@ public final class CustomerInvoice {
         String currencyCode,
         List<CustomerInvoiceLine> lines
     ) {
-        return build(InvoiceType.PREPAYMENT, invoiceNumber, salesOrderHeaderId,
+        // No shipment yet — prepayment invoices are created at order placement.
+        return build(InvoiceType.PREPAYMENT, invoiceNumber, salesOrderHeaderId, null,
             customerId, customerCode, customerName, currencyCode, lines);
     }
 
@@ -187,7 +199,8 @@ public final class CustomerInvoice {
         String currencyCode,
         List<CustomerInvoiceLine> lines
     ) {
-        return build(InvoiceType.DEPOSIT, invoiceNumber, salesOrderHeaderId,
+        // No shipment yet — deposit invoices are created at order placement.
+        return build(InvoiceType.DEPOSIT, invoiceNumber, salesOrderHeaderId, null,
             customerId, customerCode, customerName, currencyCode, lines);
     }
 
@@ -201,13 +214,14 @@ public final class CustomerInvoice {
     public static CustomerInvoice createBalance(
         String invoiceNumber,
         UUID salesOrderHeaderId,
+        UUID shipmentHeaderId,
         UUID customerId,
         String customerCode,
         String customerName,
         String currencyCode,
         List<CustomerInvoiceLine> lines
     ) {
-        return build(InvoiceType.BALANCE, invoiceNumber, salesOrderHeaderId,
+        return build(InvoiceType.BALANCE, invoiceNumber, salesOrderHeaderId, shipmentHeaderId,
             customerId, customerCode, customerName, currencyCode, lines);
     }
 
@@ -215,6 +229,7 @@ public final class CustomerInvoice {
         InvoiceType invoiceType,
         String invoiceNumber,
         UUID salesOrderHeaderId,
+        UUID shipmentHeaderId,
         UUID customerId,
         String customerCode,
         String customerName,
@@ -237,7 +252,7 @@ public final class CustomerInvoice {
 
         CustomerInvoiceId id = CustomerInvoiceId.newId();
         CustomerInvoice ci = new CustomerInvoice(
-            id, invoiceNumber, salesOrderHeaderId,
+            id, invoiceNumber, salesOrderHeaderId, shipmentHeaderId,
             customerId, customerCode, customerName,
             Currencies.orBase(currencyCode),
             subtotal, tax, total,
@@ -251,6 +266,7 @@ public final class CustomerInvoice {
             id.value(),
             invoiceNumber,
             salesOrderHeaderId,
+            shipmentHeaderId,
             customerId,
             customerCode,
             customerName,
@@ -264,7 +280,7 @@ public final class CustomerInvoice {
 
     /** Factory: hydrate from the DB; emits no events. */
     public static CustomerInvoice reconstitute(
-        CustomerInvoiceId id, String invoiceNumber, UUID salesOrderHeaderId,
+        CustomerInvoiceId id, String invoiceNumber, UUID salesOrderHeaderId, UUID shipmentHeaderId,
         UUID customerId, String customerCode, String customerName,
         String currencyCode,
         BigDecimal subtotalAmount, BigDecimal taxAmount, BigDecimal totalAmount,
@@ -273,7 +289,7 @@ public final class CustomerInvoice {
         List<CustomerInvoiceLine> lines, long version
     ) {
         return new CustomerInvoice(
-            id, invoiceNumber, salesOrderHeaderId,
+            id, invoiceNumber, salesOrderHeaderId, shipmentHeaderId,
             customerId, customerCode, customerName,
             currencyCode,
             subtotalAmount, taxAmount, totalAmount,
@@ -284,7 +300,7 @@ public final class CustomerInvoice {
     }
 
     private CustomerInvoice(
-        CustomerInvoiceId id, String invoiceNumber, UUID salesOrderHeaderId,
+        CustomerInvoiceId id, String invoiceNumber, UUID salesOrderHeaderId, UUID shipmentHeaderId,
         UUID customerId, String customerCode, String customerName,
         String currencyCode,
         BigDecimal subtotalAmount, BigDecimal taxAmount, BigDecimal totalAmount,
@@ -295,6 +311,7 @@ public final class CustomerInvoice {
         this.id = id;
         this.invoiceNumber = invoiceNumber;
         this.salesOrderHeaderId = salesOrderHeaderId;
+        this.shipmentHeaderId = shipmentHeaderId;
         this.customerId = customerId;
         this.customerCode = customerCode;
         this.customerName = customerName;
@@ -317,6 +334,7 @@ public final class CustomerInvoice {
     public CustomerInvoiceId id()                { return id; }
     public String invoiceNumber()                { return invoiceNumber; }
     public UUID salesOrderHeaderId()             { return salesOrderHeaderId; }
+    public UUID shipmentHeaderId()               { return shipmentHeaderId; }
     public UUID customerId()                     { return customerId; }
     public String customerCode()                 { return customerCode; }
     public String customerName()                 { return customerName; }

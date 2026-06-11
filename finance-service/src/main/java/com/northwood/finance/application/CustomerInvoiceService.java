@@ -132,6 +132,7 @@ public class CustomerInvoiceService {
         CustomerInvoice invoice = CustomerInvoice.create(
             invoiceNumber,
             payload.aggregateId(),
+            payload.shipmentHeaderId(),
             payload.customerId(),
             payload.customerCode(),
             payload.customerName(),
@@ -279,6 +280,7 @@ public class CustomerInvoiceService {
         CustomerInvoice invoice = CustomerInvoice.createBalance(
             invoiceNumber,
             payload.aggregateId(),
+            payload.shipmentHeaderId(),
             payload.customerId(),
             payload.customerCode(),
             payload.customerName(),
