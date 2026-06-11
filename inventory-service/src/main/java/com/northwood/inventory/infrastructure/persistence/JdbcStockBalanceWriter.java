@@ -35,24 +35,26 @@ public class JdbcStockBalanceWriter implements StockBalanceWriter {
         if (quantity == null || quantity.signum() <= 0) {
             return;
         }
-        int rows = jdbc.update("""
-            UPDATE inventory.stock_balance
-               SET on_hand_quantity = on_hand_quantity + ?,
-                   version = version + 1
-             WHERE warehouse_id = ? AND product_id = ?
+        // Single-statement upsert: add to the existing balance, or seed the row
+        // if this is the product's first touch in this warehouse. The earlier
+        // UPDATE-then-INSERT-on-zero-rows seeded the row in a second statement,
+        // which races under multi-partition consumption — two `bump`s for the
+        // same (warehouse, product) on different partition threads could both
+        // see zero rows and both INSERT, the second hitting
+        // UNIQUE (warehouse_id, product_id) → DataIntegrityViolation → DLT. The
+        // ON CONFLICT collapses seed + add into one atomic write, so concurrent
+        // first-touches converge instead of one dead-lettering.
+        jdbc.update("""
+            INSERT INTO inventory.stock_balance (
+                stock_balance_id, warehouse_id, product_id,
+                on_hand_quantity, reserved_quantity, average_cost
+            ) VALUES (?, ?, ?, ?, 0, 0)
+            ON CONFLICT (warehouse_id, product_id) DO UPDATE
+                SET on_hand_quantity = inventory.stock_balance.on_hand_quantity + EXCLUDED.on_hand_quantity,
+                    version = inventory.stock_balance.version + 1
             """,
-            quantity, warehouseId, productId
+            UUID.randomUUID(), warehouseId, productId, quantity
         );
-        if (rows == 0) {
-            jdbc.update("""
-                INSERT INTO inventory.stock_balance (
-                    stock_balance_id, warehouse_id, product_id,
-                    on_hand_quantity, reserved_quantity, average_cost
-                ) VALUES (?, ?, ?, ?, 0, 0)
-                """,
-                UUID.randomUUID(), warehouseId, productId, quantity
-            );
-        }
     }
 
     @Override

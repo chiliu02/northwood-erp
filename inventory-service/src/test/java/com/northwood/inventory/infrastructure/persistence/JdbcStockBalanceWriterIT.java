@@ -15,7 +15,16 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Queue;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -141,6 +150,57 @@ class JdbcStockBalanceWriterIT {
 
         Balance b = read();
         assertThat(b.onHand()).isEqualByComparingTo("15");
+    }
+
+    /**
+     * Concurrency regression for the multi-partition read-modify-write hazard
+     * (docs/messaging.md → <em>Hazards when scaling past 1 partition</em>, item 3):
+     * many {@code bump}s first-touch the <em>same</em> {@code (warehouse, product)}
+     * row at once — the case multi-partition consumption makes real (e.g. two
+     * goods-receipts for a brand-new product on different partition threads). The
+     * former {@code UPDATE}-then-{@code INSERT}-on-zero-rows seeded the row in a
+     * second statement, so two threads could both see zero rows and both
+     * {@code INSERT}, the loser hitting {@code UNIQUE (warehouse_id, product_id)} →
+     * {@code DataIntegrityViolationException} → DLT. The single-statement
+     * {@code ON CONFLICT … DO UPDATE} upsert collapses seed + add atomically, so
+     * every concurrent first-touch converges: no exception, one row, sum preserved.
+     */
+    @Test
+    void bump_is_race_safe_on_concurrent_first_touch() throws Exception {
+        int threads = 8;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        Queue<Throwable> errors = new ConcurrentLinkedQueue<>();
+        List<Future<?>> futures = new ArrayList<>();
+        try {
+            for (int i = 0; i < threads; i++) {
+                futures.add(pool.submit(() -> {
+                    try {
+                        start.await();
+                        TX.executeWithoutResult(s -> WRITER.bump(SEED_WAREHOUSE_ID, productId, new BigDecimal("10")));
+                    } catch (Throwable t) {
+                        errors.add(t);
+                    }
+                }));
+            }
+            start.countDown();   // release all threads to contend on the same fresh row
+            for (Future<?> f : futures) {
+                f.get(10, TimeUnit.SECONDS);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertThat(errors)
+            .withFailMessage("concurrent first-touch bump must not raise (the upsert collapses the seed race): %s", errors)
+            .isEmpty();
+        assertThat(read().onHand())
+            .withFailMessage("every concurrent bump must be applied exactly once")
+            .isEqualByComparingTo(new BigDecimal(threads * 10));
+        Integer rowCount = JDBC.queryForObject(
+            "SELECT COUNT(*) FROM inventory.stock_balance WHERE warehouse_id = ? AND product_id = ?",
+            Integer.class, SEED_WAREHOUSE_ID, productId);
+        assertThat(rowCount).isEqualTo(1);
     }
 
     @Test

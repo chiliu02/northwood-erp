@@ -56,9 +56,14 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      # Auto-create event topics (`product.events`, `inventory.events`, ...) on
-      # first publish. We can flip this off and pre-declare topics later.
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # Disabled — every topic is now explicitly declared as a NewTopic bean and
+      # materialised by each producer's KafkaAdmin on startup: `<service>.events`
+      # (KafkaMessagingAutoConfiguration.eventsTopic) plus its dead-letter
+      # companions `<service>.events.dlt` + `<service>.events.dlt.parked`
+      # (eventsDltTopics). With auto-create off, a typo'd topic name fails loudly
+      # instead of silently spawning a stray 1-partition topic. (Internal topics
+      # __consumer_offsets / __transaction_state are broker-managed, unaffected.)
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       # Single-broker overrides. Kafka's defaults assume a 3-broker cluster;
       # without these the internal topics __consumer_offsets and
       # __transaction_state can't be created (replicas=3 > brokers=1) and

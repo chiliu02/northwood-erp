@@ -18,6 +18,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.config.TopicBuilder;
+import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
@@ -106,6 +107,15 @@ public class KafkaMessagingAutoConfiguration {
         ClassCastException.class
     );
 
+    /**
+     * Suffix the recoverer appends to a source topic to form its dead-letter
+     * topic ({@code <topic>.dlt}) — hoisted to a constant so the recoverer and
+     * the {@link #eventsDltTopics} pre-declaration can't drift. The redrive
+     * terminal appends {@link DltRedriver#PARKED_SUFFIX} on top
+     * ({@code <topic>.dlt.parked}).
+     */
+    static final String DLT_SUFFIX = ".dlt";
+
     @Bean
     @Profile("kafka")
     public KafkaEventPublisher kafkaEventPublisher(
@@ -153,6 +163,45 @@ public class KafkaMessagingAutoConfiguration {
             .partitions(partitions)
             .replicas(replicationFactor)
             .build();
+    }
+
+    /**
+     * Pre-declares this producer's dead-letter companions —
+     * {@code <service>.events.dlt} and the redrive terminal
+     * {@code <service>.events.dlt.parked} — so no topic relies on broker
+     * auto-create (which lets the docker-compose broker run with
+     * {@code KAFKA_AUTO_CREATE_TOPICS_ENABLE=false}). A single {@code <topic>.dlt}
+     * is shared by every consumer of {@code <topic>} (each redrives only its own
+     * via the {@code kafka_dlt-original-consumer-group} header), so the topic
+     * owner — the producer — is the natural declarer of its companions, the same
+     * topic-per-service ownership as {@link #eventsTopic}. Gated on the identical
+     * producer condition, so a consumer-only service declares none.
+     *
+     * <p>Both are sized to the source partition count
+     * ({@code northwood.kafka.topic.partitions}): a DLT matching its source lets
+     * {@link DltRedriver}'s per-partition redrive parallelise N-way. The parked
+     * terminal is never re-read (the {@code .+\.dlt} redrive pattern doesn't match
+     * {@code .dlt.parked}), so its partition count is immaterial — sized the same
+     * for uniformity. Declared together via {@link KafkaAdmin.NewTopics}; like
+     * {@code eventsTopic}, {@code KafkaAdmin} only ever <em>adds</em> partitions,
+     * so raising the count is a safe rolling change.
+     */
+    @Bean
+    @Profile("kafka")
+    @ConditionalOnProperty(prefix = "northwood.outbox.drain", name = "enabled", havingValue = "true")
+    public KafkaAdmin.NewTopics eventsDltTopics(
+        @Value("${northwood.service-name}") String serviceName,
+        @Value("${northwood.kafka.topic.partitions:3}") int partitions,
+        @Value("${northwood.kafka.topic.replication-factor:1}") short replicationFactor
+    ) {
+        String dlt = KafkaEventPublisher.topicName(serviceName) + DLT_SUFFIX;
+        String parked = dlt + DltRedriver.PARKED_SUFFIX;
+        log.info("declaring dead-letter topics {} + {} (partitions={}, replicationFactor={})",
+            dlt, parked, partitions, replicationFactor);
+        return new KafkaAdmin.NewTopics(
+            TopicBuilder.name(dlt).partitions(partitions).replicas(replicationFactor).build(),
+            TopicBuilder.name(parked).partitions(partitions).replicas(replicationFactor).build()
+        );
     }
 
     /**
@@ -313,7 +362,7 @@ public class KafkaMessagingAutoConfiguration {
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
             kafkaTemplate,
             (record, ex) -> {
-                String dlt = record.topic() + ".dlt";
+                String dlt = record.topic() + DLT_SUFFIX;
                 log.warn("publishing to DLT {} (source partition={}, offset={}): {}",
                     dlt, record.partition(), record.offset(), ex.toString());
                 // partition -1 → let the producer's key-hash partitioner choose
