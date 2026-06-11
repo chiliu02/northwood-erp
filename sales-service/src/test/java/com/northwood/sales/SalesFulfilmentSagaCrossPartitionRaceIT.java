@@ -39,7 +39,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * §2.49 — the full delivery-path proof that the sales-order-fulfilment saga
+ * The full delivery-path proof that the sales-order-fulfilment saga
  * advances <em>exactly once</em> under a genuine cross-partition duplicate
  * ({@code docs/messaging.md} → <em>Hazards when scaling past 1 partition</em>,
  * item 2). The DB-level twin

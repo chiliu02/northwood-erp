@@ -437,7 +437,7 @@
   <strong>ship / invoice / pay</strong> axis, and <code>COMPLETED</code> is a cross-axis meet. The <strong>header-status half</strong> of this
   model is <strong>as-built</strong> (shipped 2026-06-10 — the fold owns the status; the fulfilment-Saga-driven status + blind
   <code>markStatus</code> writes are retired, and every SalesOrder event row and cross-service consumer below is described against
-  it). The <strong>pruned 9-state orchestration</strong> shown below is now <strong>as-built too</strong> (§2.55, 2026-06-12): the saga
+  it). The <strong>pruned 9-state orchestration</strong> shown below is now <strong>as-built too</strong> (2026-06-12): the saga
   was pruned from its 13-state set to 9 — the post-supply pass-throughs (<code>goods_shipped</code> / <code>partially_shipped</code> /
   <code>invoice_partially_paid</code>) dropped in favour of a two-flag completion gate, the prepayment/deposit invoice
   intermediates collapsed into one <code>awaiting_prepayment</code> gate (the <code>prepaid</code> worker checkpoint kept), and

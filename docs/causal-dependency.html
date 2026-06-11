@@ -226,7 +226,7 @@ flowchart LR
   CI -->|customer_invoice_header_id ✓| PM
 </div>
 <figcaption>
-For an on-shipment order shipped in parts, each <code>Shipment</code> raises one <code>CustomerInvoice</code> and each invoice is settled by a <code>Payment</code> — the <strong>(shipment, invoice, payment) fulfilment triple</strong> of <code>docs/composed-state-machines.html</code>. <strong>Every link is now recorded in the database</strong>: §2.53 added the nullable <code>customer_invoice_header.shipment_header_id</code> (populated from <code>SalesOrderShipped.shipmentHeaderId</code> for commercial/balance invoices; null for prepayment/deposit invoices raised before any shipment), so the triple is reconstructable from the data, not only from event history.
+For an on-shipment order shipped in parts, each <code>Shipment</code> raises one <code>CustomerInvoice</code> and each invoice is settled by a <code>Payment</code> — the <strong>(shipment, invoice, payment) fulfilment triple</strong> of <code>docs/composed-state-machines.html</code>. <strong>Every link is now recorded in the database</strong>: a nullable <code>customer_invoice_header.shipment_header_id</code> was added (populated from <code>SalesOrderShipped.shipmentHeaderId</code> for commercial/balance invoices; null for prepayment/deposit invoices raised before any shipment), so the triple is reconstructable from the data, not only from event history.
 </figcaption>
 </figure>
 
@@ -242,7 +242,7 @@ For an on-shipment order shipped in parts, each <code>Shipment</code> raises one
 <tr><td>SalesOrder → StockReservation</td><td><code>sales.StockReservationRequested</code></td><td><code>stock_reservation_header.sales_order_header_id</code>; line <code>sales_order_line_id</code></td><td><span class="pill v-xor">xor</span></td></tr>
 <tr><td>WorkOrder → StockReservation (raw-material)</td><td><code>manufacturing.RawMaterialReservationRequested</code></td><td><code>stock_reservation_header.work_order_id</code></td><td><span class="pill v-xor">xor</span></td></tr>
 <tr><td>SalesOrder line short → ReplenishmentRequest</td><td>in-tx with a partial <code>sales.StockReservationRequested</code> (inventory raises it)</td><td><code>replenishment_request.source_sales_order_header_id</code> + <code>source_sales_order_line_id</code> (reasons <code>sales_order_shortage</code>, <code>order_pegged</code>)</td><td><span class="pill v-typed">typed</span></td></tr>
-<tr><td>WorkOrder shortage → ReplenishmentRequest</td><td><code>manufacturing.RawMaterialShortageDetected</code></td><td>reason <code>work_order_shortage</code> <strong>only</strong> — no <code>source_work_order_id</code> (by design)</td><td><span class="pill v-missing">MISSING</span> (gap B — accepted §2.54)</td></tr>
+<tr><td>WorkOrder shortage → ReplenishmentRequest</td><td><code>manufacturing.RawMaterialShortageDetected</code></td><td>reason <code>work_order_shortage</code> <strong>only</strong> — no <code>source_work_order_id</code> (by design)</td><td><span class="pill v-missing">MISSING</span> (gap B — accepted, by design)</td></tr>
 <tr><td>reorder-point breach → ReplenishmentRequest</td><td>in-tx with <code>inventory.ShipmentPosted</code> / <code>inventory.StockAdjusted</code> decrement</td><td><code>product_id</code> + <code>warehouse_id</code> (reason <code>reorder_point_breach</code>)</td><td><span class="pill v-typed">typed</span></td></tr>
 <tr><td>ReplenishmentRequest → WorkOrder | PurchaseRequisition</td><td><code>inventory.ReplenishmentRequested</code></td><td><code>replenishment_request.dispatched_aggregate_id</code> (+ <code>dispatched_aggregate_kind</code>)</td><td><span class="pill v-typed">typed</span></td></tr>
 <tr><td>ReplenishmentRequest → WorkOrder</td><td><code>inventory.ReplenishmentRequested</code> (target=mfg)</td><td><code>work_order.replenishment_request_id</code> (origin CHECK: SO-pair ⊕ <code>replenishment_request_id</code> ⊕ none)</td><td><span class="pill v-xor">xor</span></td></tr>
@@ -269,7 +269,7 @@ For an on-shipment order shipped in parts, each <code>Shipment</code> raises one
 </table>
 
 <h2>Verdict</h2>
-<p>The codebase is <strong>fully explicit for every load-bearing edge</strong>: every business-meaningful causal edge is recorded by a typed/xor field on the caused aggregate, with three <em>acceptable</em> relaxations and <strong>no open gaps</strong> — gap A resolved (§2.53, the new <code>customer_invoice_header.shipment_header_id</code>) and gap B decided as intentional/won't-do (§2.54; see below).</p>
+<p>The codebase is <strong>fully explicit for every load-bearing edge</strong>: every business-meaningful causal edge is recorded by a typed/xor field on the caused aggregate, with three <em>acceptable</em> relaxations and <strong>no open gaps</strong> — gap A resolved (the new <code>customer_invoice_header.shipment_header_id</code>) and gap B decided as intentional/won't-do (see below).</p>
 <p><strong>Acceptable relaxations</strong> (no action):</p>
 <ul>
 <li><strong>Transitive links</strong> (GoodsReceipt→ReplenishmentRequest via PO; Shipment→StockReservation via SO; Payment→Order via invoice) are reconstructable through exactly one documented hop and each has a supporting index. Direct duplication would be redundant.</li>
@@ -278,12 +278,12 @@ For an on-shipment order shipped in parts, each <code>Shipment</code> raises one
 
 <h2>Gaps — causal dependencies not explicitly tracked</h2>
 
-<h3>Gap A (RESOLVED §2.53) — <code>CustomerInvoice</code> now records the <code>Shipment</code> it was raised from</h3>
+<h3>Gap A (RESOLVED) — <code>CustomerInvoice</code> now records the <code>Shipment</code> it was raised from</h3>
 <div class="callout rule">
-<strong>Resolved 2026-06-11 (§2.53).</strong> A commercial / balance <code>CustomerInvoice</code> is created from <code>sales.SalesOrderShipped</code>, <strong>one invoice per shipment</strong>. The event payload carries <code>shipmentHeaderId</code>; §2.53 added a nullable <code>finance.customer_invoice_header.shipment_header_id</code> (cross-context UUID, no FK, indexed) populated from it in <code>CustomerInvoiceService.createFromShippedOrder</code> and carried on the <code>CustomerInvoice</code> aggregate + <code>CustomerInvoiceCreated</code> payload. Null for prepayment/deposit invoices (created at placement before any shipment). So for a partially-shipped on-shipment order (several shipments → several per-shipment invoices for one SO) the <code>(shipment, invoice, payment)</code> fulfilment triple <code>docs/composed-state-machines.html</code> builds its invoice/pay rollup on is now reconstructable from the database, not only from event history.
+<strong>Resolved 2026-06-11.</strong> A commercial / balance <code>CustomerInvoice</code> is created from <code>sales.SalesOrderShipped</code>, <strong>one invoice per shipment</strong>. The event payload carries <code>shipmentHeaderId</code>; a nullable <code>finance.customer_invoice_header.shipment_header_id</code> was added (cross-context UUID, no FK, indexed) populated from it in <code>CustomerInvoiceService.createFromShippedOrder</code> and carried on the <code>CustomerInvoice</code> aggregate + <code>CustomerInvoiceCreated</code> payload. Null for prepayment/deposit invoices (created at placement before any shipment). So for a partially-shipped on-shipment order (several shipments → several per-shipment invoices for one SO) the <code>(shipment, invoice, payment)</code> fulfilment triple <code>docs/composed-state-machines.html</code> builds its invoice/pay rollup on is now reconstructable from the database, not only from event history.
 </div>
 
-<h3>Gap B (DECIDED §2.54 — intentional, won't-do) — <code>ReplenishmentRequest(work_order_shortage)</code> does not record the triggering <code>WorkOrder</code></h3>
+<h3>Gap B (DECIDED — intentional, won't-do) — <code>ReplenishmentRequest(work_order_shortage)</code> does not record the triggering <code>WorkOrder</code></h3>
 <div class="callout rule">
 When a work order's raw materials are short, inventory raises a <code>ReplenishmentRequest</code> with <code>reason = 'work_order_shortage'</code>, but no <code>source_work_order_id</code> is stored (contrast <code>source_sales_order_header_id</code>/<code>_line_id</code>, which <em>are</em> stored for the sales-driven reasons). <strong>Decision (2026-06-11): leave it untracked — by design.</strong> Three reasons make a stored back-reference wrong here, not merely optional:
 <ol>
@@ -407,7 +407,7 @@ This keeps the register's <span class="pill v-missing">MISSING</span> verdict, n
     E('SalesOrder', 'StockReservation', 'sales_order_header_id', null, 'sales.StockReservationRequested'),
     E('WorkOrder', 'StockReservation', 'work_order_id', null, 'manufacturing.RawMaterialReservationRequested'),
     E('StockReservation', 'ReplenishmentRequest', 'source_sales_order_line_id', null, 'in-tx with a partial sales.StockReservationRequested'),
-    E('WorkOrder', 'ReplenishmentRequest', 'no source_work_order_id (by design §2.54)', 'missing', 'manufacturing.RawMaterialShortageDetected'),
+    E('WorkOrder', 'ReplenishmentRequest', 'no source_work_order_id (by design)', 'missing', 'manufacturing.RawMaterialShortageDetected'),
     E('ReplenishmentRequest', 'WorkOrder', 'replenishment_request_id', null, 'inventory.ReplenishmentRequested (target=mfg)'),
     E('ReplenishmentRequest', 'PurchaseRequisition', 'source_replenishment_request_id', null, 'inventory.ReplenishmentRequested (target=pur)'),
     E('Bom', 'WorkOrder', 'bom_header_id', null, 'read at WO release (inventory.ReplenishmentRequested)'),
