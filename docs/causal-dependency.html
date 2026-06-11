@@ -228,7 +228,7 @@ flowchart LR
   linkStyle 2 stroke:#cf222e,stroke-width:2.5px,stroke-dasharray:6 4;
 </div>
 <figcaption>
-For an on-shipment order shipped in parts, each <code>Shipment</code> raises one <code>CustomerInvoice</code> and each invoice is settled by a <code>Payment</code> — the <strong>(shipment, invoice, payment) fulfilment triple</strong> of <code>docs/composed-state-machines.md</code>. Every link is recorded <em>except</em> Shipment→CustomerInvoice: the invoice stores <code>sales_order_header_id</code> but not <code>shipment_header_id</code>, so the triple can be reassembled only from event history, not the database.
+For an on-shipment order shipped in parts, each <code>Shipment</code> raises one <code>CustomerInvoice</code> and each invoice is settled by a <code>Payment</code> — the <strong>(shipment, invoice, payment) fulfilment triple</strong> of <code>docs/composed-state-machines.html</code>. Every link is recorded <em>except</em> Shipment→CustomerInvoice: the invoice stores <code>sales_order_header_id</code> but not <code>shipment_header_id</code>, so the triple can be reassembled only from event history, not the database.
 </figcaption>
 </figure>
 
@@ -282,7 +282,7 @@ For an on-shipment order shipped in parts, each <code>Shipment</code> raises one
 
 <h3>Gap A (real, MEDIUM) — <code>CustomerInvoice</code> does not record the <code>Shipment</code> it was raised from</h3>
 <div class="callout gap">
-A commercial / balance <code>CustomerInvoice</code> is created from <code>sales.SalesOrderShipped</code>, <strong>one invoice per shipment</strong>. The event payload carries <code>shipmentHeaderId</code>, but <code>finance.customer_invoice_header</code> stores only <code>sales_order_header_id</code> — <strong>not</strong> <code>shipment_header_id</code>. So for a partially-shipped on-shipment order (several shipments → several per-shipment invoices for one SO), you <strong>cannot tell from data which invoice settles which shipment</strong>. This is exactly the <code>(shipment, invoice, payment)</code> fulfilment triple <code>docs/composed-state-machines.md</code> builds the invoice/pay rollup on — the triple is currently reconstructable only from event history, not the database. The producing data already exists on the event; it is simply dropped at persist time. <strong>→ dev-todo §2.53.</strong>
+A commercial / balance <code>CustomerInvoice</code> is created from <code>sales.SalesOrderShipped</code>, <strong>one invoice per shipment</strong>. The event payload carries <code>shipmentHeaderId</code>, but <code>finance.customer_invoice_header</code> stores only <code>sales_order_header_id</code> — <strong>not</strong> <code>shipment_header_id</code>. So for a partially-shipped on-shipment order (several shipments → several per-shipment invoices for one SO), you <strong>cannot tell from data which invoice settles which shipment</strong>. This is exactly the <code>(shipment, invoice, payment)</code> fulfilment triple <code>docs/composed-state-machines.html</code> builds the invoice/pay rollup on — the triple is currently reconstructable only from event history, not the database. The producing data already exists on the event; it is simply dropped at persist time. <strong>→ dev-todo §2.53.</strong>
 </div>
 
 <h3>Gap B (design question, LOW) — <code>ReplenishmentRequest(work_order_shortage)</code> does not record the triggering <code>WorkOrder</code></h3>

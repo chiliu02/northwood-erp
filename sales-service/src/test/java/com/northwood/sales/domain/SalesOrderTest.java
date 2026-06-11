@@ -469,7 +469,7 @@ class SalesOrderTest {
 
     /**
      * Properties of the status fold {@code ρ = classify(meet, join)}
-     * (docs/composed-state-machines.md §3): the header status is a pure function of
+     * (docs/composed-state-machines.html §3): the header status is a pure function of
      * the live-line multiset, invariant under order/insert/batch, neutral to
      * cancelled lines, and monotone through the forward flow.
      */

@@ -1,0 +1,1407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Northwood — Composed State Machines</title>
+<!-- Single source for the composed-state-machine note.
+
+     Merged 2026-06-11 from docs/composed-state-machines.md (the full formal
+     note — 14 sections + references) and docs/composed-state-machine.html (the
+     visual diagram page). Both originals are retired; this file is the only
+     document for the topic. No detail of either source was dropped: the prose
+     is the complete note, and the two interactive Mermaid stateDiagrams,
+     legend, before/now table, and pill-styled worked examples come from the
+     former HTML companion.
+
+     As of 2026-06-10 the model is AS-BUILT, not a target: a single faithful
+     classify() fold on the aggregate (header ship-vocabulary == line
+     vocabulary); the in-progress band carried on the line; the invoice/pay axes
+     off the SO line (§12.6); completed as a cross-axis meet; gates read line
+     predicates. See §14 for the closed-gap accounting.
+
+     Self-contained: every diagram is an inline Mermaid stateDiagram-v2 source.
+     Mermaid loads from a CDN (modern browsers permit HTTPS from file://); if it
+     fails, each <pre class="mermaid"> degrades to its readable stateDiagram
+     source text — the single source of truth + offline fallback, same
+     philosophy as system-map.html's Cytoscape graphs.
+
+     Palette + typography mirror system-map.html for visual continuity. -->
+<style>
+  :root {
+    --border: #d0d7de;
+    --border-strong: #8c959f;
+    --bg: #ffffff;
+    --bg-alt: #f6f8fa;
+    --code-bg: #eff1f3;
+    --text: #1f2328;
+    --muted: #57606a;
+    --accent: #0969da;
+    --critical: #cf222e;
+    --saga: #8250df;
+    --aggregate: #1a7f37;
+    --readmodel: #0969da;
+    --shipfold: #1a7f37;
+    --command: #cf222e;
+    --crossaxis: #0969da;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    margin: 0;
+    padding: 2rem 3rem 4rem;
+    line-height: 1.55;
+    max-width: 1500px;
+  }
+  h1 { font-size: 1.85rem; margin: 0 0 0.3rem; }
+  h2 {
+    font-size: 1.35rem;
+    margin: 2.6rem 0 0.75rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--border);
+  }
+  h3 { font-size: 1.1rem; margin: 1.6rem 0 0.5rem; }
+  h4 { font-size: 0.98rem; margin: 1.2rem 0 0.4rem; color: var(--muted); }
+  p { margin: 0.5rem 0 0.8rem; }
+  .lede { color: var(--muted); font-size: 1.02rem; max-width: 62rem; }
+  code {
+    background: var(--code-bg);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+    font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.88em;
+  }
+  a { color: var(--accent); }
+  pre.code {
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.9rem 1.1rem;
+    overflow-x: auto;
+    font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.82rem;
+    line-height: 1.45;
+  }
+  pre.code .cmt { color: var(--muted); }
+  blockquote {
+    border-left: 4px solid var(--border-strong);
+    background: var(--bg-alt);
+    margin: 1rem 0;
+    padding: 0.6rem 1.1rem;
+    color: var(--muted);
+    border-radius: 0 6px 6px 0;
+    font-size: 0.94rem;
+  }
+  blockquote p { margin: 0.3rem 0; }
+  blockquote code { background: var(--code-bg); }
+  .banner {
+    border: 1px solid #9a6700;
+    background: #fff8e5;
+    border-left: 4px solid #9a6700;
+    border-radius: 6px;
+    padding: 0.8rem 1.1rem;
+    margin: 1rem 0 1.5rem;
+    font-size: 0.92rem;
+  }
+  .diagram {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-alt);
+    padding: 1.2rem;
+    margin: 1rem 0;
+    overflow-x: auto;
+  }
+  pre.mermaid { margin: 0; text-align: center; font-size: 0.85rem; }
+  details.src { margin: 0.5rem 0 0; }
+  details.src summary {
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: var(--muted);
+    user-select: none;
+  }
+  details.src pre {
+    background: var(--code-bg);
+    border-radius: 5px;
+    padding: 0.7rem 0.9rem;
+    font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.78rem;
+    overflow-x: auto;
+  }
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 1.2rem;
+    font-size: 0.84rem; color: var(--muted);
+    margin: 0.6rem 0 0;
+  }
+  .legend .swatch {
+    display: inline-block; width: 0.95em; height: 0.95em;
+    vertical-align: -1px; border-radius: 3px; margin-right: 0.35em;
+    border: 1px solid rgba(0,0,0,0.2);
+  }
+  .cols { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+  .cols > div { flex: 1 1 340px; min-width: 320px; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.86rem;
+    margin: 0.6rem 0 1rem;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 0.4rem 0.6rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: var(--bg-alt); }
+  td.band { font-weight: 600; }
+  .axis-ship { color: var(--shipfold); }
+  .axis-inv  { color: #9a6700; }
+  .axis-pay  { color: var(--accent); }
+  .pill {
+    display: inline-block; padding: 0.05em 0.5em; border-radius: 999px;
+    font-size: 0.78rem; font-weight: 600; border: 1px solid;
+  }
+  .pill.derived { color: var(--shipfold); border-color: var(--shipfold); background: #e8f5e9; }
+  .pill.command { color: var(--command); border-color: var(--command); background: #ffebe9; }
+  .pill.cross   { color: var(--crossaxis); border-color: var(--crossaxis); background: #ddf4ff; }
+  .toc { font-size: 0.9rem; columns: 2; column-gap: 2.5rem; margin: 1rem 0 0; }
+  .toc a { display: block; padding: 0.12rem 0; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); font-size: 0.82rem; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<h1>Composed state machines — when a parent's state is a function of its children</h1>
+<p class="lede">
+  A formal model for the recurring ERP shape <em>"the state of a master record is composed from
+  the states of its detail records"</em> — a sales order over its lines, a purchase order over its
+  receipts, a customer invoice over its payment allocations, a work order over its material lines.
+  This note names the two formally-distinct composition models, shows which one ERP master-detail
+  actually is, gives the algebra for it, and ties it to Northwood's existing invariants
+  (<code>deltas get aggregates, totals get projections</code>; the DDD aggregate root + read-model
+  projection split).
+</p>
+
+<div class="banner">
+  <strong>As-built (2026-06-10).</strong> A single faithful <code>classify()</code> fold on the
+  aggregate (no blind <code>markStatus</code> writer), the in-progress band carried on the line and
+  mapped 1:1 to the header rung, the invoice/pay axes off the SO line (§12.6),
+  <code>completed</code> as a cross-axis meet, and cancel/amend gates reading line predicates rather
+  than a header allow-list. Closed-gap accounting: §14. The canonical as-built map remains
+  <code>system-map.html</code>.
+</div>
+
+<blockquote>
+  <p>Status: <strong>adopted convention</strong> — opened 2026-06-09 as a design note, implemented
+  and adopted 2026-06-10; registered in <code>CLAUDE.md</code> → <em>Pointers</em>. Consult it when
+  modelling any master-detail status / completion rollup. The worked example uses the real
+  <code>SalesOrder.Status</code> / <code>SalesOrder.LineStatus</code> enums.
+  <strong>Implemented (2026-06-10):</strong> the header ship-axis fold is
+  <code>SalesOrder.recomputeStatus()</code> — the single writer of <code>status</code>, with
+  <code>markReserved</code> wired and the blind projection retired (§14.2 gaps 1 &amp; 2 closed).
+  The multi-axis invoice/pay separation (gap 3) is <strong>resolved by design</strong> — those axes
+  fold over the fulfilment-document chain, not the SO line, and live in finance + the 360 rollup
+  (see <strong>§12.6</strong>). §8 and §14 record the resolved state.</p>
+</blockquote>
+
+<nav class="toc">
+  <a href="#s1">1 · The two composition models</a>
+  <a href="#s2">2 · The algebra of the rollup ρ</a>
+  <a href="#s3">3 · Properties the rollup must hold</a>
+  <a href="#s4">4 · The two coupling directions</a>
+  <a href="#s5">5 · Header = fold region + three terminals</a>
+  <a href="#s6">6 · ERP catalogue — the same shape, eight places</a>
+  <a href="#s7">7 · Implementation shapes (three)</a>
+  <a href="#s8">8 · Where the model meets the code today</a>
+  <a href="#s9">9 · Anti-patterns (code-review smells)</a>
+  <a href="#s10">10 · Open questions for discussion</a>
+  <a href="#s11">11 · Heterogeneous line variants (make vs buy)</a>
+  <a href="#s12">12 · Multi-axis fulfilment (ship / invoice / pay)</a>
+  <a href="#s13">13 · The concrete M and classify (worked examples)</a>
+  <a href="#s14">14 · Gap analysis — model vs codebase</a>
+  <a href="#refs">References / lineage</a>
+</nav>
+
+<!-- ============================================================= -->
+<h2 id="s1">1 · The two composition models (they are not the same thing)</h2>
+<p>
+  "Compose a state machine from sub state machines" splits into two genuinely different formal
+  constructions. Picking the wrong one is the root cause of most master-detail status bugs.
+</p>
+
+<h3>Model A — Product / orthogonal composition (Harel statecharts, UML)</h3>
+<p>
+  The parent is in <strong>all</strong> of its sub-regions <strong>at once</strong>; the composite
+  state is the <strong>Cartesian product</strong> of the regions.
+</p>
+<pre class="code">Composite = R₁ × R₂ × … × Rₙ        (n fixed, regions named &amp; heterogeneous)</pre>
+<p>
+  This is <strong>Harel's AND-decomposition</strong> (Statecharts, 1987), inherited by UML state
+  machines as <em>orthogonal regions</em>. A single event can be <strong>broadcast</strong> to every
+  region. State count multiplies (<code>|R₁|·|R₂|·…</code>), which is exactly why it's only
+  tractable for a small, <em>fixed</em>, <em>named</em>, <em>heterogeneous</em> set of concurrent
+  aspects.
+</p>
+<p>Good fit:</p>
+<ul>
+  <li>A document that is simultaneously <code>{draft|published} × {locked|unlocked} × {synced|dirty}</code>.</li>
+  <li>A machine that is <code>{running|stopped} × {heating|cooling|idle}</code>.</li>
+</ul>
+<p>
+  <strong>Why it does <em>not</em> fit a sales order over its lines:</strong> the lines play a
+  <em>uniform role</em> (each is "a line progressing toward shipment"), the count is
+  <em>dynamic</em> (lines added / removed at runtime — see <code>SalesOrder.addLine</code> /
+  <code>removeLine</code>), and the parent does not want to track the full tuple
+  <code>(line₁state, line₂state, …)</code> — it wants a <em>summary</em>. Forcing lines into
+  orthogonal regions gives a product state space of unbounded, runtime-varying arity and makes "all
+  lines shipped" a conjunction over an unknown number of regions. Process-calculus parallel
+  composition (CSP/CCS <code>P ‖ Q</code>, communicating automata) has the same limitation — it
+  interleaves a <em>fixed</em> roster of named participants.
+</p>
+<p>
+  Note "uniform role" is weaker than "identical state machine": lines for a made-to-order product
+  and a bought product can run <em>different</em> internal FSMs and Model B still applies, as long
+  as they share a common abstraction onto one progress lattice (§2). Don't read "homogeneous"
+  anywhere below as "same state set" — the precondition is the shared abstraction, worked through in
+  <strong>§11</strong>.
+</p>
+
+<h3>Model B — Aggregation / rollup (homomorphic fold) ← <strong>this is master-detail</strong></h3>
+<p>
+  The children are the real state machines. The parent's fulfilment state is <strong>not an
+  autonomous FSM with its own transition table</strong> — it is a <strong>pure function of the
+  multiset of child states</strong>:
+</p>
+<pre class="code">parentState = ρ( ⟦ child.state : child ∈ parent ⟧ )      (⟦…⟧ = multiset)</pre>
+<p>
+  The number of children is dynamic, they play a uniform role, and the parent keeps a
+  <em>derived summary</em>, not the product. <code>PARTIALLY_SHIPPED</code> is exactly the output of
+  <code>ρ</code> detecting that the line multiset straddles the shipped boundary. This is the model
+  the rest of the note develops. The children need not share a state <em>set</em> — only a common
+  abstraction into the summary monoid <code>M</code> (§2, §11).
+</p>
+<blockquote>
+  <p>One system usually needs <strong>both</strong>: Model B for the bottom-up rollup, Model A's
+  broadcast for top-down whole-order commands. See §6.</p>
+</blockquote>
+<p>
+  A third formalism, <strong>(coloured) Petri nets</strong>, models Model B natively — <em>N</em>
+  lines = <em>N</em> tokens flowing through one shared set of places, "all shipped" = all tokens in
+  the <code>shipped</code> place. It captures dynamic-cardinality concurrency that statecharts can't,
+  but it's heavier than the fold if all you need is the summary. Worth reaching for only when the
+  detail lines genuinely synchronise with each other (rare in master-detail; common in
+  manufacturing routing).
+</p>
+
+<!-- ============================================================= -->
+<h2 id="s2">2 · The algebra of the rollup ρ</h2>
+<p>Let:</p>
+<ul>
+  <li><code>L</code> = the set of <strong>line</strong> states, with a <strong>progress partial
+    order</strong> <code>⊑</code> (how far through fulfilment a line is).</li>
+  <li><code>O</code> = the set of <strong>order</strong> (parent) states.</li>
+  <li><code>ρ : Multiset(L) → O</code> = the rollup.</li>
+</ul>
+<p>
+  For <code>ρ</code> to be well-behaved (and for the parent status never to depend on row order,
+  insert order, or how shipments were batched), it must factor as a <strong>fold over a commutative
+  monoid</strong>:
+</p>
+<pre class="code">ρ = classify ∘ fold(⊕) ∘ map(g)
+
+   g       : L → M             lift each line into a summary monoid M
+   ⊕       : M × M → M         associative + commutative + identity  (a commutative monoid)
+   classify: M → O             name the resulting summary as a parent state</pre>
+<p>
+  The commutativity + associativity of <code>⊕</code> is the formal statement of <em>"reordering or
+  re-batching the lines cannot change the order's status"</em>. This is the property you most want to
+  preserve and the one ad-hoc <code>if</code> ladders most often break.
+</p>
+<p>
+  <strong><code>g</code> is a <em>family</em> of maps, not one map.</strong> The lines need not be
+  drawn from a single state set <code>L</code>. Different line variants (a made-to-order line, a
+  bought line, a stock-pick line) may run different internal FSMs <code>L_make</code>,
+  <code>L_buy</code>, …; the fold only requires a per-variant <code>g_v : L_v → M</code> into the
+  <em>same</em> monoid <code>M</code>, each <code>g_v</code> <strong>monotone</strong>
+  (order-preserving) so the meet/join below stay coherent. The load-bearing precondition for Model B
+  is therefore <strong>"a shared monotone abstraction onto a common progress lattice exists,"</strong>
+  not "all lines have the same state set." See §11 for the make-vs-buy case that makes this concrete.
+</p>
+
+<h3>2.1 The progress chain for a sales-order line (one axis)</h3>
+<p>
+  Northwood's <code>SalesOrder.LineStatus</code> (lines that are <em>live</em> — not cancelled) form
+  an almost-total <strong>progress chain</strong> <em>along the shipment axis</em>:
+</p>
+<pre class="code">OPEN ⊏ PARTIALLY_RESERVED ⊏ RESERVED ⊏ WAITING_FOR_PRODUCTION? ⊏ READY_TO_SHIP
+     ⊏ PARTIALLY_SHIPPED ⊏ SHIPPED</pre>
+<p>
+  <code>CANCELLED</code> is <strong>not on the chain</strong> — it is absorbing/neutral and is
+  <em>filtered out</em> of the fold, exactly the way <code>SalesOrder.recomputeTotals()</code> skips
+  cancelled lines. Treat it as the monoid identity from the parent's point of view: a cancelled line
+  contributes nothing to the order's progress summary.
+</p>
+<p>
+  (The <code>?</code> marks <code>WAITING_FOR_PRODUCTION</code> / <code>READY_TO_SHIP</code>. These
+  are <strong>model-only</strong> bands — they were removed from <code>SalesOrder.LineStatus</code> +
+  the schema CHECK on 2026-06-10 because a to-order line's production progress is tracked off the
+  line, §11.4; the live line chain is
+  <code>OPEN ⊏ PARTIALLY_RESERVED ⊏ RESERVED ⊏ PARTIALLY_SHIPPED ⊏ SHIPPED</code>.)
+</p>
+<p>
+  This is a chain <strong>per axis</strong>. A line also progresses along an <em>invoicing</em> axis
+  and a <em>payment</em> axis that advance independently of shipment (you can invoice before
+  shipping, ship before invoicing, or split both at different quantities). The full line state is
+  therefore a <em>product</em> of one such chain per axis, not a single chain — see <strong>§12</strong>.
+  This section and §2.2 develop the shipment axis in isolation; the per-axis fold below applies
+  unchanged to each axis.
+</p>
+
+<h3>2.2 The two summaries you actually need</h3>
+<p>
+  The whole "partial" question is captured by tracking, over the live lines, the <strong>least</strong>
+  and <strong>greatest</strong> progress reached:
+</p>
+<pre class="code">m = ⊓ live-lines   (meet  — the least-advanced live line)
+M = ⊔ live-lines   (join  — the most-advanced live line)</pre>
+<p>Then:</p>
+<pre class="code">classify(m, M) =
+   CANCELLED            if there are no live lines           (all lines cancelled)
+   m                    if m == M                            (every live line agrees: uniform)
+   PARTIALLY_&lt;M&gt;        if m ⊏ M and M crosses a "partial" boundary   (mixed: a backorder remains)
+   m                    otherwise (mixed but below the partial-emitting boundary)</pre>
+<p>
+  Concretely for shipment: if every live line is <code>SHIPPED</code> → order <code>SHIPPED</code>;
+  if some are <code>SHIPPED</code> and others aren't → order <code>PARTIALLY_SHIPPED</code>; if none
+  have shipped → the order sits at whatever the earlier rung of the same fold says
+  (<code>RESERVED</code> if every line is reserved, <code>PARTIALLY_RESERVED</code> if some are, else
+  <code>OPEN</code>). This is the generalisation of the single line in
+  <code>SalesOrder.recordShipped</code>:
+</p>
+<pre class="code">boolean orderFullyShipped = lines.stream().allMatch(l -> l.lineStatus() == LineStatus.SHIPPED);
+this.status = orderFullyShipped ? Status.SHIPPED : Status.PARTIALLY_SHIPPED;</pre>
+<p>
+  <code>allMatch(SHIPPED)</code> is precisely <code>m == M == SHIPPED</code>. The general fold just
+  makes the <em>whole</em> status derivable this way, not only the shipped/partially-shipped
+  distinction.
+</p>
+
+<h3>2.3 Quantity is a second, finer composition (the model recurses)</h3>
+<p>
+  A line is <strong>itself</strong> a composed state machine — over its <em>quantity buckets</em>,
+  not over child rows:
+</p>
+<pre class="code">orderedQuantity = reservedQuantity + shippedQuantity + backorderedQuantity + cancelledQuantity</pre>
+<p>
+  <code>SalesOrderLine</code> already carries <code>orderedQuantity</code>,
+  <code>reservedQuantity</code>, <code>shippedQuantity</code>, and the derived
+  <code>backorderedQuantity()</code>. The line's <em>status</em> is a <code>classify</code> over those
+  buckets:
+</p>
+<pre class="code">this.lineStatus = next.compareTo(orderedQuantity) >= 0
+    ? LineStatus.SHIPPED            <span class="cmt">// shipped bucket == ordered  → uniform "all"</span>
+    : LineStatus.PARTIALLY_SHIPPED; <span class="cmt">// shipped bucket  &lt; ordered  → "some"</span></pre>
+<p>
+  So the structure is <strong>fractal</strong>: <code>order ⊐ line ⊐ quantity-bucket</code>, the same
+  <code>classify(meet, join)</code> shape at each level. The order rolls up line <em>statuses</em>;
+  each line rolls up its own <em>quantities</em>. Recognising this keeps the two levels from being
+  conflated (a frequent bug: deriving order status straight from summed quantities, skipping the line
+  level, which loses per-line backorder identity).
+</p>
+
+<!-- ============================================================= -->
+<h2 id="s3">3 · Properties the rollup must hold (and how to test them)</h2>
+<p>
+  These are the invariants that make <code>ρ</code> a <em>model</em> rather than an ad-hoc function.
+  Each is a property test worth writing for any composed status.
+</p>
+<table>
+  <thead>
+    <tr><th>Property</th><th>Statement</th><th>Why it matters</th><th>Test shape</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Order-insensitivity</strong></td><td><code>ρ(shuffle(lines)) == ρ(lines)</code></td><td>status can't depend on row/insert/shipment-batch order</td><td>shuffle lines, assert equal status</td></tr>
+    <tr><td><strong>Idempotent saturation</strong></td><td>once all-<code>SHIPPED</code>, adding more shipped detail keeps it <code>SHIPPED</code></td><td>re-delivered events / replays don't flip a terminal state</td><td>apply same shipment twice</td></tr>
+    <tr><td><strong>Monotonicity (forward flow)</strong></td><td>absent cancel/amend, <code>M</code> never decreases</td><td>the order can't appear to regress through fulfilment</td><td>sequence of shipments, assert <code>⊑</code>-monotone</td></tr>
+    <tr><td><strong>Cancelled-neutrality</strong></td><td>a <code>CANCELLED</code> line doesn't change <code>ρ</code> of the rest</td><td>matches <code>recomputeTotals()</code> skipping cancelled</td><td>cancel a line, assert status unchanged</td></tr>
+    <tr><td><strong>Empty-live ⇒ terminal</strong></td><td>no live lines ⇒ <code>CANCELLED</code> (or <code>COMPLETED</code>)</td><td>the "removed the last line" edge (<code>removeLine</code> guards this)</td><td>cancel all lines</td></tr>
+    <tr><td><strong>Derived-not-stored agreement</strong></td><td>stored header status == <code>ρ(current lines)</code></td><td>the total can never silently diverge from the facts</td><td>invariant check after every mutation</td></tr>
+  </tbody>
+</table>
+<p>
+  The last row is the Pacioli point from <code>CLAUDE.md</code> (<em>deltas get aggregates, totals
+  get projections</em>) restated for state: <strong>a composed status is a total; storing it as an
+  independently-writable field re-introduces the divergence double-entry was invented to prevent.</strong>
+  See §8.
+</p>
+
+<!-- ============================================================= -->
+<h2 id="s4">4 · The two coupling directions</h2>
+<p>
+  A composed master-detail record has <strong>two</strong> distinct flows, and they want the two
+  different models from §1. Conflating them is the second-most-common source of bugs.
+</p>
+<table>
+  <thead>
+    <tr><th>Direction</th><th>Trigger → effect</th><th>Model</th><th>In the code</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Bottom-up (rollup)</strong></td><td>a line advances → recompute parent status</td><td>Model B fold (§2)</td><td><code>recordShipped</code> recomputing <code>status</code> from line statuses</td></tr>
+    <tr><td><strong>Top-down (broadcast)</strong></td><td>a command on the parent → fan out to lines</td><td>Model A broadcast (§1)</td><td><code>cancel()</code> / <code>removeLine()</code> propagating to lines</td></tr>
+  </tbody>
+</table>
+<p>Two rules fall out of keeping them separate:</p>
+<ol>
+  <li><strong>Precedence.</strong> A top-down command can <em>override</em> the fold (cancelling an
+    order forces <code>CANCELLED</code> regardless of line states), but the fold must never
+    <em>silently undo</em> a top-down terminal state. Model this as: terminal parent states
+    (<code>CANCELLED</code>, <code>REJECTED</code>, <code>COMPLETED</code>) are absorbing and the fold
+    is only consulted while the parent is in its <em>derived region</em> (the fulfilment phase). See §5.</li>
+  <li><strong>Fan-out is a command, not a fold.</strong> "Cancel the order ⇒ release every
+    non-shipped line's stock" is broadcast (Model A) — it issues per-line intent and emits per-line
+    events (so inventory can release). It is <em>not</em> expressible as a
+    <code>classify(meet, join)</code>.</li>
+</ol>
+
+<!-- ============================================================= -->
+<h2 id="s5">5 · The header is a pure fold region <em>plus</em> three order-level terminals</h2>
+<blockquote>
+  <p><strong>Updated 2026-06-10.</strong> An earlier draft of this section modelled the header as a
+  <em>two-tier</em> machine — an "autonomous front FSM" (<code>SUBMITTED → IN_FULFILMENT</code>)
+  sitting in front of a derived region. The convergence collapsed that picture: there is no
+  autonomous front. The whole ship progression <strong>is</strong> the fold, and the only non-fold
+  states are the three top-down terminals. The two-tier framing is retained below only as the
+  <em>before</em> of the arc.</p>
+</blockquote>
+<p>The header status is <strong>two categories, nothing more</strong>:</p>
+<pre class="code">   fold region (bottom-up, ρ(lines)):
+     OPEN ⊏ PARTIALLY_RESERVED ⊏ RESERVED ⊏ PARTIALLY_SHIPPED ⊏ SHIPPED
+
+   order-level terminals (top-down commands, absorbing):
+     cancel()   ⇒ CANCELLED     reject() ⇒ REJECTED     complete() ⇒ COMPLETED</pre>
+
+<div class="diagram">
+<pre class="mermaid">
+stateDiagram-v2
+  direction LR
+  [*] --> open
+  open --> partially_reserved : some lines reserved
+  open --> reserved : every line reserved at once
+  partially_reserved --> reserved : now every line reserved
+  reserved --> partially_shipped : some units shipped
+  reserved --> shipped : every line fully shipped
+  partially_reserved --> partially_shipped : some units shipped
+  partially_shipped --> shipped : every line fully shipped
+  shipped --> completed : invoiced AND paid (complete cmd)
+  partially_shipped --> completed : settled early (prepay / COD)
+  open --> cancelled : cancel cmd
+  partially_reserved --> cancelled : cancel cmd
+  reserved --> cancelled : cancel cmd
+  open --> rejected : reject cmd
+  completed --> [*]
+  cancelled --> [*]
+  rejected --> [*]
+
+  classDef shipfold fill:#e8f5e9,stroke:#1a7f37,color:#13532a
+  classDef command fill:#ffebe9,stroke:#cf222e,color:#8a1d24
+  classDef crossaxis fill:#ddf4ff,stroke:#0969da,color:#0a4a8a
+  class open,partially_reserved,reserved,partially_shipped,shipped shipfold
+  class cancelled,rejected command
+  class completed crossaxis
+</pre>
+<details class="src"><summary>stateDiagram source (offline fallback)</summary><pre>open --(some reserved)--&gt; partially_reserved --(all reserved)--&gt; reserved --(some shipped)--&gt; partially_shipped --(all shipped)--&gt; shipped --(invoiced AND paid)--&gt; completed
+reserved --(all shipped)--&gt; shipped
+cancel cmd: open|partially_reserved|reserved --&gt; cancelled   (absorbing; refused once any line shipped)
+reject cmd: open --&gt; rejected                                 (absorbing)
+partially_shipped --(settled early)--&gt; completed</pre></details>
+</div>
+<div class="legend">
+  <span><span class="swatch" style="background:#e8f5e9;border-color:#1a7f37"></span>fold region — output of the ship-axis fold <code>classify(lines)</code></span>
+  <span><span class="swatch" style="background:#ffebe9;border-color:#cf222e"></span>terminal — absorbing top-down command (cancel / reject)</span>
+  <span><span class="swatch" style="background:#ddf4ff;border-color:#0969da"></span>terminal — cross-axis (complete: ship ∧ invoice ∧ pay)</span>
+</div>
+
+<ul>
+  <li>The <strong>fold region</strong> is <em>entirely</em> <code>ρ(lines)</code> — even
+    <code>OPEN</code> is just the bottom rung (every live line <code>open</code>), not a separate
+    lifecycle state the lines say nothing about. The header ship-vocabulary therefore
+    <strong>equals</strong> the line vocabulary (§13.3): the "all" rungs sit on <code>meet</code>
+    (<code>RESERVED</code>, <code>SHIPPED</code>), the "some" rungs on <code>join</code>
+    (<code>PARTIALLY_RESERVED</code>, <code>PARTIALLY_SHIPPED</code>). <code>recomputeStatus()</code>
+    is the sole writer.</li>
+  <li>The <strong>three terminals</strong> are top-down order-level commands (§4 bottom-up vs
+    top-down). They are absorbing: <code>recomputeStatus()</code> early-returns while the header is in
+    one of them, so a late line mutation can never undo a terminal. <code>COMPLETED</code> is one of
+    these terminals — its cross-axis invoice/pay inputs live <em>off</em> the SO line (§12.6), so it
+    cannot be a fold output; it is set by <code>complete()</code> only after the fold has reached
+    <code>SHIPPED</code>.</li>
+</ul>
+<p>
+  <strong>Why this is the right shape — the lossy-fold argument.</strong> A <code>meet/join</code>
+  fold of N lines down to one scalar is <strong>inherently lossy</strong>:
+  <code>{l1=RESERVED, l2=OPEN}</code> and <code>{l1=OPEN, l2=RESERVED}</code> both collapse to
+  <code>PARTIALLY_RESERVED</code>. So the header can <em>never</em> be the gating oracle for arbitrary
+  line-level policy — only for <code>meet/join</code>-expressible questions. The consequence
+  (load-bearing): <strong>each gate reads the authoritative source at the grain it needs.</strong> The
+  lines carry the detail, so cancel/amend read <strong>line predicates</strong>
+  (<code>anyLineShipped()</code> + <code>isTerminal()</code> in <code>SalesOrder</code>), not a
+  header-status allow-list. The header status is a pure <strong>derived label</strong> —
+  display/projection, not a gating vocabulary. A future policy change ("allow cancel at
+  <code>partially_reserved</code>") becomes a one-line line-predicate edit, with no enum migration.
+  This is <em>deltas get aggregates, totals get projections</em> applied to <strong>state</strong>:
+  the lines are the deltas (the source of truth), the header status is a total (a projection of line
+  state).
+</p>
+<p>
+  This also cleanly separates from the <strong>Saga</strong> state machine:
+  <code>SalesOrderFulfilmentSaga</code> state is <em>process progress</em> (a third machine),
+  deliberately distinct from both the header status and the line rollup — see
+  <code>docs/sagas.md</code> → <em>Aggregate vs Saga</em>. Three machines, three owners: line FSM
+  (per line), header fold + terminals (the aggregate), saga FSM (the process).
+</p>
+
+<!-- ============================================================= -->
+<h2 id="s6">6 · ERP catalogue — the same shape, eight places</h2>
+<p>
+  The composed-state pattern recurs across the domain. Each is a <code>classify(meet, join)</code>
+  over uniform-role detail lines plus a two-tier header. Cataloguing them is the point of
+  formalising — they should share one mechanism, not eight bespoke <code>if</code> ladders.
+</p>
+<table>
+  <thead>
+    <tr><th>Parent (master)</th><th>Children (detail)</th><th>Line progress chain (sketch)</th><th>Parent "partial" state</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Sales order</strong></td><td>order lines</td><td>open → reserved → shipped</td><td><code>PARTIALLY_SHIPPED</code></td></tr>
+    <tr><td><strong>Purchase order</strong></td><td>PO lines (goods receipt)</td><td>open → partially_received → received</td><td><code>partially_received</code></td></tr>
+    <tr><td><strong>Customer invoice</strong></td><td>— (payment allocations against it)</td><td>unpaid → partially_paid → paid</td><td><code>partially_paid</code> (a <em>total</em>: <code>paid_amount</code>)</td></tr>
+    <tr><td><strong>Shipment / picking</strong></td><td>shipment lines</td><td>pending → picked → packed → shipped</td><td><code>partially_picked</code></td></tr>
+    <tr><td><strong>Work order</strong></td><td>material lines (issue) + operations (routing)</td><td>not_issued → issued; pending → done</td><td><code>in_progress</code></td></tr>
+    <tr><td><strong>Replenishment / MRP run</strong></td><td>requisition lines</td><td>proposed → ordered → received</td><td><code>partially_fulfilled</code></td></tr>
+    <tr><td><strong>Receipt (GRN)</strong></td><td>receipt lines</td><td>pending → inspected → put_away</td><td><code>partially_put_away</code></td></tr>
+    <tr><td><strong>Customer / supplier</strong></td><td>open orders (rollup for credit/standing)</td><td>n/a — a <em>count/sum</em> rollup</td><td>derived flags</td></tr>
+  </tbody>
+</table>
+<p>Two cautions visible in the table:</p>
+<ul>
+  <li>Some "parents" roll up <strong>totals not statuses</strong> (invoice <code>paid_amount</code>,
+    customer exposure). Those are projections in Northwood
+    (<code>customer_invoice_header.paid_amount</code>, <code>stock_balance</code>) — same fold
+    algebra, but the <code>classify</code> output is a number-plus-flag, and per <em>deltas get
+    aggregates, totals get projections</em> they live on the read model, fed by events,
+    <strong>never</strong> as an independently-writable aggregate field.</li>
+  <li>The work-order case mixes a chain (material issue) with a <strong>routing graph</strong>
+    (operations with precedence). Routing is the one place Model A / Petri-net composition genuinely
+    earns its keep — operations synchronise (op 20 can't start until op 10 finishes), which a
+    commutative fold cannot express.</li>
+</ul>
+
+<!-- ============================================================= -->
+<h2 id="s7">7 · Implementation shapes (three, by where the parent state lives)</h2>
+
+<h3>7.1 Derived-on-read (recommended default)</h3>
+<p>
+  Don't store the composed status as truth at all. Store line states; compute <code>ρ(lines)</code>
+  on demand and in the projection. Header <code>status</code> column becomes a <strong>cache</strong>
+  of <code>ρ</code>, written only inside the aggregate immediately after a line mutation, with an
+  invariant check that it equals <code>ρ(lines)</code>.
+</p>
+<ul>
+  <li>Pros: cannot diverge; matches <em>totals are projections</em>.</li>
+  <li>Cons: the header column is denormalised cache — needs the invariant test (§3, last row).</li>
+</ul>
+
+<h3>7.2 Aggregate-recomputes-on-mutation (what <code>SalesOrder</code> half-does today)</h3>
+<p>
+  The aggregate recomputes <code>status</code> whenever a line changes, inside the same transaction,
+  and emits the header-level event. This is §7.1 with the cache write made explicit and
+  event-sourced. The fold lives in <strong>one</strong> private method on the aggregate
+  (<code>recomputeStatus()</code>), called from every line mutator — the analogue of the existing
+  <code>recomputeTotals()</code>.
+</p>
+
+<h3>7.3 Projection-side rollup (for cross-service / read-model parents)</h3>
+<p>
+  When the "parent" lives in another service (reporting's <code>sales_order_360</code>, a customer
+  exposure view), the rollup runs in a <code>*Projection</code> that consumes the per-line delta
+  events and re-derives the summary. Pure Model B, no aggregate. This is the right home for the
+  <em>total</em>-shaped rollups in §6.
+</p>
+<p>
+  The dividing line is the existing rule: <strong>does the parent emit its own delta with identity
+  and downstream consumers?</strong> Yes → aggregate (7.2). No → projection (7.3).
+</p>
+
+<!-- ============================================================= -->
+<h2 id="s8">8 · Where the model meets the code today</h2>
+<p>
+  The codebase implements the <strong>faithful ship-axis fold</strong> of this model (a brainless
+  fold, 2026-06-10); the multi-axis invoice/pay separation is realized at the order level rather than
+  on the SO line, for the reason worked out in <strong>§12.6</strong> (full accounting + severity in
+  <strong>§14</strong>):
+</p>
+<ul>
+  <li>✅ Lines are the authoritative state machines (<code>SalesOrderLine.lineStatus</code>, mutated
+    only by the aggregate via <code>markReserved</code> / <code>recordShipment</code> /
+    <code>cancelLine</code>). <code>markReserved</code> is now wired
+    (<code>StockReservedHandler</code> → <code>recordReservation</code>), so the line carries the
+    <code>RESERVED</code> / <code>PARTIALLY_RESERVED</code> band in production, not just the terminal
+    ship states. <strong>The lines are the single source of truth; the header is a derived label.</strong></li>
+  <li>✅ Header status <strong>is</strong> the faithful fold, and its ship-vocabulary now
+    <strong>equals</strong> the line vocabulary: <code>SalesOrder.recomputeStatus()</code> re-derives
+    <code>OPEN → PARTIALLY_RESERVED → RESERVED → PARTIALLY_SHIPPED → SHIPPED</code> from the live-line
+    multiset via <code>classify(meet, join)</code> after <em>every</em> mutation (place / amend /
+    reserve / ship). The "all" rungs sit on <code>meet</code> (<code>RESERVED</code>,
+    <code>SHIPPED</code>), the "some" rungs on <code>join</code> (<code>PARTIALLY_RESERVED</code>,
+    <code>PARTIALLY_SHIPPED</code>). The old <code>allMatch(SHIPPED)</code> is this fold's
+    <code>meet == SHIPPED</code>; the former coarsening (line
+    <code>partially_reserved</code>/<code>reserved</code> both lumped into one header
+    <code>IN_FULFILMENT</code>) is gone.</li>
+  <li>✅ The aggregate is the <strong>sole writer</strong> of <code>status</code>: the fold region
+    comes from the fold; the three order-level terminals are guarded top-down transitions
+    (<code>cancel</code> / <code>reject</code> / <code>complete</code>). The former blind
+    <code>SalesOrderHeaderStatusProjection.markStatus(...)</code> is <strong>retired</strong>.</li>
+  <li>✅ <strong>Gates read the lines, not the header.</strong> <code>cancel</code> /
+    <code>reject</code> / <code>assertAmendable</code> read the line predicates
+    <code>anyLineShipped()</code> + <code>isTerminal()</code> (cancellable ≡ amendable, derived from
+    one source so they can't drift), not a header-status allow-list — because the fold is lossy and so
+    the header can't be the gating oracle (§5). The former <code>NON_CANCELLABLE_STATUSES</code> /
+    <code>AMENDABLE_STATUSES</code> header-enum sets are gone.</li>
+  <li>✅ Quantity-bucket sub-composition exists (<code>shippedQuantity</code> vs
+    <code>orderedQuantity</code> → line <code>SHIPPED</code> vs <code>PARTIALLY_SHIPPED</code>).</li>
+  <li>✅ Cancelled-neutrality is honoured for both <em>totals</em> (<code>recomputeTotals</code> skips
+    cancelled) and <em>status</em> (the fold filters cancelled lines), and is property-tested (§3
+    shapes in <code>SalesOrderTest.StatusFold</code>).</li>
+  <li>🔵 <strong>Invoice/pay are not on the SO line — by design (§12.6).</strong> They fold over the
+    fulfilment-document chain (which cross-cuts the lines), not the SO lines, so they live in
+    <code>finance.CustomerInvoice</code> / <code>Payment</code> + the
+    <code>reporting.sales_order_360_view</code> rollup. The cross-axis <code>COMPLETED</code> meet is
+    the saga sequencing those documents; <code>complete()</code> asserts only the one leg the
+    aggregate owns the quantities for (<code>ordered = shipped</code>).</li>
+  <li>✅ <strong>To-order is built</strong> (<code>product.ReplenishmentStrategy.TO_ORDER</code>;
+    make-to-order + buy-to-order E2E) — but it adds <strong>no</strong> line-status bands. A to-order
+    line's production/receipt progress lives off the line (saga + work order + reporting's
+    <code>manufacturing_status</code> / <code>stock_status</code>); the SO line runs the one
+    <code>open → reserved → shipped</code> chain like a stock line. The model-only
+    <code>WAITING_FOR_PRODUCTION</code> / <code>READY_TO_SHIP</code> values were removed from
+    <code>SalesOrder.LineStatus</code> + the schema CHECK (2026-06-10), §11.4.</li>
+</ul>
+<p>
+  <strong>The load-bearing tie-in:</strong> a composed status is a <em>total over the line
+  deltas</em>. Promoting it to an independently-<code>UPDATE</code>-able header field is the same
+  mistake as promoting <code>stock_balance</code> to an aggregate — it lets the summary diverge from
+  the facts. So the composed-state model is not a new principle; it's <em>deltas get aggregates,
+  totals get projections</em> applied to <strong>state</strong> instead of
+  <strong>money/quantity</strong>. The lines emit the deltas; the header status is the running fold of
+  them.
+</p>
+
+<!-- ============================================================= -->
+<h2 id="s9">9 · Anti-patterns (code-review smells)</h2>
+<ul>
+  <li><strong>Independently-writable parent status.</strong> A <code>setStatus</code> / direct
+    <code>UPDATE sales_order_header SET status</code> outside the fold. The status must only ever be
+    (re)written as <code>ρ(lines)</code>.</li>
+  <li><strong>Left-fold with hidden order dependence.</strong> Deriving status by walking lines and
+    mutating an accumulator whose result depends on iteration order — breaks order-insensitivity.</li>
+  <li><strong>Skipping the line tier.</strong> Computing header status directly from summed
+    quantities, bypassing line statuses — loses per-line backorder identity (which line is short).</li>
+  <li><strong>Fold undoing a top-down terminal.</strong> Recomputing <code>ρ</code> while the order
+    is <code>CANCELLED</code> and flipping it back. Terminals are absorbing (§4, §5).</li>
+  <li><strong>Orthogonal-region modelling of uniform-role lines.</strong> Trying to express
+    <em>N</em> lines as <em>N</em> statechart regions — the §1 Model-A misfit.</li>
+  <li><strong>Variant-specific status leaking into the fold.</strong> Branching the rollup on product
+    type (<code>if (line.isManufactured()) …</code>) instead of mapping each variant onto the common
+    progress lattice first — re-introduces the heterogeneity the abstraction was meant to erase (§11).</li>
+  <li><strong>One bespoke <code>if</code> ladder per master-detail type.</strong> Eight copies of the
+    rollup (§6) instead of one shared <code>classify(meet, join)</code> mechanism.</li>
+</ul>
+
+<!-- ============================================================= -->
+<h2 id="s10">10 · Open questions for discussion</h2>
+<ol>
+  <li><strong>Generalise the fold?</strong> Should we extract a reusable
+    <code>compose(lines, chain)</code> → parent-status mechanism (shared-kernel), or keep
+    per-aggregate <code>recomputeStatus()</code> methods? Trade-off: one mechanism vs the
+    heterogeneity of each chain's <code>classify</code>.</li>
+  <li><strong>Model the derived-region boundary explicitly?</strong> Right now §5's two tiers are
+    implicit. Is it worth a small <code>enum</code>-of-regions or a guard so the fold provably runs
+    only during fulfilment?</li>
+  <li><strong>Where does <code>COMPLETED</code> come from?</strong> It's a terminal past
+    <code>SHIPPED</code> — is it a fold output (all lines shipped <em>and</em> invoiced <em>and</em>
+    paid → a cross-aggregate rollup) or a header-lifecycle transition driven by the Saga?
+    Cross-aggregate folds are a different (harder) animal.</li>
+  <li><strong>Routing graphs.</strong> Work-order operations need Model A / Petri-net
+    synchronisation, not a commutative fold. Do we want a second, explicitly-different mechanism for
+    the precedence-graph cases, or keep those bespoke?</li>
+  <li><strong>Property-test harness.</strong> Worth a generic property-test (shuffle / replay /
+    cancel-neutrality from §3) parameterised over each composed status?</li>
+  <li><strong>Quantity vs status as the source of truth.</strong> §2.3 has both. Should line status
+    always be <em>derived</em> from quantity buckets (never set directly), making quantity the single
+    authority and status a pure <code>classify</code>?</li>
+</ol>
+
+<!-- ============================================================= -->
+<h2 id="s11">11 · Heterogeneous line variants (make vs buy) — the fold survives</h2>
+<p>
+  A natural objection: <em>a product is either manufactured or purchased, so two SO lines can run
+  different state machines — doesn't that break the homomorphic fold?</em> It does not. It sharpens
+  what the fold requires, and the resolution is one of the more useful results in this note.
+</p>
+
+<h3>11.1 The fold never required identical state sets</h3>
+<p>
+  Model B factors as <code>classify ∘ fold(⊕) ∘ map(g)</code> (§2). The fold combines values
+  <strong>in the monoid <code>M</code></strong>; it is indifferent to the <em>domain</em> each line
+  is mapped <em>from</em>. <code>g</code> is a family <code>{ g_v : L_v → M }</code> — one map per
+  variant — and the only conditions are:
+</p>
+<ol>
+  <li>all <code>g_v</code> land in the <strong>same</strong> progress lattice <code>M</code>, and</li>
+  <li>each <code>g_v</code> is <strong>monotone</strong> (a line advancing in its own FSM never goes
+    backwards in <code>M</code>).</li>
+</ol>
+<p>A made-to-order line and a bought line run different internal chains:</p>
+<pre class="code">L_make :  open → planned → in_production → produced → ready_to_ship → shipped
+L_buy  :  open → reserved →                            ready_to_ship → shipped
+L_stock:  open → reserved →                                            shipped</pre>
+<p>…but all three <strong>coarsen</strong> onto the order's progress lattice:</p>
+<pre class="code">M :  NOT_STARTED ⊏ IN_PROGRESS ⊏ READY ⊏ SHIPPED</pre>
+<p>
+  The order does not care <em>how</em> a line becomes shippable (produced vs received vs picked) —
+  only <em>that</em> it does. <code>WAITING_FOR_PRODUCTION</code> (a model-only band — not a
+  <code>SalesOrder.LineStatus</code> value; see §11.4) would be simply a refinement of the
+  <code>IN_PROGRESS</code> band that only make lines visit. The fold runs on <code>M</code>, so
+  heterogeneous <code>L_v</code> are erased before the meet/join ever sees them. <strong>The fold is
+  intact; the precondition is "a shared monotone abstraction exists," which it does.</strong>
+</p>
+
+<h3>11.2 Two ways to carry the variants</h3>
+<table>
+  <thead>
+    <tr><th>Approach</th><th>Shape</th><th>Trade-off</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>(A) Superset enum</strong></td><td>one <code>LineStatus</code> chain holding every variant's states; buy lines never reach <code>WAITING_FOR_PRODUCTION</code></td><td>fold trivially valid (one chain); but illegal states are <em>representable</em> (a buy line is type-able as <code>WAITING_FOR_PRODUCTION</code>)</td></tr>
+    <tr><td><strong>(B) Indexed family + φ</strong></td><td>distinct <code>MakeLineState</code> / <code>BuyLineState</code> types, each with a monotone <code>φ</code> into a shared <code>ProgressBand</code></td><td>no illegal states; costs the abstraction-map machinery</td></tr>
+  </tbody>
+</table>
+<p>
+  Northwood uses <strong>(A)</strong> — consistent with <em>aggregate enumerated fields = one nested
+  enum</em>. The thing to know: (A) relies on "unreachable per variant," not "nonexistent per
+  variant." If illegal-state-representability ever bites, (B) is the principled upgrade, and the fold
+  doesn't change — only <code>g</code> moves from "identity on one enum" to an explicit <code>φ</code>.
+</p>
+
+<h3>11.3 When it genuinely breaks — and the stratified resolution</h3>
+<p>
+  Model B fails <strong>only</strong> if no common coarsening exists — i.e. the parent must
+  <em>report</em> variant-specific milestones as its status (<em>"make-lines: 2/3 produced;
+  buy-lines: 1/2 received"</em>), not just "partially shipped." That can't collapse to one scalar. But
+  the fix is not to abandon the fold — it is to <strong>stratify the composition by level</strong>:
+</p>
+<pre class="code">            Model A  —  small, FIXED product across variant KINDS
+            ┌───────────────────┬───────────────────┐
+       make-group            buy-group           stock-group
+       summary               summary             summary
+            ▲                    ▲                   ▲
+       Model B fold         Model B fold        Model B fold
+       (dynamic N lines)    (dynamic N lines)   (dynamic N lines)</pre>
+<ul>
+  <li><strong>Within a variant group</strong> — uniform lines, dynamic count → Model B fold (its
+    sweet spot).</li>
+  <li><strong>Across variant kinds</strong> — the roster of kinds is <em>fixed and small</em> (make /
+    buy / stock, 2–3) → Model A product (its sweet spot).</li>
+</ul>
+<p>
+  This dissolves the apparent tension: the count of <em>lines</em> is dynamic (wants Model B) while
+  the count of <em>variant kinds</em> is fixed (wants Model A) — they are not competing, they sit at
+  <strong>different levels of the hierarchy</strong>. If the order only needs "all / some shipped"
+  (the common case), the top product collapses to a single fold and Model A never appears. You only
+  pay for the product when the order genuinely reports per-kind progress.
+</p>
+
+<h3>11.4 In Northwood today this is moot — by design</h3>
+<p>
+  For the SO rollup <em>right now</em> the question doesn't even arise: under
+  <strong>make-to-stock</strong>, an SO line fulfils <strong>identically</strong> whether the product
+  is made or bought — reserve from stock → ship. The make-vs-buy decision lives upstream in
+  <strong>inventory / replenishment</strong>, a different aggregate
+  (<code>project_make_to_stock_rationale</code>, the mfg↔purchasing decoupling), and the SO line never
+  sees it. So <code>L_make = L_buy</code> at the SO-line level and every line runs the one chain.
+</p>
+<p>
+  The opt-in <strong>to-order extension</strong> (<code>product.ReplenishmentStrategy.TO_ORDER</code>)
+  is in fact <strong>built</strong> — <code>OrderToCashMakeToOrderPathTest</code> /
+  <code>OrderToCashBuyToOrderPathTest</code> exercise a sales-order line that waits on a work order or
+  a purchase. But the prediction this section originally made — that a to-order line would carry
+  <code>WAITING_FOR_PRODUCTION</code> / <code>READY_TO_SHIP</code> <em>line-status</em> bands —
+  <strong>did not happen, and the design is better for it.</strong> A to-order line's
+  production/receipt progress lives <strong>off the line</strong> (the fulfilment saga state + the
+  manufacturing work order / inventory replenishment + reporting's <code>manufacturing_status</code> /
+  <code>stock_status</code>); the SO line itself runs the <em>one</em>
+  <code>OPEN → RESERVED → SHIPPED</code> chain — identical to a stock line — once its order-pegged
+  supply is reserved. So §11.1's result holds even more strongly than predicted: not only does the
+  fold not branch on product type, the line doesn't even need variant-specific states. The
+  <code>WAITING_FOR_PRODUCTION</code> / <code>READY_TO_SHIP</code> enum values were accordingly
+  <strong>removed</strong> from <code>SalesOrder.LineStatus</code> + the schema CHECK (2026-06-10) —
+  they are model-only bands (§2.1/§13), never produced. The stratified §11.3 product would only be
+  needed if to-order required per-kind status <em>reporting</em> on the order header, which it does
+  not.
+</p>
+
+<!-- ============================================================= -->
+<h2 id="s12">12 · Multi-axis fulfilment (independent ship / invoice / pay progress)</h2>
+<p>
+  A second objection that looks fatal but isn't: <em>if we ship and invoice lines partially and at
+  different quantities — line 1 = 10×A, line 2 = 10×B, one shipment+invoice of 2×A + 4×B — does the
+  fold survive?</em> It does. What it retires is the §2.1 simplification that a line sits on a
+  <strong>single</strong> chain. The line was always on a <strong>product of chains, one per
+  axis</strong>; partial multi-line ship/invoice is just what forces you to see it.
+</p>
+
+<div class="diagram">
+<pre class="mermaid">
+stateDiagram-v2
+  state Line {
+    state "Shipment axis  (SalesOrder.LineStatus → band)" as S {
+      [*] --> not_started
+      not_started --> in_progress : reserve / produce begins
+      in_progress --> ready : fully allocated
+      ready --> partially_shipped : some units shipped
+      ready --> shipped : all units shipped
+      partially_shipped --> shipped : remaining units shipped
+    }
+    --
+    state "Invoice axis" as I {
+      [*] --> not_invoiced
+      not_invoiced --> partially_invoiced : some units invoiced
+      not_invoiced --> invoiced : all units invoiced
+      partially_invoiced --> invoiced : remaining units invoiced
+    }
+    --
+    state "Payment axis  (finance.CustomerInvoice, projected)" as P {
+      [*] --> not_paid
+      not_paid --> partially_paid
+      not_paid --> paid
+      partially_paid --> paid
+    }
+  }
+</pre>
+<details class="src"><summary>stateDiagram source (offline fallback)</summary><pre>Line = Shipment-axis  ||  Invoice-axis  ||  Payment-axis     (three orthogonal regions)
+  Shipment: not_started -> in_progress -> ready -> partially_shipped -> shipped
+  Invoice : not_invoiced -> partially_invoiced -> invoiced
+  Payment : not_paid -> partially_paid -> paid       (owned by finance, projected back)
+A soft-removed line -> CANCELLED (neutral: filtered from every fold).</pre></details>
+</div>
+
+<h3>12.1 A line state is a product of monotone quantity folds</h3>
+<p>
+  Shipping, invoicing, and payment are <strong>independent progress axes</strong>. Neither
+  <code>shipped ⊑ invoiced</code> nor its reverse holds in general — you can invoice before shipping
+  (prepayment), ship before invoicing, or split each at unrelated quantities. So:
+</p>
+<pre class="code">line.state  =  (shipProgress, invoiceProgress, payProgress, …)   ∈  M_ship × M_invoice × M_pay</pre>
+<p>
+  Crucially, <strong>a product of lattices is still a lattice</strong> (componentwise meet/join), so
+  <code>M</code> is still a valid commutative monoid and the §2 algebra is untouched. Each axis is
+  itself a quantity-accumulation fold over deltas:
+</p>
+<pre class="code">line.shippedQuantity  = Σ (shipment deltas touching this line)
+line.invoicedQuantity = Σ (invoice  deltas touching this line)</pre>
+<p>
+  That <code>Σ</code> is a fold over <strong>addition</strong> — the cleanest commutative monoid
+  there is. So partial, arbitrarily-split fulfilment doesn't strain Model B; it instantiates it with
+  the most well-behaved <code>⊕</code> available. §2.3's quantity-bucket level is now visibly a
+  <code>Σ</code>-fold of deltas, one per axis.
+</p>
+
+<h3>12.2 The order rollup becomes a product of per-axis folds</h3>
+<p>The fold runs <strong>componentwise</strong> — one independent Model-B rollup per axis:</p>
+<pre class="code">order.shipStatus    = ρ_ship   ( live lines' shipped fractions )
+order.invoiceStatus = ρ_invoice( live lines' invoiced fractions )
+order.payStatus     = ρ_pay    ( … )</pre>
+<p>
+  So the parent state is a <strong>product of per-axis rollups</strong> — Model A (orthogonal
+  regions) on top of Model B folds. This is the <strong>same stratification as §11.3, along a
+  different axis</strong>: §11 took the product across variant <em>kinds</em> (make/buy); §12 takes it
+  across progress <em>dimensions</em> (ship/invoice/pay). The codebase already commits to exactly this
+  — <code>SalesOrder</code> keeps <strong>one</strong> <code>status</code> (the shipment chain) and its
+  own Javadoc rules that <em>"cross-cutting flags (stock, mfg, shipment, invoice) belong on the read
+  model fed by saga events, not on the aggregate itself."</em> That is "one status = ship axis; the
+  other axes are orthogonal regions on the projection."
+</p>
+
+<h3>12.3 The cross-line bundling is a non-issue — by construction</h3>
+<p>
+  "2×A + 4×B in one shipment" never touches the SO-line rollup, because each line accumulates
+  <strong>only its own</strong> delta (§12.1). That 2×A and 4×B shared a shipment is a fact about the
+  <code>Shipment</code> aggregate, not about either SO line; each line is blind to the bundling. So
+  order-insensitivity holds against replays, re-batched shipments, and out-of-order delivery — all
+  land at the same quantities, hence the same status. The path-independence test: <strong>is the
+  final status a function of the final quantity vector, regardless of arrival order?</strong> Yes —
+  <code>classify(shippedQty, orderedQty)</code> doesn't care how it got there. (The <em>journal
+  entries</em> posted along the way are path-dependent, but those are deltas/aggregates, not the
+  status total — <em>deltas get aggregates, totals get projections</em> again.)
+</p>
+
+<h3>12.4 The four real boundaries</h3>
+<table>
+  <thead>
+    <tr><th>#</th><th>Boundary</th><th>Consequence</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td><strong>Don't collapse axes into one total order.</strong> A chain <code>open → shipped → invoiced → paid</code> is <em>wrong</em> — invoice can precede ship.</td><td>It's a lattice <strong>product</strong>, not a chain. Forcing one chain is the classic ERP status-modelling bug this rules out.</td></tr>
+    <tr><td>2</td><td><strong>Monotonicity breaks under returns / credit notes.</strong> A return <em>decreases</em> <code>shippedQty</code>; a credit note decreases invoiced.</td><td>The "progress lattice" stops modelling "furthest reached"; meet/join no longer mean what §2.2 says. Model B is sound <strong>only over the forward, monotone flow</strong>. Reversals need signed deltas + a <em>net</em> projection, not a status chain. Currently out of scope (<code>project_credit_notes_low_priority</code>).</td></tr>
+    <tr><td>3</td><td><strong>"Invoice ≤ shipped" is a synchronisation, not free orthogonality.</strong></td><td>If a rule couples the axes, the regions aren't independent — it's a <em>constrained</em> product: Model A regions <strong>with inter-region guards</strong> (a statechart guard on the invoice region reading the ship region). Expressible, but a coupling point to name, not free concurrency.</td></tr>
+    <tr><td>4</td><td><strong>The invoice/pay axes aren't on the SO aggregate.</strong> Invoicing lives in <code>finance.CustomerInvoice</code> (own aggregate, own composed state, <code>customer_invoice_header.paid_amount</code> a projection-total per §6).</td><td>"Is this order fully invoiced/paid?" is a <strong>cross-aggregate, cross-service</strong> rollup — a fold whose inputs arrive via events from another bounded context. Strictly harder than the within-aggregate line fold; it's the machinery behind open question §10.3 (where <code>COMPLETED</code> comes from: <em>all lines shipped ∧ invoiced ∧ paid</em>).</td></tr>
+  </tbody>
+</table>
+
+<h3>12.5 Net</h3>
+<p>
+  Partial, arbitrarily-split, multi-line ship + invoice <strong>does not break Model B.</strong> It
+  retires the single-chain simplification: a line is a <strong>product of monotone
+  quantity-accumulation folds</strong> (one per axis), and the order is a <strong>product of per-axis
+  folds</strong> (Model A over Model B — the §11 stratification on a new axis). The fold itself only
+  gives out at <strong>reversals</strong> (returns/credit notes break per-axis monotonicity, boundary
+  #2), and the only modelling trap is <strong>forcing the orthogonal axes into one chain</strong>
+  (boundary #1).
+</p>
+
+<h3>12.6 The fulfilment-event triple — each axis folds over a <em>different</em> detail set</h3>
+<p>
+  §12.2 says the order is a product of per-axis folds. The sharp question §12.1–12.5 left implicit
+  is: <strong>what does each axis fold <em>over</em>?</strong> The answer is not "the SO lines" for all
+  three axes — and getting this right is what tells you where each axis's state belongs.
+</p>
+<p>
+  <strong>The order is a quantity matrix <code>M</code>.</strong> For an order of
+  <code>line-1: 4×A, line-2: 2×B</code>, <code>M = { A:4, B:2 }</code>. There are <strong>two
+  orthogonal partitions</strong> of <code>M</code>:
+</p>
+<ul>
+  <li><strong>By line (product)</strong> — the SO lines: <code>{A:4} | {B:2}</code>. Fixed, the
+    order's own structure.</li>
+  <li><strong>By fulfilment event</strong> — the ship/invoice/pay documents: <em>any</em> set of
+    sub-vectors <code>M_e</code> with <code>Σ M_e = M</code>. One event <code>{4A+2B}</code>; or two
+    <code>{3A+1B}+{1A+1B}</code>; or six singletons; etc. This partition <strong>cross-cuts the
+    lines</strong> — a single shipment <code>{3A+1B}</code> touches both lines.</li>
+</ul>
+<p>
+  A <strong>fulfilment event</strong> <code>e</code> is a <em>triple</em>
+  <code>(shipment_e, invoice_e, payment_e)</code>, all covering the same <code>M_e</code>: a shipment
+  of <code>M_e</code> begets one invoice for <code>M_e</code> (<code>createFromShippedOrder</code>
+  raises an invoice per <code>SalesOrderShipped</code>), settled by one payment. The order is
+  fulfilled by a <strong>dynamic set of these triples</strong> (uniform role, dynamic count → a
+  Model-B fold), each triple itself a little <code>ship → invoice → pay</code> chain. (Prepayment /
+  deposit just <em>reorder</em> the triple — invoice/pay lead the shipment — but it is the same unit;
+  the saga owns the ordering.)
+</p>
+<p>
+  <strong>The conservation invariant (Pacioli, again).</strong> The two partitions are
+  decompositions of the <em>same</em> total, so at completion they reconcile on every axis:
+</p>
+<pre class="code">Σ shipments  =  Σ invoices  =  Σ payments  =  Σ SO lines  =  M
+ordered      =  shipped     =  invoiced    =  paid</pre>
+<p>
+  This is the order-to-cash form of the double-entry identity. A reconciled total is a
+  <strong>projection</strong>; the per-document line deltas that sum into it are
+  <strong>aggregates</strong>. So each leg of the reconciliation lives where that principle puts it:
+</p>
+<table>
+  <thead>
+    <tr><th>Leg</th><th>Reconciled in</th><th>Grain</th><th>Why there</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>ordered = shipped</code></td><td>the <strong>SO aggregate</strong> (<code>complete()</code> asserts it; the §13.3 fold)</td><td>quantity, per SO line</td><td>shipment lines carry <code>salesOrderLineId + qty</code> — line-aligned, so the SO line is a valid accumulator</td></tr>
+    <tr><td><code>invoiced = ordered</code></td><td>the <strong>360 projection</strong> (<code>invoiced_amount</code> vs <code>total_amount</code>)</td><td>value, order-level</td><td>invoice docs cross-cut lines; deposit/balance invoices are value-only (no <code>salesOrderLineId</code>)</td></tr>
+    <tr><td><code>paid = ordered</code></td><td>the <strong>360 projection</strong> (<code>paid_amount</code> vs <code>total_amount</code>)</td><td>value, order-level</td><td>payments settle <em>invoices</em>, never SO lines</td></tr>
+  </tbody>
+</table>
+<p>
+  <strong>Consequence — no invoice axis on the SO line.</strong> Putting an
+  <code>invoicedQuantity</code> bucket on the SO line would force the invoice axis onto the line grain
+  it does not fit (it folds over the document chain, not the lines) and could not even be populated
+  for value-based deposit/balance invoices. The invoice and pay axes belong to
+  <code>finance.CustomerInvoice</code> / <code>Payment</code> and the <code>sales_order_360_view</code>
+  rollup; the <strong>saga</strong> is the cross-aggregate meet that sequences the triples. Because an
+  invoice sits <em>structurally between</em> ship and pay — you cannot pay an amount that was never
+  invoiced, and an invoice is raised per shipment — <code>shipped ∧ paid</code> already implies
+  <code>invoiced</code>, which is why the 360's
+  <code>completed = shipped ∧ paid_amount ≥ total</code> rule is sound with no separate invoice gate,
+  and why the aggregate's <code>complete()</code> need only assert the one leg it owns the quantities
+  for (<code>ordered = shipped</code>).
+</p>
+
+<!-- ============================================================= -->
+<h2 id="s13">13 · The concrete <code>M</code> and <code>classify</code> (worked examples)</h2>
+<p>
+  The payoff for §§2/11/12: the actual state set <code>M</code> and the rollup <code>classify</code>,
+  written out for the <strong>full model chain</strong> — <em>not</em> limited to what Java emits. The
+  make/buy concrete line-states below (<code>waiting_for_production</code> / <code>ready_to_ship</code>
+  / <code>awaiting_receipt</code>) are <strong>illustrative model bands, not
+  <code>SalesOrder.LineStatus</code> values</strong>: to-order is built but the SO line never carries
+  them (production progress lives off the line, §11.4), so the live line emits only <code>open</code> /
+  <code>reserved</code> / <code>partially_reserved</code> / <code>partially_shipped</code> /
+  <code>shipped</code> / <code>cancelled</code>. Three worked examples covering every case in this note
+  follow.
+</p>
+
+<h3>13.1 <code>M</code> — the state set for any product line</h3>
+<p>A line's full state is a <strong>product of one progress lattice per axis</strong>:</p>
+<pre class="code">M  =  M_ship  ×  M_invoice  ×  M_pay</pre>
+<p>
+  <strong>Shipment axis</strong> — one coarse <strong>band</strong> (what the order fold sees) onto
+  which the three variant chains coarsen via monotone <code>g_v</code> (§11). The band names <em>are</em>
+  the <code>SalesOrderLine.LineStatus</code> vocabulary (and, equivalently, the header
+  <code>Status</code> fold region — the fold is brainless, header ≡ line, §5/§8). The code carries them
+  as <code>BAND_OPEN ⊏ BAND_PARTIALLY_RESERVED ⊏ BAND_RESERVED ⊏ BAND_PARTIALLY_SHIPPED ⊏ BAND_SHIPPED</code>:
+</p>
+<table>
+  <thead>
+    <tr><th>Band <code>M_ship</code> (= LineStatus = header fold region)</th><th>stock line <code>g_stock</code></th><th>make-to-order <code>g_make</code></th><th>buy-to-order <code>g_buy</code></th></tr>
+  </thead>
+  <tbody>
+    <tr><td class="band">open</td><td><code>open</code></td><td><code>open</code></td><td><code>open</code></td></tr>
+    <tr><td class="band">partially_reserved</td><td><code>partially_reserved</code></td><td><code>waiting_for_production</code></td><td><code>awaiting_receipt</code></td></tr>
+    <tr><td class="band">reserved</td><td><code>reserved</code></td><td><code>ready_to_ship</code></td><td><code>ready_to_ship</code></td></tr>
+    <tr><td class="band">partially_shipped</td><td><code>partially_shipped</code></td><td><code>partially_shipped</code></td><td><code>partially_shipped</code></td></tr>
+    <tr><td class="band">shipped</td><td><code>shipped</code></td><td><code>shipped</code></td><td><code>shipped</code></td></tr>
+  </tbody>
+</table>
+<p>
+  Total order <code>open ⊏ partially_reserved ⊏ reserved ⊏ partially_shipped ⊏ shipped</code>;
+  <code>cancelled</code> is <strong>off the chain</strong> (neutral — filtered from the fold). A stock
+  line in <code>reserved</code>, a make line in <code>ready_to_ship</code>, and a buy line in
+  <code>ready_to_ship</code> all coarsen to the <code>reserved</code> band (the SO line itself carries
+  <code>reserved</code> once order-pegged supply is reserved — the <code>ready_to_ship</code> /
+  <code>awaiting_receipt</code> names are illustrative <em>off-line</em> model states, §11.4), so the
+  order fold treats them identically and never branches on product type.
+</p>
+<p><strong>Invoice + payment axes:</strong></p>
+<pre class="code">M_invoice :  NOT_INVOICED  ⊏  PARTIALLY_INVOICED  ⊏  INVOICED
+M_pay     :  NOT_PAID      ⊏  PARTIALLY_PAID      ⊏  PAID      (on finance.CustomerInvoice; projected back — §12.4 #4)</pre>
+<p>
+  Full per-line lattice = <code>5 × 3 × 3</code> points (cancel aside); coupling rules (e.g.
+  <code>invoiced ≤ shipped</code>) make most unreachable.
+</p>
+
+<h3>13.2 Line-level <code>classify</code> (quantity buckets → band) — §2.3</h3>
+<pre class="code">band_ship(line) =
+    shipped             if shippedQty == orderedQty
+    partially_shipped   if 0 &lt; shippedQty &lt; orderedQty
+    reserved            if shippedQty == 0  ∧  (reserved|produced)Qty == orderedQty
+    partially_reserved  if partial reservation / in production
+    open                otherwise
+    cancelled           if line soft-removed        (neutral)
+
+band_invoice(line) =
+    INVOICED           if invoicedQty == orderedQty
+    PARTIALLY_INVOICED if 0 &lt; invoicedQty &lt; orderedQty
+    NOT_INVOICED       otherwise</pre>
+
+<h3>13.3 Order-level <code>classify</code> (line multiset → <code>SalesOrder.Status</code>)</h3>
+<p>
+  The header carries <strong>one</strong> status column = the <strong>ship axis</strong> (other axes
+  are orthogonal projection flags). The fold region + three top-down terminals (§5). The terminals are
+  absorbing: <code>recomputeStatus()</code> early-returns while the header is
+  <code>CANCELLED</code>/<code>REJECTED</code>/<code>COMPLETED</code>, so the fold below is consulted
+  only outside them. Over the <strong>live</strong> lines (cancel filtered), compute
+  <code>meet = ⊓ bands</code>, <code>join = ⊔ bands</code>:
+</p>
+<pre class="code">classify(order) =                         <span class="cmt">// — top-down terminals (absorbing, set by commands) —</span>
+    CANCELLED          if cancel()  issued   OR   no live lines remain
+    REJECTED           if reject()  issued
+    COMPLETED          if complete() issued  (asserts the fold below == shipped first;
+                          the cross-axis invoiced ∧ paid meet is the saga/360, off the SO line — §12.6)
+                                              <span class="cmt">// — fold region (brainless meet/join of the line bands) —</span>
+    shipped            if meet == shipped                    <span class="cmt">// every live line fully shipped</span>
+    partially_shipped  if join ⊒ partially_shipped           <span class="cmt">// ≥1 unit shipped anywhere, not all done</span>
+    reserved           if meet ⊒ reserved                    <span class="cmt">// every live line reserved or beyond, none shipped</span>
+    partially_reserved if join ⊒ partially_reserved          <span class="cmt">// some line reserved, not all</span>
+    open               otherwise                             <span class="cmt">// every live line still open</span></pre>
+<p>
+  <code>meet == shipped</code> ⟺ "<em>all</em> live lines fully shipped"; <code>meet ⊒ reserved</code>
+  ⟺ "<em>all</em> live lines reserved or beyond"; <code>join ⊒ partially_*</code> ⟺ "<em>at least
+  one</em> line has reached that band." All commutative ⇒ order-insensitive. The header ship-vocabulary
+  equals the line vocabulary, so the <code>partially_*</code> names mean <em>within-line-quantity</em>
+  partial at the line and <em>cross-line straddle</em> at the order — the same <code>classify</code>
+  shape one level up (fractal, §2.3).
+</p>
+
+<h3>13.4 Example A — homogeneous stock lines (base case, §2)</h3>
+<p>SO: line1 = 10×A (stock), line2 = 5×B (stock).</p>
+<table>
+  <thead><tr><th>t</th><th>line1 band</th><th>line2 band</th><th><code>meet</code> / <code>join</code></th><th>header <code>status</code></th></tr></thead>
+  <tbody>
+    <tr><td>place</td><td>open</td><td>open</td><td>open / open</td><td><span class="pill derived">open</span></td></tr>
+    <tr><td>line1 reserved only</td><td>reserved</td><td>open</td><td>open / reserved</td><td><span class="pill derived">partially_reserved</span></td></tr>
+    <tr><td>both reserved</td><td>reserved</td><td>reserved</td><td>reserved / reserved</td><td><span class="pill derived">reserved</span></td></tr>
+    <tr><td>ship line1 (10A)</td><td>shipped</td><td>reserved</td><td>reserved / shipped</td><td><span class="pill derived">partially_shipped</span></td></tr>
+    <tr><td>ship line2 (5B)</td><td>shipped</td><td>shipped</td><td>shipped / shipped</td><td><span class="pill derived">shipped</span></td></tr>
+    <tr><td>invoiced + paid (saga/360)</td><td>—</td><td>—</td><td>(+ invoice=INVOICED, pay=PAID, off-line — §12.6)</td><td><span class="pill cross">completed</span></td></tr>
+  </tbody>
+</table>
+
+<h3>13.5 Example B — make vs buy heterogeneity (§11)</h3>
+<p>
+  SO: line1 = 10×A (<strong>make</strong>-to-order), line2 = 4×B (<strong>buy</strong>-to-order).
+  Different concrete states, but the fold only sees the band:
+</p>
+<table>
+  <thead><tr><th>t</th><th>line1 (make) concrete → band</th><th>line2 (buy) concrete → band</th><th><code>meet</code>/<code>join</code></th><th>header</th></tr></thead>
+  <tbody>
+    <tr><td>place</td><td><code>open</code> → open</td><td><code>open</code> → open</td><td>open / open</td><td><span class="pill derived">open</span></td></tr>
+    <tr><td>both started</td><td><code>waiting_for_production</code> → partially_reserved</td><td><code>awaiting_receipt</code> → partially_reserved</td><td>p_res / p_res</td><td><span class="pill derived">partially_reserved</span></td></tr>
+    <tr><td>line1 produced</td><td><code>ready_to_ship</code> → reserved</td><td><code>awaiting_receipt</code> → partially_reserved</td><td>p_res / reserved</td><td><span class="pill derived">partially_reserved</span></td></tr>
+    <tr><td>ship line1</td><td><code>shipped</code> → shipped</td><td><code>ready_to_ship</code> → reserved</td><td>reserved / shipped</td><td><span class="pill derived">partially_shipped</span></td></tr>
+  </tbody>
+</table>
+<p>
+  At "both started," <code>g_make(waiting_for_production) = g_buy(awaiting_receipt) =
+  partially_reserved</code> — heterogeneity is <strong>erased before the fold</strong>, so
+  <code>classify</code> is identical to the homogeneous case. (These illustrative off-line model states
+  coarsen to the band; the SO line itself carries only
+  <code>open</code>/<code>partially_reserved</code>/<code>reserved</code>/… — §11.4.)
+</p>
+<p>
+  <strong>Stratified per-kind reporting (§11.3):</strong> if the header must report per-kind rather
+  than one scalar, partition <code>{line1}</code> make-group / <code>{line2}</code> buy-group, fold
+  each → <code>(make: shipped, buy: reserved)</code>, present the <strong>pair</strong> (Model A
+  product over two Model B folds). Pay for the product only when you actually report per-kind.
+</p>
+
+<h3>13.6 Example C — multi-axis partial ship + invoice (§12)</h3>
+<p>
+  SO: line1 = 10×A, line2 = 10×B (stock). Shipment of <strong>2×A + 4×B</strong>; a separate invoice
+  of <strong>5×A + 0×B</strong> (deliberately <em>not</em> aligned with the shipment, to show axis
+  independence):
+</p>
+<table>
+  <thead><tr><th>line</th><th>ordered</th><th>shipped → <span class="axis-ship"><code>band_ship</code></span></th><th>invoiced → <span class="axis-inv"><code>band_invoice</code></span></th></tr></thead>
+  <tbody>
+    <tr><td>line1 (A)</td><td>10</td><td>2 → <span class="axis-ship">partially_shipped</span></td><td>5 → <span class="axis-inv">PARTIALLY_INVOICED</span></td></tr>
+    <tr><td>line2 (B)</td><td>10</td><td>4 → <span class="axis-ship">partially_shipped</span></td><td>0 → <span class="axis-inv">NOT_INVOICED</span></td></tr>
+  </tbody>
+</table>
+<p>Two <strong>independent</strong> componentwise folds:</p>
+<pre class="code"><span class="axis-ship">ship axis</span> :   meet = partially_shipped,  join = partially_shipped   →  header.status     = partially_shipped
+<span class="axis-inv">invoice axis</span>: meet = NOT_INVOICED,       join = PARTIALLY_INVOICED  →  header.invoiceFlag = PARTIALLY_INVOICED</pre>
+<p>
+  One column can't carry both — exactly why they're orthogonal regions, not one chain (§12.4 #1).
+</p>
+<ul>
+  <li><strong>Order-insensitivity (§12.3):</strong> had the goods arrived as two shipments
+    (<code>2×A</code> then <code>4×B</code>, reversed, or bundled), each line's <code>shippedQty</code>
+    is the same <code>Σ</code> ⇒ identical bands and header. The cross-line bundling is invisible to
+    the fold.</li>
+  <li><strong>Reversal boundary (§12.4 #2) — where the fold breaks:</strong> a <strong>return of
+    1×A</strong> sends <code>shippedQty(A): 2 → 1</code>. The band stays <code>PARTIALLY_SHIPPED</code>,
+    but the axis moved <em>backwards</em> — <code>join_ship</code> no longer means "furthest reached"
+    and a replay of the original ship event would raise it again. Monotonicity violated ⇒ meet/join
+    stop being a sound progress model. Needs signed deltas + a <em>net</em> projection, not a status
+    lattice (out of scope — <code>project_credit_notes_low_priority</code>).</li>
+  <li><strong>COMPLETED (cross-axis, cross-aggregate, §12.4 #4):</strong> reached only when
+    <code>meet_ship == SHIPPED ∧ meet_invoice == INVOICED ∧ meet_pay == PAID</code>, and
+    <code>meet_pay</code> is fed from <code>finance.CustomerInvoice</code> via events — this join
+    straddles two bounded contexts (the §10.3 open question).</li>
+</ul>
+
+<!-- ============================================================= -->
+<h2 id="s14">14 · Gap analysis — model vs. codebase (resolved 2026-06-10)</h2>
+<p>
+  §8 sketched where the model meets the code; this is the full accounting. The gaps below were the
+  <em>pre-convergence</em> state; the first pass closed gaps 1 &amp; 2 and resolved gap 3 by design,
+  and a later pass finished the arc — the faithful brainless fold + line-predicate gates (§14.4). The
+  <strong>headline before</strong>: the composed-state machine was fragmented across three writers
+  where the model has one. <strong>After:</strong> the aggregate is the single writer of the ship-axis
+  fold (the header ship-vocabulary now <em>equals</em> the line vocabulary); the invoice/pay axes are
+  document-chain folds owned by finance + the 360 (§12.6).
+</p>
+
+<h4>At a glance — before → now (shipped 2026-06-10)</h4>
+<table>
+  <thead><tr><th>Before (the prior fragmentation)</th><th>Now — as-built</th></tr></thead>
+  <tbody>
+    <tr><td>Status written by 3 owners: aggregate + blind <code>markStatus</code> projection + Saga</td><td>One owner: <code>recomputeStatus()</code> = <code>classify(lines)</code> on the aggregate</td></tr>
+    <tr><td>Fold reduced to a single <code>allMatch(SHIPPED)</code> in <code>recordShipped</code></td><td><code>open…shipped</code> all derived from the faithful ship-axis fold (header ≡ line vocabulary)</td></tr>
+    <tr><td>In-progress band lives only in the Saga; line's <code>reserved</code> unwired; header coarsens to one <code>IN_FULFILMENT</code></td><td>Line carries the full band (<code>markReserved</code> wired); the fold maps it 1:1 to <code>partially_reserved</code> / <code>reserved</code></td></tr>
+    <tr><td>Gates keyed on a header-status allow-list (<code>NON_CANCELLABLE_STATUSES</code> / <code>AMENDABLE_STATUSES</code>)</td><td>Gates read line predicates (<code>anyLineShipped()</code> + <code>isTerminal()</code>) — the lossy header is not the oracle</td></tr>
+    <tr><td>No invoice axis on the order; <code>COMPLETED</code> is a payment-event jump</td><td>Invoice/pay are orthogonal axes off the SO line (§12.6); <code>completed</code> is the cross-axis meet</td></tr>
+    <tr><td>No <code>status == classify(lines)</code> invariant</td><td>Invariant enforced + property-tested (shuffle / replay / cancel-neutrality)</td></tr>
+  </tbody>
+</table>
+
+<h4>Who writes header status</h4>
+<table>
+  <thead><tr><th>Who writes header status</th><th>Mechanism</th><th>States</th></tr></thead>
+  <tbody>
+    <tr><td><strong>The aggregate</strong> (<code>SalesOrder</code>) — <em>the sole writer</em></td><td><code>recomputeStatus()</code> brainless fold (fold region) + guarded <code>cancel</code> / <code>reject</code> / <code>complete</code> (top-down terminals)</td><td>fold region <code>open</code> / <code>partially_reserved</code> / <code>reserved</code> / <code>partially_shipped</code> / <code>shipped</code> + terminals <code>completed</code> / <code>cancelled</code> / <code>rejected</code></td></tr>
+    <tr><td><s>A blind projection (<code>markStatus</code>)</s></td><td><strong>retired</strong> — <code>SalesOrderHeaderStatusProjection</code> deleted</td><td>—</td></tr>
+    <tr><td><strong>The Saga</strong> (<code>SalesOrderFulfilmentSaga</code>)</td><td>still owns <em>process</em> progress (reservation / replenishment / per-triple sequencing) — a distinct machine (§5), feeds the aggregate via guarded transitions</td><td>saga states, not header status</td></tr>
+  </tbody>
+</table>
+
+<h3>14.1 Gap by model pillar — resolution</h3>
+<table>
+  <thead><tr><th>Model pillar (ideal)</th><th>Resolution</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Header status = <code>classify(lines)</code></strong> single fold (§13.3)</td><td><code>SalesOrder.recomputeStatus()</code> re-derives the ship-axis status after every mutation</td><td>✅ closed</td></tr>
+    <tr><td><strong>Single writer, status derived not stored</strong> (§9)</td><td>blind <code>markStatus</code> retired; aggregate is sole writer (fold + guarded terminals)</td><td>✅ closed</td></tr>
+    <tr><td><strong>Line is the authoritative state machine</strong> (§8)</td><td><code>markReserved</code> wired from <code>StockReservedHandler</code> → <code>recordReservation</code>; line carries the <code>reserved</code>/<code>partially_reserved</code> band, fold derives the matching header rung (no longer coarsened into one <code>IN_FULFILMENT</code>)</td><td>✅ closed (faithful fold)</td></tr>
+    <tr><td><strong>Multi-axis product</strong> <code>M_ship × M_invoice × M_pay</code> (§12)</td><td>ship axis folds over SO lines (aggregate); invoice/pay fold over the fulfilment-document chain (finance + 360), <strong>not</strong> the SO line — the per-event-triple model (§12.6). <code>COMPLETED</code> is the saga's cross-aggregate meet, with <code>complete()</code> asserting the <code>ordered = shipped</code> leg</td><td>✅ resolved by design</td></tr>
+    <tr><td><strong>Variant coarsening</strong> make/buy → common band (§11)</td><td>to-order is <strong>built</strong> (<code>ReplenishmentStrategy.TO_ORDER</code>), and validates §11 even more strongly: the line needs <em>no</em> variant states — production lives off the line, so a to-order line runs the same <code>open → reserved → shipped</code> chain. The model-only <code>WAITING_FOR_PRODUCTION</code> / <code>READY_TO_SHIP</code> were removed</td><td>✅ built (no line bands)</td></tr>
+    <tr><td><strong>Quantity-bucket <code>Σ</code>-folds</strong> (§2.3)</td><td><code>shippedQty</code> + <code>reservedQty</code> now both accumulate; <code>manufacturingRequiredQty</code> still unwired (MTS)</td><td>✅ mostly closed</td></tr>
+    <tr><td><strong>Cancelled-neutrality in the fold</strong></td><td>the status fold filters cancelled lines (property-tested)</td><td>✅ closed</td></tr>
+  </tbody>
+</table>
+
+<h3>14.2 The three gaps — how they closed</h3>
+<ol>
+  <li><strong>Single <code>classify</code> + single writer (was High).</strong>
+    <code>SalesOrder.recomputeStatus()</code> is the one <code>classify(meet, join)</code> over the
+    live lines, called after every mutation; it is the <em>sole</em> writer of the derived region, and
+    the absorbing terminals are guarded transitions (<code>cancel</code> / <code>reject</code> /
+    <code>complete</code>). The blind <code>markStatus</code> projection is <strong>deleted</strong>, so
+    the §9 <em>independently-writable status</em> anti-pattern is gone — there is no second writer to
+    desync. ✅ <strong>Closed.</strong></li>
+  <li><strong>In-progress band on the line (was Medium).</strong> <code>markReserved</code> is wired
+    from <code>StockReservedHandler</code> via <code>SalesOrderService.recordReservation</code>, so the
+    line authoritatively carries <code>reserved</code> / <code>partially_reserved</code> and the fold
+    derives the matching header rung from it (Option 2, not "document the split"; the faithful fold
+    maps the line bands 1:1 to header bands rather than collapsing into one <code>IN_FULFILMENT</code>).
+    <code>reservedQuantity</code> is no longer dead. The Saga still owns the states the line cannot
+    represent (awaiting-replenishment, ready-to-ship) — those are <em>process</em> state by design
+    (§5). ✅ <strong>Closed.</strong></li>
+  <li><strong>Multi-axis — resolved by recognising the axes fold over different detail sets (was
+    Medium).</strong> The fix is <em>not</em> an <code>invoicedQuantity</code> bucket on the SO line.
+    Per §12.6, the order is fulfilled by a dynamic set of <strong>fulfilment-event triples</strong>
+    <code>(shipment, invoice, payment)</code> that partition the order matrix <code>M</code> and
+    <strong>cross-cut the SO lines</strong>; the conservation invariant
+    <code>Σ shipments = Σ invoices = Σ payments = Σ SO lines = M</code> says completion is a
+    <em>totals reconciliation</em>. Only the <strong>ship</strong> leg is SO-line-aligned (shipment
+    lines carry <code>salesOrderLineId + qty</code>), so it lives on the aggregate; the
+    <strong>invoice</strong> and <strong>pay</strong> legs are value-level order rollups owned by
+    <code>finance.CustomerInvoice</code> / <code>Payment</code> + the <code>sales_order_360_view</code>
+    (<code>invoiced_amount</code> / <code>paid_amount</code> vs <code>total_amount</code>).
+    <code>COMPLETED</code> is the saga sequencing the triples; the former blind
+    <code>markStatus(COMPLETED)</code> is replaced by the guarded <code>complete()</code>, which asserts
+    the one leg the aggregate owns (<code>ordered = shipped</code>) — and because invoice sits
+    structurally between ship and pay, <code>shipped ∧ paid ⇒ invoiced</code>, so the 360's
+    <code>completed = shipped ∧ paid_amount ≥ total</code> is the complete meet. ✅ <strong>Resolved by
+    design.</strong> Putting the invoice axis on the SO line would have contradicted <em>deltas get
+    aggregates, totals get projections</em> (§12.4 #4) and could not be populated for value-based
+    deposit/balance invoices.</li>
+</ol>
+
+<h3>14.3 The faithful fold + line-predicate gates (finishing the arc, 2026-06-10)</h3>
+<p>
+  The first pass made the aggregate the single writer but still (a) <strong>coarsened</strong> the
+  fold — line <code>partially_reserved</code> / <code>reserved</code> were lumped into one header
+  <code>IN_FULFILMENT</code> — and (b) <strong>gated on the header enum</strong>
+  (<code>NON_CANCELLABLE_STATUSES</code> / <code>AMENDABLE_STATUSES</code>). The convergence finishes
+  it:
+</p>
+<ul>
+  <li><strong>Brainless faithful fold.</strong> <code>SalesOrder.Status</code> <em>is</em> the fold
+    region <code>open ⊏ partially_reserved ⊏ reserved ⊏ partially_shipped ⊏ shipped</code> — the header
+    ship-vocabulary <strong>equals</strong> the line vocabulary (§13.3). <code>SUBMITTED → open</code>;
+    <code>IN_FULFILMENT</code> split into <code>partially_reserved</code> / <code>reserved</code> (the
+    "all" rung on <code>meet</code>, the "some" rung on <code>join</code>). The header is the lossy
+    <code>meet/join</code> of the lines and nothing more — a derived label.</li>
+  <li><strong>Gates read the lines.</strong> Cancel / reject / amend read line predicates
+    (<code>anyLineShipped()</code> + <code>isTerminal()</code>), not a header-status allow-list —
+    because the fold is lossy, the header can't be the gating oracle (§5).
+    <code>NON_CANCELLABLE_STATUSES</code> / <code>AMENDABLE_STATUSES</code> are gone; cancellable ≡
+    amendable, derived from one source. A future policy change ("allow cancel at
+    <code>partially_reserved</code>") is a one-line predicate edit — no enum migration.</li>
+  <li><strong>Bottom-up fold vs top-down terminals stay split (§4/§5).</strong> The fold governs the
+    <em>ship progression</em> (bottom-up, line→header). <code>cancel</code> / <code>reject</code> /
+    <code>complete</code> stay <strong>order-level</strong> top-down commands setting the three
+    absorbing terminals; they are <em>not</em> pushed onto lines (a line can be soft-removed/edited and
+    then folds normally; cancelling the <em>order</em> is a different act). <code>complete()</code>
+    still asserts the fold == <code>shipped</code>; its cross-axis invoice/pay inputs live off the SO
+    line (§12.6), so <code>completed</code> is one of the three order-level terminals, not a fold output
+    — which also dissolves the old "<code>COMPLETED</code> can't fold" worry.</li>
+</ul>
+
+<h3>14.4 What stays deferred</h3>
+<ul>
+  <li><strong>Per-kind status <em>reporting</em> on the header (§11.3)</strong> — to-order itself is
+    built, but the stratified product (reporting make-progress vs buy-progress separately on the order)
+    is not needed and not done. The SO line runs the one chain regardless of variant, so the
+    <code>WAITING_FOR_PRODUCTION</code> / <code>READY_TO_SHIP</code> line-status values were
+    <strong>removed</strong> (model-only).</li>
+  <li><strong>Reversals (returns / credit notes, §12.4 #2)</strong> — break per-axis monotonicity; out
+    of scope (<code>project_credit_notes_low_priority</code>).</li>
+  <li><strong>Third status vocabulary on the read model (option C, deferred).</strong>
+    <code>reporting</code>'s <code>sales_order_360_view.order_status</code> speaks its <em>own</em>
+    words (<code>pending → submitted → ready_to_ship → shipped → completed → cancelled</code>), seeded
+    and advanced by the 360 projection's CASE logic — it does <strong>not</strong> read the sales
+    header status string. Unifying that read-model vocabulary with the header fold ladder is a separate
+    slice; until then the aggregate and the 360 deliberately diverge (the aggregate is
+    <code>open</code> / <code>reserved</code> / …; the 360 stays <code>submitted</code> /
+    <code>ready_to_ship</code> / …). The erp-web-ui <code>SalesOrderDetail</code> cancel/amend gates
+    read the 360 <code>order_status</code>, so they are unaffected by the header rename.</li>
+</ul>
+<p>
+  <strong>Net:</strong> the codebase now concentrates the ship-axis machine in one aggregate fold
+  (single writer, line-authoritative, property-tested) and locates the invoice/pay axes where the
+  conservation invariant puts them — value-level order rollups over the fulfilment-document chain,
+  owned by finance + the 360, sequenced by the saga. The model and the code agree.
+</p>
+
+<!-- ============================================================= -->
+<h2 id="refs">References / lineage</h2>
+<ul>
+  <li><strong>Harel, D. (1987)</strong> — <em>Statecharts: A Visual Formalism for Complex Systems.</em>
+    AND/OR decomposition, orthogonal regions, broadcast (Model A).</li>
+  <li><strong>UML State Machines</strong> — composite states, submachine states, orthogonal regions
+    (Harel, standardised).</li>
+  <li><strong>Petri nets / Coloured Petri nets (Jensen)</strong> — token-based dynamic-cardinality
+    concurrency; the natural home for routing-graph synchronisation.</li>
+  <li><strong>Process algebra (CSP, Hoare; CCS, Milner)</strong> — parallel composition of fixed,
+    named communicating automata.</li>
+  <li><strong>Lattice / order theory</strong> — meet/join, the progress chain, the
+    <code>classify(⊓, ⊔)</code> shape; the <strong>product of lattices is a lattice</strong>
+    (componentwise meet/join) result underpins the multi-axis line state in §12.</li>
+  <li><strong>Monoid folds / homomorphisms</strong> — the order-insensitivity guarantee
+    (<code>map</code>/<code>reduce</code>).</li>
+  <li><strong>Abstract interpretation (Cousot &amp; Cousot, 1977) / Galois connections</strong> — the
+    monotone <code>g_v : L_v → M</code> coarsening heterogeneous variant FSMs onto one progress lattice
+    (§11) is precisely an abstraction map; "the fold runs on the abstraction" is the soundness idea.</li>
+  <li><strong>Sum types / coproducts</strong> — variant lines as a tagged union
+    <code>L_make ⊎ L_buy ⊎ …</code>, with the fold defined on the coproduct via the family
+    <code>g</code> (§11.1).</li>
+  <li><strong>Pacioli (1494) → event sourcing → DDD+outbox</strong> — <em>CLAUDE.md</em> /
+    <em>docs/conventions.md</em> → <em>deltas get aggregates, totals get projections</em>; this note is
+    that principle applied to composed <strong>state</strong>.</li>
+  <li>In-repo: <code>docs/sagas.md</code> (the third machine — process progress),
+    <code>docs/conventions.md</code> (aggregate vs projection), <code>SalesOrder</code> /
+    <code>SalesOrderLine</code> (the worked example).</li>
+</ul>
+
+<footer>
+  Single source for the composed-state-machine note — merged 2026-06-11 from
+  <code>composed-state-machines.md</code> + <code>composed-state-machine.html</code> (both retired).
+  As-built 2026-06-10. Canonical as-built map: <code>system-map.html</code>.
+</footer>
+
+<script type="module">
+  // Modern browsers permit ESM imports over HTTPS from file://. If this fails
+  // (offline, no cache), each <pre class="mermaid"> keeps showing its source
+  // text — the intended degraded view.
+  try {
+    const mermaid = (await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs')).default;
+    // The dynamic import resolves AFTER the load event, so startOnLoad would
+    // have already missed its window — run the renderer explicitly instead.
+    mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose' });
+    await mermaid.run({ querySelector: 'pre.mermaid' });
+  } catch (e) {
+    console.warn('Mermaid failed to load; diagrams shown as source text.', e);
+  }
+</script>
+</body>
+</html>

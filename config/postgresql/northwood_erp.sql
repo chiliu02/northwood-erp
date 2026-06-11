@@ -463,7 +463,7 @@ CREATE TABLE sales.sales_order_header (
     -- ship-vocabulary equals sales_order_line.line_status: open ⊏ partially_reserved
     -- ⊏ reserved ⊏ partially_shipped ⊏ shipped. The three order-level terminals
     -- (completed/cancelled/rejected) sit on top, set by top-down commands.
-    -- See SalesOrder.java + docs/composed-state-machines.md §13.
+    -- See SalesOrder.java + docs/composed-state-machines.html §13.
     status VARCHAR(30) NOT NULL DEFAULT 'open' CHECK (
         status IN (
             'open', 'partially_reserved', 'reserved',

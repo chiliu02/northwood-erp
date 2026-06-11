@@ -35,7 +35,7 @@ import java.util.UUID;
  * is a <i>derived label</i>, a projection of line state (<i>deltas get
  * aggregates, totals get projections</i> applied to <b>state</b>).
  * {@link #recomputeStatus()} is the faithful {@code classify(meet, join)} fold
- * of the line ship-bands ({@code docs/composed-state-machines.md} §13.3), so the
+ * of the line ship-bands ({@code docs/composed-state-machines.html} §13.3), so the
  * header ship-vocabulary <b>equals</b> the line vocabulary:
  * {@code open ⊏ partially_reserved ⊏ reserved ⊏ partially_shipped ⊏ shipped}.
  * The "all" rungs sit on {@code meet} ({@code reserved}, {@code shipped}); the
@@ -148,7 +148,7 @@ public final class SalesOrder {
      * manufacturing work order / inventory replenishment + reporting's
      * {@code manufacturing_status} / {@code stock_status}. The line itself moves
      * {@code open → reserved → shipped} once its order-pegged supply is reserved,
-     * the same chain a stock line runs (see {@code docs/composed-state-machines.md}
+     * the same chain a stock line runs (see {@code docs/composed-state-machines.html}
      * §11 — the fold never branches on product type).
      */
     public enum LineStatus {
@@ -221,7 +221,7 @@ public final class SalesOrder {
     private final List<SalesOrderLine> lines;
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
 
-    // Ship-progress lattice M_ship (docs/composed-state-machines.md §13.1): the
+    // Ship-progress lattice M_ship (docs/composed-state-machines.html §13.1): the
     // band a line status maps onto for the header fold. The fold region of
     // {@link Status} shares this vocabulary 1:1, so the bands carry the line
     // names. Ordered so meet/join are plain int min/max. `cancelled` is off the
@@ -733,7 +733,7 @@ public final class SalesOrder {
     /**
      * Re-derive the header {@code status} from the live-line multiset — the
      * faithful ship-axis {@code classify(meet, join)} fold of
-     * {@code docs/composed-state-machines.md} §13.3, sibling to
+     * {@code docs/composed-state-machines.html} §13.3, sibling to
      * {@link #recomputeTotals()} and called from the same mutators. Sole writer
      * of the fold region; the absorbing order-level terminals
      * ({@code cancelled} / {@code completed} / {@code rejected}) are left
