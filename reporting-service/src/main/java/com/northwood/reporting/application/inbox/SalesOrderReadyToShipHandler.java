@@ -9,9 +9,10 @@ import org.springframework.stereotype.Component;
 
 /**
  * Reporting handler for {@code sales.SalesOrderReadyToShip}: advances the
- * {@code sales_order_360_view.order_status} to {@code 'ready_to_ship'} so the
- * shipment UI's order picker (which filters on {@code orderStatus ===
- * "ready_to_ship"}) surfaces the order as shippable.
+ * {@code sales_order_360_view.order_status} to the sales header fold ladder's
+ * {@code 'reserved'} rung (every line reserved) so the shipment UI's order picker
+ * (which surfaces {@code reserved} / {@code partially_shipped} orders) lists it
+ * as shippable.
  */
 @Component
 public class SalesOrderReadyToShipHandler extends AbstractInboxHandler<SalesOrderReadyToShip> {

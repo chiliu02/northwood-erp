@@ -90,11 +90,15 @@ export function ShipmentNew() {
 
   // Sales orders that are ready to ship; show others greyed out as fallback
   // so a power user can ship against any SO if needed (the backend enforces
-  // the actual state machine).
+  // the actual state machine). An order is shippable when its header fold status
+  // is `reserved` (all lines reserved) or `partially_shipped` (a backorder
+  // remains) — the 360 `order_status` speaks the sales header vocabulary.
   const shippableOrders = (salesOrders ?? []).slice().sort((a, b) =>
     (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "")
   );
-  const readyToShip = shippableOrders.filter((o) => o.orderStatus === "ready_to_ship");
+  const readyToShip = shippableOrders.filter(
+    (o) => o.orderStatus === "reserved" || o.orderStatus === "partially_shipped"
+  );
 
   const [shipmentNumber, setShipmentNumber] = useState(() => `SH-${Date.now()}`);
   const [salesOrderHeaderId, setSalesOrderHeaderId] = useState("");
@@ -225,9 +229,9 @@ export function ShipmentNew() {
 
       <div className="px-8 py-6">
         <p className="mb-4 max-w-3xl text-sm text-text-muted">
-          Ship goods against a fulfilment-ready sales order. The fulfilment saga advances{" "}
-          <code>ready_to_ship → goods_shipped</code>; finance auto-creates the customer invoice;
-          inventory decrements on-hand and releases the reservation.
+          Ship goods against a fulfilment-ready sales order (header status{" "}
+          <code>reserved</code> or <code>partially_shipped</code>). Finance auto-creates the customer
+          invoice; inventory decrements on-hand and releases the reservation.
         </p>
 
         <div className="grid gap-4 max-w-5xl">
@@ -254,8 +258,8 @@ export function ShipmentNew() {
             <FormSection title="Sales order">
               <Field label="Order" required hint={
                 readyToShip.length === 0
-                  ? "no orders are ready_to_ship yet — drive an order through the saga first"
-                  : `${readyToShip.length} ready_to_ship order${readyToShip.length === 1 ? "" : "s"}`
+                  ? "no orders are ready to ship yet — drive an order through the saga first"
+                  : `${readyToShip.length} order${readyToShip.length === 1 ? "" : "s"} ready to ship`
               }>
                 <select
                   value={salesOrderHeaderId}
@@ -272,10 +276,10 @@ export function ShipmentNew() {
                       ))}
                     </optgroup>
                   )}
-                  {shippableOrders.filter((o) => o.orderStatus !== "ready_to_ship").length > 0 && (
+                  {shippableOrders.filter((o) => o.orderStatus !== "reserved" && o.orderStatus !== "partially_shipped").length > 0 && (
                     <optgroup label="Other (advanced)">
                       {shippableOrders
-                        .filter((o) => o.orderStatus !== "ready_to_ship")
+                        .filter((o) => o.orderStatus !== "reserved" && o.orderStatus !== "partially_shipped")
                         .map((o) => (
                           <option key={o.salesOrderHeaderId} value={o.salesOrderHeaderId}>
                             {o.orderNumber} · {o.customerName ?? "—"} · {o.orderStatus}

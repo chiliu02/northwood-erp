@@ -27,16 +27,17 @@ import org.testcontainers.utility.DockerImageName;
 
 /**
  * Real-Postgres test for {@link JdbcSalesOrder360Projection}'s status lifecycle:
- * {@code order_status} advances {@code submitted → ready_to_ship → shipped →
+ * {@code order_status} speaks the <b>sales header fold vocabulary</b> and advances
+ * {@code open → partially_reserved → reserved → partially_shipped → shipped →
  * completed} as the driving events land, and — because reporting consumes
  * several topics and so can see events out of order — each advance is
  * <b>forward-only</b>: a late event never downgrades a later state, and a
  * terminal {@code 'cancelled'} is preserved. Completion requires BOTH full
  * settlement AND a posted shipment, so a fully-paid PREPAYMENT (money in before
- * the goods ship) stays at {@code ready_to_ship} until {@code recordShipment}
+ * the goods ship) stays at {@code reserved} until {@code recordShipment}
  * completes it — it never reads {@code 'completed'} while shipment is still
  * pending. Also covers the deposit/pegged/refund derivations: a paid deposit does
- * not complete the order (its balance is still due), reaching {@code ready_to_ship}
+ * not complete the order (its balance is still due), reaching {@code reserved}
  * lifts a pegged buy-to-order line out of {@code 'not_available'} stock, and cancelling a
  * paid order releases its reservation and marks the payment {@code 'refunded'}.
  */
@@ -87,13 +88,13 @@ class JdbcSalesOrder360ProjectionIT {
     }
 
     @Test
-    void order_status_progresses_submitted_to_completed() {
+    void order_status_progresses_open_to_completed() {
         UUID id = UUID.randomUUID();
         createOrder(id);
-        assertThat(orderStatus(id)).isEqualTo("submitted");
+        assertThat(orderStatus(id)).isEqualTo("open");
 
         PROJECTION.recordReadyToShip(id, Instant.now(), "system");
-        assertThat(orderStatus(id)).isEqualTo("ready_to_ship");
+        assertThat(orderStatus(id)).isEqualTo("reserved");
 
         PROJECTION.recordShipment(id, true, Instant.now(), "mike");
         assertThat(orderStatus(id)).isEqualTo("shipped");
@@ -109,12 +110,12 @@ class JdbcSalesOrder360ProjectionIT {
         createOrder(id);
         PROJECTION.recordReadyToShip(id, Instant.now(), "system");
 
-        // First shipment covers only some lines (orderFullyShipped=false) →
-        // shipment_status='partially_shipped'; order_status stays 'ready_to_ship'
-        // so the shipment picker still surfaces the backorder.
+        // First shipment covers only some lines (orderFullyShipped=false) → both
+        // shipment_status and order_status reach 'partially_shipped' (the fold
+        // ladder's partial rung), so the shipment picker still surfaces the backorder.
         PROJECTION.recordShipment(id, false, Instant.now(), "mike");
         assertThat(shipmentStatus(id)).isEqualTo("partially_shipped");
-        assertThat(orderStatus(id)).isEqualTo("ready_to_ship");
+        assertThat(orderStatus(id)).isEqualTo("partially_shipped");
 
         // Completing shipment (orderFullyShipped=true) → 'shipped'.
         PROJECTION.recordShipment(id, true, Instant.now(), "mike");
@@ -187,7 +188,7 @@ class JdbcSalesOrder360ProjectionIT {
         // part of the order total — the order is NOT complete and stays cancellable.
         PROJECTION.recordPayment(id, new BigDecimal("325.00"),
             CustomerPaymentReceived.INVOICE_STATUS_PAID, Instant.now(), "olivia");
-        assertThat(orderStatus(id)).isEqualTo("ready_to_ship");
+        assertThat(orderStatus(id)).isEqualTo("reserved");
         assertThat(paymentStatus(id)).isEqualTo("partially_paid");
 
         // Balance paid → order_status completes and payment settles in full.
@@ -205,13 +206,13 @@ class JdbcSalesOrder360ProjectionIT {
 
         // Prepayment flow: invoice + full payment land BEFORE stock reservation
         // and shipment. The order is fully settled but the goods have not shipped
-        // — it must read 'ready_to_ship' (awaiting shipment), NOT 'completed', and
+        // — it must read 'reserved' (awaiting shipment), NOT 'completed', and
         // the shipment lozenge stays 'pending'. (Pre-fix this completed here,
         // leaving Status=Completed alongside Shipment=pending.)
         PROJECTION.recordPayment(id, new BigDecimal("650.00"),
             CustomerPaymentReceived.INVOICE_STATUS_PAID, Instant.now(), "olivia");
         PROJECTION.recordReadyToShip(id, Instant.now(), "system");
-        assertThat(orderStatus(id)).isEqualTo("ready_to_ship");
+        assertThat(orderStatus(id)).isEqualTo("reserved");
         assertThat(paymentStatus(id)).isEqualTo("paid");
         assertThat(shipmentStatus(id)).isEqualTo("pending");
 
@@ -271,12 +272,16 @@ class JdbcSalesOrder360ProjectionIT {
 
         PROJECTION.recordStockReserved(id, StockReserved.STATUS_PARTIALLY_RESERVED, Instant.now(), "system");
         assertThat(stockStatus(id)).isEqualTo("partially_reserved");
+        // order_status rides the fold ladder alongside stock_status.
+        assertThat(orderStatus(id)).isEqualTo("partially_reserved");
 
         // A later full reservation advances it; then a stale partial must not roll it back.
         PROJECTION.recordStockReserved(id, StockReserved.STATUS_RESERVED, Instant.now(), "system");
         assertThat(stockStatus(id)).isEqualTo("reserved");
+        assertThat(orderStatus(id)).isEqualTo("reserved");
         PROJECTION.recordStockReserved(id, StockReserved.STATUS_PARTIALLY_RESERVED, Instant.now(), "system");
         assertThat(stockStatus(id)).isEqualTo("reserved");
+        assertThat(orderStatus(id)).isEqualTo("reserved");   // forward-only: not downgraded
     }
 
     @Test

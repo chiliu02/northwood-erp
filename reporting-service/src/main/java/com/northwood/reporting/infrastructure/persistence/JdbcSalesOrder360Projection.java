@@ -70,7 +70,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                 currency_code, total_amount, outstanding_amount,
                 last_event_type, last_event_at,
                 last_modified_by
-            ) VALUES (?, ?, ?, ?, ?, ?, 'submitted', 'pending', 'pending',
+            ) VALUES (?, ?, ?, ?, ?, ?, 'open', 'pending', 'pending',
                       'pending', 'pending', 'pending',
                       ?,
                       ?, ?, ?, ?, ?, ?)
@@ -80,6 +80,11 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                 customer_name = EXCLUDED.customer_name,
                 order_date = EXCLUDED.order_date,
                 requested_delivery_date = EXCLUDED.requested_delivery_date,
+                -- order_status uses the sales header fold vocabulary
+                -- (open / partially_reserved / reserved / partially_shipped /
+                -- shipped + completed/cancelled/rejected terminals). 'pending' is
+                -- the pre-placement stub sentinel only — overwrite it with 'open'
+                -- here; never downgrade an order that already advanced.
                 order_status = CASE
                     WHEN sales_order_360_view.order_status = 'pending'
                         THEN EXCLUDED.order_status
@@ -221,6 +226,17 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
         String displayStockStatus = StockReserved.STATUS_FAILED.equals(stockStatus)
             ? STOCK_STATUS_NOT_AVAILABLE
             : stockStatus;
+        // order_status rides the sales header fold ladder. A reservation outcome
+        // advances it to 'reserved' (full cover) or 'partially_reserved' (some
+        // lines short — inventory is replenishing); a zero-from-stock outcome
+        // ('not_available') doesn't advance order_status (it stays 'open' until
+        // supply secures and recordReadyToShip flips it to 'reserved').
+        String orderStatusTarget = switch (displayStockStatus) {
+            case "reserved" -> "reserved";
+            case "partially_reserved" -> "partially_reserved";
+            default -> null;
+        };
+        String orderStatusStub = orderStatusTarget == null ? "pending" : orderStatusTarget;
         jdbc.update("""
             INSERT INTO reporting.sales_order_360_view (
                 sales_order_header_id, order_number,
@@ -232,7 +248,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                 last_event_type, last_event_at,
                 last_modified_by
             ) VALUES (?, '(pending)', ?, '(pending)',
-                      CURRENT_DATE, 'pending', ?,
+                      CURRENT_DATE, ?, ?,
                       'pending', 'pending',
                       'pending', 'pending',
                       'AUD', 0, 0,
@@ -249,6 +265,20 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                         THEN 'reserved'
                     ELSE EXCLUDED.stock_status
                 END,
+                -- order_status advances forward-only along the fold ladder:
+                -- partially_reserved only from open/pending; reserved from
+                -- open/pending/partially_reserved. Never downgrades reserved →
+                -- partially_reserved (make-to-order re-reservation churn) or rolls
+                -- back shipped/completed/cancelled/rejected.
+                order_status = CASE
+                    WHEN ?::text = 'partially_reserved'
+                      AND sales_order_360_view.order_status IN ('pending', 'open')
+                        THEN 'partially_reserved'
+                    WHEN ?::text = 'reserved'
+                      AND sales_order_360_view.order_status IN ('pending', 'open', 'partially_reserved')
+                        THEN 'reserved'
+                    ELSE sales_order_360_view.order_status
+                END,
                 last_event_type = CASE
                     WHEN sales_order_360_view.last_event_at IS NULL
                       OR EXCLUDED.last_event_at > sales_order_360_view.last_event_at
@@ -264,9 +294,10 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                 last_modified_by = COALESCE(EXCLUDED.last_modified_by, sales_order_360_view.last_modified_by),
                 updated_at = now()
             """,
-            salesOrderHeaderId, STUB_CUSTOMER_ID, displayStockStatus,
+            salesOrderHeaderId, STUB_CUSTOMER_ID, orderStatusStub, displayStockStatus,
             Timestamp.from(occurredAt == null ? Instant.now() : occurredAt),
-            actorUserId
+            actorUserId,
+            orderStatusTarget, orderStatusTarget
         );
     }
 
@@ -284,19 +315,21 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                 last_event_type, last_event_at,
                 last_modified_by
             ) VALUES (?, '(pending)', ?, '(pending)',
-                      CURRENT_DATE, 'ready_to_ship', 'pending',
+                      CURRENT_DATE, 'reserved', 'pending',
                       'not_required', 'pending',
                       'pending', 'pending',
                       'AUD', 0, 0,
                       'sales.SalesOrderReadyToShip', ?, ?)
             ON CONFLICT (sales_order_header_id) DO UPDATE SET
-                -- Forward-only: advance to ready_to_ship only from an earlier
-                -- lifecycle state. Reporting consumes several topics, so a late
-                -- event must never downgrade shipped/completed; 'cancelled'
-                -- (terminal) is preserved by falling through to ELSE.
+                -- Supply secured (every line reserved) → the fold ladder's
+                -- 'reserved' rung. Forward-only: advance only from an earlier
+                -- lifecycle state (pending stub / open / partially_reserved).
+                -- Reporting consumes several topics, so a late event must never
+                -- downgrade shipped/completed; 'cancelled'/'rejected' (terminal)
+                -- are preserved by falling through to ELSE.
                 order_status = CASE
-                    WHEN sales_order_360_view.order_status IN ('pending', 'submitted')
-                        THEN 'ready_to_ship'
+                    WHEN sales_order_360_view.order_status IN ('pending', 'open', 'partially_reserved')
+                        THEN 'reserved'
                     ELSE sales_order_360_view.order_status
                 END,
                 -- A stock-covered order skips manufacturing (no work order, no
@@ -412,10 +445,10 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
     @Override
     @Transactional
     public void recordShipment(UUID salesOrderHeaderId, boolean orderFullyShipped, Instant occurredAt, String actorUserId) {
-        // Stub-row (shipment projected before placement): a partial shipment must
-        // leave order_status pickable + advanceable, so 'ready_to_ship' rather
-        // than a terminal — the eventual full shipment's CASE advances it.
-        String stubOrderStatus = orderFullyShipped ? "shipped" : "ready_to_ship";
+        // Stub-row (shipment projected before placement): a partial shipment seeds
+        // the fold ladder's 'partially_shipped' rung — still pickable for the
+        // backorder, and the eventual full shipment's CASE advances it.
+        String stubOrderStatus = orderFullyShipped ? "shipped" : "partially_shipped";
         String stubShipmentStatus = orderFullyShipped ? "shipped" : "partially_shipped";
         jdbc.update("""
             INSERT INTO reporting.sales_order_360_view (
@@ -441,22 +474,26 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                     WHEN ?::boolean THEN 'shipped'
                     ELSE 'partially_shipped'
                 END,
-                -- order_status advances ONLY when the order is fully shipped. A
-                -- prepaid order (paid in full before shipment) goes straight to
-                -- 'completed'; otherwise 'shipped' (on_shipment/deposit owe the
-                -- post-ship balance — recordPayment completes them once paid). A
-                -- PARTIAL shipment leaves order_status unchanged so the order stays
-                -- 'ready_to_ship' and pickable for the backorder. Preserves
-                -- completed/cancelled via the ELSE.
+                -- order_status rides the fold ladder. Fully shipped + fully paid
+                -- (a prepaid order, settled before shipment) goes straight to
+                -- 'completed'; fully shipped with a balance owing → 'shipped'
+                -- (on_shipment/deposit — recordPayment completes them once paid).
+                -- A PARTIAL shipment advances to 'partially_shipped' (still
+                -- pickable for the backorder; ShipmentNew includes it). Forward-only
+                -- from the reservation rungs; preserves completed/cancelled/rejected
+                -- and never downgrades 'shipped' via the ELSE.
                 order_status = CASE
                     WHEN ?::boolean
-                      AND sales_order_360_view.order_status IN ('pending', 'submitted', 'ready_to_ship')
+                      AND sales_order_360_view.order_status IN ('pending', 'open', 'partially_reserved', 'reserved', 'partially_shipped')
                       AND sales_order_360_view.total_amount > 0
                       AND sales_order_360_view.total_amount - sales_order_360_view.paid_amount <= 0
                         THEN 'completed'
                     WHEN ?::boolean
-                      AND sales_order_360_view.order_status IN ('pending', 'submitted', 'ready_to_ship')
+                      AND sales_order_360_view.order_status IN ('pending', 'open', 'partially_reserved', 'reserved', 'partially_shipped')
                         THEN 'shipped'
+                    WHEN NOT ?::boolean
+                      AND sales_order_360_view.order_status IN ('pending', 'open', 'partially_reserved', 'reserved')
+                        THEN 'partially_shipped'
                     ELSE sales_order_360_view.order_status
                 END,
                 last_event_type = CASE
@@ -478,7 +515,8 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
             stubOrderStatus, stubShipmentStatus,
             Timestamp.from(occurredAt == null ? Instant.now() : occurredAt),
             actorUserId,
-            orderFullyShipped, orderFullyShipped, orderFullyShipped
+            orderFullyShipped,                                  // shipment_status CASE
+            orderFullyShipped, orderFullyShipped, orderFullyShipped  // order_status CASE (completed / shipped / partial)
         );
     }
 
@@ -577,7 +615,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
                 -- already 'shipped' completes the order here. A deposit (partial)
                 -- never satisfies the full-settlement test at all. PREPAYMENT pays
                 -- in full up front — before the goods reserve or ship — so it must
-                -- NOT complete here (order_status is still 'submitted'/'ready_to_ship'
+                -- NOT complete here (order_status is still 'open'/'reserved'
                 -- at that point); the order stays at its fulfilment stage and
                 -- recordShipment carries it to 'completed' once shipped. Forward-only
                 -- and cancelled-preserving (advances only from 'shipped').

@@ -1337,15 +1337,19 @@ band_invoice(line) =
     <strong>removed</strong> (model-only).</li>
   <li><strong>Reversals (returns / credit notes, §12.4 #2)</strong> — break per-axis monotonicity; out
     of scope (<code>project_credit_notes_low_priority</code>).</li>
-  <li><strong>Third status vocabulary on the read model (option C, deferred).</strong>
-    <code>reporting</code>'s <code>sales_order_360_view.order_status</code> speaks its <em>own</em>
-    words (<code>pending → submitted → ready_to_ship → shipped → completed → cancelled</code>), seeded
-    and advanced by the 360 projection's CASE logic — it does <strong>not</strong> read the sales
-    header status string. Unifying that read-model vocabulary with the header fold ladder is a separate
-    slice; until then the aggregate and the 360 deliberately diverge (the aggregate is
-    <code>open</code> / <code>reserved</code> / …; the 360 stays <code>submitted</code> /
-    <code>ready_to_ship</code> / …). The erp-web-ui <code>SalesOrderDetail</code> cancel/amend gates
-    read the 360 <code>order_status</code>, so they are unaffected by the header rename.</li>
+  <li><strong>Read-model vocabulary unified (was option C — now done).</strong>
+    <code>reporting</code>'s <code>sales_order_360_view.order_status</code> previously spoke its own
+    third vocabulary (<code>pending → submitted → ready_to_ship → shipped → …</code>). The 360
+    projection's CASE logic was retargeted to the <strong>sales header fold ladder</strong>:
+    <code>open → partially_reserved → reserved → partially_shipped → shipped</code> plus the
+    <code>completed</code> / <code>cancelled</code> / <code>rejected</code> terminals
+    (<code>submitted → open</code>, <code>ready_to_ship → reserved</code>; partial reservation and
+    partial shipment now surface on <code>order_status</code> too). <code>pending</code> remains only as
+    the pre-placement stub sentinel (no header equivalent). The aggregate and the read model no longer
+    diverge; the erp-web-ui shipment picker filters on <code>reserved</code> / <code>partially_shipped</code>,
+    and the cancel/amend gates are unchanged (they key on the unchanged
+    <code>shipped</code>/<code>completed</code>/<code>cancelled</code>/<code>rejected</code> words plus
+    <code>shipment_status</code>).</li>
 </ul>
 <p>
   <strong>Net:</strong> the codebase now concentrates the ship-axis machine in one aggregate fold

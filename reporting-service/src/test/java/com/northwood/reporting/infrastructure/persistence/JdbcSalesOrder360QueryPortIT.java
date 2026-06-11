@@ -113,10 +113,10 @@ class JdbcSalesOrder360QueryPortIT {
     void findAll_orders_by_updated_at_desc() {
         UUID older = UUID.randomUUID();
         UUID newer = UUID.randomUUID();
-        insertRow(older, "SO-OLD", UUID.randomUUID(), "Old", "submitted", false,
+        insertRow(older, "SO-OLD", UUID.randomUUID(), "Old", "open", false,
             BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
             Instant.now().minusSeconds(3600));
-        insertRow(newer, "SO-NEW", UUID.randomUUID(), "New", "submitted", false,
+        insertRow(newer, "SO-NEW", UUID.randomUUID(), "New", "open", false,
             BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
             Instant.now());
 

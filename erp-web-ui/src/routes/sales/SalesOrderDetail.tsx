@@ -203,13 +203,13 @@ export function SalesOrderDetail() {
   }
 
   const status = statusForOrder(data.orderStatus);
-  // A partial (or full) shipment closes the amend/cancel window even though the
-  // 360 `order_status` stays `ready_to_ship` (deliberately kept pickable so the
-  // backorder can still ship). The server gates amend on header status / saga
-  // state = `partially_shipped` | `shipped` and cancel on its
-  // NON_CANCELLABLE_STATUSES, so `shipment_status` — not `order_status` — is the
-  // field that tells us goods have moved. Without this the UI would offer
-  // Amend/Cancel on a partially-shipped order and the server would 409.
+  // A partial (or full) shipment closes the amend/cancel window. The 360
+  // `order_status` now advances to `partially_shipped`/`shipped` (it speaks the
+  // sales header fold vocabulary), but `partially_shipped` is not in
+  // NON_CANCELLABLE (only shipped/completed/cancelled/rejected are), so we read
+  // `shipment_status` — the axis that unambiguously says goods have physically
+  // moved — for `goodsMoved`. Without this the UI would offer Amend/Cancel on a
+  // partially-shipped order and the server would 409.
   const goodsMoved = ["partially_shipped", "shipped"].includes(data.shipmentStatus);
   const cancellable = !NON_CANCELLABLE.includes(data.orderStatus) && !goodsMoved;
   // "awaiting prepayment/deposit" only applies while the order is live. A
@@ -220,7 +220,7 @@ export function SalesOrderDetail() {
   const activeLines = lines.filter((l) => l.lineStatus !== "cancelled");
 
   // Client-side proxy for the server's amendable window: any in-flight order up
-  // to (and including) ready_to_ship / shortage-parked is amendable — inventory
+  // to (and including) reserved / shortage-parked is amendable — inventory
   // reconciles the change incrementally. Closed once terminal, once any goods
   // have shipped (`goodsMoved`, incl. partially_shipped), or once a
   // prepayment/deposit order has raised its up-front invoice (post-invoice

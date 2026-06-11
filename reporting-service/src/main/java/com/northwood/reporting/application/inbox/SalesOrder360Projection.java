@@ -51,22 +51,26 @@ public interface SalesOrder360Projection {
      * Record the inventory reservation outcome for the order: set
      * {@code stock_status} to {@code stockStatus} ({@code reserved} /
      * {@code partially_reserved} / {@code failed}). A full {@code 'reserved'}
-     * is sticky — never rolled back by a later partial/stale event. Idempotent.
+     * is sticky — never rolled back by a later partial/stale event. Also advances
+     * {@code order_status} along the sales header fold ladder — to
+     * {@code 'reserved'} (full cover) or {@code 'partially_reserved'} (some lines
+     * short) — forward-only; a zero-from-stock outcome doesn't advance it.
+     * Idempotent.
      */
     void recordStockReserved(UUID salesOrderHeaderId, String stockStatus, Instant occurredAt, String actorUserId);
 
     /**
-     * Record that the sales fulfilment saga has reached {@code ready_to_ship}
-     * (every line reserved from stock or produced): advance {@code order_status}
-     * to {@code 'ready_to_ship'} so the shipment UI's order picker surfaces it.
-     * Also marks {@code manufacturing_status='not_required'} when it is still
+     * Record that the sales fulfilment saga has secured supply (every line
+     * reserved from stock or produced): advance {@code order_status} to the fold
+     * ladder's {@code 'reserved'} rung so the shipment UI's order picker surfaces
+     * it. Also marks {@code manufacturing_status='not_required'} when it is still
      * {@code 'pending'} (a stock-covered order skipped manufacturing), and lifts
      * {@code stock_status} to {@code 'reserved'} from any not-yet-covered state
      * ({@code pending}/{@code failed}/{@code partially_reserved}) — the only path
      * that clears a buy-to-order line's {@code 'failed'}, since its pegged supply
      * signals the saga via {@code ReplenishmentFulfilled}, not a fresh
      * {@code inventory.StockReserved}. Never downgrades a terminal
-     * {@code 'cancelled'}. Idempotent.
+     * {@code 'cancelled'}/{@code 'rejected'}. Idempotent.
      */
     void recordReadyToShip(UUID salesOrderHeaderId, Instant occurredAt, String actorUserId);
 
@@ -90,13 +94,13 @@ public interface SalesOrder360Projection {
      *       (on_shipment/deposit owe the post-ship balance, completed later by
      *       {@link #recordPayment}).</li>
      *   <li>Partial — {@code shipment_status='partially_shipped'} and
-     *       {@code order_status} is left unchanged so the order stays pickable
-     *       (the shipment UI filters on {@code 'ready_to_ship'}) for the
-     *       backorder.</li>
+     *       {@code order_status='partially_shipped'} (the fold ladder's partial
+     *       rung), still pickable for the backorder (the shipment UI includes
+     *       {@code 'partially_shipped'} orders).</li>
      * </ul>
      * Forward-only: a {@code 'shipped'} shipment_status is never downgraded back
      * to {@code 'partially_shipped'}; never downgrades a later order_status,
-     * preserves {@code 'cancelled'}.
+     * preserves {@code 'completed'}/{@code 'cancelled'}/{@code 'rejected'}.
      */
     void recordShipment(UUID salesOrderHeaderId, boolean orderFullyShipped, Instant occurredAt, String actorUserId);
 
