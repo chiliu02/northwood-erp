@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Northwood — Causal Dependencies Between Aggregates</title>
+<!--
+  Single source of record for aggregate/event causal dependencies (the former
+  docs/causal-dependency.md was merged into this file). Diagram 2 is an
+  interactive Cytoscape graph; Diagrams 1 & 3 render via Mermaid loaded from a
+  CDN (HTTPS so file:// works in a modern browser); if the CDN is unreachable
+  the raw Mermaid source stays visible as plain text. Verified against
+  config/postgresql/northwood_erp.sql + the *-events / domain/ classes.
+-->
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1f2328; --muted: #57606a; --line: #d0d7de;
+    --code-bg: #f6f8fa; --accent: #0969da;
+    --product: #6f42c1; --product-bg: #f3eefb;
+    --sales: #2563eb; --sales-bg: #e6effe;
+    --inventory: #16a34a; --inventory-bg: #e3f6e9;
+    --manufacturing: #b45309; --manufacturing-bg: #fdf3e1;
+    --purchasing: #0891b2; --purchasing-bg: #e2f5f9;
+    --finance: #db2777; --finance-bg: #fbe7f1;
+    --green: #1a7f37; --green-bg: #e6f4ea;
+    --amber: #9a6700; --amber-bg: #fdf2d0;
+    --grey: #57606a; --grey-bg: #eaeef2;
+    --red: #cf222e; --red-bg: #ffebe9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 1.5rem 5rem; background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.55; max-width: 1080px; margin-left: auto; margin-right: auto;
+  }
+  h1 { font-size: 1.9rem; margin: 2rem 0 0.3rem; }
+  h2 { font-size: 1.35rem; margin: 2.6rem 0 0.6rem; padding-bottom: 0.3rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.1rem; margin: 1.8rem 0 0.4rem; }
+  p, li { color: var(--fg); }
+  a { color: var(--accent); }
+  code, .mono { font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.86em; }
+  code { background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.95rem; margin: 0.2rem 0 0.8rem; }
+  .callout { border-left: 4px solid var(--accent); background: #f0f6ff; padding: 0.8rem 1rem; border-radius: 0 6px 6px 0; margin: 1rem 0; }
+  .callout.rule { border-left-color: var(--green); background: var(--green-bg); }
+  .callout.gap { border-left-color: var(--red); background: var(--red-bg); }
+  .verified { color: var(--muted); font-size: 0.85rem; font-style: italic; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.86rem; }
+  th, td { border: 1px solid var(--line); padding: 0.4rem 0.55rem; text-align: left; vertical-align: top; }
+  th { background: var(--code-bg); font-weight: 600; }
+  tbody tr:nth-child(even) { background: #fafbfc; }
+  .pill { display: inline-block; padding: 0.05em 0.5em; border-radius: 10px; font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
+  .svc-product { background: var(--product-bg); color: var(--product); }
+  .svc-sales { background: var(--sales-bg); color: var(--sales); }
+  .svc-inventory { background: var(--inventory-bg); color: var(--inventory); }
+  .svc-manufacturing { background: var(--manufacturing-bg); color: var(--manufacturing); }
+  .svc-purchasing { background: var(--purchasing-bg); color: var(--purchasing); }
+  .svc-finance { background: var(--finance-bg); color: var(--finance); }
+  .v-typed { background: var(--green-bg); color: var(--green); }
+  .v-xor { background: var(--green-bg); color: var(--green); }
+  .v-transitive { background: var(--amber-bg); color: var(--amber); }
+  .v-poly { background: var(--grey-bg); color: var(--grey); }
+  .v-missing { background: var(--red-bg); color: var(--red); }
+  .figure { border: 1px solid var(--line); border-radius: 8px; padding: 1rem; margin: 1.2rem 0; background: #fcfcfd; }
+  .figure figcaption { color: var(--muted); font-size: 0.88rem; margin-top: 0.6rem; }
+  .mermaid { text-align: center; overflow-x: auto; }
+  .legend { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; font-size: 0.82rem; color: var(--muted); margin: 0.6rem 0 0; }
+  .legend span::before { content: "■ "; }
+  .legend .lp { color: var(--product); } .legend .ls { color: var(--sales); }
+  .legend .li { color: var(--inventory); } .legend .lm { color: var(--manufacturing); }
+  .legend .lpu { color: var(--purchasing); } .legend .lf { color: var(--finance); }
+  .legend .lmiss { color: var(--red); }
+  details { margin-top: 0.6rem; }
+  summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
+  pre { background: var(--code-bg); padding: 0.8rem; border-radius: 6px; overflow-x: auto; font-size: 0.8rem; }
+  .spine { font-family: "SF Mono", Consolas, monospace; font-size: 0.82rem; background: var(--code-bg); padding: 0.8rem 1rem; border-radius: 6px; white-space: pre; overflow-x: auto; }
+  /* Diagram 2 — interactive Cytoscape graph (system-map.html format) */
+  /* resize: vertical + a ResizeObserver (below) lets the user drag the bottom
+     edge to grow the frame; cytoscape re-fits so the graph + labels enlarge. */
+  #causal-graph { width: 100%; height: 540px; min-height: 320px; resize: vertical; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: #fcfcfd; }
+  .graph-fallback { padding: 1rem; font-size: 0.85rem; color: var(--muted); }
+  .cg-toolbar { display: flex; align-items: center; gap: 0.7rem; margin: 0.5rem 0 0.2rem; flex-wrap: wrap; }
+  .cg-toolbar button { font: inherit; font-size: 0.82rem; padding: 0.2rem 0.7rem; border: 1px solid var(--line); border-radius: 5px; background: var(--code-bg); cursor: pointer; }
+  .cg-toolbar button:hover { background: #eef1f4; }
+  .cg-hint { color: var(--muted); font-size: 0.8rem; }
+  .cg-legend { display: flex; flex-wrap: wrap; gap: 0.5rem 1.1rem; font-size: 0.8rem; color: var(--muted); margin: 0.4rem 0 0; }
+  .cg-swatch { display: inline-block; width: 0.95em; height: 0.95em; vertical-align: -2px; border-radius: 3px; border: 1.5px solid; margin-right: 0.35em; }
+  .cg-line { display: inline-block; width: 1.4em; vertical-align: 3px; margin-right: 0.35em; border-top-width: 2.5px; border-top-style: dashed; }
+  .cg-line-missing { border-top-color: #cf222e; }
+  .cg-line-snap { border-top-color: #9ca3af; }
+  /* Edge hover tooltip — dark horizontal block, same format as system-map.html */
+  .edge-tooltip {
+    position: fixed; pointer-events: none; z-index: 1000; display: none; max-width: 420px;
+    background: #1f2328; color: #f0f3f6; border-radius: 5px; padding: 0.45rem 0.65rem;
+    font-size: 0.78rem; line-height: 1.45; box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+  }
+  .edge-tooltip .head { font-weight: 600; font-size: 0.82rem; color: #fff; margin-bottom: 0.2rem; }
+  .edge-tooltip .field { font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.76rem; color: #cbd5e1; }
+  .edge-tooltip .field.tt-missing { color: #ff7b85; font-weight: 600; }
+  .edge-tooltip .field.tt-snap { color: #9aa3ad; }
+  .edge-tooltip .events { margin-top: 0.35rem; padding-top: 0.3rem; border-top: 1px solid #3a4048; font-family: "SF Mono", Consolas, monospace; font-size: 0.72rem; color: #aeb6c2; }
+  .edge-tooltip .events .ev-label { color: #7d8794; font-family: -apple-system, "Segoe UI", sans-serif; }
+</style>
+</head>
+<body>
+
+<h1>Causal dependencies between aggregates</h1>
+<p class="subtitle">Which aggregate's existence or state <em>causes</em> another's — and the data field that records it.</p>
+<p class="verified">Verified against <code>config/postgresql/northwood_erp.sql</code> + the <code>*-events</code> / <code>domain/</code> classes, 2026-06-11. This file is the single source of record for the topic (text + rendered graphs).</p>
+
+<p>Northwood is event-driven and schema-per-service: aggregates never share a transaction, and there are <strong>no physical foreign keys across services</strong> (the load-bearing invariant — <code>docs/architecture.md</code>). A <strong>causal dependency</strong> is when one aggregate's existence or state is the <em>cause</em> of another's: aggregate <strong>B</strong> was created or mutated as a downstream consequence of aggregate <strong>A</strong>.</p>
+
+<p>Because the flow is asynchronous (outbox → Kafka → inbox), the only durable record that "B was caused by A" is <strong>a data field on B that holds A's id</strong>. If that field is missing, the dependency lives only in event history and logs — it cannot be reconstructed from the database, so audit, reconciliation, and "why does this row exist / what produced it" can't be answered with a query.</p>
+
+<div class="callout rule">
+<strong>The rule this file registers and enforces:</strong> every business-meaningful causal dependency must be explicitly tracked by a durable foreign-reference field on the <em>caused</em> aggregate. Cross-service links are plain UUIDs (no FK); within a schema they are real FKs — either way the relationship must be explicit and queryable (the codebase deliberately prefers a typed <code>&lt;thing&gt;_id</code> column over a polymorphic <code>source_type</code>/<code>source_id</code> pair — see the comment on <code>inventory.stock_reservation_header</code>).
+</div>
+
+<p class="verified">Sagas (<code>SalesOrderFulfilmentSaga</code>, <code>WorkOrderSaga</code>, <code>PurchaseToPaySaga</code>) are process managers, not aggregates, and are excluded except where they carry the linking key. Reference/master data not event-sourced as aggregates: <code>Warehouse</code>, <code>UnitOfMeasure</code>, <code>WorkCenter</code>, <code>GlAccount</code>, <code>TaxCode</code>.</p>
+
+<h2>Aggregate roster</h2>
+<table>
+<thead><tr><th>Service</th><th>Aggregate</th><th>PK</th><th>Created by</th></tr></thead>
+<tbody>
+<tr><td><span class="pill svc-product">product</span></td><td><strong>Product</strong></td><td><code>product_id</code></td><td>command</td></tr>
+<tr><td><span class="pill svc-sales">sales</span></td><td><strong>Customer</strong></td><td><code>customer_id</code></td><td>command</td></tr>
+<tr><td><span class="pill svc-sales">sales</span></td><td><strong>SalesOrder</strong></td><td><code>sales_order_header_id</code></td><td>command (<code>place</code>)</td></tr>
+<tr><td><span class="pill svc-inventory">inventory</span></td><td><strong>StockReservation</strong></td><td><code>stock_reservation_header_id</code></td><td>event (<code>sales.StockReservationRequested</code> / <code>manufacturing.RawMaterialReservationRequested</code>)</td></tr>
+<tr><td><span class="pill svc-inventory">inventory</span></td><td><strong>GoodsReceipt</strong></td><td><code>goods_receipt_header_id</code></td><td>command (receive vs a PO)</td></tr>
+<tr><td><span class="pill svc-inventory">inventory</span></td><td><strong>Shipment</strong></td><td><code>shipment_header_id</code></td><td>command (ship a ready SO)</td></tr>
+<tr><td><span class="pill svc-inventory">inventory</span></td><td><strong>StockAdjustment</strong></td><td><code>stock_adjustment_id</code></td><td>command</td></tr>
+<tr><td><span class="pill svc-inventory">inventory</span></td><td><strong>ReplenishmentRequest</strong></td><td><code>replenishment_request_id</code></td><td>in-tx with a short reservation / reorder breach / WO shortage</td></tr>
+<tr><td><span class="pill svc-manufacturing">manufacturing</span></td><td><strong>Bom</strong></td><td><code>bom_header_id</code></td><td>command</td></tr>
+<tr><td><span class="pill svc-manufacturing">manufacturing</span></td><td><strong>WorkOrder</strong></td><td><code>work_order_id</code></td><td>event (<code>inventory.ReplenishmentRequested</code>, target=manufacturing)</td></tr>
+<tr><td><span class="pill svc-purchasing">purchasing</span></td><td><strong>Supplier</strong></td><td><code>supplier_id</code></td><td>command</td></tr>
+<tr><td><span class="pill svc-purchasing">purchasing</span></td><td><strong>SupplierProductPrice</strong></td><td><code>supplier_product_price_id</code></td><td>command</td></tr>
+<tr><td><span class="pill svc-purchasing">purchasing</span></td><td><strong>PurchaseRequisition</strong></td><td><code>purchase_requisition_header_id</code></td><td>event (<code>inventory.ReplenishmentRequested</code>, target=purchasing)</td></tr>
+<tr><td><span class="pill svc-purchasing">purchasing</span></td><td><strong>PurchaseOrder</strong></td><td><code>purchase_order_header_id</code></td><td>from PurchaseRequisition (<code>createFromRequisition</code>)</td></tr>
+<tr><td><span class="pill svc-finance">finance</span></td><td><strong>CustomerInvoice</strong></td><td><code>customer_invoice_header_id</code></td><td>event (<code>sales.SalesOrderShipped</code> / <code>PrepaymentInvoiceRequested</code> / <code>DepositInvoiceRequested</code>)</td></tr>
+<tr><td><span class="pill svc-finance">finance</span></td><td><strong>SupplierInvoice</strong></td><td><code>supplier_invoice_header_id</code></td><td>event (3-way: <code>inventory.GoodsReceived</code> + PO facts)</td></tr>
+<tr><td><span class="pill svc-finance">finance</span></td><td><strong>Payment</strong></td><td><code>payment_id</code></td><td>command (or COD auto from <code>SalesOrderShipped</code>)</td></tr>
+<tr><td><span class="pill svc-finance">finance</span></td><td><strong>JournalEntry</strong></td><td><code>journal_entry_header_id</code></td><td>event (many posting events); write-once</td></tr>
+</tbody>
+</table>
+
+<p><code>Product</code>, <code>Customer</code>, <code>Supplier</code>, <code>SupplierProductPrice</code>, <code>Bom</code>, <code>GoodsReceipt</code>, <code>Shipment</code>, <code>StockAdjustment</code>, <code>SalesOrder</code>, and <code>Payment</code> are command-created roots. <strong>Everything else is event-created</strong>, and the high-level spine is Diagram 1.</p>
+
+<h2>Diagram 1 — Creation &amp; posting spine (high-level)</h2>
+<figure class="figure">
+<div class="mermaid">
+flowchart LR
+  classDef sales fill:#e6effe,stroke:#2563eb,color:#173a7a;
+  classDef inventory fill:#e3f6e9,stroke:#16a34a,color:#0f5132;
+  classDef manufacturing fill:#fdf3e1,stroke:#b45309,color:#7a3c06;
+  classDef purchasing fill:#e2f5f9,stroke:#0891b2,color:#0b4d5c;
+  classDef finance fill:#fbe7f1,stroke:#db2777,color:#83194f;
+
+  SalesOrder["SalesOrder"]:::sales
+  StockRes["StockReservation"]:::inventory
+  Replen["ReplenishmentRequest"]:::inventory
+  WorkOrder["WorkOrder"]:::manufacturing
+  PurchReq["PurchaseRequisition"]:::purchasing
+  PurchOrder["PurchaseOrder"]:::purchasing
+  GoodsRcpt["GoodsReceipt"]:::inventory
+  Shipment["Shipment"]:::inventory
+  CustInv["CustomerInvoice"]:::finance
+  SuppInv["SupplierInvoice"]:::finance
+  Payment["Payment"]:::finance
+  Journal["JournalEntry (the GL sink)"]:::finance
+
+  SalesOrder --> StockRes --> Replen
+  Replen --> WorkOrder
+  Replen --> PurchReq --> PurchOrder --> GoodsRcpt
+  WorkOrder --> Journal
+  GoodsRcpt --> Journal
+  Shipment --> CustInv --> Payment --> Journal
+  SuppInv --> Payment
+</div>
+<figcaption>
+The high-level creation &amp; posting spine — which aggregate brings the next into being, ending at the <code>JournalEntry</code> GL sink. Per-edge tracking fields are omitted here for clarity (see Diagram 2). Command-created master data (Product, Customer, Supplier) is the root and is not shown.
+<div class="legend">
+  <span class="ls">sales</span><span class="li">inventory</span><span class="lm">manufacturing</span><span class="lpu">purchasing</span><span class="lf">finance</span>
+</div>
+</figcaption>
+</figure>
+
+<h2>Diagram 2 — Full causal-dependency graph</h2>
+<figure class="figure">
+<div id="causal-graph"><div class="graph-fallback">Loading graph…</div></div>
+<div id="edge-tooltip" class="edge-tooltip" role="tooltip" aria-hidden="true"></div>
+<div class="cg-toolbar">
+  <button id="cg-relayout" type="button">Re-layout</button>
+  <span class="cg-hint">hover an edge to see its tracking field · drag a node to rearrange · scroll to zoom · drag the canvas to pan · click a node to focus (click again or the background to clear) · drag the bottom edge to resize the frame</span>
+</div>
+<div class="cg-legend">
+  <span><span class="cg-swatch" style="background:#f3eefb;border-color:#6f42c1"></span>product</span>
+  <span><span class="cg-swatch" style="background:#e6effe;border-color:#2563eb"></span>sales</span>
+  <span><span class="cg-swatch" style="background:#e3f6e9;border-color:#16a34a"></span>inventory</span>
+  <span><span class="cg-swatch" style="background:#fdf3e1;border-color:#b45309"></span>manufacturing</span>
+  <span><span class="cg-swatch" style="background:#e2f5f9;border-color:#0891b2"></span>purchasing</span>
+  <span><span class="cg-swatch" style="background:#fbe7f1;border-color:#db2777"></span>finance</span>
+  <span><span class="cg-line cg-line-missing"></span>MISSING tracking field (gap)</span>
+  <span><span class="cg-line cg-line-snap"></span>product_id snapshot ref</span>
+</div>
+<figcaption>
+Each arrow is a causal dependency; <strong>hover an edge to reveal its label</strong> — the field on the <em>caused</em> aggregate that records it. Solid = a durable typed/xor tracking field. <span style="color:#9ca3af">Grey dashed</span> = a snapshot <code>product_id</code> reference (Product is master data referenced by <code>product_id</code> on every line item — only three representative edges shown). <span style="color:#cf222e">Red dashed</span> = a <strong>MISSING</strong> tracking field (a causal dependency not recorded in data — see Gaps below). All <code>source_document_id</code> arrows into JournalEntry are the one deliberately-polymorphic sink.
+</figcaption>
+</figure>
+
+<h2>Diagram 3 — The fulfilment triple, and where it breaks (Gap A)</h2>
+<figure class="figure">
+<div class="mermaid">
+flowchart LR
+  classDef sales fill:#e6effe,stroke:#2563eb,color:#173a7a;
+  classDef inventory fill:#e3f6e9,stroke:#16a34a,color:#0f5132;
+  classDef finance fill:#fbe7f1,stroke:#db2777,color:#83194f;
+
+  SO["SalesOrder"]:::sales
+  SH["Shipment"]:::inventory
+  CI["CustomerInvoice"]:::finance
+  PM["Payment"]:::finance
+
+  SO -->|sales_order_header_id ✓| SH
+  SO -->|sales_order_header_id ✓| CI
+  SH -.->|shipment_header_id ✗ MISSING| CI
+  CI -->|customer_invoice_header_id ✓| PM
+
+  linkStyle 2 stroke:#cf222e,stroke-width:2.5px,stroke-dasharray:6 4;
+</div>
+<figcaption>
+For an on-shipment order shipped in parts, each <code>Shipment</code> raises one <code>CustomerInvoice</code> and each invoice is settled by a <code>Payment</code> — the <strong>(shipment, invoice, payment) fulfilment triple</strong> of <code>docs/composed-state-machines.md</code>. Every link is recorded <em>except</em> Shipment→CustomerInvoice: the invoice stores <code>sales_order_header_id</code> but not <code>shipment_header_id</code>, so the triple can be reassembled only from event history, not the database.
+</figcaption>
+</figure>
+
+<p class="verified">If the diagrams above are blank, the Mermaid CDN was unreachable — the diagram source is plain text inside each box (View Source), and the same information is in the register below.</p>
+
+<h2>Tracking-field register</h2>
+<p>Each row is a causal edge <code>A → B</code>, the <strong>driving event(s)</strong> that fire it (the Kafka domain event whose inbox handler creates/mutates B — or <em>command</em>/<em>in-tx</em> where no event is involved), and the <strong>FK field on B</strong> that records the link. This is the index for "which events realise which causal dependency, and where is it stored". Verdict: <span class="pill v-typed">typed</span> = a dedicated typed <code>&lt;a&gt;_id</code> column (the preferred form); <span class="pill v-xor">xor</span> = mutually-exclusive typed columns under a CHECK; <span class="pill v-transitive">transitive</span> = not direct, but reconstructable through one documented hop; <span class="pill v-poly">polymorphic</span> = a single untyped id + discriminator; <span class="pill v-missing">MISSING</span> = no durable field — the link is only in event history.</p>
+<table>
+<thead><tr><th>Causal edge (A → B)</th><th>Driving event(s)</th><th>Tracking field (FK) on B</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td>Customer → SalesOrder</td><td><em>command</em> (place order)</td><td><code>sales_order_header.customer_id</code> (FK)</td><td><span class="pill v-typed">typed</span></td></tr>
+<tr><td>Product → SalesOrderLine</td><td><em>command</em> (snapshot; reads <code>sales.product_card</code> ← <code>product.ProductCreated</code> / <code>SalesPriceChanged</code>)</td><td><code>sales_order_line.product_id</code></td><td><span class="pill v-typed">typed</span></td></tr>
+<tr><td>SalesOrder → StockReservation</td><td><code>sales.StockReservationRequested</code></td><td><code>stock_reservation_header.sales_order_header_id</code>; line <code>sales_order_line_id</code></td><td><span class="pill v-xor">xor</span></td></tr>
+<tr><td>WorkOrder → StockReservation (raw-material)</td><td><code>manufacturing.RawMaterialReservationRequested</code></td><td><code>stock_reservation_header.work_order_id</code></td><td><span class="pill v-xor">xor</span></td></tr>
+<tr><td>SalesOrder line short → ReplenishmentRequest</td><td>in-tx with a partial <code>sales.StockReservationRequested</code> (inventory raises it)</td><td><code>replenishment_request.source_sales_order_header_id</code> + <code>source_sales_order_line_id</code> (reasons <code>sales_order_shortage</code>, <code>order_pegged</code>)</td><td><span class="pill v-typed">typed</span></td></tr>
+<tr><td><strong>WorkOrder shortage → ReplenishmentRequest</strong></td><td><code>manufacturing.RawMaterialShortageDetected</code></td><td>reason <code>work_order_shortage</code> <strong>only</strong> — no <code>source_work_order_id</code></td><td><span class="pill v-missing">MISSING</span> (gap B)</td></tr>
+<tr><td>reorder-point breach → ReplenishmentRequest</td><td>in-tx with <code>inventory.ShipmentPosted</code> / <code>inventory.StockAdjusted</code> decrement</td><td><code>product_id</code> + <code>warehouse_id</code> (reason <code>reorder_point_breach</code>)</td><td><span class="pill v-typed">typed</span></td></tr>
+<tr><td>ReplenishmentRequest → WorkOrder | PurchaseRequisition</td><td><code>inventory.ReplenishmentRequested</code></td><td><code>replenishment_request.dispatched_aggregate_id</code> (+ <code>dispatched_aggregate_kind</code>)</td><td><span class="pill v-typed">typed</span></td></tr>
+<tr><td>ReplenishmentRequest → WorkOrder</td><td><code>inventory.ReplenishmentRequested</code> (target=mfg)</td><td><code>work_order.replenishment_request_id</code> (origin CHECK: SO-pair ⊕ <code>replenishment_request_id</code> ⊕ none)</td><td><span class="pill v-xor">xor</span></td></tr>
+<tr><td>SalesOrder (peg) → WorkOrder</td><td>via <code>inventory.ReplenishmentRequested</code> source fields</td><td><code>work_order.sales_order_header_id</code> + <code>sales_order_line_id</code> (make-to-order shape)</td><td><span class="pill v-xor">xor</span></td></tr>
+<tr><td>WorkOrder → WorkOrder (sub-assembly)</td><td>child <code>manufacturing.WorkOrderCreated</code> (in-tx parent release)</td><td><code>work_order.parent_work_order_id</code> (FK)</td><td><span class="pill v-typed">typed</span></td></tr>
+<tr><td>Bom → WorkOrder</td><td>read at WO release (driven by <code>inventory.ReplenishmentRequested</code>)</td><td><code>work_order.bom_header_id</code> (FK)</td><td><span class="pill v-typed">typed</span></td></tr>
+<tr><td>ReplenishmentRequest → PurchaseRequisition</td><td><code>inventory.ReplenishmentRequested</code> (target=pur)</td><td><code>purchase_requisition_header.source_replenishment_request_id</code> (+ <code>source_type</code>, 4-way CHECK)</td><td><span class="pill v-xor">xor</span></td></tr>
+<tr><td>PurchaseRequisition → PurchaseOrder</td><td><em>command</em> (<code>createFromRequisition</code>, purchasing-internal)</td><td><code>purchase_order_header.purchase_requisition_header_id</code> (FK)</td><td><span class="pill v-typed">typed</span></td></tr>
+<tr><td>Supplier → PurchaseOrder</td><td>supplier pick at PO creation (<em>command</em>)</td><td><code>purchase_order_header.supplier_id</code> (FK)</td><td><span class="pill v-typed">typed</span></td></tr>
+<tr><td>PurchaseOrder → GoodsReceipt</td><td><em>command</em> (post goods receipt)</td><td><code>goods_receipt_header.purchase_order_header_id</code>; line <code>purchase_order_line_id</code></td><td><span class="pill v-typed">typed</span></td></tr>
+<tr><td>PurchaseOrder + GoodsReceipt → SupplierInvoice</td><td><em>command</em> (record) + 3-way match vs <code>purchasing.PurchaseOrderCreated</code> + <code>inventory.GoodsReceived</code> line-facts</td><td><code>supplier_invoice_header.purchase_order_header_id</code> + <code>goods_receipt_header_id</code>; lines <code>purchase_order_line_id</code> + <code>goods_receipt_line_id</code></td><td><span class="pill v-typed">typed</span></td></tr>
+<tr><td>Supplier → SupplierInvoice</td><td>record (snapshot)</td><td><code>supplier_invoice_header.supplier_id</code></td><td><span class="pill v-typed">typed</span></td></tr>
+<tr><td>GoodsReceipt → ReplenishmentRequest (fulfil)</td><td><code>inventory.GoodsReceived</code></td><td>none direct; via <code>replenishment_request.linked_purchase_order_id</code> = GR's PO</td><td><span class="pill v-transitive">transitive</span></td></tr>
+<tr><td>SalesOrder → CustomerInvoice</td><td><code>sales.SalesOrderShipped</code> / <code>sales.PrepaymentInvoiceRequested</code> / <code>sales.DepositInvoiceRequested</code></td><td><code>customer_invoice_header.sales_order_header_id</code> + <code>customer_id</code></td><td><span class="pill v-typed">typed</span></td></tr>
+<tr><td><strong>Shipment → CustomerInvoice</strong></td><td><code>sales.SalesOrderShipped</code> (carries <code>shipmentHeaderId</code>)</td><td><strong>none</strong> — only <code>sales_order_header_id</code> is stored</td><td><span class="pill v-missing">MISSING</span> (gap A)</td></tr>
+<tr><td>Shipment → SalesOrder (record shipped)</td><td><code>inventory.ShipmentPosted</code></td><td><code>shipment_header.sales_order_header_id</code> (reverse ref)</td><td><span class="pill v-typed">typed</span></td></tr>
+<tr><td>Shipment → StockReservation (consume)</td><td>in-tx at shipment post (<em>command</em>)</td><td>none direct; both carry <code>sales_order_header_id</code> (1:1 reservation/SO)</td><td><span class="pill v-transitive">transitive</span></td></tr>
+<tr><td>CustomerInvoice → Payment</td><td><em>command</em> (record payment); COD auto via <code>sales.SalesOrderShipped</code></td><td><code>payment_allocation.customer_invoice_header_id</code> (FK)</td><td><span class="pill v-xor">xor</span></td></tr>
+<tr><td>SupplierInvoice → Payment</td><td><em>command</em> (record payment)</td><td><code>payment_allocation.supplier_invoice_header_id</code> (FK)</td><td><span class="pill v-xor">xor</span></td></tr>
+<tr><td>Customer/Supplier → Payment</td><td><em>command</em></td><td><code>payment.customer_id</code> ⊕ <code>payment.supplier_id</code> (CHECK)</td><td><span class="pill v-xor">xor</span></td></tr>
+<tr><td>Payment → SalesOrder / PurchaseOrder</td><td>via allocation (settlement)</td><td>via allocation → invoice → <code>sales_order_header_id</code> / <code>purchase_order_header_id</code></td><td><span class="pill v-transitive">transitive</span> (2 hops)</td></tr>
+<tr><td>(shipment cost, GRNI, WIP, AR/AP, cash, …) → JournalEntry</td><td><code>finance.CustomerInvoiceCreated</code> · <code>CustomerPaymentReceived</code> · <code>SupplierInvoiceApproved</code> · <code>SupplierPaymentMade</code> · <code>sales.SalesOrderShipped</code> (COGS) · <code>inventory.GoodsReceived</code> (GRNI) · <code>StockAdjusted</code> · <code>ShipmentPosted</code> (deferred rev) · <code>manufacturing.WorkOrderManufacturingCompleted</code> / <code>RawMaterialsReserved</code> / <code>SubAssembliesConsumed</code> (WIP)</td><td><code>journal_entry_header.source_document_id</code> (+ <code>source_module</code>, <code>source_document_type</code>)</td><td><span class="pill v-poly">polymorphic</span></td></tr>
+</tbody>
+</table>
+
+<h2>Verdict</h2>
+<p>The codebase is <strong>almost fully explicit</strong>: every business-meaningful causal edge is recorded by a typed/xor field on the caused aggregate, with three <em>acceptable</em> relaxations and <strong>two genuine gaps</strong>.</p>
+<p><strong>Acceptable relaxations</strong> (no action):</p>
+<ul>
+<li><strong>Transitive links</strong> (GoodsReceipt→ReplenishmentRequest via PO; Shipment→StockReservation via SO; Payment→Order via invoice) are reconstructable through exactly one documented hop and each has a supporting index. Direct duplication would be redundant.</li>
+<li><strong>JournalEntry's polymorphic source</strong> (<code>source_document_id</code> + <code>source_module</code> + <code>source_document_type</code>) is the one place the typed-column preference is deliberately not followed — a GL references ~11 heterogeneous document types, where 11 typed columns would be worse than the discriminated triple. Queryable via the discriminator; left as-is.</li>
+</ul>
+
+<h2>Gaps — causal dependencies not explicitly tracked</h2>
+
+<h3>Gap A (real, MEDIUM) — <code>CustomerInvoice</code> does not record the <code>Shipment</code> it was raised from</h3>
+<div class="callout gap">
+A commercial / balance <code>CustomerInvoice</code> is created from <code>sales.SalesOrderShipped</code>, <strong>one invoice per shipment</strong>. The event payload carries <code>shipmentHeaderId</code>, but <code>finance.customer_invoice_header</code> stores only <code>sales_order_header_id</code> — <strong>not</strong> <code>shipment_header_id</code>. So for a partially-shipped on-shipment order (several shipments → several per-shipment invoices for one SO), you <strong>cannot tell from data which invoice settles which shipment</strong>. This is exactly the <code>(shipment, invoice, payment)</code> fulfilment triple <code>docs/composed-state-machines.md</code> builds the invoice/pay rollup on — the triple is currently reconstructable only from event history, not the database. The producing data already exists on the event; it is simply dropped at persist time. <strong>→ dev-todo §2.53.</strong>
+</div>
+
+<h3>Gap B (design question, LOW) — <code>ReplenishmentRequest(work_order_shortage)</code> does not record the triggering <code>WorkOrder</code></h3>
+<div class="callout gap">
+When a work order's raw materials are short, inventory raises a <code>ReplenishmentRequest</code> with <code>reason = 'work_order_shortage'</code>, but no <code>source_work_order_id</code> is stored (contrast <code>source_sales_order_header_id</code>/<code>_line_id</code>, which <em>are</em> stored for the sales-driven reasons). The omission is <em>arguably by design</em> — a WO-shortage replenishment tops up the <strong>shared pool</strong> for the component (keyed <code>product_id</code> + <code>warehouse_id</code>) rather than pegging to that WO, and the WO is later un-parked by <code>GoodsReceived</code> matching on <code>product_id</code>, not by a WO-pegged fulfilment. So the link is intentionally not pegged. But for <strong>audit traceability</strong> ("which work order triggered this pool top-up?") it is untracked, asymmetric with the sales-shortage path, and cheap to add. <strong>→ dev-todo §2.54</strong> (decide: add <code>source_work_order_id</code> for audit, or document the omission as intentional).
+</div>
+
+<h2>Event causal dependencies &amp; the record-key question</h2>
+<p>The register above is the <strong>aggregate</strong> causal graph. Lifting it to <strong>events</strong> gives the question that actually matters for Kafka: <em>which events must be processed in order, and what record (partition) key guarantees it?</em></p>
+<p><strong>Lifting aggregate → event causal dependency.</strong> For each aggregate edge <code>A —(E)→ B</code>: the event <code>E</code> that creates/mutates <code>B</code> is causally after whatever produced <code>A</code>, and every event <code>E_B</code> that <code>B</code> emits is causally after <code>E</code> (B can't emit before it exists). So the event causal DAG <strong>is</strong> the aggregate causal DAG. The order-to-cash spine, read as events:</p>
+<div class="spine">SalesOrderPlaced ≺ StockReservationRequested ≺ StockReserved ≺ ShipmentPosted
+  ≺ SalesOrderShipped ≺ CustomerInvoiceCreated ≺ CustomerPaymentReceived</div>
+<p><strong>The key principle.</strong> Kafka orders two events only if they carry the <strong>same partition key</strong>. Today the key is <code>envelope.aggregateId()</code> = the <em>emitting</em> aggregate's PK (<code>KafkaEventPublisher</code>). That guarantees ordering only <em>within one aggregate's own stream</em>, not along a cross-aggregate causal chain — so the chain above is <strong>not</strong> Kafka-ordered (each event is keyed by a different id), and the saga relies on order-tolerance instead (FOR UPDATE SKIP LOCKED + optimistic version + advisory-lock dedup + source-state guards — see <code>docs/messaging.md</code>).</p>
+
+<h3>Per-event keys (verified against the <code>*-events</code> classes)</h3>
+<table>
+<thead><tr><th>Event</th><th>Current key (emitter PK)</th><th>Carries <code>salesOrderId</code>?</th><th>Causal-chain root</th></tr></thead>
+<tbody>
+<tr><td><code>sales.SalesOrderPlaced</code> / <code>StockReservationRequested</code> / <code>SalesOrderShipped</code></td><td><strong>salesOrderId</strong></td><td>✓ (it <em>is</em> the SO)</td><td>salesOrderId</td></tr>
+<tr><td><code>inventory.StockReserved</code></td><td>stockReservationId</td><td>✓ (field <code>salesOrderId</code>)</td><td>salesOrderId</td></tr>
+<tr><td><code>inventory.SalesOrderLineReservationChanged</code></td><td>stockReservationId</td><td>✓</td><td>salesOrderId</td></tr>
+<tr><td><code>inventory.ShipmentPosted</code></td><td>shipmentHeaderId</td><td>✓ (<code>salesOrderHeaderId</code>)</td><td>salesOrderId</td></tr>
+<tr><td><code>finance.CustomerInvoiceCreated</code></td><td>customerInvoiceHeaderId</td><td>✓ (<code>salesOrderHeaderId</code>)</td><td>salesOrderId</td></tr>
+<tr><td><code>finance.CustomerPaymentReceived</code></td><td>paymentId</td><td>✓ (one event <strong>per allocation</strong>)</td><td>salesOrderId</td></tr>
+<tr><td><code>inventory.ReplenishmentRequested</code></td><td>replenishmentRequestId</td><td><strong>nullable</strong> (null for <code>reorder_point_breach</code> / <code>work_order_shortage</code>)</td><td>replenishmentRequestId</td></tr>
+<tr><td><code>inventory.ReplenishmentFulfilled</code> / <code>ReplenishmentCancelled</code></td><td>replenishmentRequestId</td><td><strong>nullable</strong> (null for pool)</td><td>replenishmentRequestId</td></tr>
+<tr><td><code>manufacturing.WorkOrderCreated</code> / <code>WorkOrderManufacturingCompleted</code></td><td>workOrderId</td><td><strong>nullable</strong> (null for pool/reorder WOs)</td><td>workOrderId</td></tr>
+<tr><td><code>inventory.RawMaterialsReserved</code></td><td>stockReservationId</td><td>✗ (carries <code>workOrderId</code>)</td><td>workOrderId</td></tr>
+<tr><td><code>manufacturing.RawMaterialShortageDetected</code></td><td>workOrderId</td><td>✗</td><td>workOrderId</td></tr>
+<tr><td><code>purchasing.PurchaseRequisitionCreated</code> / <code>PurchaseOrderCreated</code></td><td>requisitionId / purchaseOrderId</td><td>✗</td><td>purchaseOrderId</td></tr>
+<tr><td><code>inventory.GoodsReceived</code></td><td>goodsReceiptId</td><td>✗ (<strong>no SO field</strong> — only <code>purchaseOrderHeaderId</code>)</td><td>purchaseOrderId</td></tr>
+<tr><td><code>finance.SupplierInvoiceApproved</code> / <code>SupplierPaymentMade</code></td><td>supplierInvoiceId / paymentId</td><td>✗</td><td>purchaseOrderId</td></tr>
+<tr><td><code>inventory.StockAdjusted</code></td><td>stockAdjustmentId</td><td>✗</td><td>(independent)</td></tr>
+<tr><td><code>product.*</code></td><td><strong>productId</strong></td><td>✗</td><td>productId</td></tr>
+</tbody>
+</table>
+
+<h3>Theory: can a single record key cover all causally-dependent events?</h3>
+<p><strong>Tested:</strong> <em>one id (ideally the root aggregate instance id) as the key for every event in a causal dependency.</em> <strong>Verdict: it works per independent process, but NO single global key exists — and the conflict is fundamental, by design.</strong></p>
+<p>The causal graph is <strong>not a forest of disjoint single-root trees</strong>; it is a DAG with deliberate decoupling and fan-in. The conflicts, verified in code:</p>
+<ol>
+<li><strong>Make-to-stock pooling severs the sales↔supply root (the decisive one).</strong> Supply is triggered through inventory's shared pool (<code>ReplenishmentRequest</code>), not pulled by one order. So for any reorder-/pool-driven flow the supply events carry <strong>no sales order</strong>: <code>WorkOrderManufacturingCompleted.salesOrderHeaderId</code> and <code>ReplenishmentFulfilled.sourceSalesOrderHeaderId</code> are nullable (null for pool), and <code>GoodsReceived</code> has no SO field at all. → <strong>no <code>salesOrderId</code> can key the supply chain.</strong> This is the intentional inventory-as-MRP-orchestrator design (<code>docs/sagas.md</code>), not an oversight.</li>
+<li><strong>Fan-in / batching aggregates have their own root.</strong> A <code>PurchaseOrder</code> batches requisitions; a <code>GoodsReceipt</code> is rooted at its PO; a <code>Payment</code> is rooted at <code>paymentId</code> and can allocate across invoices. These belong to the P2P root (<code>purchaseOrderId</code>), independent of any sales order.</li>
+<li><strong>Shared resources have no upstream root.</strong> <code>stock_balance</code> is per <code>(product, warehouse)</code>, touched by every order and work order; <code>JournalEntry</code> is fed by all chains. No single upstream id roots them (stock writes are made safe by <em>atomicity</em>, not ordering; GL postings have no inter-posting order).</li>
+</ol>
+<p><strong>What does hold:</strong> the graph cleanly decomposes into a handful of <strong>independent processes</strong>, each with a real single root that <em>would</em> totally-order that process if used as the key:</p>
+<table>
+<thead><tr><th>Process</th><th>Root / correlation key</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td>Order-to-cash</td><td><strong>salesOrderId</strong></td><td>every O2C event already <em>carries</em> it (re-keyable today, no schema change)</td></tr>
+<tr><td>Manufacturing (per WO)</td><td><strong>workOrderId</strong></td><td></td></tr>
+<tr><td>Procure-to-pay (per PO)</td><td><strong>purchaseOrderId</strong></td><td></td></tr>
+<tr><td>Product master</td><td><strong>productId</strong></td><td>already keyed this way ✓</td></tr>
+</tbody>
+</table>
+<p>The <strong>cross-process links</strong> — <code>ReplenishmentRequested</code>/<code>Fulfilled</code> (sales↔supply), GL postings, stock writes — are exactly the points the architecture deliberately makes <strong>order-tolerant</strong> (pool decoupling + atomic stock SQL + saga concurrency control). They neither have a common root <strong>nor need ordering</strong>, which is precisely why the current emitting-aggregate key is sufficient despite not enforcing the chains.</p>
+<div class="callout rule">
+<strong>Conclusion for the theory.</strong> Root-aggregate-id as a universal key is <strong>not achievable</strong> (the make-to-stock decoupling and shared/batched resources guarantee multiple roots). But the weaker, useful form <strong>does</strong> hold: <em>within each independent process the root correlation id is a valid single key</em>, and for <strong>order-to-cash specifically</strong> that key (<code>salesOrderId</code>) is already present on every event — so if you ever wanted the O2C saga's cross-aggregate orderings enforced by partitioning instead of by order-tolerant handlers, re-keying the O2C events from emitter-PK to <code>salesOrderId</code> is a viable, conflict-free change (trade-off: loses per-emitter-aggregate ordering, and concentrates one order's events on a single partition → hot-partition risk for very large orders).
+</div>
+
+<h2>Maintenance</h2>
+<p>When a new aggregate or a new event-driven creation/mutation path is added, add its row to the <em>tracking-field register</em> and confirm the caused aggregate carries a typed field for its cause. A new edge with a <span class="pill v-missing">MISSING</span> verdict is a code-review fail unless it is explicitly justified here (transitive or deliberately-polymorphic). When adding a new event, record its driving-event row and, if it joins a causal chain, confirm whether its key/correlation id matches that chain's root (per <em>Event causal dependencies &amp; the record-key question</em>).</p>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  // Render the causal graphs. If the CDN is unreachable, the <div class="mermaid">
+  // boxes keep their plain-text source (still readable) and the register table
+  // below carries the same information.
+  try {
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral', flowchart: { curve: 'basis' }, securityLevel: 'loose' });
+  } catch (e) { /* CDN missing — sources stay visible as text */ }
+</script>
+
+<!-- Diagram 2 — interactive Cytoscape graph (same lib + format as docs/system-map.html's
+     service overview: a 'preset' layout over hand-tuned positions). Loaded over HTTPS so
+     file:// works in a modern browser; if the CDN is unreachable the container shows a
+     fallback and the register table carries the data. -->
+<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.0/dist/cytoscape.min.js"></script>
+<script>
+(function () {
+  var el = document.getElementById('causal-graph');
+  if (!el) return;
+  if (typeof cytoscape === 'undefined') {
+    el.innerHTML = '<div class="graph-fallback">Cytoscape failed to load (offline + no CDN cache?). The full dependency graph is hidden — the tracking-field register below carries the same information.</div>';
+    return;
+  }
+  el.innerHTML = '';
+
+  var N = function (id, label, svc) { return { data: { id: id, label: label }, classes: svc }; };
+  var E = function (s, t, label, flag, events) { var d = { source: s, target: t, label: label, events: events || '' }; if (flag) d[flag] = 1; return { data: d }; };
+
+  var nodes = [
+    N('Product', 'Product', 'product'),
+    N('Customer', 'Customer', 'sales'),
+    N('SalesOrder', 'SalesOrder', 'sales'),
+    N('StockReservation', 'StockReservation', 'inventory'),
+    N('ReplenishmentRequest', 'ReplenishmentRequest', 'inventory'),
+    N('Shipment', 'Shipment', 'inventory'),
+    N('GoodsReceipt', 'GoodsReceipt', 'inventory'),
+    N('StockAdjustment', 'StockAdjustment', 'inventory'),
+    N('Bom', 'Bom', 'manufacturing'),
+    N('WorkOrder', 'WorkOrder', 'manufacturing'),
+    N('Supplier', 'Supplier', 'purchasing'),
+    N('PurchaseRequisition', 'PurchaseRequisition', 'purchasing'),
+    N('PurchaseOrder', 'PurchaseOrder', 'purchasing'),
+    N('CustomerInvoice', 'CustomerInvoice', 'finance'),
+    N('SupplierInvoice', 'SupplierInvoice', 'finance'),
+    N('Payment', 'Payment', 'finance'),
+    N('JournalEntry', 'JournalEntry', 'finance')
+  ];
+
+  var edges = [
+    E('Product', 'SalesOrder', 'product_id', 'snapshot', 'command (snapshot); reads sales.product_card ← product.ProductCreated / SalesPriceChanged'),
+    E('Product', 'Bom', 'finished_product_id', 'snapshot', 'command (BOM authoring)'),
+    E('Product', 'WorkOrder', 'finished_product_id', 'snapshot', 'carried via inventory.ReplenishmentRequested'),
+    E('Customer', 'SalesOrder', 'customer_id', null, 'command (place order)'),
+    E('SalesOrder', 'StockReservation', 'sales_order_header_id', null, 'sales.StockReservationRequested'),
+    E('WorkOrder', 'StockReservation', 'work_order_id', null, 'manufacturing.RawMaterialReservationRequested'),
+    E('StockReservation', 'ReplenishmentRequest', 'source_sales_order_line_id', null, 'in-tx with a partial sales.StockReservationRequested'),
+    E('WorkOrder', 'ReplenishmentRequest', 'MISSING source_work_order_id', 'missing', 'manufacturing.RawMaterialShortageDetected'),
+    E('ReplenishmentRequest', 'WorkOrder', 'replenishment_request_id', null, 'inventory.ReplenishmentRequested (target=mfg)'),
+    E('ReplenishmentRequest', 'PurchaseRequisition', 'source_replenishment_request_id', null, 'inventory.ReplenishmentRequested (target=pur)'),
+    E('Bom', 'WorkOrder', 'bom_header_id', null, 'read at WO release (inventory.ReplenishmentRequested)'),
+    E('WorkOrder', 'WorkOrder', 'parent_work_order_id', null, 'child manufacturing.WorkOrderCreated (in-tx parent release)'),
+    E('PurchaseRequisition', 'PurchaseOrder', 'purchase_requisition_header_id', null, 'command (createFromRequisition)'),
+    E('Supplier', 'PurchaseOrder', 'supplier_id', null, 'supplier pick at PO creation (command)'),
+    E('PurchaseOrder', 'GoodsReceipt', 'purchase_order_header_id', null, 'command (post goods receipt)'),
+    E('PurchaseOrder', 'SupplierInvoice', 'purchase_order_header_id', null, 'command (record) + 3-way match vs purchasing.PurchaseOrderCreated facts'),
+    E('GoodsReceipt', 'SupplierInvoice', 'goods_receipt_header_id', null, 'inventory.GoodsReceived (3-way match)'),
+    E('SalesOrder', 'Shipment', 'sales_order_header_id', null, 'command (post shipment)'),
+    E('SalesOrder', 'CustomerInvoice', 'sales_order_header_id', null, 'sales.SalesOrderShipped / PrepaymentInvoiceRequested / DepositInvoiceRequested'),
+    E('Shipment', 'CustomerInvoice', 'MISSING shipment_header_id', 'missing', 'sales.SalesOrderShipped (carries shipmentHeaderId)'),
+    E('CustomerInvoice', 'Payment', 'customer_invoice_header_id', null, 'command (record payment); COD auto via sales.SalesOrderShipped'),
+    E('SupplierInvoice', 'Payment', 'supplier_invoice_header_id', null, 'command (record payment)'),
+    E('Payment', 'JournalEntry', 'source_document_id', null, 'finance.CustomerPaymentReceived / SupplierPaymentMade'),
+    E('CustomerInvoice', 'JournalEntry', 'source_document_id', null, 'finance.CustomerInvoiceCreated (Dr AR / Cr Revenue)'),
+    E('SupplierInvoice', 'JournalEntry', 'source_document_id', null, 'finance.SupplierInvoiceApproved (Dr inventory / Cr AP)'),
+    E('GoodsReceipt', 'JournalEntry', 'source_document_id', null, 'inventory.GoodsReceived (GRNI)'),
+    E('Shipment', 'JournalEntry', 'source_document_id', null, 'sales.SalesOrderShipped (COGS) / inventory.ShipmentPosted (deferred rev)'),
+    E('StockAdjustment', 'JournalEntry', 'source_document_id', null, 'inventory.StockAdjusted')
+  ];
+
+  var svc = {
+    product:       { bg: '#f3eefb', bd: '#6f42c1', tx: '#3b1f6b' },
+    sales:         { bg: '#e6effe', bd: '#2563eb', tx: '#173a7a' },
+    inventory:     { bg: '#e3f6e9', bd: '#16a34a', tx: '#0f5132' },
+    manufacturing: { bg: '#fdf3e1', bd: '#b45309', tx: '#7a3c06' },
+    purchasing:    { bg: '#e2f5f9', bd: '#0891b2', tx: '#0b4d5c' },
+    finance:       { bg: '#fbe7f1', bd: '#db2777', tx: '#83194f' }
+  };
+  var nodeStyles = Object.keys(svc).map(function (k) {
+    return { selector: 'node.' + k, style: { 'background-color': svc[k].bg, 'border-color': svc[k].bd, 'color': svc[k].tx } };
+  });
+
+  // Hand-tuned default positions — same approach as system-map.html's service
+  // overview (a 'preset' layout over positions captured from the browser).
+  // fit:true scales them to whatever size the (resizable) frame is. Re-layout
+  // and resize re-apply these, so dragging a node never loses the default.
+  // Grid: equal column spacing (step 180: D x=0, WorkOrder x=180, A x=360, B x=540,
+  // C x=720, Payment x=900) and equal — tighter — row spacing (step 80).
+  // A = Customer/SalesOrder/StockReservation/Replenishment/PurchaseRequisition/
+  // PurchaseOrder/Supplier; B = Shipment/StockAdjustment/GoodsReceipt; C =
+  // CustomerInvoice/JournalEntry/SupplierInvoice; D = Product/Bom. Rows y: 0 Customer,
+  // 80 (Product/SalesOrder/CustomerInvoice), 160 (StockReservation/Shipment),
+  // 240 (Bom/WorkOrder/StockAdjustment/JournalEntry/Payment), 320 (ReplenishmentRequest/
+  // GoodsReceipt), 400 PurchaseRequisition, 480 (PurchaseOrder/SupplierInvoice), 560 Supplier.
+  var PRESET = {
+    Customer:             { x: 360, y: 0 },
+    Product:              { x: 0,   y: 80 },
+    SalesOrder:           { x: 360, y: 80 },
+    CustomerInvoice:      { x: 720, y: 80 },
+    StockReservation:     { x: 360, y: 160 },
+    Shipment:             { x: 540, y: 160 },
+    Bom:                  { x: 0,   y: 240 },
+    WorkOrder:            { x: 180, y: 240 },
+    StockAdjustment:      { x: 540, y: 240 },
+    JournalEntry:         { x: 720, y: 240 },
+    Payment:              { x: 900, y: 240 },
+    ReplenishmentRequest: { x: 360, y: 320 },
+    GoodsReceipt:         { x: 540, y: 320 },
+    PurchaseRequisition:  { x: 360, y: 400 },
+    PurchaseOrder:        { x: 360, y: 480 },
+    SupplierInvoice:      { x: 720, y: 480 },
+    Supplier:             { x: 360, y: 560 }
+  };
+  var LAYOUT = { name: 'preset', positions: PRESET, fit: true, padding: 26, animate: false };
+
+  var cy = window.causalCy = cytoscape({
+    container: el,
+    elements: { nodes: nodes, edges: edges },
+    wheelSensitivity: 0.25,
+    style: [
+      { selector: 'node', style: {
+          'label': 'data(label)', 'text-valign': 'center', 'text-halign': 'center',
+          'font-size': '12px', 'font-weight': 600, 'shape': 'round-rectangle',
+          'width': 'label', 'height': 'label', 'padding': '9px',
+          'border-width': 1.5, 'text-wrap': 'none'
+      } }
+    ].concat(nodeStyles).concat([
+      { selector: 'edge', style: {
+          'curve-style': 'bezier', 'control-point-step-size': 42,
+          'target-arrow-shape': 'triangle', 'arrow-scale': 1.2,
+          'line-color': '#9aa0a6', 'target-arrow-color': '#9aa0a6', 'opacity': 0.9, 'width': 1.8
+          // No on-edge label — the field is shown on hover in a dark horizontal DOM
+          // tooltip (#edge-tooltip), the same format as system-map.html's edge tooltip.
+      } },
+      { selector: 'edge[?snapshot]', style: {
+          'line-color': '#9ca3af', 'target-arrow-color': '#9ca3af', 'line-style': 'dashed',
+          'width': 1.4, 'opacity': 0.65, 'color': '#9ca3af'
+      } },
+      { selector: 'edge[?missing]', style: {
+          'line-color': '#cf222e', 'target-arrow-color': '#cf222e', 'line-style': 'dashed',
+          'width': 2.6, 'opacity': 1, 'color': '#cf222e'
+      } },
+      { selector: 'edge.cg-hover', style: { 'width': 2.8, 'opacity': 1, 'z-index': 20 } },
+      { selector: 'node.focused', style: { 'border-width': 3.5 } },
+      { selector: 'node.dimmed', style: { 'background-opacity': 0.18, 'border-opacity': 0.3, 'text-opacity': 0.45 } },
+      { selector: 'edge.dimmed', style: { 'opacity': 0.06, 'text-opacity': 0 } }
+    ]),
+    layout: LAYOUT
+  });
+
+  // Focus mode (mirrors system-map.html): click a node to focus; non-touching
+  // nodes/edges dim. 2+ focused → keep only edges within the focused set.
+  var focused = new Set();
+  function applyFocus() {
+    cy.nodes().removeClass('focused dimmed');
+    cy.edges().removeClass('dimmed');
+    if (focused.size === 0) return;
+    cy.nodes().forEach(function (n) { focused.has(n.id()) ? n.addClass('focused') : n.addClass('dimmed'); });
+    var both = focused.size >= 2;
+    cy.edges().forEach(function (e) {
+      var s = focused.has(e.source().id()), t = focused.has(e.target().id());
+      if (!(both ? (s && t) : (s || t))) e.addClass('dimmed');
+    });
+  }
+  cy.on('tap', 'node', function (evt) {
+    var id = evt.target.id();
+    focused.has(id) ? focused.delete(id) : focused.add(id);
+    applyFocus();
+  });
+  cy.on('tap', function (evt) { if (evt.target === cy) { focused.clear(); applyFocus(); } });
+
+  // Hover tooltip (same format as system-map.html): canvas-drawn edges can't carry
+  // a DOM title, so position a fixed dark block from the cursor showing the
+  // tracking field horizontally. The edge also thickens (cg-hover) for feedback.
+  var tooltip = document.getElementById('edge-tooltip');
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function showTooltip(evt) {
+    var e = evt.target;
+    var cls = e.data('missing') ? 'tt-missing' : (e.data('snapshot') ? 'tt-snap' : '');
+    var ev = e.data('events');
+    tooltip.innerHTML =
+      '<div class="head">' + esc(e.source().id()) + ' → ' + esc(e.target().id()) + '</div>' +
+      '<div class="field ' + cls + '">' + esc(e.data('label') || '') + '</div>' +
+      (ev ? '<div class="events"><span class="ev-label">driving event(s):</span> ' + esc(ev) + '</div>' : '');
+    tooltip.style.display = 'block';
+    tooltip.setAttribute('aria-hidden', 'false');
+    positionTooltip(evt);
+  }
+  function positionTooltip(evt) {
+    var oe = evt.originalEvent; if (!oe) return;
+    var pad = 14, vw = window.innerWidth, vh = window.innerHeight, r = tooltip.getBoundingClientRect();
+    var x = oe.clientX + pad, y = oe.clientY + pad;
+    if (x + r.width > vw - 8) x = oe.clientX - r.width - pad;
+    if (y + r.height > vh - 8) y = oe.clientY - r.height - pad;
+    tooltip.style.left = x + 'px';
+    tooltip.style.top = y + 'px';
+  }
+  function hideTooltip() { tooltip.style.display = 'none'; tooltip.setAttribute('aria-hidden', 'true'); }
+  cy.on('mouseover', 'edge', function (evt) { evt.target.addClass('cg-hover'); showTooltip(evt); });
+  cy.on('mousemove', 'edge', positionTooltip);
+  cy.on('mouseout', 'edge', function (evt) { evt.target.removeClass('cg-hover'); hideTooltip(); });
+  el.addEventListener('mouseleave', hideTooltip);
+
+  var btn = document.getElementById('cg-relayout');
+  if (btn) btn.onclick = function () { cy.layout(Object.assign({}, LAYOUT, { animate: true, animationDuration: 350 })).run(); };
+
+  // Resizable frame (same as system-map.html's saga diagrams): #causal-graph has
+  // `resize: vertical`, so the user can drag its bottom edge. Cytoscape sizes its
+  // canvas to the container, so it needs an explicit resize()+fit() when the
+  // container changes — coalesced to one call per animation frame. The fit() is
+  // what makes a taller frame actually enlarge the graph + labels, not just pad it.
+  if (typeof ResizeObserver === 'function') {
+    var raf = 0;
+    var ro = new ResizeObserver(function () {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(function () { cy.resize(); cy.fit(undefined, 26); });
+    });
+    ro.observe(el);
+  }
+})();
+</script>
+
+</body>
+</html>
