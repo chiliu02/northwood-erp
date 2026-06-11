@@ -10,7 +10,7 @@ package com.northwood.testharness.dsl;
  *   .given(a_customer("CUST-001", "Acme Corp"))
  *   .and(a_product("FG-001", "Finished Good 1").pricedAt(money(100)))
  *   .when(customer("CUST-001").places_order("SO-9001").line("FG-001", qty(3)))
- *   .then(order("SO-9001").reaches(READY_TO_SHIP));
+ *   .then(order("SO-9001").reaches(SUPPLY_SECURED));
  * }</pre>
  *
  * <p>Each stage applies its step to the shared World immediately, so the chain

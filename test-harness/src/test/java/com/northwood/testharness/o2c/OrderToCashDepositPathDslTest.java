@@ -14,9 +14,8 @@ import static com.northwood.testharness.dsl.Dsl.stock_on_hand;
 import static com.northwood.testharness.dsl.Dsl.warehouse;
 import static com.northwood.testharness.dsl.Scenario.scenario;
 import static com.northwood.inventory.domain.WarehouseCodes.MAIN;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.DEPOSIT_INVOICED;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.INVOICE_CREATED;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.READY_TO_SHIP;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.AWAITING_PREPAYMENT;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.SUPPLY_SECURED;
 
 import com.northwood.finance.domain.events.CustomerInvoiceCreated;
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
@@ -39,7 +38,7 @@ import org.junit.jupiter.api.Test;
  * <p>Order: 3 × $100 = $300, 50% deposit → $150 deposit + $150 balance. The
  * real services, saga worker, inbox handlers, and Jackson 3 serde run under
  * every step; {@code settle()} folds the {@code deposit_invoiced → deposit_paid
- * → ready_to_ship} worker progression into the single deposit-payment trigger,
+ * → SUPPLY_SECURED} worker progression into the single deposit-payment trigger,
  * so the scenario states only the business facts a reviewer checks.
  *
  * <p>Branch vocabulary new in this slice: {@code with_deposit(percent(50))},
@@ -60,20 +59,22 @@ class OrderToCashDepositPathDslTest {
             // ── trigger: customer places a 50%-deposit order for 3 units ──
             .when(customer("CUST-001").places_order("SO-DEP-1").with_deposit(percent(50))
                 .line("FG-001", qty(3)))
-            // ── outcome: a $150 deposit invoice is raised; saga parks awaiting it ──
-            .then(order("SO-DEP-1").reaches(DEPOSIT_INVOICED))
+            // ── outcome: a $150 deposit invoice is raised; saga parks at the
+            //    up-front-payment gate awaiting the deposit payment ──
+            .then(order("SO-DEP-1").reaches(AWAITING_PREPAYMENT))
             .and(a_deposit_invoice().for_order("SO-DEP-1").totalling(money(150)))
 
             // ── trigger: customer pays the deposit ──
             .when(customer("CUST-001").pays(money(150)).against_deposit_on("SO-DEP-1"))
             // ── outcome: deposit settles, stock reserves, order becomes ready to ship ──
-            .then(order("SO-DEP-1").reaches(READY_TO_SHIP))
+            .then(order("SO-DEP-1").reaches(SUPPLY_SECURED))
 
             // ── trigger: the warehouse ships all 3 units ──
             .when(warehouse(MAIN).ships("SO-DEP-1")
                 .line("FG-001", qty(3)).at_unit_cost(money(60)))
-            // ── outcome: the $150 balance invoice is raised (deposit recognised behind it) ──
-            .then(order("SO-DEP-1").reaches(INVOICE_CREATED))
+            // ── outcome: the $150 balance invoice is raised (deposit recognised
+            //    behind it); the saga holds at supply_secured awaiting balance payment ──
+            .then(order("SO-DEP-1").reaches(SUPPLY_SECURED))
             .and(a_balance_invoice().for_order("SO-DEP-1").totalling(money(150)))
 
             // ── trigger: customer settles the balance in full ──

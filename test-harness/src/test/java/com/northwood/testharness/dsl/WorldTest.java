@@ -44,16 +44,17 @@ class WorldTest {
         world.placeOrder("SO-9001", "CUST-001",
             List.of(new World.OrderLineSpec("FG-001", new BigDecimal("3"))));
 
-        // ── outcome: full reservation shortcuts straight to ready_to_ship ──
-        assertThat(world.sagaState("SO-9001")).isEqualTo(SalesOrderFulfilmentSaga.READY_TO_SHIP);
+        // ── outcome: full reservation shortcuts straight to SUPPLY_SECURED ──
+        assertThat(world.sagaState("SO-9001")).isEqualTo(SalesOrderFulfilmentSaga.SUPPLY_SECURED);
         assertThat(world.orderStatus("SO-9001")).contains(SalesOrder.Status.RESERVED);
 
         // ── trigger: the warehouse ships all 3 units ──
         world.ship("SHIP-001", "SO-9001",
             List.of(new World.ShipLineSpec("FG-001", new BigDecimal("3"), new BigDecimal("60.00"))));
 
-        // ── outcome: a commercial invoice for 3 × 100 is raised; saga at invoice_created ──
-        assertThat(world.sagaState("SO-9001")).isEqualTo(SalesOrderFulfilmentSaga.INVOICE_CREATED);
+        // ── outcome: a commercial invoice for 3 × 100 is raised; saga holds at
+        //    supply_secured (orderShipped latched, awaiting payment) ──
+        assertThat(world.sagaState("SO-9001")).isEqualTo(SalesOrderFulfilmentSaga.SUPPLY_SECURED);
         assertThat(world.commercialInvoice("SO-9001")).isPresent();
         assertThat(world.commercialInvoice("SO-9001").orElseThrow().totalAmount())
             .isEqualByComparingTo("300.00");

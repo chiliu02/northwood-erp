@@ -1,7 +1,8 @@
 package com.northwood.sales.application.inbox;
 
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.COMPLETED;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.INVOICE_PARTIALLY_PAID;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.PREPAID;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.SUPPLY_SECURED;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -73,22 +74,36 @@ class CustomerPaymentReceivedHandlerTest {
     }
 
     @Test void partial_payment_does_not_complete() {
-        when(sagaManager.applyCustomerPaymentReceived(eq(SO), eq(false), eq(false))).thenReturn(INVOICE_PARTIALLY_PAID);
+        // Gate holds at supply_secured (or wherever the saga is) — not completed.
+        when(sagaManager.applyCustomerPaymentReceived(eq(SO), eq(false), eq(false))).thenReturn(SUPPLY_SECURED);
 
         handler.handle(event("partially_paid", false));
 
         verify(sagaManager).applyCustomerPaymentReceived(SO, false, false);
         verify(salesOrders, never()).completeOrder(any());
+        verify(upfrontSettledEmitter, never()).emitUpfrontPaymentSettled(any());
     }
 
     @Test void invoice_paid_but_order_not_settled_does_not_complete() {
         // One per-shipment invoice fully paid, but the order still owes another
         // shipment's invoice → invoiceFullySettled=true, orderFullySettled=false.
-        when(sagaManager.applyCustomerPaymentReceived(eq(SO), eq(true), eq(false))).thenReturn(INVOICE_PARTIALLY_PAID);
+        when(sagaManager.applyCustomerPaymentReceived(eq(SO), eq(true), eq(false))).thenReturn(SUPPLY_SECURED);
 
         handler.handle(event("paid", false));
 
         verify(sagaManager).applyCustomerPaymentReceived(SO, true, false);
+        verify(salesOrders, never()).completeOrder(any());
+    }
+
+    @Test void upfront_settlement_lifts_the_inventory_shipment_gate() {
+        // Prepayment/deposit up-front invoice paid → saga reaches prepaid → emit
+        // SalesOrderPrepaymentSettled so inventory lifts the shipment gate.
+        when(sagaManager.applyCustomerPaymentReceived(eq(SO), eq(true), org.mockito.ArgumentMatchers.anyBoolean()))
+            .thenReturn(PREPAID);
+
+        handler.handle(event("paid", true));
+
+        verify(upfrontSettledEmitter).emitUpfrontPaymentSettled(SO);
         verify(salesOrders, never()).completeOrder(any());
     }
 

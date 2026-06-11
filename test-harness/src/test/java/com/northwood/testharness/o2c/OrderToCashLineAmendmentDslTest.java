@@ -12,7 +12,7 @@ import static com.northwood.testharness.dsl.Dsl.qty;
 import static com.northwood.testharness.dsl.Dsl.stock_on_hand;
 import static com.northwood.testharness.dsl.Scenario.scenario;
 import static com.northwood.inventory.domain.WarehouseCodes.MAIN;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.READY_TO_SHIP;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.SUPPLY_SECURED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_INCOMPLETE;
 
 import com.northwood.inventory.domain.ReplenishmentRequest;
@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
 class OrderToCashLineAmendmentDslTest {
 
     @Test
-    void add_line_to_reserved_order_reserves_incrementally_and_stays_ready_to_ship() {
+    void add_line_to_reserved_order_reserves_incrementally_and_stays_SUPPLY_SECURED() {
         scenario("a line added to a reserved order is reserved incrementally")
             .given(a_customer("CUST-001", "Acme Corp"))
             .and(a_product("FG-A", "Good A").pricedAt(money(100)))
@@ -38,17 +38,17 @@ class OrderToCashLineAmendmentDslTest {
             .and(stock_on_hand("FG-B", qty(50)).at(MAIN))
 
             .when(customer("CUST-001").places_order("SO-AMEND-1").line("FG-A", qty(3)))
-            .then(order("SO-AMEND-1").reaches(READY_TO_SHIP))
+            .then(order("SO-AMEND-1").reaches(SUPPLY_SECURED))
 
             // ── trigger: add a second, fully-reservable line ──
             .when(amend("SO-AMEND-1").add_line("FG-B", qty(2)))
             // ── outcome: reserved incrementally; the order stays ready-to-ship ──
-            .then(order("SO-AMEND-1").reaches(READY_TO_SHIP))
+            .then(order("SO-AMEND-1").reaches(SUPPLY_SECURED))
             .and(events_published(SalesOrderLineReservationChanged.EVENT_TYPE));
     }
 
     @Test
-    void remove_short_line_cancels_replenishment_and_unparks_to_ready_to_ship() {
+    void remove_short_line_cancels_replenishment_and_unparks_to_SUPPLY_SECURED() {
         scenario("removing a short line cancels its replenishment and un-parks the order")
             .given(a_customer("CUST-001", "Acme Corp"))
             .and(a_product("FG-A", "Good A").pricedAt(money(100)))
@@ -67,7 +67,7 @@ class OrderToCashLineAmendmentDslTest {
             // ── trigger: remove the short line ──
             .when(amend("SO-AMEND-2").remove_line("FG-B"))
             // ── outcome: its replenishment is cancelled and the order un-parks ──
-            .then(order("SO-AMEND-2").reaches(READY_TO_SHIP))
+            .then(order("SO-AMEND-2").reaches(SUPPLY_SECURED))
             .and(a_replenishment_request("FG-B").reaches(ReplenishmentRequest.Status.CANCELLED));
     }
 }

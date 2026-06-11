@@ -86,23 +86,25 @@ class SalesOrderServiceAmendTest {
         verify(orders).save(any());
     }
 
-    @Test void addLine_allowed_when_ready_to_ship() {
+    @Test void addLine_allowed_when_supply_secured() {
         // The amendable window extends to the reserved order (inventory reconciles
-        // the change incrementally).
+        // the change incrementally). supply_secured is the reserved checkpoint
+        // (renamed from ready_to_ship); the domain anyLineShipped predicate is the
+        // backstop once a line actually ships.
         when(productCards.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(
             new CatalogPrice(new BigDecimal("25.00"), Currencies.AUD, null, 0)
         ));
-        when(sagaManager.currentState(ORDER_ID)).thenReturn(Optional.of(SalesOrderFulfilmentSaga.READY_TO_SHIP));
+        when(sagaManager.currentState(ORDER_ID)).thenReturn(Optional.of(SalesOrderFulfilmentSaga.SUPPLY_SECURED));
 
         service.addLine(addCommand(null));
 
         verify(orders).save(any());
     }
 
-    @Test void addLine_rejected_for_prepayment_order_at_ready_to_ship() {
+    @Test void addLine_rejected_for_prepayment_order_at_supply_secured() {
         // Finance guard: prepayment/deposit orders invoice up front, so a
-        // ready_to_ship prepayment order already carries a pre-shipment invoice.
-        when(sagaManager.currentState(ORDER_ID)).thenReturn(Optional.of(SalesOrderFulfilmentSaga.READY_TO_SHIP));
+        // supply_secured prepayment order already carries a pre-shipment invoice.
+        when(sagaManager.currentState(ORDER_ID)).thenReturn(Optional.of(SalesOrderFulfilmentSaga.SUPPLY_SECURED));
         when(sagaManager.currentPaymentTerms(ORDER_ID)).thenReturn(Optional.of(PaymentTerms.PREPAYMENT.dbValue()));
 
         assertThatThrownBy(() -> service.addLine(addCommand(null)))
@@ -111,11 +113,14 @@ class SalesOrderServiceAmendTest {
         verify(orders, never()).save(any());
     }
 
-    @Test void addLine_rejected_once_goods_shipped() {
-        // Past the amendable window (goods shipped). The window guard runs before
-        // price resolution, so no productCards stub.
+    @Test void addLine_rejected_once_saga_past_the_window() {
+        // Past the amendable window — the saga has completed (post-supply states
+        // collapsed, so completed is the first non-amendable state reachable on
+        // the happy path). The "once goods shipped" guarantee is enforced
+        // separately by the domain anyLineShipped predicate (SalesOrder tests).
+        // The window guard runs before price resolution, so no productCards stub.
         when(sagaManager.currentState(ORDER_ID))
-            .thenReturn(Optional.of(SalesOrderFulfilmentSaga.GOODS_SHIPPED));
+            .thenReturn(Optional.of(SalesOrderFulfilmentSaga.COMPLETED));
 
         assertThatThrownBy(() -> service.addLine(addCommand(null)))
             .isInstanceOf(OrderNotAmendableException.class);

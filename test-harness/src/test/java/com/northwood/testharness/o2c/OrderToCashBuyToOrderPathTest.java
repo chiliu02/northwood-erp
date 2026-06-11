@@ -43,7 +43,7 @@ import tools.jackson.databind.ObjectMapper;
  *       on-hand AND (because the linked request is {@code order_pegged})
  *       reserves the received qty for the SO line in the same transaction, then
  *       {@code markFulfilled} emits {@code ReplenishmentFulfilled(pegged=true)}.</li>
- *   <li>Sales' fan-in sees {@code pegged} → saga → {@code ready_to_ship}
+ *   <li>Sales' fan-in sees {@code pegged} → saga → {@code SUPPLY_SECURED}
  *       directly. ATP excludes the peg (available = 0).</li>
  * </ol>
  *
@@ -133,8 +133,8 @@ class OrderToCashBuyToOrderPathTest {
         bus.drain();
 
         assertThat(sales.findSagaBySalesOrderId(orderId).orElseThrow().state())
-            .as("order-pegged goods receipt → ready_to_ship straight off the peg")
-            .isEqualTo(SalesOrderFulfilmentSaga.READY_TO_SHIP);
+            .as("order-pegged goods receipt → SUPPLY_SECURED straight off the peg")
+            .isEqualTo(SalesOrderFulfilmentSaga.SUPPLY_SECURED);
 
         // ATP excludes the pegged stock: 1 on hand, 1 reserved, 0 available.
         var balance = inventory.stockBalances

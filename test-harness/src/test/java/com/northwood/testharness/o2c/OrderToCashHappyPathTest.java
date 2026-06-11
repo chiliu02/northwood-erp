@@ -39,10 +39,10 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Order-to-cash happy path through the saga state machine.
  *
- * <p>Walks {@code placeOrder → ready_to_ship (full reservation shortcut) →
+ * <p>Walks {@code placeOrder → SUPPLY_SECURED (full reservation shortcut) →
  * goods_shipped → invoice_created → completed}. With enough on-hand stock
  * to cover the order, {@code applyStockReserved} shortcuts directly from
- * {@code stock_reservation_requested} to {@code ready_to_ship}, skipping
+ * {@code stock_reservation_requested} to {@code SUPPLY_SECURED}, skipping
  * the manufacturing leg entirely.
  *
  * <p>Shipment + customer payment are driven through the real
@@ -82,21 +82,21 @@ class OrderToCashHappyPathTest {
         sales.advanceSagaWorker();
 
         // Step 3: drain the bus — inventory fully reserves stock; sales'
-        // applyStockReserved shortcuts directly to ready_to_ship
+        // applyStockReserved shortcuts directly to SUPPLY_SECURED
         // (full-reservation branch), skipping the manufacturing leg.
         // SalesOrderPlaced also seeds inventory's sales_order_line_facts
         // projection so the upcoming shipment validation has something to
         // check against.
         bus.drain();
 
-        SalesOrderFulfilmentSaga sagaAtReadyToShip = sales.findSagaBySalesOrderId(orderId).orElseThrow();
-        assertThat(sagaAtReadyToShip.state()).isEqualTo(SalesOrderFulfilmentSaga.READY_TO_SHIP);
+        SalesOrderFulfilmentSaga sagaAtSupplySecured = sales.findSagaBySalesOrderId(orderId).orElseThrow();
+        assertThat(sagaAtSupplySecured.state()).isEqualTo(SalesOrderFulfilmentSaga.SUPPLY_SECURED);
         assertThat(sales.orderStatus(orderId)).contains(SalesOrder.Status.RESERVED);
 
         // Step 4: post the shipment through the real ShipmentService.
         // Inventory persists the Shipment aggregate, decrements on-hand,
         // releases the matching reserved qty, and drains ShipmentPosted to
-        // its outbox. Sales' handler advances ready_to_ship → goods_shipped
+        // its outbox. Sales' handler advances SUPPLY_SECURED → goods_shipped
         // and emits SalesOrderShipped; finance auto-creates the customer
         // invoice from the richer sales event.
         UUID customerId = sales.customers.findByCode("CUST-001").orElseThrow().customerId();
@@ -118,8 +118,10 @@ class OrderToCashHappyPathTest {
         ));
         bus.drain();
 
-        SalesOrderFulfilmentSaga sagaAtInvoiced = sales.findSagaBySalesOrderId(orderId).orElseThrow();
-        assertThat(sagaAtInvoiced.state()).isEqualTo(SalesOrderFulfilmentSaga.INVOICE_CREATED);
+        // Post-shipment the saga holds at supply_secured (orderShipped latched);
+        // the invoice/pay status is the line fold + 360, not a saga state.
+        SalesOrderFulfilmentSaga sagaAfterShip = sales.findSagaBySalesOrderId(orderId).orElseThrow();
+        assertThat(sagaAfterShip.state()).isEqualTo(SalesOrderFulfilmentSaga.SUPPLY_SECURED);
 
         assertThat(finance.customerInvoices.findAll()).hasSize(1);
         UUID invoiceHeaderId = finance.customerInvoices.findAll().get(0).id().value();

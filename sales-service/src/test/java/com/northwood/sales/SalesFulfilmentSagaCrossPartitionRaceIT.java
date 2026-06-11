@@ -157,8 +157,8 @@ class SalesFulfilmentSagaCrossPartitionRaceIT {
         publishToPartition(1, fullReservationEnvelope(UUID.randomUUID(), markerOrderP1));
 
         await().atMost(Duration.ofSeconds(45)).pollInterval(Duration.ofMillis(250)).untilAsserted(() -> {
-            assertThat(sagaState(markerOrderP0)).isEqualTo("ready_to_ship");
-            assertThat(sagaState(markerOrderP1)).isEqualTo("ready_to_ship");
+            assertThat(sagaState(markerOrderP0)).isEqualTo("supply_secured");
+            assertThat(sagaState(markerOrderP1)).isEqualTo("supply_secured");
         });
 
         // Both partitions have drained past E → the race is fully resolved.
@@ -178,7 +178,7 @@ class SalesFulfilmentSagaCrossPartitionRaceIT {
             .withFailMessage("SalesOrderReadyToShip must be emitted exactly once, not once per partition copy")
             .isEqualTo(1);
 
-        assertThat(sagaState(racedOrder)).isEqualTo("ready_to_ship");
+        assertThat(sagaState(racedOrder)).isEqualTo("supply_secured");
     }
 
     // ------------------------------------------------------------------

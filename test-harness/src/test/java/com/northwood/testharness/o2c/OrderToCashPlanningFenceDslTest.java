@@ -13,7 +13,7 @@ import static com.northwood.testharness.dsl.Scenario.scenario;
 import static com.northwood.inventory.domain.WarehouseCodes.MAIN;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.AWAITING_RELEASE;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.COMPENSATED;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.READY_TO_SHIP;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.SUPPLY_SECURED;
 
 import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.events.SalesOrderCancellationRequested;
@@ -62,7 +62,7 @@ class OrderToCashPlanningFenceDslTest {
             // need-by 2026-06-05; release = 2026-05-29, already before the clock → reserves now.
             .when(customer("CUST-001").places_order("SO-FENCE-2").needBy(LocalDate.of(2026, 6, 5))
                 .line("WIDGET-001", qty(3)))
-            .then(order("SO-FENCE-2").reaches(READY_TO_SHIP));
+            .then(order("SO-FENCE-2").reaches(SUPPLY_SECURED));
     }
 
     @Test

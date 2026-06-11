@@ -76,7 +76,7 @@ sales.advanceSagaWorker();
 bus.drain();
 
 assertThat(sales.findSagaBySalesOrderId(orderId).orElseThrow().state())
-    .isEqualTo(SalesOrderFulfilmentSaga.READY_TO_SHIP);
+    .isEqualTo(SalesOrderFulfilmentSaga.SUPPLY_SECURED);
 
 UUID customerId = sales.customers.findByCode("CUST-001").orElseThrow().customerId();
 SalesOrderLine placedLine = sales.orders.findById(SalesOrderId.of(orderId))
@@ -115,11 +115,11 @@ scenario("in-stock order: ships, invoices, and settles in full")
 
   .when(customer("CUST-001").places_order("SO-9001")
         .line("FG-001", qty(3)))
-  .then(order("SO-9001").reaches(READY_TO_SHIP))
+  .then(order("SO-9001").reaches(SUPPLY_SECURED))
 
   .when(warehouse(MAIN).ships("SO-9001")
         .line("FG-001", qty(3)).at_unit_cost(money(60)))
-  .then(order("SO-9001").reaches(INVOICE_CREATED))
+  .then(order("SO-9001").reaches(SUPPLY_SECURED))
   .and(a_commercial_invoice().for_order("SO-9001").totalling(money(300)))
 
   .when(customer("CUST-001").pays(money(300)).against("SO-9001"))
@@ -150,9 +150,9 @@ logic and the DSL's sweet spot:
 
 | Template field | Maps to | o2c example (the shipment→invoice rule) |
 |---|---|---|
-| **guard** (context that must hold) | `given …` | an in-stock order sitting at `ready_to_ship` |
+| **guard** (context that must hold) | `given …` | an in-stock order sitting at `SUPPLY_SECURED` |
 | **trigger** (the event/command) | `when …` | the warehouse ships the order |
-| **outcome** (state change + emitted events) | `then …` | a commercial invoice for the shipped value exists; saga at `invoice_created`; COGS posted |
+| **outcome** (state change + emitted events) | `then …` | a commercial invoice for the shipped value exists; saga at `SUPPLY_SECURED`; COGS posted |
 
 So a requirement written as a `trigger/guard/outcome` stanza in a PR description *is* the
 skeleton of its acceptance test. Write the stanza, then transcribe it. Review is the
@@ -220,7 +220,7 @@ world.
 
 | DSL | Asserts |
 |---|---|
-| `order(orderNo).reaches(SagaState)` | saga state == constant (e.g. `READY_TO_SHIP`) |
+| `order(orderNo).reaches(SagaState)` | saga state == constant (e.g. `SUPPLY_SECURED`) |
 | `order(orderNo).has_status(SalesOrder.Status)` | header-status projection |
 | `order(orderNo).is_completed()` | saga `COMPLETED` **and** status `COMPLETED` |
 | `a_commercial_invoice()` / `a_deposit_invoice()` / `a_balance_invoice()`.`for_order(orderNo).totalling(Money)` | a `CustomerInvoice` of that type exists for the order with that total |
@@ -243,7 +243,7 @@ world.
 |---|---|
 | `money(100)` | `BigDecimal("100.00")` (or a `Money` VO in `Currencies.AUD`) |
 | `qty(3)` | `BigDecimal("3")` |
-| `MAIN`, `READY_TO_SHIP`, `INVOICE_CREATED` | re-exported real constants (`WarehouseCodes.MAIN`, `SalesOrderFulfilmentSaga.*`) — no new vocabulary, just imports |
+| `MAIN`, `SUPPLY_SECURED`, `SUPPLY_SECURED` | re-exported real constants (`WarehouseCodes.MAIN`, `SalesOrderFulfilmentSaga.*`) — no new vocabulary, just imports |
 
 **The DSL invents no business vocabulary.** Every state, warehouse code, currency, and
 `EVENT_TYPE` is a real constant from the production/event jars. The fluent words
@@ -312,7 +312,7 @@ The complete scenario, as it would live in `test-harness/.../o2c/` (alongside th
 import static com.northwood.testharness.dsl.Scenario.scenario;
 import static com.northwood.testharness.dsl.Dsl.*;          // a_customer, money, qty, …
 import static com.northwood.inventory.domain.WarehouseCodes.MAIN;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.*;  // READY_TO_SHIP, …
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.*;  // SUPPLY_SECURED, …
 
 class OrderToCashHappyPathDslTest {
 
@@ -329,14 +329,14 @@ class OrderToCashHappyPathDslTest {
           .when(customer("CUST-001").places_order("SO-9001")
                 .line("FG-001", qty(3)))
           // ── outcome: full reservation shortcuts straight to ready-to-ship ──
-          .then(order("SO-9001").reaches(READY_TO_SHIP))
+          .then(order("SO-9001").reaches(SUPPLY_SECURED))
           .and(order("SO-9001").has_status(SalesOrder.Status.IN_FULFILMENT))
 
           // ── trigger: the warehouse ships all 3 units ──
           .when(warehouse(MAIN).ships("SO-9001")
                 .line("FG-001", qty(3)).at_unit_cost(money(60)))
           // ── outcome: a commercial invoice for 3 × 100 is raised ──
-          .then(order("SO-9001").reaches(INVOICE_CREATED))
+          .then(order("SO-9001").reaches(SUPPLY_SECURED))
           .and(a_commercial_invoice().for_order("SO-9001").totalling(money(300)))
 
           // ── trigger: customer settles the invoice in full ──
@@ -417,16 +417,16 @@ Small, because the engine exists. Suggested slices:
      trigger stand-in. New branch vocabulary `with_deposit(percent(50))`,
      `pays(…).against_deposit_on/against_balance_on(…)`, `a_deposit_invoice()` /
      `a_balance_invoice()`. The auto-settle model held cleanly — each step settles to a parked
-     saga state (`deposit_invoiced`, `ready_to_ship`), so no escape hatch was needed. The
+     saga state (`awaiting_prepayment`, `SUPPLY_SECURED`), so no escape hatch was needed. The
      faithfulness seam that surfaced: `settle()` runs the deposit payment all the way through to
-     `ready_to_ship` (the worker reserves stock once the deposit settles), and `World.payInvoice`
+     `SUPPLY_SECURED` (the worker reserves stock once the deposit settles), and `World.payInvoice`
      stamps the allocation *after* settling — the per-payment stand-in for the production trigger
      so a later balance payment computes order-level settlement correctly.
 
    - **Cancellation/compensation** (`CancelCompensationTest` → `OrderToCashCancellationPathDslTest`)
      **forced the `.without_settling()` escape hatch (§6) — exactly as predicted.** The
      hand-written test cancels a *freshly-placed* order before the worker reserves stock; the
-     auto-settle default would advance the saga to `ready_to_ship` and change the branch.
+     auto-settle default would advance the saga to `SUPPLY_SECURED` and change the branch.
      `places_order(…).without_settling()` parks the saga at `started` with `SalesOrderPlaced`
      still pending; `customer(…).cancels(order).because(reason)` then settles, draining the
      parked placement alongside the cancellation and driving compensation to `compensated`

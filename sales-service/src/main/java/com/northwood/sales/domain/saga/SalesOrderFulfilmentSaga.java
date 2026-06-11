@@ -11,24 +11,40 @@ import java.util.UUID;
  * {@code sales_order_id} domain key on top of the lease/version columns
  * inherited from {@link SagaInstance}.
  *
- * <p>State machine (per the schema CHECK constraint):
- * {@code started → stock_reservation_requested → ready_to_ship → goods_shipped
- *  → invoice_created → completed}.
+ * <p>State machine (the <b>pruned orchestration</b> — process progress only, not
+ * the order status, which is the {@code classify(lines)} fold on the aggregate):
+ * {@code started → stock_reservation_requested → supply_secured → completed}.
  * Fully-reserved orders take that happy path straight through. A partial/failed
  * reservation parks at {@code stock_reservation_incomplete} while inventory
  * replenishes (inventory is the single make-vs-buy decision + trigger point —
  * it raises the {@code ReplenishmentRequest} in the same transaction as the
  * reservation); once every short line's
  * {@code inventory.ReplenishmentFulfilled} has landed the saga re-enters
- * {@code stock_reservation_requested} to retry. Side rails: {@code rejected}
- * (a short line's replenishment was cancelled — unsourceable / no BOM / no
- * vendor), {@code compensating}, {@code compensated}, {@code failed}.
+ * {@code stock_reservation_requested} to retry. Prepayment/deposit terms park at
+ * the {@code awaiting_prepayment} gate until the up-front payment lands; a
+ * planning fence parks at {@code awaiting_release} until the release date. Side
+ * rails: {@code rejected} (a short line's replenishment was cancelled —
+ * unsourceable / no BOM / no vendor), {@code compensating}, {@code compensated},
+ * {@code failed}.
  *
- * <p>The {@code manufacturing_*} / {@code purchasing_requested} states were
- * retired when sales stopped driving manufacturing directly.
- * The DB CHECK constraint still lists them (a fresh-volume migration concern,
- * not a code one); the {@code SagaStateInvariantChecker} only fails if code
- * writes a state the DB rejects, so dropping them here is safe.
+ * <p>The saga is pruned to the states some control-flow branches on. The old
+ * post-supply states — {@code goods_shipped}, {@code partially_shipped},
+ * {@code invoice_created}, {@code invoice_partially_paid} — were non-branching
+ * pass-throughs that only restated the line/360 axes, so they were dropped: after
+ * {@code supply_secured} the ship → invoice → pay status is owned by the line
+ * fold + the 360, and the saga's only post-supply act is the <b>completion
+ * gate</b> ({@code supply_secured → completed} once
+ * {@link FulfilmentSagaData#orderShipped} ∧ {@link FulfilmentSagaData#orderSettled}).
+ * {@code completed} is kept — its value is derivable, but the saga's own
+ * drain / compensation machinery reads the state. The prepayment/deposit
+ * <em>invoice</em> intermediates ({@code awaiting_prepayment_invoice},
+ * {@code awaiting_deposit_invoice}, {@code deposit_invoiced}) collapsed into the
+ * single {@code awaiting_prepayment} gate; the post-payment active checkpoint
+ * {@code prepaid} is <b>kept</b> (the worker branches on it to request the
+ * reservation — it is not a pass-through) and now also serves deposit orders (the
+ * old {@code deposit_paid} unified into it). The {@code manufacturing_*} /
+ * {@code purchasing_requested} states were retired earlier when sales stopped
+ * driving manufacturing directly.
  */
 public final class SalesOrderFulfilmentSaga extends SagaInstance {
 
@@ -63,6 +79,37 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
      * {@code compensated}.
      */
     public static final String AWAITING_RELEASE = "awaiting_release";
+    /**
+     * Up-front-payment gate (prepayment + deposit terms). The saga parks here
+     * after the order emits its prepayment/deposit invoice request and waits for
+     * the up-front invoice to be fully paid (finance's
+     * {@code CustomerPaymentReceived} with {@code invoiceFullySettled}). On
+     * settlement the payment handler lifts the inventory shipment gate
+     * ({@code SalesOrderPrepaymentSettled}) and drives the saga into the
+     * reservation path — {@link #STOCK_RESERVATION_REQUESTED} directly (emitting
+     * {@code StockReservationRequested}), or {@link #AWAITING_RELEASE} when a
+     * planning fence is still pending.
+     *
+     * <p>Collapses the old {@code awaiting_prepayment_invoice → invoice_created →
+     * prepaid} and deposit {@code awaiting_deposit_invoice → deposit_invoiced →
+     * deposit_paid} chains: the invoice/paid intermediates were non-branching
+     * pass-throughs whose facts live on the invoice/pay axes; the saga branches on
+     * exactly one thing here — "is the up-front payment in?". For a deposit order
+     * the balance invoice + payment land after shipment and fold into the
+     * completion gate ({@link FulfilmentSagaData#orderSettled}).
+     */
+    public static final String AWAITING_PREPAYMENT = "awaiting_prepayment";
+    /**
+     * Active worker-pickup checkpoint reached once the up-front payment settles
+     * (full prepayment, or a deposit). The worker picks the saga up here and runs
+     * the same reservation path as {@code started} ({@code requestStockReservation}
+     * — planning-fence gate, then emit {@code StockReservationRequested}). Kept
+     * (not a pass-through) because the worker branches on it; unifies the old
+     * {@code prepaid} + {@code deposit_paid} (the worker treated them
+     * identically). The payment handler emits {@code SalesOrderPrepaymentSettled}
+     * on reaching this state to lift the inventory shipment gate.
+     */
+    public static final String PREPAID = "prepaid";
     public static final String STOCK_RESERVATION_REQUESTED = "stock_reservation_requested";
     /**
      * Parked state: reservation came back partial/failed and inventory has
@@ -77,39 +124,19 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
      */
     public static final String STOCK_RESERVATION_INCOMPLETE = "stock_reservation_incomplete";
     public static final String REJECTED = "rejected";
-    public static final String READY_TO_SHIP = "ready_to_ship";
     /**
-     * On_shipment partial-shipment park: some lines have shipped but a backorder
-     * remains. Entered from {@link #READY_TO_SHIP} on a partial
-     * {@code inventory.ShipmentPosted}; the saga stays here across further partial
-     * shipments and the interim per-shipment invoices/payments they generate
-     * (those are no-ops while here), and only moves to {@link #GOODS_SHIPPED} on
-     * the shipment that completes the order. Inbox-driven (not worker-claimable):
-     * the next shipment event advances it. Only reachable for {@code on_shipment}
-     * terms — prepayment/deposit/COD settle at a single shipment and never park
-     * here.
+     * Supply-readiness checkpoint: every line is reserved (full stock cover, or
+     * an order-pegged completion). The orchestration's forward work is done here;
+     * the post-supply ship → invoice → pay status is owned by the line fold + the
+     * 360, and the saga's only remaining act is the <b>completion gate</b> — it
+     * stays here accumulating {@link FulfilmentSagaData#orderShipped} /
+     * {@link FulfilmentSagaData#orderSettled} (latched by {@code ShipmentPosted} /
+     * {@code CustomerPaymentReceived}) and transitions to {@link #COMPLETED} when
+     * both are met. <b>Non-terminal</b>: a cancel before shipment still moves it
+     * {@code → compensating} (the top-down broadcast cancel path). Renamed from
+     * the old {@code ready_to_ship}.
      */
-    public static final String PARTIALLY_SHIPPED = "partially_shipped";
-    public static final String GOODS_SHIPPED = "goods_shipped";
-    public static final String INVOICE_REQUESTED = "invoice_requested";
-    public static final String INVOICE_CREATED = "invoice_created";
-    public static final String INVOICE_PARTIALLY_PAID = "invoice_partially_paid";
-    // Prepayment branch states. AWAITING_PREPAYMENT_INVOICE parks the saga
-    // after PrepaymentInvoiceRequested until finance acks with CustomerInvoiceCreated.
-    // PREPAID is the active worker-pickup checkpoint between full payment receipt
-    // and stock reservation request (the saga continues from PREPAID into the
-    // same stock-reservation path as the on-shipment flow).
-    public static final String AWAITING_PREPAYMENT_INVOICE = "awaiting_prepayment_invoice";
-    public static final String PREPAID = "prepaid";
-    // Deposit branch states: AWAITING_DEPOSIT_INVOICE parks after
-    // DepositInvoiceRequested until finance acks with CustomerInvoiceCreated;
-    // DEPOSIT_INVOICED waits for the deposit payment; DEPOSIT_PAID is the active
-    // worker-pickup checkpoint (like PREPAID) between deposit settlement and the
-    // stock-reservation request. The balance cycle after shipment reuses the
-    // on-shipment GOODS_SHIPPED → INVOICE_CREATED → COMPLETED tail.
-    public static final String AWAITING_DEPOSIT_INVOICE = "awaiting_deposit_invoice";
-    public static final String DEPOSIT_INVOICED = "deposit_invoiced";
-    public static final String DEPOSIT_PAID = "deposit_paid";
+    public static final String SUPPLY_SECURED = "supply_secured";
     public static final String COMPLETED = "completed";
     public static final String COMPENSATING = "compensating";
     public static final String COMPENSATED = "compensated";
@@ -129,11 +156,9 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
     public static final Set<String> ALL_STATES = Set.of(
         STARTED,
         AWAITING_RELEASE,
+        AWAITING_PREPAYMENT, PREPAID,
         STOCK_RESERVATION_REQUESTED, STOCK_RESERVATION_INCOMPLETE, REJECTED,
-        AWAITING_PREPAYMENT_INVOICE, PREPAID,
-        AWAITING_DEPOSIT_INVOICE, DEPOSIT_INVOICED, DEPOSIT_PAID,
-        READY_TO_SHIP, PARTIALLY_SHIPPED, GOODS_SHIPPED,
-        INVOICE_REQUESTED, INVOICE_CREATED, INVOICE_PARTIALLY_PAID,
+        SUPPLY_SECURED,
         COMPLETED,
         COMPENSATING, COMPENSATED,
         FAILED

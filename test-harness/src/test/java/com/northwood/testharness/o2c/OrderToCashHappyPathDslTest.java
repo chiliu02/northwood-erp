@@ -12,8 +12,7 @@ import static com.northwood.testharness.dsl.Dsl.stock_on_hand;
 import static com.northwood.testharness.dsl.Dsl.warehouse;
 import static com.northwood.testharness.dsl.Scenario.scenario;
 import static com.northwood.inventory.domain.WarehouseCodes.MAIN;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.INVOICE_CREATED;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.READY_TO_SHIP;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.SUPPLY_SECURED;
 
 import com.northwood.finance.domain.events.CustomerInvoiceCreated;
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
@@ -53,14 +52,15 @@ class OrderToCashHappyPathDslTest {
             .when(customer("CUST-001").places_order("SO-9001")
                 .line("FG-001", qty(3)))
             // ── outcome: full reservation shortcuts straight to ready-to-ship ──
-            .then(order("SO-9001").reaches(READY_TO_SHIP))
+            .then(order("SO-9001").reaches(SUPPLY_SECURED))
             .and(order("SO-9001").has_status(SalesOrder.Status.RESERVED))
 
             // ── trigger: the warehouse ships all 3 units ──
             .when(warehouse(MAIN).ships("SO-9001")
                 .line("FG-001", qty(3)).at_unit_cost(money(60)))
-            // ── outcome: a commercial invoice for 3 × 100 is raised ──
-            .then(order("SO-9001").reaches(INVOICE_CREATED))
+            // ── outcome: a commercial invoice for 3 × 100 is raised; the saga
+            //    holds at supply_secured (orderShipped latched, awaiting payment) ──
+            .then(order("SO-9001").reaches(SUPPLY_SECURED))
             .and(a_commercial_invoice().for_order("SO-9001").totalling(money(300)))
 
             // ── trigger: customer settles the invoice in full ──

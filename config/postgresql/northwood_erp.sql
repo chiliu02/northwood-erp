@@ -569,40 +569,39 @@ CREATE TABLE sales.sales_order_fulfilment_saga (
     saga_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     sales_order_header_id UUID NOT NULL UNIQUE,
     saga_state VARCHAR(50) NOT NULL CHECK (
+        -- Pruned orchestration (process progress only — the order STATUS is the
+        -- classify(lines) fold on the aggregate, not a saga state). Kept = every
+        -- state some control-flow branches on; the old post-supply pass-throughs
+        -- (goods_shipped / partially_shipped / invoice_created /
+        -- invoice_partially_paid) and the prepayment/deposit invoice intermediates
+        -- were dropped because their facts already live on the line / 360 axes.
+        -- Must stay in lockstep with SalesOrderFulfilmentSaga.ALL_STATES
+        -- (SagaStateInvariantChecker fails boot otherwise).
         saga_state IN (
             'started',
             -- Planning-time-fence parked state: a far-future order defers its
             -- stock reservation until need-by − max line fence. Woken by the
             -- poll (wall-clock), so it's in SalesOrderFulfilmentSaga activeStates.
             'awaiting_release',
+            -- Up-front-payment gate (prepayment + deposit). Parks after the
+            -- prepayment/deposit invoice request until the up-front payment
+            -- settles; collapses the old awaiting_prepayment_invoice /
+            -- invoice_created / awaiting_deposit_invoice / deposit_invoiced
+            -- intermediates (non-branching pass-throughs).
+            'awaiting_prepayment',
+            -- Active post-up-front-payment checkpoint (prepayment or deposit —
+            -- the old deposit_paid unified into prepaid). The worker picks the row
+            -- up here to request stock reservation, the same as from started.
+            'prepaid',
             'stock_reservation_requested', 'stock_reservation_incomplete', 'rejected',
-            -- Prepayment branch states. awaiting_prepayment_invoice parks the
-            -- saga after PrepaymentInvoiceRequested until finance acks with
-            -- CustomerInvoiceCreated. prepaid is the active checkpoint between
-            -- full payment receipt and stock reservation request (the worker
-            -- picks the row up from prepaid the same way it does from started /
-            -- stock_reservation_incomplete).
-            'awaiting_prepayment_invoice', 'prepaid',
-            -- Deposit branch: awaiting_deposit_invoice parks after
-            -- DepositInvoiceRequested; deposit_invoiced waits for the deposit
-            -- payment; deposit_paid is the active checkpoint (like prepaid) the
-            -- worker picks up to request stock reservation.
-            'awaiting_deposit_invoice', 'deposit_invoiced', 'deposit_paid',
-            -- The manufacturing_requested / manufacturing_in_progress /
-            -- manufacturing_completed states and the purchasing_requested state
-            -- were retired when sales stopped driving manufacturing/purchasing
-            -- directly: inventory now owns the make-vs-buy decision and raises
-            -- ReplenishmentRequest for every short line, so a partial reservation
-            -- simply parks at stock_reservation_incomplete until the
-            -- ReplenishmentFulfilled / ReplenishmentCancelled events resolve it.
-            -- All four states are gone from SalesOrderFulfilmentSaga.ALL_STATES,
-            -- so the CHECK no longer lists them.
-            -- partially_shipped: on_shipment order with a backorder — some lines
-            -- shipped, the saga parks here across further partial shipments + their
-            -- interim invoices/payments until the shipment that completes the order
-            -- moves it to goods_shipped. Inbox-driven (not worker-claimable).
-            'ready_to_ship', 'partially_shipped', 'goods_shipped', 'invoice_requested', 'invoice_created',
-            'invoice_partially_paid',
+            -- Supply-readiness checkpoint (renamed from ready_to_ship): all lines
+            -- reserved. The saga's only post-supply act is the completion gate —
+            -- it sits here accumulating the orderShipped / orderSettled flags on
+            -- saga.data and moves to completed once both land (ship + pay). The
+            -- ship → invoice → pay status itself is the line fold + the 360, not a
+            -- saga state. Non-terminal: a cancel before shipment still moves it to
+            -- compensating.
+            'supply_secured',
             'completed', 'compensating', 'compensated', 'failed'
         )
     ),

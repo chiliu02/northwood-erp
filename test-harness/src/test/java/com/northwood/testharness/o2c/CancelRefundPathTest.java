@@ -69,7 +69,8 @@ class CancelRefundPathTest {
             .findFirst().orElseThrow();
         assertThat(depositInvoice.totalAmount()).isEqualByComparingTo("150.00");
 
-        // Pay the deposit → Cr 2110 $150; saga reaches deposit_paid.
+        // Pay the deposit → Cr 2110 $150; the up-front-payment gate advances the
+        // saga to prepaid (the unified post-up-front-payment checkpoint).
         finance.paymentService.recordCustomerPayment(new RecordCustomerPaymentCommand(
             "PAY-DEP", depositInvoice.id().value(),
             new BigDecimal("150.00"), Payment.Method.BANK_TRANSFER.dbValue(),
@@ -82,7 +83,7 @@ class CancelRefundPathTest {
         finance.customerInvoices.recordAllocation(depositInvoice.id().value(), new BigDecimal("150.00"));
 
         assertThat(sales.findSagaBySalesOrderId(orderId).orElseThrow().state())
-            .isEqualTo(SalesOrderFulfilmentSaga.DEPOSIT_PAID);
+            .isEqualTo(SalesOrderFulfilmentSaga.PREPAID);
 
         // Cancel before shipment → sales emits SalesOrderCancellationRequested.
         sales.cancel(orderId, "customer changed mind");

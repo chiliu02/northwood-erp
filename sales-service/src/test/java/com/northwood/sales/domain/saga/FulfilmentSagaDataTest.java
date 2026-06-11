@@ -12,12 +12,15 @@ class FulfilmentSagaDataTest {
     @Nested
     class CompactConstructor {
         @Test void defaults_null_fields() {
-            FulfilmentSagaData d = new FulfilmentSagaData(null, null, null, null, null);
+            FulfilmentSagaData d = new FulfilmentSagaData(null, null, null, null, null, null, null);
             assertThat(d.inventoryCancellationAcked()).isFalse();
             assertThat(d.paymentTerms()).isNull();                       // null = legacy fallback (on_shipment)
             assertThat(d.outstandingReplenishmentLineIds()).isEmpty();
             assertThat(d.sawNonPeggedReplenishment()).isFalse();
             assertThat(d.requestedDeliveryDate()).isNull();              // null = no fence gating (reserve immediately)
+            assertThat(d.isOrderShipped()).isFalse();                    // completion-gate flags default false
+            assertThat(d.isOrderSettled()).isFalse();
+            assertThat(d.isReadyToComplete()).isFalse();
         }
 
         @Test void none_factory_yields_empty_data() {
@@ -108,6 +111,36 @@ class FulfilmentSagaDataTest {
                 .withReplenishmentLineFulfilled(a, true)
                 .withReplenishmentLineFulfilled(b, false);
             assertThat(d.sawNonPeggedReplenishment()).isTrue();
+        }
+    }
+
+    @Nested
+    class CompletionGate {
+        @Test void both_legs_required_to_be_ready() {
+            FulfilmentSagaData shippedOnly = FulfilmentSagaData.none().withOrderShipped();
+            assertThat(shippedOnly.isOrderShipped()).isTrue();
+            assertThat(shippedOnly.isReadyToComplete()).isFalse();
+
+            FulfilmentSagaData settledOnly = FulfilmentSagaData.none().withOrderSettled();
+            assertThat(settledOnly.isOrderSettled()).isTrue();
+            assertThat(settledOnly.isReadyToComplete()).isFalse();
+
+            FulfilmentSagaData both = FulfilmentSagaData.none().withOrderShipped().withOrderSettled();
+            assertThat(both.isReadyToComplete()).isTrue();
+        }
+
+        @Test void flags_are_order_independent() {
+            // ship-then-settle and settle-then-ship both reach ready-to-complete.
+            assertThat(FulfilmentSagaData.none().withOrderShipped().withOrderSettled().isReadyToComplete()).isTrue();
+            assertThat(FulfilmentSagaData.none().withOrderSettled().withOrderShipped().isReadyToComplete()).isTrue();
+        }
+
+        @Test void gate_flags_survive_other_mutations() {
+            FulfilmentSagaData d = FulfilmentSagaData.none()
+                .withOrderSettled()
+                .withPaymentTerms("deposit")
+                .withOutstandingReplenishmentLineIds(Set.of(UUID.randomUUID()));
+            assertThat(d.isOrderSettled()).isTrue();
         }
     }
 

@@ -14,10 +14,8 @@ import com.northwood.sales.domain.events.StockReservationRequested;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.sales.domain.saga.FulfilmentSagaData;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.AWAITING_DEPOSIT_INVOICE;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.AWAITING_PREPAYMENT_INVOICE;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.AWAITING_PREPAYMENT;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.AWAITING_RELEASE;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.DEPOSIT_PAID;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.PREPAID;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STARTED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_REQUESTED;
@@ -115,7 +113,7 @@ public class SalesOrderFulfilmentSagaWorker {
     private void advance(SalesOrderFulfilmentSaga saga) {
         switch (saga.state()) {
             case STARTED -> advanceFromStarted(saga);
-            case PREPAID, DEPOSIT_PAID -> requestStockReservation(saga);
+            case PREPAID -> requestStockReservation(saga);
             // Decide-once: woken from awaiting_release means the release date
             // arrived (the DB poll said so) — emit unconditionally, no re-gate.
             case AWAITING_RELEASE -> emitDeferredStockReservation(saga);
@@ -126,12 +124,13 @@ public class SalesOrderFulfilmentSagaWorker {
     /**
      * Branch at {@code started} on the order's payment terms (snapshotted onto
      * saga.data at saga creation). {@code on_shipment} → existing
-     * stock-reservation request. {@code prepayment} → emit
-     * {@code PrepaymentInvoiceRequested}, park at
-     * {@code awaiting_prepayment_invoice} until finance acks with
-     * {@code CustomerInvoiceCreated}; the worker picks the saga back up after
-     * payment receipt flips it to {@code prepaid}, at which point we walk
-     * the same {@link #requestStockReservation} path as the on-shipment flow.
+     * stock-reservation request. {@code prepayment} / {@code deposit} → emit the
+     * up-front invoice request and park at {@code awaiting_prepayment} until the
+     * up-front payment settles; the payment handler then flips the saga to
+     * {@code prepaid}, where the worker walks the same
+     * {@link #requestStockReservation} path as the on-shipment flow. (The
+     * invoice-created intermediate is no longer tracked — the gate waits directly
+     * for payment.)
      *
      * <p>Legacy sagas (paymentTerms unset) take the on-shipment path.
      */
@@ -149,10 +148,11 @@ public class SalesOrderFulfilmentSagaWorker {
     /**
      * Branch at {@code started} for deposit orders: compute the up-front
      * deposit ({@code total × deposit_percent / 100}) and emit
-     * {@code DepositInvoiceRequested}, parking at {@code awaiting_deposit_invoice}
-     * until finance acks with {@code CustomerInvoiceCreated}. The worker picks
-     * the saga back up from {@code deposit_paid} (after the deposit is settled)
-     * to walk the same {@link #requestStockReservation} path as on-shipment.
+     * {@code DepositInvoiceRequested}, parking at {@code awaiting_prepayment}
+     * until the deposit payment settles. The worker picks the saga back up from
+     * {@code prepaid} (after the deposit is settled) to walk the same
+     * {@link #requestStockReservation} path as on-shipment; the balance invoice +
+     * payment land after shipment and fold into the completion gate.
      */
     private void requestDepositInvoice(SalesOrderFulfilmentSaga saga) {
         UUID salesOrderId = saga.salesOrderId();
@@ -183,10 +183,10 @@ public class SalesOrderFulfilmentSagaWorker {
         );
         outbox.append(event, SalesOrderFulfilmentSaga.AGGREGATE_TYPE);
 
-        saga.transitionTo(AWAITING_DEPOSIT_INVOICE, "wait_for_deposit_invoice");
+        saga.transitionTo(AWAITING_PREPAYMENT, "wait_for_deposit_payment");
         saga.parkUntil(clock.instant().plus(Duration.ofDays(1)));
 
-        log.info("[{}] saga {} sales_order={} → awaiting_deposit_invoice (deposit {}% = {} {})",
+        log.info("[{}] saga {} sales_order={} → awaiting_prepayment (deposit {}% = {} {})",
             workerId, saga.sagaId(), salesOrderId, order.depositPercent(), depositAmount, order.currencyCode());
     }
 
@@ -237,10 +237,10 @@ public class SalesOrderFulfilmentSagaWorker {
         );
         outbox.append(event, SalesOrderFulfilmentSaga.AGGREGATE_TYPE);
 
-        saga.transitionTo(AWAITING_PREPAYMENT_INVOICE, "wait_for_prepayment_invoice");
+        saga.transitionTo(AWAITING_PREPAYMENT, "wait_for_prepayment_payment");
         saga.parkUntil(clock.instant().plus(Duration.ofDays(1)));
 
-        log.info("[{}] saga {} sales_order={} → awaiting_prepayment_invoice ({} line(s); prepayment flow)",
+        log.info("[{}] saga {} sales_order={} → awaiting_prepayment ({} line(s); prepayment flow)",
             workerId, saga.sagaId(), salesOrderId, lines.size());
     }
 
@@ -250,8 +250,8 @@ public class SalesOrderFulfilmentSagaWorker {
      * {@code need-by − max(line fence)} is still in the future, park at
      * {@code awaiting_release} until that instant; otherwise emit the
      * reservation immediately (today's behaviour for fence-0 / dateless orders).
-     * Reached from {@code started} (on-shipment) and from {@code prepaid} /
-     * {@code deposit_paid} after the up-front payment settles.
+     * Reached from {@code started} (on-shipment) and from {@code prepaid} after
+     * the up-front payment (prepayment or deposit) settles.
      */
     private void requestStockReservation(SalesOrderFulfilmentSaga saga) {
         UUID salesOrderId = saga.salesOrderId();

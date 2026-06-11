@@ -45,7 +45,7 @@ import tools.jackson.databind.ObjectMapper;
  *       stock_reservation_requested}, re-emits {@code StockReservationRequested}.
  *       Inventory re-attempts (cancels prior partial, claims the now-restocked
  *       balance) and emits {@code StockReserved [reserved]}, advancing the saga
- *       to {@code ready_to_ship}.</li>
+ *       to {@code SUPPLY_SECURED}.</li>
  * </ol>
  *
  * <p>The PR → PO → goods-receipt machinery is exercised by
@@ -129,14 +129,14 @@ class OrderToCashPurchasedShortagePathTest {
         //     → stock_reservation_requested + re-emits StockReservationRequested.
         //   - inventory re-reserves: cancelPriorSalesOrderReservation drops the
         //     failed reservation, the new one claims 5 from the bumped stock.
-        //   - StockReserved [reserved] flows to sales → saga → ready_to_ship.
+        //   - StockReserved [reserved] flows to sales → saga → SUPPLY_SECURED.
         bus.drain();
 
         SalesOrderFulfilmentSaga afterFulfilment =
             sales.findSagaBySalesOrderId(orderId).orElseThrow();
         assertThat(afterFulfilment.state())
-            .as("post-fulfilment saga should be ready_to_ship — order survived")
-            .isEqualTo(SalesOrderFulfilmentSaga.READY_TO_SHIP);
+            .as("post-fulfilment saga should be SUPPLY_SECURED — order survived")
+            .isEqualTo(SalesOrderFulfilmentSaga.SUPPLY_SECURED);
         assertThat(sales.orderStatus(orderId))
             .as("order header folds to reserved after retry — line fully reserved")
             .contains(SalesOrder.Status.RESERVED);

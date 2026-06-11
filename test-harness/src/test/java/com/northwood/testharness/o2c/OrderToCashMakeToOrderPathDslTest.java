@@ -17,7 +17,7 @@ import static com.northwood.testharness.dsl.Dsl.stock_on_hand;
 import static com.northwood.testharness.dsl.Dsl.work_order_for;
 import static com.northwood.testharness.dsl.Scenario.scenario;
 import static com.northwood.inventory.domain.WarehouseCodes.MAIN;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.READY_TO_SHIP;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.SUPPLY_SECURED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_INCOMPLETE;
 
 import com.northwood.inventory.domain.ReplenishmentRequest;
@@ -68,7 +68,7 @@ class OrderToCashMakeToOrderPathDslTest {
             // ── trigger: the work order is built and completed (for real) ──
             .when(work_order_for("FG-MTO-001").completes_manufacturing())
             // ── outcome: ready to ship off the peg; pegged stock has 0 available; no second reservation ──
-            .then(order("SO-MTO-1").reaches(READY_TO_SHIP))
+            .then(order("SO-MTO-1").reaches(SUPPLY_SECURED))
             .and(a_stock_balance("FG-MTO-001").shows(qty(3), qty(3), qty(0)))
             .and(events_published_count(StockReservationRequested.EVENT_TYPE, 1))
             .and(events_published(

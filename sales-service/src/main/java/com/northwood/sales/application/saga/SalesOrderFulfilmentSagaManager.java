@@ -161,41 +161,39 @@ public interface SalesOrderFulfilmentSagaManager {
     String applyLineReservationChanged(UUID salesOrderHeaderId, UUID salesOrderLineId, boolean lineIsShort);
 
     /**
-     * Apply {@code inventory.ShipmentPosted}. {@code orderFullyShipped} (decided
-     * by the {@code SalesOrder} aggregate — it owns ordered vs. cumulative-shipped
-     * quantities) drives the on_shipment branch:
+     * Apply {@code inventory.ShipmentPosted}. The saga's post-supply act is the
+     * <b>completion gate</b>, not a status mirror — the header ship status is
+     * owned by the line fold ({@code SalesOrder.recordShipped}). So:
      * <ul>
-     *   <li>fully shipped — {@code ready_to_ship | partially_shipped → goods_shipped}
-     *       (waits for finance's {@code CustomerInvoiceCreated});</li>
-     *   <li>partial — {@code ready_to_ship → partially_shipped}, or stays at
-     *       {@code partially_shipped} (a further partial shipment), awaiting the
-     *       shipment that completes the order.</li>
+     *   <li>partial shipment ({@code orderFullyShipped=false}) — no-op; the line
+     *       fold carries the {@code partially_shipped} header.</li>
+     *   <li>completing shipment ({@code orderFullyShipped=true}) — latch the
+     *       {@code orderShipped} gate leg and {@code → completed} if the pay leg
+     *       ({@code orderSettled}) has also landed, else hold at
+     *       {@code supply_secured}.</li>
      * </ul>
-     * Prepayment / COD orders are single-shipment: they ignore the flag and walk
-     * straight to their terminal on the first shipment (their invoice/payment is
-     * settled at/before shipment). No-op (returns current state) from any other
-     * source state.
+     * No-op from any non-{@code supply_secured} state. Uniform across payment
+     * terms — prepayment / COD complete here too, once their (earlier or
+     * concurrent) payment has latched {@code orderSettled}.
      */
     String applyShipmentPosted(UUID salesOrderHeaderId, boolean orderFullyShipped);
 
-    /** Apply {@code finance.CustomerInvoiceCreated}. Transitions {@code goods_shipped → invoice_created}. */
-    String applyCustomerInvoiceCreated(UUID salesOrderHeaderId);
-
     /**
-     * Apply {@code finance.CustomerPaymentReceived}. Two settlement signals:
+     * Apply {@code finance.CustomerPaymentReceived}. Two roles, by saga state:
      * <ul>
-     *   <li>{@code invoiceFullySettled} — the single invoice this payment
-     *       allocated against is now fully paid. Used by the prepayment
-     *       ({@code → prepaid}) and deposit ({@code deposit_invoiced →
-     *       deposit_paid}) branches, which are single-invoice.</li>
-     *   <li>{@code orderFullySettled} — every invoice for the order is fully
-     *       paid. The on_shipment branch completes the order on THIS (not the
-     *       per-invoice flag): with partial shipments an order has several
-     *       invoices, so paying one in full must not complete the order.</li>
+     *   <li><b>Up-front gate</b> ({@code awaiting_prepayment}): on
+     *       {@code invoiceFullySettled} (the up-front prepayment/deposit invoice
+     *       is paid) → {@code prepaid} (the worker then requests reservation; the
+     *       handler emits {@code SalesOrderPrepaymentSettled}). {@code orderFullySettled}
+     *       is latched onto the completion gate — true for a full prepayment,
+     *       false for a deposit whose balance is still due.</li>
+     *   <li><b>Completion gate</b> ({@code supply_secured}): on
+     *       {@code orderFullySettled} (every invoice for the order paid — for a
+     *       deposit that means deposit AND balance) latch the {@code orderSettled}
+     *       leg and {@code → completed} if the order has also shipped. A
+     *       non-order-settling payment (one of several invoices) is a no-op.</li>
      * </ul>
-     * On_shipment: completes only when {@code orderFullySettled}, else
-     * {@code → invoice_partially_paid}. A payment while {@code partially_shipped}
-     * (an interim per-shipment invoice) is a no-op. No-op from any other source.
+     * No-op from any other state.
      */
     String applyCustomerPaymentReceived(UUID salesOrderHeaderId, boolean invoiceFullySettled, boolean orderFullySettled);
 

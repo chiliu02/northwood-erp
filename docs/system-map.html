@@ -437,13 +437,16 @@
   <strong>ship / invoice / pay</strong> axis, and <code>COMPLETED</code> is a cross-axis meet. The <strong>header-status half</strong> of this
   model is <strong>as-built</strong> (shipped 2026-06-10 — the fold owns the status; the fulfilment-Saga-driven status + blind
   <code>markStatus</code> writes are retired, and every SalesOrder event row and cross-service consumer below is described against
-  it). The <strong>pruned 8-state orchestration</strong> shown below is still a <strong>target</strong>: the running saga keeps its full
-  13-state set, so the process no longer <em>owns</em> the status but has not yet been pruned in code. The previous
-  pre-composed-model map is archived as <code>system-map.old.html</code>.
+  it). The <strong>pruned 9-state orchestration</strong> shown below is now <strong>as-built too</strong> (§2.55, 2026-06-12): the saga
+  was pruned from its 13-state set to 9 — the post-supply pass-throughs (<code>goods_shipped</code> / <code>partially_shipped</code> /
+  <code>invoice_partially_paid</code>) dropped in favour of a two-flag completion gate, the prepayment/deposit invoice
+  intermediates collapsed into one <code>awaiting_prepayment</code> gate (the <code>prepaid</code> worker checkpoint kept), and
+  <code>ready_to_ship</code> renamed <code>supply_secured</code>. The previous pre-composed-model map is archived as
+  <code>system-map.old.html</code>.
 </div>
 
 <h2>Changes from the previous map (<code>system-map.old.html</code>)</h2>
-<p>A diff of the composed-state-machine model against the previous pre-composed-model map (now <code>system-map.old.html</code>). The header-status changes are as-built; the saga-pruning changes are a target. Detail lives in the diagrams and event rows below and in <code>docs/composed-state-machines.html</code> (§§5, 13, 14).</p>
+<p>A diff of the composed-state-machine model against the previous pre-composed-model map (now <code>system-map.old.html</code>). Both the header-status changes and the saga-pruning changes are now as-built. Detail lives in the diagrams and event rows below and in <code>docs/composed-state-machines.html</code> (§§5, 13, 14).</p>
 
 <h3>State-machine diagrams</h3>
 <table class="csm-table">
@@ -455,14 +458,15 @@
   </tbody>
 </table>
 
-<h3>SO saga states — old (13) → pruned (8)</h3>
+<h3>SO saga states — old (13) → pruned (9)</h3>
 <p style="font-size:0.9rem">The removal test is <strong>intrinsic to the saga</strong>, not "does it share a name with an SO status". A saga state is logically a different thing from the SO status even when identically named — the saga state is the <em>orchestration cursor</em> ("what step am I executing / waiting on"), the SO status is the <em>derived fact</em> ("where is the order", owned by the <code>classify(lines)</code> fold). They merely <em>correlate</em> (the same event moves both). So a saga state is dropped iff <strong>nothing in the saga's control-flow branches on it</strong> — it is a <em>non-branching pass-through</em> whose only content already lives in the line / 360 axes. Every kept state is one some control-flow reads (a worker pickup, an <code>apply*</code> source-state guard, or the drain / terminal / compensation machinery).</p>
 <table class="csm-table">
   <thead><tr><th>Old saga state</th><th>Fate</th><th>Why</th></tr></thead>
   <tbody>
     <tr><td><code>started</code></td><td><strong>kept</strong></td><td>branch decision (terms / fence)</td></tr>
     <tr><td><code>awaiting_release</code></td><td><strong>kept</strong></td><td>planning-fence <strong>timer</strong> (worker wakes on wall-clock)</td></tr>
-    <tr><td><code>awaiting_prepayment_invoice</code> + <code>invoice_created</code> + <code>prepaid</code></td><td><strong>collapsed → <code>awaiting_prepayment</code></strong></td><td>the saga only branches on one thing here — the <strong>gate</strong> "is the up-front payment in?"; the invoice/paid intermediates are non-branching pass-throughs (their value is on the invoice/pay axes)</td></tr>
+    <tr><td><code>awaiting_prepayment_invoice</code> + <code>invoice_created</code> (+ deposit <code>awaiting_deposit_invoice</code> / <code>deposit_invoiced</code>)</td><td><strong>collapsed → <code>awaiting_prepayment</code></strong></td><td>the saga only branches on one thing here — the <strong>gate</strong> "is the up-front payment in?"; the invoice intermediates are non-branching pass-throughs (their value is on the invoice/pay axes)</td></tr>
+    <tr><td><code>prepaid</code> (+ deposit <code>deposit_paid</code>)</td><td><strong>kept (unified)</strong></td><td>the active post-up-front-payment checkpoint — the <em>worker branches on it</em> to request reservation (applying the planning fence), so it is not a pass-through; the prepayment + deposit variants were identical worker work and unified into one <code>prepaid</code></td></tr>
     <tr><td><code>stock_reservation_requested</code></td><td><strong>kept</strong></td><td>reservation in flight — branches on the <code>StockReserved</code> outcome</td></tr>
     <tr><td><code>stock_reservation_incomplete</code></td><td><strong>kept</strong></td><td>shortage <strong>retry loop</strong> + outstanding-set — branches on fulfilled vs cancelled</td></tr>
     <tr><td><code>ready_to_ship</code></td><td><strong>renamed → <code>supply_secured</code></strong></td><td>the orchestration's supply-readiness checkpoint (all lines reserved); the worker/cancel path reads it</td></tr>
@@ -473,7 +477,7 @@
     <tr><td><code>rejected</code></td><td><strong>kept</strong></td><td>terminal (unsourceable shortage)</td></tr>
   </tbody>
 </table>
-<p style="font-size:0.86rem;color:var(--muted)"><strong>13 → 8.</strong> Keep = every state some control-flow branches on (timers, prepayment gate, reservation/shortage loop, supply checkpoint, terminals incl. <code>completed</code>); collapse/remove = the non-branching pass-throughs whose content the line/360 axes already hold (the 3 prepayment invoice/paid intermediates fold to one gate; <code>goods_shipped</code> / <code>partially_shipped</code> / <code>invoice_partially_paid</code> drop).</p>
+<p style="font-size:0.86rem;color:var(--muted)"><strong>13 → 9.</strong> Keep = every state some control-flow branches on (timers, prepayment gate, the <code>prepaid</code> worker checkpoint, reservation/shortage loop, supply checkpoint, terminals incl. <code>completed</code>); collapse/remove = the non-branching pass-throughs whose content the line/360 axes already hold (the prepayment/deposit <em>invoice</em> intermediates fold to the one <code>awaiting_prepayment</code> gate; <code>goods_shipped</code> / <code>partially_shipped</code> / <code>invoice_partially_paid</code> drop).</p>
 
 <h3>Events — same set, new <em>effects</em></h3>
 <p>No events were added or removed. What changed is each event's effect on order state: "advance saga <strong>+ write <code>sales_order_header.status</code></strong>" → "update a line axis → header <strong>re-derived by <code>classify(lines)</code></strong>".</p>
@@ -653,9 +657,10 @@ stateDiagram-v2
     [*] --> started : placeOrder
     started --> stock_reservation_requested : advance [on_shipment, no fence]
     started --> awaiting_release : advance [planning fence: now before need-by minus max line fence]
-    started --> awaiting_prepayment : advance [prepayment terms]
-    awaiting_prepayment --> stock_reservation_requested : prepayment settled [up-front invoice created and paid, no fence]
-    awaiting_prepayment --> awaiting_release : prepayment settled [planning fence]
+    started --> awaiting_prepayment : advance [prepayment / deposit terms]
+    awaiting_prepayment --> prepaid : up-front payment settled [payment handler; emits SalesOrderPrepaymentSettled]
+    prepaid --> stock_reservation_requested : worker [no fence]
+    prepaid --> awaiting_release : worker [planning fence]
     awaiting_release --> stock_reservation_requested : release date reached
     stock_reservation_requested --> supply_secured : StockReserved [all lines reserved - lines reach the reserved band]
     stock_reservation_requested --> stock_reservation_incomplete : StockReserved [shortage - inventory raised replenishment in-tx]
@@ -2389,8 +2394,9 @@ window.NORTHWOOD_PROJECTIONS = [
     'started||stock_reservation_requested':              { pay: 'on_shipment' },
     'started||awaiting_prepayment':                      { pay: 'prepayment' },
     'started||awaiting_release':                         { pay: 'on_shipment' },
-    'awaiting_prepayment||stock_reservation_requested':  { pay: 'prepayment' },
-    'awaiting_prepayment||awaiting_release':             { pay: 'prepayment' },
+    'awaiting_prepayment||prepaid':                      { pay: 'prepayment' },
+    'prepaid||stock_reservation_requested':              { pay: 'prepayment' },
+    'prepaid||awaiting_release':                         { pay: 'prepayment' },
     'stock_reservation_requested||supply_secured':                { match: { strategy: 'to_stock' }, hideWhen: { stock: 'short', sourceable: 'false' } },
     'stock_reservation_requested||stock_reservation_incomplete':  { stock: 'short' },
     'stock_reservation_incomplete||stock_reservation_requested':  { stock: 'short', sourceable: 'true', strategy: 'to_stock' },

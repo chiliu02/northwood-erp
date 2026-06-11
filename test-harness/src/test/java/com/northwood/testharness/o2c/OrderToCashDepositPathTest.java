@@ -45,7 +45,7 @@ import tools.jackson.databind.ObjectMapper;
  * balance sheet between them.
  *
  * <p>Walks the full lifecycle: place (50% deposit) → deposit invoice → deposit
- * payment (Cr 2110) → deposit_paid → reservation → ready_to_ship → ship
+ * payment (Cr 2110) → deposit_paid → reservation → SUPPLY_SECURED → ship
  * (recognise deposit Dr 2110/Cr Revenue + balance invoice Dr AR/Cr Revenue) →
  * balance payment → completed. End-state revenue = full order total; 2110 + AR
  * net to zero.
@@ -80,12 +80,13 @@ class OrderToCashDepositPathTest {
         ));
 
         // Worker emits DepositInvoiceRequested → finance creates the deposit
-        // invoice → saga parks at deposit_invoiced.
+        // invoice → saga parks at the awaiting_prepayment gate (the invoice-created
+        // step is no longer a saga state; the gate waits directly for payment).
         sales.advanceSagaWorker();
         bus.drain();
 
         assertThat(sales.findSagaBySalesOrderId(orderId).orElseThrow().state())
-            .isEqualTo(SalesOrderFulfilmentSaga.DEPOSIT_INVOICED);
+            .isEqualTo(SalesOrderFulfilmentSaga.AWAITING_PREPAYMENT);
         CustomerInvoice depositInvoice = finance.customerInvoices.findAll().stream()
             .filter(i -> i.invoiceType() == CustomerInvoice.InvoiceType.DEPOSIT)
             .findFirst().orElseThrow();
@@ -104,14 +105,14 @@ class OrderToCashDepositPathTest {
         // deposit invoice must read as fully paid, leaving only the balance owing.
         finance.customerInvoices.recordAllocation(depositInvoice.id().value(), new BigDecimal("150.00"));
         assertThat(sales.findSagaBySalesOrderId(orderId).orElseThrow().state())
-            .isEqualTo(SalesOrderFulfilmentSaga.DEPOSIT_PAID);
+            .isEqualTo(SalesOrderFulfilmentSaga.PREPAID);
 
-        // Worker picks up deposit_paid → requests reservation → full cover →
-        // ready_to_ship.
+        // Worker picks up prepaid → requests reservation → full cover →
+        // supply_secured.
         sales.advanceSagaWorker();
         bus.drain();
         assertThat(sales.findSagaBySalesOrderId(orderId).orElseThrow().state())
-            .isEqualTo(SalesOrderFulfilmentSaga.READY_TO_SHIP);
+            .isEqualTo(SalesOrderFulfilmentSaga.SUPPLY_SECURED);
 
         // Ship: gate passes (upfront settled); finance creates the balance
         // invoice (Dr AR/Cr Revenue) + recognises the deposit (Dr 2110/Cr Revenue).
@@ -126,8 +127,10 @@ class OrderToCashDepositPathTest {
         ));
         bus.drain();
 
+        // Post-shipment the saga holds at supply_secured (orderShipped latched);
+        // the balance invoice is created by finance but is not a saga state.
         assertThat(sales.findSagaBySalesOrderId(orderId).orElseThrow().state())
-            .isEqualTo(SalesOrderFulfilmentSaga.INVOICE_CREATED);
+            .isEqualTo(SalesOrderFulfilmentSaga.SUPPLY_SECURED);
         CustomerInvoice balanceInvoice = finance.customerInvoices.findAll().stream()
             .filter(i -> i.invoiceType() == CustomerInvoice.InvoiceType.BALANCE)
             .findFirst().orElseThrow();

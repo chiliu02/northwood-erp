@@ -1,7 +1,6 @@
 package com.northwood.sales.application.inbox;
 
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.COMPLETED;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.DEPOSIT_PAID;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.PREPAID;
 
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
@@ -57,8 +56,8 @@ public class CustomerPaymentReceivedHandler extends AbstractInboxHandler<Custome
             payload.salesOrderHeaderId(), invoiceFullySettled, payload.orderFullySettled());
         if (COMPLETED.equals(newState)) {
             salesOrders.completeOrder(payload.salesOrderHeaderId());
-        } else if (PREPAID.equals(newState) || DEPOSIT_PAID.equals(newState)) {
-            // prepaid + deposit_paid both settle the up-front payment
+        } else if (PREPAID.equals(newState)) {
+            // The up-front payment (prepayment in full, or a deposit) just settled
             // → tell inventory to lift the shipment gate.
             upfrontSettledEmitter.emitUpfrontPaymentSettled(payload.salesOrderHeaderId());
         }

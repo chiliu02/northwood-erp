@@ -15,11 +15,11 @@ import java.util.UUID;
  *
  * <ul>
  *   <li>{@link #paymentTerms} — the order's snapshotted commercial terms
- *       ({@code on_shipment} / {@code prepayment}), stashed at
- *       saga creation so the worker can branch at {@code started} and
- *       {@code applyCustomerPaymentReceived} can route full settlement to
- *       {@code completed} (on-shipment) or {@code prepaid} (prepayment). Null on
- *       legacy rows → treated as {@code on_shipment}.</li>
+ *       ({@code on_shipment} / {@code prepayment} / {@code deposit} /
+ *       {@code cash_on_delivery}), stashed at saga creation so the worker can
+ *       branch at {@code started} and {@code applyCustomerPaymentReceived} can
+ *       route the up-front payment to the {@code awaiting_prepayment} gate. Null
+ *       on legacy rows → treated as {@code on_shipment}.</li>
  *   <li>{@link #outstandingReplenishmentLineIds} — sales-order-line ids that are
  *       short on stock and awaiting an {@code inventory.ReplenishmentFulfilled}.
  *       Populated by {@code applyStockReserved} when reservation comes back
@@ -41,6 +41,19 @@ import java.util.UUID;
  *       to keep the blob serialisable without a Jackson date module — mirrors
  *       {@code paymentTerms}. Null on legacy rows / orders with no requested
  *       date → no fence gating (reserve immediately).</li>
+ *   <li>{@link #orderShipped} / {@link #orderSettled} — the two flags of the
+ *       <b>completion gate</b>. When the saga's post-supply ship → invoice → pay
+ *       leg stopped being modelled as per-milestone states, completion became a
+ *       derived meet: the saga sits at {@code supply_secured} and transitions to
+ *       its {@code completed} terminal once both are true. {@code orderShipped}
+ *       latches on {@code inventory.ShipmentPosted} with {@code orderFullyShipped};
+ *       {@code orderSettled} latches on {@code finance.CustomerPaymentReceived}
+ *       with {@code orderFullySettled} (every invoice for the order paid — for a
+ *       deposit order that means deposit <em>and</em> balance). The two events
+ *       carry different partition keys and can arrive in either order, so the
+ *       flags are set independently and the gate is checked on each — naturally
+ *       race-tolerant. Boxed {@code Boolean} → legacy rows deserialise as null →
+ *       false.</li>
  * </ul>
  *
  * <p>The compact constructor defaults null fields so saga rows written before a
@@ -51,7 +64,9 @@ public record FulfilmentSagaData(
     String paymentTerms,
     Set<UUID> outstandingReplenishmentLineIds,
     Boolean sawNonPeggedReplenishment,
-    String requestedDeliveryDate
+    String requestedDeliveryDate,
+    Boolean orderShipped,
+    Boolean orderSettled
 ) {
 
     public FulfilmentSagaData {
@@ -70,10 +85,13 @@ public record FulfilmentSagaData(
         sawNonPeggedReplenishment = sawNonPeggedReplenishment != null && sawNonPeggedReplenishment;
         // requestedDeliveryDate stays null on legacy rows / dateless orders;
         // the worker treats null as "no fence gating" (reserve immediately).
+        // Completion-gate flags; legacy/missing → false.
+        orderShipped = orderShipped != null && orderShipped;
+        orderSettled = orderSettled != null && orderSettled;
     }
 
     public static FulfilmentSagaData none() {
-        return new FulfilmentSagaData(false, null, Set.of(), false, null);
+        return new FulfilmentSagaData(false, null, Set.of(), false, null, false, false);
     }
 
     /** Stamp the order's commercial payment terms at saga creation. */
@@ -83,7 +101,9 @@ public record FulfilmentSagaData(
             paymentTerms,
             new LinkedHashSet<>(outstandingReplenishmentLineIds),
             sawNonPeggedReplenishment,
-            requestedDeliveryDate
+            requestedDeliveryDate,
+            orderShipped,
+            orderSettled
         );
     }
 
@@ -94,7 +114,9 @@ public record FulfilmentSagaData(
             paymentTerms,
             new LinkedHashSet<>(outstandingReplenishmentLineIds),
             sawNonPeggedReplenishment,
-            requestedDeliveryDate
+            requestedDeliveryDate,
+            orderShipped,
+            orderSettled
         );
     }
 
@@ -105,7 +127,9 @@ public record FulfilmentSagaData(
             paymentTerms,
             new LinkedHashSet<>(outstandingReplenishmentLineIds),
             sawNonPeggedReplenishment,
-            requestedDeliveryDate
+            requestedDeliveryDate,
+            orderShipped,
+            orderSettled
         );
     }
 
@@ -120,7 +144,9 @@ public record FulfilmentSagaData(
             paymentTerms,
             lineIds == null ? Set.of() : new LinkedHashSet<>(lineIds),
             sawNonPeggedReplenishment,
-            requestedDeliveryDate
+            requestedDeliveryDate,
+            orderShipped,
+            orderSettled
         );
     }
 
@@ -143,7 +169,43 @@ public record FulfilmentSagaData(
             paymentTerms,
             next,
             sawNonPeggedReplenishment || !pegged,
-            requestedDeliveryDate
+            requestedDeliveryDate,
+            orderShipped,
+            orderSettled
+        );
+    }
+
+    /**
+     * Latch the completion-gate {@code orderShipped} flag — the order has been
+     * fully shipped ({@code inventory.ShipmentPosted} with
+     * {@code orderFullyShipped}).
+     */
+    public FulfilmentSagaData withOrderShipped() {
+        return new FulfilmentSagaData(
+            inventoryCancellationAcked,
+            paymentTerms,
+            new LinkedHashSet<>(outstandingReplenishmentLineIds),
+            sawNonPeggedReplenishment,
+            requestedDeliveryDate,
+            true,
+            orderSettled
+        );
+    }
+
+    /**
+     * Latch the completion-gate {@code orderSettled} flag — every invoice for the
+     * order is fully paid ({@code finance.CustomerPaymentReceived} with
+     * {@code orderFullySettled}).
+     */
+    public FulfilmentSagaData withOrderSettled() {
+        return new FulfilmentSagaData(
+            inventoryCancellationAcked,
+            paymentTerms,
+            new LinkedHashSet<>(outstandingReplenishmentLineIds),
+            sawNonPeggedReplenishment,
+            requestedDeliveryDate,
+            orderShipped,
+            true
         );
     }
 
@@ -167,5 +229,20 @@ public record FulfilmentSagaData(
     /** Inventory has acked the cancel — the saga can advance to {@code compensated}. */
     public boolean cancellationAcked() {
         return Boolean.TRUE.equals(inventoryCancellationAcked);
+    }
+
+    /** Completion gate: the order has been fully shipped. */
+    public boolean isOrderShipped() {
+        return Boolean.TRUE.equals(orderShipped);
+    }
+
+    /** Completion gate: every invoice for the order is fully paid. */
+    public boolean isOrderSettled() {
+        return Boolean.TRUE.equals(orderSettled);
+    }
+
+    /** Completion gate: both legs met → the saga may move to {@code completed}. */
+    public boolean isReadyToComplete() {
+        return isOrderShipped() && isOrderSettled();
     }
 }

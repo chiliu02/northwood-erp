@@ -13,7 +13,7 @@ import static com.northwood.testharness.dsl.Dsl.stock_on_hand;
 import static com.northwood.testharness.dsl.Dsl.warehouse;
 import static com.northwood.testharness.dsl.Scenario.scenario;
 import static com.northwood.inventory.domain.WarehouseCodes.MAIN;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.READY_TO_SHIP;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.SUPPLY_SECURED;
 
 import com.northwood.finance.domain.Payment;
 import com.northwood.finance.domain.events.CustomerInvoiceCreated;
@@ -49,7 +49,7 @@ class OrderToCashCodPathDslTest {
             // ── trigger: customer places a COD order for 3 units ──
             .when(customer("CUST-001").places_order("SO-COD-1").cash_on_delivery()
                 .line("FG-001", qty(3)))
-            .then(order("SO-COD-1").reaches(READY_TO_SHIP))
+            .then(order("SO-COD-1").reaches(SUPPLY_SECURED))
 
             // ── trigger: the warehouse ships all 3 units — the last operator action ──
             .when(warehouse(MAIN).ships("SO-COD-1")

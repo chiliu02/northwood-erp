@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
  * <p>This is the branch the doc predicted would force the {@code .without_settling()}
  * escape hatch (§6): the hand-written test cancels a <em>freshly-placed</em> order
  * before the worker reserves stock. The DSL otherwise settles after every action,
- * which would advance the saga to {@code ready_to_ship} (stock reserved) and so
+ * which would advance the saga to {@code SUPPLY_SECURED} (stock reserved) and so
  * change the branch. {@code places_order(…).without_settling()} keeps the saga at
  * its {@code started} state with {@code SalesOrderPlaced} still pending;
  * {@code cancels(…)} then settles, draining the parked placement alongside the

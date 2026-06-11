@@ -40,7 +40,7 @@ import tools.jackson.databind.ObjectMapper;
  * Order-to-cash for a cash-on-delivery (COD) order.
  *
  * <p>COD settles at the goods-delivered moment: the saga walks
- * {@code placeOrder -> ready_to_ship -> goods_shipped -> invoice_created ->
+ * {@code placeOrder -> SUPPLY_SECURED -> goods_shipped -> invoice_created ->
  * completed} entirely at shipment ({@code applyShipmentPosted}'s COD branch),
  * and finance auto-creates the invoice <i>and</i> auto-records the full
  * customer payment from the single {@code SalesOrderShipped} event — no
@@ -80,7 +80,7 @@ class OrderToCashCodPathTest {
         bus.drain();
 
         SalesOrderFulfilmentSaga sagaAtReadyToShip = sales.findSagaBySalesOrderId(orderId).orElseThrow();
-        assertThat(sagaAtReadyToShip.state()).isEqualTo(SalesOrderFulfilmentSaga.READY_TO_SHIP);
+        assertThat(sagaAtReadyToShip.state()).isEqualTo(SalesOrderFulfilmentSaga.SUPPLY_SECURED);
 
         // Post the shipment. The COD branch of applyShipmentPosted walks the
         // saga straight to completed; finance auto-invoices + auto-settles.

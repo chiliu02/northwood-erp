@@ -12,7 +12,7 @@ import static com.northwood.testharness.dsl.Dsl.money;
 import static com.northwood.testharness.dsl.Dsl.order;
 import static com.northwood.testharness.dsl.Dsl.qty;
 import static com.northwood.testharness.dsl.Scenario.scenario;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.READY_TO_SHIP;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.SUPPLY_SECURED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_INCOMPLETE;
 
 import com.northwood.inventory.domain.ReplenishmentRequest;
@@ -59,7 +59,7 @@ class OrderToCashBuyToOrderPathDslTest {
             // ── trigger: goods are received against the pegged PO (for real) ──
             .when(goods_received_for("FG-CARPET-001"))
             // ── outcome: ready to ship off the peg; pegged stock 0 available; no second reservation ──
-            .then(order("SO-BTO-1").reaches(READY_TO_SHIP))
+            .then(order("SO-BTO-1").reaches(SUPPLY_SECURED))
             .and(a_stock_balance("FG-CARPET-001").shows(qty(1), qty(1), qty(0)))
             .and(events_published_count(StockReservationRequested.EVENT_TYPE, 1))
             .and(events_published(

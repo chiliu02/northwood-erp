@@ -15,8 +15,8 @@ import static com.northwood.testharness.dsl.Dsl.stock_on_hand;
 import static com.northwood.testharness.dsl.Scenario.scenario;
 import static com.northwood.inventory.domain.WarehouseCodes.MAIN;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.COMPENSATED;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.DEPOSIT_INVOICED;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.READY_TO_SHIP;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.AWAITING_PREPAYMENT;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.SUPPLY_SECURED;
 
 import com.northwood.finance.domain.JournalEntry;
 import com.northwood.sales.domain.SalesOrder;
@@ -36,7 +36,7 @@ import org.junit.jupiter.api.Test;
  * <p>Introduces the GL-posting assertion vocabulary — {@code a_journal()
  * .of_type(...).debiting(...).crediting(...).posted()} and
  * {@code gl_account(code).netsToZero()} — the first DslTest to check journal
- * detail. The cancellation here fires from {@code ready_to_ship} (the deposit
+ * detail. The cancellation here fires from {@code SUPPLY_SECURED} (the deposit
  * payment settles the order all the way forward), exercising REQ-SAL-036's
  * "cancellation at any pre-shipment state" more fully than the imperative
  * original, which cancelled from {@code deposit_paid}.
@@ -55,12 +55,12 @@ class OrderToCashCancelRefundPathDslTest {
             // ── trigger: place a 50%-deposit order; deposit invoice raised ──
             .when(customer("CUST-001").places_order("SO-RFD-1").with_deposit(percent(50))
                 .line("FG-001", qty(3)))
-            .then(order("SO-RFD-1").reaches(DEPOSIT_INVOICED))
+            .then(order("SO-RFD-1").reaches(AWAITING_PREPAYMENT))
             .and(a_deposit_invoice().for_order("SO-RFD-1").totalling(money(150)))
 
             // ── trigger: pay the deposit (Cr 2110); order settles to ready-to-ship ──
             .when(customer("CUST-001").pays(money(150)).against_deposit_on("SO-RFD-1"))
-            .then(order("SO-RFD-1").reaches(READY_TO_SHIP))
+            .then(order("SO-RFD-1").reaches(SUPPLY_SECURED))
 
             // ── trigger: cancel before shipment ──
             .when(customer("CUST-001").cancels("SO-RFD-1").because("customer changed mind"))

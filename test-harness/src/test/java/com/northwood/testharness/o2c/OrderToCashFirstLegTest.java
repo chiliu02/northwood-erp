@@ -33,13 +33,13 @@ import tools.jackson.databind.ObjectMapper;
  * {@code StockReservationRequested}) → bus delivers to inventory's handler
  * → inventory fully reserves and emits {@code StockReserved} → sales'
  * handler shortcuts the saga past the manufacturing leg directly to
- * {@code ready_to_ship} (full reservation) and projects the order header
+ * {@code SUPPLY_SECURED} (full reservation) and projects the order header
  * status to {@code in_fulfilment}.
  */
 class OrderToCashFirstLegTest {
 
     @Test
-    void place_order_then_full_reservation_shortcuts_to_ready_to_ship() {
+    void place_order_then_full_reservation_shortcuts_to_SUPPLY_SECURED() {
         ObjectMapper json = new ObjectMapper();
         SynchronousBus bus = new SynchronousBus();
 
@@ -83,7 +83,7 @@ class OrderToCashFirstLegTest {
 
         // Step 4: assertions.
         SalesOrderFulfilmentSaga sagaAfterReserve = sales.findSagaBySalesOrderId(orderId).orElseThrow();
-        assertThat(sagaAfterReserve.state()).isEqualTo(SalesOrderFulfilmentSaga.READY_TO_SHIP);
+        assertThat(sagaAfterReserve.state()).isEqualTo(SalesOrderFulfilmentSaga.SUPPLY_SECURED);
 
         assertThat(sales.orderStatus(orderId))
             .as("order header folds to reserved — every line fully reserved")

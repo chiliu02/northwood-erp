@@ -263,7 +263,7 @@ public class SalesOrderService {
         SalesOrderFulfilmentSaga.AWAITING_RELEASE,
         SalesOrderFulfilmentSaga.STOCK_RESERVATION_REQUESTED,
         SalesOrderFulfilmentSaga.STOCK_RESERVATION_INCOMPLETE,
-        SalesOrderFulfilmentSaga.READY_TO_SHIP
+        SalesOrderFulfilmentSaga.SUPPLY_SECURED
     );
 
     /**
@@ -280,7 +280,7 @@ public class SalesOrderService {
         SalesOrderFulfilmentSaga.AWAITING_RELEASE,
         SalesOrderFulfilmentSaga.STOCK_RESERVATION_REQUESTED,
         SalesOrderFulfilmentSaga.STOCK_RESERVATION_INCOMPLETE,
-        SalesOrderFulfilmentSaga.READY_TO_SHIP
+        SalesOrderFulfilmentSaga.SUPPLY_SECURED
     );
 
     private final SalesOrderRepository salesOrders;

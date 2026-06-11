@@ -28,9 +28,9 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Exercises the incremental reservation path: a line added to an
  * already-reserved order is reserved incrementally (the order stays
- * {@code ready_to_ship}); a short line removed from a shortage-parked order
+ * {@code SUPPLY_SECURED}); a short line removed from a shortage-parked order
  * releases its reservation, cancels its in-flight replenishment, and un-parks
- * the saga to {@code ready_to_ship}.
+ * the saga to {@code SUPPLY_SECURED}.
  */
 class OrderToCashLineAmendmentTest {
 
@@ -42,7 +42,7 @@ class OrderToCashLineAmendmentTest {
     }
 
     @Test
-    void add_line_to_reserved_order_reserves_incrementally_and_stays_ready_to_ship() {
+    void add_line_to_reserved_order_reserves_incrementally_and_stays_SUPPLY_SECURED() {
         ObjectMapper json = new ObjectMapper();
         SynchronousBus bus = new SynchronousBus();
         SalesTestKit sales = new SalesTestKit(bus, json);
@@ -63,22 +63,22 @@ class OrderToCashLineAmendmentTest {
         sales.advanceSagaWorker();
         bus.drain();
         assertThat(sales.findSagaBySalesOrderId(orderId).orElseThrow().state())
-            .isEqualTo(SalesOrderFulfilmentSaga.READY_TO_SHIP);
+            .isEqualTo(SalesOrderFulfilmentSaga.SUPPLY_SECURED);
 
         // Amend: add a second, fully-reservable line.
         sales.service.addLine(new AddOrderLineCommand(
             orderId, null, productB, "FG-B", "Good B", new BigDecimal("2"), null, BigDecimal.ZERO));
         bus.drain();
 
-        // Inventory reserved the added line incrementally; the saga stays ready_to_ship.
+        // Inventory reserved the added line incrementally; the saga stays SUPPLY_SECURED.
         assertThat(inventory.outbox.all()).extracting(OutboxRow::getEventType)
             .contains(SalesOrderLineReservationChanged.EVENT_TYPE);
         assertThat(sales.findSagaBySalesOrderId(orderId).orElseThrow().state())
-            .isEqualTo(SalesOrderFulfilmentSaga.READY_TO_SHIP);
+            .isEqualTo(SalesOrderFulfilmentSaga.SUPPLY_SECURED);
     }
 
     @Test
-    void remove_short_line_cancels_replenishment_and_unparks_to_ready_to_ship() {
+    void remove_short_line_cancels_replenishment_and_unparks_to_SUPPLY_SECURED() {
         ObjectMapper json = new ObjectMapper();
         SynchronousBus bus = new SynchronousBus();
         SalesTestKit sales = new SalesTestKit(bus, json);
@@ -118,6 +118,6 @@ class OrderToCashLineAmendmentTest {
         // Its in-flight replenishment is cancelled and the saga un-parks.
         assertThat(inventory.replenishmentRequests.findOpenForSalesOrderLine(orderId, lineB)).isEmpty();
         assertThat(sales.findSagaBySalesOrderId(orderId).orElseThrow().state())
-            .isEqualTo(SalesOrderFulfilmentSaga.READY_TO_SHIP);
+            .isEqualTo(SalesOrderFulfilmentSaga.SUPPLY_SECURED);
     }
 }

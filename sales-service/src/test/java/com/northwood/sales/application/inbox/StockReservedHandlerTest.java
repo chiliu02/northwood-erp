@@ -1,7 +1,7 @@
 package com.northwood.sales.application.inbox;
 
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.READY_TO_SHIP;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_INCOMPLETE;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.SUPPLY_SECURED;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -68,7 +68,7 @@ class StockReservedHandlerTest {
     }
 
     @Test void full_reservation_records_reservation_and_emits_ready_to_ship() {
-        when(sagaManager.applyStockReserved(eq(SO), eq("reserved"), any())).thenReturn(READY_TO_SHIP);
+        when(sagaManager.applyStockReserved(eq(SO), eq("reserved"), any())).thenReturn(SUPPLY_SECURED);
 
         handler.handle(event("reserved", BigDecimal.ZERO));
 

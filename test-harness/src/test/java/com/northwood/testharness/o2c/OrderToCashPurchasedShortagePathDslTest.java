@@ -10,7 +10,7 @@ import static com.northwood.testharness.dsl.Dsl.money;
 import static com.northwood.testharness.dsl.Dsl.order;
 import static com.northwood.testharness.dsl.Dsl.qty;
 import static com.northwood.testharness.dsl.Scenario.scenario;
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.READY_TO_SHIP;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.SUPPLY_SECURED;
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.STOCK_RESERVATION_INCOMPLETE;
 
 import com.northwood.inventory.domain.ReplenishmentRequest;
@@ -56,7 +56,7 @@ class OrderToCashPurchasedShortagePathDslTest {
             // ── trigger: goods are received against the PO (for real) ──
             .when(goods_received_for("WIDGET-001"))
             // ── outcome: the pool tops up, the order re-reserves and reaches ready-to-ship ──
-            .then(order("SO-PSH-1").reaches(READY_TO_SHIP))
+            .then(order("SO-PSH-1").reaches(SUPPLY_SECURED))
             .and(order("SO-PSH-1").has_status(SalesOrder.Status.RESERVED))
             .and(events_published(
                 ReplenishmentRequested.EVENT_TYPE,

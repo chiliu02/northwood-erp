@@ -624,7 +624,7 @@ public final class World {
      * Record the up-front payment against an order's DEPOSIT invoice (the
      * {@link PaymentTerms#DEPOSIT} flow), then {@link #settle()} — which drives
      * the saga {@code deposit_invoiced → deposit_paid} and on to
-     * {@code ready_to_ship} once stock reserves.
+     * {@code SUPPLY_SECURED} once stock reserves.
      */
     public World payDeposit(String paymentNumber, String orderNumber, BigDecimal amount) {
         return payInvoice(paymentNumber, requireInvoice(orderNumber, CustomerInvoice.InvoiceType.DEPOSIT), amount);
@@ -801,7 +801,7 @@ public final class World {
     // Then — resolve the outcome by business identifier
     // ============================================================
 
-    /** The fulfilment saga's current state for an order (e.g. {@code "ready_to_ship"}). */
+    /** The fulfilment saga's current state for an order (e.g. {@code "SUPPLY_SECURED"}). */
     public String sagaState(String orderNumber) {
         return sales.findSagaBySalesOrderId(orderId(orderNumber)).orElseThrow().state();
     }

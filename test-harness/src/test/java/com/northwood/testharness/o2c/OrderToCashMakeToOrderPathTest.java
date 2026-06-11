@@ -45,7 +45,7 @@ import tools.jackson.databind.ObjectMapper;
  *       same qty for the SO line (atomic peg), then {@code markFulfilled} emits
  *       {@code ReplenishmentFulfilled(pegged=true)}.</li>
  *   <li>Sales' fan-in sees {@code pegged} → saga {@code stock_reservation_incomplete
- *       → ready_to_ship} directly, WITHOUT re-emitting StockReservationRequested.
+ *       → SUPPLY_SECURED} directly, WITHOUT re-emitting StockReservationRequested.
  *       ATP excludes the pegged stock (available = 0).</li>
  * </ol>
  */
@@ -142,8 +142,8 @@ class OrderToCashMakeToOrderPathTest {
         bus.drain();
 
         assertThat(sales.findSagaBySalesOrderId(orderId).orElseThrow().state())
-            .as("order-pegged completion → ready_to_ship straight off the peg")
-            .isEqualTo(SalesOrderFulfilmentSaga.READY_TO_SHIP);
+            .as("order-pegged completion → SUPPLY_SECURED straight off the peg")
+            .isEqualTo(SalesOrderFulfilmentSaga.SUPPLY_SECURED);
 
         // ATP excludes the pegged stock: 3 on hand, 3 reserved, 0 available.
         var fgBalance = inventory.stockBalances

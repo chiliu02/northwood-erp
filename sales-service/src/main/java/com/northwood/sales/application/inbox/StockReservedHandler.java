@@ -1,6 +1,6 @@
 package com.northwood.sales.application.inbox;
 
-import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.READY_TO_SHIP;
+import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.SUPPLY_SECURED;
 
 import com.northwood.sales.application.SalesOrderReadyToShipEmitter;
 import com.northwood.sales.application.SalesOrderService;
@@ -72,11 +72,11 @@ public class StockReservedHandler extends AbstractInboxHandler<StockReserved> {
         String newState = sagaManager.applyStockReserved(payload.salesOrderId(), payload.status(), shortageLineIds);
         salesOrders.recordReservation(payload.salesOrderId(), reservedByLineNumber(payload));
 
-        // Full reservation shortcuts the saga straight to ready_to_ship. Emit so
+        // Full reservation shortcuts the saga straight to supply_secured. Emit so
         // reporting can advance order_status — the value the shipment picker
         // filters on. Partial/failed park at stock_reservation_incomplete and
         // wait for inventory's replenishment to fulfil.
-        if (READY_TO_SHIP.equals(newState)) {
+        if (SUPPLY_SECURED.equals(newState)) {
             readyToShipEmitter.emitReadyToShip(payload.salesOrderId());
         }
 
