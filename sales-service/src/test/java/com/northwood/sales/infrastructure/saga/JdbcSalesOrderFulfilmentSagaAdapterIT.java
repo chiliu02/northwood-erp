@@ -19,11 +19,15 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.DockerImageName;
@@ -41,7 +45,11 @@ import org.testcontainers.utility.DockerImageName;
  *   <li>{@code claimDue} skipping rows whose {@code next_retry_at} is in the
  *       future (parked / backed-off sagas);</li>
  *   <li>{@code update} enforcing optimistic concurrency via {@code WHERE saga_id = ?
- *       AND version = ?} → {@link OptimisticLockingFailureException}.</li>
+ *       AND version = ?} → {@link OptimisticLockingFailureException};</li>
+ *   <li>{@code claimDue} under <em>genuine</em> concurrency — two workers polling the
+ *       same due row at the same instant, where {@code FOR UPDATE SKIP LOCKED} grants
+ *       it to exactly one (the cross-partition saga race; the others above prove the
+ *       mechanisms only sequentially).</li>
  * </ul>
  */
 class JdbcSalesOrderFulfilmentSagaAdapterIT {
@@ -174,5 +182,96 @@ class JdbcSalesOrderFulfilmentSagaAdapterIT {
 
         assertThatThrownBy(() -> ADAPTER.update(loadedB))
             .isInstanceOf(OptimisticLockingFailureException.class);
+    }
+
+    /**
+     * The cross-partition race in DB terms: two workers — standing in for two
+     * consequence events delivered on different Kafka partitions / threads — poll
+     * the <em>same</em> due saga row at the same instant. {@code claimDue}'s
+     * {@code FOR UPDATE SKIP LOCKED} must grant it to exactly one; the other meets
+     * the live row lock, skips it, and claims nothing — so no saga is ever advanced
+     * twice. This is the concurrency the in-process {@code SynchronousBus} harness
+     * cannot exercise: the saga twin of
+     * {@code JdbcInboxAdapterIT.advisory_lock_serializes_a_concurrent_duplicate}.
+     *
+     * <p>Determinism comes from holding worker A's transaction open: A claims the
+     * only due row and parks on the row lock (uncommitted) while worker B runs its
+     * own {@code claimDue}. B therefore meets a live lock — the simultaneous-poll
+     * case — and {@code SKIP LOCKED} makes it return empty rather than block or
+     * double-claim. A commits only after B has finished.
+     */
+    @Test
+    void claimDue_under_concurrency_grants_a_due_saga_to_exactly_one_worker() throws Exception {
+        UUID salesOrderId = UUID.randomUUID();
+        ADAPTER.insert(SalesOrderFulfilmentSaga.started(salesOrderId, "{}"));
+
+        CountDownLatch aClaimed = new CountDownLatch(1);   // A holds the row lock (uncommitted)
+        CountDownLatch releaseA = new CountDownLatch(1);   // main → A may commit
+        AtomicReference<List<SalesOrderFulfilmentSaga>> aResult = new AtomicReference<>();
+        AtomicReference<List<SalesOrderFulfilmentSaga>> bResult = new AtomicReference<>();
+        AtomicReference<Throwable> error = new AtomicReference<>();
+
+        Thread a = new Thread(() -> {
+            try (Connection conn = newTxnConnection()) {
+                JdbcSalesOrderFulfilmentSagaAdapter adapter = adapterOn(conn);
+                aResult.set(adapter.claimDue(
+                    10, Set.of(SalesOrderFulfilmentSaga.STARTED), "worker-A", Duration.ofSeconds(30)));
+                aClaimed.countDown();
+                await(releaseA);
+                conn.commit();   // releases the row lock
+            } catch (Throwable t) {
+                error.compareAndSet(null, t);
+                aClaimed.countDown();   // don't strand B on failure
+            }
+        });
+
+        Thread b = new Thread(() -> {
+            try (Connection conn = newTxnConnection()) {
+                JdbcSalesOrderFulfilmentSagaAdapter adapter = adapterOn(conn);
+                await(aClaimed);   // A holds the lock on the only due row
+                bResult.set(adapter.claimDue(
+                    10, Set.of(SalesOrderFulfilmentSaga.STARTED), "worker-B", Duration.ofSeconds(30)));
+                conn.commit();
+            } catch (Throwable t) {
+                error.compareAndSet(null, t);
+            }
+        });
+
+        a.start();
+        b.start();
+        b.join(10_000);          // B completes its claim attempt while A's lock is held
+        releaseA.countDown();    // now A may commit
+        a.join(10_000);
+
+        assertThat(error.get()).withFailMessage("worker failed: %s", error.get()).isNull();
+        assertThat(aResult.get()).hasSize(1)
+            .first().satisfies(s -> assertThat(s.salesOrderId()).isEqualTo(salesOrderId));
+        assertThat(bResult.get())
+            .withFailMessage("SKIP LOCKED should have denied the second concurrent worker")
+            .isEmpty();
+    }
+
+    private static Connection newTxnConnection() throws SQLException {
+        Connection c = DriverManager.getConnection(
+            POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        c.setAutoCommit(false);
+        return c;
+    }
+
+    private static JdbcSalesOrderFulfilmentSagaAdapter adapterOn(Connection conn) {
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource(conn, true));
+        jdbc.execute("SET search_path = sales, shared");
+        return new JdbcSalesOrderFulfilmentSagaAdapter(jdbc, Tracer.NOOP);
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting on latch");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted waiting on latch", e);
+        }
     }
 }

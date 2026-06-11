@@ -12,10 +12,12 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -189,6 +191,61 @@ class KafkaInboxDispatcherDeliveryIT {
     }
 
     /**
+     * Regression for the DLT partition-mismatch hazard (docs/messaging.md →
+     * <em>Hazards when scaling past 1 partition</em>, item 1). The source topic
+     * here has <em>more</em> partitions (3) than its DLT (1): a record consumed
+     * from source partition 2 has no partition-2 counterpart on the DLT. The
+     * production recoverer routes with partition {@code -1}, so the producer's
+     * key-hash partitioner picks within the DLT's <em>own</em> partition count and
+     * the dead-letter copy still lands (on the only partition, 0). This locks the
+     * end-to-end contract item 1 resolves: a record dead-lettered from a source
+     * partition with no DLT counterpart is never dropped or stuck.
+     *
+     * <p>(Note: this exercises the behaviour, not the literal {@code -1}. Spring's
+     * {@code DeadLetterPublishingRecoverer.verifyPartition} also resets an
+     * out-of-range partition to {@code -1}, so a resolver that pinned
+     * {@code record.partition()} would pass here too while {@code verifyPartition}
+     * stays on. The {@code -1} routing in {@code inboxErrorHandler} makes the
+     * guarantee hold by construction, independent of that default.)
+     */
+    @Test
+    void dead_letter_routes_by_key_hash_when_dlt_has_fewer_partitions_than_source() throws Exception {
+        String topic = "shared.delivery-it.dlt-fewer-parts";
+        String groupId = "dlt-fewer-" + UUID.randomUUID();
+        String dltTopic = topic + ".dlt";
+        createTopic(topic, /*partitions*/ 3);     // source out-partitions its DLT
+        createTopic(dltTopic, /*partitions*/ 1);
+
+        InboxEnvelopeHandler handler = new InboxEnvelopeHandler() {
+            @Override public boolean handles(String eventType) { return EVENT_TYPE.equals(eventType); }
+            @Override public String consumerName() { return "test.AlwaysFailsHandler"; }
+            @Override public void handle(EventEnvelope envelope) {
+                throw new IllegalStateException("poison payload");   // non-retryable → straight to DLT
+            }
+        };
+        var dispatcher = new KafkaInboxDispatcher(List.of(handler), json);
+        var errorHandler = KafkaMessagingAutoConfiguration.inboxErrorHandler(dltTemplate(), fastBackOff());
+
+        var container = startContainer(groupId, topic, dispatcher, errorHandler);
+        try (KafkaConsumer<String, String> dltConsumer = consumer("dlt-verify-" + UUID.randomUUID())) {
+            dltConsumer.subscribe(List.of(dltTopic));
+            // Source partition 2 has no counterpart on the 1-partition DLT.
+            publishToPartition(topic, /*partition*/ 2, UUID.randomUUID().toString(),
+                json.writeValueAsString(probe()));
+
+            ConsumerRecords<String, String> dltRecords = awaitDltRecords(dltConsumer);
+            assertThat(dltRecords.count())
+                .withFailMessage("record dead-lettered from source partition 2 never reached the smaller DLT")
+                .isGreaterThan(0);
+            dltRecords.forEach(r -> assertThat(r.partition())
+                .withFailMessage("DLT copy landed on a non-existent partition")
+                .isZero());
+        } finally {
+            container.stop();
+        }
+    }
+
+    /**
      * Publishes one probe onto {@code topic}, runs it through a container wired
      * with the production error handler (fast backoff) and a handler that always
      * throws {@code toThrow}, and asserts it lands on {@code <topic>.dlt} with the
@@ -295,6 +352,29 @@ class KafkaInboxDispatcherDeliveryIT {
         }
     }
 
+    /** Publishes to a specific source partition so the consumed record's {@code partition()} is deterministic. */
+    private void publishToPartition(String topic, int partition, String key, String value) throws Exception {
+        try (var producer = new KafkaProducer<>(
+                producerProps(), new StringSerializer(), new StringSerializer())) {
+            producer.send(new ProducerRecord<>(topic, partition, key, value)).get();
+        }
+    }
+
+    /** Polls {@code dltConsumer} until at least one record arrives (or times out), returning that batch. */
+    private ConsumerRecords<String, String> awaitDltRecords(KafkaConsumer<String, String> dltConsumer) {
+        AtomicReference<ConsumerRecords<String, String>> seen = new AtomicReference<>();
+        await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(500))
+            .until(() -> {
+                ConsumerRecords<String, String> records = dltConsumer.poll(Duration.ofMillis(500));
+                if (records.count() > 0) {
+                    seen.set(records);
+                    return true;
+                }
+                return false;
+            });
+        return seen.get();
+    }
+
     /** Template the production {@code inboxErrorHandler} recoverer publishes the DLT copy through. */
     private KafkaTemplate<String, String> dltTemplate() {
         return new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(
@@ -330,8 +410,12 @@ class KafkaInboxDispatcherDeliveryIT {
     }
 
     private void createTopic(String topic) throws Exception {
+        createTopic(topic, 1);
+    }
+
+    private void createTopic(String topic, int partitions) throws Exception {
         try (AdminClient admin = adminClient()) {
-            admin.createTopics(List.of(new NewTopic(topic, 1, (short) 1))).all().get();
+            admin.createTopics(List.of(new NewTopic(topic, partitions, (short) 1))).all().get();
         }
     }
 

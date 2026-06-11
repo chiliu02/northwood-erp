@@ -4,16 +4,20 @@ import com.northwood.shared.application.messaging.InboxEnvelopeHandler;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import java.util.List;
+import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.kafka.annotation.EnableKafka;
+import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+import org.springframework.kafka.config.TopicBuilder;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
@@ -111,6 +115,96 @@ public class KafkaMessagingAutoConfiguration {
         return new KafkaEventPublisher(kafkaTemplate, json);
     }
 
+    /**
+     * Declares this producer service's own {@code <service>.events} topic with an
+     * explicit, configurable partition count instead of leaving it to broker
+     * auto-create (which lands every topic on the single-partition broker
+     * default). Spring's auto-configured {@code KafkaAdmin} materialises this
+     * {@link NewTopic} on context start; {@code KafkaAdmin} only ever <em>adds</em>
+     * partitions to an existing topic, never removes them, so raising
+     * {@code northwood.kafka.topic.partitions} is a safe rolling change while
+     * lowering it is silently ignored.
+     *
+     * <p>Registered only for <b>producer</b> services — those running the outbox
+     * drainer ({@code northwood.outbox.drain.enabled=true}). A consumer-only
+     * service (reporting, the BFF) owns no {@code .events} topic and declares
+     * none, so each service declares exactly the one topic it owns — consistent
+     * with the topic-per-service invariant.
+     *
+     * <p>The partition <em>key</em> is the {@code aggregateId}
+     * ({@link KafkaEventPublisher}), so all events for one aggregate stay on a
+     * single partition (per-aggregate ordering) at any count. Default <b>3</b>
+     * gives cross-aggregate consumer parallelism for the showcase;
+     * {@code northwood.kafka.topic.replication-factor} defaults to 1 for the
+     * single-broker compose — raise both for a real multi-broker cluster.
+     */
+    @Bean
+    @Profile("kafka")
+    @ConditionalOnProperty(prefix = "northwood.outbox.drain", name = "enabled", havingValue = "true")
+    public NewTopic eventsTopic(
+        @Value("${northwood.service-name}") String serviceName,
+        @Value("${northwood.kafka.topic.partitions:3}") int partitions,
+        @Value("${northwood.kafka.topic.replication-factor:1}") short replicationFactor
+    ) {
+        String topic = KafkaEventPublisher.topicName(serviceName);
+        log.info("declaring event topic {} (partitions={}, replicationFactor={})",
+            topic, partitions, replicationFactor);
+        return TopicBuilder.name(topic)
+            .partitions(partitions)
+            .replicas(replicationFactor)
+            .build();
+    }
+
+    /**
+     * Clamps the consumer-side listener concurrency to at most the topic
+     * partition count. Within a consumer group Kafka assigns at most one consumer
+     * thread per partition, so a concurrency above the partition count only
+     * spawns idle listener threads (containers that are assigned no partitions) —
+     * wasted threads, not extra throughput. The cap keeps the configured value
+     * honest.
+     *
+     * <p>{@code northwood.kafka.listener.concurrency} sets the requested
+     * concurrency and <b>defaults to the partition count</b>
+     * ({@code northwood.kafka.topic.partitions} — the same repo-wide knob
+     * {@link #eventsTopic} uses to size every {@code <service>.events} topic), so
+     * out of the box each service runs one listener thread per partition. The
+     * effective value is {@code max(1, min(requested, partitions))}; an explicit
+     * over-setting is clamped (with a WARN) rather than honoured.
+     *
+     * <p>Spring Boot 4 dropped the
+     * {@code ConcurrentKafkaListenerContainerFactoryCustomizer} hook, so this
+     * post-processes the auto-configured
+     * {@link ConcurrentKafkaListenerContainerFactory} directly — the
+     * version-robust seam. Declared {@code static} so registering the
+     * {@link BeanPostProcessor} does not force early initialisation of the
+     * surrounding configuration. Gated on {@code subscribe-topics} so it is a
+     * no-op for producer-only services (which register no {@code @KafkaListener}).
+     */
+    @Bean
+    @Profile("kafka")
+    @ConditionalOnProperty(prefix = "northwood.kafka", name = "subscribe-topics")
+    static BeanPostProcessor kafkaListenerConcurrencyClamp(
+        @Value("${northwood.kafka.topic.partitions:3}") int partitions,
+        @Value("${northwood.kafka.listener.concurrency:${northwood.kafka.topic.partitions:3}}") int requestedConcurrency
+    ) {
+        int concurrency = Math.clamp(requestedConcurrency, 1, partitions);
+        return new BeanPostProcessor() {
+            @Override
+            public Object postProcessAfterInitialization(Object bean, String beanName) {
+                if (bean instanceof ConcurrentKafkaListenerContainerFactory<?, ?> factory) {
+                    if (requestedConcurrency > partitions) {
+                        log.warn("listener concurrency {} exceeds topic partitions {} — clamping to {} "
+                                + "(extra threads would idle: Kafka assigns at most one consumer per partition per group)",
+                            requestedConcurrency, partitions, concurrency);
+                    }
+                    factory.setConcurrency(concurrency);
+                    log.info("kafka listener container factory '{}' concurrency set to {}", beanName, concurrency);
+                }
+                return bean;
+            }
+        };
+    }
+
     @Bean
     @Profile("kafka")
     @ConditionalOnProperty(prefix = "northwood.kafka", name = "subscribe-topics")
@@ -192,9 +286,20 @@ public class KafkaMessagingAutoConfiguration {
 
     /**
      * Builds the consumer-side {@link DefaultErrorHandler}: the recoverer routes
-     * any topic to {@code <topic>.dlt} on the original partition (logging a WARN),
+     * any topic to {@code <topic>.dlt} and lets the producer's key-hash
+     * partitioner pick the DLT partition (logging a WARN),
      * {@link #NOT_RETRYABLE} exceptions are classified non-retryable (straight to
      * the DLT, no backoff), and everything else is retried under {@code backOff}.
+     *
+     * <p><b>Why key-hash, not the source partition.</b> The record key stays the
+     * original {@code aggregateId}, so a key-hashed partition keeps all of one
+     * aggregate's dead-lettered records on a single DLT partition (ordering
+     * preserved) <em>and</em> only ever targets a partition that exists. This
+     * decouples the DLT's partition count from the source topic's: a DLT may have
+     * any number of partitions (even 1) without risking a send to a non-existent
+     * partition. Pinning {@code record.partition()} instead would tie the two
+     * counts together and silently drop / wedge records the moment a scaled-up
+     * source out-partitioned its DLT.
      *
      * <p>Package-private + {@code BackOff}-parameterised so
      * {@code KafkaInboxDispatcherDeliveryIT} can exercise the <em>same</em>
@@ -209,9 +314,12 @@ public class KafkaMessagingAutoConfiguration {
             kafkaTemplate,
             (record, ex) -> {
                 String dlt = record.topic() + ".dlt";
-                log.warn("publishing to DLT {} (partition={}, offset={}): {}",
+                log.warn("publishing to DLT {} (source partition={}, offset={}): {}",
                     dlt, record.partition(), record.offset(), ex.toString());
-                return new TopicPartition(dlt, record.partition());
+                // partition -1 → let the producer's key-hash partitioner choose
+                // within the DLT's own partition count (key is the unchanged
+                // aggregateId). Decouples DLT partition count from the source's.
+                return new TopicPartition(dlt, -1);
             }
         );
         DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, backOff);

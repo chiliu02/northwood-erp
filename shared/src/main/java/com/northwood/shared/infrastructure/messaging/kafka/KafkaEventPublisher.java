@@ -27,6 +27,15 @@ import org.springframework.kafka.core.KafkaTemplate;
  */
 public class KafkaEventPublisher implements EventPublisher {
 
+    /**
+     * Suffix appended to a service name to form its events topic. The single
+     * source of truth for the {@code <service>.events} naming rule, so the
+     * producer here and the topic declaration in
+     * {@link KafkaMessagingAutoConfiguration#eventsTopic} cannot drift (a
+     * mismatch would publish to a topic nobody declared).
+     */
+    public static final String EVENTS_TOPIC_SUFFIX = ".events";
+
     private static final Logger log = LoggerFactory.getLogger(KafkaEventPublisher.class);
 
     private final KafkaTemplate<String, String> kafkaTemplate;
@@ -37,12 +46,17 @@ public class KafkaEventPublisher implements EventPublisher {
         this.json = json;
     }
 
+    /** The events topic a given source service publishes to — {@code <serviceName>.events}. */
+    public static String topicName(String serviceName) {
+        return serviceName + EVENTS_TOPIC_SUFFIX;
+    }
+
     @Override
     public void publish(EventEnvelope envelope) {
         String sourceService = envelope.headers().get(EventEnvelope.HEADER_SOURCE_SERVICE);
         Assert.stateNotBlank(sourceService, "EventEnvelope missing '" + EventEnvelope.HEADER_SOURCE_SERVICE
                     + "' header (eventId=" + envelope.eventId() + ")");
-        String topic = sourceService + ".events";
+        String topic = topicName(sourceService);
         String key = envelope.aggregateId().toString();
         String value;
         try {
