@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * Computes a product's per-unit conversion cost (labour + overhead) from its
- * active routing × work-centre rates (dev-todo §2.42): Σ over operations of
+ * active routing × work-centre rates: Σ over operations of
  * {@code (setup + run minutes) × (labour + overhead rate)} for the operation's
  * work centre.
  *
@@ -52,7 +52,7 @@ public class ConversionCostCalculator {
     /**
      * Per-unit ACTUAL conversion cost from a work order's (completed)
      * operations: Σ {@code op.actualMinutes × (labour + overhead rate)} for the
-     * operation's work centre (dev-todo §2.42 slice D). Interpreted per-unit —
+     * operation's work centre. Interpreted per-unit —
      * the same basis as {@link #perUnitConversionCost} — so the caller
      * multiplies by completed quantity. The efficiency variance is the
      * difference between this and the standard (planned-minutes) conversion;

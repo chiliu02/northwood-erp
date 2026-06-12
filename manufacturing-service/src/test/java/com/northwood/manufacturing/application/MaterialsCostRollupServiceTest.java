@@ -73,7 +73,7 @@ class MaterialsCostRollupServiceTest {
             rollup.onSupplierPriceChange(supplier, product, Currencies.AUD, new BigDecimal("12.50"));
 
             verify(materialsCosts).apply(
-                eq(product), eq(new BigDecimal("12.50")), eq(Currencies.AUD),
+                eq(product), eq(new BigDecimal("12.50")), eq(new BigDecimal("12.500000")), eq(Currencies.AUD),
                 eq("supplier_price_change"), any(Instant.class)
             );
             ArgumentCaptor<ProductMaterialsCostComputed> eventCaptor =
@@ -95,7 +95,7 @@ class MaterialsCostRollupServiceTest {
 
             rollup.onSupplierPriceChange(supplierB, product, Currencies.AUD, new BigDecimal("9.99"));
 
-            verify(materialsCosts, never()).apply(any(), any(), anyString(), anyString(), any());
+            verify(materialsCosts, never()).apply(any(), any(), any(), anyString(), anyString(), any());
             verify(outbox, never()).append(any(), any());
         }
 
@@ -113,7 +113,7 @@ class MaterialsCostRollupServiceTest {
             rollup.onSupplierPriceChange(supplier, product, Currencies.AUD, new BigDecimal("12.50"));
 
             verify(materialsCosts).apply(
-                eq(product), eq((BigDecimal) null), eq((String) null),
+                eq(product), eq((BigDecimal) null), eq((BigDecimal) null), eq((String) null),
                 eq("inputs_missing"), any(Instant.class)
             );
         }
@@ -128,7 +128,7 @@ class MaterialsCostRollupServiceTest {
 
             rollup.onSupplierPriceChange(supplier, product, Currencies.AUD, new BigDecimal("12.50"));
 
-            verify(materialsCosts, never()).apply(any(), any(), anyString(), anyString(), any());
+            verify(materialsCosts, never()).apply(any(), any(), any(), anyString(), anyString(), any());
             verify(outbox, never()).append(any(), any());
         }
 
@@ -142,7 +142,7 @@ class MaterialsCostRollupServiceTest {
 
             rollup.onSupplierPriceChange(supplier, product, Currencies.AUD, new BigDecimal("12.50"));
 
-            verify(materialsCosts, never()).apply(any(), any(), anyString(), anyString(), any());
+            verify(materialsCosts, never()).apply(any(), any(), any(), anyString(), anyString(), any());
             verify(outbox, never()).append(any(), any());
         }
     }
@@ -164,12 +164,12 @@ class MaterialsCostRollupServiceTest {
                 ))));
             when(materialsCosts.findByProductId(componentA)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
-                    componentA, new BigDecimal("5.00"), Currencies.AUD,
+                    componentA, new BigDecimal("5.00"), new BigDecimal("5.00"), Currencies.AUD,
                     "supplier_price_change", Instant.now()
                 )));
             when(materialsCosts.findByProductId(componentB)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
-                    componentB, new BigDecimal("4.00"), Currencies.AUD,
+                    componentB, new BigDecimal("4.00"), new BigDecimal("4.00"), Currencies.AUD,
                     "supplier_price_change", Instant.now()
                 )));
             when(materialsCosts.findByProductId(parent)).thenReturn(Optional.empty());
@@ -177,9 +177,9 @@ class MaterialsCostRollupServiceTest {
 
             rollup.recomputeViaBom(parent, "bom_activated");
 
-            // 2 * 5 + 3 * 4 = 22.00
+            // 2 * 5 + 3 * 4 = 22.00 (no routing → conversion 0, so standard == material)
             verify(materialsCosts).apply(
-                eq(parent), eq(new BigDecimal("22.000000")), eq(Currencies.AUD),
+                eq(parent), eq(new BigDecimal("22.000000")), eq(new BigDecimal("22.000000")), eq(Currencies.AUD),
                 eq("bom_activated"), any(Instant.class)
             );
         }
@@ -195,7 +195,7 @@ class MaterialsCostRollupServiceTest {
                 ))));
             when(materialsCosts.findByProductId(componentA)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
-                    componentA, new BigDecimal("5.00"), Currencies.AUD,
+                    componentA, new BigDecimal("5.00"), new BigDecimal("5.00"), Currencies.AUD,
                     "supplier_price_change", Instant.now()
                 )));
             when(materialsCosts.findByProductId(parent)).thenReturn(Optional.empty());
@@ -203,9 +203,9 @@ class MaterialsCostRollupServiceTest {
 
             rollup.recomputeViaBom(parent, "bom_activated");
 
-            // 2 * 1.1 * 5 = 11.00
+            // 2 * 1.1 * 5 = 11.00 (no routing → conversion 0, so standard == material)
             verify(materialsCosts).apply(
-                eq(parent), eq(new BigDecimal("11.000000")), eq(Currencies.AUD),
+                eq(parent), eq(new BigDecimal("11.000000")), eq(new BigDecimal("11.000000")), eq(Currencies.AUD),
                 eq("bom_activated"), any(Instant.class)
             );
         }
@@ -224,7 +224,7 @@ class MaterialsCostRollupServiceTest {
                 ))));
             when(materialsCosts.findByProductId(componentA)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
-                    componentA, new BigDecimal("5.00"), Currencies.AUD,
+                    componentA, new BigDecimal("5.00"), new BigDecimal("5.00"), Currencies.AUD,
                     "supplier_price_change", Instant.now()
                 )));
             when(materialsCosts.findByProductId(componentB)).thenReturn(Optional.empty()); // missing
@@ -234,7 +234,7 @@ class MaterialsCostRollupServiceTest {
             rollup.recomputeViaBom(parent, "bom_activated");
 
             verify(materialsCosts).apply(
-                eq(parent), eq((BigDecimal) null), eq((String) null),
+                eq(parent), eq((BigDecimal) null), eq((BigDecimal) null), eq((String) null),
                 eq("inputs_missing"), any(Instant.class)
             );
         }
@@ -251,7 +251,7 @@ class MaterialsCostRollupServiceTest {
             // Component has a row but materialsCost is null (inputs_missing).
             when(materialsCosts.findByProductId(componentA)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
-                    componentA, null, null, "inputs_missing", Instant.now()
+                    componentA, null, null, null, "inputs_missing", Instant.now()
                 )));
             when(materialsCosts.findByProductId(parent)).thenReturn(Optional.empty());
             when(bomLookup.findParentProductIdsByComponent(parent)).thenReturn(List.of());
@@ -259,7 +259,7 @@ class MaterialsCostRollupServiceTest {
             rollup.recomputeViaBom(parent, "bom_activated");
 
             verify(materialsCosts).apply(
-                eq(parent), eq((BigDecimal) null), eq((String) null),
+                eq(parent), eq((BigDecimal) null), eq((BigDecimal) null), eq((String) null),
                 eq("inputs_missing"), any(Instant.class)
             );
         }
@@ -278,12 +278,12 @@ class MaterialsCostRollupServiceTest {
                 ))));
             when(materialsCosts.findByProductId(componentA)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
-                    componentA, new BigDecimal("5.00"), Currencies.AUD,
+                    componentA, new BigDecimal("5.00"), new BigDecimal("5.00"), Currencies.AUD,
                     "supplier_price_change", Instant.now()
                 )));
             when(materialsCosts.findByProductId(componentB)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
-                    componentB, new BigDecimal("4.00"), Currencies.USD,
+                    componentB, new BigDecimal("4.00"), new BigDecimal("4.00"), Currencies.USD,
                     "supplier_price_change", Instant.now()
                 )));
 
@@ -291,7 +291,7 @@ class MaterialsCostRollupServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("currency mismatch");
 
-            verify(materialsCosts, never()).apply(any(), any(), anyString(), anyString(), any());
+            verify(materialsCosts, never()).apply(any(), any(), any(), anyString(), anyString(), any());
         }
 
         @Test
@@ -301,7 +301,7 @@ class MaterialsCostRollupServiceTest {
 
             rollup.recomputeViaBom(product, "bom_activated");
 
-            verify(materialsCosts, never()).apply(any(), any(), anyString(), anyString(), any());
+            verify(materialsCosts, never()).apply(any(), any(), any(), anyString(), anyString(), any());
             verify(outbox, never()).append(any(), any());
         }
 
@@ -317,7 +317,7 @@ class MaterialsCostRollupServiceTest {
                 ))));
             when(materialsCosts.findByProductId(componentA)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
-                    componentA, new BigDecimal("10.00"), Currencies.AUD,
+                    componentA, new BigDecimal("10.00"), new BigDecimal("10.00"), Currencies.AUD,
                     "supplier_price_change", Instant.now()
                 )));
             when(materialsCosts.findByProductId(parent)).thenReturn(Optional.empty());
@@ -335,9 +335,9 @@ class MaterialsCostRollupServiceTest {
 
             rollup.recomputeViaBom(parent, "bom_activated");
 
-            // materials_cost facet stays material-only (1 * 10 = 10).
+            // materials_cost facet stays material-only (1 * 10 = 10); standard = 10 + conversion 7.5 = 17.5.
             verify(materialsCosts).apply(
-                eq(parent), eq(new BigDecimal("10.000000")), eq(Currencies.AUD),
+                eq(parent), eq(new BigDecimal("10.000000")), eq(new BigDecimal("17.500000")), eq(Currencies.AUD),
                 eq("bom_activated"), any(Instant.class)
             );
             // emitted standardCost = material 10 + conversion 7.5 = 17.5.
@@ -346,6 +346,41 @@ class MaterialsCostRollupServiceTest {
             verify(outbox).append(captor.capture(), eq(ProductMaterialsCostComputed.AGGREGATE_TYPE));
             assertThat(captor.getValue().materialsCost()).isEqualByComparingTo("10.00");
             assertThat(captor.getValue().standardCost()).isEqualByComparingTo("17.50");
+        }
+
+        @Test
+        void multiLevel_parentStandardCostFoldsInSubAssemblyConversion() {
+            UUID parent = UUID.randomUUID();
+            UUID subAssembly = UUID.randomUUID();
+            when(bomLookup.findActiveByFinishedProductId(parent))
+                .thenReturn(Optional.of(new BomLookup.ActiveBom(UUID.randomUUID(), List.of(
+                    new BomLookup.Component(subAssembly, "SA-1", "Sub-assembly",
+                        new BigDecimal("1"), BigDecimal.ZERO, Bom.ComponentKind.SUB_ASSEMBLY)
+                ))));
+            // Sub-assembly: material 100, full standard cost 130 (incl. its own 30 conversion).
+            when(materialsCosts.findByProductId(subAssembly)).thenReturn(Optional.of(
+                new ProductMaterialsCostProjection.MaterialsCost(
+                    subAssembly, new BigDecimal("100.00"), new BigDecimal("130.00"), Currencies.AUD,
+                    "bom_activated", Instant.now()
+                )));
+            when(materialsCosts.findByProductId(parent)).thenReturn(Optional.empty());
+            when(bomLookup.findParentProductIdsByComponent(parent)).thenReturn(List.of());
+            // Parent has no own routing → its own conversion is 0; the only conversion
+            // in its standard cost is the sub-assembly's, folded in via the recursion.
+
+            rollup.recomputeViaBom(parent, "bom_activated");
+
+            // materials_cost = sub-assembly material only (100); standard_cost = sub-assembly
+            // FULL standard cost (130, incl. its conversion) + parent own conversion (0) = 130.
+            verify(materialsCosts).apply(
+                eq(parent), eq(new BigDecimal("100.000000")), eq(new BigDecimal("130.000000")), eq(Currencies.AUD),
+                eq("bom_activated"), any(Instant.class)
+            );
+            ArgumentCaptor<ProductMaterialsCostComputed> captor =
+                ArgumentCaptor.forClass(ProductMaterialsCostComputed.class);
+            verify(outbox).append(captor.capture(), eq(ProductMaterialsCostComputed.AGGREGATE_TYPE));
+            assertThat(captor.getValue().materialsCost()).isEqualByComparingTo("100.00");
+            assertThat(captor.getValue().standardCost()).isEqualByComparingTo("130.00");
         }
     }
 
@@ -382,20 +417,20 @@ class MaterialsCostRollupServiceTest {
             when(materialsCosts.findByProductId(rawMaterial))
                 .thenReturn(Optional.empty()) // first call (no-op suppression check on apply)
                 .thenReturn(Optional.of(new ProductMaterialsCostProjection.MaterialsCost(
-                    rawMaterial, new BigDecimal("12.50"), Currencies.AUD,
+                    rawMaterial, new BigDecimal("12.50"), new BigDecimal("12.50"), Currencies.AUD,
                     "supplier_price_change", Instant.now()
                 ))); // subsequent call (parent's BoM walk)
 
             rollup.onSupplierPriceChange(supplier, rawMaterial, Currencies.AUD, new BigDecimal("12.50"));
 
-            // Raw material's apply
+            // Raw material's apply (no routing → standard == material, at 6dp from the conversion add)
             verify(materialsCosts).apply(
-                eq(rawMaterial), eq(new BigDecimal("12.50")), eq(Currencies.AUD),
+                eq(rawMaterial), eq(new BigDecimal("12.50")), eq(new BigDecimal("12.500000")), eq(Currencies.AUD),
                 eq("supplier_price_change"), any(Instant.class)
             );
-            // Parent's apply: 2 * 12.50 = 25.00, reason child_materials_cost_changed
+            // Parent's apply: 2 * 12.50 = 25.00 (no routing → standard == material), child_materials_cost_changed
             verify(materialsCosts).apply(
-                eq(parent), eq(new BigDecimal("25.000000")), eq(Currencies.AUD),
+                eq(parent), eq(new BigDecimal("25.000000")), eq(new BigDecimal("25.000000")), eq(Currencies.AUD),
                 eq("child_materials_cost_changed"), any(Instant.class)
             );
             verify(outbox, times(2)).append(any(), any());
@@ -415,13 +450,13 @@ class MaterialsCostRollupServiceTest {
             when(approvedVendors.findPreferredSupplierId(product)).thenReturn(Optional.of(supplier));
             when(materialsCosts.findByProductId(product)).thenReturn(Optional.of(
                 new ProductMaterialsCostProjection.MaterialsCost(
-                    product, new BigDecimal("12.50"), Currencies.AUD,
+                    product, new BigDecimal("12.50"), new BigDecimal("12.50"), Currencies.AUD,
                     "supplier_price_change", Instant.now()
                 )));
 
             rollup.onSupplierPriceChange(supplier, product, Currencies.AUD, new BigDecimal("12.50"));
 
-            verify(materialsCosts, never()).apply(any(), any(), anyString(), anyString(), any());
+            verify(materialsCosts, never()).apply(any(), any(), any(), anyString(), anyString(), any());
             verify(outbox, never()).append(any(), any());
             verify(bomLookup, never()).findParentProductIdsByComponent(product);
         }

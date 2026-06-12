@@ -95,8 +95,8 @@ Editing the list price does **not** retro-affect existing sales orders or invoic
 **REQ-PROD-040 ✅ — Maintain a standard cost per SKU** *(shipped)*
 Each SKU carries a standard cost in the company base currency. Used by finance to value COGS on shipment.
 
-**REQ-PROD-041 ⚠️ — Manufactured-product cost rollup** *(shipped, partial)*
-For a SKU classified as makeable with an active BOM, the standard cost is automatically rolled up as **material + conversion**: the recursive BOM walk over component material costs, plus the SKU's own-routing conversion cost (Σ operation minutes × the work centre's labour+overhead rate — REQ-FIN-029). Edits to a leaf component's standard cost cascade up to recompute parent costs. *Partial:* conversion is folded in at the single (own-routing) level today — a sub-assembly's conversion is not yet rolled into its parent's standard cost (the recursive-conversion roll-up is a follow-up); for a finished good whose components are raw materials (no manufactured sub-assemblies) the rolled-up standard cost is exact.
+**REQ-PROD-041 ✅ — Manufactured-product cost rollup** *(shipped)*
+For a SKU classified as makeable with an active BOM, the standard cost is automatically rolled up as **material + conversion**, recursively through the BOM: each component contributes its material cost (a raw) or its **full standard cost** (a manufactured sub-assembly, so the sub-assembly's own conversion folds into the parent), plus the SKU's own-routing conversion cost (Σ operation minutes × the work centre's labour+overhead rate — REQ-FIN-029). Edits to a leaf component's standard cost cascade up to recompute parent costs. The recursion holds at every BOM level (verified across the seeded multi-level catalogue — chest → frame/panel sub-assemblies — by `SeedStandardCostConsistencyIT`).
 
 ### 1.6 Valuation class
 

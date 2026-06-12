@@ -442,7 +442,7 @@ public class JournalEntryService {
      * Dr 1230 WIP / Cr 5250 Conversion Cost Applied for the work order's standard
      * conversion cost. The third charge into WIP (after raw materials and
      * consumed sub-assemblies); with the FG receipt crediting WIP at the full
-     * standard cost (material + conversion), WIP nets to zero (dev-todo §2.42).
+     * standard cost (material + conversion), WIP nets to zero.
      * Skips a zero/negative amount. Caller (the inbox handler) dedups by event.
      */
     @Transactional
@@ -477,7 +477,7 @@ public class JournalEntryService {
 
     /**
      * Perpetual WIP — conversion efficiency variance cleared off WIP at
-     * completion (dev-todo §2.42 slice D). {@code variance = actual − standard}
+     * completion. {@code variance = actual − standard}
      * conversion: unfavorable (&gt; 0) Dr 5100 Production Variance / Cr 1230 WIP;
      * favorable (&lt; 0) Dr 1230 WIP / Cr 5100. Net effect: WIP, which was charged
      * actual conversion but credited standard at the FG receipt, returns to zero

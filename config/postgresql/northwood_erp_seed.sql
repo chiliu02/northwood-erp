@@ -179,10 +179,10 @@ INSERT INTO product.product (
     -- a loop" rejection path.
     ('00000000-0000-7000-8000-000000000200', 'FG-CABINET-001', 'Storage Cabinet',
      'Wooden storage cabinet with drawer', 'finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  true,  890.00, 420.00,  1,  3, 'finished_goods'),
+     true, false, true,  true,  890.00, 343.00,  1,  3, 'finished_goods'),
     ('00000000-0000-7000-8000-000000000201', 'SA-DRAWER-001', 'Cabinet Drawer Sub-assembly',
      'Drawer pre-built for cabinet',       'semi_finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  false, 0.00,    65.00,  0,  0, 'semi_finished_goods'),
+     true, false, true,  false, 0.00,    84.75,  0,  0, 'semi_finished_goods'),
     ('00000000-0000-7000-8000-000000000202', 'RM-DRAWER-FRONT-001', 'Drawer Front Panel',
      'Pre-cut front panel for drawer',     'raw_material',       '00000000-0000-7000-8000-000000000010',
      true, true,  false, false, 0.00,    18.00,  5, 10, 'raw_materials'),
@@ -196,13 +196,13 @@ INSERT INTO product.product (
     -- (frame + drawer), and depth 3 (panel).
     ('00000000-0000-7000-8000-000000000300', 'FG-CHEST-001', 'Chest of Drawers',
      'Wooden chest of drawers with two drawers and a panelled frame', 'finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  true,  1490.00, 720.00,  1,  3, 'finished_goods'),
+     true, false, true,  true,  1490.00, 512.50,  1,  3, 'finished_goods'),
     ('00000000-0000-7000-8000-000000000301', 'SA-FRAME-001', 'Chest Frame Sub-assembly',
      'Panelled frame that holds the chest drawers',                   'semi_finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  false, 0.00,     380.00,  0,  0, 'semi_finished_goods'),
+     true, false, true,  false, 0.00,     304.00,  0,  0, 'semi_finished_goods'),
     ('00000000-0000-7000-8000-000000000302', 'SA-PANEL-001', 'Side Panel Sub-assembly',
      'Side panel built from board + varnish + screws',                'semi_finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  false, 0.00,     105.00,  0,  0, 'semi_finished_goods'),
+     true, false, true,  false, 0.00,     102.00,  0,  0, 'semi_finished_goods'),
     -- Simple FG demo set: a chair. Re-uses RM-LEG/BOARD/SCREW/VARNISH, so adds
     -- no new raws. The chair BOM (in SEED: MANUFACTURING) is the first one in
     -- the seed that carries non-zero scrap_factor_percent values — exercises
@@ -210,7 +210,7 @@ INSERT INTO product.product (
     -- realistic numbers rather than the zero-scrap default.
     ('00000000-0000-7000-8000-000000000400', 'FG-CHAIR-001', 'Wooden Dining Chair',
      'Companion chair for FG-TABLE-001',                              'finished_good',      '00000000-0000-7000-8000-000000000010',
-     true, false, true,  true,  220.00,   120.00,  5, 10, 'finished_goods')
+     true, false, true,  true,  220.00,   207.65,  5, 10, 'finished_goods')
 ON CONFLICT (sku) DO NOTHING;
 
 COMMIT;
@@ -486,7 +486,7 @@ INSERT INTO manufacturing.bom_line (
     ('00000000-0000-7000-8000-000000000312', 3, '00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',   'Screw Pack',   'raw', 2.000000, 0)
 ON CONFLICT (bom_header_id, line_number) DO NOTHING;
 
--- Conversion-cost rates (dev-todo §2.42): $30/hr labour (0.50/min) + overhead
+-- Conversion-cost rates: $30/hr labour (0.50/min) + overhead
 -- absorbed at 50% of labour (0.25/min). FG-TABLE-001's routing is 180 min/unit
 -- (35+25+70+50), so conversion = 180 × 0.75 = 135/unit; with the 197 material
 -- rollup the full standard cost rolls up to 332 (the cost-rollup slice drives
@@ -774,7 +774,7 @@ INSERT INTO finance.gl_account (account_code, account_name, account_type) VALUES
     ('5200', 'Materials Cost',                'expense'),
     -- Conversion Cost Applied: credited when a work order's standard conversion
     -- cost (labour + overhead) is absorbed into WIP at completion (Dr 1230), so
-    -- WIP nets to zero against the full standard cost out (dev-todo §2.42).
+    -- WIP nets to zero against the full standard cost out.
     ('5250', 'Conversion Cost Applied',       'expense'),
     ('5300', 'Freight Expense',               'expense'),
     ('5400', 'Inventory Adjustment',          'expense'),
@@ -805,20 +805,15 @@ ON CONFLICT (tax_code) DO NOTHING;
 INSERT INTO finance.product_card (
     product_id, standard_cost, currency_code, valuation_class
 ) VALUES
-    ('00000000-0000-7000-8000-000000000001', 332.00, 'AUD', 'finished_goods'),      -- FG-TABLE-001 (197 material + 135 conversion, §2.42)
+    ('00000000-0000-7000-8000-000000000001', 332.00, 'AUD', 'finished_goods'),      -- FG-TABLE-001 (197 material + 135 conversion)
     ('00000000-0000-7000-8000-000000000002',  80.00, 'AUD', 'raw_materials'),       -- RM-BOARD-001
     ('00000000-0000-7000-8000-000000000003',  25.00, 'AUD', 'raw_materials'),       -- RM-LEG-001
     ('00000000-0000-7000-8000-000000000004',   5.00, 'AUD', 'raw_materials'),       -- RM-SCREW-001
     ('00000000-0000-7000-8000-000000000005',  12.00, 'AUD', 'raw_materials'),       -- RM-VARNISH-001
-    ('00000000-0000-7000-8000-000000000200', 420.00, 'AUD', 'finished_goods'),      -- FG-CABINET-001
-    ('00000000-0000-7000-8000-000000000201',  65.00, 'AUD', 'semi_finished_goods'), -- SA-DRAWER-001
-    ('00000000-0000-7000-8000-000000000202',  18.00, 'AUD', 'raw_materials'),       -- RM-DRAWER-FRONT-001
+    ('00000000-0000-7000-8000-000000000200', 343.00, 'AUD', 'finished_goods'),      -- FG-CABINET-001 (material + conversion)
+    ('00000000-0000-7000-8000-000000000201',  84.75, 'AUD', 'semi_finished_goods'), -- SA-DRAWER-001    ('00000000-0000-7000-8000-000000000202',  18.00, 'AUD', 'raw_materials'),       -- RM-DRAWER-FRONT-001
     ('00000000-0000-7000-8000-000000000203',  14.00, 'AUD', 'raw_materials'),       -- RM-DRAWER-RUNNER-001
-    ('00000000-0000-7000-8000-000000000300', 720.00, 'AUD', 'finished_goods'),      -- FG-CHEST-001
-    ('00000000-0000-7000-8000-000000000301', 380.00, 'AUD', 'semi_finished_goods'), -- SA-FRAME-001
-    ('00000000-0000-7000-8000-000000000302', 105.00, 'AUD', 'semi_finished_goods'), -- SA-PANEL-001
-    ('00000000-0000-7000-8000-000000000400', 120.00, 'AUD', 'finished_goods')       -- FG-CHAIR-001
-ON CONFLICT (product_id) DO NOTHING;
+    ('00000000-0000-7000-8000-000000000300', 512.50, 'AUD', 'finished_goods'),      -- FG-CHEST-001    ('00000000-0000-7000-8000-000000000301', 304.00, 'AUD', 'semi_finished_goods'), -- SA-FRAME-001    ('00000000-0000-7000-8000-000000000302', 102.00, 'AUD', 'semi_finished_goods'), -- SA-PANEL-001    ('00000000-0000-7000-8000-000000000400', 207.65, 'AUD', 'finished_goods')       -- FG-CHAIR-001ON CONFLICT (product_id) DO NOTHING;
 
 COMMIT;
 
@@ -836,20 +831,14 @@ BEGIN;
 
 INSERT INTO reporting.product_card (product_id, standard_cost, currency_code)
 VALUES
-    ('00000000-0000-7000-8000-000000000001', 332.00, 'AUD'),  -- FG-TABLE-001 (197 material + 135 conversion, §2.42)
+    ('00000000-0000-7000-8000-000000000001', 332.00, 'AUD'),  -- FG-TABLE-001 (197 material + 135 conversion)
     ('00000000-0000-7000-8000-000000000002',  80.00, 'AUD'),
     ('00000000-0000-7000-8000-000000000003',  25.00, 'AUD'),
     ('00000000-0000-7000-8000-000000000004',   5.00, 'AUD'),
     ('00000000-0000-7000-8000-000000000005',  12.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000200', 420.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000201',  65.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000202',  18.00, 'AUD'),
+    ('00000000-0000-7000-8000-000000000200', 343.00, 'AUD'),  -- FG-CABINET-001    ('00000000-0000-7000-8000-000000000201',  84.75, 'AUD'),  -- SA-DRAWER-001    ('00000000-0000-7000-8000-000000000202',  18.00, 'AUD'),
     ('00000000-0000-7000-8000-000000000203',  14.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000300', 720.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000301', 380.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000302', 105.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000400', 120.00, 'AUD')
-ON CONFLICT (product_id) DO NOTHING;
+    ('00000000-0000-7000-8000-000000000300', 512.50, 'AUD'),  -- FG-CHEST-001    ('00000000-0000-7000-8000-000000000301', 304.00, 'AUD'),  -- SA-FRAME-001    ('00000000-0000-7000-8000-000000000302', 102.00, 'AUD'),  -- SA-PANEL-001    ('00000000-0000-7000-8000-000000000400', 207.65, 'AUD')   -- FG-CHAIR-001ON CONFLICT (product_id) DO NOTHING;
 
 COMMIT;
 

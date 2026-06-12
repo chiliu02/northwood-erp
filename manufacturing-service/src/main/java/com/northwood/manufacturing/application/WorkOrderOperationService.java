@@ -183,8 +183,8 @@ public class WorkOrderOperationService {
 
     /**
      * Emit {@code manufacturing.WorkOrderConversionApplied} for the conversion
-     * cost (labour + overhead) absorbed into WIP at completion (dev-todo §2.42
-     * slices C + D). Carries both the <b>standard</b> conversion (product's
+     * cost (labour + overhead) absorbed into WIP at completion. Carries both the
+     * <b>standard</b> conversion (product's
      * active-routing planned minutes — the value baked into the standard cost)
      * and the <b>actual</b> conversion (this work order's operations' actual
      * minutes), both per-unit × completed quantity. Finance charges WIP at

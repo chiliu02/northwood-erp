@@ -8,7 +8,7 @@ import java.util.UUID;
 /**
  * Test-side {@link GlAccountLookup} implementation backed by a seeded map.
  * Each kit pre-seeds the standard chart of accounts the production code
- * expects: 1000/1100/1200/1210/1220/1230/1300/2100/2110/4000/5000/5200.
+ * expects: 1000/1100/1200/1210/1220/1230/1300/2100/2110/4000/5000/5100/5200/5250.
  */
 public final class InMemoryGlAccountLookup implements GlAccountLookup {
 
@@ -30,7 +30,9 @@ public final class InMemoryGlAccountLookup implements GlAccountLookup {
         put("2110", "Customer Deposits");
         put("4000", "Sales Revenue");
         put("5000", "Cost of Goods Sold");
+        put("5100", "Production Variance");
         put("5200", "Materials COGS");
+        put("5250", "Conversion Cost Applied");
     }
 
     public InMemoryGlAccountLookup put(String code, String name) {

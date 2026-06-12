@@ -46,6 +46,7 @@ import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
 import com.northwood.testharness.inmemory.SynchronousBus;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryBomLookup;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryRoutingQueryPort;
 import com.northwood.testharness.inmemory.reporting.InMemoryProductionPlanningProjection;
 import com.northwood.testharness.kits.FinanceTestKit;
 import com.northwood.testharness.kits.InventoryTestKit;
@@ -236,6 +237,18 @@ public final class World {
     /** Give a manufactured product a single-operation active routing. */
     public World seedSingleOpRouting(String fgCode) {
         manufacturing.routings.putSingleOp(product(fgCode).productId());
+        return this;
+    }
+
+    /**
+     * Seed the labour + overhead per-minute rates on the default work centre
+     * used by {@link #seedSingleOpRouting}, so the conversion-cost and
+     * efficiency-variance WIP legs fire. Without this the work centre has no
+     * rate and conversion is zero.
+     */
+    public World seedConversionRate(BigDecimal labourPerMinute, BigDecimal overheadPerMinute) {
+        manufacturing.workCenterRates.put(
+            InMemoryRoutingQueryPort.DEFAULT_WORK_CENTER, labourPerMinute, overheadPerMinute);
         return this;
     }
 

@@ -28,6 +28,7 @@ public class JdbcProductMaterialsCostProjection implements ProductMaterialsCostP
     public void apply(
         UUID productId,
         BigDecimal materialsCost,
+        BigDecimal standardCost,
         String currencyCode,
         String reason,
         Instant capturedAt
@@ -35,31 +36,33 @@ public class JdbcProductMaterialsCostProjection implements ProductMaterialsCostP
         Timestamp ts = Timestamp.from(capturedAt);
         jdbc.update("""
             INSERT INTO manufacturing.product_card
-                (product_id, materials_cost, currency_code, materials_cost_reason, materials_cost_captured_at)
-            VALUES (?, ?, ?, ?, ?)
+                (product_id, materials_cost, standard_cost, currency_code, materials_cost_reason, materials_cost_captured_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT (product_id) DO UPDATE SET
                 materials_cost = EXCLUDED.materials_cost,
+                standard_cost = EXCLUDED.standard_cost,
                 currency_code = EXCLUDED.currency_code,
                 materials_cost_reason = EXCLUDED.materials_cost_reason,
                 materials_cost_captured_at = EXCLUDED.materials_cost_captured_at
             """,
-            productId, materialsCost, currencyCode, reason, ts
+            productId, materialsCost, standardCost, currencyCode, reason, ts
         );
-        log.info("materials cost rolled up: product={} cost={} currency={} reason={}",
-            productId, materialsCost, currencyCode, reason);
+        log.info("cost rolled up: product={} materialsCost={} standardCost={} currency={} reason={}",
+            productId, materialsCost, standardCost, currencyCode, reason);
     }
 
     @Override
     public Optional<MaterialsCost> findByProductId(UUID productId) {
         var rows = jdbc.query(
             """
-            SELECT product_id, materials_cost, currency_code, materials_cost_reason, materials_cost_captured_at
+            SELECT product_id, materials_cost, standard_cost, currency_code, materials_cost_reason, materials_cost_captured_at
             FROM manufacturing.product_card
             WHERE product_id = ? AND materials_cost_captured_at IS NOT NULL
             """,
             (rs, i) -> new MaterialsCost(
                 (UUID) rs.getObject("product_id"),
                 rs.getBigDecimal("materials_cost"),
+                rs.getBigDecimal("standard_cost"),
                 rs.getString("currency_code"),
                 rs.getString("materials_cost_reason"),
                 rs.getTimestamp("materials_cost_captured_at").toInstant()

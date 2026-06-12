@@ -142,6 +142,12 @@ Argument validation and receiver-state invariants go through `com.northwood.shar
 
 Any `.orElse(SENTINEL)` / null-coalescing-to-default needs: method-level Javadoc on emitter (trigger, value, rationale, tightening alternatives), cross-ref on the consumer that trusts it, log line when it fires (DEBUG for designed-tolerant, WARN for "shouldn't happen"), and a row in `docs/design-notes.md` under *Documented silent fallbacks*. Code review fails on undocumented or unindexed fallbacks. Detail: `docs/conventions.md`.
 
+## Never reference a backlog/todo item number outside the backlog
+
+`dev-todo.md` and `dev-done.md` are the **only** files that may mention a backlog item number or slice tag (`§2.42`, `§1G.3`, `Slice C`, "dev-todo"/"dev-done", etc.). Every other file — all code (Java, SQL, comments, Javadoc), every committed doc (`business-requirements.md`, `requirement-coverage.md`, `architecture.md`, the SPAs, …), commit messages, and test names — must be self-contained: describe the *behaviour / requirement* (e.g. "perpetual-WIP conversion absorption", a `REQ-XXX-NNN` id), never the backlog coordinate that happened to schedule it. Backlog numbers churn (items ship and are removed; numbers are reused across conversations), so a `§N.M` reference in code rots into a dangling pointer.
+
+Standing guard — after editing any tracked file, `Grep '§|dev-todo|dev-done|Slice [A-G0-9]'` over it → expect 0 hits (kept exceptions: `dev-todo.md`, `dev-done.md`, the gitignored `t3/` working area, internal doc section-anchors, `.gitignore`, and this rule's own statement here, which must name the tokens to forbid them). A new hit is a code-review fail. Cross-reference shipped work by its `REQ-*` id or a prose description instead.
+
 ## Pointers
 
 - **`docs/architecture.md`** — Module layout, the *event classes as navigation anchor* principle (three operational tests for cross-service traceability), events jars (with `EVENT_TYPE` and status-constant hosting rules), DDD service template, test rules (aggregate domain unit tests + the `Jdbc*` persistence integration-test (`*IT`) pattern: what gets one, the Testcontainers recipe, FK-seed / explicit-`outbox_message_id` / outbox-delta gotchas, and the mutable / write-once / saga-adapter shapes), outbox/inbox shared-module wiring.

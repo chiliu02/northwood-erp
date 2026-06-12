@@ -18,6 +18,14 @@ import java.util.UUID;
  */
 public final class InMemoryRoutingQueryPort implements RoutingQueryPort {
 
+    /**
+     * Fixed work centre used by {@link #putSingleOp(UUID)} so a test can seed a
+     * matching conversion rate (via {@code InMemoryWorkCenterRateLookup}) for the
+     * same id — random ids couldn't be looked up.
+     */
+    public static final UUID DEFAULT_WORK_CENTER =
+        UUID.fromString("00000000-0000-7000-8000-0000000009c4");
+
     private final Map<UUID, Routing> byProductId = new HashMap<>();
 
     public InMemoryRoutingQueryPort put(UUID finishedProductId, RoutingOperation... operations) {
@@ -42,7 +50,7 @@ public final class InMemoryRoutingQueryPort implements RoutingQueryPort {
             10,
             "OP-10",
             "Assemble",
-            UUID.randomUUID(),
+            DEFAULT_WORK_CENTER,
             BigDecimal.valueOf(15),
             BigDecimal.valueOf(60)
         ));

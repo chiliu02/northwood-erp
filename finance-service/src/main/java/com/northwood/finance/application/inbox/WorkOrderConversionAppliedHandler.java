@@ -20,8 +20,7 @@ import tools.jackson.databind.ObjectMapper;
  * ({@link RawMaterialsReservedWipHandler}) and consumed sub-assemblies
  * ({@link SubAssembliesConsumedWipHandler}) in, and the FG receipt
  * ({@link WorkOrderManufacturingCompletedWipHandler}, crediting WIP at the full
- * standard cost = material + conversion) out — WIP nets to zero per work order
- * (dev-todo §2.42).
+ * standard cost = material + conversion) out — WIP nets to zero per work order.
  *
  * <p>Amount is carried on the event (manufacturing computed it from the
  * product's routing × work-centre rates — the same calculation that produced

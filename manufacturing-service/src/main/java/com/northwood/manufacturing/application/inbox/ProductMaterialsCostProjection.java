@@ -27,13 +27,16 @@ import java.util.UUID;
 public interface ProductMaterialsCostProjection {
 
     /**
-     * Upsert the rollup output. {@code materialsCost} and
+     * Upsert the rollup output. {@code materialsCost}, {@code standardCost} and
      * {@code currencyCode} are nullable together: when {@code reason} is
-     * {@code 'inputs_missing'} both are null.
+     * {@code 'inputs_missing'} all are null. {@code standardCost} = material
+     * rollup + conversion (own routing + recursive sub-assembly conversion),
+     * it is the value driven onto product master's standard cost.
      */
     void apply(
         UUID productId,
         BigDecimal materialsCost,
+        BigDecimal standardCost,
         String currencyCode,
         String reason,
         Instant capturedAt
@@ -44,6 +47,7 @@ public interface ProductMaterialsCostProjection {
     record MaterialsCost(
         UUID productId,
         BigDecimal materialsCost,
+        BigDecimal standardCost,
         String currencyCode,
         String reason,
         Instant capturedAt

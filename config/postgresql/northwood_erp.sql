@@ -1266,6 +1266,10 @@ CREATE TABLE manufacturing.product_card (
     discontinued_at               TIMESTAMPTZ,
     active_bom_header_id          UUID,
     materials_cost                NUMERIC(18, 6),
+    -- Full standard cost = material rollup + conversion (own routing + recursive
+    -- sub-assembly conversion). The value driven onto product
+    -- master's standard_cost; NULL together with materials_cost when inputs_missing.
+    standard_cost                 NUMERIC(18, 6),
     currency_code                 CHAR(3),
     materials_cost_reason         VARCHAR(40) NOT NULL DEFAULT 'inputs_missing',
     materials_cost_captured_at    TIMESTAMPTZ,
@@ -1304,7 +1308,7 @@ CREATE TABLE manufacturing.work_center (
     work_center_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     work_center_code VARCHAR(50) NOT NULL UNIQUE,
     name VARCHAR(200) NOT NULL,
-    -- Conversion-cost rates for perpetual-WIP absorption (dev-todo §2.42).
+    -- Conversion-cost rates for perpetual-WIP absorption.
     -- Per-minute so they multiply directly against routing_operation's
     -- planned/actual setup+run minutes (no hour conversion). standardCost of a
     -- manufactured SKU = material rollup + Σ(operation minutes × these rates);

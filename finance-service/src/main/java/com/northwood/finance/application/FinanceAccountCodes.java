@@ -66,8 +66,7 @@ final class FinanceAccountCodes {
      * (Dr 1230 WIP), so WIP nets to zero against the full standard cost out
      * (material + conversion). The "applied" half of standard conversion costing
      * — Northwood doesn't post the actual labour/overhead it offsets, so this
-     * carries the absorbed conversion that flows on into COGS at shipment
-     * (dev-todo §2.42).
+     * carries the absorbed conversion that flows on into COGS at shipment.
      */
     static final String CONVERSION_APPLIED = "5250";
 
@@ -75,8 +74,7 @@ final class FinanceAccountCodes {
      * 5100 — Production Variance. Carries the manufacturing efficiency variance
      * (actual − standard conversion) cleared off WIP at work-order completion:
      * unfavorable (actual &gt; standard) Dr's here / Cr WIP; favorable Dr's WIP /
-     * Cr here. Keeps WIP netting to zero against the standard-cost FG receipt
-     * (dev-todo §2.42 slice D).
+     * Cr here. Keeps WIP netting to zero against the standard-cost FG receipt.
      */
     static final String PRODUCTION_VARIANCE = "5100";
 

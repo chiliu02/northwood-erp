@@ -7,7 +7,7 @@ import java.util.UUID;
 
 /**
  * A work order has completed and its standard conversion cost (labour +
- * overhead) is absorbed into WIP (dev-todo §2.42). Emitted once per WO
+ * overhead) is absorbed into WIP. Emitted once per WO
  * completion from {@code WorkOrderOperationService.onWorkOrderCompleted},
  * alongside {@link SubAssembliesConsumed} — the same completion hook.
  *
@@ -17,7 +17,7 @@ import java.util.UUID;
  * charge (on {@code inventory.RawMaterialsReserved}) and the FG receipt (on
  * {@link WorkOrderManufacturingCompleted}, credited at the full standard cost =
  * material + standard conversion), WIP nets to zero per work order, with the
- * efficiency variance landing in 5100 (dev-todo §2.42 slices C + D).
+ * efficiency variance landing in 5100.
  *
  * <p>Both amounts are totals for the completed quantity (per-unit × completed
  * quantity), computed by manufacturing from work-centre rates:

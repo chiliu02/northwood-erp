@@ -20,7 +20,7 @@ import java.util.UUID;
  * value to a human should render "—" or "n/a" in that case.
  *
  * <p>{@code standardCost} = {@code materialsCost} + the product's own-routing
- * conversion cost (labour + overhead, dev-todo §2.42); it is the value
+ * conversion cost (labour + overhead); it is the value
  * product-master stamps onto {@code standard_cost}. Null whenever
  * {@code materialsCost} is null. For a purchased item with no routing it
  * equals {@code materialsCost} (zero conversion). Nullable for forward-compat:

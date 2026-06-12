@@ -137,7 +137,7 @@ public class MaterialsCostRollupService {
         Optional<UUID> preferred = approvedVendors.findPreferredSupplierId(productId);
         if (preferred.isEmpty()) {
             log.debug("rollup → inputs_missing: product={} has no unique preferred supplier", productId);
-            applyAndWalk(productId, null, null, "inputs_missing", new HashSet<>(), 0);
+            applyAndWalk(productId, null, null, null, "inputs_missing", new HashSet<>(), 0);
             return;
         }
         if (!preferred.get().equals(supplierId)) {
@@ -146,7 +146,12 @@ public class MaterialsCostRollupService {
             return;
         }
 
-        applyAndWalk(productId, newUnitPrice, currencyCode, "supplier_price_change", new HashSet<>(), 0);
+        // A purchased item with no BoM: standard cost = price + own conversion
+        // (zero for a raw / purchased item with no routing).
+        BigDecimal standardCost = newUnitPrice
+            .add(conversionCosts.perUnitConversionCost(productId))
+            .setScale(6, RoundingMode.HALF_UP);
+        applyAndWalk(productId, newUnitPrice, standardCost, currencyCode, "supplier_price_change", new HashSet<>(), 0);
     }
 
     /**
@@ -183,14 +188,21 @@ public class MaterialsCostRollupService {
         BomLookup.ActiveBom activeBom = activeBomOpt.get();
         BomRollupResult outcome = computeBomRollup(activeBom);
         if (outcome.inputsMissing) {
-            applyAndWalk(productId, null, null, "inputs_missing", visited, depth);
+            applyAndWalk(productId, null, null, null, "inputs_missing", visited, depth);
         } else {
-            applyAndWalk(productId, outcome.totalCost, outcome.currency, reason, visited, depth);
+            // Full standard cost = recursive component standard cost (raws at
+            // material price, sub-assemblies at their full standard cost) + this
+            // product's own-routing conversion.
+            BigDecimal standardCost = outcome.totalStandardCost()
+                .add(conversionCosts.perUnitConversionCost(productId))
+                .setScale(6, RoundingMode.HALF_UP);
+            applyAndWalk(productId, outcome.totalCost, standardCost, outcome.currency, reason, visited, depth);
         }
     }
 
     private BomRollupResult computeBomRollup(BomLookup.ActiveBom activeBom) {
-        BigDecimal total = BigDecimal.ZERO;
+        BigDecimal totalMaterials = BigDecimal.ZERO;
+        BigDecimal totalStandard = BigDecimal.ZERO;
         String currency = null;
         boolean inputsMissing = false;
 
@@ -222,15 +234,25 @@ public class MaterialsCostRollupService {
             BigDecimal scrapMultiplier = BigDecimal.ONE.add(
                 scrapPct.divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP)
             );
-            BigDecimal lineCost = qty.multiply(scrapMultiplier).multiply(cc.materialsCost());
-            total = total.add(lineCost);
+            BigDecimal factor = qty.multiply(scrapMultiplier);
+            totalMaterials = totalMaterials.add(factor.multiply(cc.materialsCost()));
+            // Recursive full standard cost: a raw contributes its material price
+            // (standardCost == materialsCost); a manufactured sub-assembly
+            // contributes its full standard cost (its own material + conversion),
+            // so the parent's standard cost folds in sub-assembly conversion.
+            // Fall back to materialsCost if standardCost isn't populated yet.
+            BigDecimal compStandard = cc.standardCost() != null ? cc.standardCost() : cc.materialsCost();
+            totalStandard = totalStandard.add(factor.multiply(compStandard));
         }
 
         if (inputsMissing) {
-            return new BomRollupResult(true, null, null);
+            return new BomRollupResult(true, null, null, null);
         }
-        // Round the rolled-up cost to the same scale as supplier prices (6dp).
-        return new BomRollupResult(false, total.setScale(6, RoundingMode.HALF_UP), currency);
+        // Round the rolled-up costs to the same scale as supplier prices (6dp).
+        return new BomRollupResult(false,
+            totalMaterials.setScale(6, RoundingMode.HALF_UP),
+            totalStandard.setScale(6, RoundingMode.HALF_UP),
+            currency);
     }
 
     private static BigDecimal nullToZero(BigDecimal v) {
@@ -239,48 +261,39 @@ public class MaterialsCostRollupService {
 
     private void applyAndWalk(
         UUID productId,
-        BigDecimal cost,
+        BigDecimal materialsCost,
+        BigDecimal standardCost,
         String currencyCode,
         String reason,
         Set<UUID> visited,
         int depth
     ) {
-        if (visited.contains(productId)) {
-            // Already applied to this product in this chain — guard against
-            // diamond shapes (D depends on B + C, both of which depend on A).
-            // The first walk through D applies; the second is suppressed.
-        }
         visited.add(productId);
 
         // No-op suppression: skip projection write + event emission when the
         // outcome is identical to the existing row. Avoids a parent walk
         // cascading through unchanged cells and causes idempotent retriggers
-        // (e.g. inbox at-least-once redelivery) to land cheaply.
+        // (e.g. inbox at-least-once redelivery) to land cheaply. standardCost is
+        // compared too, so a sub-assembly conversion change still propagates up
+        // even when the parent's material cost is unchanged.
         Optional<ProductMaterialsCostProjection.MaterialsCost> existing =
             materialsCosts.findByProductId(productId);
         if (existing.isPresent()
-            && eqCost(existing.get().materialsCost(), cost)
+            && eqCost(existing.get().materialsCost(), materialsCost)
+            && eqCost(existing.get().standardCost(), standardCost)
             && eqStr(existing.get().currencyCode(), currencyCode)
             && eqStr(existing.get().reason(), reason)) {
-            log.debug("rollup no-op for product={} (unchanged cost+currency+reason)", productId);
+            log.debug("rollup no-op for product={} (unchanged material+standard cost+currency+reason)", productId);
             return;
         }
 
         Instant now = Instant.now();
-        materialsCosts.apply(productId, cost, currencyCode, reason, now);
-
-        // Full standard cost = material cost + the product's own-routing
-        // conversion cost (labour + overhead). Null when there is no material
-        // cost. NOTE (dev-todo §2.42): single-level — a sub-assembly's own
-        // conversion is NOT yet folded into its parent's standard cost (that
-        // needs a persisted full-cost facet; tracked as §2.42 item 2b). For a
-        // leaf raw / purchased item there is no routing, so it equals cost.
-        BigDecimal standardCost = cost == null ? null : cost.add(conversionCosts.perUnitConversionCost(productId));
+        materialsCosts.apply(productId, materialsCost, standardCost, currencyCode, reason, now);
 
         ProductMaterialsCostComputed event = new ProductMaterialsCostComputed(
             UUID.randomUUID(),
             productId,
-            cost,
+            materialsCost,
             standardCost,
             currencyCode,
             reason,
@@ -288,7 +301,7 @@ public class MaterialsCostRollupService {
         );
         outbox.append(event, ProductMaterialsCostComputed.AGGREGATE_TYPE);
         log.info("emitted {} product={} materialsCost={} standardCost={} currency={} reason={}",
-            ProductMaterialsCostComputed.EVENT_TYPE, productId, cost, standardCost, currencyCode, reason);
+            ProductMaterialsCostComputed.EVENT_TYPE, productId, materialsCost, standardCost, currencyCode, reason);
 
         // Walk parents: any product whose active BoM lists this product as a
         // line needs to recompute. Parents always have active BoMs by
@@ -311,5 +324,6 @@ public class MaterialsCostRollupService {
         return a.equals(b);
     }
 
-    private record BomRollupResult(boolean inputsMissing, BigDecimal totalCost, String currency) {}
+    private record BomRollupResult(
+        boolean inputsMissing, BigDecimal totalCost, BigDecimal totalStandardCost, String currency) {}
 }

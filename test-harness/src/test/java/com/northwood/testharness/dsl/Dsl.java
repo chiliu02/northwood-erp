@@ -279,8 +279,38 @@ public final class Dsl {
             this.fgCode = fgCode;
         }
 
-        public SeedStep singleOp() {
-            return world -> world.seedSingleOpRouting(fgCode);
+        public SingleOpRouting singleOp() {
+            return new SingleOpRouting(fgCode);
+        }
+    }
+
+    /**
+     * A single-operation active routing (setup 15 + run 60 min/unit). Optionally
+     * seed labour + overhead per-minute conversion rates on its work centre
+     * so the conversion-cost + efficiency-variance WIP legs fire; without
+     * it the work centre has no rate and conversion is zero.
+     */
+    public static final class SingleOpRouting implements SeedStep {
+        private final String fgCode;
+        private BigDecimal labourPerMinute;
+        private BigDecimal overheadPerMinute;
+
+        private SingleOpRouting(String fgCode) {
+            this.fgCode = fgCode;
+        }
+
+        public SingleOpRouting withConversionRatePerMinute(String labour, String overhead) {
+            this.labourPerMinute = new BigDecimal(labour);
+            this.overheadPerMinute = new BigDecimal(overhead);
+            return this;
+        }
+
+        @Override
+        public void seed(World world) {
+            world.seedSingleOpRouting(fgCode);
+            if (labourPerMinute != null) {
+                world.seedConversionRate(labourPerMinute, overheadPerMinute);
+            }
         }
     }
 

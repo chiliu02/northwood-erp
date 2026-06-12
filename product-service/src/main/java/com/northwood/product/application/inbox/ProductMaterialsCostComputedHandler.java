@@ -13,7 +13,7 @@ import tools.jackson.databind.ObjectMapper;
  * Closes the cost-rollup feedback loop — when manufacturing rolls up a
  * product's cost (typically because a supplier price changed or a
  * BOM-component cost changed), this handler stamps the rolled-up
- * <b>standard cost</b> (material + own-routing conversion; dev-todo §2.42)
+ * <b>standard cost</b> (material + own-routing conversion)
  * onto product master's {@code standard_cost} via the existing
  * {@link ProductService#changeStandardCost} mutator. That mutator emits
  * {@code product.StandardCostChanged}, which the already-wired finance
@@ -60,7 +60,7 @@ public class ProductMaterialsCostComputedHandler extends AbstractInboxHandler<Pr
     protected void apply(ProductMaterialsCostComputed payload, EventEnvelope envelope) {
         // Prefer the full standard cost (material + conversion); fall back to
         // materialsCost for forward-compat with events emitted before the
-        // standardCost field existed (dev-todo §2.42).
+        // standardCost field existed.
         var cost = payload.standardCost() != null ? payload.standardCost() : payload.materialsCost();
         if (cost == null || payload.currencyCode() == null) {
             log.info("[{}] skipping {} ({}) for product_id={} — cost/currencyCode null (reason={})",

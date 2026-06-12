@@ -565,12 +565,19 @@ class JournalEntryServicePostingsTest {
             when(productCards.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of(ValuationClass.FINISHED_GOODS));
             UUID wo = UUID.randomUUID();
 
+            // Material + sub-assembly legs only (the conversion + variance legs
+            // are covered by wip_nets_to_zero_with_actual_conversion_and_variance).
+            // NOTE: amounts are hand-fed, so this proves the posting service is
+            // symmetric — NOT that real product_card costs reconcile. That
+            // (FG std cost == material + conversion rollup, so WIP nets to zero
+            // with DERIVED amounts) is covered end-to-end by the harness
+            // StockReplenishment*WipDslTest scenarios.
             // Dr WIP 120 (materials) + Dr WIP 90 (sub-assemblies) ...
             service.postWorkInProgressCharge(wo, "WO-1",
                 List.of(new LineCost(PRODUCT_RM, new BigDecimal("120.00"))), Currencies.AUD, POSTING_DATE);
             service.postSubAssemblyConsumption(wo, "WO-1",
                 List.of(new LineCost(PRODUCT_FG, new BigDecimal("90.00"))), Currencies.AUD, POSTING_DATE);
-            // ... Cr WIP 210 (completion at FG standard cost = rolled-up materials).
+            // ... Cr WIP 210 (completion credit, hand-matched to the charges above).
             service.postWorkOrderCompletion(wo, "WO-1", PRODUCT_FG,
                 new BigDecimal("210.00"), Currencies.AUD, POSTING_DATE);
 

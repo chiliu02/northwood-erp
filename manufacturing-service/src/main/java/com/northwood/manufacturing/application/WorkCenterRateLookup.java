@@ -8,7 +8,7 @@ import java.util.UUID;
  * Narrow lookup of a work centre's conversion-cost rates (labour + overhead,
  * per minute) from {@code manufacturing.work_center}. Used by
  * {@link MaterialsCostRollupService} to roll a product's own-routing conversion
- * cost into its standard cost (dev-todo §2.42): for each active-routing
+ * cost into its standard cost: for each active-routing
  * operation, conversion = (setup + run minutes) × (labour + overhead rate) of
  * the operation's work centre.
  *

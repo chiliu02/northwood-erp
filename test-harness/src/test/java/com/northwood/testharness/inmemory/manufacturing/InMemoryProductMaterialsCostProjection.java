@@ -18,9 +18,11 @@ public final class InMemoryProductMaterialsCostProjection implements ProductMate
 
     @Override
     public void apply(
-        UUID productId, BigDecimal materialsCost, String currencyCode, String reason, Instant capturedAt
+        UUID productId, BigDecimal materialsCost, BigDecimal standardCost,
+        String currencyCode, String reason, Instant capturedAt
     ) {
-        byProductId.put(productId, new MaterialsCost(productId, materialsCost, currencyCode, reason, capturedAt));
+        byProductId.put(productId,
+            new MaterialsCost(productId, materialsCost, standardCost, currencyCode, reason, capturedAt));
     }
 
     @Override
@@ -28,11 +30,11 @@ public final class InMemoryProductMaterialsCostProjection implements ProductMate
         return Optional.ofNullable(byProductId.get(productId));
     }
 
-    /** Test-side: seed a starting materialsCost (e.g. before exercising the rollup). */
+    /** Test-side: seed a starting materialsCost (standardCost defaults to the same value). */
     public InMemoryProductMaterialsCostProjection put(
         UUID productId, BigDecimal cost, String currency, String reason
     ) {
-        byProductId.put(productId, new MaterialsCost(productId, cost, currency, reason, Instant.now()));
+        byProductId.put(productId, new MaterialsCost(productId, cost, cost, currency, reason, Instant.now()));
         return this;
     }
 }
