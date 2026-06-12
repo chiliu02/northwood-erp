@@ -101,7 +101,7 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 | REQ-FIN-040/041 (allocation, prepayment settlement) | `JdbcCustomerInvoiceRepositoryIT` (paid_amount trigger), `JdbcPaymentRepositoryIT`; deposit DSL test | ✅ |
 | REQ-FIN-050/051 (supplier invoice, manual-review queue) | `PurchaseToPayRejectionPathDslTest`; `JdbcSupplierInvoiceRepositoryIT` | ✅ |
 | REQ-FIN-060 (same-currency pass-through) | exercised throughout — every DSL / IT flow is single-currency (AUD), routing the `CurrencyConverter` same-currency branch | ✅ |
-| REQ-FIN-061/062 (cross-currency conversion + inverse-rate fallback; ad-hoc rate lookup) | `CurrencyConverter` / `JdbcCurrencyConverter` / `ExchangeRateService` / `ExchangeRateController` exist but have **no dedicated test** | ⚠️ deferred (see gaps) |
+| REQ-FIN-061/062 (cross-currency conversion + inverse-rate fallback; ad-hoc rate lookup) | — | ❌ **multi-currency not implemented** — single-currency (AUD) only today; REQs flipped to `(deferred)`. A **feature** gap, not a test gap. |
 
 ## REQ-RPT — Reporting (read views)
 
@@ -145,6 +145,6 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 
 - **REQ-RPT-060** — Replenishment History view not shipped (planned).
 - **REQ-MFG-060 / REQ-SAL-041** — operator WO-cancel is **not implemented** (no `WorkOrder.cancel()`, no endpoint; `CANCELLED` is only guarded against). Both requirements were flipped from `(shipped)` to `(deferred)` in `business-requirements.md`. To ship: add `WorkOrder.cancel()` (release reservations, halt in-progress ops, status → `cancelled`, write off WIP) + a cancel endpoint + tests. (A make-to-stock WO is not bound to a sales order, so the sales-cancel flow no longer needs it.)
-- **REQ-FIN-061 / REQ-FIN-062** (cross-currency conversion + inverse-rate fallback; the `GET /api/exchange-rate` lookup) — `CurrencyConverter` / `ExchangeRateService` / `ExchangeRateController` are untested. **Deferred, not accidental**: multi-currency is low-priority (project memory) and the demo runs single-currency (AUD). A `CurrencyConverter` domain unit test (same-currency pass-through + cross-currency + inverse fallback) + a `JdbcCurrencyConverterIT` would close it cheaply if revisited.
+- **REQ-FIN-061 / REQ-FIN-062** — **multi-currency is not implemented**; the system runs single-currency (AUD) only (REQ-FIN-060 is the live path). Cross-currency conversion + the `GET /api/exchange-rate` lookup are not delivered (low-priority — project memory), so this is a **feature gap, not a test gap**. If multi-currency is ever built, add a `CurrencyConverter` unit test (pass-through + cross-currency + inverse fallback) + a `JdbcCurrencyConverterIT` then.
 
 > The cancel-gate test (`SalesOrderControllerSecurityTest`) is the **representative** role-gate test; the other `@RequireXxx` meta-annotations share the same `@PreAuthorize` mechanism (and the realm-role → authority mapping is covered by `KeycloakRealmRoleConverterTest`). Per-endpoint gate tests can be added if a regression ever warrants it.
