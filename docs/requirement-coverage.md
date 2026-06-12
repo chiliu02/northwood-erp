@@ -128,7 +128,7 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 
 | REQ | Covered by | Status |
 |---|---|---|
-| REQ-SEC-001 (role-based access) | `@PreAuthorize` on controllers + Demo 8 walkthrough | ⚠️ automated API-filter test coverage not confirmed here — verify |
+| REQ-SEC-001 (role-based access) | `KeycloakRealmRoleConverterTest` (realm-role → `ROLE_*` authority) + `SalesOrderControllerSecurityTest` (cancel gate: `sales_clerk` 403 / `sales_manager` 200) | ✅ representative |
 | REQ-SEC-002 (audit trail) | `JdbcAuditQueryAdapterIT` (shared) + Demo 8 | ✅ |
 
 ---
@@ -143,5 +143,6 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 
 - **REQ-FIN-028** — sub-assembly-consumed WIP leg shares `WORK_ORDER_WIP` source-doc type with REQ-FIN-026, so `a_journal()` can't uniquely assert it. Needs a sub-assembly-only WIP scenario or a disambiguating assertion.
 - **REQ-RPT-060** — Replenishment History view not shipped (planned).
-- **REQ-SEC-001** — confirm automated API-filter (403/200) tests exist; today the role gate is shown via Demo 8 + `@PreAuthorize`.
 - **REQ-PROD-041 / REQ-PROD-080 / REQ-MFG-060** — confirm a dedicated unit/IT exists (cost rollup, end-to-end discontinue fan-out, WO hard-cancel).
+
+> The cancel-gate test (`SalesOrderControllerSecurityTest`) is the **representative** role-gate test; the other `@RequireXxx` meta-annotations share the same `@PreAuthorize` mechanism (and the realm-role → authority mapping is covered by `KeycloakRealmRoleConverterTest`). Per-endpoint gate tests can be added if a regression ever warrants it.
