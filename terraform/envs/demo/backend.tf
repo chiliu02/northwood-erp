@@ -9,7 +9,7 @@
 # `dynamodb_table = "<lock-table>"` (and create the table in bootstrap).
 terraform {
   backend "s3" {
-    bucket       = "REPLACE_ME-northwood-tfstate"
+    bucket       = "northwood-tfstate-chiliu02"
     key          = "northwood/demo/terraform.tfstate"
     region       = "ap-southeast-2"
     encrypt      = true
