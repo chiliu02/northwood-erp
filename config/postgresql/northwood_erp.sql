@@ -1304,6 +1304,14 @@ CREATE TABLE manufacturing.work_center (
     work_center_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     work_center_code VARCHAR(50) NOT NULL UNIQUE,
     name VARCHAR(200) NOT NULL,
+    -- Conversion-cost rates for perpetual-WIP absorption (dev-todo §2.42).
+    -- Per-minute so they multiply directly against routing_operation's
+    -- planned/actual setup+run minutes (no hour conversion). standardCost of a
+    -- manufactured SKU = material rollup + Σ(operation minutes × these rates);
+    -- the labour leg posts Dr WIP / Cr Labour-Applied, overhead Dr WIP / Cr
+    -- Overhead-Applied, so WIP nets to zero against the full standard cost out.
+    labour_rate_per_minute NUMERIC(18, 6) NOT NULL DEFAULT 0,
+    overhead_rate_per_minute NUMERIC(18, 6) NOT NULL DEFAULT 0,
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

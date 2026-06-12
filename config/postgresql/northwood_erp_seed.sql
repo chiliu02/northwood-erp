@@ -486,10 +486,16 @@ INSERT INTO manufacturing.bom_line (
     ('00000000-0000-7000-8000-000000000312', 3, '00000000-0000-7000-8000-000000000004', 'RM-SCREW-001',   'Screw Pack',   'raw', 2.000000, 0)
 ON CONFLICT (bom_header_id, line_number) DO NOTHING;
 
-INSERT INTO manufacturing.work_center (work_center_id, work_center_code, name)
+-- Conversion-cost rates (dev-todo §2.42): $30/hr labour (0.50/min) + overhead
+-- absorbed at 50% of labour (0.25/min). FG-TABLE-001's routing is 180 min/unit
+-- (35+25+70+50), so conversion = 180 × 0.75 = 135/unit; with the 197 material
+-- rollup the full standard cost rolls up to 332 (the cost-rollup slice drives
+-- product.standard_cost from this — until then the seeded standard_cost still
+-- reads its hand-set value).
+INSERT INTO manufacturing.work_center (work_center_id, work_center_code, name, labour_rate_per_minute, overhead_rate_per_minute)
 VALUES (
     '00000000-0000-7000-8000-000000000500',
-    'WC-ASSEMBLY', 'Assembly Bay'
+    'WC-ASSEMBLY', 'Assembly Bay', 0.500000, 0.250000
 ) ON CONFLICT (work_center_code) DO NOTHING;
 
 INSERT INTO manufacturing.routing_header (
