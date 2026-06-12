@@ -72,7 +72,7 @@ public class ShipmentDeferredRevenueHandler extends AbstractInboxHandler<Shipmen
                     postingDate
                 );
                 log.info("[{}] recognised deferred revenue for {} invoice {} (sales_order={}, total={} {})",
-                    CONSUMER_NAME, existing.get().invoiceType().dbValue(), existing.get().invoiceNumber(),
+                    CONSUMER_NAME, existing.get().invoiceType().code(), existing.get().invoiceNumber(),
                     payload.salesOrderHeaderId(), existing.get().totalAmount(), existing.get().currencyCode());
             }
         }

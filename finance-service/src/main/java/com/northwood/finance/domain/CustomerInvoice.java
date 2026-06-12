@@ -60,19 +60,19 @@ public final class CustomerInvoice {
         /** Schema-prep — not currently produced by Java or trigger. */
         CANCELLED("cancelled");
 
-        private final String dbValue;
+        private final String code;
 
-        Status(String dbValue) {
-            this.dbValue = dbValue;
+        Status(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Status fromDb(String value) {
+        public static Status fromCode(String value) {
             for (Status s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("customer_invoice status", value);
         }
@@ -104,19 +104,19 @@ public final class CustomerInvoice {
         DEPOSIT("deposit"),
         BALANCE("balance");
 
-        private final String dbValue;
+        private final String code;
 
-        InvoiceType(String dbValue) {
-            this.dbValue = dbValue;
+        InvoiceType(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static InvoiceType fromDb(String value) {
+        public static InvoiceType fromCode(String value) {
             for (InvoiceType t : values()) {
-                if (t.dbValue.equals(value)) return t;
+                if (t.code.equals(value)) return t;
             }
             throw Assert.unknownValue("customer_invoice invoice_type", value);
         }
@@ -272,7 +272,7 @@ public final class CustomerInvoice {
             customerName,
             ci.currencyCode,
             total,
-            Status.POSTED.dbValue(),
+            Status.POSTED.code(),
             Instant.now()
         ));
         return ci;

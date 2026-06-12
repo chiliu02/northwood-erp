@@ -17,7 +17,7 @@ import java.util.UUID;
  *
  * <p>{@code paymentTerms} is the wire-format value of the commercial terms
  * snapshotted from the customer at placement (overridable per order) — a
- * {@link com.northwood.sales.domain.PaymentTerms} {@code dbValue()}. Nullable
+ * {@link com.northwood.sales.domain.PaymentTerms} {@code code()}. Nullable
  * for backward compatibility with in-flight messages produced by older versions —
  * consumers treat a null as {@code on_shipment}.
  *

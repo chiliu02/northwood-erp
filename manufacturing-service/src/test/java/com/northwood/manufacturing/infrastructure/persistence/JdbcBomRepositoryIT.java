@@ -40,7 +40,7 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <ul>
  *   <li>{@code draft} + {@code addLine} → {@code findById} round-trip of header
- *       + lines incl. the {@code component_kind} {@code dbValue()}/{@code fromDb()}
+ *       + lines incl. the {@code component_kind} {@code code()}/{@code fromCode()}
  *       round-trip (RAW + SUB_ASSEMBLY) and the string {@code version} vs.
  *       numeric {@code row_version};</li>
  *   <li>{@code activate} flipping {@code draft → active} through the update path

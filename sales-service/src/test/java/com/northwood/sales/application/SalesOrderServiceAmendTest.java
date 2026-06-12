@@ -105,7 +105,7 @@ class SalesOrderServiceAmendTest {
         // Finance guard: prepayment/deposit orders invoice up front, so a
         // supply_secured prepayment order already carries a pre-shipment invoice.
         when(sagaManager.currentState(ORDER_ID)).thenReturn(Optional.of(SalesOrderFulfilmentSaga.SUPPLY_SECURED));
-        when(sagaManager.currentPaymentTerms(ORDER_ID)).thenReturn(Optional.of(PaymentTerms.PREPAYMENT.dbValue()));
+        when(sagaManager.currentPaymentTerms(ORDER_ID)).thenReturn(Optional.of(PaymentTerms.PREPAYMENT.code()));
 
         assertThatThrownBy(() -> service.addLine(addCommand(null)))
             .isInstanceOf(OrderNotAmendableException.class);

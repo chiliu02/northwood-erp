@@ -31,7 +31,7 @@ public class JdbcGoodsReceiptRepository implements GoodsReceiptRepository {
         rs.getString("supplier_name"),
         rs.getObject("warehouse_id", UUID.class),
         null,
-        GoodsReceipt.Status.fromDb(rs.getString("status")),
+        GoodsReceipt.Status.fromCode(rs.getString("status")),
         List.of(),
         rs.getLong("version")
     );
@@ -121,7 +121,7 @@ public class JdbcGoodsReceiptRepository implements GoodsReceiptRepository {
             """,
             gr.id().value(), gr.goodsReceiptNumber(),
             gr.purchaseOrderHeaderId(), gr.purchaseOrderNumber(), gr.supplierId(), gr.supplierName(),
-            gr.warehouseId(), gr.status().dbValue(),
+            gr.warehouseId(), gr.status().code(),
             1L,
             gr.status() == GoodsReceipt.Status.POSTED ? Timestamp.from(Instant.now()) : null,
             actor, actor

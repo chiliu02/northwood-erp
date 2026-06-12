@@ -136,9 +136,9 @@ public class SalesOrderFulfilmentSagaWorker {
      */
     private void advanceFromStarted(SalesOrderFulfilmentSaga saga) {
         String pt = readData(saga).paymentTerms();
-        if (PaymentTerms.PREPAYMENT.dbValue().equals(pt)) {
+        if (PaymentTerms.PREPAYMENT.code().equals(pt)) {
             requestPrepaymentInvoice(saga);
-        } else if (PaymentTerms.DEPOSIT.dbValue().equals(pt)) {
+        } else if (PaymentTerms.DEPOSIT.code().equals(pt)) {
             requestDepositInvoice(saga);
         } else {
             requestStockReservation(saga);

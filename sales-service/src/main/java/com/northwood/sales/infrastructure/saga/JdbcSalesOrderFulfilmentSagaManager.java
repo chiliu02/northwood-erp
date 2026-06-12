@@ -381,7 +381,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
         // orderFullySettled is genuinely true across both invoices.
         if (AWAITING_PREPAYMENT.equals(saga.state())) {
             if (invoiceFullySettled) {
-                boolean isPrepayment = PaymentTerms.PREPAYMENT.dbValue().equals(readData(saga).paymentTerms());
+                boolean isPrepayment = PaymentTerms.PREPAYMENT.code().equals(readData(saga).paymentTerms());
                 if (orderFullySettled && isPrepayment) {
                     writeData(saga, readData(saga).withOrderSettled());
                 }

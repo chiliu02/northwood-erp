@@ -42,7 +42,7 @@ import tools.jackson.databind.ObjectMapper;
  * <ul>
  *   <li>{@code release} → {@code findById} round-trip of header + materials +
  *       operations incl. the status / material_status / line-status enum
- *       {@code dbValue()}/{@code fromDb()} round-trips, child-collection ordering
+ *       {@code code()}/{@code fromCode()} round-trips, child-collection ordering
  *       ({@code component_sku} / {@code operation_sequence}) and the
  *       {@code WorkOrderCreated} outbox row;</li>
  *   <li>{@code completeOperation} advancing the WO {@code released → in_progress}

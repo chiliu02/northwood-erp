@@ -65,7 +65,7 @@ class PaymentServiceTest {
         return new SupplierInvoiceRepository.PaymentSnapshot(
             supplierId, "Supplier-" + supplierId.toString().substring(0, 4),
             PO, currency, new BigDecimal(total), new BigDecimal(paid),
-            SupplierInvoice.Status.fromDb(status)
+            SupplierInvoice.Status.fromCode(status)
         );
     }
 
@@ -82,7 +82,7 @@ class PaymentServiceTest {
         return new CustomerInvoiceRepository.PaymentSnapshot(
             customerId, "Customer-" + customerId.toString().substring(0, 4),
             SO, currency, new BigDecimal(total), new BigDecimal(paid),
-            CustomerInvoice.Status.fromDb(status),
+            CustomerInvoice.Status.fromCode(status),
             invoiceType
         );
     }

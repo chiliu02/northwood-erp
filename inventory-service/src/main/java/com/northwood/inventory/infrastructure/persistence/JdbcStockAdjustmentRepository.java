@@ -29,10 +29,10 @@ public class JdbcStockAdjustmentRepository implements StockAdjustmentRepository 
         rs.getObject("product_id", UUID.class),
         rs.getString("product_sku"),
         rs.getString("product_name"),
-        StockMovementDirection.fromDb(rs.getString("direction")),
+        StockMovementDirection.fromCode(rs.getString("direction")),
         rs.getBigDecimal("quantity"),
         rs.getString("reason"),
-        StockAdjustment.Status.fromDb(rs.getString("status")),
+        StockAdjustment.Status.fromCode(rs.getString("status")),
         rs.getLong("version")
     );
 
@@ -85,8 +85,8 @@ public class JdbcStockAdjustmentRepository implements StockAdjustmentRepository 
             """,
             adjustment.id().value(), adjustment.adjustmentNumber(), adjustment.warehouseId(),
             adjustment.productId(), adjustment.productSku(), adjustment.productName(),
-            adjustment.direction().dbValue(), adjustment.quantity(), adjustment.reason(),
-            adjustment.status().dbValue(), 1L,
+            adjustment.direction().code(), adjustment.quantity(), adjustment.reason(),
+            adjustment.status().code(), 1L,
             adjustment.status() == StockAdjustment.Status.POSTED ? Timestamp.from(Instant.now()) : null,
             actor, actor
         );

@@ -34,7 +34,7 @@ public record SupplierInvoiceView(
             si.supplierId(), si.supplierName(),
             si.currencyCode(),
             si.subtotalAmount(), si.taxAmount(), si.totalAmount(),
-            si.status().dbValue(), si.matchStatus().dbValue(),
+            si.status().code(), si.matchStatus().code(),
             si.version(),
             si.lines().stream().map(SupplierInvoiceLineView::from).toList()
         );

@@ -790,7 +790,7 @@ ON CONFLICT (tax_code) DO NOTHING;
 -- product_type analogue: raw → 'raw_materials', finished → 'finished_goods',
 -- semi-finished → 'semi_finished_goods' (which JournalEntryService routes to
 -- the FG inventory + COGS accounts, same as finished goods). Wire-format
--- values mirror product.domain.ValuationClass.dbValue(). Subsequent events
+-- values mirror product.domain.ValuationClass.code(). Subsequent events
 -- update individual columns.
 INSERT INTO finance.product_card (
     product_id, standard_cost, currency_code, valuation_class

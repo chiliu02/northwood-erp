@@ -72,7 +72,7 @@ public class JdbcWorkOrderRepository implements WorkOrderRepository {
                 header.replenishmentRequestId, header.parentWorkOrderId,
                 header.finishedProductId, header.finishedProductSku, header.finishedProductName,
                 header.bomHeaderId, header.plannedQuantity,
-                WorkOrder.Status.fromDb(header.status), WorkOrder.MaterialStatus.fromDb(header.materialStatus),
+                WorkOrder.Status.fromCode(header.status), WorkOrder.MaterialStatus.fromCode(header.materialStatus),
                 header.completedQuantity, header.actualStartAt, header.actualCompletedAt,
                 header.version,
                 materials, operations
@@ -149,7 +149,7 @@ public class JdbcWorkOrderRepository implements WorkOrderRepository {
             workOrder.replenishmentRequestId(), workOrder.parentWorkOrderId(),
             workOrder.finishedProductId(), workOrder.finishedProductSku(), workOrder.finishedProductName(),
             workOrder.bomHeaderId(), workOrder.plannedQuantity(),
-            workOrder.status().dbValue(), workOrder.materialStatus().dbValue(),
+            workOrder.status().code(), workOrder.materialStatus().code(),
             1L,
             actor, actor
         );
@@ -165,7 +165,7 @@ public class JdbcWorkOrderRepository implements WorkOrderRepository {
                 m.id(), workOrder.id().value(), m.componentProductId(),
                 m.componentSku(), m.componentName(), m.requiredQuantity(),
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                m.unitCost(), BigDecimal.ZERO, m.status().dbValue()
+                m.unitCost(), BigDecimal.ZERO, m.status().code()
             );
         }
         for (WorkOrderOperation op : workOrder.operations()) {
@@ -178,7 +178,7 @@ public class JdbcWorkOrderRepository implements WorkOrderRepository {
                 """,
                 op.id(), workOrder.id().value(), op.operationSequence(),
                 op.operationCode(), op.description(), op.workCenterId(),
-                op.plannedSetupMinutes(), op.plannedRunMinutes(), op.status().dbValue()
+                op.plannedSetupMinutes(), op.plannedRunMinutes(), op.status().code()
             );
         }
     }
@@ -192,7 +192,7 @@ public class JdbcWorkOrderRepository implements WorkOrderRepository {
                 last_modified_by = ?
             WHERE work_order_id = ? AND version = ?
             """,
-            workOrder.status().dbValue(), workOrder.materialStatus().dbValue(), workOrder.completedQuantity(),
+            workOrder.status().code(), workOrder.materialStatus().code(), workOrder.completedQuantity(),
             workOrder.actualStartAt() == null ? null : Timestamp.from(workOrder.actualStartAt()),
             workOrder.actualCompletedAt() == null ? null : Timestamp.from(workOrder.actualCompletedAt()),
             actor,
@@ -210,7 +210,7 @@ public class JdbcWorkOrderRepository implements WorkOrderRepository {
                     started_at = ?, completed_at = ?
                 WHERE work_order_operation_id = ?
                 """,
-                op.status().dbValue(), op.actualMinutes(),
+                op.status().code(), op.actualMinutes(),
                 op.startedAt() == null ? null : Timestamp.from(op.startedAt()),
                 op.completedAt() == null ? null : Timestamp.from(op.completedAt()),
                 op.id()
@@ -280,7 +280,7 @@ public class JdbcWorkOrderRepository implements WorkOrderRepository {
         rs.getString("component_name"),
         rs.getBigDecimal("required_quantity"),
         rs.getBigDecimal("unit_cost"),
-        WorkOrder.MaterialLineStatus.fromDb(rs.getString("status"))
+        WorkOrder.MaterialLineStatus.fromCode(rs.getString("status"))
     );
 
     private static final RowMapper<WorkOrderOperation> OPERATION_MAPPER = (rs, n) -> {
@@ -294,7 +294,7 @@ public class JdbcWorkOrderRepository implements WorkOrderRepository {
             rs.getObject("work_center_id", UUID.class),
             rs.getBigDecimal("planned_setup_minutes"),
             rs.getBigDecimal("planned_run_minutes"),
-            WorkOrder.OperationStatus.fromDb(rs.getString("status")),
+            WorkOrder.OperationStatus.fromCode(rs.getString("status")),
             rs.getBigDecimal("actual_minutes"),
             startedAt == null ? null : startedAt.toInstant(),
             completedAt == null ? null : completedAt.toInstant()

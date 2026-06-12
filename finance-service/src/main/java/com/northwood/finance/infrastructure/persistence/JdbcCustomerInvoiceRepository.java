@@ -34,8 +34,8 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
         rs.getBigDecimal("subtotal_amount"),
         rs.getBigDecimal("tax_amount"),
         rs.getBigDecimal("total_amount"),
-        CustomerInvoice.Status.fromDb(rs.getString("status")),
-        CustomerInvoice.InvoiceType.fromDb(rs.getString("invoice_type")),
+        CustomerInvoice.Status.fromCode(rs.getString("status")),
+        CustomerInvoice.InvoiceType.fromCode(rs.getString("invoice_type")),
         List.of(),
         rs.getLong("version")
     );
@@ -128,8 +128,8 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
                     rs.getString("currency_code"),
                     rs.getBigDecimal("total_amount"),
                     rs.getBigDecimal("paid_amount"),
-                    CustomerInvoice.Status.fromDb(rs.getString("status")),
-                    CustomerInvoice.InvoiceType.fromDb(rs.getString("invoice_type"))
+                    CustomerInvoice.Status.fromCode(rs.getString("status")),
+                    CustomerInvoice.InvoiceType.fromCode(rs.getString("invoice_type"))
                 ),
                 customerInvoiceHeaderId
             ));
@@ -165,7 +165,7 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
             (rs, n) -> new ShipmentTimeInvoice(
                 rs.getObject("customer_invoice_header_id", java.util.UUID.class),
                 rs.getString("invoice_number"),
-                CustomerInvoice.InvoiceType.fromDb(rs.getString("invoice_type")),
+                CustomerInvoice.InvoiceType.fromCode(rs.getString("invoice_type")),
                 rs.getString("customer_name"),
                 rs.getString("currency_code"),
                 rs.getBigDecimal("total_amount"),
@@ -230,7 +230,7 @@ public class JdbcCustomerInvoiceRepository implements CustomerInvoiceRepository 
             ci.customerId(), ci.customerCode(), ci.customerName(),
             ci.currencyCode(),
             ci.subtotalAmount(), ci.taxAmount(), ci.totalAmount(),
-            ci.status().dbValue(), ci.invoiceType().dbValue(), 1L, postedAt,
+            ci.status().code(), ci.invoiceType().code(), 1L, postedAt,
             actor, actor
         );
         for (CustomerInvoiceLine l : ci.lines()) {

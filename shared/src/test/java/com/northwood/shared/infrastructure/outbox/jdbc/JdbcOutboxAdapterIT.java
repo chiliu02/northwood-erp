@@ -32,7 +32,7 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <ul>
  *   <li>the {@code appendPending} INSERT + {@code findPending} read round-trip
- *       through {@code OutboxRow.fromDb}, including the {@code ?::jsonb} casts
+ *       through {@code OutboxRow.fromCode}, including the {@code ?::jsonb} casts
  *       and the DB-generated {@code sequence_number} / {@code created_at} /
  *       {@code status='pending'} / {@code retry_count} defaults;</li>
  *   <li>the documented null-{@code headers} → {@code '{}'} coercion in

@@ -77,7 +77,7 @@ class SalesOrderShippedHandlerTest {
     }
 
     @Test void on_shipment_invoices_only_no_auto_payment() {
-        handler.handle(event(PaymentTerms.ON_SHIPMENT.dbValue()));
+        handler.handle(event(PaymentTerms.ON_SHIPMENT.code()));
 
         verify(invoices).createFromShippedOrder(any(SalesOrderShipped.class));
         verify(payments, never()).recordCashOnDeliveryPayment(any(), any());
@@ -88,7 +88,7 @@ class SalesOrderShippedHandlerTest {
         CustomerInvoiceId invoiceId = CustomerInvoiceId.newId();
         when(invoices.createFromShippedOrder(any(SalesOrderShipped.class))).thenReturn(invoiceId);
 
-        handler.handle(event(PaymentTerms.CASH_ON_DELIVERY.dbValue()));
+        handler.handle(event(PaymentTerms.CASH_ON_DELIVERY.code()));
 
         verify(invoices).createFromShippedOrder(any(SalesOrderShipped.class));
         verify(payments).recordCashOnDeliveryPayment(eq(invoiceId.value()), any(LocalDate.class));
@@ -99,7 +99,7 @@ class SalesOrderShippedHandlerTest {
     @Test void posts_cogs_for_a_paid_line_not_free_of_charge() {
         // standard_cost projection unstubbed → Optional.empty() → falls back to
         // the shipment-stamped unitCost (60.00); qty 2 → cost 120.00.
-        handler.handle(event(PaymentTerms.ON_SHIPMENT.dbValue(), new BigDecimal("100.00")));
+        handler.handle(event(PaymentTerms.ON_SHIPMENT.code(), new BigDecimal("100.00")));
 
         ArgumentCaptor<List<JournalEntryService.LineCost>> cap = ArgumentCaptor.forClass(List.class);
         verify(journals).postShipmentCost(any(), any(), cap.capture(), any(), any());
@@ -113,7 +113,7 @@ class SalesOrderShippedHandlerTest {
     @Test void posts_cogs_as_free_of_charge_for_a_zero_price_line() {
         // A zero sale-price line is free-of-charge: its cost still posts (the
         // goods left stock) but routes to Promotions, not COGS.
-        handler.handle(event(PaymentTerms.ON_SHIPMENT.dbValue(), BigDecimal.ZERO));
+        handler.handle(event(PaymentTerms.ON_SHIPMENT.code(), BigDecimal.ZERO));
 
         ArgumentCaptor<List<JournalEntryService.LineCost>> cap = ArgumentCaptor.forClass(List.class);
         verify(journals).postShipmentCost(any(), any(), cap.capture(), any(), any());
@@ -122,7 +122,7 @@ class SalesOrderShippedHandlerTest {
     }
 
     @Test void already_processed_short_circuits() {
-        EventEnvelope envelope = event(PaymentTerms.ON_SHIPMENT.dbValue());
+        EventEnvelope envelope = event(PaymentTerms.ON_SHIPMENT.code());
         when(inbox.alreadyProcessed(eq(envelope.eventId()),
             eq(SalesOrderShippedHandler.CONSUMER_NAME))).thenReturn(true);
 

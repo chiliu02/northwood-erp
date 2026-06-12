@@ -32,7 +32,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Real-Postgres test for {@link JdbcCustomerRepository}, covering
  * the branches a mocked unit test can't: insert→findById/findByCode round-trip
- * incl. the {@code status} {@code dbValue()}/{@code fromDb()} mapping + the
+ * incl. the {@code status} {@code code()}/{@code fromCode()} mapping + the
  * outbox row drained on save; a status-changing mutator persisted via the
  * update path; optimistic-lock conflict; and the {@code UNIQUE(customer_code)}
  * violation translated to {@link DuplicateCustomerCodeException}.
@@ -123,7 +123,7 @@ class JdbcCustomerRepositoryIT {
 
         Customer reloaded = REPO.findById(c.id()).orElseThrow();
         assertThat(reloaded.status()).isEqualTo(loaded.status());
-        assertThat(dbStatus(c.id().value())).isEqualTo(loaded.status().dbValue());
+        assertThat(dbStatus(c.id().value())).isEqualTo(loaded.status().code());
     }
 
     @Test

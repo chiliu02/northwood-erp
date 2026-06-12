@@ -69,7 +69,7 @@ public class SalesOrderCancellationRefundHandler
         if (invoice.invoiceType() != CustomerInvoice.InvoiceType.PREPAYMENT
             && invoice.invoiceType() != CustomerInvoice.InvoiceType.DEPOSIT) {
             log.debug("[{}] sales_order={} up-front invoice is {} — no Customer Deposits balance to refund",
-                CONSUMER_NAME, payload.aggregateId(), invoice.invoiceType().dbValue());
+                CONSUMER_NAME, payload.aggregateId(), invoice.invoiceType().code());
             return;
         }
 
@@ -77,7 +77,7 @@ public class SalesOrderCancellationRefundHandler
             .map(PaymentSnapshot::paidAmount).orElse(BigDecimal.ZERO);
         if (paid.signum() <= 0) {
             log.debug("[{}] sales_order={} {} invoice unpaid — nothing in 2110, clean cancel suffices",
-                CONSUMER_NAME, payload.aggregateId(), invoice.invoiceType().dbValue());
+                CONSUMER_NAME, payload.aggregateId(), invoice.invoiceType().code());
             return;
         }
 

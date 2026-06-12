@@ -84,7 +84,7 @@ public class SupplierService {
     public SupplierView changeStatus(UUID supplierId, String newStatus, String reason) {
         Supplier supplier = suppliers.findById(SupplierId.of(supplierId))
             .orElseThrow(() -> new SupplierNotFoundException(supplierId));
-        supplier.changeStatus(Supplier.Status.fromDb(newStatus), reason);
+        supplier.changeStatus(Supplier.Status.fromCode(newStatus), reason);
         suppliers.save(supplier);
         log.info("changed supplier {} status -> {} (reason={})", supplierId, newStatus, reason);
         return SupplierView.from(supplier);

@@ -237,9 +237,9 @@ public class StockReservationService {
             replenishmentDetection.raiseForSalesOrderShortage(productId, warehouseId, shortage, salesOrderId, salesOrderLineId);
         }
         stockReservations.recomputeSalesOrderHeaderStatus(headerId.get());
-        emitLineReservationChanged(salesOrderId, salesOrderLineId, productId, reserved, shortage, status.dbValue());
+        emitLineReservationChanged(salesOrderId, salesOrderLineId, productId, reserved, shortage, status.code());
         log.info("amended sales_order={} +line={} reserved={} shortage={} status={}",
-            salesOrderId, salesOrderLineId, reserved, shortage, status.dbValue());
+            salesOrderId, salesOrderLineId, reserved, shortage, status.code());
     }
 
     /** A line was removed: release its reservation back to the free pool. */
@@ -257,7 +257,7 @@ public class StockReservationService {
         }
         stockReservations.updateLine(
             l.stockReservationLineId(), l.requestedQuantity(), BigDecimal.ZERO, BigDecimal.ZERO,
-            StockReservation.Status.RELEASED.dbValue()
+            StockReservation.Status.RELEASED.code()
         );
         stockReservations.recomputeSalesOrderHeaderStatus(l.stockReservationHeaderId());
         // Emit the released reply FIRST so the saga drops this line from its
@@ -265,7 +265,7 @@ public class StockReservationService {
         // cancel for a no-longer-outstanding line is a benign no-op rather than
         // an order rejection.
         emitLineReservationChanged(salesOrderId, salesOrderLineId, l.productId(),
-            BigDecimal.ZERO, BigDecimal.ZERO, StockReservation.Status.RELEASED.dbValue());
+            BigDecimal.ZERO, BigDecimal.ZERO, StockReservation.Status.RELEASED.code());
         // If the removed line was short and awaiting supply, cancel
         // its in-flight replenishment so it doesn't fulfil into the pool for a
         // line that no longer exists. A fulfilled request is excluded by the
@@ -309,14 +309,14 @@ public class StockReservationService {
         }
         BigDecimal shortage = newQuantity.subtract(reserved);
         StockReservation.Status status = statusFor(newQuantity, reserved);
-        stockReservations.updateLine(l.stockReservationLineId(), newQuantity, reserved, shortage, status.dbValue());
+        stockReservations.updateLine(l.stockReservationLineId(), newQuantity, reserved, shortage, status.code());
         if (shortage.signum() > 0) {
             replenishmentDetection.raiseForSalesOrderShortage(l.productId(), l.warehouseId(), shortage, salesOrderId, salesOrderLineId);
         }
         stockReservations.recomputeSalesOrderHeaderStatus(l.stockReservationHeaderId());
-        emitLineReservationChanged(salesOrderId, salesOrderLineId, l.productId(), reserved, shortage, status.dbValue());
+        emitLineReservationChanged(salesOrderId, salesOrderLineId, l.productId(), reserved, shortage, status.code());
         log.info("amended sales_order={} ~line={} newQty={} reserved={} shortage={} status={}",
-            salesOrderId, salesOrderLineId, newQuantity, reserved, shortage, status.dbValue());
+            salesOrderId, salesOrderLineId, newQuantity, reserved, shortage, status.code());
     }
 
     private void emitLineReservationChanged(
@@ -405,7 +405,7 @@ public class StockReservationService {
                         r.requestedQuantity(), r.productId(), salesOrderHeaderId);
                 }
                 case REQUESTED, DISPATCHED -> {
-                    String priorStatus = r.status().dbValue();
+                    String priorStatus = r.status().code();
                     r.markCancelled("sales order " + salesOrderHeaderId
                         + " cancelled — dropping order-pegged supply (settles into free pool)");
                     replenishmentRequests.save(r);

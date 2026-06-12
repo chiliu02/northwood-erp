@@ -206,7 +206,7 @@ CREATE TABLE product.product (
     -- is_manufactured/is_purchased and this column — a derived view, not a stored
     -- 4-value enum. NULL for services (axis is N/A); 'to_stock' default otherwise
     -- (REQ-INV-090). Wire-format mirrors product.domain.ReplenishmentStrategy
-    -- .dbValue() (product-events). The three CONSTRAINTs below mirror the
+    -- .code() (product-events). The three CONSTRAINTs below mirror the
     -- invariant set enforced in the Product aggregate (changeReplenishmentStrategy).
     replenishment_strategy VARCHAR(20) DEFAULT 'to_stock',
     -- (1) services carry no strategy; everything else carries to_stock|to_order.
@@ -227,7 +227,7 @@ CREATE TABLE product.product (
     -- active BOM is the authoritative pointer (manufacturing keeps a parallel
     -- bom_header.is_active during the migration period); approved vendors
     -- live in product.approved_vendor (separate, multi-valued). Wire-format
-    -- values mirror product.domain.ValuationClass.dbValue() (product-events).
+    -- values mirror product.domain.ValuationClass.code() (product-events).
     valuation_class VARCHAR(50) CHECK (
         valuation_class IS NULL
         OR valuation_class IN ('raw_materials', 'finished_goods', 'semi_finished_goods')
@@ -2102,7 +2102,7 @@ CREATE TABLE finance.product_card (
     product_id      UUID PRIMARY KEY,
     standard_cost   NUMERIC(18, 6),
     currency_code   CHAR(3),
-    -- Wire-format values mirror product.domain.ValuationClass.dbValue()
+    -- Wire-format values mirror product.domain.ValuationClass.code()
     -- (product-events) and the matching CHECK on product.product.valuation_class.
     valuation_class VARCHAR(50) CHECK (
         valuation_class IS NULL

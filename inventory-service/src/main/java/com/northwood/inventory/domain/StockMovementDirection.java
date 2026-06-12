@@ -13,19 +13,19 @@ public enum StockMovementDirection {
     IN("in"),
     OUT("out");
 
-    private final String dbValue;
+    private final String code;
 
-    StockMovementDirection(String dbValue) {
-        this.dbValue = dbValue;
+    StockMovementDirection(String code) {
+        this.code = code;
     }
 
-    public String dbValue() {
-        return dbValue;
+    public String code() {
+        return code;
     }
 
-    public static StockMovementDirection fromDb(String value) {
+    public static StockMovementDirection fromCode(String value) {
         for (StockMovementDirection d : values()) {
-            if (d.dbValue.equals(value)) return d;
+            if (d.code.equals(value)) return d;
         }
         throw Assert.unknownValue("stock_movement direction", value);
     }

@@ -104,7 +104,7 @@ class JdbcStockReservationRepositoryIT {
         // Status is RESERVED (one fully-reserved line) → in the "active" set.
         assertThat(REPO.findActiveHeaderIdForSalesOrder(salesOrderId)).contains(reservation.id().value());
         assertThat(REPO.findWarehouseIdForHeader(reservation.id().value())).contains(WAREHOUSE_ID);
-        assertThat(dbHeaderStatus(reservation.id().value())).isEqualTo(reservation.status().dbValue());
+        assertThat(dbHeaderStatus(reservation.id().value())).isEqualTo(reservation.status().code());
 
         var reserved = REPO.findReservedLines(reservation.id().value());
         assertThat(reserved).hasSize(1);

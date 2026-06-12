@@ -52,7 +52,7 @@ class ProductTest {
             ProductCreated e = (ProductCreated) events.get(0);
             assertThat(e.aggregateId()).isEqualTo(p.id().value());
             assertThat(e.sku()).isEqualTo(p.sku().value());
-            assertThat(e.productType()).isEqualTo(p.productType().dbValue());
+            assertThat(e.productType()).isEqualTo(p.productType().code());
         }
 
         @Test void starts_active() {

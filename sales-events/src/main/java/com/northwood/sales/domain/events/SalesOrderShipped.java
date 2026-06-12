@@ -17,7 +17,7 @@ import java.util.UUID;
  * <p>{@code aggregateId} is the sales-order-header id.
  *
  * <p>{@code paymentTerms} is the order's commercial terms — a
- * {@link com.northwood.sales.domain.PaymentTerms} {@code dbValue()}. Finance
+ * {@link com.northwood.sales.domain.PaymentTerms} {@code code()}. Finance
  * branches on it at shipment: a {@code cash_on_delivery} order has its customer
  * payment auto-recorded the moment the invoice is created (cash-on-delivery). Nullable for
  * backward compatibility with in-flight messages produced by older versions —

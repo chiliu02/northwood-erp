@@ -30,8 +30,8 @@ public class JdbcCustomerRepository implements CustomerRepository {
         rs.getString("phone"),
         rs.getString("billing_address"),
         rs.getString("shipping_address"),
-        Customer.Status.fromDb(rs.getString("status")),
-        PaymentTerms.fromDb(rs.getString("default_payment_terms")),
+        Customer.Status.fromCode(rs.getString("status")),
+        PaymentTerms.fromCode(rs.getString("default_payment_terms")),
         rs.getLong("version")
     );
 
@@ -107,7 +107,7 @@ public class JdbcCustomerRepository implements CustomerRepository {
                 """,
                 c.id().value(), c.customerCode(), c.name(),
                 c.email(), c.phone(), c.billingAddress(), c.shippingAddress(),
-                c.status().dbValue(), c.defaultPaymentTerms().dbValue(),
+                c.status().code(), c.defaultPaymentTerms().code(),
                 1L,
                 actor, actor
             );
@@ -127,7 +127,7 @@ public class JdbcCustomerRepository implements CustomerRepository {
             """,
             c.name(), c.email(), c.phone(),
             c.billingAddress(), c.shippingAddress(),
-            c.status().dbValue(),
+            c.status().code(),
             actor,
             c.id().value(), c.version()
         );

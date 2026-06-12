@@ -916,9 +916,9 @@ public final class Dsl {
         public AssertStep totalling(Money total) {
             return world -> {
                 var invoice = world.invoiceOfType(orderNumber, type);
-                assertThat(invoice).as("%s invoice for order %s", type.dbValue(), orderNumber).isPresent();
+                assertThat(invoice).as("%s invoice for order %s", type.code(), orderNumber).isPresent();
                 assertThat(invoice.orElseThrow().totalAmount())
-                    .as("%s invoice total for order %s", type.dbValue(), orderNumber)
+                    .as("%s invoice total for order %s", type.code(), orderNumber)
                     .isEqualByComparingTo(total.amount());
             };
         }

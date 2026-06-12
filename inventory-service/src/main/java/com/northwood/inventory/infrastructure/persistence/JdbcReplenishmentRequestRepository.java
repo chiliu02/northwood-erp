@@ -32,12 +32,12 @@ public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestR
             rs.getObject("product_id", UUID.class),
             rs.getObject("warehouse_id", UUID.class),
             rs.getBigDecimal("requested_quantity"),
-            ReplenishmentRequest.TargetService.fromDb(rs.getString("target_service")),
-            ReplenishmentRequest.Reason.fromDb(rs.getString("reason")),
+            ReplenishmentRequest.TargetService.fromCode(rs.getString("target_service")),
+            ReplenishmentRequest.Reason.fromCode(rs.getString("reason")),
             rs.getObject("source_sales_order_header_id", UUID.class),
             rs.getObject("source_sales_order_line_id", UUID.class),
-            ReplenishmentRequest.Status.fromDb(rs.getString("status")),
-            kind == null ? null : DispatchedAggregateKind.fromDb(kind),
+            ReplenishmentRequest.Status.fromCode(rs.getString("status")),
+            kind == null ? null : DispatchedAggregateKind.fromCode(kind),
             rs.getObject("dispatched_aggregate_id", UUID.class),
             rs.getObject("linked_purchase_order_id", UUID.class),
             dispatchedAt == null ? null : dispatchedAt.toInstant(),
@@ -145,11 +145,11 @@ public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestR
             """,
             r.id().value(), r.productId(), r.warehouseId(),
             r.requestedQuantity(),
-            r.targetService().dbValue(),
-            r.reason().dbValue(),
+            r.targetService().code(),
+            r.reason().code(),
             r.sourceSalesOrderHeaderId(),
             r.sourceSalesOrderLineId(),
-            r.status().dbValue()
+            r.status().code()
         );
     }
 
@@ -166,8 +166,8 @@ public class JdbcReplenishmentRequestRepository implements ReplenishmentRequestR
                 version = version + 1
             WHERE replenishment_request_id = ? AND version = ?
             """,
-            r.status().dbValue(),
-            r.dispatchedAggregateKind() == null ? null : r.dispatchedAggregateKind().dbValue(),
+            r.status().code(),
+            r.dispatchedAggregateKind() == null ? null : r.dispatchedAggregateKind().code(),
             r.dispatchedAggregateId(),
             r.linkedPurchaseOrderId(),
             r.dispatchedAt() == null ? null : Timestamp.from(r.dispatchedAt()),

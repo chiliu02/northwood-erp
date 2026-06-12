@@ -33,12 +33,12 @@ public record SalesOrderView(
             order.customerName(),
             order.orderDate(),
             order.requestedDeliveryDate(),
-            order.status().dbValue(),
+            order.status().code(),
             order.currencyCode(),
             order.subtotalAmount(),
             order.taxAmount(),
             order.totalAmount(),
-            order.paymentTerms().dbValue(),
+            order.paymentTerms().code(),
             order.version(),
             order.lines().stream().map(SalesOrderLineView::from).toList()
         );

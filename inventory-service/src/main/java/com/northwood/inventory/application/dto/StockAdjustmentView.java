@@ -24,8 +24,8 @@ public record StockAdjustmentView(
             a.id().value(), a.adjustmentNumber(),
             a.warehouseId(), a.warehouseCode(),
             a.productId(), a.productSku(), a.productName(),
-            a.direction().dbValue(), a.quantity(), a.reason(),
-            a.status().dbValue(), a.version()
+            a.direction().code(), a.quantity(), a.reason(),
+            a.status().code(), a.version()
         );
     }
 }

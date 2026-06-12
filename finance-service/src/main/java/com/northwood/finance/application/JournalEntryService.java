@@ -104,7 +104,7 @@ public class JournalEntryService {
      * The switch is exhaustive over the enum — the schema CHECK on
      * {@code finance.product_card.valuation_class} keeps the producer-side
      * set aligned, so an unknown wire value is a data-integrity failure that
-     * surfaces from {@code ValuationClass.fromDb} on read, not a fallback
+     * surfaces from {@code ValuationClass.fromCode} on read, not a fallback
      * here.
      *
      * <p><b>Silent-fallback contract on missing valuation-class projection.</b>
@@ -601,7 +601,7 @@ public class JournalEntryService {
             ? FinanceAccountCodes.CUSTOMER_DEPOSITS
             : FinanceAccountCodes.AR;
         String creditMemo = toDeposits
-            ? "Hold deposit from " + customerName + " (" + invoiceType.dbValue() + " invoice)"
+            ? "Hold deposit from " + customerName + " (" + invoiceType.code() + " invoice)"
             : "Settle receivable from " + customerName;
         post(
             JournalEntry.NUMBER_PREFIX + journalSuffix(),
@@ -707,7 +707,7 @@ public class JournalEntryService {
             .orElseThrow(() -> new IllegalArgumentException(
                 "No journal entry with id=" + originalJournalEntryId));
         Assert.state(original.status() == JournalEntry.Status.POSTED, "Cannot reverse journal " + originalJournalEntryId
-                    + " in status=" + original.status().dbValue() + " (must be posted)");
+                    + " in status=" + original.status().code() + " (must be posted)");
         JournalEntry reversal = JournalEntry.reverseOf(original, reason, postingDate);
         journalEntries.save(reversal);
         journalEntries.markReversed(originalId);

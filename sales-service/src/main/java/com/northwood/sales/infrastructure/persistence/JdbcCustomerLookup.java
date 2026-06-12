@@ -31,8 +31,8 @@ public class JdbcCustomerLookup implements CustomerLookup {
                     rs.getObject("customer_id", UUID.class),
                     rs.getString("customer_code"),
                     rs.getString("name"),
-                    Customer.Status.fromDb(rs.getString("status")),
-                    PaymentTerms.fromDb(rs.getString("default_payment_terms"))
+                    Customer.Status.fromCode(rs.getString("status")),
+                    PaymentTerms.fromCode(rs.getString("default_payment_terms"))
                 ),
                 customerCode
             ));

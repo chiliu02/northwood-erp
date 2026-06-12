@@ -57,19 +57,19 @@ public final class Bom {
         ACTIVE("active"),
         INACTIVE("inactive");
 
-        private final String dbValue;
+        private final String code;
 
-        Status(String dbValue) {
-            this.dbValue = dbValue;
+        Status(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Status fromDb(String value) {
+        public static Status fromCode(String value) {
             for (Status s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("bom status", value);
         }
@@ -85,19 +85,19 @@ public final class Bom {
         RAW("raw"),
         SUB_ASSEMBLY("sub_assembly");
 
-        private final String dbValue;
+        private final String code;
 
-        ComponentKind(String dbValue) {
-            this.dbValue = dbValue;
+        ComponentKind(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static ComponentKind fromDb(String value) {
+        public static ComponentKind fromCode(String value) {
             for (ComponentKind k : values()) {
-                if (k.dbValue.equals(value)) return k;
+                if (k.code.equals(value)) return k;
             }
             throw Assert.unknownValue("bom_line component_kind", value);
         }

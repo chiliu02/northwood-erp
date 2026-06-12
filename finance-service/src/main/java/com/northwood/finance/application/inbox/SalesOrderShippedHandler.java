@@ -69,7 +69,7 @@ public class SalesOrderShippedHandler extends AbstractInboxHandler<SalesOrderShi
     protected void apply(SalesOrderShipped payload, EventEnvelope envelope) {
         CustomerInvoiceId invoiceId = invoices.createFromShippedOrder(payload);
 
-        if (PaymentTerms.CASH_ON_DELIVERY.dbValue().equals(payload.paymentTerms())) {
+        if (PaymentTerms.CASH_ON_DELIVERY.code().equals(payload.paymentTerms())) {
             payments.recordCashOnDeliveryPayment(invoiceId.value(), payload.shipmentDate());
             log.info("[{}] auto-invoiced + COD-settled sales_order={} (shipment={})",
                 CONSUMER_NAME, payload.aggregateId(), payload.shipmentNumber());

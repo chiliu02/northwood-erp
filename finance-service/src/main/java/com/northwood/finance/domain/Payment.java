@@ -73,19 +73,19 @@ public final class Payment {
         CARD("card"),
         CHEQUE("cheque");
 
-        private final String dbValue;
+        private final String code;
 
-        Method(String dbValue) {
-            this.dbValue = dbValue;
+        Method(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Method fromDb(String value) {
+        public static Method fromCode(String value) {
             for (Method m : values()) {
-                if (m.dbValue.equals(value)) return m;
+                if (m.code.equals(value)) return m;
             }
             throw Assert.unknownValue("payment_method", value);
         }
@@ -106,19 +106,19 @@ public final class Payment {
         /** Schema-prep — not currently produced by Java. */
         REVERSED("reversed");
 
-        private final String dbValue;
+        private final String code;
 
-        Status(String dbValue) {
-            this.dbValue = dbValue;
+        Status(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Status fromDb(String value) {
+        public static Status fromCode(String value) {
             for (Status s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("payment status", value);
         }
@@ -133,19 +133,19 @@ public final class Payment {
         INCOMING("incoming"),
         OUTGOING("outgoing");
 
-        private final String dbValue;
+        private final String code;
 
-        Direction(String dbValue) {
-            this.dbValue = dbValue;
+        Direction(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Direction fromDb(String value) {
+        public static Direction fromCode(String value) {
             for (Direction d : values()) {
-                if (d.dbValue.equals(value)) return d;
+                if (d.code.equals(value)) return d;
             }
             throw Assert.unknownValue("payment_direction", value);
         }
@@ -160,19 +160,19 @@ public final class Payment {
         SUPPLIER_PAYMENT("supplier_payment"),
         CUSTOMER_PAYMENT("customer_payment");
 
-        private final String dbValue;
+        private final String code;
 
-        Type(String dbValue) {
-            this.dbValue = dbValue;
+        Type(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Type fromDb(String value) {
+        public static Type fromCode(String value) {
             for (Type t : values()) {
-                if (t.dbValue.equals(value)) return t;
+                if (t.code.equals(value)) return t;
             }
             throw Assert.unknownValue("payment_type", value);
         }
@@ -188,19 +188,19 @@ public final class Payment {
         /** Schema-prep — not currently produced by Java. */
         REVERSED("reversed");
 
-        private final String dbValue;
+        private final String code;
 
-        AllocationStatus(String dbValue) {
-            this.dbValue = dbValue;
+        AllocationStatus(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static AllocationStatus fromDb(String value) {
+        public static AllocationStatus fromCode(String value) {
             for (AllocationStatus s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("payment_allocation status", value);
         }
@@ -274,7 +274,7 @@ public final class Payment {
             purchaseOrderHeaderId,
             supplierId,
             supplierName,
-            paymentMethod.dbValue(),
+            paymentMethod.code(),
             p.currencyCode,
             amount,
             amount,
@@ -338,7 +338,7 @@ public final class Payment {
             salesOrderHeaderId,
             customerId,
             customerName,
-            paymentMethod.dbValue(),
+            paymentMethod.code(),
             p.currencyCode,
             amount,
             amount,
@@ -410,7 +410,7 @@ public final class Payment {
                 l.purchaseOrderHeaderId,
                 supplierId,
                 supplierName,
-                paymentMethod.dbValue(),
+                paymentMethod.code(),
                 p.currencyCode,
                 total,           // payment-level total (informational)
                 l.amount,        // allocated to THIS invoice
@@ -478,7 +478,7 @@ public final class Payment {
                 l.salesOrderHeaderId,
                 customerId,
                 customerName,
-                paymentMethod.dbValue(),
+                paymentMethod.code(),
                 p.currencyCode,
                 total,           // payment-level total
                 l.amount,        // allocated to THIS invoice

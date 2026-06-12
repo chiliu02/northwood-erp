@@ -37,7 +37,7 @@ public final class InMemoryProductCard implements ProductCardProjection, Product
     public Optional<ValuationClass> findValuationClass(UUID productId) {
         Row r = byProductId.get(productId);
         return Optional.ofNullable(r == null ? null : r.valuationClass())
-            .map(ValuationClass::fromDb);
+            .map(ValuationClass::fromCode);
     }
 
     @Override

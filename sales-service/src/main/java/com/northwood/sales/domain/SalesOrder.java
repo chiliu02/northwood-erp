@@ -119,19 +119,19 @@ public final class SalesOrder {
         /** Order-level terminal — system-rejected, unsourceable (top-down; {@link #reject}). */
         REJECTED("rejected");
 
-        private final String dbValue;
+        private final String code;
 
-        Status(String dbValue) {
-            this.dbValue = dbValue;
+        Status(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Status fromDb(String value) {
+        public static Status fromCode(String value) {
             for (Status s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("sales_order status", value);
         }
@@ -159,19 +159,19 @@ public final class SalesOrder {
         SHIPPED("shipped"),
         CANCELLED("cancelled");
 
-        private final String dbValue;
+        private final String code;
 
-        LineStatus(String dbValue) {
-            this.dbValue = dbValue;
+        LineStatus(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static LineStatus fromDb(String value) {
+        public static LineStatus fromCode(String value) {
             for (LineStatus s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("sales_order_line line_status", value);
         }
@@ -288,7 +288,7 @@ public final class SalesOrder {
             customerName,
             currencyCode,
             order.totalAmount,
-            paymentTerms.dbValue(),
+            paymentTerms.code(),
             depositPercent,
             placedLines,
             Instant.now()
@@ -439,7 +439,7 @@ public final class SalesOrder {
             customerName,
             shipmentDate,
             Currencies.orBase(currencyCode),
-            paymentTerms.dbValue(),
+            paymentTerms.code(),
             eventLines,
             orderFullyShipped,
             Instant.now()
@@ -500,7 +500,7 @@ public final class SalesOrder {
             return;
         }
         Assert.state(status == Status.SHIPPED, "sales order " + id.value()
-            + " cannot complete from '" + status.dbValue() + "' — it must be fully shipped first");
+            + " cannot complete from '" + status.code() + "' — it must be fully shipped first");
         this.status = Status.COMPLETED;
     }
 
@@ -836,7 +836,7 @@ public final class SalesOrder {
         private final Status currentStatus;
 
         public OrderNotCancellableException(SalesOrderId orderId, Status currentStatus) {
-            super("Sales order " + orderId.value() + " is in status '" + currentStatus.dbValue()
+            super("Sales order " + orderId.value() + " is in status '" + currentStatus.code()
                 + "' and cannot be cancelled");
             this.orderId = orderId;
             this.currentStatus = currentStatus;
@@ -852,7 +852,7 @@ public final class SalesOrder {
         private final Status currentStatus;
 
         public OrderNotAmendableException(SalesOrderId orderId, Status currentStatus) {
-            super("Sales order " + orderId.value() + " is in status '" + currentStatus.dbValue()
+            super("Sales order " + orderId.value() + " is in status '" + currentStatus.code()
                 + "' and its lines cannot be amended");
             this.orderId = orderId;
             this.currentStatus = currentStatus;

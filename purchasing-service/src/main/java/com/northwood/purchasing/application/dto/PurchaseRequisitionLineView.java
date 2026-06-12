@@ -24,7 +24,7 @@ public record PurchaseRequisitionLineView(
             l.productId(), l.productSku(), l.productName(),
             l.requestedQuantity(), l.requiredDate(),
             l.suggestedSupplierId(), l.suggestedSupplierName(),
-            l.status().dbValue()
+            l.status().code()
         );
     }
 }

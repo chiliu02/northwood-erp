@@ -34,6 +34,6 @@ public class JdbcToOrderProductLookup implements ToOrderProductLookup {
                 productId);
             return false;
         }
-        return ReplenishmentStrategy.TO_ORDER.dbValue().equals(strategy);
+        return ReplenishmentStrategy.TO_ORDER.code().equals(strategy);
     }
 }

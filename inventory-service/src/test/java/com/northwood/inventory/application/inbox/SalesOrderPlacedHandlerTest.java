@@ -45,7 +45,7 @@ class SalesOrderPlacedHandlerTest {
         SalesOrderPlaced payload = new SalesOrderPlaced(
             eventId, SO, "SO-001", UUID.randomUUID(), "CUST-001", "Acme",
             Currencies.AUD, new BigDecimal("100.00"),
-            PaymentTerms.ON_SHIPMENT.dbValue(),
+            PaymentTerms.ON_SHIPMENT.code(),
             null,
             lines, Instant.now()
         );
@@ -70,8 +70,8 @@ class SalesOrderPlacedHandlerTest {
                 new BigDecimal("3"), new BigDecimal("20"))
         )));
 
-        verify(projection).applySalesOrderPlaced(SO, line1, prodA, PaymentTerms.ON_SHIPMENT.dbValue());
-        verify(projection).applySalesOrderPlaced(SO, line2, prodB, PaymentTerms.ON_SHIPMENT.dbValue());
+        verify(projection).applySalesOrderPlaced(SO, line1, prodA, PaymentTerms.ON_SHIPMENT.code());
+        verify(projection).applySalesOrderPlaced(SO, line2, prodB, PaymentTerms.ON_SHIPMENT.code());
         verify(inbox).recordProcessed(any());
     }
 

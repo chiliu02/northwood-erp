@@ -42,9 +42,9 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <ul>
  *   <li>{@code save}(insert) → {@code findById} round-trip incl. enum
- *       {@code dbValue()}/{@code fromDb()}, {@code Money}, and the
+ *       {@code code()}/{@code fromCode()}, {@code Money}, and the
  *       {@code ProductCreated} outbox row drained on save;</li>
- *   <li>the {@code update} path writing {@code status} via {@code dbValue()}
+ *   <li>the {@code update} path writing {@code status} via {@code code()}
  *       (regression guard for the {@code .name().toLowerCase()} fix);</li>
  *   <li>optimistic locking — a stale {@code version} write hits zero rows and
  *       raises {@link OptimisticLockingFailureException};</li>

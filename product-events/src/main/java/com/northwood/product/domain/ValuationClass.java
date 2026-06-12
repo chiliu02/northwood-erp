@@ -26,19 +26,19 @@ public enum ValuationClass {
     FINISHED_GOODS("finished_goods"),
     SEMI_FINISHED_GOODS("semi_finished_goods");
 
-    private final String dbValue;
+    private final String code;
 
-    ValuationClass(String dbValue) {
-        this.dbValue = dbValue;
+    ValuationClass(String code) {
+        this.code = code;
     }
 
-    public String dbValue() {
-        return dbValue;
+    public String code() {
+        return code;
     }
 
-    public static ValuationClass fromDb(String value) {
+    public static ValuationClass fromCode(String value) {
         for (ValuationClass c : values()) {
-            if (c.dbValue.equals(value)) return c;
+            if (c.code.equals(value)) return c;
         }
         throw Assert.unknownValue("valuation_class", value);
     }

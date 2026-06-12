@@ -26,15 +26,15 @@ public record PaymentView(
         return new PaymentView(
             p.id().value(),
             p.paymentNumber(),
-            p.paymentDirection().dbValue(),
-            p.paymentType().dbValue(),
+            p.paymentDirection().code(),
+            p.paymentType().code(),
             p.supplierId(),
             p.partyName(),
             p.paymentDate(),
-            p.paymentMethod().dbValue(),
+            p.paymentMethod().code(),
             p.currencyCode(),
             p.amount(),
-            p.status().dbValue(),
+            p.status().code(),
             p.version(),
             p.allocations().stream().map(PaymentAllocationView::from).toList()
         );

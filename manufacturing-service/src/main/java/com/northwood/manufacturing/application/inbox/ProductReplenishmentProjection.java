@@ -63,12 +63,12 @@ public interface ProductReplenishmentProjection {
      * </ul>
      */
     static Replenishment defaultsFor(String productType) {
-        if (ProductType.RAW_MATERIAL.dbValue().equals(productType)
-            || ProductType.SERVICE.dbValue().equals(productType)) {
+        if (ProductType.RAW_MATERIAL.code().equals(productType)
+            || ProductType.SERVICE.code().equals(productType)) {
             return new Replenishment(true, false);
         }
-        if (ProductType.FINISHED_GOOD.dbValue().equals(productType)
-            || ProductType.SEMI_FINISHED_GOOD.dbValue().equals(productType)) {
+        if (ProductType.FINISHED_GOOD.code().equals(productType)
+            || ProductType.SEMI_FINISHED_GOOD.code().equals(productType)) {
             return new Replenishment(false, true);
         }
         return new Replenishment(true, true);

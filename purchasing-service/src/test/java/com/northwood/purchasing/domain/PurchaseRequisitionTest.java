@@ -63,9 +63,9 @@ class PurchaseRequisitionTest {
         }
 
         @Test void rejects_unknown_source_type_at_db_boundary() {
-            // SourceType.fromDb is the wire→enum boundary; the enum parameter
+            // SourceType.fromCode is the wire→enum boundary; the enum parameter
             // on create() makes unknown values a compile-time impossibility.
-            assertThatThrownBy(() -> PurchaseRequisition.SourceType.fromDb("weird_source"))
+            assertThatThrownBy(() -> PurchaseRequisition.SourceType.fromCode("weird_source"))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 

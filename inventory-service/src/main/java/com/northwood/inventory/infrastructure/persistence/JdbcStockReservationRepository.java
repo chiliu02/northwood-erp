@@ -47,7 +47,7 @@ public class JdbcStockReservationRepository implements StockReservationRepositor
             reservation.salesOrderId(),
             reservation.workOrderId(),
             reservation.warehouseId(),
-            reservation.status().dbValue(),
+            reservation.status().code(),
             1L,
             actor, actor
         );
@@ -69,7 +69,7 @@ public class JdbcStockReservationRepository implements StockReservationRepositor
             """,
             line.lineId(), headerId, line.salesOrderLineId(), line.productId(),
             line.productSku(), line.productName(), line.requestedQuantity(),
-            line.reservedQuantity(), line.status().dbValue(), line.shortageQuantity()
+            line.reservedQuantity(), line.status().code(), line.shortageQuantity()
         );
     }
 

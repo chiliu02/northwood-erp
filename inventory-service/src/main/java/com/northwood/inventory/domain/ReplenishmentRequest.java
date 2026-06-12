@@ -56,19 +56,19 @@ public final class ReplenishmentRequest {
         FULFILLED("fulfilled"),
         CANCELLED("cancelled");
 
-        private final String dbValue;
+        private final String code;
 
-        Status(String dbValue) {
-            this.dbValue = dbValue;
+        Status(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Status fromDb(String value) {
+        public static Status fromCode(String value) {
             for (Status s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("replenishment request status", value);
         }
@@ -83,19 +83,19 @@ public final class ReplenishmentRequest {
         MANUFACTURING("manufacturing"),
         PURCHASING("purchasing");
 
-        private final String dbValue;
+        private final String code;
 
-        TargetService(String dbValue) {
-            this.dbValue = dbValue;
+        TargetService(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static TargetService fromDb(String value) {
+        public static TargetService fromCode(String value) {
             for (TargetService t : values()) {
-                if (t.dbValue.equals(value)) return t;
+                if (t.code.equals(value)) return t;
             }
             throw Assert.unknownValue("replenishment target service", value);
         }
@@ -128,19 +128,19 @@ public final class ReplenishmentRequest {
          */
         ORDER_PEGGED("order_pegged");
 
-        private final String dbValue;
+        private final String code;
 
-        Reason(String dbValue) {
-            this.dbValue = dbValue;
+        Reason(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Reason fromDb(String value) {
+        public static Reason fromCode(String value) {
             for (Reason r : values()) {
-                if (r.dbValue.equals(value)) return r;
+                if (r.code.equals(value)) return r;
             }
             throw Assert.unknownValue("replenishment request reason", value);
         }
@@ -156,19 +156,19 @@ public final class ReplenishmentRequest {
         WORK_ORDER("work_order"),
         PURCHASE_REQUISITION("purchase_requisition");
 
-        private final String dbValue;
+        private final String code;
 
-        DispatchedAggregateKind(String dbValue) {
-            this.dbValue = dbValue;
+        DispatchedAggregateKind(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static DispatchedAggregateKind fromDb(String value) {
+        public static DispatchedAggregateKind fromCode(String value) {
             for (DispatchedAggregateKind k : values()) {
-                if (k.dbValue.equals(value)) return k;
+                if (k.code.equals(value)) return k;
             }
             throw Assert.unknownValue("replenishment dispatched_aggregate_kind", value);
         }
@@ -298,8 +298,8 @@ public final class ReplenishmentRequest {
             productId,
             warehouseId,
             requestedQuantity,
-            targetService.dbValue(),
-            reason.dbValue(),
+            targetService.code(),
+            reason.code(),
             sourceSalesOrderHeaderId,
             Instant.now()
         ));
@@ -386,10 +386,10 @@ public final class ReplenishmentRequest {
             return;
         }
         Assert.state(status == Status.REQUESTED,
-            "Cannot mark dispatched: replenishment " + id.value() + " is " + status.dbValue());
+            "Cannot mark dispatched: replenishment " + id.value() + " is " + status.code());
         Assert.state(matchesTargetService(kind),
-            "Dispatched kind " + kind.dbValue() + " does not match target_service "
-                + targetService.dbValue() + " on replenishment " + id.value());
+            "Dispatched kind " + kind.code() + " does not match target_service "
+                + targetService.code() + " on replenishment " + id.value());
         this.status = Status.DISPATCHED;
         this.dispatchedAggregateKind = kind;
         this.dispatchedAggregateId = dispatchedAggregateId;
@@ -418,7 +418,7 @@ public final class ReplenishmentRequest {
                 + this.linkedPurchaseOrderId);
         Assert.state(dispatchedAggregateKind == DispatchedAggregateKind.PURCHASE_REQUISITION,
             "linkPurchaseOrder is only valid for purchase-requisition-dispatched replenishments; "
-                + "this one is " + (dispatchedAggregateKind == null ? "not dispatched" : dispatchedAggregateKind.dbValue()));
+                + "this one is " + (dispatchedAggregateKind == null ? "not dispatched" : dispatchedAggregateKind.code()));
         this.linkedPurchaseOrderId = purchaseOrderId;
     }
 
@@ -432,7 +432,7 @@ public final class ReplenishmentRequest {
             return;
         }
         Assert.state(status == Status.DISPATCHED,
-            "Cannot mark fulfilled: replenishment " + id.value() + " is " + status.dbValue()
+            "Cannot mark fulfilled: replenishment " + id.value() + " is " + status.code()
                 + " — only DISPATCHED requests can fulfil");
         this.status = Status.FULFILLED;
         this.fulfilledAt = Instant.now();
@@ -467,7 +467,7 @@ public final class ReplenishmentRequest {
             return;
         }
         Assert.state(status == Status.REQUESTED || status == Status.DISPATCHED,
-            "Cannot cancel: replenishment " + id.value() + " is " + status.dbValue()
+            "Cannot cancel: replenishment " + id.value() + " is " + status.code()
                 + " — only REQUESTED or DISPATCHED requests can be cancelled");
         this.status = Status.CANCELLED;
         this.cancelledAt = Instant.now();

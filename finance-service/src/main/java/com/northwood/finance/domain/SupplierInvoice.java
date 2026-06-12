@@ -58,19 +58,19 @@ public final class SupplierInvoice {
         ON_HOLD("on_hold"),
         CANCELLED("cancelled");
 
-        private final String dbValue;
+        private final String code;
 
-        Status(String dbValue) {
-            this.dbValue = dbValue;
+        Status(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Status fromDb(String value) {
+        public static Status fromCode(String value) {
             for (Status s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("supplier_invoice status", value);
         }
@@ -90,19 +90,19 @@ public final class SupplierInvoice {
         VARIANCE("variance"),
         FAILED("failed");
 
-        private final String dbValue;
+        private final String code;
 
-        MatchStatus(String dbValue) {
-            this.dbValue = dbValue;
+        MatchStatus(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static MatchStatus fromDb(String value) {
+        public static MatchStatus fromCode(String value) {
             for (MatchStatus s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("supplier_invoice match_status", value);
         }
@@ -303,7 +303,7 @@ public final class SupplierInvoice {
      */
     public void assertApprovable() {
         Assert.state(status == Status.THREE_WAY_MATCH_FAILED, "Cannot manually approve invoice " + id.value()
-                    + " in status=" + status.dbValue() + " (must be " + Status.THREE_WAY_MATCH_FAILED.dbValue() + ")");
+                    + " in status=" + status.code() + " (must be " + Status.THREE_WAY_MATCH_FAILED.code() + ")");
         assertConsistent();
     }
 
@@ -345,7 +345,7 @@ public final class SupplierInvoice {
      */
     public void manualReject(String reason) {
         Assert.state(status == Status.THREE_WAY_MATCH_FAILED, "Cannot manually reject invoice " + id.value()
-                    + " in status=" + status.dbValue() + " (must be " + Status.THREE_WAY_MATCH_FAILED.dbValue() + ")");
+                    + " in status=" + status.code() + " (must be " + Status.THREE_WAY_MATCH_FAILED.code() + ")");
         this.status = Status.CANCELLED;
         pendingEvents.add(new SupplierInvoiceRejected(
             UUID.randomUUID(),

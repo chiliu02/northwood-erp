@@ -33,7 +33,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Real-Postgres test for {@link JdbcStockAdjustmentRepository}
  * (post-only header aggregate). Covers the {@code save}→{@code findById}
- * round-trip incl. the {@code direction}/{@code status} {@code dbValue()}, the
+ * round-trip incl. the {@code direction}/{@code status} {@code code()}, the
  * {@code StockAdjusted} outbox row, and the post-only guard.
  */
 class JdbcStockAdjustmentRepositoryIT {

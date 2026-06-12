@@ -77,7 +77,7 @@ public final class InMemorySalesOrderLineSnapshotPort implements SalesOrderLineS
                 // the product into order-pegged via markOrderPegged.
                 (orderPeggedProductIds.contains(line.productId())
                     ? ReplenishmentStrategy.TO_ORDER
-                    : ReplenishmentStrategy.TO_STOCK).dbValue(),
+                    : ReplenishmentStrategy.TO_STOCK).code(),
                 fenceByProductId.getOrDefault(line.productId(), 0)
             ));
         }

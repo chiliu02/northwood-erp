@@ -146,7 +146,7 @@ public class SupplierInvoiceService {
 
         log.info("recorded supplier invoice {} for purchase_order={} → status={} (match={})",
             invoice.internalInvoiceNumber(), command.purchaseOrderHeaderId(),
-            invoice.status().dbValue(), invoice.matchStatus().dbValue());
+            invoice.status().code(), invoice.matchStatus().code());
         return SupplierInvoiceView.from(invoice);
     }
 

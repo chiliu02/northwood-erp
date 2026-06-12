@@ -272,7 +272,7 @@ public final class World {
     public World seedToOrderProduct(String productCode, String productName) {
         UUID productId = UUID.randomUUID();
         productsByCode.put(productCode, new SeededProduct(productId, productCode, productName, null));
-        purchasing.toOrderProducts.put(productId, ReplenishmentStrategy.TO_ORDER.dbValue());
+        purchasing.toOrderProducts.put(productId, ReplenishmentStrategy.TO_ORDER.code());
         return this;
     }
 
@@ -347,7 +347,7 @@ public final class World {
     public World seedFinanceCard(String productCode, BigDecimal standardCost, ValuationClass valuationClass) {
         UUID productId = product(productCode).productId();
         finance.productCards.putStandardCost(productId, standardCost, CURRENCY);
-        finance.productCards.putValuationClass(productId, valuationClass.dbValue());
+        finance.productCards.putValuationClass(productId, valuationClass.code());
         return this;
     }
 
@@ -469,7 +469,7 @@ public final class World {
             .findByStatus(SupplierInvoice.Status.APPROVED).get(0).id().value();
         finance.paymentService.recordSupplierPayment(new RecordSupplierPaymentCommand(
             paymentNumber, supplierInvoiceId, amount,
-            Payment.Method.BANK_TRANSFER.dbValue(), LocalDate.of(2026, 5, 20)));
+            Payment.Method.BANK_TRANSFER.code(), LocalDate.of(2026, 5, 20)));
         settle();
         return this;
     }
@@ -561,7 +561,7 @@ public final class World {
      */
     public World placeDepositOrder(
         String orderNumber, String customerCode, BigDecimal depositPercent, List<OrderLineSpec> lines) {
-        return placeOrder(orderNumber, customerCode, PaymentTerms.DEPOSIT.dbValue(), depositPercent, lines);
+        return placeOrder(orderNumber, customerCode, PaymentTerms.DEPOSIT.code(), depositPercent, lines);
     }
 
     /**
@@ -572,7 +572,7 @@ public final class World {
      * {@code SalesOrderShipped} event.
      */
     public World placeCodOrder(String orderNumber, String customerCode, List<OrderLineSpec> lines) {
-        return placeOrder(orderNumber, customerCode, PaymentTerms.CASH_ON_DELIVERY.dbValue(), null, lines);
+        return placeOrder(orderNumber, customerCode, PaymentTerms.CASH_ON_DELIVERY.code(), null, lines);
     }
 
     /**
@@ -677,7 +677,7 @@ public final class World {
     private World payInvoice(String paymentNumber, CustomerInvoice invoice, BigDecimal amount) {
         finance.paymentService.recordCustomerPayment(new RecordCustomerPaymentCommand(
             paymentNumber, invoice.id().value(), amount,
-            Payment.Method.BANK_TRANSFER.dbValue(), LocalDate.of(2026, 5, 20)));
+            Payment.Method.BANK_TRANSFER.code(), LocalDate.of(2026, 5, 20)));
         settle();
         finance.customerInvoices.recordAllocation(invoice.id().value(), amount);
         return this;
@@ -685,7 +685,7 @@ public final class World {
 
     private CustomerInvoice requireInvoice(String orderNumber, CustomerInvoice.InvoiceType type) {
         return invoiceOfType(orderNumber, type).orElseThrow(() -> new IllegalStateException(
-            "No " + type.dbValue() + " invoice for order " + orderNumber + " — cannot pay"));
+            "No " + type.code() + " invoice for order " + orderNumber + " — cannot pay"));
     }
 
     /**

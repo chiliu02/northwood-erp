@@ -63,8 +63,8 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
         );
         return Optional.of(SalesOrder.reconstitute(
             SalesOrderId.of(h.salesOrderId), h.orderNumber, h.customerId, h.customerCode, h.customerName,
-            h.orderDate, h.requestedDeliveryDate, SalesOrder.Status.fromDb(h.status), h.currencyCode, h.exchangeRate,
-            PaymentTerms.fromDb(h.paymentTerms),
+            h.orderDate, h.requestedDeliveryDate, SalesOrder.Status.fromCode(h.status), h.currencyCode, h.exchangeRate,
+            PaymentTerms.fromCode(h.paymentTerms),
             h.depositPercent,
             h.subtotal, h.tax, h.total, h.cancelledAt, h.version, lines
         ));
@@ -96,8 +96,8 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
             o.id().value(), o.orderNumber(), o.customerId(), o.customerCode(), o.customerName(),
             Date.valueOf(o.orderDate()),
             o.requestedDeliveryDate() == null ? null : Date.valueOf(o.requestedDeliveryDate()),
-            o.status().dbValue(), o.currencyCode(),
-            o.exchangeRate(), o.paymentTerms().dbValue(), o.depositPercent(),
+            o.status().code(), o.currencyCode(),
+            o.exchangeRate(), o.paymentTerms().code(), o.depositPercent(),
             o.subtotalAmount(), o.taxAmount(), o.totalAmount(),
             1L,
             actor, actor
@@ -122,7 +122,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
             line.orderedQuantity(), line.reservedQuantity(), java.math.BigDecimal.ZERO,
             java.math.BigDecimal.ZERO, line.manufacturingRequiredQuantity(),
             line.unitPrice(), line.taxRate(), line.taxAmount(), line.lineTotal(),
-            line.lineStatus().dbValue()
+            line.lineStatus().code()
         );
     }
 
@@ -136,7 +136,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
                 last_modified_by = ?
             WHERE sales_order_header_id = ? AND version = ?
             """,
-            o.status().dbValue(),
+            o.status().code(),
             o.subtotalAmount(), o.taxAmount(), o.totalAmount(),
             o.cancelledAt() == null ? null : Timestamp.from(o.cancelledAt()),
             actor,
@@ -176,7 +176,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
                     line.orderedQuantity(), line.reservedQuantity(), line.manufacturingRequiredQuantity(),
                     line.shippedQuantity(), line.backorderedQuantity(),
                     line.unitPrice(), line.taxRate(), line.taxAmount(), line.lineTotal(),
-                    line.lineStatus().dbValue(), line.lineId()
+                    line.lineStatus().code(), line.lineId()
                 );
             } else {
                 insertLine(o.id().value(), line);
@@ -252,6 +252,6 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
         // re-decides shipped/partially_shipped from zero and the "order fully
         // shipped?" gate is wrong across shipments.
         rs.getBigDecimal("shipped_quantity"),
-        SalesOrder.LineStatus.fromDb(rs.getString("line_status"))
+        SalesOrder.LineStatus.fromCode(rs.getString("line_status"))
     );
 }

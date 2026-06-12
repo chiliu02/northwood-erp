@@ -30,7 +30,7 @@ public class JdbcBomRepository implements BomRepository {
         rs.getObject("component_product_id", UUID.class),
         rs.getString("component_sku"),
         rs.getString("component_name"),
-        Bom.ComponentKind.fromDb(rs.getString("component_kind")),
+        Bom.ComponentKind.fromCode(rs.getString("component_kind")),
         rs.getBigDecimal("quantity_per_finished_unit"),
         rs.getBigDecimal("scrap_factor_percent")
     );
@@ -88,7 +88,7 @@ public class JdbcBomRepository implements BomRepository {
             h.finishedProductSku,
             h.finishedProductName,
             h.version,
-            Bom.Status.fromDb(h.status),
+            Bom.Status.fromCode(h.status),
             lines,
             h.rowVersion
         ));
@@ -145,7 +145,7 @@ public class JdbcBomRepository implements BomRepository {
             bom.finishedProductSku(),
             bom.finishedProductName(),
             bom.version(),
-            bom.status().dbValue(),
+            bom.status().code(),
             // Persist with row_version=1 so a subsequent reload + mutate + save
             // routes to UPDATE. The aggregate's in-memory 0 sentinel means
             // "not yet persisted"; the row never sits at row_version=0.
@@ -164,7 +164,7 @@ public class JdbcBomRepository implements BomRepository {
                SET status = ?, row_version = row_version + 1, last_modified_by = ?
              WHERE bom_header_id = ? AND row_version = ?
             """,
-            bom.status().dbValue(),
+            bom.status().code(),
             actor,
             bom.id().value(),
             bom.aggregateVersion()
@@ -191,7 +191,7 @@ public class JdbcBomRepository implements BomRepository {
             line.componentProductId(),
             line.componentSku(),
             line.componentName(),
-            line.componentKind().dbValue(),
+            line.componentKind().code(),
             line.quantityPerFinishedUnit(),
             line.scrapFactorPercent() == null ? BigDecimal.ZERO : line.scrapFactorPercent()
         );

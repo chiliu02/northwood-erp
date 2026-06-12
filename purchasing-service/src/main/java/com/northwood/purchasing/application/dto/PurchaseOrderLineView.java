@@ -21,7 +21,7 @@ public record PurchaseOrderLineView(
             l.id(), l.lineNumber(),
             l.productId(), l.productSku(), l.productName(),
             l.orderedQuantity(), l.unitPrice(),
-            l.lineTotal(), l.status().dbValue()
+            l.lineTotal(), l.status().code()
         );
     }
 }

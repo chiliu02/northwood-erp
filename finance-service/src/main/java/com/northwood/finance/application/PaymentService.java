@@ -85,21 +85,21 @@ public class PaymentService {
     public PaymentView recordSupplierPayment(RecordSupplierPaymentCommand command) {
         SupplierInvoiceRepository.PaymentSnapshot inv = lookupSupplierInvoice(command.supplierInvoiceHeaderId());
         Assert.state(inv.status() == SupplierInvoice.Status.APPROVED || inv.status() == SupplierInvoice.Status.PARTIALLY_PAID, "Cannot pay supplier invoice " + command.supplierInvoiceHeaderId()
-                    + " in status=" + inv.status().dbValue() + " (must be approved or partially_paid)");
+                    + " in status=" + inv.status().code() + " (must be approved or partially_paid)");
         BigDecimal outstandingBefore = inv.totalAmount().subtract(inv.paidAmount());
         Assert.argument(command.amount().compareTo(outstandingBefore) <= 0, "Payment amount " + command.amount() + " exceeds outstanding " + outstandingBefore
                     + " on invoice " + command.supplierInvoiceHeaderId());
 
         BigDecimal paidAfter = inv.paidAmount().add(command.amount());
         String invoiceStatusAfter = paidAfter.compareTo(inv.totalAmount()) >= 0
-            ? SupplierInvoice.Status.PAID.dbValue() : SupplierInvoice.Status.PARTIALLY_PAID.dbValue();
+            ? SupplierInvoice.Status.PAID.code() : SupplierInvoice.Status.PARTIALLY_PAID.code();
 
         Payment payment = Payment.recordSupplierPayment(
             command.paymentNumber(),
             inv.supplierId(),
             inv.supplierName(),
             command.paymentDate(),
-            Payment.Method.fromDb(command.paymentMethod()),
+            Payment.Method.fromCode(command.paymentMethod()),
             inv.currencyCode(),
             command.amount(),
             command.supplierInvoiceHeaderId(),
@@ -133,14 +133,14 @@ public class PaymentService {
     public PaymentView recordCustomerPayment(RecordCustomerPaymentCommand command) {
         PaymentSnapshot inv = lookupCustomerInvoice(command.customerInvoiceHeaderId());
         Assert.state(inv.status() == CustomerInvoice.Status.POSTED || inv.status() == CustomerInvoice.Status.PARTIALLY_PAID, "Cannot pay customer invoice " + command.customerInvoiceHeaderId()
-                    + " in status=" + inv.status().dbValue() + " (must be posted or partially_paid)");
+                    + " in status=" + inv.status().code() + " (must be posted or partially_paid)");
         BigDecimal outstandingBefore = inv.totalAmount().subtract(inv.paidAmount());
         Assert.argument(command.amount().compareTo(outstandingBefore) <= 0, "Payment amount " + command.amount() + " exceeds outstanding " + outstandingBefore
                     + " on invoice " + command.customerInvoiceHeaderId());
 
         BigDecimal paidAfter = inv.paidAmount().add(command.amount());
         String invoiceStatusAfter = paidAfter.compareTo(inv.totalAmount()) >= 0
-            ? CustomerInvoice.Status.PAID.dbValue() : CustomerInvoice.Status.PARTIALLY_PAID.dbValue();
+            ? CustomerInvoice.Status.PAID.code() : CustomerInvoice.Status.PARTIALLY_PAID.code();
         // Order-level settlement (drives the on_shipment saga completion).
         // Computed arithmetically against the pre-payment order outstanding to
         // sidestep the maintain_allocation_totals trigger timing, exactly as
@@ -152,7 +152,7 @@ public class PaymentService {
             inv.customerId(),
             inv.customerName(),
             command.paymentDate(),
-            Payment.Method.fromDb(command.paymentMethod()),
+            Payment.Method.fromCode(command.paymentMethod()),
             inv.currencyCode(),
             command.amount(),
             command.customerInvoiceHeaderId(),
@@ -204,7 +204,7 @@ public class PaymentService {
         PaymentSnapshot inv = lookupCustomerInvoice(customerInvoiceHeaderId);
         Assert.state(inv.status() == CustomerInvoice.Status.POSTED,
             "COD auto-payment expects a freshly posted invoice " + customerInvoiceHeaderId
-                + " (status=" + inv.status().dbValue() + ")");
+                + " (status=" + inv.status().code() + ")");
         BigDecimal outstanding = inv.totalAmount().subtract(inv.paidAmount());
         Assert.argument(outstanding.signum() > 0,
             "COD invoice " + customerInvoiceHeaderId + " has nothing outstanding to settle");
@@ -224,7 +224,7 @@ public class PaymentService {
             outstanding,
             customerInvoiceHeaderId,
             inv.salesOrderHeaderId(),
-            CustomerInvoice.Status.PAID.dbValue(),
+            CustomerInvoice.Status.PAID.code(),
             // COD is single-shipment / single-invoice, so settling this invoice in
             // full settles the order. (The COD saga ignores the flag anyway — it
             // completes at shipment.) Compute it for consistency/correctness.
@@ -268,7 +268,7 @@ public class PaymentService {
         for (RecordSupplierPaymentMultiCommand.InvoiceLine il : command.invoices()) {
             SupplierInvoiceRepository.PaymentSnapshot inv = lookupSupplierInvoice(il.supplierInvoiceHeaderId());
             Assert.state(inv.status() == SupplierInvoice.Status.APPROVED || inv.status() == SupplierInvoice.Status.PARTIALLY_PAID, "Cannot pay supplier invoice " + il.supplierInvoiceHeaderId()
-                        + " in status=" + inv.status().dbValue() + " (must be approved or partially_paid)");
+                        + " in status=" + inv.status().code() + " (must be approved or partially_paid)");
             if (expectedSupplierId == null) {
                 expectedSupplierId = inv.supplierId();
                 expectedSupplierName = inv.supplierName();
@@ -289,7 +289,7 @@ public class PaymentService {
                         + " on invoice " + il.supplierInvoiceHeaderId());
             BigDecimal paidAfter = inv.paidAmount().add(il.amount());
             String invoiceStatusAfter = paidAfter.compareTo(inv.totalAmount()) >= 0
-                ? SupplierInvoice.Status.PAID.dbValue() : SupplierInvoice.Status.PARTIALLY_PAID.dbValue();
+                ? SupplierInvoice.Status.PAID.code() : SupplierInvoice.Status.PARTIALLY_PAID.code();
             totalAmount = totalAmount.add(il.amount());
             lines.add(new SupplierAllocationLine(
                 il.supplierInvoiceHeaderId(),
@@ -304,7 +304,7 @@ public class PaymentService {
             expectedSupplierId,
             expectedSupplierName,
             command.paymentDate(),
-            Payment.Method.fromDb(command.paymentMethod()),
+            Payment.Method.fromCode(command.paymentMethod()),
             expectedCurrency,
             lines
         );
@@ -351,7 +351,7 @@ public class PaymentService {
         for (RecordCustomerPaymentMultiCommand.InvoiceLine il : command.invoices()) {
             PaymentSnapshot inv = lookupCustomerInvoice(il.customerInvoiceHeaderId());
             Assert.state(inv.status() == CustomerInvoice.Status.POSTED || inv.status() == CustomerInvoice.Status.PARTIALLY_PAID, "Cannot pay customer invoice " + il.customerInvoiceHeaderId()
-                        + " in status=" + inv.status().dbValue() + " (must be posted or partially_paid)");
+                        + " in status=" + inv.status().code() + " (must be posted or partially_paid)");
             if (expectedCustomerId == null) {
                 expectedCustomerId = inv.customerId();
                 expectedCustomerName = inv.customerName();
@@ -374,7 +374,7 @@ public class PaymentService {
                 // caller must split into two payments.
                 throw new IllegalArgumentException(
                     "All invoices in a multi-allocation must share the same invoice_type "
-                        + "(found " + inv.invoiceType().dbValue() + " vs expected " + expectedInvoiceType.dbValue() + ")"
+                        + "(found " + inv.invoiceType().code() + " vs expected " + expectedInvoiceType.code() + ")"
                 );
             }
             BigDecimal outstandingBefore = inv.totalAmount().subtract(inv.paidAmount());
@@ -382,7 +382,7 @@ public class PaymentService {
                         + " on invoice " + il.customerInvoiceHeaderId());
             BigDecimal paidAfter = inv.paidAmount().add(il.amount());
             String invoiceStatusAfter = paidAfter.compareTo(inv.totalAmount()) >= 0
-                ? CustomerInvoice.Status.PAID.dbValue() : CustomerInvoice.Status.PARTIALLY_PAID.dbValue();
+                ? CustomerInvoice.Status.PAID.code() : CustomerInvoice.Status.PARTIALLY_PAID.code();
             totalAmount = totalAmount.add(il.amount());
             allocByOrder.merge(inv.salesOrderHeaderId(), il.amount(), BigDecimal::add);
             interim.add(new Interim(
@@ -409,7 +409,7 @@ public class PaymentService {
             expectedCustomerId,
             expectedCustomerName,
             command.paymentDate(),
-            Payment.Method.fromDb(command.paymentMethod()),
+            Payment.Method.fromCode(command.paymentMethod()),
             expectedCurrency,
             lines
         );

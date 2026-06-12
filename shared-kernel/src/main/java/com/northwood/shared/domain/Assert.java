@@ -38,7 +38,7 @@ import java.util.Map;
  * caller writes {@code throw Assert.unknownValue(...)} — lets the compiler
  * keep the {@code throw} keyword visible for control-flow analysis
  * (unreachable-code, definite-assignment) and matches the shape of the
- * existing end-of-method fall-through throws in {@code fromDb} /
+ * existing end-of-method fall-through throws in {@code fromCode} /
  * {@code fromString} parsers.
  *
  * <p><b>Not covered.</b>
@@ -190,7 +190,7 @@ public final class Assert {
      * Returns (does not throw) an {@link IllegalArgumentException} carrying
      * the standard {@code "Unknown <field>: <value>"} message. Designed to
      * be used as {@code throw Assert.unknownValue("status", value);} at the
-     * fall-through end of an enum-parser ({@code fromDb} / {@code fromString})
+     * fall-through end of an enum-parser ({@code fromCode} / {@code fromString})
      * or a switch {@code default} clause.
      *
      * <p>Returning rather than throwing lets the compiler keep the {@code

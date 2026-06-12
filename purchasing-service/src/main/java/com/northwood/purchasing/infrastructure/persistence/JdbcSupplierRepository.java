@@ -27,7 +27,7 @@ public class JdbcSupplierRepository implements SupplierRepository {
         rs.getString("email"),
         rs.getString("phone"),
         rs.getString("address"),
-        Supplier.Status.fromDb(rs.getString("status")),
+        Supplier.Status.fromCode(rs.getString("status")),
         rs.getLong("version")
     );
 
@@ -100,7 +100,7 @@ public class JdbcSupplierRepository implements SupplierRepository {
                 VALUES (?, ?, ?, ?, ?, ?, ?, 1)
                 """,
                 supplier.id().value(), supplier.supplierCode(), supplier.name(),
-                supplier.email(), supplier.phone(), supplier.address(), supplier.status().dbValue()
+                supplier.email(), supplier.phone(), supplier.address(), supplier.status().code()
             );
         } else {
             int updated = jdbc.update("""
@@ -109,7 +109,7 @@ public class JdbcSupplierRepository implements SupplierRepository {
                  WHERE supplier_id = ? AND version = ?
                 """,
                 supplier.name(), supplier.email(), supplier.phone(), supplier.address(),
-                supplier.status().dbValue(), supplier.id().value(), supplier.version()
+                supplier.status().code(), supplier.id().value(), supplier.version()
             );
             if (updated == 0) {
                 throw new OptimisticLockingFailureException(

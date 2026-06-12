@@ -23,7 +23,7 @@ public record WorkOrderOperationView(
         return new WorkOrderOperationView(
             o.id(), o.operationSequence(), o.operationCode(), o.description(),
             o.workCenterId(), o.plannedSetupMinutes(), o.plannedRunMinutes(),
-            o.status().dbValue(), o.actualMinutes(), o.startedAt(), o.completedAt()
+            o.status().code(), o.actualMinutes(), o.startedAt(), o.completedAt()
         );
     }
 }

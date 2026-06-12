@@ -69,19 +69,19 @@ public final class JournalEntry {
         PURCHASING("purchasing"),
         FINANCE("finance");
 
-        private final String dbValue;
+        private final String code;
 
-        SourceModule(String dbValue) {
-            this.dbValue = dbValue;
+        SourceModule(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static SourceModule fromDb(String value) {
+        public static SourceModule fromCode(String value) {
             for (SourceModule m : values()) {
-                if (m.dbValue.equals(value)) return m;
+                if (m.code.equals(value)) return m;
             }
             throw Assert.unknownValue("journal_entry source_module", value);
         }
@@ -112,19 +112,19 @@ public final class JournalEntry {
         CUSTOMER_REFUND("customer_refund"),
         JOURNAL_REVERSAL("journal_reversal");
 
-        private final String dbValue;
+        private final String code;
 
-        SourceDocumentType(String dbValue) {
-            this.dbValue = dbValue;
+        SourceDocumentType(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static SourceDocumentType fromDb(String value) {
+        public static SourceDocumentType fromCode(String value) {
             for (SourceDocumentType t : values()) {
-                if (t.dbValue.equals(value)) return t;
+                if (t.code.equals(value)) return t;
             }
             throw Assert.unknownValue("journal_entry source_document_type", value);
         }
@@ -145,19 +145,19 @@ public final class JournalEntry {
         POSTED("posted"),
         REVERSED("reversed");
 
-        private final String dbValue;
+        private final String code;
 
-        Status(String dbValue) {
-            this.dbValue = dbValue;
+        Status(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Status fromDb(String value) {
+        public static Status fromCode(String value) {
             for (Status s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("journal_entry status", value);
         }
@@ -233,7 +233,7 @@ public final class JournalEntry {
     ) {
         Assert.notNull(original, "original");
         Assert.state(original.status == Status.POSTED, "Can only reverse a posted journal entry; original " + original.id().value()
-                    + " is in status=" + original.status.dbValue());
+                    + " is in status=" + original.status.code());
         LocalDate postingDate = reversalPostingDate == null ? LocalDate.now() : reversalPostingDate;
         List<JournalEntryLine> reversedLines = new ArrayList<>();
         int seq = 10;

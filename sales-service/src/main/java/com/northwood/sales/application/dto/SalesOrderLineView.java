@@ -23,7 +23,7 @@ public record SalesOrderLineView(
         return new SalesOrderLineView(
             l.lineId(), l.lineNumber(), l.productId(), l.productSku(), l.productName(),
             l.orderedQuantity(), l.reservedQuantity(), l.shippedQuantity(), l.backorderedQuantity(),
-            l.unitPrice(), l.lineTotal(), l.lineStatus().dbValue()
+            l.unitPrice(), l.lineTotal(), l.lineStatus().code()
         );
     }
 }

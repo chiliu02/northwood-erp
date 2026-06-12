@@ -29,19 +29,19 @@ public final class Supplier {
         INACTIVE("inactive"),
         BLOCKED("blocked");
 
-        private final String dbValue;
+        private final String code;
 
-        Status(String dbValue) {
-            this.dbValue = dbValue;
+        Status(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Status fromDb(String value) {
+        public static Status fromCode(String value) {
             for (Status s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("supplier status", value);
         }
@@ -87,7 +87,7 @@ public final class Supplier {
         Supplier s = new Supplier(id, supplierCode, name, email, phone, address, Status.ACTIVE, 0L);
         s.pendingEvents.add(new SupplierRegistered(
             UUID.randomUUID(), id.value(),
-            supplierCode, name, email, phone, address, Status.ACTIVE.dbValue(),
+            supplierCode, name, email, phone, address, Status.ACTIVE.code(),
             Instant.now()
         ));
         return s;
@@ -112,7 +112,7 @@ public final class Supplier {
         Status old = this.status;
         this.status = newStatus;
         pendingEvents.add(new SupplierStatusChanged(
-            UUID.randomUUID(), id.value(), old.dbValue(), newStatus.dbValue(), reason, Instant.now()
+            UUID.randomUUID(), id.value(), old.code(), newStatus.code(), reason, Instant.now()
         ));
     }
 

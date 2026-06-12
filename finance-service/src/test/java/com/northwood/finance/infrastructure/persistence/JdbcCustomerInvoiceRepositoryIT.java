@@ -37,7 +37,7 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <ul>
  *   <li>{@code create} → {@code findById} round-trip of header + line incl.
- *       status {@code dbValue()}/{@code fromDb()} + the {@code CustomerInvoiceCreated}
+ *       status {@code code()}/{@code fromCode()} + the {@code CustomerInvoiceCreated}
  *       outbox row;</li>
  *   <li>the write-once guard: a second {@code save} (version &gt; 0) →
  *       {@code IllegalStateException};</li>

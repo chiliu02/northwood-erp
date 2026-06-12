@@ -79,14 +79,14 @@ public class SalesOrderService {
         private final String customerCode;
         private final Customer.Status status;
         public CustomerInactiveException(String customerCode, Customer.Status status) {
-            super(CODE, "Customer " + customerCode + " is " + status.dbValue() + "; cannot accept new orders");
+            super(CODE, "Customer " + customerCode + " is " + status.code() + "; cannot accept new orders");
             this.customerCode = customerCode;
             this.status = status;
         }
         public String customerCode() { return customerCode; }
         public Customer.Status status() { return status; }
         @Override public Map<String, Object> params() {
-            return Map.of("customerCode", customerCode, "status", status.dbValue());
+            return Map.of("customerCode", customerCode, "status", status.code());
         }
     }
 
@@ -479,7 +479,7 @@ public class SalesOrderService {
 
     private boolean hasUpfrontInvoiceTerms(UUID salesOrderHeaderId) {
         String terms = sagaManager.currentPaymentTerms(salesOrderHeaderId).orElse(null);
-        return PaymentTerms.PREPAYMENT.dbValue().equals(terms) || PaymentTerms.DEPOSIT.dbValue().equals(terms);
+        return PaymentTerms.PREPAYMENT.code().equals(terms) || PaymentTerms.DEPOSIT.code().equals(terms);
     }
 
     @Transactional
@@ -515,7 +515,7 @@ public class SalesOrderService {
         // as 400, not a CHECK violation at INSERT time.
         PaymentTerms paymentTerms = command.paymentTerms() == null
             ? customer.defaultPaymentTerms()
-            : PaymentTerms.fromDb(command.paymentTerms());
+            : PaymentTerms.fromCode(command.paymentTerms());
 
         // Deposit orders carry an up-front percent (default 50%); every other
         // term must not carry one. Validated here so a bad value is a 400,
@@ -544,12 +544,12 @@ public class SalesOrderService {
         // and so requestStockReservation can compute the planning-time-fence
         // release date (need-by − max line fence). Inline JSON to keep
         // ObjectMapper out of this service; matches FulfilmentSagaData's wire
-        // shape. dbValue() is "on_shipment" / "prepayment" and LocalDate.toString()
+        // shape. code() is "on_shipment" / "prepayment" and LocalDate.toString()
         // is ISO yyyy-MM-dd — no quoting concerns.
         String needByJson = command.requestedDeliveryDate() == null
             ? "null"
             : "\"" + command.requestedDeliveryDate() + "\"";
-        String dataJson = "{\"paymentTerms\":\"" + paymentTerms.dbValue() + "\","
+        String dataJson = "{\"paymentTerms\":\"" + paymentTerms.code() + "\","
             + "\"requestedDeliveryDate\":" + needByJson + "}";
         sagaManager.insertStarted(order.id().value(), dataJson);
 

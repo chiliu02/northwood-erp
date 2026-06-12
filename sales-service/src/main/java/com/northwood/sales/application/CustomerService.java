@@ -67,7 +67,7 @@ public class CustomerService {
         // the domain enum — mirrors product-service's ProductService.
         PaymentTerms terms = defaultPaymentTerms == null
             ? PaymentTerms.ON_SHIPMENT
-            : PaymentTerms.fromDb(defaultPaymentTerms);
+            : PaymentTerms.fromCode(defaultPaymentTerms);
         Customer customer = Customer.register(
             customerCode, name, email, phone, billingAddress, shippingAddress, terms
         );

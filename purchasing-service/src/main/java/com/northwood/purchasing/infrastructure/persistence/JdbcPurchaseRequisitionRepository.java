@@ -25,11 +25,11 @@ public class JdbcPurchaseRequisitionRepository implements PurchaseRequisitionRep
     private static final RowMapper<PurchaseRequisition> HEADER_MAPPER = (rs, n) -> PurchaseRequisition.reconstitute(
         PurchaseRequisitionId.of(rs.getObject("purchase_requisition_header_id", UUID.class)),
         rs.getString("requisition_number"),
-        PurchaseRequisition.SourceType.fromDb(rs.getString("source_type")),
+        PurchaseRequisition.SourceType.fromCode(rs.getString("source_type")),
         rs.getObject("source_work_order_id", UUID.class),
         rs.getObject("source_product_id", UUID.class),
         rs.getObject("source_replenishment_request_id", UUID.class),
-        PurchaseRequisition.Status.fromDb(rs.getString("status")),
+        PurchaseRequisition.Status.fromCode(rs.getString("status")),
         rs.getString("requested_by"),
         List.of(),
         rs.getLong("version")
@@ -47,7 +47,7 @@ public class JdbcPurchaseRequisitionRepository implements PurchaseRequisitionRep
             required == null ? null : required.toLocalDate(),
             rs.getObject("suggested_supplier_id", UUID.class),
             rs.getString("suggested_supplier_name"),
-            PurchaseRequisition.LineStatus.fromDb(rs.getString("status"))
+            PurchaseRequisition.LineStatus.fromCode(rs.getString("status"))
         );
     };
 
@@ -135,9 +135,9 @@ public class JdbcPurchaseRequisitionRepository implements PurchaseRequisitionRep
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             pr.id().value(), pr.requisitionNumber(),
-            pr.sourceType().dbValue(), pr.sourceProductId(), pr.sourceWorkOrderId(),
+            pr.sourceType().code(), pr.sourceProductId(), pr.sourceWorkOrderId(),
             pr.sourceReplenishmentRequestId(),
-            pr.status().dbValue(), pr.requestedBy(),
+            pr.status().code(), pr.requestedBy(),
             1L,
             actor, actor
         );
@@ -155,7 +155,7 @@ public class JdbcPurchaseRequisitionRepository implements PurchaseRequisitionRep
                 l.requestedQuantity(),
                 l.requiredDate() == null ? null : Date.valueOf(l.requiredDate()),
                 l.suggestedSupplierId(), l.suggestedSupplierName(),
-                l.status().dbValue()
+                l.status().code()
             );
         }
     }
@@ -169,7 +169,7 @@ public class JdbcPurchaseRequisitionRepository implements PurchaseRequisitionRep
                 last_modified_by = ?
             WHERE purchase_requisition_header_id = ? AND version = ?
             """,
-            pr.status().dbValue(), pr.status().dbValue(), actor, pr.id().value(), pr.version()
+            pr.status().code(), pr.status().code(), actor, pr.id().value(), pr.version()
         );
         if (rows == 0) {
             throw new OptimisticLockingFailureException(

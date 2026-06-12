@@ -53,19 +53,19 @@ public final class StockReservation {
         /** Schema-prep — not currently produced by Java. */
         CONSUMED("consumed");
 
-        private final String dbValue;
+        private final String code;
 
-        Status(String dbValue) {
-            this.dbValue = dbValue;
+        Status(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Status fromDb(String value) {
+        public static Status fromCode(String value) {
             for (Status s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("stock_reservation status", value);
         }
@@ -104,7 +104,7 @@ public final class StockReservation {
         for (StockReservationLine l : lines) {
             wireLines.add(new ReservedLine(
                 lineNumber, l.productId(), l.requestedQuantity(),
-                l.reservedQuantity(), l.shortageQuantity(), l.status().dbValue()
+                l.reservedQuantity(), l.shortageQuantity(), l.status().code()
             ));
             lineNumber += LineNumbering.STEP;
         }
@@ -113,7 +113,7 @@ public final class StockReservation {
             id.value(),
             salesOrderId,
             id.value(),
-            headerStatus.dbValue(),
+            headerStatus.code(),
             wireLines,
             Instant.now()
         ));
@@ -149,7 +149,7 @@ public final class StockReservation {
                 l.requestedQuantity(),
                 l.reservedQuantity(),
                 l.shortageQuantity(),
-                l.status().dbValue()
+                l.status().code()
             ));
         }
         res.pendingEvents.add(new RawMaterialsReserved(
@@ -157,7 +157,7 @@ public final class StockReservation {
             id.value(),
             workOrderId,
             id.value(),
-            headerStatus.dbValue(),
+            headerStatus.code(),
             wire,
             Instant.now()
         ));

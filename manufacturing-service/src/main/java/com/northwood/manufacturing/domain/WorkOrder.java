@@ -73,19 +73,19 @@ public final class WorkOrder {
         /** Schema-prep — not currently produced by Java. */
         BLOCKED("blocked");
 
-        private final String dbValue;
+        private final String code;
 
-        Status(String dbValue) {
-            this.dbValue = dbValue;
+        Status(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Status fromDb(String value) {
+        public static Status fromCode(String value) {
             for (Status s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("work_order status", value);
         }
@@ -105,19 +105,19 @@ public final class WorkOrder {
         /** Schema-prep — not currently produced by Java. */
         ISSUED("issued");
 
-        private final String dbValue;
+        private final String code;
 
-        MaterialStatus(String dbValue) {
-            this.dbValue = dbValue;
+        MaterialStatus(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static MaterialStatus fromDb(String value) {
+        public static MaterialStatus fromCode(String value) {
             for (MaterialStatus s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("work_order material_status", value);
         }
@@ -137,19 +137,19 @@ public final class WorkOrder {
         /** Schema-prep — not currently produced by Java. */
         ISSUED("issued");
 
-        private final String dbValue;
+        private final String code;
 
-        MaterialLineStatus(String dbValue) {
-            this.dbValue = dbValue;
+        MaterialLineStatus(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static MaterialLineStatus fromDb(String value) {
+        public static MaterialLineStatus fromCode(String value) {
             for (MaterialLineStatus s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("work_order_material status", value);
         }
@@ -167,19 +167,19 @@ public final class WorkOrder {
         COMPLETED("completed"),
         SKIPPED("skipped");
 
-        private final String dbValue;
+        private final String code;
 
-        OperationStatus(String dbValue) {
-            this.dbValue = dbValue;
+        OperationStatus(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static OperationStatus fromDb(String value) {
+        public static OperationStatus fromCode(String value) {
             for (OperationStatus s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("work_order_operation status", value);
         }
@@ -413,7 +413,7 @@ public final class WorkOrder {
      * (when the last child finishes) will release the gate.
      */
     public void completeOperation(int sequence, BigDecimal actualMinutes, boolean noPendingChildren) {
-        Assert.state(status != Status.COMPLETED && status != Status.CLOSED && status != Status.CANCELLED, "Work order " + id.value() + " is " + status.dbValue() + "; cannot complete operations");
+        Assert.state(status != Status.COMPLETED && status != Status.CLOSED && status != Status.CANCELLED, "Work order " + id.value() + " is " + status.code() + "; cannot complete operations");
         WorkOrderOperation target = operations.stream()
             .filter(o -> o.operationSequence() == sequence)
             .findFirst()
@@ -425,7 +425,7 @@ public final class WorkOrder {
                 || earlier.status() == OperationStatus.COMPLETED
                 || earlier.status() == OperationStatus.SKIPPED, "Cannot complete operation " + sequence
                         + " before operation " + earlier.operationSequence()
-                        + " (status=" + earlier.status().dbValue() + ")");
+                        + " (status=" + earlier.status().code() + ")");
         }
 
         target.markCompleted(actualMinutes);
@@ -532,7 +532,7 @@ public final class WorkOrder {
      * still fires when the whole WO is done.
      */
     public void skipOperation(int sequence, String reason, boolean noPendingChildren) {
-        Assert.state(status != Status.COMPLETED && status != Status.CLOSED && status != Status.CANCELLED, "Work order " + id.value() + " is " + status.dbValue() + "; cannot skip operations");
+        Assert.state(status != Status.COMPLETED && status != Status.CLOSED && status != Status.CANCELLED, "Work order " + id.value() + " is " + status.code() + "; cannot skip operations");
         WorkOrderOperation target = operations.stream()
             .filter(o -> o.operationSequence() == sequence)
             .findFirst()
@@ -544,7 +544,7 @@ public final class WorkOrder {
                 || earlier.status() == OperationStatus.COMPLETED
                 || earlier.status() == OperationStatus.SKIPPED, "Cannot skip operation " + sequence
                         + " before operation " + earlier.operationSequence()
-                        + " (status=" + earlier.status().dbValue() + ")");
+                        + " (status=" + earlier.status().code() + ")");
         }
 
         target.markSkipped();

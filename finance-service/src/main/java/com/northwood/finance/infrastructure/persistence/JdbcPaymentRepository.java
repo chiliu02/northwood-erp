@@ -29,16 +29,16 @@ public class JdbcPaymentRepository implements PaymentRepository {
         return Payment.reconstitute(
             PaymentId.of(rs.getObject("payment_id", UUID.class)),
             rs.getString("payment_number"),
-            Payment.Direction.fromDb(rs.getString("payment_direction")),
-            Payment.Type.fromDb(rs.getString("payment_type")),
+            Payment.Direction.fromCode(rs.getString("payment_direction")),
+            Payment.Type.fromCode(rs.getString("payment_type")),
             rs.getObject("customer_id", UUID.class),
             rs.getObject("supplier_id", UUID.class),
             rs.getString("party_name"),
             paymentDate == null ? LocalDate.now() : paymentDate.toLocalDate(),
-            Payment.Method.fromDb(rs.getString("payment_method")),
+            Payment.Method.fromCode(rs.getString("payment_method")),
             rs.getString("currency_code"),
             rs.getBigDecimal("amount"),
-            Payment.Status.fromDb(rs.getString("status")),
+            Payment.Status.fromCode(rs.getString("status")),
             List.of(),
             rs.getLong("version")
         );
@@ -49,7 +49,7 @@ public class JdbcPaymentRepository implements PaymentRepository {
         rs.getObject("customer_invoice_header_id", UUID.class),
         rs.getObject("supplier_invoice_header_id", UUID.class),
         rs.getBigDecimal("allocated_amount"),
-        Payment.AllocationStatus.fromDb(rs.getString("status"))
+        Payment.AllocationStatus.fromCode(rs.getString("status"))
     );
 
     private final JdbcTemplate jdbc;
@@ -128,11 +128,11 @@ public class JdbcPaymentRepository implements PaymentRepository {
                 created_by, last_modified_by
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            p.id().value(), p.paymentNumber(), p.paymentDirection().dbValue(), p.paymentType().dbValue(),
+            p.id().value(), p.paymentNumber(), p.paymentDirection().code(), p.paymentType().code(),
             p.customerId(), p.supplierId(), p.partyName(),
             Date.valueOf(p.paymentDate()),
-            p.paymentMethod().dbValue(), p.currencyCode(),
-            p.amount(), p.status().dbValue(),
+            p.paymentMethod().code(), p.currencyCode(),
+            p.amount(), p.status().code(),
             1L, postedAt,
             actor, actor
         );
@@ -146,7 +146,7 @@ public class JdbcPaymentRepository implements PaymentRepository {
                 """,
                 a.id(), p.id().value(),
                 a.customerInvoiceHeaderId(), a.supplierInvoiceHeaderId(),
-                a.allocatedAmount(), a.status().dbValue()
+                a.allocatedAmount(), a.status().code()
             );
         }
     }

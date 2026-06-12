@@ -16,19 +16,19 @@ public enum ProductType {
     SEMI_FINISHED_GOOD("semi_finished_good"),
     SERVICE("service");
 
-    private final String dbValue;
+    private final String code;
 
-    ProductType(String dbValue) {
-        this.dbValue = dbValue;
+    ProductType(String code) {
+        this.code = code;
     }
 
-    public String dbValue() {
-        return dbValue;
+    public String code() {
+        return code;
     }
 
-    public static ProductType fromDb(String value) {
+    public static ProductType fromCode(String value) {
         for (ProductType t : values()) {
-            if (t.dbValue.equals(value)) return t;
+            if (t.code.equals(value)) return t;
         }
         throw Assert.unknownValue("product_type", value);
     }

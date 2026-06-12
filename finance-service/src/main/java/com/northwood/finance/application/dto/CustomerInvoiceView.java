@@ -33,7 +33,7 @@ public record CustomerInvoiceView(
             ci.subtotalAmount(),
             ci.taxAmount(),
             ci.totalAmount(),
-            ci.status().dbValue(),
+            ci.status().code(),
             ci.version(),
             ci.lines().stream().map(CustomerInvoiceLineView::from).toList()
         );

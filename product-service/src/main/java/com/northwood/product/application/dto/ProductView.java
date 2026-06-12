@@ -30,18 +30,18 @@ public record ProductView(
             p.sku().value(),
             p.name(),
             p.description(),
-            p.productType().dbValue(),
+            p.productType().code(),
             p.salesPrice().amount(),
             p.standardCost().amount(),
             p.isPurchased(),
             p.isManufactured(),
             p.reorderPoint(),
             p.reorderQuantity(),
-            p.replenishmentStrategy() == null ? null : p.replenishmentStrategy().dbValue(),
-            p.valuationClass() == null ? null : p.valuationClass().dbValue(),
+            p.replenishmentStrategy() == null ? null : p.replenishmentStrategy().code(),
+            p.valuationClass() == null ? null : p.valuationClass().code(),
             p.activeBomId(),
             p.planningTimeFenceDays(),
-            p.status().dbValue(),
+            p.status().code(),
             p.version()
         );
     }

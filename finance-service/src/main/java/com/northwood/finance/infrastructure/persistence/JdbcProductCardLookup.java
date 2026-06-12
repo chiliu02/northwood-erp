@@ -33,11 +33,11 @@ public class JdbcProductCardLookup implements ProductCardLookup {
     @Override
     public Optional<ValuationClass> findValuationClass(UUID productId) {
         try {
-            String dbValue = jdbc.queryForObject(
+            String code = jdbc.queryForObject(
                 "SELECT valuation_class FROM finance.product_card WHERE product_id = ?",
                 String.class, productId
             );
-            return Optional.ofNullable(dbValue).map(ValuationClass::fromDb);
+            return Optional.ofNullable(code).map(ValuationClass::fromCode);
         } catch (EmptyResultDataAccessException e) {
             return Optional.empty();
         }

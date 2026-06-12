@@ -31,7 +31,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
         rs.getString("customer_name"),
         rs.getObject("warehouse_id", UUID.class),
         null,
-        Shipment.Status.fromDb(rs.getString("status")),
+        Shipment.Status.fromCode(rs.getString("status")),
         List.of(),
         rs.getLong("version")
     );
@@ -120,7 +120,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
             """,
             s.id().value(), s.shipmentNumber(), s.salesOrderHeaderId(), s.salesOrderNumber(),
             s.customerId(), s.customerName(),
-            s.warehouseId(), s.status().dbValue(),
+            s.warehouseId(), s.status().code(),
             1L, postedAt,
             actor, actor
         );

@@ -32,7 +32,7 @@ public class JdbcPurchaseOrderRepository implements PurchaseOrderRepository {
         rs.getBigDecimal("subtotal_amount"),
         rs.getBigDecimal("tax_amount"),
         rs.getBigDecimal("total_amount"),
-        PurchaseOrder.Status.fromDb(rs.getString("status")),
+        PurchaseOrder.Status.fromCode(rs.getString("status")),
         List.of(),
         rs.getLong("version")
     );
@@ -49,7 +49,7 @@ public class JdbcPurchaseOrderRepository implements PurchaseOrderRepository {
         rs.getBigDecimal("tax_rate"),
         rs.getBigDecimal("tax_amount"),
         rs.getBigDecimal("line_total"),
-        PurchaseOrder.LineStatus.fromDb(rs.getString("status"))
+        PurchaseOrder.LineStatus.fromCode(rs.getString("status"))
     );
 
     private final JdbcTemplate jdbc;
@@ -123,7 +123,7 @@ public class JdbcPurchaseOrderRepository implements PurchaseOrderRepository {
             po.supplierId(), po.supplierCode(), po.supplierName(),
             po.purchaseRequisitionHeaderId(),
             po.currencyCode(), po.subtotalAmount(), po.taxAmount(), po.totalAmount(),
-            po.status().dbValue(), 1L,
+            po.status().code(), 1L,
             actor, actor
         );
         for (PurchaseOrderLine l : po.lines()) {
@@ -142,7 +142,7 @@ public class JdbcPurchaseOrderRepository implements PurchaseOrderRepository {
                 l.taxRate() == null ? BigDecimal.ZERO : l.taxRate(),
                 l.taxAmount() == null ? BigDecimal.ZERO : l.taxAmount(),
                 l.lineTotal(),
-                l.status().dbValue()
+                l.status().code()
             );
         }
     }
@@ -153,7 +153,7 @@ public class JdbcPurchaseOrderRepository implements PurchaseOrderRepository {
             SET status = ?, version = version + 1, last_modified_by = ?
             WHERE purchase_order_header_id = ? AND version = ?
             """,
-            po.status().dbValue(), actor, po.id().value(), po.version()
+            po.status().code(), actor, po.id().value(), po.version()
         );
         if (rows == 0) {
             throw new OptimisticLockingFailureException(

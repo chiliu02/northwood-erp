@@ -59,7 +59,7 @@ public class JdbcPurchaseOrderReceiptProjection implements PurchaseOrderReceiptP
                SET status = ?, received_amount = ?, version = version + 1
              WHERE purchase_order_header_id = ?
             """,
-            poStatus.dbValue(), totalReceived, purchaseOrderHeaderId
+            poStatus.code(), totalReceived, purchaseOrderHeaderId
         );
 
         return new ReceiptOutcome(fully, totalReceived);

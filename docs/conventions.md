@@ -102,9 +102,9 @@ Northwood is **not event-sourced** — aggregates have a canonical row in the DB
 
 **Historic audit.** A prior audit surfaced five `*Repository`-without-an-aggregate offenders; all resolved in a later cleanup. A follow-up audit surfaced one further violation: `inventory.StockItem`, which had the aggregate skeleton but emitted zero events (every mutation was `applyReorderPolicy` driven by an inbound product-master fact, so it is structurally a *snapshot projection of upstream state* in the table above). Subsequently demoted; pull forward when an inventory-originated stock-fact slice (manual adjustment, stock-take, etc.) creates a legitimate first emitter.
 
-## Aggregate enumerated fields — nested enum with `dbValue()` / `fromDb()`
+## Aggregate enumerated fields — nested enum with `code()` / `fromCode()`
 
-Every enumerated column on an aggregate table — `status`, `line_status`, `material_status`, `match_status`, `payment_method`, `component_kind`, `source_type`, `source_module`, etc. — is modelled as a **nested enum on the aggregate root**, carrying its wire-format string via `dbValue()` and a parse helper `fromDb(String)`. Same shape as the original `ProductType` and `Customer.Status`.
+Every enumerated column on an aggregate table — `status`, `line_status`, `material_status`, `match_status`, `payment_method`, `component_kind`, `source_type`, `source_module`, etc. — is modelled as a **nested enum on the aggregate root**, carrying its wire-format string via `code()` and a parse helper `fromCode(String)`. Same shape as the original `ProductType` and `Customer.Status`.
 
 ```java
 public final class SalesOrder {
@@ -119,13 +119,13 @@ public final class SalesOrder {
         CANCELLED("cancelled"),
         REJECTED("rejected");
 
-        private final String dbValue;
-        Status(String dbValue) { this.dbValue = dbValue; }
-        public String dbValue() { return dbValue; }
+        private final String code;
+        Status(String code) { this.code = code; }
+        public String code() { return code; }
 
-        public static Status fromDb(String value) {
+        public static Status fromCode(String value) {
             for (Status s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw new IllegalArgumentException("Unknown sales_order status: " + value);
         }
@@ -142,13 +142,13 @@ public final class SalesOrder {
 
 **Rules:**
 
-1. **Mirror the schema CHECK.** The enum lists every value the schema CHECK allows, even values not currently produced by Java. Schema-prep values carry a `/** Schema-prep — not currently produced by Java. */` Javadoc tag so the gap is visible. Trimming the enum to the Java-today set risks `fromDb()` throwing on a column value the schema accepts.
-2. **Lowercase `dbValue()` is the wire format.** Domain events, REST DTOs, and the column value all carry the lowercase string. The Java identifier (`UPPER_SNAKE_CASE`) is for Java-side type safety only — never appears on the wire.
-3. **No `@JsonValue` on `dbValue()`.** Wire-format conversion happens at the `*View.from(...)` boundary via `.dbValue()`. Keeps wire control explicit rather than depending on Jackson annotation behaviour.
-4. **`fromDb` throws `IllegalArgumentException` on an unknown string** — never silently default to a sentinel. A new schema value must show up at compile time when added to the enum, or as a loud error at the read site if it slips past.
-5. **Persistence calls `.dbValue()` on write and `Status.fromDb(rs.getString("status"))` on read.** No `.name().toLowerCase()` / `valueOf(s.toUpperCase())` ad-hoc conversions — those were the pre-2.0 anti-pattern.
+1. **Mirror the schema CHECK.** The enum lists every value the schema CHECK allows, even values not currently produced by Java. Schema-prep values carry a `/** Schema-prep — not currently produced by Java. */` Javadoc tag so the gap is visible. Trimming the enum to the Java-today set risks `fromCode()` throwing on a column value the schema accepts.
+2. **Lowercase `code()` is the wire format.** Domain events, REST DTOs, and the column value all carry the lowercase string. The Java identifier (`UPPER_SNAKE_CASE`) is for Java-side type safety only — never appears on the wire.
+3. **No `@JsonValue` on `code()`.** Wire-format conversion happens at the `*View.from(...)` boundary via `.code()`. Keeps wire control explicit rather than depending on Jackson annotation behaviour.
+4. **`fromCode` throws `IllegalArgumentException` on an unknown string** — never silently default to a sentinel. A new schema value must show up at compile time when added to the enum, or as a loud error at the read site if it slips past.
+5. **Persistence calls `.code()` on write and `Status.fromCode(rs.getString("status"))` on read.** No `.name().toLowerCase()` / `valueOf(s.toUpperCase())` ad-hoc conversions — those were the pre-2.0 anti-pattern.
 6. **Each aggregate keeps its own status field** even when single-valued today (e.g. `GoodsReceipt`, `Shipment` only ever write `POSTED`). Don't drop the column to tidy up; schema-prep for cancel/reverse paths is intentional. See [[feedback-aggregate-status-field]] in memory.
-7. **Type categories follow the same shape.** `ProductType`, `Payment.Method`, `JournalEntry.SourceModule`, `Bom.ComponentKind`, `PurchaseRequisition.SourceType`, `StockTrackingMode` — all enum-with-`dbValue()`. The "is it a *status* or a *category*?" distinction doesn't matter at this level; an enumerated column is an enumerated column.
+7. **Type categories follow the same shape.** `ProductType`, `Payment.Method`, `JournalEntry.SourceModule`, `Bom.ComponentKind`, `PurchaseRequisition.SourceType`, `StockTrackingMode` — all enum-with-`code()`. The "is it a *status* or a *category*?" distinction doesn't matter at this level; an enumerated column is an enumerated column.
 
 **Cross-service status values** (referenced from event payloads by consumer services) live on `<service>-events` event classes as `public static final String STATUS_*` constants regardless of the producer-side representation. That rule is independent and unchanged — see `docs/sagas.md`.
 
@@ -157,14 +157,14 @@ public final class SalesOrder {
 ```java
 public record SalesOrderView(..., String status, ...) {
     public static SalesOrderView from(SalesOrder order) {
-        return new SalesOrderView(..., order.status().dbValue(), ...);
+        return new SalesOrderView(..., order.status().code(), ...);
     }
 }
 ```
 
 The View carries `String status`; the conversion happens once in `from(...)`. Inbox handlers and application services pass the enum throughout; only the wire layer sees the string.
 
-**Status-projection ports** (the non-aggregate write path for header-status echoes — e.g. `SalesOrderHeaderStatusProjection.markStatus`) take the enum at the interface boundary and unwrap to `.dbValue()` inside the JDBC implementation. Same shape: typed in `application/`, string at the JDBC seam.
+**Status-projection ports** (the non-aggregate write path for header-status echoes — e.g. `SalesOrderHeaderStatusProjection.markStatus`) take the enum at the interface boundary and unwrap to `.code()` inside the JDBC implementation. Same shape: typed in `application/`, string at the JDBC seam.
 
 ## Cross-service wire-format constants
 
@@ -219,18 +219,18 @@ jdbc.update("""
     WorkOrderStatuses.RELEASED, ...);   // ✅ compiles; parameter-bound so SQL stays valid
 ```
 
-Producer side keeps using its enum (`WorkOrder.Status.RELEASED.dbValue()`). The two paths produce the same wire-format string at runtime.
+Producer side keeps using its enum (`WorkOrder.Status.RELEASED.code()`). The two paths produce the same wire-format string at runtime.
 
 ### What still uses string literals (intentionally)
 
 - **SQL `WHERE` and `CASE` conditions** in cross-service projections — `WHERE current_status IN ('released', 'pending')`. These are engine-side comparisons against current column values, not statuses this code *writes*. Compile-time binding doesn't help here; a comment near the SQL pointing at the constants holder is enough.
-- **Application-layer Commands taking wire-shaped data** (e.g. `RecordSupplierPaymentCommand.paymentMethod : String`) — the controller can't import domain enums (hex rule), so the wire shape lives on the Command and the service converts via `Enum.fromDb(...)` inside its method body. The Command's `@Pattern(...)` annotation pins the input set; the conversion catches drift.
+- **Application-layer Commands taking wire-shaped data** (e.g. `RecordSupplierPaymentCommand.paymentMethod : String`) — the controller can't import domain enums (hex rule), so the wire shape lives on the Command and the service converts via `Enum.fromCode(...)` inside its method body. The Command's `@Pattern(...)` annotation pins the input set; the conversion catches drift.
 - **Outbox/inbox status** (`outbox_message.status`) — internal messaging plumbing, not a cross-service contract, so it gets no `<service>-events` constant (this is what's "out of scope" for the rule above). It is *not* literal-everywhere, though: the `JdbcOutboxAdapter` SQL keeps `WHERE status IN ('pending', 'failed')` / `VALUES (…, 'pending')` literal (per the SQL bullet above), while **Java-side** comparisons use the existing `OutboxRow.PENDING` / `OutboxRow.PUBLISHED` / `OutboxRow.FAILED` constants — e.g. `OutboxRow.PENDING.equals(row.getStatus())`, never `"pending".equals(...)`. The in-memory `InMemoryOutboxPort` mirrors this.
 - **Reference-data identifiers** — GL account codes (`"5000"`, `"2100"`), product SKUs (`"FG-TABLE-001"`), customer codes (`"CUST-001"`), supplier codes, warehouse codes, etc. These are foreign-key IDs into reference-data tables, not enumerated states. The set is data-bounded (rows in `finance.gl_account` / `product.product` / `sales.customer` / …), customer-configurable in any real ERP, opaque pass-through to a `*Lookup` rather than a discriminator compared via `switch` / `.equals`. The right shape for these is a **named-alias constants holder** (e.g. `FinanceAccountCodes.AP = "2100"`) when the values are used as a service's policy choice, or a typed VO (`Sku`, `CustomerCode`) when they flow through the domain. Don't promote to an enum: it would lock the set to a code change instead of a data change, and the type system can't verify "2100 is the right account for AP" any more than a String constant can.
 
 ### The "did we cover it" test
 
-Find Usages on the producer-side enum value (e.g. `WorkOrder.Status.RELEASED`) — every consumer in every service that pinned to the wire value should show up either through the enum's `dbValue()` (within-service uses) or through the matching cross-service constant (cross-service uses). A string literal that doesn't surface there is the gap.
+Find Usages on the producer-side enum value (e.g. `WorkOrder.Status.RELEASED`) — every consumer in every service that pinned to the wire value should show up either through the enum's `code()` (within-service uses) or through the matching cross-service constant (cross-service uses). A string literal that doesn't surface there is the gap.
 
 ## Instance-field naming: the full aggregate name in plural, not the class-kind suffix
 
@@ -488,7 +488,7 @@ Each of the three flavours above produces an application-layer exception class t
 1. **Extend a marker base** — one of `shared.application.exception.NotFoundException` (HTTP 404), `ConflictException` (HTTP 409), or `BadRequestException` (HTTP 400). All three are thin subclasses of `AbstractDomainException`, which holds the wire-format code in a `private final String code` field and exposes it via a `final` `code()` accessor. Choose the marker by *what the caller can do about it* — retry with a different id (404), wait/fix state then retry (409), or fix the input (400).
 2. **Declare `public static final String CODE = "<wire-format-string>"` on the concrete class and pass it through `super(CODE, message[, cause])`.** The constant sits above instance fields per the class-member-ordering rule. The string literal appears exactly once, at the constant declaration — every other reference (the `super(...)` call, tests, cross-service Java consumers) flows through `XxxException.CODE`. This mirrors the existing `EVENT_TYPE` / `AGGREGATE_TYPE` / `XxxStatuses` pattern: "Find Usages on `CustomerNotFoundException.CODE`" answers who produces, who consumes, and what depends on the wire-format string. The cost is one extra line per class; the win is the same compile-time anchor every other cross-service wire-format string already has.
 3. **Promote constructor arguments to typed fields with accessors.** Every constructor parameter that informs the error (`customerCode`, `status`, `sku`, etc.) becomes a `private final` field with a same-named accessor method. Pre-existing English `super(...)` message stays for logs and stack traces — it's no longer the wire-format body.
-4. **Implement `Map<String, Object> params()`** as a literal `Map.of(...)` over the typed fields. The shared advice serialises this directly into the JSON response body's `params` field. Keys are stable identifiers; values must be JSON-serialisable (UUIDs, Strings, Numbers, enums-via-`dbValue()`).
+4. **Implement `Map<String, Object> params()`** as a literal `Map.of(...)` over the typed fields. The shared advice serialises this directly into the JSON response body's `params` field. Keys are stable identifiers; values must be JSON-serialisable (UUIDs, Strings, Numbers, enums-via-`code()`).
 
 Skeleton:
 
@@ -702,11 +702,11 @@ The Javadoc and the variable name. Don't bake call-stack context into the messag
 
 ### Why `unknownValue` returns rather than throws
 
-`Assert.unknownValue("status", value)` **returns** an `IllegalArgumentException` rather than throwing it. Callers write `throw Assert.unknownValue("status", value);`. This keeps the `throw` keyword visible at the call site so the compiler's control-flow analysis (unreachable-code, definite-assignment, missing-return) sees it as a terminating statement. A method that helpfully threw the exception itself would be flagged by the compiler as "missing return" at the fall-through end of a `fromDb` parser.
+`Assert.unknownValue("status", value)` **returns** an `IllegalArgumentException` rather than throwing it. Callers write `throw Assert.unknownValue("status", value);`. This keeps the `throw` keyword visible at the call site so the compiler's control-flow analysis (unreachable-code, definite-assignment, missing-return) sees it as a terminating statement. A method that helpfully threw the exception itself would be flagged by the compiler as "missing return" at the fall-through end of a `fromCode` parser.
 
 ### Why `unknownValue` returns rather than throws
 
-`Assert.unknownValue("status", value)` **returns** an `IllegalArgumentException` rather than throwing it. Callers write `throw Assert.unknownValue("status", value);`. This keeps the `throw` keyword visible at the call site so the compiler's control-flow analysis (unreachable-code, definite-assignment, missing-return) sees it as a terminating statement. A method that helpfully threw the exception itself would be flagged by the compiler as "missing return" at the fall-through end of a `fromDb` parser.
+`Assert.unknownValue("status", value)` **returns** an `IllegalArgumentException` rather than throwing it. Callers write `throw Assert.unknownValue("status", value);`. This keeps the `throw` keyword visible at the call site so the compiler's control-flow analysis (unreachable-code, definite-assignment, missing-return) sees it as a terminating statement. A method that helpfully threw the exception itself would be flagged by the compiler as "missing return" at the fall-through end of a `fromCode` parser.
 
 ### What stays as inline throw
 

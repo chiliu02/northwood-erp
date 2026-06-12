@@ -37,8 +37,8 @@ public interface ProductCreatedProjection {
      * forbidden (schema-per-service rule).
      */
     static boolean defaultPurchased(String productType) {
-        if (ProductType.FINISHED_GOOD.dbValue().equals(productType)
-            || ProductType.SEMI_FINISHED_GOOD.dbValue().equals(productType)) {
+        if (ProductType.FINISHED_GOOD.code().equals(productType)
+            || ProductType.SEMI_FINISHED_GOOD.code().equals(productType)) {
             return false;
         }
         return true;

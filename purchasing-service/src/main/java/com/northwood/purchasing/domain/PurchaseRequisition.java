@@ -77,19 +77,19 @@ public final class PurchaseRequisition {
          */
         STOCK_REPLENISHMENT("stock_replenishment");
 
-        private final String dbValue;
+        private final String code;
 
-        SourceType(String dbValue) {
-            this.dbValue = dbValue;
+        SourceType(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static SourceType fromDb(String value) {
+        public static SourceType fromCode(String value) {
             for (SourceType t : values()) {
-                if (t.dbValue.equals(value)) return t;
+                if (t.code.equals(value)) return t;
             }
             throw Assert.unknownValue("purchase_requisition source_type", value);
         }
@@ -111,19 +111,19 @@ public final class PurchaseRequisition {
         /** Schema-prep — not currently produced by Java. */
         CANCELLED("cancelled");
 
-        private final String dbValue;
+        private final String code;
 
-        Status(String dbValue) {
-            this.dbValue = dbValue;
+        Status(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Status fromDb(String value) {
+        public static Status fromCode(String value) {
             for (Status s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("purchase_requisition status", value);
         }
@@ -142,19 +142,19 @@ public final class PurchaseRequisition {
         /** Schema-prep — not currently produced by Java. */
         CANCELLED("cancelled");
 
-        private final String dbValue;
+        private final String code;
 
-        LineStatus(String dbValue) {
-            this.dbValue = dbValue;
+        LineStatus(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static LineStatus fromDb(String value) {
+        public static LineStatus fromCode(String value) {
             for (LineStatus s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("purchase_requisition_line status", value);
         }
@@ -267,11 +267,11 @@ public final class PurchaseRequisition {
             UUID.randomUUID(),
             id.value(),
             requisitionNumber,
-            sourceType.dbValue(),
+            sourceType.code(),
             sourceWorkOrderId,
             sourceProductId,
             sourceReplenishmentRequestId,
-            Status.APPROVED.dbValue(),
+            Status.APPROVED.code(),
             wireLines,
             Instant.now()
         );
@@ -340,7 +340,7 @@ public final class PurchaseRequisition {
         if (status == Status.CONVERTED) {
             return;
         }
-        Assert.state(status == Status.APPROVED, "Cannot convert requisition " + id.value() + " from status=" + status.dbValue());
+        Assert.state(status == Status.APPROVED, "Cannot convert requisition " + id.value() + " from status=" + status.code());
         this.status = Status.CONVERTED;
     }
 

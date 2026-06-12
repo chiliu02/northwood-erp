@@ -402,24 +402,24 @@ class ReplenishmentRequestTest {
 
         @Test void status_round_trips() {
             for (Status s : Status.values()) {
-                assertThat(Status.fromDb(s.dbValue())).isEqualTo(s);
+                assertThat(Status.fromCode(s.code())).isEqualTo(s);
             }
         }
 
         @Test void target_service_round_trips() {
             for (TargetService t : TargetService.values()) {
-                assertThat(TargetService.fromDb(t.dbValue())).isEqualTo(t);
+                assertThat(TargetService.fromCode(t.code())).isEqualTo(t);
             }
         }
 
         @Test void reason_round_trips() {
             for (Reason r : Reason.values()) {
-                assertThat(Reason.fromDb(r.dbValue())).isEqualTo(r);
+                assertThat(Reason.fromCode(r.code())).isEqualTo(r);
             }
         }
 
         @Test void status_fromDb_rejects_unknown() {
-            assertThatThrownBy(() -> Status.fromDb("bogus"))
+            assertThatThrownBy(() -> Status.fromCode("bogus"))
                 .isInstanceOf(IllegalArgumentException.class);
         }
     }

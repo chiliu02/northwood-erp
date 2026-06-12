@@ -33,7 +33,7 @@ public interface ProductCardLookup {
      * Returns the product's valuation class as the typed
      * {@link ValuationClass} enum. The underlying column is a wire-format
      * String (mirrors {@code product.product.valuation_class}); the read
-     * path converts via {@link ValuationClass#fromDb} so consumers can
+     * path converts via {@link ValuationClass#fromCode} so consumers can
      * switch over the enum. An unknown value in the projection column
      * surfaces as {@link IllegalArgumentException} — the schema CHECK on
      * {@code finance.product_card.valuation_class} keeps the set aligned.

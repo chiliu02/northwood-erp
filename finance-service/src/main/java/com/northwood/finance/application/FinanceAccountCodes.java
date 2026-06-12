@@ -7,7 +7,7 @@ package com.northwood.finance.application;
  * {@code finance.gl_account.code}.
  *
  * <p>These are <b>reference-data identifiers</b>, not enumerated states — they
- * fail every criterion that would justify an enum-with-{@code dbValue()}
+ * fail every criterion that would justify an enum-with-{@code code()}
  * (see {@code docs/conventions.md} → <i>What still uses string literals</i>).
  * Specifically: the chart of accounts is data in {@code finance.gl_account},
  * customer-configurable in any real ERP; the codes are opaque pass-through

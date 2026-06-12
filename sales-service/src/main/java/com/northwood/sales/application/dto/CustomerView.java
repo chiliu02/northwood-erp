@@ -25,8 +25,8 @@ public record CustomerView(
             c.phone(),
             c.billingAddress(),
             c.shippingAddress(),
-            c.status().dbValue(),
-            c.defaultPaymentTerms().dbValue(),
+            c.status().code(),
+            c.defaultPaymentTerms().code(),
             c.version()
         );
     }

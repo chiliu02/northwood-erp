@@ -61,7 +61,7 @@ public class JdbcStockMovementWriter implements StockMovementWriter {
             """,
             UUID.randomUUID(), warehouseId, productId,
             productSku, productName,
-            movementType.dbValue(), direction.dbValue(), quantity,
+            movementType.code(), direction.code(), quantity,
             cost, totalCost,
             sourceType, sourceId, sourceLineId,
             Timestamp.from(Instant.now())

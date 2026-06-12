@@ -183,7 +183,7 @@ class SalesOrderServicePlaceOrderTest {
             // setUp); command overrides to prepayment.
             service.placeOrder(new PlaceOrderCommand(
                 "SO-PT-2", "CUST-1", LocalDate.now().plusDays(7), Currencies.AUD,
-                PaymentTerms.PREPAYMENT.dbValue(),
+                PaymentTerms.PREPAYMENT.code(),
                 List.of(new OrderLine(PRODUCT_ID, "SKU-1", "Widget",
                     new BigDecimal("1"), null, BigDecimal.ZERO))
             ));

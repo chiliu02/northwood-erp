@@ -12,7 +12,7 @@ public record RegisterCustomerRequest(
     /**
      * Optional default commercial payment terms. Null = server defaults to
      * {@code on_shipment} (Northwood's credit-terms AR flow). Validated
-     * against {@code PaymentTerms.fromDb} in {@code CustomerService}.
+     * against {@code PaymentTerms.fromCode} in {@code CustomerService}.
      */
     String defaultPaymentTerms
 ) {}

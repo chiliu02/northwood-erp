@@ -87,19 +87,19 @@ public final class PurchaseOrder {
         /** Schema-prep — not currently produced by Java. */
         CANCELLED("cancelled");
 
-        private final String dbValue;
+        private final String code;
 
-        Status(String dbValue) {
-            this.dbValue = dbValue;
+        Status(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Status fromDb(String value) {
+        public static Status fromCode(String value) {
             for (Status s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("purchase_order status", value);
         }
@@ -124,19 +124,19 @@ public final class PurchaseOrder {
         /** Schema-prep — not currently produced by Java. */
         CANCELLED("cancelled");
 
-        private final String dbValue;
+        private final String code;
 
-        LineStatus(String dbValue) {
-            this.dbValue = dbValue;
+        LineStatus(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static LineStatus fromDb(String value) {
+        public static LineStatus fromCode(String value) {
             for (LineStatus s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("purchase_order_line status", value);
         }
@@ -226,7 +226,7 @@ public final class PurchaseOrder {
             sourceWorkOrderId,
             po.currencyCode,
             total,
-            initialStatus.dbValue(),
+            initialStatus.code(),
             wireLines,
             Instant.now()
         ));
@@ -346,7 +346,7 @@ public final class PurchaseOrder {
             id.value(),
             purchaseOrderNumber,
             supplierId,
-            previous.dbValue(),
+            previous.code(),
             cancelledBy,
             reason,
             Instant.now()
@@ -424,7 +424,7 @@ public final class PurchaseOrder {
         private final Status currentStatus;
 
         public PoNotApprovableException(PurchaseOrderId orderId, Status currentStatus) {
-            super("Purchase order " + orderId.value() + " is in status '" + currentStatus.dbValue()
+            super("Purchase order " + orderId.value() + " is in status '" + currentStatus.code()
                 + "' and cannot be approved (must be 'draft')");
             this.orderId = orderId;
             this.currentStatus = currentStatus;
@@ -447,7 +447,7 @@ public final class PurchaseOrder {
         private final Status currentStatus;
 
         public PoNotRejectableException(PurchaseOrderId orderId, Status currentStatus) {
-            super("Purchase order " + orderId.value() + " is in status '" + currentStatus.dbValue()
+            super("Purchase order " + orderId.value() + " is in status '" + currentStatus.code()
                 + "' and cannot be rejected (only a 'draft' PO can be rejected)");
             this.orderId = orderId;
             this.currentStatus = currentStatus;

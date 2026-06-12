@@ -37,7 +37,7 @@ import tools.jackson.databind.ObjectMapper;
  * <ul>
  *   <li>{@code recordSupplierPayment} / {@code recordCustomerPayment} →
  *       {@code findById} round-trip of header + allocation incl. the
- *       direction/type/method/status enum {@code dbValue()}/{@code fromDb()}
+ *       direction/type/method/status enum {@code code()}/{@code fromCode()}
  *       round-trips and the nullable {@code customer_id}/{@code supplier_id} XOR;</li>
  *   <li>the {@code SupplierPaymentMade} / {@code CustomerPaymentReceived} outbox row;</li>
  *   <li>the {@code maintain_allocation_totals} trigger rolling

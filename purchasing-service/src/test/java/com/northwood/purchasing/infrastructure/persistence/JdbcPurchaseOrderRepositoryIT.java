@@ -36,7 +36,7 @@ import tools.jackson.databind.ObjectMapper;
  * Real-Postgres test for {@link JdbcPurchaseOrderRepository}
  * (header + lines). Seeded via {@code reconstitute(DRAFT, version=0)} (avoids the
  * {@code fromRequisition} factory's {@code Supplier} dependency). Covers:
- * insert→findById round-trip of header + line incl. enum dbValue()/fromDb();
+ * insert→findById round-trip of header + line incl. enum code()/fromCode();
  * {@code approve()} persisted via the update path + the {@code PurchaseOrderApproved}
  * outbox row; and the optimistic-lock conflict on a stale version.
  */

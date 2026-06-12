@@ -29,19 +29,19 @@ public enum ReplenishmentStrategy {
     TO_STOCK("to_stock"),
     TO_ORDER("to_order");
 
-    private final String dbValue;
+    private final String code;
 
-    ReplenishmentStrategy(String dbValue) {
-        this.dbValue = dbValue;
+    ReplenishmentStrategy(String code) {
+        this.code = code;
     }
 
-    public String dbValue() {
-        return dbValue;
+    public String code() {
+        return code;
     }
 
-    public static ReplenishmentStrategy fromDb(String value) {
+    public static ReplenishmentStrategy fromCode(String value) {
         for (ReplenishmentStrategy s : values()) {
-            if (s.dbValue.equals(value)) return s;
+            if (s.code.equals(value)) return s;
         }
         throw Assert.unknownValue("replenishment_strategy", value);
     }

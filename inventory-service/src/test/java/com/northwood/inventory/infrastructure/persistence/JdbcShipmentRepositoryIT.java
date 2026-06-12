@@ -34,7 +34,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Real-Postgres test for {@link JdbcShipmentRepository}
  * (post-only header+line aggregate, twin of GoodsReceipt). Covers:
- * {@code post}→{@code findById} round-trip incl. {@code status} {@code dbValue()}
+ * {@code post}→{@code findById} round-trip incl. {@code status} {@code code()}
  * + the {@code warehouse_id} FK; the {@code ShipmentPosted} outbox row; and the
  * post-only guard.
  */

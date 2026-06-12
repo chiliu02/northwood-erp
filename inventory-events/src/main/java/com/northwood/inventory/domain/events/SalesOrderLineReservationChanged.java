@@ -31,7 +31,7 @@ public record SalesOrderLineReservationChanged(
     UUID productId,
     BigDecimal reservedQuantity,
     BigDecimal shortageQuantity,
-    String status,             // StockReservation.Status dbValue: reserved | partially_reserved | failed | released
+    String status,             // StockReservation.Status code: reserved | partially_reserved | failed | released
     Instant occurredAt
 ) implements DomainEvent {
 

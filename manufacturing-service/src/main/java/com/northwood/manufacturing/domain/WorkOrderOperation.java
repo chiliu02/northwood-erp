@@ -77,7 +77,7 @@ public final class WorkOrderOperation {
      * private; routed through {@link WorkOrder#skipOperation}.
      */
     void markSkipped() {
-        Assert.state(status == WorkOrder.OperationStatus.PLANNED || status == WorkOrder.OperationStatus.IN_PROGRESS, "Operation " + operationSequence + " status is " + status.dbValue() + "; cannot skip");
+        Assert.state(status == WorkOrder.OperationStatus.PLANNED || status == WorkOrder.OperationStatus.IN_PROGRESS, "Operation " + operationSequence + " status is " + status.code() + "; cannot skip");
         Instant now = Instant.now();
         if (this.startedAt == null) {
             this.startedAt = now;
@@ -94,7 +94,7 @@ public final class WorkOrderOperation {
      */
     void markCompleted(BigDecimal actualMinutes) {
         Assert.state(status != WorkOrder.OperationStatus.COMPLETED, "Operation " + operationSequence + " is already completed");
-        Assert.state(status == WorkOrder.OperationStatus.PLANNED || status == WorkOrder.OperationStatus.IN_PROGRESS, "Operation " + operationSequence + " status is " + status.dbValue() + "; cannot complete");
+        Assert.state(status == WorkOrder.OperationStatus.PLANNED || status == WorkOrder.OperationStatus.IN_PROGRESS, "Operation " + operationSequence + " status is " + status.code() + "; cannot complete");
         Assert.notNull(actualMinutes, "actualMinutes");
         Assert.argument(actualMinutes.signum() >= 0, "actualMinutes must be >= 0");
         Instant now = Instant.now();

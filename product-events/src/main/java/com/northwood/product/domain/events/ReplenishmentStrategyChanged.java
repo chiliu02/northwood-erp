@@ -14,7 +14,7 @@ import java.util.UUID;
  * ({@code to_stock}) or raises dedicated, order-pegged supply ({@code to_order}).
  *
  * <p>Carries old + new wire-format values (typed enum on the aggregate,
- * {@code dbValue()} on the wire) so consumers re-projecting historical
+ * {@code code()} on the wire) so consumers re-projecting historical
  * decisions don't have to re-query the master. Never fires for service
  * products (their strategy is permanently NULL).
  */

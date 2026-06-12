@@ -38,7 +38,7 @@ import tools.jackson.databind.ObjectMapper;
  * Real-Postgres test for {@link JdbcSalesOrderRepository}
  * (header + lines). Seeded via {@code reconstitute(OPEN, version=0)}.
  * Covers: insert→findById round-trip of header + line incl. enum
- * dbValue()/fromDb() + the {@code customer_id} FK; {@code cancel()} persisted via
+ * code()/fromCode() + the {@code customer_id} FK; {@code cancel()} persisted via
  * the update path (status + cancelled_at) + the {@code SalesOrderCancellationRequested}
  * outbox row; and the optimistic-lock conflict on a stale version.
  */

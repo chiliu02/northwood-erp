@@ -44,7 +44,7 @@ public record PurchaseOrderView(
             po.subtotalAmount(),
             po.taxAmount(),
             po.totalAmount(),
-            po.status().dbValue(),
+            po.status().code(),
             po.version(),
             lineViews
         );

@@ -39,7 +39,7 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <ul>
  *   <li>{@code record(MATCHED)} → {@code findById} round-trip incl.
- *       status + match_status enum {@code dbValue()}/{@code fromDb()} + the
+ *       status + match_status enum {@code code()}/{@code fromCode()} + the
  *       {@code SupplierInvoiceApproved} outbox row, then surfacing via
  *       {@code findByStatus} / {@code findPaymentSnapshot};</li>
  *   <li>{@code manualApprove} flipping {@code three_way_match_failed → approved}

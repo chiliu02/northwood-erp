@@ -17,7 +17,7 @@ public record WorkOrderMaterialView(
     public static WorkOrderMaterialView from(WorkOrderMaterial m) {
         return new WorkOrderMaterialView(
             m.id(), m.componentProductId(), m.componentSku(), m.componentName(),
-            m.requiredQuantity(), m.unitCost(), m.status().dbValue()
+            m.requiredQuantity(), m.unitCost(), m.status().code()
         );
     }
 }

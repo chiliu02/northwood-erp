@@ -41,19 +41,19 @@ public final class StockAdjustment {
         /** Schema-prep — not currently produced by Java. */
         REVERSED("reversed");
 
-        private final String dbValue;
+        private final String code;
 
-        Status(String dbValue) {
-            this.dbValue = dbValue;
+        Status(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Status fromDb(String value) {
+        public static Status fromCode(String value) {
             for (Status s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("stock_adjustment status", value);
         }
@@ -110,7 +110,7 @@ public final class StockAdjustment {
             productId,
             productSku,
             productName,
-            direction.dbValue(),
+            direction.code(),
             quantity,
             reason,
             Instant.now()

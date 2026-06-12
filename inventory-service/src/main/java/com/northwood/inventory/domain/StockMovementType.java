@@ -24,19 +24,19 @@ public enum StockMovementType {
     /** Schema-prep — not currently produced by Java. */
     RESERVATION_RELEASE("reservation_release");
 
-    private final String dbValue;
+    private final String code;
 
-    StockMovementType(String dbValue) {
-        this.dbValue = dbValue;
+    StockMovementType(String code) {
+        this.code = code;
     }
 
-    public String dbValue() {
-        return dbValue;
+    public String code() {
+        return code;
     }
 
-    public static StockMovementType fromDb(String value) {
+    public static StockMovementType fromCode(String value) {
         for (StockMovementType t : values()) {
-            if (t.dbValue.equals(value)) return t;
+            if (t.code.equals(value)) return t;
         }
         throw Assert.unknownValue("stock_movement movement_type", value);
     }

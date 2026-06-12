@@ -94,7 +94,7 @@ Assuming a genuine total mandate, here is what happens.
    different mechanism (recompute-from-log, or eventual reconciliation) — and that logic lives in
    `application/inbox/` projections.
 
-5. **Constraint enforcement that today lives in the schema.** CHECK sets the `dbValue()` enums
+5. **Constraint enforcement that today lives in the schema.** CHECK sets the `code()` enums
    mirror, unique constraints, within-schema line→header FKs, `NOT NULL`. Cassandra enforces almost
    none — validation the DB did silently migrates into `domain`/`application` code. Uniqueness (order
    number, SKU) becomes an LWT `IF NOT EXISTS` write or a lookup-table-as-index, both with race/perf

@@ -34,7 +34,7 @@ public class Customer {
 
     /**
      * Customer lifecycle status. Carries its wire-format string via
-     * {@link #dbValue()} (same shape as {@code ProductType}), so callers can
+     * {@link #code()} (same shape as {@code ProductType}), so callers can
      * compare against {@code sales.customer.status} JDBC rows without a
      * separate String-constant set.
      */
@@ -43,19 +43,19 @@ public class Customer {
         INACTIVE("inactive"),
         BLOCKED("blocked");
 
-        private final String dbValue;
+        private final String code;
 
-        Status(String dbValue) {
-            this.dbValue = dbValue;
+        Status(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Status fromDb(String value) {
+        public static Status fromCode(String value) {
             for (Status s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("customer status", value);
         }

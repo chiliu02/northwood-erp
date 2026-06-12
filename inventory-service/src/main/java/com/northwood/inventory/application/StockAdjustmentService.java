@@ -145,7 +145,7 @@ public class StockAdjustmentService {
 
         log.info("posted stock_adjustment {} for product={} at warehouse={}: {} {} ({})",
             adjustment.adjustmentNumber(), command.productId(), warehouseCode,
-            direction.dbValue(), magnitude.toPlainString(), command.reason());
+            direction.code(), magnitude.toPlainString(), command.reason());
         return StockAdjustmentView.from(adjustment);
     }
 

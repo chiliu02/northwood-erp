@@ -156,7 +156,7 @@ public class ShipmentService {
             Optional<UpfrontPaymentGate> gate = salesOrderLineFacts.findUpfrontPaymentGate(command.salesOrderHeaderId());
             if (gate.isPresent() && !gate.get().upfrontSettled()) {
                 String pt = gate.get().paymentTerms();
-                if (PaymentTerms.PREPAYMENT.dbValue().equals(pt) || PaymentTerms.DEPOSIT.dbValue().equals(pt)) {
+                if (PaymentTerms.PREPAYMENT.code().equals(pt) || PaymentTerms.DEPOSIT.code().equals(pt)) {
                     throw new UnpaidUpfrontOrderException(command.salesOrderHeaderId(), pt);
                 }
             }

@@ -35,7 +35,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Real-Postgres test for {@link JdbcPurchaseRequisitionRepository}
  * (header + lines). Covers: insert→findById round-trip of header + line incl.
- * the {@code source_type} CHECK + enum dbValue()/fromDb() and the
+ * the {@code source_type} CHECK + enum code()/fromCode() and the
  * {@code PurchaseRequisitionCreated} outbox row; {@code markConverted} persisted
  * via the update path (with the {@code converted_at} CASE); and the optimistic-
  * lock conflict on a stale version.

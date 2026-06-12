@@ -123,7 +123,7 @@ public class ReplenishmentDetectionService {
         if (flags.isEmpty()) {
             log.warn("no inventory.product_card row for product_id={} — cannot classify make-vs-buy, "
                 + "skipping replenishment (reason={}, qty={}, warehouse_id={})",
-                productId, reason.dbValue(), quantity, warehouseId);
+                productId, reason.code(), quantity, warehouseId);
             return;
         }
         boolean purchased = flags.get().isPurchased();
@@ -131,7 +131,7 @@ public class ReplenishmentDetectionService {
         if (!purchased && !manufactured) {
             log.warn("unsourceable SKU product_id={} (is_purchased=false, is_manufactured=false) — "
                 + "skipping replenishment (reason={}, qty={}, warehouse_id={})",
-                productId, reason.dbValue(), quantity, warehouseId);
+                productId, reason.code(), quantity, warehouseId);
             return;
         }
 
@@ -147,13 +147,13 @@ public class ReplenishmentDetectionService {
         try {
             replenishmentRequests.save(r);
             log.info("raised replenishment_request {} for product_id={} warehouse_id={} qty={} → {} (reason={})",
-                r.id().value(), productId, warehouseId, quantity, target.dbValue(), reason.dbValue());
+                r.id().value(), productId, warehouseId, quantity, target.code(), reason.code());
         } catch (DuplicateKeyException e) {
             // Concurrent trigger or earlier-still-open request won the partial
             // unique index. Exactly the invariant we want — log DEBUG and let
             // the existing open request close the gap.
             log.debug("replenishment already open for product_id={} warehouse_id={} — skipping duplicate (reason={})",
-                productId, warehouseId, reason.dbValue());
+                productId, warehouseId, reason.code());
         }
     }
 
@@ -237,7 +237,7 @@ public class ReplenishmentDetectionService {
                 "no inventory.product_card row for product " + productId + " — make-vs-buy unknown");
             log.warn("no inventory.product_card row for product_id={} — cannot classify make-vs-buy, "
                 + "cancelling {} replenishment (qty={}, warehouse_id={}, sales_order={}, sales_order_line={})",
-                productId, reason.dbValue(), quantity, warehouseId, sourceSalesOrderHeaderId, sourceSalesOrderLineId);
+                productId, reason.code(), quantity, warehouseId, sourceSalesOrderHeaderId, sourceSalesOrderLineId);
             return;
         }
         boolean purchased = flags.get().isPurchased();
@@ -247,7 +247,7 @@ public class ReplenishmentDetectionService {
                 "product " + productId + " is unsourceable (is_purchased=false, is_manufactured=false)");
             log.warn("unsourceable SKU product_id={} (is_purchased=false, is_manufactured=false) — "
                 + "cancelling {} replenishment (qty={}, warehouse_id={}, sales_order={}, sales_order_line={})",
-                productId, reason.dbValue(), quantity, warehouseId, sourceSalesOrderHeaderId, sourceSalesOrderLineId);
+                productId, reason.code(), quantity, warehouseId, sourceSalesOrderHeaderId, sourceSalesOrderLineId);
             return;
         }
 
@@ -262,7 +262,7 @@ public class ReplenishmentDetectionService {
                 productId, warehouseId, quantity, target, sourceSalesOrderHeaderId, sourceSalesOrderLineId);
         replenishmentRequests.save(r);
         log.info("raised {} replenishment_request {} for product_id={} warehouse_id={} qty={} → {} (sales_order={}, sales_order_line={})",
-            reason.dbValue(), r.id().value(), productId, warehouseId, quantity, target.dbValue(),
+            reason.code(), r.id().value(), productId, warehouseId, quantity, target.code(),
             sourceSalesOrderHeaderId, sourceSalesOrderLineId);
     }
 

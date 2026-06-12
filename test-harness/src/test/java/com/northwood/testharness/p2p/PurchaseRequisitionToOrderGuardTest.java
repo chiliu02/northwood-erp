@@ -33,7 +33,7 @@ class PurchaseRequisitionToOrderGuardTest {
         PurchasingTestKit purchasing = new PurchasingTestKit(new SynchronousBus(), new ObjectMapper());
 
         UUID toOrderProduct = UUID.randomUUID();
-        purchasing.toOrderProducts.put(toOrderProduct, ReplenishmentStrategy.TO_ORDER.dbValue());
+        purchasing.toOrderProducts.put(toOrderProduct, ReplenishmentStrategy.TO_ORDER.code());
 
         assertThatThrownBy(() -> purchasing.requisitionService.createManual(new CreateRequisitionCommand(
             "PR-TO-ORDER",
@@ -67,7 +67,7 @@ class PurchaseRequisitionToOrderGuardTest {
         PurchasingTestKit purchasing = new PurchasingTestKit(new SynchronousBus(), new ObjectMapper());
 
         UUID toOrderProduct = UUID.randomUUID();
-        purchasing.toOrderProducts.put(toOrderProduct, ReplenishmentStrategy.TO_ORDER.dbValue());
+        purchasing.toOrderProducts.put(toOrderProduct, ReplenishmentStrategy.TO_ORDER.code());
 
         // The system replenishment path is how a to-order product is legitimately
         // purchased — it must NOT be gated by the manual-path guard.

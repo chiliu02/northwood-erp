@@ -19,7 +19,7 @@ public record PlaceOrderCommand(
      * Optional per-order override of the customer's
      * {@code defaultPaymentTerms}. Null = inherit from customer. One of
      * {@code "on_shipment"} / {@code "prepayment"} / {@code "cash_on_delivery"}; validated
-     * against {@code PaymentTerms.fromDb} in {@code SalesOrderService.placeOrder}.
+     * against {@code PaymentTerms.fromCode} in {@code SalesOrderService.placeOrder}.
      */
     String paymentTerms,
     /**

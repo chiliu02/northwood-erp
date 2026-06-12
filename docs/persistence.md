@@ -67,7 +67,7 @@ PENDING("pending"),
 
 Three reasons the latent values exist:
 
-1. **Trigger-written values.** The `maintain_allocation_totals` trigger on `customer_invoice_header` / `supplier_invoice_header` flips `status` to `partially_paid` or `paid` as payments allocate. Java never writes those — it only writes `posted` — but the enum has to know them so reads via `Status.fromDb(...)` don't throw.
+1. **Trigger-written values.** The `maintain_allocation_totals` trigger on `customer_invoice_header` / `supplier_invoice_header` flips `status` to `partially_paid` or `paid` as payments allocate. Java never writes those — it only writes `posted` — but the enum has to know them so reads via `Status.fromCode(...)` don't throw.
 2. **Future workflow paths.** `CustomerInvoice.Status.DRAFT` and `CANCELLED` are listed for the eventual "save draft invoice / cancel before posting" UI that doesn't exist yet. The schema CHECK is the forward-compat surface; Java will start producing them when the workflow lands.
 3. **Hand-inserted DEFAULT rows.** `SupplierInvoice.MatchStatus.NOT_MATCHED` is the column's DB DEFAULT. Java's `record()` factory always writes a real outcome (`MATCHED` / `VARIANCE` / `FAILED`), but seed data or hand-INSERTed rows can land at `not_matched`. The enum has to read that back.
 
@@ -134,7 +134,7 @@ Per-aggregate summary of what Java writes today (✓) vs what the schema CHECK a
 
 ### Read path
 
-Every aggregate's persistence layer reads back via `Status.fromDb(rs.getString("status"))`. Because `fromDb` throws `IllegalArgumentException` on unknown values, *all* CHECK-allowed values must be enum members — including schema-prep — or the next time the trigger or a future workflow writes them, the read explodes. This is why we keep the schema-prep enum members rather than slimming down to "only what Java writes."
+Every aggregate's persistence layer reads back via `Status.fromCode(rs.getString("status"))`. Because `fromCode` throws `IllegalArgumentException` on unknown values, *all* CHECK-allowed values must be enum members — including schema-prep — or the next time the trigger or a future workflow writes them, the read explodes. This is why we keep the schema-prep enum members rather than slimming down to "only what Java writes."
 
 ### Drop-status review checklist
 

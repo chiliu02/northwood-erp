@@ -24,7 +24,7 @@ public final class InMemoryToOrderProductLookup
 
     @Override
     public boolean isToOrder(UUID productId) {
-        return ReplenishmentStrategy.TO_ORDER.dbValue().equals(strategy.get(productId));
+        return ReplenishmentStrategy.TO_ORDER.code().equals(strategy.get(productId));
     }
 
     @Override

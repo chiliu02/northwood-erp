@@ -34,7 +34,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Real-Postgres test for {@link JdbcGoodsReceiptRepository}
  * (post-only header+line aggregate). Covers: {@code post}→{@code findById}
- * round-trip of header + lines incl. the {@code status} {@code dbValue()} +
+ * round-trip of header + lines incl. the {@code status} {@code code()} +
  * the {@code warehouse_id} FK; the {@code GoodsReceived} outbox row; and the
  * post-only guard (an attempted update raises {@code IllegalStateException}).
  */

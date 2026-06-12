@@ -182,7 +182,7 @@ public final class InMemoryStockReservationRepository implements StockReservatio
             .filter(l -> l.status != StockReservation.Status.RELEASED)
             .map(l -> new AmendableSalesOrderLine(
                 headerId.get(), l.lineId, warehouseId, l.productId,
-                l.requestedQuantity, l.reservedQuantity, l.status.dbValue()))
+                l.requestedQuantity, l.reservedQuantity, l.status.code()))
             .findFirst();
     }
 
@@ -205,7 +205,7 @@ public final class InMemoryStockReservationRepository implements StockReservatio
                     l.requestedQuantity = requestedQuantity;
                     l.reservedQuantity = reservedQuantity;
                     l.shortageQuantity = shortageQuantity;
-                    l.status = StockReservation.Status.fromDb(status);
+                    l.status = StockReservation.Status.fromCode(status);
                     return;
                 }
             }

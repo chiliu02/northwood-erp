@@ -44,19 +44,19 @@ public enum PaymentTerms {
     CASH_ON_DELIVERY("cash_on_delivery"),
     DEPOSIT("deposit");
 
-    private final String dbValue;
+    private final String code;
 
-    PaymentTerms(String dbValue) {
-        this.dbValue = dbValue;
+    PaymentTerms(String code) {
+        this.code = code;
     }
 
-    public String dbValue() {
-        return dbValue;
+    public String code() {
+        return code;
     }
 
-    public static PaymentTerms fromDb(String value) {
+    public static PaymentTerms fromCode(String value) {
         for (PaymentTerms t : values()) {
-            if (t.dbValue.equals(value)) return t;
+            if (t.code.equals(value)) return t;
         }
         throw Assert.unknownValue("payment_terms", value);
     }

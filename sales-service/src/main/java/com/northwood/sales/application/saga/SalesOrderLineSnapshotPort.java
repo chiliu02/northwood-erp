@@ -50,7 +50,7 @@ public interface SalesOrderLineSnapshotPort {
          * reserving from free stock.
          */
         public boolean pegged() {
-            return ReplenishmentStrategy.TO_ORDER.dbValue().equals(replenishmentStrategy);
+            return ReplenishmentStrategy.TO_ORDER.code().equals(replenishmentStrategy);
         }
     }
 }

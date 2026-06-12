@@ -6,15 +6,15 @@ public enum StockTrackingMode {
     TRACKED("tracked"),
     NOT_TRACKED("not_tracked");
 
-    private final String dbValue;
+    private final String code;
 
-    StockTrackingMode(String dbValue) { this.dbValue = dbValue; }
+    StockTrackingMode(String code) { this.code = code; }
 
-    public String dbValue() { return dbValue; }
+    public String code() { return code; }
 
-    public static StockTrackingMode fromDb(String value) {
+    public static StockTrackingMode fromCode(String value) {
         for (StockTrackingMode m : values()) {
-            if (m.dbValue.equals(value)) return m;
+            if (m.code.equals(value)) return m;
         }
         throw Assert.unknownValue("stock_tracking_mode", value);
     }

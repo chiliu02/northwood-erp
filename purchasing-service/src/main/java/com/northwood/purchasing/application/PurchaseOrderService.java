@@ -132,7 +132,7 @@ public class PurchaseOrderService {
             log.debug("requisition {} already converted; idempotent skip", prId.value());
             return null;
         }
-        Assert.state(pr.status() == PurchaseRequisition.Status.APPROVED, "Cannot convert requisition " + prId.value() + " from status=" + pr.status().dbValue());
+        Assert.state(pr.status() == PurchaseRequisition.Status.APPROVED, "Cannot convert requisition " + prId.value() + " from status=" + pr.status().code());
 
         Supplier supplier = pickSupplier(pr);
         List<PurchaseOrderLine> lines = buildLines(supplier.id(), pr.lines());
@@ -168,7 +168,7 @@ public class PurchaseOrderService {
         }
 
         log.info("converted requisition {} → purchase_order {} (status={}, supplier={}, {} line(s))",
-            pr.requisitionNumber(), po.purchaseOrderNumber(), po.status().dbValue(),
+            pr.requisitionNumber(), po.purchaseOrderNumber(), po.status().code(),
             supplier.supplierCode(), lines.size());
         return po.id();
     }

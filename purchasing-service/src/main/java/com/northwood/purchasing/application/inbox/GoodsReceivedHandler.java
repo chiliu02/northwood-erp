@@ -55,7 +55,7 @@ public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
 
         log.info("[{}] purchase_order={} → {} ({} line(s) received, fully={})",
             CONSUMER_NAME, payload.purchaseOrderHeaderId(),
-            outcome.fullyReceived() ? PurchaseOrder.Status.RECEIVED.dbValue() : PurchaseOrder.Status.PARTIALLY_RECEIVED.dbValue(),
+            outcome.fullyReceived() ? PurchaseOrder.Status.RECEIVED.code() : PurchaseOrder.Status.PARTIALLY_RECEIVED.code(),
             payload.lines().size(), outcome.fullyReceived());
     }
 }

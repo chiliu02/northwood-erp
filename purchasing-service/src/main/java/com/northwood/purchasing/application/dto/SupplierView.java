@@ -22,7 +22,7 @@ public record SupplierView(
             s.email(),
             s.phone(),
             s.address(),
-            s.status().dbValue(),
+            s.status().code(),
             s.version()
         );
     }

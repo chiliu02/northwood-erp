@@ -70,7 +70,7 @@ public class ProductService {
             new Sku(sku),
             name,
             description,
-            ProductType.fromDb(productType),
+            ProductType.fromCode(productType),
             baseUomId,
             Money.of(salesPrice, currencyCode),
             Money.of(standardCost, currencyCode)
@@ -177,7 +177,7 @@ public class ProductService {
      * hex-layering rule — {@code api/} doesn't import the domain enum); the
      * wire-format value parses into {@link ValuationClass} here and is passed
      * typed to the aggregate. An unknown wire value surfaces as
-     * {@link IllegalArgumentException} from {@code ValuationClass.fromDb} —
+     * {@link IllegalArgumentException} from {@code ValuationClass.fromCode} —
      * the schema CHECK on {@code product.product.valuation_class} keeps the
      * same set in sync.
      */
@@ -185,7 +185,7 @@ public class ProductService {
     public void setValuationClass(UUID productId, String valuationClass) {
         Product product = products.findById(ProductId.of(productId))
             .orElseThrow(() -> new ProductNotFoundException(productId));
-        ValuationClass parsed = ValuationClass.fromDb(valuationClass);
+        ValuationClass parsed = ValuationClass.fromCode(valuationClass);
         if (parsed == product.valuationClass()) {
             log.debug("setValuationClass product_id={} ignored — value unchanged ({})", productId, valuationClass);
             return;
@@ -200,14 +200,14 @@ public class ProductService {
      * wire-format value parses into {@link ReplenishmentStrategy} here and is
      * passed typed to the aggregate, which enforces the REQ-PROD-022 invariant
      * set. An unknown wire value surfaces as {@link IllegalArgumentException}
-     * from {@code ReplenishmentStrategy.fromDb} — the schema CHECK on
+     * from {@code ReplenishmentStrategy.fromCode} — the schema CHECK on
      * {@code product.product.replenishment_strategy} keeps the same set in sync.
      */
     @Transactional
     public void changeReplenishmentStrategy(UUID productId, String replenishmentStrategy) {
         Product product = products.findById(ProductId.of(productId))
             .orElseThrow(() -> new ProductNotFoundException(productId));
-        ReplenishmentStrategy parsed = ReplenishmentStrategy.fromDb(replenishmentStrategy);
+        ReplenishmentStrategy parsed = ReplenishmentStrategy.fromCode(replenishmentStrategy);
         if (parsed == product.replenishmentStrategy()) {
             log.debug("changeReplenishmentStrategy product_id={} ignored — value unchanged ({})",
                 productId, replenishmentStrategy);

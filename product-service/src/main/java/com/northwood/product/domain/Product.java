@@ -38,7 +38,7 @@ public class Product {
     /**
      * Product lifecycle status. Mirrors the schema CHECK on
      * {@code product.product.status}; carries its wire-format string via
-     * {@link #dbValue()} (same shape as {@link ProductType} /
+     * {@link #code()} (same shape as {@link ProductType} /
      * {@code Customer.Status}).
      */
     public enum Status {
@@ -46,19 +46,19 @@ public class Product {
         INACTIVE("inactive"),
         DISCONTINUED("discontinued");
 
-        private final String dbValue;
+        private final String code;
 
-        Status(String dbValue) {
-            this.dbValue = dbValue;
+        Status(String code) {
+            this.code = code;
         }
 
-        public String dbValue() {
-            return dbValue;
+        public String code() {
+            return code;
         }
 
-        public static Status fromDb(String value) {
+        public static Status fromCode(String value) {
             for (Status s : values()) {
-                if (s.dbValue.equals(value)) return s;
+                if (s.code.equals(value)) return s;
             }
             throw Assert.unknownValue("product status", value);
         }
@@ -153,7 +153,7 @@ public class Product {
             p.id.value(),
             sku.value(),
             name,
-            productType.dbValue(),
+            productType.code(),
             Instant.now()
         ));
         return p;
@@ -339,8 +339,8 @@ public class Product {
         pendingEvents.add(new ReplenishmentStrategyChanged(
             UUID.randomUUID(),
             id.value(),
-            oldStrategy == null ? null : oldStrategy.dbValue(),
-            newStrategy == null ? null : newStrategy.dbValue(),
+            oldStrategy == null ? null : oldStrategy.code(),
+            newStrategy == null ? null : newStrategy.code(),
             Instant.now()
         ));
     }
@@ -349,7 +349,7 @@ public class Product {
      * Set the valuation class — drives finance's GL account selection.
      * Discontinued products reject the change. Emits
      * {@link ValuationClassChanged} with old + new wire-format values
-     * (typed enum on the aggregate, {@code dbValue()} on the wire).
+     * (typed enum on the aggregate, {@code code()} on the wire).
      */
     public void changeValuationClass(ValuationClass newValuationClass) {
         Assert.state(status != Status.DISCONTINUED, "Cannot change valuation class on a discontinued product");
@@ -360,8 +360,8 @@ public class Product {
         pendingEvents.add(new ValuationClassChanged(
             UUID.randomUUID(),
             id.value(),
-            oldClass == null ? null : oldClass.dbValue(),
-            newValuationClass.dbValue(),
+            oldClass == null ? null : oldClass.code(),
+            newValuationClass.code(),
             Instant.now()
         ));
     }
