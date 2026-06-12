@@ -444,11 +444,13 @@ services/handlers/serde (§8).
 ### Build-out status — complete
 
 The roadmap above grew into a full coverage build-out (tracked per-flow in §11). **Every
-cross-service harness test** (`o2c` / `p2p` / `replenishment` / `projection`) now has a
-`*DslTest` twin — 23 DSL test methods, green alongside the imperative suite (a full
-no-selector `mvn test -pl test-harness` runs both: 48 tests, 0 failures). The build grew
-`World` to wire all five service kits (sales / inventory / finance / manufacturing /
-purchasing) plus reporting's production board, behind a kit-list-driven `settle()`.
+cross-service business flow** (`o2c` / `p2p` / `replenishment` / `projection`) is covered by a
+`*DslTest`. The build grew `World` to wire all five service kits (sales / inventory / finance /
+manufacturing / purchasing) plus reporting's production board, behind a kit-list-driven
+`settle()`. Three flows the imperative suite never reached were added DSL-native: the
+unsourceable-shortage **reject** terminal (`OrderToCashRejectedPathDslTest`), the **Trigger-B**
+WO raw-material shortage → purchasing (`StockReplenishmentWorkOrderShortagePathDslTest`), and the
+perpetual-**WIP** make-cycle GL postings (`StockReplenishmentWipPostingsDslTest`).
 
 Several ports are **more faithful than their imperative twins**: where the hand-written
 tests *forge* a `WorkOrderManufacturingCompleted` / `GoodsReceived` event or shortcut a
@@ -458,9 +460,15 @@ made the ports stricter, not looser. Three tests are deliberately ported as the
 business-outcome **subset** (sub-assembly, priority cascade, to-order guard); the
 below-altitude saga-field / outbox-drain probes stay with the imperative tests.
 
-Per slice 4's decision: the DSL is kept **alongside** the imperative suite (twins, not a
-migration) so each flow is exercised both ways. New cross-service requirements should adopt
-the DSL.
+Per slice 4's decision, the DSL twins first ran **alongside** the imperative suite while the
+vocabulary settled. Now that every cross-service flow has a faithful DSL test (often *more*
+faithful than its forge-an-event imperative twin), the **14 full-twin imperatives were removed**
+— the DSL is the cross-service business-outcome tier. **Four imperatives are kept** for
+below-altitude probes the DSL deliberately does not express: `OrderToCashPlanningFenceTest`
+(decide-once / `nextRetryAt`), `StockReplenishmentSubAssemblyPathTest` (parent-id / WO-created
+structural state), `PurchaseRequisitionToOrderGuardTest` (guard internals), and
+`SetPriorityCascadeTest` (board-projection internals). New cross-service requirements adopt the
+DSL.
 
 ---
 
@@ -490,9 +498,11 @@ detail (REQ-FIN-020…032) those flows produce. Single-context CRUD invariants (
 tests), the allocation/posting persistence mechanics (`Jdbc*IT`), and security/roles
 (API-filter tests) stay in their own tiers (§8) and are **out of scope** here.
 
-Each row pairs a DslTest with the hand-written harness test it mirrors (its known-green
-baseline) and the requirements it exercises. **The build-out is complete** — every row is
-shipped (✅) or subsumed (⊆); see §9's *Build-out status*.
+Each row lists a DslTest, the imperative test it **originally** mirrored, and the requirements
+it exercises. **The full-twin imperatives have since been removed** (§9) — the *Mirrors* column
+is historical except for the four **(kept)** rows, whose imperative is retained for a
+below-altitude probe the DSL deliberately doesn't express. The three **(DSL-native)** rows at
+the foot never had an imperative twin.
 
 | Flow | DslTest | Mirrors | REQs | Status |
 |---|---|---|---|---|
@@ -502,23 +512,26 @@ shipped (✅) or subsumed (⊆); see §9's *Build-out status*.
 | Cash-on-delivery | `OrderToCashCodPathDslTest` | `OrderToCashCodPathTest` | REQ-SAL-020 (COD), REQ-FIN-024/025 | ✅ |
 | First leg (place → reserve) | *(subsumed by happy-path DslTest)* | `OrderToCashFirstLegTest` | REQ-SAL-030/033, REQ-INV-020 | ⊆ |
 | Cancel + deposit refund | `OrderToCashCancelRefundPathDslTest` | `CancelRefundPathTest` | REQ-SAL-036, REQ-FIN-012/032 | ✅ |
-| Planning time fence (outcome subset) | `OrderToCashPlanningFenceDslTest` | `OrderToCashPlanningFenceTest` | REQ-SAL-013/037 | ✅ |
+| Planning time fence (outcome subset) | `OrderToCashPlanningFenceDslTest` | `OrderToCashPlanningFenceTest` **(kept)** | REQ-SAL-013/037 | ✅ |
 | Make-to-order (pegged WO) | `OrderToCashMakeToOrderPathDslTest` | `OrderToCashMakeToOrderPathTest` | REQ-INV-093, REQ-PROD-022 | ✅ (real WO completion) |
 | Buy-to-order (pegged PO) | `OrderToCashBuyToOrderPathDslTest` | `OrderToCashBuyToOrderPathTest` | REQ-INV-093, REQ-PROD-022 | ✅ (real goods receipt) |
 | Sales-shortage → purchased top-up | `OrderToCashPurchasedShortagePathDslTest` | `OrderToCashPurchasedShortagePathTest` | REQ-XBC-030, REQ-INV-020/091 | ✅ (real PR→PO→receipt) |
 | Line amendment (add / remove) | `OrderToCashLineAmendmentDslTest` | `OrderToCashLineAmendmentTest` | REQ-SAL-010, REQ-INV-020 | ✅ |
 | Stock replenishment — manufactured | `StockReplenishmentManufacturedPathDslTest` | `StockReplenishmentManufacturedPathTest` | REQ-XBC-080 (A, make), REQ-MFG-030, REQ-INV-080/084 | ✅ (real WO completion) |
 | Stock replenishment — purchased | `StockReplenishmentPurchasedPathDslTest` | `StockReplenishmentPurchasedPathTest` | REQ-XBC-080 (A, buy), REQ-PUR-020, REQ-INV-080/084 | ✅ (real goods receipt) |
-| Stock replenishment — sub-assembly | `StockReplenishmentSubAssemblyPathDslTest` | `StockReplenishmentSubAssemblyPathTest` | REQ-MFG-021 | ✅ (outcome subset) |
+| Stock replenishment — sub-assembly | `StockReplenishmentSubAssemblyPathDslTest` | `StockReplenishmentSubAssemblyPathTest` **(kept)** | REQ-MFG-021 | ✅ (outcome subset) |
+| Stock replenishment — WO raw shortage (Trigger B) | `StockReplenishmentWorkOrderShortagePathDslTest` | *(DSL-native)* | REQ-XBC-080 (B), REQ-MFG-040, REQ-INV-080/087 | ✅ |
+| Perpetual-WIP make-cycle GL | `StockReplenishmentWipPostingsDslTest` | *(DSL-native)* | REQ-FIN-026/027 | ✅ |
 | Procure-to-pay (happy) | `PurchaseToPayHappyPathDslTest` | `PurchaseToPayHappyPathTest` | REQ-XBC-020, REQ-PUR-020/030/031 | ✅ (real goods receipt) |
 | Procure-to-pay (3-way-match reject) | `PurchaseToPayRejectionPathDslTest` | `PurchaseToPayRejectionPathTest` | REQ-PUR-050, REQ-FIN-051 | ✅ (real 3-way match) |
-| Requisition to-order guard | `PurchaseRequisitionToOrderGuardDslTest` | `PurchaseRequisitionToOrderGuardTest` | REQ-PUR-020, REQ-PROD-022 | ✅ (guard subset) |
-| WO priority cascade (mfg → reporting board) | `SetPriorityCascadeDslTest` | `SetPriorityCascadeTest` | REQ-MFG-070, REQ-RPT-020 | ✅ (outcome subset) |
+| Requisition to-order guard | `PurchaseRequisitionToOrderGuardDslTest` | `PurchaseRequisitionToOrderGuardTest` **(kept)** | REQ-PUR-020, REQ-PROD-022 | ✅ (guard subset) |
+| WO priority cascade (mfg → reporting board) | `SetPriorityCascadeDslTest` | `SetPriorityCascadeTest` **(kept)** | REQ-MFG-070, REQ-RPT-020 | ✅ (outcome subset) |
+| Unsourceable shortage → order rejected | `OrderToCashRejectedPathDslTest` | *(DSL-native)* | REQ-MFG-080, REQ-INV-086, REQ-SAL-036 | ✅ |
 
-Legend: ✅ shipped · ⊆ covered by another DslTest. **All target flows are ✅** — every
-cross-service harness test now has a DslTest twin (or is subsumed). Parenthesised notes
+Legend: ✅ shipped · **(kept)** = imperative twin retained for a below-altitude probe ·
+*(DSL-native)* = no imperative twin ever existed. Parenthesised status notes
 (e.g. *real WO completion*, *outcome subset*) flag where a port is more faithful than its
-imperative twin or deliberately ports only the business-outcome subset (§9 build-out status).
+old imperative twin or deliberately ports only the business-outcome subset (§9 build-out status).
 
 **Build-out is smaller than the kit count suggests.** `ManufacturingTestKit`, `PurchasingTestKit`,
 the inventory goods-receipt + replenishment surface, and `InMemoryProductionPlanningProjection`
