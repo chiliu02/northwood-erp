@@ -20,3 +20,8 @@ output "security_group_ids" {
   description = "Security group IDs by tier (web / app / infra / endpoints)."
   value       = { for k, sg in aws_security_group.this : k => sg.id }
 }
+
+output "nat_instance_id" {
+  description = "NAT instance ID — included in the cost-saver start/stop schedule."
+  value       = aws_instance.nat.id
+}

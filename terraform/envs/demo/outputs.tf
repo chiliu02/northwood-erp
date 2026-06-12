@@ -47,6 +47,15 @@ output "artifacts_bucket" {
   value       = module.compute.artifacts_bucket
 }
 
+output "schedule" {
+  description = "Auto start/stop window (EventBridge Scheduler). null when enable_scheduler=false."
+  value = var.enable_scheduler ? {
+    start    = var.start_cron
+    stop     = var.stop_cron
+    timezone = var.scheduler_timezone
+  } : null
+}
+
 output "region" {
   value = var.region
 }

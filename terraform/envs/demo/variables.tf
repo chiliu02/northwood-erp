@@ -53,6 +53,32 @@ variable "front_door_domain" {
   default     = "www.northwood.chiliu02.com"
 }
 
+# ---- cost-saver schedule (see schedule.tf) ---------------------------------
+
+variable "enable_scheduler" {
+  description = "Create EventBridge Scheduler rules that auto-start/stop the EC2 fleet on a weekday business-hours window (cuts idle cost). The instances themselves are unaffected by toggling this off — only the schedules are removed."
+  type        = bool
+  default     = true
+}
+
+variable "scheduler_timezone" {
+  description = "IANA timezone the start/stop cron expressions are evaluated in (handles DST automatically)."
+  type        = string
+  default     = "Australia/Sydney"
+}
+
+variable "start_cron" {
+  description = "EventBridge Scheduler cron for the daily START. Default: 08:30, Mon-Fri (no weekend start)."
+  type        = string
+  default     = "cron(30 8 ? * MON-FRI *)"
+}
+
+variable "stop_cron" {
+  description = "EventBridge Scheduler cron for the daily STOP. Default: 17:00, Mon-Fri."
+  type        = string
+  default     = "cron(0 17 ? * MON-FRI *)"
+}
+
 # ---- secrets knobs ---------------------------------------------------------
 
 variable "bff_client_secret" {
