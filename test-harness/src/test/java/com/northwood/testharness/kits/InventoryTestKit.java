@@ -11,6 +11,7 @@ import com.northwood.inventory.application.inbox.PurchaseOrderCreatedHandler;
 import com.northwood.inventory.application.inbox.PurchasingReplenishmentDispatchedHandler;
 import com.northwood.inventory.application.inbox.PurchasingReplenishmentUndispatchableHandler;
 import com.northwood.inventory.application.inbox.RawMaterialReservationRequestedHandler;
+import com.northwood.inventory.application.inbox.RawMaterialShortageDetectedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderCancellationRequestedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderLineAddedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderLineQuantityChangedHandler;
@@ -121,6 +122,11 @@ public final class InventoryTestKit {
         bus.register(new ManufacturingReplenishmentDispatchedHandler(inbox, replenishmentRequests, json));
         bus.register(new PurchasingReplenishmentDispatchedHandler(inbox, replenishmentRequests, json));
         bus.register(new PurchaseOrderCreatedHandler(inbox, purchaseOrderLineFacts, replenishmentRequests, json));
+
+        // Manufacturing<->purchasing decoupling bridge (REQ-INV-080 Trigger B / REQ-INV-087):
+        // a WO raw-material shortage flows through inventory as a work_order_shortage
+        // replenishment rather than manufacturing signalling purchasing directly.
+        bus.register(new RawMaterialShortageDetectedHandler(inbox, replenishmentDetection, warehouses, json));
 
         // Replenishment cancellation consumers: downstream can't source the request.
         bus.register(new ManufacturingReplenishmentUndispatchableHandler(inbox, replenishmentRequests, json));
