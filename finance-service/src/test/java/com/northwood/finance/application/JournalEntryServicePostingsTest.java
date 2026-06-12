@@ -508,6 +508,58 @@ class JournalEntryServicePostingsTest {
             assertThat(wipDr.subtract(wipCr)).isEqualByComparingTo("0");  // WIP nets to zero incl. conversion
         }
 
+        @Test void unfavorable_variance_dr_production_variance_cr_wip() {
+            service.postProductionVariance(
+                UUID.randomUUID(), "WO-1", new BigDecimal("15.00"), Currencies.AUD, POSTING_DATE);
+
+            JournalEntry entry = capturedSave();
+            assertThat(entry.sourceDocumentType()).isEqualTo(JournalEntry.SourceDocumentType.WORK_ORDER_WIP);
+            assertThat(debitFor(entry, "5100")).isEqualByComparingTo("15.00");   // Dr Production Variance
+            assertThat(creditFor(entry, "1230")).isEqualByComparingTo("15.00");  // Cr WIP
+        }
+
+        @Test void favorable_variance_dr_wip_cr_production_variance() {
+            service.postProductionVariance(
+                UUID.randomUUID(), "WO-1", new BigDecimal("-15.00"), Currencies.AUD, POSTING_DATE);
+
+            JournalEntry entry = capturedSave();
+            assertThat(debitFor(entry, "1230")).isEqualByComparingTo("15.00");   // Dr WIP
+            assertThat(creditFor(entry, "5100")).isEqualByComparingTo("15.00");  // Cr Production Variance
+        }
+
+        @Test void zero_variance_is_a_noop() {
+            service.postProductionVariance(
+                UUID.randomUUID(), "WO-1", BigDecimal.ZERO, Currencies.AUD, POSTING_DATE);
+
+            verify(journals, never()).save(any());
+        }
+
+        @Test void wip_nets_to_zero_with_actual_conversion_and_variance() {
+            when(productCards.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of(ValuationClass.RAW_MATERIALS));
+            when(productCards.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of(ValuationClass.FINISHED_GOODS));
+            UUID wo = UUID.randomUUID();
+
+            // Dr WIP 120 (materials) + Dr WIP 75 (actual conversion) ...
+            service.postWorkInProgressCharge(wo, "WO-1",
+                List.of(new LineCost(PRODUCT_RM, new BigDecimal("120.00"))), Currencies.AUD, POSTING_DATE);
+            service.postConversionCharge(wo, "WO-1", new BigDecimal("75.00"), Currencies.AUD, POSTING_DATE);
+            // ... Cr WIP 180 (completion at standard cost = 120 material + 60 standard conversion) ...
+            service.postWorkOrderCompletion(wo, "WO-1", PRODUCT_FG,
+                new BigDecimal("180.00"), Currencies.AUD, POSTING_DATE);
+            // ... Cr WIP 15 (efficiency variance: actual 75 − standard 60, unfavorable).
+            service.postProductionVariance(wo, "WO-1", new BigDecimal("15.00"), Currencies.AUD, POSTING_DATE);
+
+            ArgumentCaptor<JournalEntry> cap = ArgumentCaptor.forClass(JournalEntry.class);
+            verify(journals, times(4)).save(cap.capture());
+            BigDecimal wipDr = cap.getAllValues().stream()
+                .map(e -> debitFor(e, "1230")).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal wipCr = cap.getAllValues().stream()
+                .map(e -> creditFor(e, "1230")).reduce(BigDecimal.ZERO, BigDecimal::add);
+            assertThat(wipDr).isEqualByComparingTo("195.00");  // 120 + 75
+            assertThat(wipCr).isEqualByComparingTo("195.00");  // 180 + 15
+            assertThat(wipDr.subtract(wipCr)).isEqualByComparingTo("0");  // WIP nets to zero; 15 in 5100
+        }
+
         @Test void wip_legs_net_to_zero_across_charge_consume_complete() {
             when(productCards.findValuationClass(PRODUCT_RM)).thenReturn(Optional.of(ValuationClass.RAW_MATERIALS));
             when(productCards.findValuationClass(PRODUCT_FG)).thenReturn(Optional.of(ValuationClass.FINISHED_GOODS));

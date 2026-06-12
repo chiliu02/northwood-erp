@@ -96,7 +96,7 @@ Editing the list price does **not** retro-affect existing sales orders or invoic
 Each SKU carries a standard cost in the company base currency. Used by finance to value COGS on shipment.
 
 **REQ-PROD-041 ⚠️ — Manufactured-product cost rollup** *(shipped, partial)*
-For a SKU classified as makeable with an active BOM, the standard cost is automatically rolled up from its materials' costs (recursive BOM walk). Edits to a leaf component's standard cost cascade up to recompute parent costs.
+For a SKU classified as makeable with an active BOM, the standard cost is automatically rolled up as **material + conversion**: the recursive BOM walk over component material costs, plus the SKU's own-routing conversion cost (Σ operation minutes × the work centre's labour+overhead rate — REQ-FIN-029). Edits to a leaf component's standard cost cascade up to recompute parent costs. *Partial:* conversion is folded in at the single (own-routing) level today — a sub-assembly's conversion is not yet rolled into its parent's standard cost (the recursive-conversion roll-up is a follow-up); for a finished good whose components are raw materials (no manufactured sub-assemblies) the rolled-up standard cost is exact.
 
 ### 1.6 Valuation class
 
@@ -515,7 +515,7 @@ Finance keeps the books in money. Every economic event in the other contexts (sh
 ### 6.1 Chart of accounts
 
 **REQ-FIN-001 ✅ — Chart of accounts is seed data** *(shipped)*
-The GL accounts are seeded once by SQL. Accounts cannot be edited through the application. The set covers: Bank (`1000`), Accounts Receivable (`1100`), Inventory (`1200`), Raw Materials Inventory (`1210`), FG Inventory (`1220`), Work In Progress (`1230`), GRNI (`1300`), Accounts Payable (`2100`), Customer Deposits (`2110`), Revenue (`4000`), General COGS (`5000`), Materials COGS (`5200`), Inventory Adjustment (`5400`).
+The GL accounts are seeded once by SQL. Accounts cannot be edited through the application. The set covers: Bank (`1000`), Accounts Receivable (`1100`), Inventory (`1200`), Raw Materials Inventory (`1210`), FG Inventory (`1220`), Work In Progress (`1230`), GRNI (`1300`), Accounts Payable (`2100`), Customer Deposits (`2110`), Revenue (`4000`), General COGS (`5000`), Production Variance (`5100`), Materials COGS (`5200`), Conversion Cost Applied (`5250`), Inventory Adjustment (`5400`).
 
 ### 6.2 Journal entries — double-entry posting
 
@@ -530,7 +530,7 @@ A posted journal may be reversed by posting an inverse-signed copy. The original
 
 ### 6.3 The perpetual-inventory postings
 
-Each posts one balanced journal at the moment its source event fires. These are the operational heart of finance. The six purchase/sale postings (REQ-FIN-020–025) cover the buy→sell cycle; the three manufacturing postings (REQ-FIN-026–028) cover the make cycle.
+Each posts one balanced journal at the moment its source event fires. These are the operational heart of finance. The six purchase/sale postings (REQ-FIN-020–025) cover the buy→sell cycle; the manufacturing postings (REQ-FIN-026–029) cover the make cycle — material into WIP, conversion (labour + overhead) into WIP, the finished-goods receipt out of WIP at full standard cost, sub-assembly consumption, and the efficiency variance.
 
 **REQ-FIN-020 ✅ — Goods receipt — Dr Inventory / Cr GRNI** *(shipped)*
 On goods receipt: debit the SKU's inventory account (1210 or 1220 by valuation class), credit GRNI (1300) at the PO line price × received quantity.
@@ -551,13 +551,22 @@ On customer invoice creation (auto-triggered by shipment): debit AR (1100), cred
 On customer payment: debit Bank (1000), credit AR (1100) at the payment amount.
 
 **REQ-FIN-026 ✅ — Raw materials issued to a work order — Dr WIP / Cr Raw Materials** *(shipped)*
-When a work order's raw materials are fully reserved (issued to production), debit Work In Progress (1230), credit the material's inventory account (1210) at standard cost × reserved quantity. Establishes the manufacturing→finance edge; perpetual WIP, material-cost-only.
+When a work order's raw materials are fully reserved (issued to production), debit Work In Progress (1230), credit the material's inventory account (1210) at standard cost × reserved quantity. The material leg into WIP; conversion cost is charged separately (REQ-FIN-029).
 
 **REQ-FIN-027 ✅ — Work order completion — Dr Finished Goods / Cr WIP** *(shipped)*
-When a work order completes, debit the finished good's inventory account (1220), credit WIP (1230) at standard cost × completed quantity. Because every WIP leg posts at standard cost, WIP nets to zero per work order — no variance accounts in the material-only cut.
+When a work order completes, debit the finished good's inventory account (1220), credit WIP (1230) at the **full standard cost** (material + conversion) × completed quantity. WIP nets to zero per work order: the material (REQ-FIN-026) and conversion (REQ-FIN-029) charges in, this finished-goods receipt out, and the efficiency variance (REQ-FIN-029) clears any actual-vs-standard conversion difference off WIP.
+*Note:* an earlier material-only cut credited WIP at material cost alone (no conversion, no variance accounts); standard cost is now the full rolled-up cost (material + labour + overhead — REQ-PROD-041), so the finished-goods receipt carries the full value.
 
 **REQ-FIN-028 ✅ — Sub-assemblies consumed — Dr WIP / Cr Finished Goods** *(shipped)*
 When a parent work order consumes its completed sub-assembly children, debit parent WIP (1230), credit the sub-assembly's FG account (1220) at standard cost — rolling each child's value into the parent's WIP so the parent's completion releases the full rolled-up cost.
+
+**REQ-FIN-029 ✅ — Conversion cost applied + efficiency variance** *(shipped)*
+When a work order completes, its conversion cost (direct labour + manufacturing overhead) is absorbed into WIP and the manufacturing efficiency variance is recognised:
+- **Conversion applied** — debit Work In Progress (1230), credit Conversion Cost Applied (5250) at the work order's **actual** conversion (Σ over operations of actual minutes × the work centre's labour+overhead rate × completed quantity). Conversion rates are held per work centre (`manufacturing.work_center.labour_rate_per_minute` / `overhead_rate_per_minute`).
+- **Efficiency variance** — the difference between actual and standard conversion (standard = the planned-minutes conversion baked into the standard cost) clears to Production Variance (5100): unfavourable (actual > standard) Dr 5100 / Cr 1230; favourable Dr 1230 / Cr 5100. This keeps WIP netting to zero against the standard-cost finished-goods receipt (REQ-FIN-027).
+
+*Scope:* efficiency variance only — Northwood logs actual minutes per operation but not an actual wage rate, so there is no rate/spending variance, and there is no actual-labour/overhead *incurred* posting (no payroll). Conversion is treated per-unit (the routing basis), so an operator logging actual minutes = planned yields zero variance. Labour and overhead post to a single Conversion Cost Applied account today (a per-account labour/overhead split is a possible future refinement).
+*Rationale:* moves Northwood from a material-only WIP cut to full-absorption standard costing — finished-goods inventory (and therefore COGS at shipment) carries material + conversion, consistent with IAS 2 / ASC 330. *Acceptance:* for a stock-replenishment WO with actual minutes = planned, the per-WO sum of WIP debits equals the sum of WIP credits (nets to zero) and the conversion value flows into 1220 then 5000/5200 at shipment.
 
 ### 6.4 Prepayments (customer deposits)
 

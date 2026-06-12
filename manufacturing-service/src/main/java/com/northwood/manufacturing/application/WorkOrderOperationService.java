@@ -182,18 +182,24 @@ public class WorkOrderOperationService {
     }
 
     /**
-     * Emit {@code manufacturing.WorkOrderConversionApplied} for the standard
-     * conversion cost (labour + overhead) absorbed into WIP at completion
-     * (dev-todo §2.42): per-unit conversion from the product's active routing ×
-     * completed quantity. Finance posts Dr 1230 WIP / Cr 5300 Conversion Cost
-     * Applied, the leg that — with the material charge and the FG receipt at
-     * full standard cost — makes WIP net to zero. Skipped (no event) when the
-     * SKU has no routing / no work-centre rates, so conversion is zero.
+     * Emit {@code manufacturing.WorkOrderConversionApplied} for the conversion
+     * cost (labour + overhead) absorbed into WIP at completion (dev-todo §2.42
+     * slices C + D). Carries both the <b>standard</b> conversion (product's
+     * active-routing planned minutes — the value baked into the standard cost)
+     * and the <b>actual</b> conversion (this work order's operations' actual
+     * minutes), both per-unit × completed quantity. Finance charges WIP at
+     * actual and clears the efficiency variance ({@code actual − standard}) to
+     * Production Variance, so WIP nets to zero against the standard-cost FG
+     * receipt. Skipped (no event) when both are zero — a SKU with no routing /
+     * no work-centre rates.
      */
     private void emitConversionApplied(WorkOrder workOrder) {
-        BigDecimal perUnit = conversionCosts.perUnitConversionCost(workOrder.finishedProductId());
-        BigDecimal total = perUnit.multiply(workOrder.completedQuantity());
-        if (total.signum() <= 0) {
+        BigDecimal qty = workOrder.completedQuantity();
+        BigDecimal standardTotal = conversionCosts
+            .perUnitConversionCost(workOrder.finishedProductId()).multiply(qty);
+        BigDecimal actualTotal = conversionCosts
+            .actualConversionPerUnit(workOrder.operations()).multiply(qty);
+        if (standardTotal.signum() <= 0 && actualTotal.signum() <= 0) {
             return;
         }
         WorkOrderConversionApplied event = new WorkOrderConversionApplied(
@@ -201,14 +207,15 @@ public class WorkOrderOperationService {
             workOrder.id().value(),
             workOrder.workOrderNumber(),
             workOrder.finishedProductId(),
-            total,
+            actualTotal,
+            standardTotal,
             Currencies.BASE_CURRENCY,
             Instant.now()
         );
         outbox.append(event, WorkOrder.AGGREGATE_TYPE);
-        log.info("emitted {} for work_order={} conversion={} ({} units @ {}/unit)",
+        log.info("emitted {} for work_order={} actual={} standard={} ({} units)",
             WorkOrderConversionApplied.EVENT_TYPE, workOrder.id().value(),
-            total, workOrder.completedQuantity(), perUnit);
+            actualTotal, standardTotal, qty);
     }
 
     /**

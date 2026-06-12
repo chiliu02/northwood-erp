@@ -11,24 +11,35 @@ import java.util.UUID;
  * completion from {@code WorkOrderOperationService.onWorkOrderCompleted},
  * alongside {@link SubAssembliesConsumed} — the same completion hook.
  *
- * <p>Finance consumes it to post Dr 1230 WIP / Cr 5250 Conversion Cost Applied.
- * Paired with the material charge (on {@code inventory.RawMaterialsReserved})
- * and the FG receipt (on {@link WorkOrderManufacturingCompleted}, credited at
- * the full standard cost = material + conversion), this makes WIP net to zero
- * per work order.
+ * <p>Finance consumes it to post Dr 1230 WIP / Cr 5250 Conversion Cost Applied
+ * at the <b>actual</b> conversion, plus an efficiency-variance leg to/from 5100
+ * Production Variance for {@code actual − standard}. Paired with the material
+ * charge (on {@code inventory.RawMaterialsReserved}) and the FG receipt (on
+ * {@link WorkOrderManufacturingCompleted}, credited at the full standard cost =
+ * material + standard conversion), WIP nets to zero per work order, with the
+ * efficiency variance landing in 5100 (dev-todo §2.42 slices C + D).
  *
- * <p>{@code conversionCost} is the total for the completed quantity (per-unit
- * conversion × completedQuantity), computed by manufacturing from the product's
- * active routing × work-centre rates — the same calculation that produced the
- * conversion component of the standard cost, so the legs reconcile. Emitted
- * only when positive; a SKU with no routing / no rates produces no event.
+ * <p>Both amounts are totals for the completed quantity (per-unit × completed
+ * quantity), computed by manufacturing from work-centre rates:
+ * <ul>
+ *   <li>{@code standardConversionCost} — from the product's active routing's
+ *       planned minutes (the same value baked into the standard cost, so the
+ *       FG receipt and this leg reconcile).</li>
+ *   <li>{@code actualConversionCost} — from the work order's operations' actual
+ *       minutes. Minutes are per-unit (the routing basis), so an operator
+ *       logging actual = planned yields zero variance. Efficiency variance only
+ *       (Northwood logs no actual wage rate).</li>
+ * </ul>
+ * Emitted only when at least one is positive; a SKU with no routing / no rates
+ * produces no event.
  */
 public record WorkOrderConversionApplied(
     UUID eventId,
     UUID aggregateId,          // work_order_id
     String workOrderNumber,
     UUID finishedProductId,
-    BigDecimal conversionCost,
+    BigDecimal actualConversionCost,
+    BigDecimal standardConversionCost,
     String currencyCode,
     Instant occurredAt
 ) implements DomainEvent {

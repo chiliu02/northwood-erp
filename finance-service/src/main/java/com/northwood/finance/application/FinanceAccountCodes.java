@@ -71,6 +71,15 @@ final class FinanceAccountCodes {
      */
     static final String CONVERSION_APPLIED = "5250";
 
+    /**
+     * 5100 — Production Variance. Carries the manufacturing efficiency variance
+     * (actual − standard conversion) cleared off WIP at work-order completion:
+     * unfavorable (actual &gt; standard) Dr's here / Cr WIP; favorable Dr's WIP /
+     * Cr here. Keeps WIP netting to zero against the standard-cost FG receipt
+     * (dev-todo §2.42 slice D).
+     */
+    static final String PRODUCTION_VARIANCE = "5100";
+
     /** 1210 — Raw Materials Inventory; per-class breakdown of {@link #INVENTORY}. */
     static final String RM_INVENTORY = "1210";
 

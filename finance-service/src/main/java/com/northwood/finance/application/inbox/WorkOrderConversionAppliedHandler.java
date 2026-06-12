@@ -6,6 +6,7 @@ import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
 import com.northwood.shared.application.messaging.EventEnvelope;
 import com.northwood.shared.domain.Currencies;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import org.springframework.stereotype.Component;
@@ -48,14 +49,33 @@ public class WorkOrderConversionAppliedHandler extends AbstractInboxHandler<Work
         LocalDate postingDate = payload.occurredAt() == null
             ? LocalDate.now()
             : payload.occurredAt().atZone(ZoneId.systemDefault()).toLocalDate();
+        String currency = payload.currencyCode() == null ? Currencies.BASE_CURRENCY : payload.currencyCode();
+
+        // Charge WIP at ACTUAL conversion (Dr 1230 / Cr 5250) ...
         journals.postConversionCharge(
             payload.aggregateId(),
             payload.workOrderNumber(),
-            payload.conversionCost(),
-            payload.currencyCode() == null ? Currencies.BASE_CURRENCY : payload.currencyCode(),
+            payload.actualConversionCost(),
+            currency,
             postingDate
         );
-        log.info("[{}] applied conversion to WIP for work_order={} amount={}",
-            CONSUMER_NAME, payload.aggregateId(), payload.conversionCost());
+        // ... then clear the efficiency variance (actual − standard) to 5100, so
+        // WIP nets to zero against the standard-cost FG receipt.
+        BigDecimal variance = nullToZero(payload.actualConversionCost())
+            .subtract(nullToZero(payload.standardConversionCost()));
+        journals.postProductionVariance(
+            payload.aggregateId(),
+            payload.workOrderNumber(),
+            variance,
+            currency,
+            postingDate
+        );
+        log.info("[{}] applied conversion to WIP for work_order={} actual={} standard={} variance={}",
+            CONSUMER_NAME, payload.aggregateId(),
+            payload.actualConversionCost(), payload.standardConversionCost(), variance);
+    }
+
+    private static BigDecimal nullToZero(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
     }
 }

@@ -476,6 +476,46 @@ public class JournalEntryService {
     }
 
     /**
+     * Perpetual WIP — conversion efficiency variance cleared off WIP at
+     * completion (dev-todo §2.42 slice D). {@code variance = actual − standard}
+     * conversion: unfavorable (&gt; 0) Dr 5100 Production Variance / Cr 1230 WIP;
+     * favorable (&lt; 0) Dr 1230 WIP / Cr 5100. Net effect: WIP, which was charged
+     * actual conversion but credited standard at the FG receipt, returns to zero
+     * and the difference lands in Production Variance. No-op on zero variance.
+     */
+    @Transactional
+    public void postProductionVariance(
+        UUID workOrderId,
+        String workOrderNumber,
+        BigDecimal variance,
+        String currencyCode,
+        LocalDate postingDate
+    ) {
+        if (variance == null || variance.signum() == 0) {
+            return;
+        }
+        boolean unfavorable = variance.signum() > 0;
+        String debitAccount = unfavorable ? FinanceAccountCodes.PRODUCTION_VARIANCE : FinanceAccountCodes.WIP;
+        String creditAccount = unfavorable ? FinanceAccountCodes.WIP : FinanceAccountCodes.PRODUCTION_VARIANCE;
+        post(
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
+            postingDate,
+            JournalEntry.SourceModule.FINANCE,
+            JournalEntry.SourceDocumentType.WORK_ORDER_WIP,
+            workOrderId,
+            "Work order " + workOrderNumber + " — conversion efficiency variance ("
+                + (unfavorable ? "unfavorable" : "favorable") + ")",
+            currencyCode,
+            debitAccount,
+            "Efficiency variance for " + workOrderNumber,
+            creditAccount,
+            "Clear variance against WIP for " + workOrderNumber,
+            variance.abs(),
+            postingDate
+        );
+    }
+
+    /**
      * Shared shape for the two WIP-charge legs (raw materials issued; consumed
      * sub-assemblies rolled in): a single Dr 1230 WIP against per-valuation-class
      * inventory credits. Skips a zero/negative total (e.g. a projection cold-start

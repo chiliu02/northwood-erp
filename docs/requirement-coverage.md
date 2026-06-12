@@ -29,7 +29,7 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 | REQ-PROD-020/021 (reorder policy) | `ReorderPolicyChangedSeamIT`; consumed by all `StockReplenishment*DslTest` | ✅ |
 | REQ-PROD-022 (to-stock vs to-order) | `OrderToCash{MakeToOrder,BuyToOrder}PathDslTest`, `PurchaseRequisitionToOrderGuardDslTest` | ✅ |
 | REQ-PROD-030/031/040 (pricing, historical, std cost) | domain unit + `JdbcProductRepositoryIT`; price-at-capture exercised by o2c DSL tests | ✅ |
-| REQ-PROD-041 (manufactured cost rollup) | `MaterialsCostRollupServiceTest` (single/multi-level component sum, scrap uplift, a leaf-cost change walks the parent, missing-cost + cross-currency guards) | ✅ |
+| REQ-PROD-041 (manufactured cost rollup = material + conversion) | `MaterialsCostRollupServiceTest` (single/multi-level component sum, scrap uplift, leaf-cost change walks parent, missing-cost + cross-currency guards, own-routing conversion folded into standardCost) | ⚠️ (single-level conversion; multi-level recursive conversion = §2.42 item 2b) |
 | REQ-PROD-050 (valuation class) | `StockReplenishmentWipPostingsDslTest` (routes WIP/COGS by class) | ✅ |
 | REQ-PROD-060 (active BOM) | `JdbcBomRepositoryIT`; cycle detection domain unit | ✅ |
 | REQ-PROD-070 (approved vendor) | `JdbcSupplierProductPriceRepositoryIT` / `*QueryPortIT` | ✅ |
@@ -95,8 +95,9 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 | REQ-FIN-010/011/012 (balanced journal, source link, reversal) | domain unit (`JournalEntryTest`, reverse-by-source) + `JdbcJournalEntryRepositoryIT` (balance trigger) | ✅ |
 | REQ-FIN-020/021/022 (receipt, supplier invoice, supplier payment) | `PurchaseToPayHappyPathDslTest` (GL legs) | ✅ |
 | REQ-FIN-023/024/025 (shipment COGS, customer invoice, customer payment) | `OrderToCashHappyPathDslTest`, `OrderToCashCancelRefundPathDslTest` (GL legs) | ✅ |
-| REQ-FIN-026/027 (raw→WIP, WO completion) | `StockReplenishmentWipPostingsDslTest` | ✅ |
+| REQ-FIN-026/027 (raw→WIP, WO completion at full standard cost) | `StockReplenishmentWipPostingsDslTest`; `JournalEntryServicePostingsTest` (completion Dr 1220/Cr 1230, WIP-nets-to-zero legs) | ✅ |
 | REQ-FIN-028 (sub-assemblies consumed Dr WIP/Cr FG) | `StockReplenishmentSubAssemblyWipPostingsDslTest` (parent consumes child → Dr 1230/Cr 1220); `a_journal()` now disambiguates the two `WORK_ORDER_WIP` legs by account pair | ✅ |
+| REQ-FIN-029 (conversion applied + efficiency variance) | `JournalEntryServicePostingsTest` (conversion Dr 1230/Cr 5250; unfavourable/favourable/zero variance; nets-to-zero with actual conversion + variance); `WorkOrderConversionAppliedHandlerTest` (charge at actual + clear variance to 5100); `MaterialsCostRollupServiceTest` (own-routing conversion folded into standardCost) | ✅ |
 | REQ-FIN-030/031/032 (prepayment deposits, recognition) | `OrderToCashDepositPathDslTest`, `OrderToCashCancelRefundPathDslTest` | ✅ |
 | REQ-FIN-040/041 (allocation, prepayment settlement) | `JdbcCustomerInvoiceRepositoryIT` (paid_amount trigger), `JdbcPaymentRepositoryIT`; deposit DSL test | ✅ |
 | REQ-FIN-050/051 (supplier invoice, manual-review queue) | `PurchaseToPayRejectionPathDslTest`; `JdbcSupplierInvoiceRepositoryIT` | ✅ |

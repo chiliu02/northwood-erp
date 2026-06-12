@@ -40,26 +40,41 @@ class WorkOrderConversionAppliedHandlerTest {
         handler = new WorkOrderConversionAppliedHandler(inbox, journals, json);
     }
 
-    private EventEnvelope event(BigDecimal conversionCost) {
+    private EventEnvelope event(BigDecimal actualConversion, BigDecimal standardConversion) {
         UUID eventId = UUID.randomUUID();
         WorkOrderConversionApplied payload = new WorkOrderConversionApplied(
-            eventId, WORK_ORDER, "WO-001", FG, conversionCost, Currencies.AUD, Instant.now());
+            eventId, WORK_ORDER, "WO-001", FG, actualConversion, standardConversion, Currencies.AUD, Instant.now());
         return new EventEnvelope(
             eventId, "WorkOrder", WORK_ORDER,
             WorkOrderConversionApplied.EVENT_TYPE, 1, json.writeValueAsString(payload),
             null, null, null, null, Instant.now());
     }
 
-    @Test void posts_conversion_charge_dr_wip_cr_conversion_applied() {
-        handler.handle(event(new BigDecimal("135.00")));
+    @Test void charges_wip_at_actual_and_clears_efficiency_variance() {
+        handler.handle(event(new BigDecimal("150.00"), new BigDecimal("135.00")));
+
+        // WIP charged at actual conversion (Dr 1230 / Cr 5250).
+        verify(journals).postConversionCharge(
+            eq(WORK_ORDER), eq("WO-001"), eq(new BigDecimal("150.00")), eq(Currencies.AUD), any(LocalDate.class));
+        // Efficiency variance = actual 150 − standard 135 = 15 cleared to 5100.
+        verify(journals).postProductionVariance(
+            eq(WORK_ORDER), eq("WO-001"), eq(new BigDecimal("15.00")), eq(Currencies.AUD), any(LocalDate.class));
+        verify(inbox).recordProcessed(any());
+    }
+
+    @Test void zero_variance_when_actual_equals_standard() {
+        handler.handle(event(new BigDecimal("135.00"), new BigDecimal("135.00")));
 
         verify(journals).postConversionCharge(
             eq(WORK_ORDER), eq("WO-001"), eq(new BigDecimal("135.00")), eq(Currencies.AUD), any(LocalDate.class));
+        // postProductionVariance is still called (it no-ops on zero); variance = 0.00.
+        verify(journals).postProductionVariance(
+            eq(WORK_ORDER), eq("WO-001"), eq(new BigDecimal("0.00")), eq(Currencies.AUD), any(LocalDate.class));
         verify(inbox).recordProcessed(any());
     }
 
     @Test void already_processed_short_circuits() {
-        EventEnvelope envelope = event(new BigDecimal("135.00"));
+        EventEnvelope envelope = event(new BigDecimal("135.00"), new BigDecimal("135.00"));
         when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(WorkOrderConversionAppliedHandler.CONSUMER_NAME)))
             .thenReturn(true);
 
