@@ -326,6 +326,18 @@ public final class World {
     }
 
     /**
+     * Mark an already-registered product as manufactured (make-vs-buy), routing its replenishment
+     * to manufacturing. With no active BOM seeded, manufacturing emits
+     * {@code ReplenishmentUndispatchable} when asked to source it.
+     */
+    public World markManufactured(String productCode) {
+        UUID productId = product(productCode).productId();
+        inventory.productReplenishment.put(productId, false, true);
+        manufacturing.replenishment.put(productId, false, true);
+        return this;
+    }
+
+    /**
      * Mark an already-priced product as buy-to-order (REQ-INV-093): purchased
      * make-vs-buy + order-pegged + a default-supplier price, so a sales-order line
      * raises dedicated order-pegged supply routed to purchasing.

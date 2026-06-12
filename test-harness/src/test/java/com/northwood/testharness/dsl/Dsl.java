@@ -153,6 +153,32 @@ public final class Dsl {
             };
         }
 
+        /**
+         * Make the (sold) product purchased-supply but with <b>no approved vendor</b> (no
+         * supplier price): a shortage on it raises a purchasing-routed replenishment that
+         * purchasing cannot source, so purchasing emits {@code ReplenishmentUndispatchable},
+         * inventory cancels the request, and the order is rejected (REQ-INV-086, REQ-MFG-080).
+         */
+        public SeedStep purchasedNoVendor() {
+            return world -> {
+                world.seedProduct(productCode, productName, price.amount());
+                world.markPurchased(productCode);
+            };
+        }
+
+        /**
+         * Make the (sold) product manufactured-supply but with <b>no active BOM</b>: a shortage on
+         * it raises a manufacturing-routed replenishment that manufacturing cannot release (no BOM
+         * to explode), so manufacturing emits {@code ReplenishmentUndispatchable}, inventory cancels
+         * the request, and the order is rejected (REQ-MFG-080, REQ-INV-086).
+         */
+        public SeedStep manufacturedNoBom() {
+            return world -> {
+                world.seedProduct(productCode, productName, price.amount());
+                world.markManufactured(productCode);
+            };
+        }
+
         @Override
         public void seed(World world) {
             world.seedProduct(productCode, productName, price.amount());
