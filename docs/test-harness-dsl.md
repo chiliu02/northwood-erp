@@ -397,6 +397,42 @@ The DSL is the **business-outcome** tier of a three-tier story it does not repla
 domain unit tests (invariants) · acceptance DSL (cross-service outcomes) · `Jdbc*IT` +
 `*SeamIT` (persistence + delivery fidelity).
 
+### 8.1 What the DSL can't express — why a few harness tests stay imperative
+
+The DSL settles to quiescence and asserts the **durable, settled business outcome** in domain
+words. A handful of things sit *just below that altitude* but are still inside the harness — they
+keep a few imperative `*Test` files alongside the `*DslTest` twins (the twin ports the
+business-outcome subset; the imperative keeps the below-altitude probe). Three categories:
+
+1. **Intermediate, pre-settlement state.** `settle()` runs the world to a fixed point, so the DSL
+   sees only the end state. A test that must observe structural state *immediately after an action,
+   before the saga worker ticks* — e.g. both work orders sitting at `work_order_created` with the
+   exact `parent_work_order_id` wiring right after a recursive release — has to drive the kit
+   directly. → `StockReplenishmentSubAssemblyPathTest`. (The `.without_settling()` escape hatch
+   defers one settle but can't snapshot mid-cascade structural detail.)
+2. **Saga-internal fields, not just saga state.** The DSL asserts the saga *state*
+   (`order(no).reaches(...)`) and header status, but not the saga row's internal data —
+   `next_retry_at`, the parked-until instant, `current_step`, the outstanding-line set. The
+   planning-fence **decide-once** property — a far-future order parks with
+   `next_retry_at = need-by − fence` and the wake does **not** re-evaluate the fence — is a
+   saga-field assertion below the outcome altitude. → `OrderToCashPlanningFenceTest`.
+3. **Below-outcome internals of a read model or a synchronous guard.** Where the DSL asserts one
+   projected column or one accept/reject verdict, the imperative twin probes finer internals — the
+   production-board projection's row shape / ordering, or the to-order guard's branch behaviour on a
+   degenerate single-`when` scenario with no event cascade. → `SetPriorityCascadeTest`,
+   `PurchaseRequisitionToOrderGuardTest`.
+
+These are **in-module** imperative tests: they share the same kits + `SynchronousBus`, just skipping
+the DSL sugar. They are distinct from the **other tiers** above (§8) — Kafka delivery mechanics
+(`*SeamIT` / `*DeliveryIT`) and persistence fidelity (`Jdbc*IT`) — which live in the *service*
+modules, not `test-harness`, because the in-memory bus + DB-less world genuinely cannot exercise
+them at all.
+
+**Rule of thumb when adding a harness test:** reach for the DSL by default. Drop to an imperative
+kit test only when the assertion is one of the three above — an intermediate state, a saga-internal
+field, or a read-model / guard internal below the business-outcome altitude. If the gap is delivery
+or persistence, it isn't a harness test at all — it's a `*SeamIT` / `Jdbc*IT` in the owning service.
+
 ---
 
 ## 9. Implementation roadmap
