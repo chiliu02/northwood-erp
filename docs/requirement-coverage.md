@@ -106,10 +106,10 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 | REQ | Covered by | Status |
 |---|---|---|
 | REQ-RPT-001 (Sales Order 360) | `JdbcSalesOrder360ProjectionIT`, `JdbcSalesOrder360QueryPortIT`; o2c DSL `is_completed()` rollup | ✅ |
-| REQ-RPT-010 (PO Tracking) | `JdbcPurchaseOrderPaymentProjectionIT` (purchasing side) — ⚠️ reporting `purchase_order_tracking_view` projection IT not in the IT list | ⚠️ verify |
+| REQ-RPT-010 (PO Tracking) | `JdbcPurchaseOrderTrackingProjectionIT` (money-flow bars ordered/received/invoiced/paid + statuses) | ✅ |
 | REQ-RPT-020 (Production board) | `JdbcProductionPlanningQueryPortIT`; `SetPriorityCascadeDslTest` | ✅ |
 | REQ-RPT-030 (Material shortage) | `JdbcMaterialShortageQueryPortIT` | ✅ |
-| REQ-RPT-040 (ATP) | asserted via `a_stock_balance(...).shows(...)` in pegged o2c DSL tests | ⚠️ no dedicated ATP projection IT |
+| REQ-RPT-040 (ATP) | `JdbcAvailableToPromiseProjectionIT` (on-hand/reserved/available triple + incoming-from-purchase/production) | ✅ |
 | REQ-RPT-050 (Financial dashboard) | `JdbcFinancialDashboardProjectionIT`, `JdbcFinancialDashboardQueryPortIT` | ✅ |
 | REQ-RPT-060 (Replenishment history) | — | ❌ not shipped (planned) |
 
@@ -143,6 +143,5 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 
 - **REQ-FIN-028** — sub-assembly-consumed WIP leg shares `WORK_ORDER_WIP` source-doc type with REQ-FIN-026, so `a_journal()` can't uniquely assert it. Needs a sub-assembly-only WIP scenario or a disambiguating assertion.
 - **REQ-RPT-060** — Replenishment History view not shipped (planned).
-- **REQ-RPT-010 / REQ-RPT-040** — verify a reporting-side projection IT exists for PO-tracking and ATP (only the query-port / cross-side ITs were located).
 - **REQ-SEC-001** — confirm automated API-filter (403/200) tests exist; today the role gate is shown via Demo 8 + `@PreAuthorize`.
 - **REQ-PROD-041 / REQ-PROD-080 / REQ-MFG-060** — confirm a dedicated unit/IT exists (cost rollup, end-to-end discontinue fan-out, WO hard-cancel).
