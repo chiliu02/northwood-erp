@@ -36,7 +36,7 @@ cd erp-web-ui ; npm.cmd install ; cd ..             # one-time install for the o
 
 The repo is **11 Maven modules + the `erp-web-ui` SPA** (shared-kernel, shared, the seven services, and `erp-web-ui-bff`).
 
-Postgres runs its init scripts once, on the first boot of a fresh data volume. The base `docker-compose.yml` mounts only the **schema baseline** (`config/postgresql/northwood_erp.sql` — per-service schemas, roles, grants, the saga CHECK constraint already extended for `invoice_partially_paid`); the `docker-compose.seed.yml` override additionally mounts the **demo fixtures** (`config/postgresql/northwood_erp_seed.sql` — products, customers, suppliers, BOMs, GL chart, …). This walkthrough needs the fixtures (CUST-001, the SKUs, etc.), which is why the command above layers both files with `-f`. For an empty database you populate via events from zero, drop the override and run `docker compose up -d`. To start fresh later, repeat the seeded command after a wipe: `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d`.
+Postgres runs its init scripts once, on the first boot of a fresh data volume. The base `docker-compose.yml` mounts only the **schema baseline** (`config/postgresql/northwood_erp.sql` — per-service schemas, roles, grants, the fulfilment-saga `saga_state` CHECK constraint); the `docker-compose.seed.yml` override additionally mounts the **demo fixtures** (`config/postgresql/northwood_erp_seed.sql` — products, customers, suppliers, BOMs, GL chart, …). This walkthrough needs the fixtures (CUST-001, the SKUs, etc.), which is why the command above layers both files with `-f`. For an empty database you populate via events from zero, drop the override and run `docker compose up -d`. To start fresh later, repeat the seeded command after a wipe: `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d`.
 
 Keycloak loads the `northwood` realm from `config/keycloak/northwood-realm.json` on first boot — 13 roles + 13 demo users (one per role, `username == password`). Admin console at `http://localhost:8090/` (`admin` / `admin`). The ERP SPA authenticates real users via OIDC code flow against this realm — there is no shared-secret bypass.
 
@@ -127,10 +127,10 @@ You can pick one or mix. The audience-facing experience is best with **A. ERP UI
 Drive the demo step by step through the operational SPA, signed in as the appropriate persona. The module-grouped sidebar (Master Data / Sales / Purchasing / Inventory / Manufacturing / Finance / Reporting / System) mirrors how a real operator thinks — "I'm working in Sales" rather than "I am persona X". Suggested run-order for the happy path:
 
 1. **Emma** (catalog_manager) — **Master Data → Products** → open Wooden Dining Table → change the sales price / standard cost / reorder policy via the detail page actions.
-2. **Sarah** (sales_clerk) — **Sales → Sales Orders → New** → place 1 × FG-TABLE-001 for CUST-001 → submit → land on the **Sales Order detail** page (`/sales-orders/:id`). With 2 on hand the line reserves fully, so the sales saga goes straight to `ready_to_ship` — no work order is raised (a stock-covered order skips manufacturing entirely).
-3. **Linda** (production_planner) — *(only fires when the order is short)* — to see a work order, place a quantity above on-hand so inventory raises a make-to-stock replenishment WO. Then **Manufacturing → Production Board** → open the released WO → **Complete operation** for each op (sequence 10, 20, 30…). Each completion advances the work-order (make-to-stock) saga; when the WO completes it bumps on-hand and the parked sales order re-reserves and reaches `ready_to_ship`.
+2. **Sarah** (sales_clerk) — **Sales → Sales Orders → New** → place 1 × FG-TABLE-001 for CUST-001 → submit → land on the **Sales Order detail** page (`/sales-orders/:id`). With 2 on hand the line reserves fully, so the sales saga goes straight to `supply_secured` (the 360 / UI shows `ready_to_ship`) — no work order is raised (a stock-covered order skips manufacturing entirely).
+3. **Linda** (production_planner) — *(only fires when the order is short)* — to see a work order, place a quantity above on-hand so inventory raises a make-to-stock replenishment WO. Then **Manufacturing → Production Board** → open the released WO → **Complete operation** for each op (sequence 10, 20, 30…). Each completion advances the work-order (make-to-stock) saga; when the WO completes it bumps on-hand and the parked sales order re-reserves and reaches `supply_secured`.
 4. **Mike** (warehouse_clerk) — **Inventory → Shipments → New** → pick the ready-to-ship order → post the shipment.
-5. Watch finance auto-create a customer invoice (the sales saga jumps to `invoice_created`); the **Sales Order detail** roll-up shows the new invoice.
+5. Watch finance auto-create a customer invoice (the sales saga holds at `supply_secured` — invoicing is event-reactive, not a saga state); the **Sales Order detail** roll-up shows the new invoice.
 6. **Olivia** (accountant) — **Finance → Payments → New** → Customer (AR) → pick the customer invoice → record full payment. Sales saga reaches `completed`.
 
 The **Sales Order detail** page is the headline screen: it carries the cross-context fulfilment roll-up (reservation / shipment / invoice / payment status pulled from reporting's `sales_order_360_view` projection), updating after each event. Open it on a side screen and refresh as the saga advances.
@@ -308,19 +308,19 @@ curl -X POST http://localhost:8082/api/sales-orders \
 
 | State | Trigger to advance |
 |---|---|
-| `started` | worker emits `sales.StockReservationRequested` |
-| `stock_reservation_requested` | inbound `inventory.StockReserved` — fully reserved → `ready_to_ship`; short → `stock_reservation_incomplete` |
+| `started` | worker emits `sales.StockReservationRequested` (or parks at `awaiting_release` behind a planning fence; a prepayment / deposit order gates at `awaiting_prepayment` → `prepaid` first) |
+| `stock_reservation_requested` | inbound `inventory.StockReserved` — fully reserved → `supply_secured`; short → `stock_reservation_incomplete` |
 | `stock_reservation_incomplete` | parked; inbound `inventory.ReplenishmentFulfilled` for all short lines → retry via `stock_reservation_requested`. Inbound `inventory.ReplenishmentCancelled` → `rejected` (terminal) |
-| `ready_to_ship` | post a shipment via `POST /api/shipments` (inventory) |
-| `goods_shipped` | inbound `finance.CustomerInvoiceCreated` (auto-created from `sales.SalesOrderShipped`) |
-| `invoice_created` | inbound `finance.CustomerPaymentReceived` (full settlement) |
-| `completed` | terminal |
+| `supply_secured` | every line reserved (renamed from the old `ready_to_ship`). The warehouse posts a shipment via `POST /api/shipments`; the saga **holds here as the completion gate**, latching `orderShipped` (on `inventory.ShipmentPosted`) and `orderSettled` (on `finance.CustomerPaymentReceived`). The post-supply ship → invoice → pay status is **event-reactive** (the line fold + the 360), not separate saga states. |
+| `completed` | terminal — reached from `supply_secured` once the order is **both** shipped AND fully settled |
 
-Partial customer payment lands on `invoice_partially_paid` instead, parking until the next allocation. (The make-vs-buy redesign removed the old `manufacturing_requested` / `manufacturing_in_progress` / `manufacturing_completed` / `purchasing_requested` states — sales no longer drives manufacturing; inventory owns make-vs-buy and the sales order simply parks at `stock_reservation_incomplete` until replenished.)
+The old per-milestone states (`ready_to_ship` → `goods_shipped` → `invoice_created` → `invoice_partially_paid`) were **pruned** to this completion-gate model: those were non-branching pass-throughs whose facts now live on the line / 360 axes, so the saga no longer carries them. A partial customer payment no longer parks at a dedicated state — the saga simply stays at `supply_secured` until `orderSettled` latches. (The earlier make-vs-buy redesign likewise removed the `manufacturing_requested` / `manufacturing_in_progress` / `manufacturing_completed` / `purchasing_requested` states — sales no longer drives manufacturing; inventory owns make-vs-buy and the order parks at `stock_reservation_incomplete` until replenished.)
+
+> **Saga state vs. reporting status.** `sales.sales_order_fulfilment_saga.saga_state` uses the names above (`supply_secured`, …). Reporting's `sales_order_360_view.order_status` is a **separate, UI-facing vocabulary** that still surfaces `ready_to_ship` (driven by `sales.SalesOrderReadyToShip`). When this script says the UI/360 shows "ready to ship", that's the 360 `order_status`; the underlying `saga_state` is `supply_secured`.
 
 **To drive the saga to completion:**
 
-1. Wait for the sales saga to reach `ready_to_ship` (auto, single tick — the line is stock-covered, so it reserves fully and never touches manufacturing). For the shortage variant, see Demo 5 / Demo 7.
+1. Wait for the sales saga to reach `supply_secured` (auto, single tick — the line is stock-covered, so it reserves fully and never touches manufacturing); the 360 `order_status` shows `ready_to_ship`. For the shortage variant, see Demo 5 / Demo 7.
 2. Post a shipment. UI (as Mike): **Inventory → Shipments → New**, pick the ready order, confirm. Equivalent curl:
    ```bash
    curl -X POST http://localhost:8083/api/shipments \
@@ -369,9 +369,9 @@ curl -X POST http://localhost:8082/api/sales-orders \
                  "unitPrice":320}]}'
 ```
 
-The order lands on the Sales Order detail page with an **"awaiting prepayment"** lozenge — saga is `awaiting_prepayment_invoice`. Within a tick finance creates a prepayment invoice (`invoice_type='prepayment'`) — **no GL post at creation** (Treatment A). Try posting a shipment now and the inventory service rejects with **HTTP 409 `UNPAID_PREPAYMENT_ORDER`** — the gate reads `inventory.sales_order_line_facts.prepayment_settled` (which is `false`), not sales' saga.
+The order lands on the Sales Order detail page with an **"awaiting prepayment"** lozenge — saga is `awaiting_prepayment`. Within a tick finance creates a prepayment invoice (`invoice_type='prepayment'`) — **no GL post at creation** (Treatment A). Try posting a shipment now and the inventory service rejects with **HTTP 409 `UNPAID_PREPAYMENT_ORDER`** — the gate reads `inventory.sales_order_line_facts.prepayment_settled` (which is `false`), not sales' saga.
 
-Pay the prepayment invoice (UI: **Finance → Payments → New → Customer**, or curl below). The customer payment must come from the same customer; full amount required for the saga to leave `invoice_created`:
+Pay the prepayment invoice (UI: **Finance → Payments → New → Customer**, or curl below). The customer payment must come from the same customer; full amount required for the saga to leave `awaiting_prepayment`:
 
 ```bash
 curl -X POST http://localhost:8086/api/payments/customer \
@@ -384,15 +384,15 @@ curl -X POST http://localhost:8086/api/payments/customer \
 
 What happens next, in one tick:
 1. Finance posts **Dr 1000 Bank / Cr 2110 Customer Deposits** for $320 — the deposit is a liability until the goods land with the customer.
-2. Sales saga: `invoice_created → prepaid` and emits `sales.SalesOrderPrepaymentSettled`.
+2. Sales saga: `awaiting_prepayment → prepaid` and emits `sales.SalesOrderPrepaymentSettled`.
 3. Inventory consumes the settled event and flips `sales_order_line_facts.prepayment_settled = true` — the 409 gate is now unlocked.
 4. Sales saga worker picks the row up from `prepaid` and emits `sales.StockReservationRequested`; the rest of the fulfilment flow walks the same path as Demo 3.1.
 
-Post the shipment when the saga reaches `ready_to_ship` (single-line stock-cover order: it reserves fully and never touches manufacturing). Finance reacts to `inventory.ShipmentPosted` and posts **two** journal entries in the same tx:
+Post the shipment when the saga reaches `supply_secured` (single-line stock-cover order: it reserves fully and never touches manufacturing). Finance reacts to `inventory.ShipmentPosted` and posts **two** journal entries in the same tx:
 - **Dr 2110 Customer Deposits / Cr 4000 Sales Revenue** for $320 — reclassify the deposit to revenue (the goods-delivered performance obligation).
 - **Dr 5000 COGS / Cr 1220 Finished Goods Inventory** at standard cost (the existing on-shipment pair).
 
-The saga walks `ready_to_ship → goods_shipped → completed` in one transaction (no invoice / payment events left to wait for).
+The saga is at `supply_secured`; posting the shipment latches `orderShipped`, and since the prepayment already settled the order it transitions straight to `completed` (no invoice / payment events left to wait for).
 
 **The point of the GL trail.** End-state ledger ties out identically to Demo 3.1's on-shipment flow:
 
@@ -446,13 +446,13 @@ Returns 200 with the order body now showing `status='cancelled'` and `cancelledA
 
 Watch the Sales Order detail roll-up walk `stock_reservation_incomplete → compensating → compensated`; afterwards it shows `order_status='cancelled'`.
 
-After `goods_shipped` the cancel is rejected with HTTP 409 — that path requires the credit-note / return-goods flow (out of scope). Hard-cancel by design: WIP from in-progress operations is written off rather than letting production finish (soft-cancel deferred).
+Once any line has shipped, the cancel is rejected with HTTP 409 — that path requires the credit-note / return-goods flow (out of scope). Hard-cancel by design: WIP from in-progress operations is written off rather than letting production finish (soft-cancel deferred).
 
 ### 4.1.1 — Cancel a **paid** deposit order → automatic refund
 
 The §4.1 cancel above was an *unpaid* order — nothing had moved through the GL, so the cancel just releases the reservation. Now cancel an order where the customer has already paid up front, and finance unwinds the money too.
 
-Run Demo 3 (deposit/prepayment) partway: place a **deposit** order (e.g. `paymentTerms:"deposit"`, `depositPercent:50`), then pay the deposit invoice. The order now sits at saga `deposit_paid` with **Cr 2110 Customer Deposits** for the deposit amount — the customer's money is on the balance sheet.
+Run Demo 3 (deposit/prepayment) partway: place a **deposit** order (e.g. `paymentTerms:"deposit"`, `depositPercent:50`), then pay the deposit invoice. The deposit settles the up-front gate and the order reserves, so the saga is now at `supply_secured` with **Cr 2110 Customer Deposits** holding the deposit amount — the customer's money is on the balance sheet.
 
 Cancel it (as sam, before shipment). On top of the §4.1 sales↔inventory compensation, **finance** consumes `sales.SalesOrderCancellationRequested` and — seeing a paid prepayment/deposit invoice — posts the refund:
 
@@ -464,7 +464,7 @@ Cancel it (as sam, before shipment). On top of the §4.1 sales↔inventory compe
 
 Pre-state: 0 × FG-TABLE-001 on hand. Place an order for 2 of them.
 
-The `StockReservedHandler` stashes the short line-ids on saga.data and **advances to `stock_reservation_incomplete`** (parked). Inventory — in the same transaction as the partial reservation — raises a `ReplenishmentRequest(reason=sales_order_shortage)` and, because FG-TABLE-001 is makeable, routes it to manufacturing as a make-to-stock WO. When that WO completes it bumps FG on-hand and emits `inventory.ReplenishmentFulfilled`; the parked sales order retries its reservation and reaches `ready_to_ship`. End-state is the same as 3.1, just longer.
+The `StockReservedHandler` stashes the short line-ids on saga.data and **advances to `stock_reservation_incomplete`** (parked). Inventory — in the same transaction as the partial reservation — raises a `ReplenishmentRequest(reason=sales_order_shortage)` and, because FG-TABLE-001 is makeable, routes it to manufacturing as a make-to-stock WO. When that WO completes it bumps FG on-hand and emits `inventory.ReplenishmentFulfilled`; the parked sales order retries its reservation and reaches `supply_secured`. End-state is the same as 3.1, just longer.
 
 If the SKU has **no active BOM**, manufacturing emits `manufacturing.ReplenishmentUndispatchable`; inventory cancels the request and emits `inventory.ReplenishmentCancelled`, which flips the sales saga and the order header to `rejected`. (A purchased-only SKU with no vendor takes the same shape via `purchasing.ReplenishmentUndispatchable`.) To force the no-BOM branch in a demo, deactivate the BOM via the **Manufacturing → BOMs** page (or `POST /api/boms/{id}/activate` with a different BOM), or use a finished-good seeded without a BOM.
 
@@ -613,11 +613,11 @@ curl -X POST http://localhost:8082/api/sales-orders \
 5. Inventory bumps `stock_balance.on_hand_quantity`. P2P saga: `waiting_for_goods` → `goods_received`.
 6. Manufacturing's `GoodsReceivedHandler` un-parks the make-to-stock saga: → `work_order_created` → re-emits reservation → `raw_materials_reserved`.
 7. Operation completion (Linda, on the Production Board): the FG work order(s) complete. Each top-level completion bumps FG `stock_balance.on_hand_quantity` and fulfils the FG replenishment (`inventory.ReplenishmentFulfilled`).
-8. Once the FG replenishment is fulfilled, the parked sales saga retries: `stock_reservation_incomplete` → `stock_reservation_requested` → (now coverable) `ready_to_ship`.
-9. Post a shipment for 10 units (Mike). Sales: `ready_to_ship` → `goods_shipped`. Inventory decrements on-hand and releases the reservation.
-10. `sales.SalesOrderShipped` triggers finance to auto-create a customer invoice. Sales: `goods_shipped` → `invoice_created`.
+8. Once the FG replenishment is fulfilled, the parked sales saga retries: `stock_reservation_incomplete` → `stock_reservation_requested` → (now coverable) `supply_secured`.
+9. Post a shipment for 10 units (Mike). Posting the shipment latches `orderShipped` on the `supply_secured` saga; inventory decrements on-hand and releases the reservation.
+10. `sales.SalesOrderShipped` triggers finance to auto-create a customer invoice (the saga stays at `supply_secured` — invoicing is event-reactive).
 11. Olivia records the supplier invoice and pays it (Demo 6 steps 4 & 5). P2P saga: → `supplier_invoice_approved` → `completed`.
-12. Olivia receives the customer's payment for the customer invoice (Demo 3 final step). Sales saga: `invoice_created` → `completed`.
+12. Olivia receives the customer's payment for the customer invoice (Demo 3 final step). Sales saga: `supply_secured` → `completed` (the order is now both shipped and fully settled).
 
 ### What the audience sees on screens
 
@@ -665,7 +665,7 @@ Open `http://localhost:5174` cold (or sign out). The SPA redirects to Keycloak's
 
 ### 8.2 — Role-gated mutation (the cancel-order moment)
 
-On a Sales Order detail page (any order before `goods_shipped`), hover the **Cancel order** action. Sarah's `sales_clerk` doesn't include `sales_manager`, so it is disabled with tooltip "Requires role: sales_manager".
+On a Sales Order detail page (any order that has not yet shipped), hover the **Cancel order** action. Sarah's `sales_clerk` doesn't include `sales_manager`, so it is disabled with tooltip "Requires role: sales_manager".
 
 Sign out (top-right), then sign back in on Keycloak as **sam** (password == `sam`). The Cancel action is now enabled. Click it. Saga walks `compensating → compensated`. Audit row stamps `actor_user_id = "sam"`.
 
@@ -773,7 +773,7 @@ The fourth axis of the catalogue: alongside make-vs-buy, each SKU carries a `rep
 
 ### 10.1 — Buy-to-stock baseline (the contrast partner)
 
-Place an order **as Sarah** for **FG-RUG-001** (`00000000-0000-7000-8000-000000000500`), qty 1. The rug has 6 on hand at MAIN, so it reserves from the shared pool and goes straight to `ready_to_ship` — exactly the Demo 3 happy path. No PO, no peg. This is the off-the-shelf mode; keep it on screen as the contrast for 10.2.
+Place an order **as Sarah** for **FG-RUG-001** (`00000000-0000-7000-8000-000000000500`), qty 1. The rug has 6 on hand at MAIN, so it reserves from the shared pool and goes straight to `supply_secured` (360 `ready_to_ship`) — exactly the Demo 3 happy path. No PO, no peg. This is the off-the-shelf mode; keep it on screen as the contrast for 10.2.
 
 ### 10.2 — Buy-to-order (the pegged PO)
 
@@ -803,7 +803,7 @@ Watch it flow:
      FROM inventory.stock_balance WHERE product_id = '00000000-0000-7000-8000-000000000501';
    -- on_hand = 1, reserved = 1, available = 0  ← pegged; excluded from ATP
    ```
-4. `inventory.ReplenishmentFulfilled(pegged=true)` reaches sales; the saga goes **`stock_reservation_incomplete → ready_to_ship` directly** — no re-reservation. **Wendy** ships it; the cycle completes exactly like Demo 7.
+4. `inventory.ReplenishmentFulfilled(pegged=true)` reaches sales; the saga goes **`stock_reservation_incomplete → supply_secured` directly** — no re-reservation. **Wendy** ships it; the cycle completes exactly like Demo 7.
 
 ### 10.3 — Make-to-order (configure an existing SKU live)
 
@@ -817,7 +817,7 @@ curl -X PUT http://localhost:8081/api/products/00000000-0000-7000-8000-000000000
   -H 'content-type: application/json' -d '{"replenishmentStrategy":"to_order"}'
 ```
 
-Then place an order for the chair beyond on-hand. Same pegged flow as 10.2, but the dedicated supply is a **work order** (target_service = `manufacturing`): **Linda** completes its operations on the Production Board; on completion inventory credits FG **and** pegs it to the SO line, and the saga reaches `ready_to_ship` without a retry. (This is the path pinned by `OrderToCashMakeToOrderPathTest`.)
+Then place an order for the chair beyond on-hand. Same pegged flow as 10.2, but the dedicated supply is a **work order** (target_service = `manufacturing`): **Linda** completes its operations on the Production Board; on completion inventory credits FG **and** pegs it to the SO line, and the saga reaches `supply_secured` without a retry. (This is the path pinned by `OrderToCashMakeToOrderPathTest`.)
 
 > Try setting `replenishment-strategy` to `to_order` on a SKU that still has a non-zero reorder policy, or on a non-sellable raw material — the request is rejected (the aggregate enforces the three invariants, mirrored by the schema CHECKs).
 
@@ -832,7 +832,7 @@ Then place an order for the chair beyond on-hand. Same pegged flow as 10.2, but 
 | Strategy is orthogonal to make-vs-buy | one floor-coverings family shows buy-to-stock (rug) next to buy-to-order (carpet) |
 | `to_order` raises dedicated, full-qty supply | `replenishment_request.reason = 'order_pegged'`, qty = line qty, back-referenced to the SO |
 | Pegged output is earmarked, not pooled | on completion `reserved` rises with `on_hand`; `available` (ATP) stays 0 |
-| Ships off the peg, no double-reserve | saga `stock_reservation_incomplete → ready_to_ship` with no second `StockReservationRequested` |
+| Ships off the peg, no double-reserve | saga `stock_reservation_incomplete → supply_secured` with no second `StockReservationRequested` |
 | Cancel stays permitted | un-peg releases / drops the dedicated supply back to the pool |
 
 ---

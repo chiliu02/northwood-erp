@@ -309,7 +309,7 @@ The reorder policy from REQ-PROD-020 is read by the new monitor described here. 
 
 The load-bearing design point of this replenishment redesign — inventory becomes the single orchestration seam for replenishment. Manufacturing and purchasing only signal inventory; they never signal each other. The pre-redesign direct edge (`manufacturing.RawMaterialShortageDetected → purchasing.RawMaterialShortageDetectedHandler`, REQ-XBC-040 OLD) is removed and replaced by the new routing described below.
 
-**REQ-INV-080 — Two trigger sources for automatic replenishment** *(planned)*
+**REQ-INV-080 — Two trigger sources for automatic replenishment** *(shipped)*
 The system raises a Replenishment Request from two triggers:
 
 1. **Reorder-point breach** — after every action that reduces on-hand (shipment posting, stock adjustment, and any other on-hand-decrementing event), if `on_hand < reorder_point` AND `reorder_point > 0` AND no replenishment for this SKU/warehouse is already open.
@@ -317,10 +317,10 @@ The system raises a Replenishment Request from two triggers:
 
 Both triggers raise the same `ReplenishmentRequest` aggregate and emit the same `inventory.ReplenishmentRequested` event. The downstream routing is identical.
 
-**REQ-INV-081 — Replenishment Request fields** *(planned)*
+**REQ-INV-081 — Replenishment Request fields** *(shipped)*
 Each request carries: SKU, warehouse, requested quantity (defaults to the SKU's reorder quantity for reorder-point triggers; to the shortage component's missing quantity for WO-shortage triggers), target service (`manufacturing` or `purchasing`), reason (`reorder_point_breach` | `work_order_shortage`), status (`requested` → `dispatched` → `fulfilled`, or `cancelled`), timestamps for each transition.
 
-**REQ-INV-082 — Route to manufacturing or purchasing based on make-vs-buy** *(planned)*
+**REQ-INV-082 — Route to manufacturing or purchasing based on make-vs-buy** *(shipped)*
 The target service is derived from the SKU's make-vs-buy flags (REQ-PROD-010, snapshotted into inventory by REQ-INV-085 below):
 - `is_manufactured = true` → manufacturing (preferred when both flags are true);
 - `is_purchased = true` only → purchasing;
@@ -328,26 +328,26 @@ The target service is derived from the SKU's make-vs-buy flags (REQ-PROD-010, sn
 
 Raw-material SKUs are typically buy-only (`is_purchased = true`, `is_manufactured = false`), so WO-shortage replenishments almost always route to purchasing.
 
-**REQ-INV-083 — At most one open replenishment per SKU per warehouse** *(planned)*
+**REQ-INV-083 — At most one open replenishment per SKU per warehouse** *(shipped)*
 If a request is already in `requested` or `dispatched` status for the SKU/warehouse, a fresh breach (from either trigger) does **not** raise a duplicate. The system relies on the open request to close the gap.
 *Rationale:* prevents the monitor from amplifying every shipment after a breach — or every WO release short on the same raw material — into a cascade of redundant requisitions / work orders. The system-wide invariant is enforced by a partial unique index in `inventory.replenishment_request`.
 
-**REQ-INV-084 — Replenishment closes when downstream is fulfilled** *(planned)*
+**REQ-INV-084 — Replenishment closes when downstream is fulfilled** *(shipped)*
 - For manufacturing-routed requests: the request moves to `fulfilled` when the linked work order completes (the produced goods bump `on_hand`).
 - For purchasing-routed requests: the request moves to `fulfilled` when the linked purchase order's receipt lands (`on_hand` increases at receipt).
 
-**REQ-INV-085 — Inventory mirrors each SKU's make-vs-buy classification locally** *(planned)*
+**REQ-INV-085 — Inventory mirrors each SKU's make-vs-buy classification locally** *(shipped)*
 The `is_purchased` and `is_manufactured` flags are snapshotted into inventory at product creation (with defaults from product type) and updated on every classification change.
 
-**REQ-INV-086 — Unsourceable-SKU handling** *(planned)*
+**REQ-INV-086 — Unsourceable-SKU handling** *(shipped)*
 If both make-vs-buy flags are false for a SKU and either trigger fires, the system logs a warning and skips the request. The discrepancy is visible in logs but does not block other operations. Operators investigate and either classify the SKU correctly or accept the SKU as no-replenish.
 
-**REQ-INV-087 — Manufacturing and purchasing never communicate directly about replenishment** *(planned — architectural invariant)*
+**REQ-INV-087 — Manufacturing and purchasing never communicate directly about replenishment** *(shipped — architectural invariant)*
 Once the unified replenishment loop ships, there is no operational event flowing directly from manufacturing to purchasing or vice versa for replenishment purposes. Both contexts subscribe to events emitted by inventory; the cross-context coupling is mediated by `inventory.ReplenishmentRequest`.
 *Rationale:* preserves Northwood's bounded-context discipline — manufacturing reasons about production, purchasing reasons about procurement, and the "what should we replenish" decision is owned by inventory (which holds the authoritative on-hand state and the policies).
 *Acceptance:* the architecture grep `Grep '^import com\.northwood\.manufacturing\.' purchasing-service/**/*.java → zero` and the reverse remain green. No new inbox handler in purchasing references a manufacturing event class, and vice versa, for replenishment-related events.
 
-**REQ-INV-088 — Replenishment is asynchronous and visible to operators** *(planned)*
+**REQ-INV-088 — Replenishment is asynchronous and visible to operators** *(shipped)*
 Every step (request raised, dispatched, fulfilled) is observable in the Replenishment History view (REQ-RPT-060). Operators do not need to take action for the common case; the system advances the state automatically. Operators only intervene when a request stalls (e.g. supplier delivery delayed) or when the unsourceable-SKU warning surfaces (REQ-INV-086).
 
 ### 3.10 Operating model: make-to-stock (MTS)
@@ -407,7 +407,7 @@ A WO whose product is a multi-level BOM releases child WOs for the sub-assemblie
 
 ### 4.4 Work orders — stock replenishment *(NEW)*
 
-**REQ-MFG-030 — Release a work order for a replenishment request** *(planned)*
+**REQ-MFG-030 — Release a work order for a replenishment request** *(shipped)*
 When inventory raises a manufacturing-routed Replenishment Request (REQ-INV-082), manufacturing releases a stock work order. The WO is **not** tied to a sales-order line; it carries the originating `replenishment_request_id` instead (and the `source_sales_order_header_id` of the order whose shortage triggered it, so reporting's production-planning board keeps the SO↔WO link). The BOM walk + material reservation + operation snapshotting follow the shared WO-release mechanics (REQ-MFG-020). Completion bumps the FG `on_hand` (REQ-MFG-080) and signals the replenishment as fulfilled (REQ-INV-084). If the SKU has no active BOM, manufacturing emits `ReplenishmentUndispatchable` and inventory cancels the request (which, for a sales-order-shortage replenishment, rejects the originating order).
 
 ### 4.5 Material reservation + shortage
@@ -475,18 +475,18 @@ Setting the same price as already on file emits no event and writes no audit row
 
 ### 5.3 Purchase requisitions
 
-**REQ-PUR-020 — Purchase Requisitions arise from two live sources** *(planned migration; pre-migration state listed for history)*
+**REQ-PUR-020 — Purchase Requisitions arise from two live sources** *(shipped)*
 
 | Source type | Trigger | Status |
 |---|---|---|
 | `manual`              | A buyer raises a requisition through the UI                                                                            | Shipped |
-| `stock_replenishment` | Inventory's automatic replenishment loop (REQ-INV-080) raised a purchasing-routed replenishment — covers BOTH reorder-point breaches AND former WO raw-material shortages | Planned |
+| `stock_replenishment` | Inventory's automatic replenishment loop (REQ-INV-080) raised a purchasing-routed replenishment — covers BOTH reorder-point breaches AND former WO raw-material shortages | Shipped |
 | `work_order_shortage` | *(retired by the replenishment redesign)* — was: manufacturing's shortage signal triggered purchasing directly          | Removed; historical rows preserved |
 
 *Note:* the `work_order_shortage` flow is being retired specifically to enforce the manufacturing↔purchasing decoupling (REQ-INV-087). Existing PRs already in the database with that source type remain readable; the CHECK constraint keeps the value valid as a historical marker. The Java path that produced new ones (`PurchaseRequisitionService.createForWorkOrderShortage(...)` plus `purchasing.RawMaterialShortageDetectedHandler`) is **deleted** as part of the replenishment redesign.
 
-**REQ-PUR-021 — Auto-approval policy** *(shipped — to be extended)*
-PRs created by the work-order-shortage flow auto-approve at creation (configurable). After the replenishment redesign ships, PRs created by the `stock_replenishment` flow will inherit the same auto-approve policy — so the operator experience is unchanged whether the request came from a reorder-point breach or a former WO-shortage. Manual PRs continue to land at draft and require buyer approval.
+**REQ-PUR-021 — Auto-approval policy** *(shipped)*
+PRs created by the `stock_replenishment` flow auto-approve at creation (configurable via `northwood.purchasing.shortagePoAutoApprove`, default true) — so the operator experience is the same whether the request came from a reorder-point breach or a WO raw-material shortage. Manual PRs continue to land at draft and require buyer approval.
 
 ### 5.4 Purchase orders
 
@@ -515,7 +515,7 @@ Finance keeps the books in money. Every economic event in the other contexts (sh
 ### 6.1 Chart of accounts
 
 **REQ-FIN-001 — Chart of accounts is seed data** *(shipped)*
-The GL accounts are seeded once by SQL. Accounts cannot be edited through the application. The set covers: Cash/Bank (`1010`), Accounts Receivable (`1110`), Customer Deposits (`2110`), Accounts Payable (`2210`), Raw Materials Inventory (`1210`), FG Inventory (`1220`), Work In Progress (`1230`), GRNI (`1300`), Revenue (`4000`), Materials COGS (`5200`), General COGS (`5000`), Write-off (`5500`).
+The GL accounts are seeded once by SQL. Accounts cannot be edited through the application. The set covers: Bank (`1000`), Accounts Receivable (`1100`), Inventory (`1200`), Raw Materials Inventory (`1210`), FG Inventory (`1220`), Work In Progress (`1230`), GRNI (`1300`), Accounts Payable (`2100`), Customer Deposits (`2110`), Revenue (`4000`), General COGS (`5000`), Materials COGS (`5200`), Inventory Adjustment (`5400`).
 
 ### 6.2 Journal entries — double-entry posting
 
@@ -536,19 +536,19 @@ Each posts one balanced journal at the moment its source event fires. These are 
 On goods receipt: debit the SKU's inventory account (1210 or 1220 by valuation class), credit GRNI (1300) at the PO line price × received quantity.
 
 **REQ-FIN-021 — Supplier invoice — Dr GRNI / Cr AP** *(shipped)*
-On supplier invoice approval: debit GRNI (1300), credit AP (2210) at the invoice amount. The GRNI account net-zeros over a matched receipt-invoice pair.
+On supplier invoice approval: debit GRNI (1300), credit AP (2100) at the invoice amount. The GRNI account net-zeros over a matched receipt-invoice pair.
 
 **REQ-FIN-022 — Supplier payment — Dr AP / Cr Bank** *(shipped)*
-On supplier payment: debit AP (2210), credit Bank (1010) at the payment amount.
+On supplier payment: debit AP (2100), credit Bank (1000) at the payment amount.
 
 **REQ-FIN-023 — Shipment — Dr COGS / Cr Inventory** *(shipped)*
 On shipment posting: debit the SKU's COGS account (5200 or 5000 by valuation class), credit the SKU's inventory account, at the SKU's standard cost × shipped quantity.
 
 **REQ-FIN-024 — Customer invoice — Dr AR / Cr Revenue** *(shipped)*
-On customer invoice creation (auto-triggered by shipment): debit AR (1110), credit Revenue (4000) at the invoice amount.
+On customer invoice creation (auto-triggered by shipment): debit AR (1100), credit Revenue (4000) at the invoice amount.
 
 **REQ-FIN-025 — Customer payment — Dr Bank / Cr AR** *(shipped)*
-On customer payment: debit Bank (1010), credit AR (1110) at the payment amount.
+On customer payment: debit Bank (1000), credit AR (1100) at the payment amount.
 
 **REQ-FIN-026 — Raw materials issued to a work order — Dr WIP / Cr Raw Materials** *(shipped)*
 When a work order's raw materials are fully reserved (issued to production), debit Work In Progress (1230), credit the material's inventory account (1210) at standard cost × reserved quantity. Establishes the manufacturing→finance edge; perpetual WIP, material-cost-only.
@@ -561,11 +561,11 @@ When a parent work order consumes its completed sub-assembly children, debit par
 
 ### 6.4 Prepayments (customer deposits)
 
-**REQ-FIN-030 — Prepayment invoice posts to Customer Deposits, not Revenue** *(shipped)*
-A prepayment invoice (REQ-SAL-021) posts: Dr AR / Cr Customer Deposits (2110). The deposit is a liability until the goods ship.
+**REQ-FIN-030 — Prepayment money lands in Customer Deposits, not Revenue** *(shipped)*
+A prepayment / deposit invoice (REQ-SAL-021) raises **no journal at creation** (Treatment A): the up-front money is recognised when the payment lands, not when the invoice is cut. It is held in Customer Deposits (2110) — a liability, never Revenue — until the goods ship.
 
 **REQ-FIN-031 — Prepayment payment** *(shipped)*
-On customer prepayment receipt: Dr Bank / Cr AR (standard customer-payment shape; the AR has been Dr'd by REQ-FIN-030).
+On customer prepayment / deposit receipt: Dr Bank (1000) / Cr Customer Deposits (2110). The receipt parks the up-front money in the deposit liability directly — the invoice cut no AR entry, so there is no AR to clear.
 
 **REQ-FIN-032 — Revenue recognition at shipment** *(shipped)*
 On shipment for a prepayment order, an additional journal posts: Dr Customer Deposits / Cr Revenue, releasing the deposit liability into revenue.
@@ -669,17 +669,17 @@ A sales order for a makeable SKU with insufficient stock no longer triggers manu
 
 ### 8.4 Material-Shortage → Auto-Requisition
 
-**REQ-XBC-040 — Material-shortage auto-requisition** *(shipped via direct edge; retired by replenishment redesign — see REQ-XBC-080)*
+**REQ-XBC-040 — Material-shortage auto-requisition** *(retired — the direct manufacturing→purchasing edge was replaced by REQ-XBC-080's inventory-routed loop)*
 
-*Current flow (in production):* when a WO release finds short raw materials, manufacturing emits `RawMaterialShortageDetected` which purchasing consumes directly to raise a PR with source type `work_order_shortage`. The PR auto-approves, converts to a PO, and is dispatched to the approved supplier. When the goods are received, the WO's material status flips to `released` and operations may begin.
+*Former flow (pre-redesign, retired):* when a WO release found short raw materials, manufacturing emitted `RawMaterialShortageDetected` which purchasing consumed **directly** to raise a PR with source type `work_order_shortage`. The PR auto-approved, converted to a PO, and dispatched to the approved supplier. When the goods were received, the WO's material status flipped to `released`.
 
-*Planned flow:* the same business outcome is preserved, but the path changes. Inventory consumes `RawMaterialShortageDetected` and raises a `ReplenishmentRequest` with `reason='work_order_shortage'`; that request flows through `inventory.ReplenishmentRequested → purchasing.replenishment-dispatcher → PurchaseRequisition (source_type='stock_replenishment')`. Manufacturing and purchasing no longer share an operational event. See REQ-XBC-080 for the unified flow, REQ-INV-087 for the decoupling invariant.
+*Current flow (shipped):* the same business outcome, different path. Inventory consumes `RawMaterialShortageDetected` and raises a `ReplenishmentRequest` with `reason='work_order_shortage'`; that request flows through `inventory.ReplenishmentRequested → purchasing.replenishment-dispatcher → PurchaseRequisition (source_type='stock_replenishment')`. Manufacturing and purchasing no longer share an operational event. See REQ-XBC-080 for the unified flow, REQ-INV-087 for the decoupling invariant.
 
 *User-visible difference:* none — the auto-approval, supplier selection, PO conversion, and WO material-status flip all happen the same way. The change is purely architectural.
 
 ### 8.5 Unified Replenishment Loop *(NEW)*
 
-**REQ-XBC-080 — Inventory-orchestrated replenishment, end-to-end** *(planned)*
+**REQ-XBC-080 — Inventory-orchestrated replenishment, end-to-end** *(shipped)*
 Northwood's single unified replenishment flow. Covers both policy-driven (reorder-point) and demand-driven (WO raw-material shortage) triggers through one channel.
 
 **Trigger A — Reorder-point breach (policy-driven):**
@@ -700,7 +700,7 @@ Northwood's single unified replenishment flow. Covers both policy-driven (reorde
 5. The Replenishment History view (REQ-RPT-060) shows the request lifecycle per SKU with the trigger reason for audit and tuning.
 6. The loop closes silently — no operator action is needed.
 
-**REQ-XBC-081 — Operator-visible behaviour** *(planned)*
+**REQ-XBC-081 — Operator-visible behaviour** *(shipped)*
 A planner using the stock-items page sees:
 - The on-hand level drop on each shipment.
 - When the level crosses the reorder point (Trigger A) OR a WO release reports a shortage (Trigger B), a new "Replenishment activity" row appears for the SKU with the appropriate reason badge.
@@ -710,7 +710,7 @@ A planner using the stock-items page sees:
 
 The planner never has to manually raise a PR or a WO for either trigger.
 
-**REQ-XBC-082 — Bounded-context decoupling invariant** *(planned)*
+**REQ-XBC-082 — Bounded-context decoupling invariant** *(shipped)*
 Once the unified replenishment loop ships, manufacturing and purchasing exchange **no** operational events with each other in the replenishment domain. Every shortage signal flows through inventory's `ReplenishmentRequest`. This is the load-bearing architectural invariant; see REQ-INV-087 for the testable form. Reference-data flows (e.g. `purchasing.SupplierProductPriceChanged → manufacturing.materials-cost-rollup`) are out of scope — they are read-side data projections, not operational coupling.
 
 ### 8.6 Cancellation (sales-initiated)
