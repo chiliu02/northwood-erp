@@ -3,7 +3,6 @@ package com.northwood.manufacturing.application;
 import com.northwood.manufacturing.application.inbox.ProductApprovedVendorProjection;
 import com.northwood.manufacturing.application.inbox.ProductMaterialsCostProjection;
 import com.northwood.manufacturing.application.inbox.ProductReplenishmentProjection;
-import com.northwood.manufacturing.domain.RoutingOperation;
 import com.northwood.manufacturing.domain.events.ProductMaterialsCostComputed;
 import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
@@ -85,8 +84,7 @@ public class MaterialsCostRollupService {
     private final ProductApprovedVendorProjection approvedVendors;
     private final ProductMaterialsCostProjection materialsCosts;
     private final BomLookup boms;
-    private final RoutingQueryPort routings;
-    private final WorkCenterRateLookup workCenterRates;
+    private final ConversionCostCalculator conversionCosts;
     private final OutboxAppender outbox;
 
     public MaterialsCostRollupService(
@@ -94,16 +92,14 @@ public class MaterialsCostRollupService {
         ProductApprovedVendorProjection approvedVendors,
         ProductMaterialsCostProjection materialsCosts,
         BomLookup boms,
-        RoutingQueryPort routings,
-        WorkCenterRateLookup workCenterRates,
+        ConversionCostCalculator conversionCosts,
         OutboxAppender outbox
     ) {
         this.replenishment = replenishment;
         this.approvedVendors = approvedVendors;
         this.materialsCosts = materialsCosts;
         this.boms = boms;
-        this.routings = routings;
-        this.workCenterRates = workCenterRates;
+        this.conversionCosts = conversionCosts;
         this.outbox = outbox;
     }
 
@@ -237,29 +233,6 @@ public class MaterialsCostRollupService {
         return new BomRollupResult(false, total.setScale(6, RoundingMode.HALF_UP), currency);
     }
 
-    /**
-     * Conversion cost of a product's own active routing: Σ over operations of
-     * {@code (setup + run minutes) × (labour + overhead rate)} for the
-     * operation's work centre. Zero when the product has no active routing
-     * (raws, purchased items) or its work centres carry no rates.
-     */
-    private BigDecimal ownConversionCost(UUID productId) {
-        return routings.findActiveByFinishedProductId(productId)
-            .map(routing -> {
-                BigDecimal total = BigDecimal.ZERO;
-                for (RoutingOperation op : routing.operations()) {
-                    WorkCenterRateLookup.Rates rates = workCenterRates
-                        .findByWorkCenterId(op.workCenterId())
-                        .orElse(WorkCenterRateLookup.Rates.ZERO);
-                    BigDecimal minutes = nullToZero(op.plannedSetupMinutes())
-                        .add(nullToZero(op.plannedRunMinutes()));
-                    total = total.add(minutes.multiply(rates.totalPerMinute()));
-                }
-                return total.setScale(6, RoundingMode.HALF_UP);
-            })
-            .orElse(BigDecimal.ZERO);
-    }
-
     private static BigDecimal nullToZero(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v;
     }
@@ -302,7 +275,7 @@ public class MaterialsCostRollupService {
         // conversion is NOT yet folded into its parent's standard cost (that
         // needs a persisted full-cost facet; tracked as §2.42 item 2b). For a
         // leaf raw / purchased item there is no routing, so it equals cost.
-        BigDecimal standardCost = cost == null ? null : cost.add(ownConversionCost(productId));
+        BigDecimal standardCost = cost == null ? null : cost.add(conversionCosts.perUnitConversionCost(productId));
 
         ProductMaterialsCostComputed event = new ProductMaterialsCostComputed(
             UUID.randomUUID(),

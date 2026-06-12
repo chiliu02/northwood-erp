@@ -43,13 +43,20 @@ class WorkOrderOperationServiceTest {
 
     @Mock WorkOrderRepository workOrders;
     @Mock WorkOrderSagaManager sagaManager;
+    @Mock RoutingQueryPort routings;
+    @Mock WorkCenterRateLookup workCenterRates;
     @Mock OutboxAppender outbox;
 
     private WorkOrderOperationService service;
 
     @BeforeEach
     void setUp() {
-        service = new WorkOrderOperationService(workOrders, sagaManager, outbox);
+        // Real calculator over mocked ports: no routing stubbed → conversion 0 →
+        // no WorkOrderConversionApplied emitted, so these completion/skip tests
+        // (which assert on SubAssembliesConsumed) are unaffected.
+        service = new WorkOrderOperationService(
+            workOrders, sagaManager, new ConversionCostCalculator(routings, workCenterRates), outbox
+        );
     }
 
     private WorkOrderOperation op(int seq) {

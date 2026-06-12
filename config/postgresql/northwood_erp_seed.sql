@@ -160,7 +160,7 @@ INSERT INTO product.product (
 ) VALUES
     ('00000000-0000-7000-8000-000000000001', 'FG-TABLE-001',   'Wooden Dining Table',
      'Finished wooden dining table',  'finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  true,  650.00, 320.00,  2,  5, 'finished_goods'),
+     true, false, true,  true,  650.00, 332.00,  2,  5, 'finished_goods'),
     ('00000000-0000-7000-8000-000000000002', 'RM-BOARD-001',   'Wooden Board',
      'Timber board for table top',    'raw_material',  '00000000-0000-7000-8000-000000000010',
      true, true,  false, false,   0.00,  80.00, 10, 20, 'raw_materials'),
@@ -772,6 +772,10 @@ INSERT INTO finance.gl_account (account_code, account_name, account_type) VALUES
     ('5000', 'Cost of Goods Sold',            'expense'),
     ('5100', 'Production Variance',           'expense'),
     ('5200', 'Materials Cost',                'expense'),
+    -- Conversion Cost Applied: credited when a work order's standard conversion
+    -- cost (labour + overhead) is absorbed into WIP at completion (Dr 1230), so
+    -- WIP nets to zero against the full standard cost out (dev-todo §2.42).
+    ('5250', 'Conversion Cost Applied',       'expense'),
     ('5300', 'Freight Expense',               'expense'),
     ('5400', 'Inventory Adjustment',          'expense'),
     ('5500', 'Promotions & Samples Expense',  'expense')
@@ -801,7 +805,7 @@ ON CONFLICT (tax_code) DO NOTHING;
 INSERT INTO finance.product_card (
     product_id, standard_cost, currency_code, valuation_class
 ) VALUES
-    ('00000000-0000-7000-8000-000000000001', 320.00, 'AUD', 'finished_goods'),      -- FG-TABLE-001
+    ('00000000-0000-7000-8000-000000000001', 332.00, 'AUD', 'finished_goods'),      -- FG-TABLE-001 (197 material + 135 conversion, §2.42)
     ('00000000-0000-7000-8000-000000000002',  80.00, 'AUD', 'raw_materials'),       -- RM-BOARD-001
     ('00000000-0000-7000-8000-000000000003',  25.00, 'AUD', 'raw_materials'),       -- RM-LEG-001
     ('00000000-0000-7000-8000-000000000004',   5.00, 'AUD', 'raw_materials'),       -- RM-SCREW-001
@@ -832,7 +836,7 @@ BEGIN;
 
 INSERT INTO reporting.product_card (product_id, standard_cost, currency_code)
 VALUES
-    ('00000000-0000-7000-8000-000000000001', 320.00, 'AUD'),
+    ('00000000-0000-7000-8000-000000000001', 332.00, 'AUD'),  -- FG-TABLE-001 (197 material + 135 conversion, §2.42)
     ('00000000-0000-7000-8000-000000000002',  80.00, 'AUD'),
     ('00000000-0000-7000-8000-000000000003',  25.00, 'AUD'),
     ('00000000-0000-7000-8000-000000000004',   5.00, 'AUD'),

@@ -51,7 +51,8 @@ class MaterialsCostRollupServiceTest {
     @BeforeEach
     void setUp() {
         rollup = new MaterialsCostRollupService(
-            replenishment, approvedVendors, materialsCosts, bomLookup, routings, workCenterRates, outbox
+            replenishment, approvedVendors, materialsCosts, bomLookup,
+            new ConversionCostCalculator(routings, workCenterRates), outbox
         );
     }
 

@@ -10,8 +10,10 @@ import com.northwood.manufacturing.domain.WorkOrderRepository;
 import com.northwood.manufacturing.domain.WorkOrderRepository.CompletedChild;
 import com.northwood.manufacturing.domain.events.SubAssembliesConsumed;
 import com.northwood.manufacturing.domain.events.SubAssembliesConsumed.ConsumedItem;
+import com.northwood.manufacturing.domain.events.WorkOrderConversionApplied;
 import com.northwood.shared.application.exception.NotFoundException;
 import com.northwood.shared.application.outbox.OutboxAppender;
+import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -68,15 +70,18 @@ public class WorkOrderOperationService {
 
     private final WorkOrderRepository workOrders;
     private final WorkOrderSagaManager sagaManager;
+    private final ConversionCostCalculator conversionCosts;
     private final OutboxAppender outbox;
 
     public WorkOrderOperationService(
         WorkOrderRepository workOrders,
         WorkOrderSagaManager sagaManager,
+        ConversionCostCalculator conversionCosts,
         OutboxAppender outbox
     ) {
         this.workOrders = workOrders;
         this.sagaManager = sagaManager;
+        this.conversionCosts = conversionCosts;
         this.outbox = outbox;
     }
 
@@ -173,6 +178,37 @@ public class WorkOrderOperationService {
     private void onWorkOrderCompleted(WorkOrder workOrder) {
         advanceSagaToCompleted(workOrder);
         emitSubAssembliesConsumedIfParent(workOrder);
+        emitConversionApplied(workOrder);
+    }
+
+    /**
+     * Emit {@code manufacturing.WorkOrderConversionApplied} for the standard
+     * conversion cost (labour + overhead) absorbed into WIP at completion
+     * (dev-todo §2.42): per-unit conversion from the product's active routing ×
+     * completed quantity. Finance posts Dr 1230 WIP / Cr 5300 Conversion Cost
+     * Applied, the leg that — with the material charge and the FG receipt at
+     * full standard cost — makes WIP net to zero. Skipped (no event) when the
+     * SKU has no routing / no work-centre rates, so conversion is zero.
+     */
+    private void emitConversionApplied(WorkOrder workOrder) {
+        BigDecimal perUnit = conversionCosts.perUnitConversionCost(workOrder.finishedProductId());
+        BigDecimal total = perUnit.multiply(workOrder.completedQuantity());
+        if (total.signum() <= 0) {
+            return;
+        }
+        WorkOrderConversionApplied event = new WorkOrderConversionApplied(
+            UUID.randomUUID(),
+            workOrder.id().value(),
+            workOrder.workOrderNumber(),
+            workOrder.finishedProductId(),
+            total,
+            Currencies.BASE_CURRENCY,
+            Instant.now()
+        );
+        outbox.append(event, WorkOrder.AGGREGATE_TYPE);
+        log.info("emitted {} for work_order={} conversion={} ({} units @ {}/unit)",
+            WorkOrderConversionApplied.EVENT_TYPE, workOrder.id().value(),
+            total, workOrder.completedQuantity(), perUnit);
     }
 
     /**

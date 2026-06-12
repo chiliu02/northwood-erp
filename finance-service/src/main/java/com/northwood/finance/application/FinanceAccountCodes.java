@@ -60,6 +60,17 @@ final class FinanceAccountCodes {
      */
     static final String WIP = "1230";
 
+    /**
+     * 5250 — Conversion Cost Applied. Credited when a work order's standard
+     * conversion cost (labour + overhead) is absorbed into WIP at completion
+     * (Dr 1230 WIP), so WIP nets to zero against the full standard cost out
+     * (material + conversion). The "applied" half of standard conversion costing
+     * — Northwood doesn't post the actual labour/overhead it offsets, so this
+     * carries the absorbed conversion that flows on into COGS at shipment
+     * (dev-todo §2.42).
+     */
+    static final String CONVERSION_APPLIED = "5250";
+
     /** 1210 — Raw Materials Inventory; per-class breakdown of {@link #INVENTORY}. */
     static final String RM_INVENTORY = "1210";
 

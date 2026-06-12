@@ -438,6 +438,44 @@ public class JournalEntryService {
     }
 
     /**
+     * Perpetual WIP — work-order conversion cost (labour + overhead) absorbed:
+     * Dr 1230 WIP / Cr 5250 Conversion Cost Applied for the work order's standard
+     * conversion cost. The third charge into WIP (after raw materials and
+     * consumed sub-assemblies); with the FG receipt crediting WIP at the full
+     * standard cost (material + conversion), WIP nets to zero (dev-todo §2.42).
+     * Skips a zero/negative amount. Caller (the inbox handler) dedups by event.
+     */
+    @Transactional
+    public void postConversionCharge(
+        UUID workOrderId,
+        String workOrderNumber,
+        BigDecimal amount,
+        String currencyCode,
+        LocalDate postingDate
+    ) {
+        if (amount == null || amount.signum() <= 0) {
+            log.debug("skip WIP conversion post for work order {} — amount {} is zero/negative",
+                workOrderNumber, amount);
+            return;
+        }
+        post(
+            JournalEntry.NUMBER_PREFIX + journalSuffix(),
+            postingDate,
+            JournalEntry.SourceModule.FINANCE,
+            JournalEntry.SourceDocumentType.WORK_ORDER_WIP,
+            workOrderId,
+            "Work order " + workOrderNumber + " — conversion cost (labour + overhead) applied to WIP",
+            currencyCode,
+            FinanceAccountCodes.WIP,
+            "Conversion applied to WIP for " + workOrderNumber,
+            FinanceAccountCodes.CONVERSION_APPLIED,
+            "Conversion cost absorbed for " + workOrderNumber,
+            amount,
+            postingDate
+        );
+    }
+
+    /**
      * Shared shape for the two WIP-charge legs (raw materials issued; consumed
      * sub-assemblies rolled in): a single Dr 1230 WIP against per-valuation-class
      * inventory credits. Skips a zero/negative total (e.g. a projection cold-start

@@ -16,6 +16,7 @@ import com.northwood.finance.application.inbox.ShipmentDeferredRevenueHandler;
 import com.northwood.finance.application.inbox.StandardCostChangedHandler;
 import com.northwood.finance.application.inbox.SubAssembliesConsumedWipHandler;
 import com.northwood.finance.application.inbox.ValuationClassChangedHandler;
+import com.northwood.finance.application.inbox.WorkOrderConversionAppliedHandler;
 import com.northwood.finance.application.inbox.WorkOrderManufacturingCompletedWipHandler;
 import com.northwood.testharness.inmemory.InMemoryInboxPort;
 import com.northwood.testharness.inmemory.InMemoryOutboxPort;
@@ -107,5 +108,6 @@ public final class FinanceTestKit {
         bus.register(new RawMaterialsReservedWipHandler(inbox, journalService, productCards, workOrderWip, json));
         bus.register(new WorkOrderManufacturingCompletedWipHandler(inbox, journalService, productCards, workOrderWip, json));
         bus.register(new SubAssembliesConsumedWipHandler(inbox, journalService, productCards, workOrderWip, json));
+        bus.register(new WorkOrderConversionAppliedHandler(inbox, journalService, json));
     }
 }

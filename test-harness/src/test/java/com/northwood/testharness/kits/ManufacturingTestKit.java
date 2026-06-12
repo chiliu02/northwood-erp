@@ -1,6 +1,7 @@
 package com.northwood.testharness.kits;
 
 import com.northwood.manufacturing.application.BomService;
+import com.northwood.manufacturing.application.ConversionCostCalculator;
 import com.northwood.manufacturing.application.MaterialsCostRollupService;
 import com.northwood.manufacturing.application.WorkOrderOperationService;
 import com.northwood.manufacturing.application.WorkOrderPrioritisationService;
@@ -56,6 +57,7 @@ public final class ManufacturingTestKit {
     public final InMemoryWorkOrderRepository workOrders;
     public final InMemoryRoutingQueryPort routings = new InMemoryRoutingQueryPort();
     public final InMemoryWorkCenterRateLookup workCenterRates = new InMemoryWorkCenterRateLookup();
+    public final ConversionCostCalculator conversionCosts = new ConversionCostCalculator(routings, workCenterRates);
     public final InMemoryBomLookup bomLookup = new InMemoryBomLookup();
     public final InMemoryBomRepository boms;
     public final InMemoryBomCycleDetector bomCycleDetector = new InMemoryBomCycleDetector(bomLookup);
@@ -87,13 +89,13 @@ public final class ManufacturingTestKit {
         CurrentUserAccessor currentUser = new CurrentUserAccessor();
         OutboxAppender appender = new OutboxAppender(outbox, json, currentUser);
         this.operationService = new WorkOrderOperationService(
-            workOrders, sagaManager, appender
+            workOrders, sagaManager, conversionCosts, appender
         );
         this.prioritisationService = new WorkOrderPrioritisationService(
             workOrders, appender
         );
         this.rollupService = new MaterialsCostRollupService(
-            replenishment, approvedVendors, materialsCosts, bomLookup, routings, workCenterRates, appender
+            replenishment, approvedVendors, materialsCosts, bomLookup, conversionCosts, appender
         );
         this.bomService = new BomService(boms, bomCycleDetector, rollupService, replenishment);
 
