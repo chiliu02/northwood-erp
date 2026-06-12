@@ -29,11 +29,11 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 | REQ-PROD-020/021 (reorder policy) | `ReorderPolicyChangedSeamIT`; consumed by all `StockReplenishment*DslTest` | ✅ |
 | REQ-PROD-022 (to-stock vs to-order) | `OrderToCash{MakeToOrder,BuyToOrder}PathDslTest`, `PurchaseRequisitionToOrderGuardDslTest` | ✅ |
 | REQ-PROD-030/031/040 (pricing, historical, std cost) | domain unit + `JdbcProductRepositoryIT`; price-at-capture exercised by o2c DSL tests | ✅ |
-| REQ-PROD-041 (manufactured cost rollup) | domain unit (`ManufacturingTestKit` rollup) — see `SetPriorityCascade*`/BOM tests | ⚠️ verify a dedicated rollup test |
+| REQ-PROD-041 (manufactured cost rollup) | `MaterialsCostRollupServiceTest` (single/multi-level component sum, scrap uplift, a leaf-cost change walks the parent, missing-cost + cross-currency guards) | ✅ |
 | REQ-PROD-050 (valuation class) | `StockReplenishmentWipPostingsDslTest` (routes WIP/COGS by class) | ✅ |
 | REQ-PROD-060 (active BOM) | `JdbcBomRepositoryIT`; cycle detection domain unit | ✅ |
 | REQ-PROD-070 (approved vendor) | `JdbcSupplierProductPriceRepositoryIT` / `*QueryPortIT` | ✅ |
-| REQ-PROD-080 (discontinue) | domain unit (reject paths); fan-out — ⚠️ no end-to-end discontinue DSL test | ⚠️ |
+| REQ-PROD-080 (discontinue) | `ProductTest` (aggregate) + a per-consumer `ProductDiscontinuedHandlerTest` in inventory / sales / purchasing / manufacturing / reporting + `SalesOrderServicePlaceOrderTest` (rejects a discontinued SKU) | ✅ |
 
 ## REQ-SAL — Sales
 
@@ -44,7 +44,8 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 | REQ-SAL-013/037 (planning time fence) | `OrderToCashPlanningFenceDslTest` + `OrderToCashPlanningFenceTest` (kept — decide-once/`nextRetryAt`) | ✅ |
 | REQ-SAL-020/021/022 (payment terms, prepayment, gate) | `OrderToCashDepositPathDslTest`, `OrderToCashCodPathDslTest` | ✅ |
 | REQ-SAL-030…035 (fulfilment lifecycle states) | `SalesOrder` fold domain unit + the o2c DSL suite; saga adapter `JdbcSalesOrderFulfilmentSagaAdapterIT` | ✅ |
-| REQ-SAL-036/040/041 (cancel / compensation / hard cancel) | `OrderToCashCancellationPathDslTest`, `OrderToCashCancelRefundPathDslTest` | ✅ |
+| REQ-SAL-036/040 (cancel / compensation) | `OrderToCashCancellationPathDslTest`, `OrderToCashCancelRefundPathDslTest` (release reservations + refund; no WO cancel) | ✅ |
+| REQ-SAL-041 (hard cancel during mfg) | — | ⚠️ deferred — WO-cancel not built and the WO↔sales-line binding was removed; REQ flipped to `(deferred)` (see REQ-MFG-060) |
 | REQ-SAL-050/060 (auto-invoice on ship, payment allocation) | o2c DSL suite (invoice + payment legs) | ✅ |
 
 ## REQ-INV — Inventory
@@ -72,9 +73,9 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 | REQ-MFG-030 (release for replenishment) | `StockReplenishmentManufacturedPathDslTest` | ✅ |
 | REQ-MFG-040 (material reservation + shortage, Trigger B) | `StockReplenishmentWorkOrderShortagePathDslTest` | ✅ |
 | REQ-MFG-041/050/051/052 (material status, ops, skip, parent gating) | `JdbcWorkOrderRepositoryMaterialStatusIT` + domain unit; real op completion in manufactured DSL tests | ✅ |
-| REQ-MFG-060 (WO cancel) | domain unit (hard-cancel) | ⚠️ verify dedicated cancel test |
+| REQ-MFG-060 (WO cancel) | — | ❌ **feature not implemented** (no `WorkOrder.cancel()` / endpoint; `CANCELLED` is guard-only, never produced). REQ flipped to `(deferred)` — not a test gap. |
 | REQ-MFG-070 (prioritisation) | `SetPriorityCascadeDslTest` + `SetPriorityCascadeTest` (kept) | ✅ |
-| REQ-MFG-075/090 (sub-assembly consumption, cost rollup) | `StockReplenishmentSubAssemblyWipPostingsDslTest` (sub-assembly consumed at parent completion) + domain unit | ✅ |
+| REQ-MFG-075/090 (sub-assembly consumption, cost rollup) | `StockReplenishmentSubAssemblyWipPostingsDslTest` (075 — consumed at parent completion) + `MaterialsCostRollupServiceTest` (090 — BOM cost rollup) | ✅ |
 | REQ-MFG-080 (reject unmakeable) | `OrderToCashRejectedPathDslTest` | ✅ |
 
 ## REQ-PUR — Purchasing
@@ -99,7 +100,8 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 | REQ-FIN-030/031/032 (prepayment deposits, recognition) | `OrderToCashDepositPathDslTest`, `OrderToCashCancelRefundPathDslTest` | ✅ |
 | REQ-FIN-040/041 (allocation, prepayment settlement) | `JdbcCustomerInvoiceRepositoryIT` (paid_amount trigger), `JdbcPaymentRepositoryIT`; deposit DSL test | ✅ |
 | REQ-FIN-050/051 (supplier invoice, manual-review queue) | `PurchaseToPayRejectionPathDslTest`; `JdbcSupplierInvoiceRepositoryIT` | ✅ |
-| REQ-FIN-060/061/062 (currency pass-through, conversion, lookup) | domain unit (exchange-rate) | ⚠️ multi-currency low-priority (project memory); same-currency exercised throughout |
+| REQ-FIN-060 (same-currency pass-through) | exercised throughout — every DSL / IT flow is single-currency (AUD), routing the `CurrencyConverter` same-currency branch | ✅ |
+| REQ-FIN-061/062 (cross-currency conversion + inverse-rate fallback; ad-hoc rate lookup) | `CurrencyConverter` / `JdbcCurrencyConverter` / `ExchangeRateService` / `ExchangeRateController` exist but have **no dedicated test** | ⚠️ deferred (see gaps) |
 
 ## REQ-RPT — Reporting (read views)
 
@@ -142,6 +144,7 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 ## Known gaps (open)
 
 - **REQ-RPT-060** — Replenishment History view not shipped (planned).
-- **REQ-PROD-041 / REQ-PROD-080 / REQ-MFG-060** — confirm a dedicated unit/IT exists (cost rollup, end-to-end discontinue fan-out, WO hard-cancel).
+- **REQ-MFG-060 / REQ-SAL-041** — operator WO-cancel is **not implemented** (no `WorkOrder.cancel()`, no endpoint; `CANCELLED` is only guarded against). Both requirements were flipped from `(shipped)` to `(deferred)` in `business-requirements.md`. To ship: add `WorkOrder.cancel()` (release reservations, halt in-progress ops, status → `cancelled`, write off WIP) + a cancel endpoint + tests. (A make-to-stock WO is not bound to a sales order, so the sales-cancel flow no longer needs it.)
+- **REQ-FIN-061 / REQ-FIN-062** (cross-currency conversion + inverse-rate fallback; the `GET /api/exchange-rate` lookup) — `CurrencyConverter` / `ExchangeRateService` / `ExchangeRateController` are untested. **Deferred, not accidental**: multi-currency is low-priority (project memory) and the demo runs single-currency (AUD). A `CurrencyConverter` domain unit test (same-currency pass-through + cross-currency + inverse fallback) + a `JdbcCurrencyConverterIT` would close it cheaply if revisited.
 
 > The cancel-gate test (`SalesOrderControllerSecurityTest`) is the **representative** role-gate test; the other `@RequireXxx` meta-annotations share the same `@PreAuthorize` mechanism (and the realm-role → authority mapping is covered by `KeycloakRealmRoleConverterTest`). Per-endpoint gate tests can be added if a regression ever warrants it.

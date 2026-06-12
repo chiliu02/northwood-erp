@@ -193,7 +193,7 @@ A shipment has been posted. A customer invoice has been auto-raised (REQ-FIN-030
 The customer payment has been received and fully allocated to the invoice. The order is complete; no further activity is expected.
 
 **REQ-SAL-036 — Compensation: Cancelled** *(shipped)*
-A cancellation request at any pre-shipment state releases reservations, cancels any open work orders for the order's lines, reverses any prepayment journal postings, and closes the order at "Compensated/Cancelled". Cancellation past `goods_shipped` is rejected (the customer must process a return — out of scope today).
+A cancellation request at any pre-shipment state releases reservations and reverses any prepayment journal postings, then closes the order at "Compensated/Cancelled". (No work order is cancelled — a make-to-stock WO is not bound to a sales order, so inventory's reservation release is the sole compensation ack; REQ-MFG-060.) Cancellation past `goods_shipped` is rejected (the customer must process a return — out of scope today).
 
 **REQ-SAL-037 — Fulfilment starts immediately on placement, except behind a planning time fence** *(shipped — deliberate scope)*
 By default the fulfilment Saga acts the moment an order is placed: stock is reserved (REQ-SAL-030) and any shortfall triggers replenishment (REQ-INV-080) right away, **regardless of how far in the future the requested delivery date (REQ-SAL-013) is** — an order wanted in a year reserves and replenishes exactly like one wanted tomorrow. The reservation request event (`sales.StockReservationRequested`) carries no date; reservation is reserve-on-order and quantity-only. The **planning time fence is the one exception**: a product with `planning_time_fence_days > 0` parks a far-future order at `awaiting_release` until `need-by − max(line fence)`, then emits the reservation as usual (decide-once — the wake does not re-evaluate the fence).
@@ -209,10 +209,10 @@ This would require three pieces. The first — **a demand/planning time fence** 
 ### 2.5 Cancellation
 
 **REQ-SAL-040 — Customer-initiated cancellation** *(shipped)*
-A cancel request flows through the sales API. The fulfilment Saga compensates in reverse: releases stock reservations, cancels open work orders, and reverses any prepayment-related GL postings. The customer sees the order as "Cancelled".
+A cancel request flows through the sales API. The fulfilment Saga compensates in reverse: releases stock reservations and reverses any prepayment-related GL postings (no work order is cancelled — see REQ-SAL-036 / REQ-MFG-060). The customer sees the order as "Cancelled".
 
-**REQ-SAL-041 — Hard cancel during manufacturing in progress** *(shipped)*
-If a work order tied to the cancelled line is already in progress, the WO is hard-cancelled (WIP is written off). Soft-cancel (let the WIP finish then scrap) is deferred.
+**REQ-SAL-041 — Hard cancel during manufacturing in progress** *(deferred)*
+The make-vs-buy redesign removed the work-order ↔ sales-line binding this rule assumed: a make-to-stock WO replenishes stock and is not tied to any sales order (REQ-INV-090, REQ-XBC-030), so a sales-order cancellation no longer touches manufacturing — inventory's reservation release is the sole compensation ack (REQ-SAL-036). Operator WO-cancel itself is also not built (REQ-MFG-060). Both hard-cancel and soft-cancel are deferred.
 
 ### 2.6 Customer invoicing (sales-side actions)
 
@@ -433,8 +433,8 @@ A parent WO's operations cannot start until all child sub-assembly WOs are compl
 
 ### 4.7 WO cancellation
 
-**REQ-MFG-060 — Cancel a work order** *(shipped — hard cancel)*
-A WO may be cancelled. Reservations release; in-progress operations are halted; status moves to `cancelled`. Today hard-cancel applies regardless of operation progress (WIP is written off). Soft-cancel (let WIP finish, then scrap) is deferred.
+**REQ-MFG-060 — Cancel a work order** *(deferred)*
+A work order's lifecycle carries a terminal `cancelled` status, but **no operator-facing cancel operation is implemented**: there is no `WorkOrder.cancel()`, no cancel endpoint, and `CANCELLED` is only *guarded against* (operations cannot complete on a cancelled WO), never produced by Java. Hard-cancel (release reservations, halt in-progress operations, write off WIP) and soft-cancel (let WIP finish, then scrap) are both deferred. Because a make-to-stock WO is not bound to a sales order (REQ-INV-090), a sales-order cancellation no longer needs to cancel a WO (REQ-SAL-036).
 
 ### 4.8 WO prioritisation
 
@@ -718,7 +718,7 @@ Once the unified replenishment loop ships, manufacturing and purchasing exchange
 ### 8.6 Cancellation (sales-initiated)
 
 **REQ-XBC-090 — Cancel a sales order before shipment** *(shipped)*
-A cancel request before shipment compensates the order: releases reservations (REQ-INV-023), cancels open work orders for the order's lines (REQ-MFG-060), reverses any prepayment GL postings (REQ-FIN-012). The order closes at Cancelled. Cancellation after shipment is rejected.
+A cancel request before shipment compensates the order: releases reservations (REQ-INV-023) and reverses any prepayment GL postings (REQ-FIN-012). The order closes at Cancelled. (No work order is cancelled — a make-to-stock WO is not bound to a sales order; inventory's reservation release is the sole compensation ack, REQ-SAL-036.) Cancellation after shipment is rejected.
 
 ---
 
