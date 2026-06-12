@@ -7,6 +7,7 @@ import com.northwood.finance.domain.JournalEntry;
 import com.northwood.finance.domain.Payment;
 import com.northwood.finance.domain.SupplierInvoice;
 import com.northwood.inventory.domain.ReplenishmentRequest;
+import com.northwood.product.domain.ValuationClass;
 import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.shared.domain.Currencies;
@@ -78,6 +79,15 @@ public final class Dsl {
     /** A catalog product; price it with {@link ProductSeed#pricedAt}. */
     public static ProductSeed a_product(String productCode, String productName) {
         return new ProductSeed(productCode, productName);
+    }
+
+    /**
+     * Seed finance's standard cost + valuation class for a product (REQ-PROD-040 / REQ-PROD-050) so
+     * the WIP / COGS journals post at standard cost. Seed the finished good as
+     * {@code FINISHED_GOODS} and its raw materials as {@code RAW_MATERIALS}.
+     */
+    public static SeedStep a_finance_card(String productCode, Money standardCost, ValuationClass valuationClass) {
+        return world -> world.seedFinanceCard(productCode, standardCost.amount(), valuationClass);
     }
 
     public static final class ProductSeed {

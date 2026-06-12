@@ -21,6 +21,7 @@ import com.northwood.manufacturing.domain.WorkOrderId;
 import com.northwood.manufacturing.domain.WorkOrderOperation;
 import com.northwood.manufacturing.domain.saga.WorkOrderSaga;
 import com.northwood.product.domain.ReplenishmentStrategy;
+import com.northwood.product.domain.ValuationClass;
 import com.northwood.purchasing.application.dto.CreateRequisitionCommand;
 import com.northwood.purchasing.application.dto.RequisitionLineRequest;
 import com.northwood.purchasing.application.dto.StockReplenishmentCommand;
@@ -334,6 +335,19 @@ public final class World {
         UUID productId = product(productCode).productId();
         inventory.productReplenishment.put(productId, false, true);
         manufacturing.replenishment.put(productId, false, true);
+        return this;
+    }
+
+    /**
+     * Seed finance's standard cost + valuation class for a product (REQ-PROD-040 / REQ-PROD-050):
+     * the {@code finance.product_card} row {@code JournalEntryService} reads to value lines and route
+     * the inventory/WIP/COGS legs to the right GL accounts. Without it the WIP/COGS journals skip on
+     * a zero cost (and fall back to the generic inventory account).
+     */
+    public World seedFinanceCard(String productCode, BigDecimal standardCost, ValuationClass valuationClass) {
+        UUID productId = product(productCode).productId();
+        finance.productCards.putStandardCost(productId, standardCost, CURRENCY);
+        finance.productCards.putValuationClass(productId, valuationClass.dbValue());
         return this;
     }
 
