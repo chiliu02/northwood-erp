@@ -830,6 +830,16 @@ public final class Dsl {
         public ActionStep completes_manufacturing() {
             return world -> world.completeWorkOrder(fgCode, new BigDecimal("45"));
         }
+
+        /**
+         * Complete a recursive sub-assembly <b>child</b> work order — resolved by its product, since
+         * a child WO carries no replenishment request of its own (it is released by the parent's BOM
+         * walk). Drive this before the parent's {@link #completes_manufacturing()} (parent-on-children
+         * gating).
+         */
+        public ActionStep completes_as_sub_assembly() {
+            return world -> world.completeWorkOrderByProduct(fgCode, new BigDecimal("45"));
+        }
     }
 
     // ============================================================
@@ -974,10 +984,21 @@ public final class Dsl {
 
         public AssertStep posted() {
             return world -> {
+                // Select the journal of this source type whose lines carry BOTH the requested debit
+                // and credit account — not merely the first of the type. This disambiguates two
+                // journals that share a SourceDocumentType but differ by account pair, e.g. the two
+                // WORK_ORDER_WIP legs: raw-materials-issued (Dr 1230 / Cr 1210, REQ-FIN-026) vs
+                // sub-assemblies-consumed (Dr 1230 / Cr 1220, REQ-FIN-028).
                 var entry = world.journalEntries().stream()
                     .filter(e -> e.sourceDocumentType() == type)
+                    .filter(e -> e.lines().stream()
+                            .anyMatch(l -> debitAccount.equals(l.accountCode()) && l.debitAmount().signum() > 0)
+                        && e.lines().stream()
+                            .anyMatch(l -> creditAccount.equals(l.accountCode()) && l.creditAmount().signum() > 0))
                     .findFirst();
-                assertThat(entry).as("a %s journal", type).isPresent();
+                assertThat(entry)
+                    .as("a %s journal with a debit to %s and a credit to %s", type, debitAccount, creditAccount)
+                    .isPresent();
                 var lines = entry.orElseThrow().lines();
                 assertThat(lines.stream()
                         .filter(l -> debitAccount.equals(l.accountCode()))

@@ -776,6 +776,24 @@ public final class World {
         return this;
     }
 
+    /**
+     * Complete a work order resolved <em>directly by its product</em> rather than via a
+     * replenishment request — for a recursive sub-assembly child WO, which carries no RR of its
+     * own (it is released by the parent's BOM walk). Completes every operation through the real
+     * operation service, then settles.
+     */
+    public World completeWorkOrderByProduct(String productCode, BigDecimal actualMinutes) {
+        WorkOrder workOrder = workOrderForProduct(productCode)
+            .orElseThrow(() -> new IllegalStateException("No work order for product " + productCode));
+        UUID workOrderId = workOrder.id().value();
+        for (WorkOrderOperation op : workOrder.operations()) {
+            manufacturing.operationService.completeOperation(
+                new CompleteOperationCommand(workOrderId, op.operationSequence(), actualMinutes));
+        }
+        settle();
+        return this;
+    }
+
     // ============================================================
     // settle() — the one faithfulness primitive
     // ============================================================

@@ -74,7 +74,7 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 | REQ-MFG-041/050/051/052 (material status, ops, skip, parent gating) | `JdbcWorkOrderRepositoryMaterialStatusIT` + domain unit; real op completion in manufactured DSL tests | ✅ |
 | REQ-MFG-060 (WO cancel) | domain unit (hard-cancel) | ⚠️ verify dedicated cancel test |
 | REQ-MFG-070 (prioritisation) | `SetPriorityCascadeDslTest` + `SetPriorityCascadeTest` (kept) | ✅ |
-| REQ-MFG-075/090 (sub-assembly consumption, cost rollup) | `StockReplenishmentWipPostingsDslTest` (Cr FG/WIP legs) + domain unit | ⚠️ REQ-FIN-028 sub-asm leg not uniquely asserted (shared source-doc type) |
+| REQ-MFG-075/090 (sub-assembly consumption, cost rollup) | `StockReplenishmentSubAssemblyWipPostingsDslTest` (sub-assembly consumed at parent completion) + domain unit | ✅ |
 | REQ-MFG-080 (reject unmakeable) | `OrderToCashRejectedPathDslTest` | ✅ |
 
 ## REQ-PUR — Purchasing
@@ -95,7 +95,7 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 | REQ-FIN-020/021/022 (receipt, supplier invoice, supplier payment) | `PurchaseToPayHappyPathDslTest` (GL legs) | ✅ |
 | REQ-FIN-023/024/025 (shipment COGS, customer invoice, customer payment) | `OrderToCashHappyPathDslTest`, `OrderToCashCancelRefundPathDslTest` (GL legs) | ✅ |
 | REQ-FIN-026/027 (raw→WIP, WO completion) | `StockReplenishmentWipPostingsDslTest` | ✅ |
-| REQ-FIN-028 (sub-assemblies consumed Dr WIP/Cr FG) | shares `WORK_ORDER_WIP` source-doc type with FIN-026 — not uniquely assertable today | ❌ (needs a sub-assembly-only WIP scenario or a disambiguating `a_journal()` variant) |
+| REQ-FIN-028 (sub-assemblies consumed Dr WIP/Cr FG) | `StockReplenishmentSubAssemblyWipPostingsDslTest` (parent consumes child → Dr 1230/Cr 1220); `a_journal()` now disambiguates the two `WORK_ORDER_WIP` legs by account pair | ✅ |
 | REQ-FIN-030/031/032 (prepayment deposits, recognition) | `OrderToCashDepositPathDslTest`, `OrderToCashCancelRefundPathDslTest` | ✅ |
 | REQ-FIN-040/041 (allocation, prepayment settlement) | `JdbcCustomerInvoiceRepositoryIT` (paid_amount trigger), `JdbcPaymentRepositoryIT`; deposit DSL test | ✅ |
 | REQ-FIN-050/051 (supplier invoice, manual-review queue) | `PurchaseToPayRejectionPathDslTest`; `JdbcSupplierInvoiceRepositoryIT` | ✅ |
@@ -141,7 +141,6 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 
 ## Known gaps (open)
 
-- **REQ-FIN-028** — sub-assembly-consumed WIP leg shares `WORK_ORDER_WIP` source-doc type with REQ-FIN-026, so `a_journal()` can't uniquely assert it. Needs a sub-assembly-only WIP scenario or a disambiguating assertion.
 - **REQ-RPT-060** — Replenishment History view not shipped (planned).
 - **REQ-PROD-041 / REQ-PROD-080 / REQ-MFG-060** — confirm a dedicated unit/IT exists (cost rollup, end-to-end discontinue fan-out, WO hard-cancel).
 
