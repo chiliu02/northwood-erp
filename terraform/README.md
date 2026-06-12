@@ -24,6 +24,7 @@ terraform/
   envs/demo/                 # the root config you apply
     backend.tf               # <- edit: set the state bucket name
     main.tf                  # module wiring + the services map + static private IPs
+    schedule.tf              # EventBridge Scheduler: weekday auto start/stop (cost saver)
     variables.tf / outputs.tf / terraform.tfvars.example
   modules/
     network/                 # VPC, 3 subnets, IGW, NAT instance, S3 gateway endpoint, tier SGs
@@ -31,6 +32,7 @@ terraform/
     ecr/                     # 8 app repos (7 services + erp-bff)
     secrets/                 # Secrets Manager (DB pwds, BFF client secret, bypass token) + plaintext outputs
   build/                     # build-and-push.{ps1,sh}: buildpack images -> ECR
+  ops/                       # start.ps1 / stop.ps1: pause/resume the fleet by hand
 ```
 
 ## Prerequisites
@@ -135,14 +137,68 @@ terraform output instance_ids        # aws ssm start-session --target <data-id>
 terraform output grafana_access_hint # SSM port-forward 3000 to the data box, then open localhost:3000
 ```
 
+## Pause / resume (cost saver)
+
+`terraform destroy` is for tearing the demo **down**; to just stop paying for it
+overnight or on weekends, **stop the EC2 fleet instead of destroying it**.
+Stopping keeps the ECR images, the gp3 root volumes (so Postgres + Kafka data
+survive), the pinned private IPs, and the web box's Elastic IP — so the Keycloak
+issuer URL and front-door DNS stay valid, and the resume is fast with **no DB
+re-seed** (every container runs `--restart unless-stopped` on a docker systemd
+service, so it comes back on boot). While stopped you pay only for EBS + the
+Elastic IP (~$10/mo) instead of the running fleet. ECR itself is ~$0.10/GB-mo, so
+keeping the images costs almost nothing — it's a *time* saver (no rebuild/push),
+not a cost.
+
+This is out-of-band from Terraform — `aws_instance` has no power-state, so
+`terraform plan` shows **no drift** after a stop or start.
+
+### By hand
+
+```powershell
+./terraform/ops/stop.ps1            # stop web + app + data + NAT (fire-and-forget)
+./terraform/ops/start.ps1 -Wait     # start them again, block until running
+```
+
+Both discover the four boxes by the `northwood-demo-*` Name tag (so the NAT box,
+which isn't in the `instance_ids` output, is paused too) and take
+`-Region` / `-NamePrefix` / `-Wait`.
+
+### On a schedule (Terraform — `schedule.tf`)
+
+`enable_scheduler` (default **true**) creates two **EventBridge Scheduler**
+schedules that call the EC2 API directly (no Lambda) to start/stop the same four
+boxes on a weekday business-hours window:
+
+| | Default | Variable |
+|---|---|---|
+| Start | 08:30 Mon–Fri | `start_cron` = `cron(30 8 ? * MON-FRI *)` |
+| Stop  | 17:00 Mon–Fri | `stop_cron`  = `cron(0 17 ? * MON-FRI *)` |
+| Timezone | `Australia/Sydney` (DST-aware) | `scheduler_timezone` |
+
+`MON-FRI` means **the fleet stays stopped all weekend** — it stops Friday 17:00
+and doesn't start again until Monday 08:30. The schedules assume a least-privilege
+role scoped to `ec2:Start/StopInstances` on `northwood-demo-*`-tagged instances.
+
+```powershell
+terraform apply                                     # create/update the schedules
+terraform output schedule                           # show the active window
+terraform apply -var="start_cron=cron(0 9 ? * MON-FRI *)"   # e.g. start 09:00 instead
+terraform apply -var="enable_scheduler=false"       # remove the schedules (instances untouched)
+```
+
+> **The schedule only acts at the cron times.** Applying it mid-window doesn't
+> stop a running fleet immediately — use `ops/stop.ps1` for that. Likewise the
+> first auto-start is the next 08:30 on a weekday.
+
 ## Teardown
 
 ```powershell
 cd terraform/envs/demo
 terraform destroy
 # The state bucket (bootstrap) has prevent_destroy = true — delete it by hand if you
-# truly want it gone. Stopping the 3 EC2s + the NAT instance is the cheaper "pause"
-# (the gp3 root volumes preserve Postgres + Kafka state across stop/start).
+# truly want it gone. To merely PAUSE (keep data + images, cut cost), stop the fleet
+# instead — see "Pause / resume" above.
 ```
 
 ---

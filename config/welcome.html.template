@@ -46,7 +46,13 @@
   ol li b { color: var(--text); }
   code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 5px;
          padding: .08em .42em; font-size: .86em; }
-  .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 2rem 0 .5rem; }
+  .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: .75rem; margin: 2rem 0 .5rem; }
+  .notice { display: flex; gap: .7rem; align-items: flex-start;
+    background: var(--accent-soft); border: 1px solid #284a72; border-radius: 10px;
+    padding: .85rem 1rem; margin: 2rem 0 0; color: var(--secondary); font-size: 13.5px; }
+  .notice .clock { font-size: 1.15rem; line-height: 1.35; }
+  .notice b { color: var(--text); }
+  .notice .tz { color: var(--muted); }
   a.btn {
     display: inline-flex; align-items: center; gap: .5rem; text-decoration: none;
     padding: .7rem 1.25rem; border-radius: 8px; font-weight: 600; font-size: 14.5px; transition: background .15s, border-color .15s;
@@ -78,6 +84,11 @@
 
     <div class="actions">
       <a class="btn primary" href="${ERP_URL}">Enter the ERP →</a>
+    </div>
+
+    <div class="notice">
+      <span class="clock">⏰</span>
+      <div><b>Demo hours.</b> To keep running costs down, Northwood is on a weekday schedule — it starts at <b>8:30&nbsp;AM</b> and stops at <b>5:00&nbsp;PM</b> <span class="tz">(Australia/Sydney)</span>, and stays offline on weekends. Outside those hours the app may be asleep; check back during business hours.</div>
     </div>
 
     <p class="foot">First time with Northwood? Once you're signed in, open the <b>Demo Guide</b> (the <b>?</b> icon, top bar) — it walks you through placing an order, building it on the production floor, and paying for it, one persona at a time.</p>

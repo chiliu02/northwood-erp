@@ -184,6 +184,20 @@
       <li>ALB, NAT Gateway, ECS/Fargate, Service Connect, Secrets Manager, CloudWatch — replaced by 3 EC2s running <code>docker-compose</code>, passwords/configs staged in the encrypted S3 bucket and pulled by <code>user-data</code>, logs to Loki. SSM-only shell (no SSH/bastion).</li>
       <li><b>Trade-offs:</b> no HTTPS and no HA (single instance per tier, HTTP on the public IP) — a stable address (Elastic IP / Route 53) is worth adding for the OIDC redirect URI.</li>
     </ul>
+
+    <h2>Pause / resume (cost saver)</h2>
+    <ul>
+      <li><b>Stop, don't destroy, to pause.</b> <code>terraform destroy</code> tears the demo down; to just stop paying overnight or on weekends, <b>stop the EC2 fleet</b> (web + app + data + NAT) instead. Stopping keeps the ECR images, the gp3 root volumes (so Postgres + Kafka data survive), the pinned private IPs and the web box's <b>Elastic IP</b> — so the Keycloak issuer URL and front-door DNS stay valid and the resume needs <b>no DB re-seed</b> (every container runs <code>--restart unless-stopped</code> on a docker systemd service, so it returns on boot). While stopped you pay only for EBS + the Elastic IP (~$10/mo); ECR is ~$0.10/GB-mo, so keeping the images is a <em>time</em> saver (no rebuild/push), not a cost. It's out-of-band from Terraform — <code>aws_instance</code> has no power-state, so <code>terraform plan</code> shows no drift.</li>
+      <li><b>By hand</b> — the two scripts discover the four boxes by the <code>northwood-demo-*</code> Name tag (so the NAT box, absent from the <code>instance_ids</code> output, is paused too):
+        <pre><code>./terraform/ops/stop.ps1            # stop the fleet
+./terraform/ops/start.ps1 -Wait     # start it again, block until running</code></pre>
+      </li>
+      <li><b>On a weekday schedule</b> — <code>schedule.tf</code> (<code>enable_scheduler = true</code>, the default) creates two <b>EventBridge Scheduler</b> schedules that call the EC2 API directly (no Lambda) to start/stop the same four boxes: <b>start 08:30</b>, <b>stop 17:00</b>, <b>Mon–Fri</b>, <code>Australia/Sydney</code> (DST-aware). <code>MON-FRI</code> means the fleet <b>stays stopped all weekend</b> — it stops Friday 17:00 and starts again Monday 08:30. Tune via <code>start_cron</code> / <code>stop_cron</code> / <code>scheduler_timezone</code>, or set <code>enable_scheduler = false</code> to remove the schedules (instances untouched). The schedules assume a least-privilege role scoped to <code>ec2:Start/StopInstances</code> on <code>northwood-demo-*</code> instances.
+        <pre><code>terraform apply                 # create/update the schedules
+terraform output schedule       # show the active window</code></pre>
+      </li>
+      <li><b>Note:</b> a schedule only acts at the cron times — applying it mid-window won't stop a running fleet immediately (use <code>ops/stop.ps1</code> for that), and the first auto-start is the next weekday 08:30.</li>
+    </ul>
   </main>
 
   <footer>
