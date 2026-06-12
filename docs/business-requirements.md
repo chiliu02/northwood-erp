@@ -6,6 +6,8 @@ This document is the **business specification** for the Northwood ERP/MRP showca
 
 Each requirement carries a stable identifier (`REQ-<context>-<seq>`) so it can be cross-referenced from PRs, test names, and future business cases without renumber drift. Numbering gaps are deliberate — when a requirement is retired, its number is not reused.
 
+**Test coverage per requirement** is tracked in `docs/requirement-coverage.md` (REQ-ID → test tier + named tests, with open gaps flagged).
+
 ### REQ-ID conventions
 
 | Prefix | Bounded context |
