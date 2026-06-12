@@ -26,7 +26,8 @@ import tools.jackson.databind.ObjectMapper;
 class ProductMaterialsCostComputedHandlerTest {
 
     private static final UUID PRODUCT = UUID.randomUUID();
-    private static final BigDecimal COST = new BigDecimal("42.50");
+    private static final BigDecimal MATERIALS_COST = new BigDecimal("30.00");
+    private static final BigDecimal STANDARD_COST = new BigDecimal("42.50"); // material + conversion
     private static final String CURRENCY = Currencies.AUD;
 
     @Mock InboxPort inbox;
@@ -40,10 +41,10 @@ class ProductMaterialsCostComputedHandlerTest {
         handler = new ProductMaterialsCostComputedHandler(inbox, productService, json);
     }
 
-    private EventEnvelope event(BigDecimal cost, String currency) {
+    private EventEnvelope event(BigDecimal materialsCost, BigDecimal standardCost, String currency) {
         UUID eventId = UUID.randomUUID();
         ProductMaterialsCostComputed payload = new ProductMaterialsCostComputed(
-            eventId, PRODUCT, cost, currency, "supplier_price_change", Instant.now()
+            eventId, PRODUCT, materialsCost, standardCost, currency, "supplier_price_change", Instant.now()
         );
         return new EventEnvelope(
             eventId, ProductAggregateTypes.PRODUCT, PRODUCT,
@@ -53,29 +54,38 @@ class ProductMaterialsCostComputedHandlerTest {
         );
     }
 
-    @Test void happy_path_stamps_standard_cost() {
-        handler.handle(event(COST, CURRENCY));
+    @Test void happy_path_stamps_full_standard_cost() {
+        handler.handle(event(MATERIALS_COST, STANDARD_COST, CURRENCY));
 
-        verify(productService).changeStandardCost(eq(PRODUCT), eq(COST), eq(CURRENCY));
+        // Uses the full standard cost (material + conversion), not materials_cost.
+        verify(productService).changeStandardCost(eq(PRODUCT), eq(STANDARD_COST), eq(CURRENCY));
         verify(inbox).recordProcessed(any());
     }
 
-    @Test void null_materials_cost_skips_mutation_but_records_processed() {
-        handler.handle(event(null, CURRENCY));
+    @Test void null_standard_cost_falls_back_to_materials_cost() {
+        handler.handle(event(MATERIALS_COST, null, CURRENCY));
+
+        // Forward-compat: events emitted before standardCost existed still stamp materials_cost.
+        verify(productService).changeStandardCost(eq(PRODUCT), eq(MATERIALS_COST), eq(CURRENCY));
+        verify(inbox).recordProcessed(any());
+    }
+
+    @Test void null_cost_skips_mutation_but_records_processed() {
+        handler.handle(event(null, null, CURRENCY));
 
         verify(productService, never()).changeStandardCost(any(), any(), any());
         verify(inbox).recordProcessed(any());
     }
 
     @Test void null_currency_skips_mutation_but_records_processed() {
-        handler.handle(event(COST, null));
+        handler.handle(event(MATERIALS_COST, STANDARD_COST, null));
 
         verify(productService, never()).changeStandardCost(any(), any(), any());
         verify(inbox).recordProcessed(any());
     }
 
     @Test void already_processed_short_circuits() {
-        EventEnvelope envelope = event(COST, CURRENCY);
+        EventEnvelope envelope = event(MATERIALS_COST, STANDARD_COST, CURRENCY);
         when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(ProductMaterialsCostComputedHandler.CONSUMER_NAME)))
             .thenReturn(true);
 

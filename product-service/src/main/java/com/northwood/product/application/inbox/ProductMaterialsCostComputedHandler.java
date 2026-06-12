@@ -11,8 +11,9 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Product-service's consumer of {@code manufacturing.ProductMaterialsCostComputed}.
  * Closes the cost-rollup feedback loop — when manufacturing rolls up a
- * product's materials cost (typically because a supplier price changed or
- * a BOM-component cost changed), this handler stamps the rolled-up value
+ * product's cost (typically because a supplier price changed or a
+ * BOM-component cost changed), this handler stamps the rolled-up
+ * <b>standard cost</b> (material + own-routing conversion; dev-todo §2.42)
  * onto product master's {@code standard_cost} via the existing
  * {@link ProductService#changeStandardCost} mutator. That mutator emits
  * {@code product.StandardCostChanged}, which the already-wired finance
@@ -57,8 +58,12 @@ public class ProductMaterialsCostComputedHandler extends AbstractInboxHandler<Pr
 
     @Override
     protected void apply(ProductMaterialsCostComputed payload, EventEnvelope envelope) {
-        if (payload.materialsCost() == null || payload.currencyCode() == null) {
-            log.info("[{}] skipping {} ({}) for product_id={} — materialsCost/currencyCode null (reason={})",
+        // Prefer the full standard cost (material + conversion); fall back to
+        // materialsCost for forward-compat with events emitted before the
+        // standardCost field existed (dev-todo §2.42).
+        var cost = payload.standardCost() != null ? payload.standardCost() : payload.materialsCost();
+        if (cost == null || payload.currencyCode() == null) {
+            log.info("[{}] skipping {} ({}) for product_id={} — cost/currencyCode null (reason={})",
                 CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
                 payload.aggregateId(), payload.reason());
             return;
@@ -66,13 +71,13 @@ public class ProductMaterialsCostComputedHandler extends AbstractInboxHandler<Pr
 
         productService.changeStandardCost(
             payload.aggregateId(),
-            payload.materialsCost(),
+            cost,
             payload.currencyCode()
         );
 
         log.info("[{}] applied {} ({}) for product_id={} → standard_cost={} {} (reason={})",
             CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
-            payload.aggregateId(), payload.materialsCost(), payload.currencyCode(),
+            payload.aggregateId(), cost, payload.currencyCode(),
             payload.reason());
     }
 }

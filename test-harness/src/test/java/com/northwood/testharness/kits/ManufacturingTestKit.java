@@ -33,6 +33,7 @@ import com.northwood.testharness.inmemory.manufacturing.InMemoryProductApprovedV
 import com.northwood.testharness.inmemory.manufacturing.InMemoryProductMaterialsCostProjection;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryProductReplenishmentProjection;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryRoutingQueryPort;
+import com.northwood.testharness.inmemory.manufacturing.InMemoryWorkCenterRateLookup;
 import com.northwood.testharness.inmemory.manufacturing.InMemoryWorkOrderRepository;
 import org.springframework.transaction.PlatformTransactionManager;
 import tools.jackson.databind.ObjectMapper;
@@ -54,6 +55,7 @@ public final class ManufacturingTestKit {
 
     public final InMemoryWorkOrderRepository workOrders;
     public final InMemoryRoutingQueryPort routings = new InMemoryRoutingQueryPort();
+    public final InMemoryWorkCenterRateLookup workCenterRates = new InMemoryWorkCenterRateLookup();
     public final InMemoryBomLookup bomLookup = new InMemoryBomLookup();
     public final InMemoryBomRepository boms;
     public final InMemoryBomCycleDetector bomCycleDetector = new InMemoryBomCycleDetector(bomLookup);
@@ -91,7 +93,7 @@ public final class ManufacturingTestKit {
             workOrders, appender
         );
         this.rollupService = new MaterialsCostRollupService(
-            replenishment, approvedVendors, materialsCosts, bomLookup, appender
+            replenishment, approvedVendors, materialsCosts, bomLookup, routings, workCenterRates, appender
         );
         this.bomService = new BomService(boms, bomCycleDetector, rollupService, replenishment);
 

@@ -17,6 +17,9 @@ import com.northwood.manufacturing.application.inbox.ProductMaterialsCostProject
 import com.northwood.manufacturing.application.inbox.ProductReplenishmentProjection;
 import com.northwood.manufacturing.application.BomLookup;
 import com.northwood.manufacturing.domain.Bom;
+import com.northwood.manufacturing.domain.Routing;
+import com.northwood.manufacturing.domain.RoutingId;
+import com.northwood.manufacturing.domain.RoutingOperation;
 import com.northwood.shared.application.outbox.OutboxAppender;
 import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
@@ -39,6 +42,8 @@ class MaterialsCostRollupServiceTest {
     @Mock ProductApprovedVendorProjection approvedVendors;
     @Mock ProductMaterialsCostProjection materialsCosts;
     @Mock BomLookup bomLookup;
+    @Mock RoutingQueryPort routings;
+    @Mock WorkCenterRateLookup workCenterRates;
     @Mock OutboxAppender outbox;
 
     private MaterialsCostRollupService rollup;
@@ -46,7 +51,7 @@ class MaterialsCostRollupServiceTest {
     @BeforeEach
     void setUp() {
         rollup = new MaterialsCostRollupService(
-            replenishment, approvedVendors, materialsCosts, bomLookup, outbox
+            replenishment, approvedVendors, materialsCosts, bomLookup, routings, workCenterRates, outbox
         );
     }
 
@@ -297,6 +302,49 @@ class MaterialsCostRollupServiceTest {
 
             verify(materialsCosts, never()).apply(any(), any(), anyString(), anyString(), any());
             verify(outbox, never()).append(any(), any());
+        }
+
+        @Test
+        void ownRoutingConversion_addedToStandardCostOnEvent() {
+            UUID parent = UUID.randomUUID();
+            UUID componentA = UUID.randomUUID();
+            UUID workCenter = UUID.randomUUID();
+            when(bomLookup.findActiveByFinishedProductId(parent))
+                .thenReturn(Optional.of(new BomLookup.ActiveBom(UUID.randomUUID(), List.of(
+                    new BomLookup.Component(componentA, "RM-A", "Component A",
+                        new BigDecimal("1"), BigDecimal.ZERO, Bom.ComponentKind.RAW)
+                ))));
+            when(materialsCosts.findByProductId(componentA)).thenReturn(Optional.of(
+                new ProductMaterialsCostProjection.MaterialsCost(
+                    componentA, new BigDecimal("10.00"), Currencies.AUD,
+                    "supplier_price_change", Instant.now()
+                )));
+            when(materialsCosts.findByProductId(parent)).thenReturn(Optional.empty());
+            when(bomLookup.findParentProductIdsByComponent(parent)).thenReturn(List.of());
+
+            // One 10-minute operation (0 setup + 10 run) at a work centre billing
+            // 0.50 labour + 0.25 overhead per minute → conversion 10 * 0.75 = 7.50.
+            when(routings.findActiveByFinishedProductId(parent)).thenReturn(Optional.of(
+                new Routing(RoutingId.of(UUID.randomUUID()), parent, "1", Routing.ACTIVE, List.of(
+                    new RoutingOperation(UUID.randomUUID(), 10, "OP-10", "Assemble",
+                        workCenter, BigDecimal.ZERO, new BigDecimal("10"))
+                ))));
+            when(workCenterRates.findByWorkCenterId(workCenter)).thenReturn(Optional.of(
+                new WorkCenterRateLookup.Rates(new BigDecimal("0.50"), new BigDecimal("0.25"))));
+
+            rollup.recomputeViaBom(parent, "bom_activated");
+
+            // materials_cost facet stays material-only (1 * 10 = 10).
+            verify(materialsCosts).apply(
+                eq(parent), eq(new BigDecimal("10.000000")), eq(Currencies.AUD),
+                eq("bom_activated"), any(Instant.class)
+            );
+            // emitted standardCost = material 10 + conversion 7.5 = 17.5.
+            ArgumentCaptor<ProductMaterialsCostComputed> captor =
+                ArgumentCaptor.forClass(ProductMaterialsCostComputed.class);
+            verify(outbox).append(captor.capture(), eq(ProductMaterialsCostComputed.AGGREGATE_TYPE));
+            assertThat(captor.getValue().materialsCost()).isEqualByComparingTo("10.00");
+            assertThat(captor.getValue().standardCost()).isEqualByComparingTo("17.50");
         }
     }
 

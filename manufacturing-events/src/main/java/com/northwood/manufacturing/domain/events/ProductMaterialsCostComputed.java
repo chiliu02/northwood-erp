@@ -19,6 +19,13 @@ import java.util.UUID;
  * {@code reason} is {@code "inputs_missing"}. Consumers that surface the
  * value to a human should render "—" or "n/a" in that case.
  *
+ * <p>{@code standardCost} = {@code materialsCost} + the product's own-routing
+ * conversion cost (labour + overhead, dev-todo §2.42); it is the value
+ * product-master stamps onto {@code standard_cost}. Null whenever
+ * {@code materialsCost} is null. For a purchased item with no routing it
+ * equals {@code materialsCost} (zero conversion). Nullable for forward-compat:
+ * consumers fall back to {@code materialsCost} when it is absent.
+ *
  * <p>{@code reason} values: {@code "supplier_price_change"},
  * {@code "inputs_missing"}. A later change adds {@code "bom_activated"},
  * {@code "bom_line_changed"}, {@code "child_materials_cost_changed"}.
@@ -30,6 +37,7 @@ public record ProductMaterialsCostComputed(
     UUID eventId,
     UUID aggregateId,        // product_id
     BigDecimal materialsCost, // nullable
+    BigDecimal standardCost,  // nullable; materialsCost + own-routing conversion cost
     String currencyCode,      // nullable; ISO-4217
     String reason,
     Instant occurredAt
