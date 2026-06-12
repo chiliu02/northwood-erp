@@ -31,11 +31,34 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 if (-not $OutDir) { $OutDir = Join-Path $repoRoot 't3\conversations' }
 
-# Hook mode: pull transcript_path from the JSON payload on stdin.
+# Hook mode: pull transcript_path from the JSON payload Claude Code writes to
+# stdin. This MUST NOT block. On Windows the hook is spawned via Git Bash and the
+# child can inherit an interactive console, or a stdin pipe that is never closed
+# (no EOF) -- a plain [Console]::In.ReadToEnd() then hangs forever. That is the
+# bug we hit with the Stop hook (a Git terminal popup that had to be closed by
+# hand) and again with PreCompact (the archive simply never got written). So:
+# only read when stdin is redirected, and cap the read with a short timeout.
+if (-not $TranscriptPath -and [Console]::IsInputRedirected) {
+    try {
+        $reader = [System.IO.StreamReader]::new([Console]::OpenStandardInput())
+        $task = $reader.ReadToEndAsync()
+        if ($task.Wait(3000) -and $task.Result) {
+            $TranscriptPath = ($task.Result | ConvertFrom-Json).transcript_path
+        }
+    } catch { }
+}
+
+# Fallback: stdin gave us nothing (timed out, interactive console, or an empty /
+# unparseable payload). Derive Claude Code's per-project transcript directory
+# from the project cwd and take the newest .jsonl -- that is the session being
+# compacted / ended. Keeps the hook working even when stdin is not delivered.
 if (-not $TranscriptPath) {
-    $raw = [Console]::In.ReadToEnd()
-    if ($raw) {
-        try { $TranscriptPath = ($raw | ConvertFrom-Json).transcript_path } catch { }
+    $cwd  = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { (Get-Location).Path }
+    $proj = Join-Path $env:USERPROFILE (".claude\projects\" + ($cwd -replace '[\\/:.]', '-'))
+    if (Test-Path -LiteralPath $proj) {
+        $newest = Get-ChildItem -LiteralPath $proj -Filter *.jsonl -ErrorAction SilentlyContinue |
+                  Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($newest) { $TranscriptPath = $newest.FullName }
     }
 }
 
