@@ -118,13 +118,9 @@ If any service fails to boot, look at the terminal that failed. Most boot failur
 
 ---
 
-## Two ways to drive the demo
+## Driving the demo
 
-You can pick one or mix. The audience-facing experience is best with **A. ERP UI walkthrough**; the wire-level engineering deep-dive is **B. curl + Swagger**.
-
-### A. ERP UI walkthrough (recommended for live audiences)
-
-Drive the demo step by step through the operational SPA, signed in as the appropriate persona. The module-grouped sidebar (Master Data / Sales / Purchasing / Inventory / Manufacturing / Finance / Reporting / System) mirrors how a real operator thinks — "I'm working in Sales" rather than "I am persona X". Suggested run-order for the happy path:
+The whole demo is driven through the operational SPA — **no curl, no Swagger, no SQL**. Every action is a click in the UI, signed in as the appropriate persona, and every outcome is visible on a screen (see *What to point at* below). The module-grouped sidebar (Master Data / Sales / Purchasing / Inventory / Manufacturing / Finance / Reporting / System) mirrors how a real operator thinks — "I'm working in Sales" rather than "I am persona X". Suggested run-order for the happy path:
 
 1. **Emma** (catalog_manager) — **Master Data → Products** → open Wooden Dining Table → change the sales price / standard cost / reorder policy via the detail page actions.
 2. **Sarah** (sales_clerk) — **Sales → Sales Orders → New** → place 1 × FG-TABLE-001 for CUST-001 → submit → land on the **Sales Order detail** page (`/sales-orders/:id`). With 2 on hand the line reserves fully, so the sales saga goes straight to `supply_secured` (the 360 / UI shows `ready_to_ship`) — no work order is raised (a stock-covered order skips manufacturing entirely).
@@ -134,12 +130,6 @@ Drive the demo step by step through the operational SPA, signed in as the approp
 6. **Olivia** (accountant) — **Finance → Payments → New** → Customer (AR) → pick the customer invoice → record full payment. Sales saga reaches `completed`.
 
 The **Sales Order detail** page is the headline screen: it carries the cross-context fulfilment roll-up (reservation / shipment / invoice / payment status pulled from reporting's `sales_order_360_view` projection), updating after each event. Open it on a side screen and refresh as the saga advances.
-
-### B. curl + Swagger (engineering deep dive)
-
-The `curl` bodies in §Demo 1–7 below are the canonical wire-level walkthroughs. Useful when you need to show the actual JSON, tail Postgres in parallel, or hit endpoints the UI doesn't surface (e.g. `POST /api/journal-entries/{id}/reverse`). Note the SPA's `/api/*` calls go through the BFF on 8089 (which attaches the session's bearer token); the raw service ports below are unauthenticated only if the resource server is run without security — for the UI path the BFF supplies the JWT.
-
-Each service exposes Swagger UI at `http://localhost:808X/swagger-ui/index.html`.
 
 ---
 
@@ -157,27 +147,7 @@ Each service exposes Swagger UI at `http://localhost:808X/swagger-ui/index.html`
 | **Journal Entries** | Finance → Journal Entries · `/journal-entries` | Balanced debit/credit pairs landing per action; reverse from here. |
 | **Audit Log** | System → Audit Log · `/system/audit-log` | Cross-service, actor-stamped timeline. |
 
-### Watching the database directly (for the wire-level deep dive)
-
-Three useful psql queries to project on a side screen:
-
-```sql
--- Sales fulfilment saga (one row per order)
-SELECT sales_order_header_id, saga_state, current_step, data
-  FROM sales.sales_order_fulfilment_saga ORDER BY updated_at DESC;
-
--- Make-to-stock work-order saga (one row per work order)
-SELECT work_order_id, saga_state, current_step
-  FROM manufacturing.work_order_saga ORDER BY updated_at DESC;
-
--- Purchase-to-pay saga (one row per PO)
-SELECT purchase_order_header_id, saga_state, current_step
-  FROM purchasing.purchase_to_pay_saga ORDER BY updated_at DESC;
-```
-
-```bash
-docker exec -it northwood-postgres psql -U postgres -d northwood_erp
-```
+Every saga's progress is legible from these screens — the **Sales Order detail** roll-up for the sales fulfilment saga, the **Production Board** for the make-to-stock work-order saga, and **PO Tracking** for the purchase-to-pay saga — so there is no need to inspect the database during the demo.
 
 ---
 
@@ -185,80 +155,41 @@ docker exec -it northwood-postgres psql -U postgres -d northwood_erp
 
 The product service owns SKUs and pricing. Reorder policy is owned upstream too (Material Master / Shape A): inventory's `reorder_point` / `reorder_quantity` are projected from `product.ReorderPolicyChanged`.
 
-**UI alternative for Demo 1 (as Emma):** all four mutating commands have inline actions on the **Master Data → Products** detail page.
-
 ### 1.1 — Register a new product
 
-```bash
-curl -X POST http://localhost:8081/api/products \
-  -H 'content-type: application/json' \
-  -d '{"sku":"FG-CHAIR-001","name":"Dining Chair","productType":"finished_good",
-       "baseUomId":"00000000-0000-7000-8000-000000000010",
-       "salesPrice":120,"standardCost":45,"currencyCode":"AUD"}'
-```
+As **Emma** (catalog_manager): **Master Data → Products → New** → enter SKU `FG-CHAIR-001`, name *Dining Chair*, product type *Finished Good*, base UoM *EA*, sales price `120`, standard cost `45`, currency `AUD` → **Save**.
 
 **Outbox:** `product.ProductCreated`. **Today's projections:** five services each seed a stub row from the event — `inventory.product_card` (descriptive columns + reorder + type-derived make-vs-buy default), `sales.product_card` (NULL price + currency until `SalesPriceChanged`), `manufacturing.product_card` (type-derived make-vs-buy default), `finance.product_card` (NULL `standard_cost` + `valuation_class` until the respective change event), `reporting.available_to_promise_view`. Purchasing has no product read model of its own.
 
 ### 1.2 — Change pricing
 
-```bash
-curl -X PUT http://localhost:8081/api/products/{id}/sales-price \
-  -H 'content-type: application/json' \
-  -d '{"salesPrice":135,"currencyCode":"AUD"}'
+On the product detail page: **Change sales price** → `135` AUD, then **Change standard cost** → `50` AUD.
 
-curl -X PUT http://localhost:8081/api/products/{id}/standard-cost \
-  -H 'content-type: application/json' \
-  -d '{"standardCost":50,"currencyCode":"AUD"}'
-```
-
-**Outbox:** `product.SalesPriceChanged` from the first call; `product.StandardCostChanged` from the second. **Projections:** sales-service consumes `SalesPriceChanged` via `SalesPriceChangedHandler` (new orders quote the new price; existing lines are price-denormalised at order time). Finance consumes `StandardCostChanged` via `StandardCostChangedHandler` → writes `finance.product_card.standard_cost`; `SalesOrderShippedHandler` reads that column to drive COGS (shipment-line-stamped `unitCost` is only a documented cold-start fallback).
+**Outbox:** `product.SalesPriceChanged` from the first action; `product.StandardCostChanged` from the second. **Projections:** sales-service consumes `SalesPriceChanged` via `SalesPriceChangedHandler` (new orders quote the new price; existing lines are price-denormalised at order time). Finance consumes `StandardCostChanged` via `StandardCostChangedHandler` → writes `finance.product_card.standard_cost`; `SalesOrderShippedHandler` reads that column to drive COGS (shipment-line-stamped `unitCost` is only a documented cold-start fallback).
 
 ### 1.3 — Set reorder policy
 
-```bash
-curl -X PUT http://localhost:8081/api/products/{id}/reorder-policy \
-  -H 'content-type: application/json' \
-  -d '{"reorderPoint":5,"reorderQuantity":10}'
-```
+On the product detail page: **Reorder policy** → reorder point `5`, reorder quantity `10`.
 
-**Outbox:** `product.ReorderPolicyChanged`. **Projection:** `inventory.product_card` updates within one outbox poll. The integration test `ReorderPolicyChangedSeamIT` exercises this end-to-end. The endpoint rejects on a `discontinued` product.
+**Outbox:** `product.ReorderPolicyChanged`. **Projection:** `inventory.product_card` updates within one outbox poll. The integration test `ReorderPolicyChangedSeamIT` exercises this end-to-end. The action is rejected on a `discontinued` product.
 
 ### 1.4 — Discontinue
 
-```bash
-curl -X POST http://localhost:8081/api/products/{id}/discontinue
-```
+On the product detail page: click **Discontinue**.
 
 **Outbox:** `product.ProductDiscontinued`. **Today's behaviour:** six services consume the event. Sales `placeOrder` rejects new lines for the SKU with `ProductDiscontinuedException`. Manufacturing flips its `product_card` make-vs-buy flags off and retires the active BOM. Purchasing's PR entry-point rejects requisitions for the SKU. Inventory + finance + reporting/atp stamp their own `discontinued_at`. Existing draft sales orders are **not** retroactively flagged; "reorder rules stop generating purchase suggestions" remains future-tense (no auto-reorder job exists today for the flag to suppress).
 
 ### 1.5 — Make-vs-buy classification
 
-```bash
-curl -X PUT http://localhost:8081/api/products/{id}/make-vs-buy \
-  -H 'content-type: application/json' \
-  -d '{"manufacturedInternally":true,"purchasedExternally":false}'
-```
+On the product detail page: **Make-vs-buy** → *manufactured internally* on, *purchased externally* off.
 
 **Outbox:** `product.MakeVsBuyChanged`. **Projection:** inventory mirrors the `is_manufactured` / `is_purchased` flags onto its `product_card`; inventory's replenishment routing reads them to decide make-vs-buy (manufactured → make-to-stock WO, purchased → purchasing). Manufacturing also keeps its own make-vs-buy projection so it can reject a replenishment for a SKU with no active BOM (`ReplenishmentUndispatchable`).
 
 ### 1.6 — Set planning time fence
 
-```bash
-curl -X PUT http://localhost:8081/api/products/{id}/planning-time-fence \
-  -H 'content-type: application/json' \
-  -d '{"planningTimeFenceDays":7}'
-```
+On the product detail page: **Master Data → Products → open the product → Planning fence** (catalog_manager) → set `7` days. The *Replenishment* card shows the current value, and the order form's *Requested delivery date* drives the gate. A fully UI-driven walkthrough (set fence → far-future order parks → near-term order reserves) is in the web Help guide, **Demo 3.3**.
 
-**UI:** the same command is on the product detail page — **Master Data → Products → open the product → Planning fence** (catalog_manager). The *Replenishment* card shows the current value, and the order form's *Requested delivery date* drives the gate. A fully UI-driven walkthrough (set fence → far-future order parks → near-term order reserves) is in the web Help guide, **Demo 3.3**.
-
-**Outbox:** `product.PlanningTimeFenceChanged`. **Projection:** sales consumes it (`PlanningTimeFenceChangedHandler` → `sales.product_card.planning_time_fence_days`). **Behaviour:** the sales fulfilment saga's reservation step defers a far-future order until `need-by − max(line fence)` — parking at `awaiting_release` until that date, then emitting the reservation as usual. `0` (the default) = no fence = reserve immediately (today's behaviour). To see it park, place an order whose `requestedDeliveryDate` is more than the fence beyond today and inspect `saga_state`:
-
-```sql
-SELECT sales_order_header_id, saga_state, next_retry_at
-  FROM sales.sales_order_fulfilment_saga WHERE saga_state = 'awaiting_release';
-```
-
-The parked order shows header status `Submitted` in the UI (no dedicated "Scheduled" pill yet — deferred).
+**Outbox:** `product.PlanningTimeFenceChanged`. **Projection:** sales consumes it (`PlanningTimeFenceChangedHandler` → `sales.product_card.planning_time_fence_days`). **Behaviour:** the sales fulfilment saga's reservation step defers a far-future order until `need-by − max(line fence)` — parking at `awaiting_release` until that date, then emitting the reservation as usual. `0` (the default) = no fence = reserve immediately (today's behaviour). To see it park, place an order (as Sarah) whose requested delivery date is more than the fence beyond today: it parks at `awaiting_release` until `need-by − fence`, and the **Sales Order detail** page shows header status `Submitted` (no dedicated "Scheduled" pill yet — deferred).
 
 ---
 
@@ -266,16 +197,16 @@ The parked order shows header status `Submitted` in the UI (no dedicated "Schedu
 
 Reporting is inbox-only — no command APIs, no outbox. Six projections are wired today, surfaced through the **Reporting** module plus the **Sales Order detail** roll-up.
 
-| Read model | Endpoint | UI surface | Driven by |
-|---|---|---|---|
-| `sales_order_360_view` | `GET /api/sales-orders/{id}/360` | Sales Order detail (`/sales-orders/:id`) | sales + manufacturing + inventory + finance events |
-| `purchase_order_tracking_view` | `GET /api/purchase-orders/{id}/tracking` | Reporting → PO Tracking (`/purchase-orders/tracking`) | purchasing + inventory + finance events |
-| `production_planning_board` | `GET /api/work-orders/{id}/board` | Manufacturing → Production Board (`/production-board`) | manufacturing + inventory events |
-| `material_shortage_view` | `GET /api/material-shortages` (list) `/{productId}` | Reporting → Material Shortage (`/material-shortages`) | manufacturing + purchasing + inventory events |
-| `available_to_promise_view` | `GET /api/atp` (list) `/{productId}` | Reporting → Available-to-Promise (`/atp`) | inventory + manufacturing + purchasing events |
-| `financial_dashboard_daily` | `GET /api/financial-dashboard` (list, AUD default) `/{date}` | Reporting → Financial Dashboard (`/financial-dashboard`) | finance + sales + purchasing + manufacturing events |
+| Read model | UI surface | Driven by |
+|---|---|---|
+| `sales_order_360_view` | Sales Order detail (`/sales-orders/:id`) | sales + manufacturing + inventory + finance events |
+| `purchase_order_tracking_view` | Reporting → PO Tracking (`/purchase-orders/tracking`) | purchasing + inventory + finance events |
+| `production_planning_board` | Manufacturing → Production Board (`/production-board`) | manufacturing + inventory events |
+| `material_shortage_view` | Reporting → Material Shortage (`/material-shortages`) | manufacturing + purchasing + inventory events |
+| `available_to_promise_view` | Reporting → Available-to-Promise (`/atp`) | inventory + manufacturing + purchasing events |
+| `financial_dashboard_daily` | Reporting → Financial Dashboard (`/financial-dashboard`) | finance + sales + purchasing + manufacturing events |
 
-The financial dashboard's `inventory_value`, `accounts_receivable`, and `accounts_payable` are populated via `GET /api/financial-dashboard/snapshot` (reporting projects `product_card` from `StandardCostChanged` and JOINs ATP × cost; AR/AP are SUM-windows over the SO360 + PO tracking projections). Only `wip_value` is still 0 — gated on a costing decision (LIFO / FIFO / weighted-avg) for `wip_balance.average_cost`.
+The financial dashboard's `inventory_value`, `accounts_receivable`, and `accounts_payable` are populated by reporting (which projects `product_card` from `StandardCostChanged` and JOINs ATP × cost; AR/AP are SUM-windows over the SO360 + PO tracking projections). Only `wip_value` is still 0 — gated on a costing decision (LIFO / FIFO / weighted-avg) for `wip_balance.average_cost`.
 
 > The Sales Order detail page reads the `sales_order_360_view` projection (the standalone "360 View" page was removed; the per-order roll-up now lives on the order's own detail screen).
 
@@ -289,20 +220,7 @@ The financial dashboard's `inventory_value`, `accounts_receivable`, and `account
 
 Pre-state: 2 × FG-TABLE-001 on hand, 20 × RM-LEG-001 on hand (need 4 per table = 4 ok).
 
-UI path (as Sarah): **Sales → Sales Orders → New**, pick CUST-001, add 1 × FG-TABLE-001, submit. Equivalent curl:
-
-```bash
-curl -X POST http://localhost:8082/api/sales-orders \
-  -H 'content-type: application/json' \
-  -d '{"orderNumber":"SO-DEMO-3-1",
-       "customerCode":"CUST-001",
-       "currencyCode":"AUD",
-       "lines":[{"productId":"00000000-0000-7000-8000-000000000001",
-                 "productSku":"FG-TABLE-001",
-                 "productName":"Wooden Dining Table",
-                 "orderedQuantity":1,
-                 "unitPrice":320}]}'
-```
+As **Sarah** (sales_clerk): **Sales → Sales Orders → New**, pick CUST-001, add 1 × FG-TABLE-001 at unit price 320, submit → land on the **Sales Order detail** page.
 
 **Saga state machine** (`sales.sales_order_fulfilment_saga.saga_state`):
 
@@ -311,7 +229,7 @@ curl -X POST http://localhost:8082/api/sales-orders \
 | `started` | worker emits `sales.StockReservationRequested` (or parks at `awaiting_release` behind a planning fence; a prepayment / deposit order gates at `awaiting_prepayment` → `prepaid` first) |
 | `stock_reservation_requested` | inbound `inventory.StockReserved` — fully reserved → `supply_secured`; short → `stock_reservation_incomplete` |
 | `stock_reservation_incomplete` | parked; inbound `inventory.ReplenishmentFulfilled` for all short lines → retry via `stock_reservation_requested`. Inbound `inventory.ReplenishmentCancelled` → `rejected` (terminal) |
-| `supply_secured` | every line reserved (renamed from the old `ready_to_ship`). The warehouse posts a shipment via `POST /api/shipments`; the saga **holds here as the completion gate**, latching `orderShipped` (on `inventory.ShipmentPosted`) and `orderSettled` (on `finance.CustomerPaymentReceived`). The post-supply ship → invoice → pay status is **event-reactive** (the line fold + the 360), not separate saga states. |
+| `supply_secured` | every line reserved (renamed from the old `ready_to_ship`). The warehouse posts a shipment (**Inventory → Shipments**); the saga **holds here as the completion gate**, latching `orderShipped` (on `inventory.ShipmentPosted`) and `orderSettled` (on `finance.CustomerPaymentReceived`). The post-supply ship → invoice → pay status is **event-reactive** (the line fold + the 360), not separate saga states. |
 | `completed` | terminal — reached from `supply_secured` once the order is **both** shipped AND fully settled |
 
 The old per-milestone states (`ready_to_ship` → `goods_shipped` → `invoice_created` → `invoice_partially_paid`) were **pruned** to this completion-gate model: those were non-branching pass-throughs whose facts now live on the line / 360 axes, so the saga no longer carries them. A partial customer payment no longer parks at a dedicated state — the saga simply stays at `supply_secured` until `orderSettled` latches. (The earlier make-vs-buy redesign likewise removed the `manufacturing_requested` / `manufacturing_in_progress` / `manufacturing_completed` / `purchasing_requested` states — sales no longer drives manufacturing; inventory owns make-vs-buy and the order parks at `stock_reservation_incomplete` until replenished.)
@@ -321,31 +239,10 @@ The old per-milestone states (`ready_to_ship` → `goods_shipped` → `invoice_c
 **To drive the saga to completion:**
 
 1. Wait for the sales saga to reach `supply_secured` (auto, single tick — the line is stock-covered, so it reserves fully and never touches manufacturing); the 360 `order_status` shows `ready_to_ship`. For the shortage variant, see Demo 5 / Demo 7.
-2. Post a shipment. UI (as Mike): **Inventory → Shipments → New**, pick the ready order, confirm. Equivalent curl:
-   ```bash
-   curl -X POST http://localhost:8083/api/shipments \
-     -H 'content-type: application/json' \
-     -d '{"shipmentNumber":"SH-DEMO-3-1",
-          "salesOrderHeaderId":"...",
-          "warehouseCode":"MAIN",
-          "lines":[{"salesOrderLineId":"...",
-                    "productId":"00000000-0000-7000-8000-000000000001",
-                    "productSku":"FG-TABLE-001",
-                    "productName":"Wooden Dining Table",
-                    "shippedQuantity":1,
-                    "unitCost":150}]}'
-   ```
-3. Customer invoice is auto-created from the shipment event. Pay it. UI (as Olivia): **Finance → Payments → New → Customer**, pick the invoice, record. Equivalent curl:
-   ```bash
-   curl -X POST http://localhost:8086/api/payments/customer \
-     -H 'content-type: application/json' \
-     -d '{"paymentNumber":"PMT-DEMO-3-1",
-          "customerInvoiceHeaderId":"...",
-          "amount":320,
-          "paymentMethod":"bank_transfer"}'
-   ```
+2. Post a shipment — as **Mike** (warehouse_clerk): **Inventory → Shipments → New**, pick the ready order, confirm (1 × FG-TABLE-001).
+3. Customer invoice is auto-created from the shipment event. Pay it — as **Olivia** (accountant): **Finance → Payments → New → Customer**, pick the invoice, record the full amount (320) with payment method *bank transfer*.
 
-`paymentMethod` must be one of `bank_transfer | cash | card | cheque` — the API rejects anything else.
+The payment-method picker offers *bank transfer / cash / card / cheque*.
 
 **What the audience sees:** the **Sales Order detail** roll-up (`/sales-orders/:id`) progresses through reservation → shipment → invoice → payment after every event; the stock-covered happy path runs only the sales saga — no work order or PO appears.
 
@@ -355,32 +252,11 @@ The same saga, the same outbox/inbox plumbing, the same `sales_order_fulfilment_
 
 Pre-state: 1 × FG-TABLE-001 on hand (a stock-only path keeps the demo crisp — no manufacturing detour). Pick any customer; the order's `paymentTerms` override is what matters.
 
-```bash
-curl -X POST http://localhost:8082/api/sales-orders \
-  -H 'content-type: application/json' \
-  -d '{"orderNumber":"SO-DEMO-3-2",
-       "customerCode":"CUST-001",
-       "currencyCode":"AUD",
-       "paymentTerms":"prepayment",
-       "lines":[{"productId":"00000000-0000-7000-8000-000000000001",
-                 "productSku":"FG-TABLE-001",
-                 "productName":"Wooden Dining Table",
-                 "orderedQuantity":1,
-                 "unitPrice":320}]}'
-```
+As **Sarah**: **Sales → Sales Orders → New**, pick CUST-001, add 1 × FG-TABLE-001 at unit price 320, and set **Payment terms** to *Prepayment* before submitting.
 
 The order lands on the Sales Order detail page with an **"awaiting prepayment"** lozenge — saga is `awaiting_prepayment`. Within a tick finance creates a prepayment invoice (`invoice_type='prepayment'`) — **no GL post at creation** (Treatment A). Try posting a shipment now and the inventory service rejects with **HTTP 409 `UNPAID_PREPAYMENT_ORDER`** — the gate reads `inventory.sales_order_line_facts.prepayment_settled` (which is `false`), not sales' saga.
 
-Pay the prepayment invoice (UI: **Finance → Payments → New → Customer**, or curl below). The customer payment must come from the same customer; full amount required for the saga to leave `awaiting_prepayment`:
-
-```bash
-curl -X POST http://localhost:8086/api/payments/customer \
-  -H 'content-type: application/json' \
-  -d '{"paymentNumber":"PMT-DEMO-3-2",
-       "customerInvoiceHeaderId":"...",
-       "amount":320,
-       "paymentMethod":"bank_transfer"}'
-```
+Pay the prepayment invoice — as **Olivia**: **Finance → Payments → New → Customer**, pick the prepayment invoice, record the full amount (320). It must be the same customer; the full amount is required for the saga to leave `awaiting_prepayment`.
 
 What happens next, in one tick:
 1. Finance posts **Dr 1000 Bank / Cr 2110 Customer Deposits** for $320 — the deposit is a liability until the goods land with the customer.
@@ -409,13 +285,7 @@ What differs is the **path** through the chart of accounts — AR for credit ter
 
 **What the audience sees:** the Sales Order detail lozenge transitions from "awaiting prepayment" → (paid; lozenge clears) → fulfilment progresses → completed. **Finance → Journal Entries** shows the deposit→revenue reclassification at shipment with a single click into the journal lines.
 
-**Try the 409 gate:**
-```bash
-# attempt shipment before payment lands → HTTP 409 UNPAID_PREPAYMENT_ORDER
-curl -i -X POST http://localhost:8083/api/shipments \
-  -H 'content-type: application/json' \
-  -d '{"shipmentNumber":"SH-PREMATURE","salesOrderHeaderId":"...","warehouseCode":"MAIN","lines":[...]}'
-```
+**Try the 409 gate:** before the prepayment lands, go to **Inventory → Shipments → New** and try to ship the order — the post is rejected with HTTP 409 `UNPAID_PREPAYMENT_ORDER` (surfaced as an error toast in the UI).
 
 ---
 
@@ -427,17 +297,9 @@ Place an order **as Sarah (sales_clerk)** for a short quantity so it parks at `s
 
 **Security demo moment.** With Sarah still signed in, open the Sales Order detail page and hover the **Cancel order** action — it's disabled with a tooltip "Requires role: sales_manager". Sarah doesn't have authority to cancel; only sam does. Sign out (top-right), then sign back in as **sam**. Now the Cancel action is enabled. Click it, supply a reason, confirm. Behind the scenes Spring Security's `@PreAuthorize("hasRole('sales_manager')")` accepts the call.
 
-```bash
-# Equivalent curl (with Bearer token from sam's session):
-curl -X POST http://localhost:8082/api/sales-orders/{salesOrderId}/cancel \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer <sam-token>' \
-  -d '{"reason": "Customer changed mind"}'
-```
+A disabled Cancel action for sarah vs an enabled one for sam is the simplest live demo of the role gate.
 
-A 403 from sarah's token vs 200 from sam's is the simplest live demo of the role gate.
-
-Returns 200 with the order body now showing `status='cancelled'` and `cancelledAt` set. Behind the scenes:
+The order now shows `status='cancelled'` with `cancelledAt` set. Behind the scenes:
 
 1. **Sales** — header flipped to `'cancelled'`, saga flipped to `'compensating'`, `sales.SalesOrderCancellationRequested` emitted.
 2. **Inventory** consumes — releases the stock reservation (`stock_balance.reserved_quantity` decremented; reservation header status `'released'`), emits `inventory.SalesOrderCancellationApplied`.
@@ -466,7 +328,7 @@ Pre-state: 0 × FG-TABLE-001 on hand. Place an order for 2 of them.
 
 The `StockReservedHandler` stashes the short line-ids on saga.data and **advances to `stock_reservation_incomplete`** (parked). Inventory — in the same transaction as the partial reservation — raises a `ReplenishmentRequest(reason=sales_order_shortage)` and, because FG-TABLE-001 is makeable, routes it to manufacturing as a make-to-stock WO. When that WO completes it bumps FG on-hand and emits `inventory.ReplenishmentFulfilled`; the parked sales order retries its reservation and reaches `supply_secured`. End-state is the same as 3.1, just longer.
 
-If the SKU has **no active BOM**, manufacturing emits `manufacturing.ReplenishmentUndispatchable`; inventory cancels the request and emits `inventory.ReplenishmentCancelled`, which flips the sales saga and the order header to `rejected`. (A purchased-only SKU with no vendor takes the same shape via `purchasing.ReplenishmentUndispatchable`.) To force the no-BOM branch in a demo, deactivate the BOM via the **Manufacturing → BOMs** page (or `POST /api/boms/{id}/activate` with a different BOM), or use a finished-good seeded without a BOM.
+If the SKU has **no active BOM**, manufacturing emits `manufacturing.ReplenishmentUndispatchable`; inventory cancels the request and emits `inventory.ReplenishmentCancelled`, which flips the sales saga and the order header to `rejected`. (A purchased-only SKU with no vendor takes the same shape via `purchasing.ReplenishmentUndispatchable`.) To force the no-BOM branch in a demo, deactivate the BOM via the **Manufacturing → BOMs** page, or use a finished-good seeded without a BOM.
 
 ---
 
@@ -483,7 +345,7 @@ The make-to-stock state machine:
 | `work_order_created` | saga is entered here (WO created, BOM + routing snapshotted); worker emits `manufacturing.RawMaterialReservationRequested` |
 | `raw_material_reservation_requested` | inbound `inventory.RawMaterialsReserved` |
 | `raw_materials_reserved` | worker releases production |
-| (worker drives ops to completion) | `POST /api/work-orders/{id}/operations/{seq}/complete` per op (UI: Production Board → **Complete operation**) |
+| (worker drives ops to completion) | complete each operation on the **Production Board** (→ **Complete operation**), one per op |
 | `completed` | terminal — set in the same txn as the last operation lands |
 
 Sub-assembly recursion: if a BOM line is `sub_assembly`, the release service recurses, creating a child WO with `parent_work_order_id` set, and pre-attaches a child saga at `work_order_created`. Parent holds at `in_progress` until all children finish; the operation service cascades up the parent chain in the same transaction.
@@ -498,84 +360,28 @@ Pre-state: only 2 × RM-LEG-001 on hand; ordered quantity needs 4.
 
 ## Demo 6 — Saga: purchase-to-pay
 
-`purchasing.purchase_to_pay_saga` row is inserted at `started` in the same txn as the PO is created. **PO draft/approve flow:** manual PRs land their PO at `'draft'` and require a human to call `POST /api/purchase-orders/{id}/approve`; replenishment-driven PRs auto-approve when `northwood.purchasing.shortagePoAutoApprove=true` (default), so the make-to-stock saga still flows automatically. Saga walks `started → purchase_order_approved → waiting_for_goods`. `three_way_match_*` saga states stay reserved for future variance-handling workflows.
+`purchasing.purchase_to_pay_saga` row is inserted at `started` in the same txn as the PO is created. **PO draft/approve flow:** manual PRs land their PO at `'draft'` and require a human to **Approve** it (Purchasing → Purchase Orders); replenishment-driven PRs auto-approve when `northwood.purchasing.shortagePoAutoApprove=true` (default), so the make-to-stock saga still flows automatically. Saga walks `started → purchase_order_approved → waiting_for_goods`. `three_way_match_*` saga states stay reserved for future variance-handling workflows.
 
 ### 6.1 — Manual requisition → approve → goods receipt → invoice → payment
 
-1. Tom raises a requisition. UI (as Tom): **Purchasing → Purchase Requisitions** (New). Equivalent curl:
-   ```bash
-   curl -X POST http://localhost:8085/api/purchase-requisitions \
-     -H 'content-type: application/json' \
-     -d '{"requisitionNumber":"PR-DEMO-6-1",
-          "requestedBy":"tom",
-          "lines":[{"productId":"00000000-0000-7000-8000-000000000003",
-                    "productSku":"RM-LEG-001",
-                    "productName":"Table Leg",
-                    "requestedQuantity":40,
-                    "requiredDate":"2026-06-01"}]}'
-   ```
+1. Raise a requisition — as **Tom** (purchasing_clerk): **Purchasing → Purchase Requisitions → New**, add line RM-LEG-001 × 40, submit.
    The PR auto-converts to a **draft** PO inside the same txn. PO header status is `'draft'`. Saga state: `started` (parked, waiting for human approval).
 
-2. Tom approves the PO. UI: **Purchasing → Purchase Orders** → open the draft PO → **Approve**. Equivalent curl:
-   ```bash
-   curl -X POST http://localhost:8085/api/purchase-orders/{poId}/approve \
-     -H 'content-type: application/json' \
-     -d '{"approver":"tom","reason":"Needed for Aug build"}'
-   ```
+2. Approve the PO — **Purchasing → Purchase Orders** → open the draft PO → **Approve** (supply a reason).
    PO flips to `'sent'`, emits `purchasing.PurchaseOrderApproved`. Saga: `started → purchase_order_approved` (inline, in the approve txn). Next worker tick: `purchase_order_approved → waiting_for_goods`.
 
-3. Tom posts a goods receipt. UI: **Inventory → Goods Receipts → New** (pick the PO line from the picker). Equivalent curl:
-   ```bash
-   curl -X POST http://localhost:8083/api/goods-receipts \
-     -H 'content-type: application/json' \
-     -d '{"goodsReceiptNumber":"GR-DEMO-6-1",
-          "purchaseOrderHeaderId":"...",
-          "warehouseCode":"MAIN",
-          "lines":[{"purchaseOrderLineId":"...",
-                    "productId":"00000000-0000-7000-8000-000000000003",
-                    "productSku":"RM-LEG-001",
-                    "productName":"Table Leg",
-                    "receivedQuantity":40,
-                    "unitCost":25}]}'
-   ```
+3. Post a goods receipt — **Inventory → Goods Receipts → New** (pick the PO line from the picker), received quantity 40.
    Saga state: `waiting_for_goods` → `goods_received` (driven by `inventory.GoodsReceived` inbox).
 
-4. Olivia records the supplier invoice. UI (as Olivia): **Finance → Supplier Invoices → New**. Equivalent curl:
-   ```bash
-   curl -X POST http://localhost:8086/api/supplier-invoices \
-     -H 'content-type: application/json' \
-     -d '{"internalInvoiceNumber":"INV-DEMO-6-1",
-          "supplierInvoiceNumber":"PINEWOOD-9001",
-          "purchaseOrderHeaderId":"...",
-          "supplierId":"...",
-          "supplierName":"Pinewood Supplies",
-          "currencyCode":"AUD",
-          "lines":[{"purchaseOrderLineId":"...",
-                    "productId":"00000000-0000-7000-8000-000000000003",
-                    "productSku":"RM-LEG-001",
-                    "productName":"Table Leg",
-                    "quantity":40,
-                    "unitPrice":25}]}'
-   ```
+4. Record the supplier invoice — as **Olivia** (accountant): **Finance → Supplier Invoices → New**, reference the PO, line RM-LEG-001 × 40 at unit price 25.
    Finance runs **quantity + price-variance 3-way match**. Per-line invoice unit price is compared against the PO line's snapshotted unit_price; relative variance > `northwood.finance.match.priceTolerancePercent` (default 2.0%) parks the invoice at `three_way_match_failed`. On match, emits `finance.SupplierInvoiceApproved`. Purchasing saga: `goods_received` → `supplier_invoice_approved`.
 
-   To force a price-variance failure for the demo, post the same invoice with `unitPrice: 30` against a PO line whose unit_price is 25 — the invoice lands in `three_way_match_failed`. Review the queue at **Finance → Pending Review** (`/supplier-invoices/pending-review`); resolve via `POST /api/supplier-invoices/{id}/manual-approve` (with `{reviewer, reason}`) or `POST /{id}/reject`.
+   To force a price-variance failure for the demo, record the invoice with unit price 30 against a PO line priced at 25 — the invoice lands in `three_way_match_failed`. Review the queue at **Finance → Pending Review** (`/supplier-invoices/pending-review`) and resolve with **Manual approve** or **Reject**.
 
-5. Olivia pays. UI: **Finance → Payments → New → Supplier**. Equivalent curl:
-   ```bash
-   curl -X POST http://localhost:8086/api/payments \
-     -H 'content-type: application/json' \
-     -d '{"paymentNumber":"PMT-DEMO-6-1",
-          "supplierInvoiceHeaderId":"...",
-          "amount":1000,
-          "paymentMethod":"bank_transfer"}'
-   ```
+5. Pay the invoice — **Finance → Payments → New → Supplier**, pick the approved invoice, pay the full amount (1000).
    On full settlement: `supplier_invoice_approved` → `completed`; PO header flips to `paid`. On partial: → `supplier_partially_paid`, parks.
 
-   Multi-invoice supplier payment (one cheque settles multiple approved invoices):
-   ```bash
-   curl -X POST http://localhost:8086/api/payments/multi -H 'content-type: application/json' -d '...'
-   ```
+   A single supplier payment can settle multiple approved invoices at once (one cheque → several invoices) from the same screen.
 
 GL postings (six pairs) fire alongside each step — see Demo 7's GL section. Track the money flow on **Reporting → PO Tracking** (`/purchase-orders/tracking`).
 
@@ -589,27 +395,14 @@ The showcase. One sales order touches every service.
 
 Pre-state: 0 × FG-TABLE-001 on hand; 5 × RM-LEG-001 on hand; need 40 (4 × 10 tables); plenty of every other RM; one customer (Sydney Home Living); one supplier.
 
-UI path (as Sarah): **Sales → Sales Orders → New**, CUST-001, 10 × FG-TABLE-001, submit. Equivalent curl:
-
-```bash
-curl -X POST http://localhost:8082/api/sales-orders \
-  -H 'content-type: application/json' \
-  -d '{"orderNumber":"SO-DEMO-7-1",
-       "customerCode":"CUST-001",
-       "currencyCode":"AUD",
-       "lines":[{"productId":"00000000-0000-7000-8000-000000000001",
-                 "productSku":"FG-TABLE-001",
-                 "productName":"Wooden Dining Table",
-                 "orderedQuantity":10,
-                 "unitPrice":320}]}'
-```
+As **Sarah**: **Sales → Sales Orders → New**, CUST-001, 10 × FG-TABLE-001 at unit price 320, submit.
 
 **Watch this unfold:**
 
 1. Sales fulfilment saga: `started` → `stock_reservation_requested` → `stock_reservation_incomplete` (the FG-TABLE line can't be reserved — 0 on hand). The saga parks here.
 2. Inventory raises a `ReplenishmentRequest(reason=sales_order_shortage)` for the FG and, because it's makeable, routes it to manufacturing as a make-to-stock WO. The make-to-stock saga is entered at `work_order_created`; releasing it hits the RM-LEG-001 shortage (short by 35) and advances to `raw_material_shortage`.
 3. `manufacturing.RawMaterialShortageDetected` fires → **inventory** raises a second `ReplenishmentRequest(reason=work_order_shortage)` and routes it to purchasing → PR + PO → P2P saga starts at `started` → `waiting_for_goods`.
-4. **Time-skip:** Tom posts a goods receipt for 35 × RM-LEG-001 (Demo 6 step 3 with `receivedQuantity:35`).
+4. **Time-skip:** Tom posts a goods receipt for 35 × RM-LEG-001 (Demo 6 step 3, received quantity 35).
 5. Inventory bumps `stock_balance.on_hand_quantity`. P2P saga: `waiting_for_goods` → `goods_received`.
 6. Manufacturing's `GoodsReceivedHandler` un-parks the make-to-stock saga: → `work_order_created` → re-emits reservation → `raw_materials_reserved`.
 7. Operation completion (Linda, on the Production Board): the FG work order(s) complete. Each top-level completion bumps FG `stock_balance.on_hand_quantity` and fulfils the FG replenishment (`inventory.ReplenishmentFulfilled`).
@@ -628,7 +421,7 @@ curl -X POST http://localhost:8082/api/sales-orders \
 - **Available-to-Promise** (`/atp`): on-hand drops at shipment, incoming-from-purchase rises on PO creation, drops on receipt.
 - **Financial Dashboard** (`/financial-dashboard`): sales_revenue, COGS, gross_profit, cash_received/paid, plus open SO/PO/WO counts per day.
 
-### GL postings to watch in `finance.journal_entry_header` / `_line`
+### GL postings to watch on Finance → Journal Entries
 
 Balanced debit/credit pairs land in the same txn as their originating action — the buy→sell cycle plus the perpetual-WIP make cycle (fires during manufacturing replenishment). Surface them on **Finance → Journal Entries**:
 
@@ -644,7 +437,7 @@ Balanced debit/credit pairs land in the same txn as their originating action —
 | Work order completion | 1220 Finished Goods | 1230 WIP |
 | Sub-assemblies consumed | 1230 WIP | 1220 Finished Goods |
 
-Reverse a journal entry from **Finance → Journal Entries** (as Daniel) or via `POST /api/journal-entries/{id}/reverse` (creates a debit/credit-flipped reversal in the same txn that flips the original from `posted` → `reversed`).
+Reverse a journal entry from **Finance → Journal Entries** (as Daniel) — **Reverse** creates a debit/credit-flipped reversal in the same txn and flips the original from `posted` → `reversed`.
 
 ### Acceptance criteria for the demo
 
@@ -698,41 +491,21 @@ Try the same as Olivia (accountant) — Reverse is disabled, tooltip "Requires r
 
 The reliability claim made visible: **kill Kafka mid-flow and nothing is lost** — the outbox holds every event durably and replays it when the broker returns, with no operator action. This is the producer-side "broker down → back" row from `docs/messaging.md` → *Disaster recovery* (✅ auto-recovered fully).
 
-**Setup:** full stack up, the Sales Order detail page open for an in-flight order, and a psql session on a side screen:
-
-```bash
-docker exec -it northwood-postgres psql -U postgres -d northwood_erp
-```
+**Setup:** full stack up, with the **Sales Order detail** page open on a side screen.
 
 ### 9.1 — Kill the broker, then place an order
+
+Stop the broker (the one ops command — there is no UI for this):
 
 ```bash
 docker stop northwood-kafka
 ```
 
-Place a normal order (same shape as Demo 3.1). Note it **still returns 200**: the command path writes the aggregate + its outbox row in one local PostgreSQL transaction and never touches Kafka.
-
-```bash
-curl -X POST http://localhost:8082/api/sales-orders \
-  -H 'content-type: application/json' \
-  -d '{"orderNumber":"SO-DEMO-9-1","customerCode":"CUST-001","currencyCode":"AUD",
-       "lines":[{"productId":"00000000-0000-7000-8000-000000000001",
-                 "productSku":"FG-TABLE-001","productName":"Wooden Dining Table",
-                 "orderedQuantity":1,"unitPrice":320}]}'
-```
+Place a normal order through the UI (as Sarah — same as Demo 3.1: 1 × FG-TABLE-001 for CUST-001). Note the order **still saves successfully**: the command path writes the aggregate + its outbox row in one local PostgreSQL transaction and never touches Kafka.
 
 ### 9.2 — Watch the outbox absorb the backlog
 
-The sales drainer tries to publish every ~1s, fails (broker down), and marks each row `failed` — visible both in the service log (`WARN [sales] outbox row … failed`) and in the table:
-
-```sql
-SELECT event_type, status, retry_count, left(last_error, 40) AS err
-  FROM sales.outbox_message
- WHERE status IN ('pending','failed')
- ORDER BY sequence_number;
-```
-
-On the **Sales Order detail** page the order is stuck at `started` / `stock_reservation_requested` — its events can't reach inventory, so it can't advance. Nothing is lost; it's *parked in the outbox*.
+The sales drainer tries to publish every ~1s, fails (broker down), and marks each outbox row `failed` — visible in the service log (`WARN [sales] outbox row … failed`). On the **Sales Order detail** page the order is stuck at the reservation step — its events can't reach inventory, so it can't advance. Nothing is lost; it's *parked in the outbox*.
 
 ### 9.3 — Bring the broker back, watch it self-heal
 
@@ -742,7 +515,7 @@ docker start northwood-kafka
 
 Within a tick or two — no service restart, no manual replay:
 
-- the `sales.outbox_message` rows flip `failed → published` (re-run the query above; the `pending`/`failed` set drains to empty);
+- the sales outbox backlog drains (the `failed` rows flip to `published`; the service log shows the publishes succeed);
 - the backlog flows to inventory / manufacturing / finance, each draining *its* outbox in turn;
 - the **Sales Order detail** roll-up marches the order through to `completed`, exactly as in the happy path — just delayed by the outage.
 
@@ -777,53 +550,25 @@ Place an order **as Sarah** for **FG-RUG-001** (`00000000-0000-7000-8000-0000000
 
 ### 10.2 — Buy-to-order (the pegged PO)
 
-Place an order **as Sarah** for **FG-CARPET-001** (`00000000-0000-7000-8000-000000000501`), qty 1. The carpet has 0 on hand and is `to_order`:
-
-```bash
-curl -X POST http://localhost:8082/api/sales-orders \
-  -H 'content-type: application/json' \
-  -d '{"orderNumber":"SO-DEMO-10-CARPET","customerCode":"CUST-001","currencyCode":"AUD",
-       "lines":[{"productId":"00000000-0000-7000-8000-000000000501",
-                 "productSku":"FG-CARPET-001","productName":"Custom-design Carpet",
-                 "orderedQuantity":1,"unitPrice":1200}]}'
-```
+Place an order **as Sarah** for **FG-CARPET-001**, qty 1. The carpet has 0 on hand and is `to_order` — **Sales → Sales Orders → New**, pick CUST-001, add 1 × FG-CARPET-001 at unit price 1200, submit.
 
 Watch it flow:
-1. The fulfilment saga's reserve step reads `sales.product_card.replenishment_strategy = 'to_order'` and **skips free-stock reservation**. Inventory raises a dedicated replenishment for the **full** line qty, routed by make-vs-buy to purchasing:
-   ```sql
-   SELECT reason, target_service, requested_quantity, status, source_sales_order_header_id
-     FROM inventory.replenishment_request WHERE product_id = '00000000-0000-7000-8000-000000000501';
-   -- reason = 'order_pegged', target_service = 'purchasing', requested_quantity = 1
-   ```
-   The saga parks at `stock_reservation_incomplete` (no shortage top-up — this is a dedicated build).
+1. The fulfilment saga's reserve step reads `replenishment_strategy = 'to_order'` and **skips free-stock reservation**. Inventory raises a dedicated `order_pegged` replenishment for the **full** line qty (1), routed by make-vs-buy to purchasing — visible on **Reporting → Material Shortage**. The saga parks at `stock_reservation_incomplete` (no shortage top-up — this is a dedicated build).
 2. Purchasing creates a PR → **Priya** approves it → it becomes a PO against **Floor Coverings Direct** (SUP-006). (Same PR→PO→GR machinery as Demo 6.)
-3. **Wendy** posts the goods receipt for the PO (**Inventory → Goods Receipts → New**). Inventory credits on-hand **and**, because the linked request is `order_pegged`, **reserves the received qty for the SO line in the same transaction**:
-   ```sql
-   SELECT on_hand_quantity, reserved_quantity, available_quantity
-     FROM inventory.stock_balance WHERE product_id = '00000000-0000-7000-8000-000000000501';
-   -- on_hand = 1, reserved = 1, available = 0  ← pegged; excluded from ATP
-   ```
+3. **Wendy** posts the goods receipt for the PO (**Inventory → Goods Receipts → New**). Inventory credits on-hand **and**, because the linked request is `order_pegged`, **reserves the received qty for the SO line in the same transaction**. On **Reporting → Available-to-Promise** the carpet now shows on-hand 1, reserved 1, available 0 — pegged, excluded from ATP.
 4. `inventory.ReplenishmentFulfilled(pegged=true)` reaches sales; the saga goes **`stock_reservation_incomplete → supply_secured` directly** — no re-reservation. **Wendy** ships it; the cycle completes exactly like Demo 7.
 
 ### 10.3 — Make-to-order (configure an existing SKU live)
 
-Make-to-order reuses an existing manufactured SKU rather than a dedicated seed. **As Emma (catalog_manager)**, configure a manufactured FG (e.g. **FG-CHAIR-001**) order-pegged — the invariants require a sellable SKU with a zero reorder policy first:
+Make-to-order reuses an existing manufactured SKU rather than a dedicated seed. **As Emma (catalog_manager)**, on the **Master Data → Products** detail page for a manufactured FG (e.g. **FG-CHAIR-001**), first set the **Reorder policy** to `0 / 0` (a `to_order` SKU has no independent reorder loop), then set **Replenishment strategy** to *to-order*. (The invariants require a sellable SKU with a zero reorder policy first.)
 
-```bash
-# zero the reorder policy (to_order has no independent reorder loop), then flip the strategy
-curl -X PUT http://localhost:8081/api/products/00000000-0000-7000-8000-000000000400/reorder-policy \
-  -H 'content-type: application/json' -d '{"reorderPoint":0,"reorderQuantity":0}'
-curl -X PUT http://localhost:8081/api/products/00000000-0000-7000-8000-000000000400/replenishment-strategy \
-  -H 'content-type: application/json' -d '{"replenishmentStrategy":"to_order"}'
-```
+Then place an order (as Sarah) for the chair beyond on-hand. Same pegged flow as 10.2, but the dedicated supply is a **work order** (target_service = `manufacturing`): **Linda** completes its operations on the Production Board; on completion inventory credits FG **and** pegs it to the SO line, and the saga reaches `supply_secured` without a retry. (This is the path pinned by `OrderToCashMakeToOrderPathTest`.)
 
-Then place an order for the chair beyond on-hand. Same pegged flow as 10.2, but the dedicated supply is a **work order** (target_service = `manufacturing`): **Linda** completes its operations on the Production Board; on completion inventory credits FG **and** pegs it to the SO line, and the saga reaches `supply_secured` without a retry. (This is the path pinned by `OrderToCashMakeToOrderPathTest`.)
-
-> Try setting `replenishment-strategy` to `to_order` on a SKU that still has a non-zero reorder policy, or on a non-sellable raw material — the request is rejected (the aggregate enforces the three invariants, mirrored by the schema CHECKs).
+> Try setting **Replenishment strategy** to *to-order* on a SKU that still has a non-zero reorder policy, or on a non-sellable raw material — the action is rejected with an error (the aggregate enforces the three invariants, mirrored by the schema CHECKs).
 
 ### 10.4 — Cancel a pegged order (un-peg)
 
-`to_order` does **not** block cancel. Cancel the carpet order from 10.2 **as Sam** (any pre-shipment state). The compensation un-pegs: if the PO already received (peg reserved), inventory releases the reserve so the carpet returns to the free pool (it behaves as make-to-stock from there); if the PO is still in flight, the peg is dropped and the eventual receipt settles into the pool. Re-run the `stock_balance` query — `reserved` drops back, `available` rises.
+`to_order` does **not** block cancel. Cancel the carpet order from 10.2 **as Sam** (any pre-shipment state). The compensation un-pegs: if the PO already received (peg reserved), inventory releases the reserve so the carpet returns to the free pool (it behaves as make-to-stock from there); if the PO is still in flight, the peg is dropped and the eventual receipt settles into the pool. Re-check **Reporting → Available-to-Promise** — `reserved` drops back, `available` rises.
 
 ### 10.5 — What this proves
 
