@@ -2431,39 +2431,6 @@ window.NORTHWOOD_PROJECTIONS = [
   ];
   const RR_NOTE = 'target_service is fixed at request time from the SKU\'s product_card make/buy snapshot. manufacturing ⇒ dispatch to a work order; purchasing ⇒ dispatch to a purchase requisition, link the PO, fulfil on goods receipt. The [*]→requested, →cancelled and →[*] edges are shared by both paths.';
 
-  // ── PATTERN: grid-aligned, centred preset layout (reuse for any new diagram) ──
-  // Every interactive state-machine / saga diagram on this page (and the
-  // Cytoscape graph in docs/causal-dependency.html) pins a HAND-TUNED layout
-  // instead of letting dagre auto-arrange, so the picture is stable and reads
-  // the same every load. The recipe — follow it when adding another diagram:
-  //
-  //   1. GRID. Two constants per diagram: COL (column pitch) and ROW (row
-  //      pitch). Node x is a small multiple of COL (0, COL, 2·COL, …), node y a
-  //      multiple of ROW. Keep ROW uniform; pick COL wide enough for the widest
-  //      label/node on a shared row (a long horizontal edge wants its label in
-  //      an *empty* middle column — see WO_PRESET's x=3·COL shortage node).
-  //   2. CENTRED SPINE. Run the happy path straight down ONE centre column;
-  //      hang branches/terminals off it (partial bands left, command terminals
-  //      right, etc.). fit:true in the layout scales+centres the whole bounding
-  //      box H+V into the (resizable) frame, so don't hand-centre — just keep
-  //      the spine on the centre column and let fit do the rest.
-  //   3. WIRE IT. Add an `<ID>_PRESET = { '__start__': {x,y}, …, '__end__': {x,y} }`
-  //      (one entry per parsed state plus the __start__/__end__ pseudo-nodes),
-  //      and pass it as `sagaOpts.preset` in renderSagaGraphs(). buildSagaGraph
-  //      then uses a Cytoscape 'preset' layout over those positions; the
-  //      Re-layout button and the resize observer re-apply it, so a user drag
-  //      never loses the default.
-  //   4. DERIVE POSITIONS. Open the diagram, drag nodes into place, read them
-  //      back with `cy.nodes().map(n => ({id:n.id(), x:n.position('x'), …}))`,
-  //      then SNAP each to the nearest COL/ROW multiple before pasting here.
-  //   5. EDGE LABELS MUST NOT OVERPRINT. Parallel SAME-direction edges (same
-  //      source→target, e.g. ReplenishmentRequest's two markDispatched) would
-  //      stack both labels on one midpoint; buildSagaGraph staggers them
-  //      vertically via per-edge data(parDy) (PAR_LABEL_GAP). Opposite-direction
-  //      pairs (A→B and B→A) are already split by the bezier curve, so give them
-  //      an empty middle column for the two labels (again, WO_PRESET).
-  // ─────────────────────────────────────────────────────────────────────────
-
   // Hand-tuned default positions for the SalesOrderLine line_status chain —
   // same approach as docs/causal-dependency.html's Diagram 2 (a 'preset' layout
   // over hand-tuned positions). fit:true scales+centres them to whatever size
