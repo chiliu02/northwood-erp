@@ -111,7 +111,7 @@ If any service fails to boot, look at the terminal that failed. Most boot failur
 | Product **RM-BOARD-001** Wooden Board | `00000000-0000-7000-8000-000000000002` | 5 on hand; 1 per table |
 | Product **FG-CABINET-001** Storage Cabinet | `00000000-0000-7000-8000-000000000200` | sub-assembly demo set |
 | Warehouse **MAIN** | `00000000-0000-7000-8000-000000000020` | |
-| Supplier **Pinewood Supplies** | seeded; check `purchasing.supplier` for id | used for shortage requisitions |
+| Supplier **Australian Timber Supplies** (SUP-001) | seeded; check `purchasing.supplier` for id | used for shortage requisitions |
 | Product **FG-RUG-001** Woven Floor Rug | `00000000-0000-7000-8000-000000000500` | purchased + sellable; **buy-to-stock** (`to_stock`, reorder 4/8); 6 on hand at MAIN — Demo 9 contrast partner |
 | Product **FG-CARPET-001** Custom-design Carpet | `00000000-0000-7000-8000-000000000501` | purchased + sellable; **buy-to-order** (`to_order`, reorder 0/0); 0 on hand — each order raises a dedicated pegged PO (Demo 9) |
 | Supplier **Floor Coverings Direct** | code `SUP-006` · id `00000000-0000-7000-8000-000000000045` | sources FG-RUG-001 + FG-CARPET-001 |
@@ -208,6 +208,8 @@ Reporting is inbox-only — no command APIs, no outbox. Six projections are wire
 
 The financial dashboard's `inventory_value`, `accounts_receivable`, and `accounts_payable` are populated by reporting (which projects `product_card` from `StandardCostChanged` and JOINs ATP × cost; AR/AP are SUM-windows over the SO360 + PO tracking projections). Only `wip_value` is still 0 — gated on a costing decision (LIFO / FIFO / weighted-avg) for `wip_balance.average_cost`.
 
+> **Fresh-stack caveat.** These dashboard figures are event-sourced sums, not pre-seeded opening balances. On a just-started stack the revenue / COGS / AR / AP windows read near zero and fill in as you drive the demo; `inventory_value` is the exception — it reflects seeded on-hand stock (ATP × `product_card` cost) from day one.
+
 > The Sales Order detail page reads the `sales_order_360_view` projection (the standalone "360 View" page was removed; the per-order roll-up now lives on the order's own detail screen).
 
 ---
@@ -220,7 +222,7 @@ The financial dashboard's `inventory_value`, `accounts_receivable`, and `account
 
 Pre-state: 2 × FG-TABLE-001 on hand, 20 × RM-LEG-001 on hand (need 4 per table = 4 ok).
 
-As **Sarah** (sales_clerk): **Sales → Sales Orders → New**, pick CUST-001, add 1 × FG-TABLE-001 at unit price 320, submit → land on the **Sales Order detail** page.
+As **Sarah** (sales_clerk): **Sales → Sales Orders → New**, pick CUST-001, add 1 × FG-TABLE-001 at unit price 650, submit → land on the **Sales Order detail** page.
 
 **Saga state machine** (`sales.sales_order_fulfilment_saga.saga_state`):
 
@@ -240,7 +242,7 @@ The old per-milestone states (`ready_to_ship` → `goods_shipped` → `invoice_c
 
 1. Wait for the sales saga to reach `supply_secured` (auto, single tick — the line is stock-covered, so it reserves fully and never touches manufacturing); the 360 `order_status` shows `ready_to_ship`. For the shortage variant, see Demo 5 / Demo 7.
 2. Post a shipment — as **Mike** (warehouse_clerk): **Inventory → Shipments → New**, pick the ready order, confirm (1 × FG-TABLE-001).
-3. Customer invoice is auto-created from the shipment event. Pay it — as **Olivia** (accountant): **Finance → Payments → New → Customer**, pick the invoice, record the full amount (320) with payment method *bank transfer*.
+3. Customer invoice is auto-created from the shipment event. Pay it — as **Olivia** (accountant): **Finance → Payments → New → Customer**, pick the invoice, record the full amount (650) with payment method *bank transfer*.
 
 The payment-method picker offers *bank transfer / cash / card / cheque*.
 
@@ -252,21 +254,21 @@ The same saga, the same outbox/inbox plumbing, the same `sales_order_fulfilment_
 
 Pre-state: 1 × FG-TABLE-001 on hand (a stock-only path keeps the demo crisp — no manufacturing detour). Pick any customer; the order's `paymentTerms` override is what matters.
 
-As **Sarah**: **Sales → Sales Orders → New**, pick CUST-001, add 1 × FG-TABLE-001 at unit price 320, and set **Payment terms** to *Prepayment* before submitting.
+As **Sarah**: **Sales → Sales Orders → New**, pick CUST-001, add 1 × FG-TABLE-001 at unit price 650, and set **Payment terms** to *Prepayment* before submitting.
 
 The order lands on the Sales Order detail page with an **"awaiting prepayment"** lozenge — saga is `awaiting_prepayment`. Within a tick finance creates a prepayment invoice (`invoice_type='prepayment'`) — **no GL post at creation** (Treatment A). Try posting a shipment now and the inventory service rejects with **HTTP 409 `UNPAID_PREPAYMENT_ORDER`** — the gate reads `inventory.sales_order_line_facts.prepayment_settled` (which is `false`), not sales' saga.
 
-Pay the prepayment invoice — as **Olivia**: **Finance → Payments → New → Customer**, pick the prepayment invoice, record the full amount (320). It must be the same customer; the full amount is required for the saga to leave `awaiting_prepayment`.
+Pay the prepayment invoice — as **Olivia**: **Finance → Payments → New → Customer**, pick the prepayment invoice, record the full amount (650). It must be the same customer; the full amount is required for the saga to leave `awaiting_prepayment`.
 
 What happens next, in one tick:
-1. Finance posts **Dr 1000 Bank / Cr 2110 Customer Deposits** for $320 — the deposit is a liability until the goods land with the customer.
+1. Finance posts **Dr 1000 Bank / Cr 2110 Customer Deposits** for $650 — the deposit is a liability until the goods land with the customer.
 2. Sales saga: `awaiting_prepayment → prepaid` and emits `sales.SalesOrderPrepaymentSettled`.
 3. Inventory consumes the settled event and flips `sales_order_line_facts.prepayment_settled = true` — the 409 gate is now unlocked.
 4. Sales saga worker picks the row up from `prepaid` and emits `sales.StockReservationRequested`; the rest of the fulfilment flow walks the same path as Demo 3.1.
 
 Post the shipment when the saga reaches `supply_secured` (single-line stock-cover order: it reserves fully and never touches manufacturing). Finance reacts to `inventory.ShipmentPosted` and posts **two** journal entries in the same tx:
-- **Dr 2110 Customer Deposits / Cr 4000 Sales Revenue** for $320 — reclassify the deposit to revenue (the goods-delivered performance obligation).
-- **Dr 5000 COGS / Cr 1220 Finished Goods Inventory** at standard cost (the existing on-shipment pair).
+- **Dr 2110 Customer Deposits / Cr 4000 Sales Revenue** for $650 — reclassify the deposit to revenue (the goods-delivered performance obligation).
+- **Dr 5000 COGS / Cr 1220 Finished Goods Inventory** at full standard cost — $332 = $197 material + $135 conversion (labour + overhead) — the existing on-shipment pair.
 
 The saga is at `supply_secured`; posting the shipment latches `orderShipped`, and since the prepayment already settled the order it transitions straight to `completed` (no invoice / payment events left to wait for).
 
@@ -274,12 +276,12 @@ The saga is at `supply_secured`; posting the shipment latches `orderShipped`, an
 
 | Account | Demo 3.1 (on_shipment) | Demo 3.2 (prepayment) |
 |---|---|---|
-| 1000 Bank | Dr $320 | Dr $320 |
-| 1100 Accounts Receivable | Dr $320 → Cr $320 (net 0) | (untouched) |
-| 2110 Customer Deposits | (untouched) | Cr $320 → Dr $320 (net 0) |
-| 4000 Sales Revenue | Cr $320 | Cr $320 |
-| 5000 COGS | Dr $150 | Dr $150 |
-| 1220 Finished Goods Inventory | Cr $150 | Cr $150 |
+| 1000 Bank | Dr $650 | Dr $650 |
+| 1100 Accounts Receivable | Dr $650 → Cr $650 (net 0) | (untouched) |
+| 2110 Customer Deposits | (untouched) | Cr $650 → Dr $650 (net 0) |
+| 4000 Sales Revenue | Cr $650 | Cr $650 |
+| 5000 COGS | Dr $332 | Dr $332 |
+| 1220 Finished Goods Inventory | Cr $332 | Cr $332 |
 
 What differs is the **path** through the chart of accounts — AR for credit terms, Customer Deposits for prepayment — and the **timing** of revenue recognition (at invoice creation vs at shipment). The audience point: the saga absorbs the two patterns without the rest of the system (inventory, manufacturing, reporting) caring which path was taken.
 
@@ -395,7 +397,7 @@ The showcase. One sales order touches every service.
 
 Pre-state: 0 × FG-TABLE-001 on hand; 5 × RM-LEG-001 on hand; need 40 (4 × 10 tables); plenty of every other RM; one customer (Sydney Home Living); one supplier.
 
-As **Sarah**: **Sales → Sales Orders → New**, CUST-001, 10 × FG-TABLE-001 at unit price 320, submit.
+As **Sarah**: **Sales → Sales Orders → New**, CUST-001, 10 × FG-TABLE-001 at unit price 650, submit.
 
 **Watch this unfold:**
 

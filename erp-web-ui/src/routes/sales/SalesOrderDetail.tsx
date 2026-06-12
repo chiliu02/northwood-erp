@@ -241,7 +241,12 @@ export function SalesOrderDetail() {
   const amendBusy = changeQtyMutation.isPending || changePriceMutation.isPending
     || removeLineMutation.isPending || addLineMutation.isPending;
 
-  const sellableProducts = (products ?? []).filter((p) => p.status === "active");
+  // Sellable = active and priced (> 0). Raw materials and sub-assemblies are
+  // make/buy-internal, priced 0, and never sold to customers — keep them out of
+  // the amend add-line picker. Mirrors SalesOrderNew and the server's rule.
+  const sellableProducts = (products ?? []).filter(
+    (p) => p.status === "active" && Number(p.salesPrice) > 0
+  );
 
   function draftFor(line: SalesOrderLine) {
     return edits[line.lineId] ?? { qty: line.orderedQuantity, price: line.unitPrice };
@@ -551,11 +556,11 @@ export function SalesOrderDetail() {
           <>
             Cancels <strong>{data.orderNumber}</strong> for {data.customerName}.<br />
             Header flips to <code>cancelled</code> + saga to <code>compensating</code>; emits
-            <code> sales.SalesOrderCancellationRequested</code>. Inventory releases the
-            reservation; manufacturing cancels every active WO. When both ack the cancel,
-            saga advances to <code>compensated</code>. Hard-cancel — WIP is written off.
+            <code> sales.SalesOrderCancellationRequested</code>. Inventory releases any
+            stock reservation and acks; that ack is the sole compensation leg, so the
+            saga then advances to <code>compensated</code>.
             <br />
-            Server returns 409 if the order is past <code>goods_shipped</code>.
+            Server returns 409 if the order has already shipped.
           </>
         }
         confirmLabel="Cancel order"

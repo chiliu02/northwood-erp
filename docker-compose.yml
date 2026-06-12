@@ -113,7 +113,7 @@ services:
       - ./config/keycloak/northwood-realm.json:/opt/keycloak/data/import/northwood-realm.json:ro
       - northwood-keycloakdata:/opt/keycloak/data
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '\"status\": \"UP\"'"]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && cat <&3 | grep -Eq '\"status\": ?\"UP\"'"]
       interval: 10s
       timeout: 5s
       retries: 12

@@ -59,7 +59,14 @@ export function SalesOrderNew() {
   });
 
   const activeCustomers = (customers ?? []).filter((c) => c.status === "active");
-  const sellableProducts = (products ?? []).filter((p) => p.status === "active");
+  // Only sellable SKUs belong on a customer order. Raw materials and
+  // sub-assemblies are make/buy-internal — priced 0 in the catalog — so they
+  // are never sold to customers. Sellability = a positive sales price, which
+  // mirrors the server treating an unpriced SKU as not sellable; this keeps
+  // them out of the picker rather than letting a clerk pick one by mistake.
+  const sellableProducts = (products ?? []).filter(
+    (p) => p.status === "active" && Number(p.salesPrice) > 0
+  );
 
   const [orderNumber, setOrderNumber] = useState(() => `SO-${Date.now()}`);
   const [customerCode, setCustomerCode] = useState("");
