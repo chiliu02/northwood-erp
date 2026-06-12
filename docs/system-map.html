@@ -285,6 +285,7 @@
     scroll-margin-top: 1rem;
   }
   .saga-block > .desc,
+  .saga-block > .csm-legend,
   .saga-block > .gap-callout,
   .saga-block > .saga-graph-toolbar,
   .saga-block > .saga-graph,
@@ -2430,6 +2431,177 @@ window.NORTHWOOD_PROJECTIONS = [
   ];
   const RR_NOTE = 'target_service is fixed at request time from the SKU\'s product_card make/buy snapshot. manufacturing ⇒ dispatch to a work order; purchasing ⇒ dispatch to a purchase requisition, link the PO, fulfil on goods receipt. The [*]→requested, →cancelled and →[*] edges are shared by both paths.';
 
+  // ── PATTERN: grid-aligned, centred preset layout (reuse for any new diagram) ──
+  // Every interactive state-machine / saga diagram on this page (and the
+  // Cytoscape graph in docs/causal-dependency.html) pins a HAND-TUNED layout
+  // instead of letting dagre auto-arrange, so the picture is stable and reads
+  // the same every load. The recipe — follow it when adding another diagram:
+  //
+  //   1. GRID. Two constants per diagram: COL (column pitch) and ROW (row
+  //      pitch). Node x is a small multiple of COL (0, COL, 2·COL, …), node y a
+  //      multiple of ROW. Keep ROW uniform; pick COL wide enough for the widest
+  //      label/node on a shared row (a long horizontal edge wants its label in
+  //      an *empty* middle column — see WO_PRESET's x=3·COL shortage node).
+  //   2. CENTRED SPINE. Run the happy path straight down ONE centre column;
+  //      hang branches/terminals off it (partial bands left, command terminals
+  //      right, etc.). fit:true in the layout scales+centres the whole bounding
+  //      box H+V into the (resizable) frame, so don't hand-centre — just keep
+  //      the spine on the centre column and let fit do the rest.
+  //   3. WIRE IT. Add an `<ID>_PRESET = { '__start__': {x,y}, …, '__end__': {x,y} }`
+  //      (one entry per parsed state plus the __start__/__end__ pseudo-nodes),
+  //      and pass it as `sagaOpts.preset` in renderSagaGraphs(). buildSagaGraph
+  //      then uses a Cytoscape 'preset' layout over those positions; the
+  //      Re-layout button and the resize observer re-apply it, so a user drag
+  //      never loses the default.
+  //   4. DERIVE POSITIONS. Open the diagram, drag nodes into place, read them
+  //      back with `cy.nodes().map(n => ({id:n.id(), x:n.position('x'), …}))`,
+  //      then SNAP each to the nearest COL/ROW multiple before pasting here.
+  //   5. EDGE LABELS MUST NOT OVERPRINT. Parallel SAME-direction edges (same
+  //      source→target, e.g. ReplenishmentRequest's two markDispatched) would
+  //      stack both labels on one midpoint; buildSagaGraph staggers them
+  //      vertically via per-edge data(parDy) (PAR_LABEL_GAP). Opposite-direction
+  //      pairs (A→B and B→A) are already split by the bezier curve, so give them
+  //      an empty middle column for the two labels (again, WO_PRESET).
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Hand-tuned default positions for the SalesOrderLine line_status chain —
+  // same approach as docs/causal-dependency.html's Diagram 2 (a 'preset' layout
+  // over hand-tuned positions). fit:true scales+centres them to whatever size
+  // the (resizable) frame is, so the whole grid is centred horizontally and
+  // vertically in the frame; Re-layout and resize re-apply these, so dragging a
+  // node never loses the default. Grid: the progress spine (__start__ → open →
+  // reserved → shipped → __end__) runs down the centre column (x=COL); the two
+  // partial bands sit one column left (x=0); cancelled sits one column right
+  // (x=2·COL) — so the spine is the horizontal centre. COL drives the column
+  // pitch (kept wide for the long partially_* labels); ROW drives the — tighter
+  // — row pitch (just enough headroom for the inter-row edge labels).
+  const SO_LINE_COL = 180;
+  const SO_LINE_ROW = 88;
+  const SO_LINE_PRESET = {
+    '__start__':         { x: SO_LINE_COL,     y: 0 },
+    open:                { x: SO_LINE_COL,     y: SO_LINE_ROW },
+    partially_reserved:  { x: 0,               y: SO_LINE_ROW * 2 },
+    cancelled:           { x: SO_LINE_COL * 2, y: SO_LINE_ROW * 2 },
+    reserved:            { x: SO_LINE_COL,     y: SO_LINE_ROW * 3 },
+    partially_shipped:   { x: 0,               y: SO_LINE_ROW * 4 },
+    shipped:             { x: SO_LINE_COL,     y: SO_LINE_ROW * 5 },
+    '__end__':           { x: SO_LINE_COL,     y: SO_LINE_ROW * 6 }
+  };
+
+  // Hand-tuned default positions for the SalesOrder header composed state
+  // machine — same preset approach + same grid pitch as the line chain above,
+  // so the two diagrams read as one family. The shipment spine (__start__ →
+  // open → reserved → shipped → __end__) runs down the centre column (x=COL);
+  // the two partial bands AND the completed terminal sit in the left column
+  // (x=0) — completed branches off the spine bottom-left rather than extending
+  // it. The two top-down command terminals sit to the right: cancelled one
+  // column right (x=2·COL) level with partially_reserved, rejected two columns
+  // right (x=3·COL, far right) level with open (its only source).
+  const SO_HEADER_COL = 180;
+  const SO_HEADER_ROW = 88;
+  const SO_HEADER_PRESET = {
+    '__start__':         { x: SO_HEADER_COL,     y: 0 },
+    open:                { x: SO_HEADER_COL,     y: SO_HEADER_ROW },
+    rejected:            { x: SO_HEADER_COL * 3, y: SO_HEADER_ROW },
+    partially_reserved:  { x: 0,                 y: SO_HEADER_ROW * 2 },
+    cancelled:           { x: SO_HEADER_COL * 2, y: SO_HEADER_ROW * 2 },
+    reserved:            { x: SO_HEADER_COL,     y: SO_HEADER_ROW * 3 },
+    partially_shipped:   { x: 0,                 y: SO_HEADER_ROW * 4 },
+    shipped:             { x: SO_HEADER_COL,     y: SO_HEADER_ROW * 5 },
+    completed:           { x: 0,                 y: SO_HEADER_ROW * 6 },
+    '__end__':           { x: SO_HEADER_COL,     y: SO_HEADER_ROW * 7 }
+  };
+
+  // Hand-tuned default positions for the SalesOrder fulfilment saga — same
+  // preset approach + grid alignment as the two diagrams above. Centre column
+  // (x=COL) is the happy-path spine: __start__ → started → … →
+  // stock_reservation_requested → … → __end__. The prepayment gate (awaiting_
+  // prepayment → prepaid) and the two left-side terminals (supply_secured →
+  // completed) run down the left column (x=0); the planning-fence park
+  // (awaiting_release), the shortage-retry park (stock_reservation_incomplete)
+  // and its rejected terminal run down the right column (x=2·COL). Row ladder
+  // (ROW pitch): started=1, awaiting_prepayment=2, prepaid/awaiting_release=3,
+  // stock_reservation_requested=4, supply_secured/stock_reservation_incomplete=5,
+  // completed/rejected=6, __end__=7. ROW is a touch taller than the others to
+  // give the long StockReserved / ReplenishmentFulfilled edge labels headroom.
+  const SO_FULFILMENT_COL = 200;
+  const SO_FULFILMENT_ROW = 96;
+  const SO_FULFILMENT_PRESET = {
+    '__start__':                   { x: SO_FULFILMENT_COL,     y: 0 },
+    started:                       { x: SO_FULFILMENT_COL,     y: SO_FULFILMENT_ROW },
+    awaiting_prepayment:           { x: 0,                     y: SO_FULFILMENT_ROW * 2 },
+    prepaid:                       { x: 0,                     y: SO_FULFILMENT_ROW * 3 },
+    awaiting_release:              { x: SO_FULFILMENT_COL * 2, y: SO_FULFILMENT_ROW * 3 },
+    stock_reservation_requested:   { x: SO_FULFILMENT_COL,     y: SO_FULFILMENT_ROW * 4 },
+    supply_secured:                { x: 0,                     y: SO_FULFILMENT_ROW * 5 },
+    stock_reservation_incomplete:  { x: SO_FULFILMENT_COL * 2, y: SO_FULFILMENT_ROW * 5 },
+    completed:                     { x: 0,                     y: SO_FULFILMENT_ROW * 6 },
+    rejected:                      { x: SO_FULFILMENT_COL * 2, y: SO_FULFILMENT_ROW * 6 },
+    '__end__':                     { x: SO_FULFILMENT_COL,     y: SO_FULFILMENT_ROW * 7 }
+  };
+
+  // Hand-tuned default positions for the PurchaseToPaySaga — same preset
+  // approach + grid alignment as the diagrams above. The happy path is a
+  // straight centre-column spine: __start__ → started → purchase_order_approved
+  // → waiting_for_goods → goods_received → supplier_invoice_approved →
+  // completed → __end__. Two side branches hang off it: supplier_partially_paid
+  // to the left (x=0, the !fullySettled detour that rejoins completed), failed
+  // to the right (x=2·COL) level with goods_received (its source — a clean
+  // horizontal invoice-rejected edge), dropping to __end__ on a long diagonal.
+  const PTP_COL = 200;
+  const PTP_ROW = 88;
+  const PTP_PRESET = {
+    '__start__':                { x: PTP_COL,     y: 0 },
+    started:                    { x: PTP_COL,     y: PTP_ROW },
+    purchase_order_approved:    { x: PTP_COL,     y: PTP_ROW * 2 },
+    waiting_for_goods:          { x: PTP_COL,     y: PTP_ROW * 3 },
+    goods_received:             { x: PTP_COL,     y: PTP_ROW * 4 },
+    supplier_invoice_approved:  { x: PTP_COL,     y: PTP_ROW * 5 },
+    supplier_partially_paid:    { x: 0,           y: PTP_ROW * 6 },
+    failed:                     { x: PTP_COL * 2, y: PTP_ROW * 4 },
+    completed:                  { x: PTP_COL,     y: PTP_ROW * 7 },
+    '__end__':                  { x: PTP_COL,     y: PTP_ROW * 8 }
+  };
+
+  // Hand-tuned default positions for the ReplenishmentRequest aggregate — same
+  // preset approach + grid alignment as the diagrams above. Centre-column spine
+  // __start__ → requested → dispatched → fulfilled → __end__ (the two parallel
+  // markDispatched / markFulfilled transitions ride the same spine edges); the
+  // single cancelled terminal hangs off to the right (x=2·COL) level between
+  // requested and dispatched, the two markCancelled edges fanning into it.
+  // requested→dispatched and dispatched→fulfilled each span two rows so the
+  // staggered parallel-edge labels (see parDy below) have vertical headroom.
+  const RR_COL = 200;
+  const RR_ROW = 88;
+  const RR_PRESET = {
+    '__start__': { x: RR_COL,     y: 0 },
+    requested:   { x: RR_COL,     y: RR_ROW },
+    cancelled:   { x: RR_COL * 2, y: RR_ROW * 2 },
+    dispatched:  { x: RR_COL,     y: RR_ROW * 3 },
+    fulfilled:   { x: RR_COL,     y: RR_ROW * 5 },
+    '__end__':   { x: RR_COL,     y: RR_ROW * 6 }
+  };
+
+  // Hand-tuned default positions for the WorkOrderSaga — same preset approach +
+  // grid alignment as the diagrams above. Centre-column spine __start__ →
+  // work_order_created → raw_material_reservation_requested → raw_materials_
+  // reserved → completed → __end__. The single side state raw_material_shortage
+  // sits level with raw_material_reservation_requested but two columns right
+  // (x=3·COL): both that node and the spine node are wide, and the two long
+  // bidirectional shortage-edge labels need the empty middle column (x=2·COL)
+  // to sit in without overprinting either node.
+  const WO_COL = 220;
+  const WO_ROW = 96;
+  const WO_PRESET = {
+    '__start__':                          { x: WO_COL,     y: 0 },
+    work_order_created:                   { x: WO_COL,     y: WO_ROW },
+    raw_material_reservation_requested:   { x: WO_COL,     y: WO_ROW * 2 },
+    raw_material_shortage:                { x: WO_COL * 3, y: WO_ROW * 2 },
+    raw_materials_reserved:               { x: WO_COL,     y: WO_ROW * 3 },
+    completed:                            { x: WO_COL,     y: WO_ROW * 4 },
+    '__end__':                            { x: WO_COL,     y: WO_ROW * 5 }
+  };
+
   function renderSagaGraphs() {
     const blocks = document.querySelectorAll('.saga-block');
     if (typeof cytoscape !== 'function') {
@@ -2462,13 +2634,18 @@ window.NORTHWOOD_PROJECTIONS = [
       // transition resolves to that event's consumer in the saga's own service).
       let sagaOpts = null;
       if (block.querySelector('#' + SO_SAGA_SUMMARY_ID)) {
-        sagaOpts = { edgeConds: SO_EDGE_CONDS, filters: SO_FILTERS, note: SO_NOTE, service: 'sales' };
+        sagaOpts = { edgeConds: SO_EDGE_CONDS, filters: SO_FILTERS, note: SO_NOTE, service: 'sales', preset: SO_FULFILMENT_PRESET };
       } else if (block.querySelector('#' + RR_SAGA_SUMMARY_ID)) {
-        sagaOpts = { edgeConds: RR_EDGE_CONDS, filters: RR_FILTERS, note: RR_NOTE, service: 'inventory' };
+        sagaOpts = { edgeConds: RR_EDGE_CONDS, filters: RR_FILTERS, note: RR_NOTE, service: 'inventory', preset: RR_PRESET };
       } else if (block.querySelector('#saga-purchase-to-pay')) {
-        sagaOpts = { service: 'purchasing' };
+        sagaOpts = { service: 'purchasing', preset: PTP_PRESET };
       } else if (block.querySelector('#saga-work-order')) {
-        sagaOpts = { service: 'manufacturing' };
+        sagaOpts = { service: 'manufacturing', preset: WO_PRESET };
+      } else if (block.querySelector('#sm-sales-order-line')) {
+        // Default to the hand-tuned grid (preset layout), not dagre's auto-flow.
+        sagaOpts = { service: 'sales', preset: SO_LINE_PRESET };
+      } else if (block.querySelector('#sm-sales-order-header')) {
+        sagaOpts = { service: 'sales', preset: SO_HEADER_PRESET };
       }
       let inst = null;
       block.addEventListener('toggle', function () {
@@ -2530,9 +2707,38 @@ window.NORTHWOOD_PROJECTIONS = [
       return { data: data };
     });
 
-    const layoutOpts = dagreAvailable
-      ? { name: 'dagre', rankDir: 'TB', nodeSep: 35, rankSep: 55, edgeSep: 12, fit: true, padding: 24 }
-      : { name: 'breadthfirst', directed: true, spacingFactor: 1.15, fit: true, padding: 24 };
+    // Parallel same-pair transitions (ReplenishmentRequest's two markDispatched
+    // and two markFulfilled edges) otherwise pin both labels to the same edge
+    // midpoint, so they overprint. Stagger each group's labels vertically — the
+    // edge style binds text-margin-y to data(parDy) — so they stack as distinct
+    // readable lines. Self-loops and unique pairs get parDy 0 (no shift).
+    const PAR_LABEL_GAP = 46;
+    const parPairCount = {};
+    edges.forEach(function (e) {
+      const k = e.data.source + '||' + e.data.target;
+      parPairCount[k] = (parPairCount[k] || 0) + 1;
+    });
+    const parPairSeen = {};
+    edges.forEach(function (e) {
+      e.data.parDy = 0;
+      if (e.data.source === e.data.target) return;          // self-loop
+      const k = e.data.source + '||' + e.data.target;
+      const n = parPairCount[k];
+      if (n > 1) {
+        const i = parPairSeen[k] || 0;
+        parPairSeen[k] = i + 1;
+        e.data.parDy = (i - (n - 1) / 2) * PAR_LABEL_GAP;
+      }
+    });
+
+    // A block carrying a `preset` map (the SalesOrderLine line_status chain)
+    // lays out over its hand-tuned positions instead of dagre's auto-flow —
+    // same as causal-dependency.html's Diagram 2. Re-layout re-applies these.
+    const layoutOpts = (opts && opts.preset)
+      ? { name: 'preset', positions: opts.preset, fit: true, padding: 24, animate: false }
+      : dagreAvailable
+        ? { name: 'dagre', rankDir: 'TB', nodeSep: 35, rankSep: 55, edgeSep: 12, fit: true, padding: 24 }
+        : { name: 'breadthfirst', directed: true, spacingFactor: 1.15, fit: true, padding: 24 };
 
     const cy = cytoscape({
       container: container,
@@ -2597,7 +2803,9 @@ window.NORTHWOOD_PROJECTIONS = [
             'text-background-padding': '2px',
             'text-background-shape': 'round-rectangle',
             'text-wrap': 'wrap',
-            'text-max-width': '170px'
+            'text-max-width': '170px',
+            // Vertical stagger for parallel same-pair edge labels (0 otherwise).
+            'text-margin-y': 'data(parDy)'
           }
         },
         {
