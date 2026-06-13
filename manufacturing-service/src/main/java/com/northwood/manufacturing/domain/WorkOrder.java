@@ -497,6 +497,7 @@ public final class WorkOrder {
             salesOrderHeaderId,
             salesOrderLineId,
             parentWorkOrderId,
+            replenishmentRequestId,
             finishedProductId,
             finishedProductSku,
             completedQuantity,

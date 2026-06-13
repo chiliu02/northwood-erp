@@ -59,10 +59,15 @@ class WorkOrderManufacturingCompletedHandlerTest {
     }
 
     private EventEnvelope event(UUID parentWorkOrderId) {
+        return event(parentWorkOrderId, null);
+    }
+
+    private EventEnvelope event(UUID parentWorkOrderId, UUID replenishmentRequestId) {
         UUID eventId = UUID.randomUUID();
         WorkOrderManufacturingCompleted payload = new WorkOrderManufacturingCompleted(
             eventId, WO, "WO-001",
             UUID.randomUUID(), UUID.randomUUID(), parentWorkOrderId,
+            replenishmentRequestId,
             PRODUCT, "FG-001", new BigDecimal("5"), Instant.now()
         );
         return new EventEnvelope(
@@ -98,43 +103,60 @@ class WorkOrderManufacturingCompletedHandlerTest {
         verifyNoInteractions(movements);
     }
 
-    private static ReplenishmentRequest dispatchedRequest(ReplenishmentRequest req) {
-        req.pullPendingEvents();
-        req.markDispatched(DispatchedAggregateKind.WORK_ORDER, WO);
-        req.pullPendingEvents();
-        return req;
-    }
-
-    @Test void order_pegged_completion_atomically_reserves_then_fulfils() {
+    @Test void order_pegged_completion_dispatches_reserves_and_fulfils_self_sufficiently() {
         when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
-        ReplenishmentRequest req = dispatchedRequest(ReplenishmentRequest.requestForOrderPegged(
+        // 'requested' — ReplenishmentDispatched(WORK_ORDER) hasn't landed yet (completion-first race).
+        ReplenishmentRequest req = ReplenishmentRequest.requestForOrderPegged(
             PRODUCT, WAREHOUSE, new BigDecimal("5"), TargetService.MANUFACTURING,
-            UUID.randomUUID(), UUID.randomUUID()));
-        when(replenishmentRequests.findByDispatchedAggregateId(WO)).thenReturn(Optional.of(req));
+            UUID.randomUUID(), UUID.randomUUID());
+        when(replenishmentRequests.findById(any())).thenReturn(Optional.of(req));
         when(stockBalances.tryReserveOnHand(WAREHOUSE, PRODUCT, new BigDecimal("5"))).thenReturn(true);
 
-        handler.handle(event(null));
+        handler.handle(event(null, req.id().value()));
 
-        // Credit then peg-reserve the same qty, atomically (same tx).
+        // Credit, then dispatch+peg-reserve+fulfil the request, all in one tx.
         verify(stockBalances).bump(WAREHOUSE, PRODUCT, new BigDecimal("5"));
         verify(stockBalances).tryReserveOnHand(WAREHOUSE, PRODUCT, new BigDecimal("5"));
         verify(replenishmentRequests).save(req);
         assertThat(req.status()).isEqualTo(ReplenishmentRequest.Status.FULFILLED);
     }
 
-    @Test void non_pegged_completion_credits_and_fulfils_without_reserving() {
+    @Test void non_pegged_completion_dispatches_and_fulfils_without_reserving() {
         when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
-        ReplenishmentRequest req = dispatchedRequest(ReplenishmentRequest.requestForSalesOrderShortage(
+        ReplenishmentRequest req = ReplenishmentRequest.requestForSalesOrderShortage(
             PRODUCT, WAREHOUSE, new BigDecimal("5"), TargetService.MANUFACTURING,
-            UUID.randomUUID(), UUID.randomUUID()));
-        when(replenishmentRequests.findByDispatchedAggregateId(WO)).thenReturn(Optional.of(req));
+            UUID.randomUUID(), UUID.randomUUID());
+        when(replenishmentRequests.findById(any())).thenReturn(Optional.of(req));
 
-        handler.handle(event(null));
+        handler.handle(event(null, req.id().value()));
 
         verify(stockBalances).bump(WAREHOUSE, PRODUCT, new BigDecimal("5"));
         verify(stockBalances, never()).tryReserveOnHand(any(), any(), any());
         verify(replenishmentRequests).save(req);
         assertThat(req.status()).isEqualTo(ReplenishmentRequest.Status.FULFILLED);
+    }
+
+    @Test void dispatch_before_completion_is_idempotent() {
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
+        ReplenishmentRequest req = ReplenishmentRequest.requestForSalesOrderShortage(
+            PRODUCT, WAREHOUSE, new BigDecimal("5"), TargetService.MANUFACTURING,
+            UUID.randomUUID(), UUID.randomUUID());
+        req.markDispatched(DispatchedAggregateKind.WORK_ORDER, WO);   // ReplenishmentDispatched already won the race
+        when(replenishmentRequests.findById(any())).thenReturn(Optional.of(req));
+
+        handler.handle(event(null, req.id().value()));
+
+        verify(replenishmentRequests).save(req);
+        assertThat(req.status()).isEqualTo(ReplenishmentRequest.Status.FULFILLED);   // markDispatched no-op, still fulfils
+    }
+
+    @Test void manual_wo_without_replenishment_id_skips_fulfil() {
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
+
+        handler.handle(event(null));   // no replenishmentRequestId
+
+        verify(stockBalances).bump(WAREHOUSE, PRODUCT, new BigDecimal("5"));
+        verifyNoInteractions(replenishmentRequests);
     }
 
     @Test void already_processed_short_circuits() {

@@ -9,6 +9,7 @@ import com.northwood.inventory.domain.StockMovementSourceTypes;
 import com.northwood.inventory.domain.StockMovementType;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.ReplenishmentRequest;
+import com.northwood.inventory.domain.ReplenishmentRequestId;
 import com.northwood.inventory.domain.ReplenishmentRequestRepository;
 import com.northwood.manufacturing.domain.events.WorkOrderManufacturingCompleted;
 import com.northwood.shared.application.inbox.InboxPort;
@@ -97,39 +98,46 @@ public class WorkOrderManufacturingCompletedHandler extends AbstractInboxHandler
                 CONSUMER_NAME, payload.finishedProductSku(), payload.finishedProductId(),
                 payload.completedQuantity(), payload.aggregateId());
 
-            // If this WO is the dispatch target of a ReplenishmentRequest,
-            // fulfil it (emits ReplenishmentFulfilled).
-            Optional<ReplenishmentRequest> r =
-                replenishmentRequests.findByDispatchedAggregateId(payload.aggregateId());
-            if (r.isPresent()
-                && r.get().dispatchedAggregateKind() == ReplenishmentRequest.DispatchedAggregateKind.WORK_ORDER
-                && r.get().status() == ReplenishmentRequest.Status.DISPATCHED) {
-                ReplenishmentRequest req = r.get();
-                // Atomic peg: an order-pegged replenishment's
-                // output is dedicated to the originating SO line. Reserve it in
-                // THIS transaction (right after the on_hand credit) so it never
-                // enters free ATP and can't be stolen by a concurrent order. The
-                // generated available_quantity (on_hand - reserved) stays flat, so
-                // reporting's ATP view excludes it automatically. Releasing this
-                // peg on cancel is the un-peg job.
-                if (req.reason() == ReplenishmentRequest.Reason.ORDER_PEGGED) {
-                    boolean pegged = stockBalances.tryReserveOnHand(
-                        warehouseId, payload.finishedProductId(), payload.completedQuantity());
-                    if (pegged) {
-                        log.info("[{}] pegged {} of {} ({}) to sales_order={} sales_order_line={} (atomic credit+reserve)",
-                            CONSUMER_NAME, payload.completedQuantity(), payload.finishedProductSku(),
-                            payload.finishedProductId(), req.sourceSalesOrderHeaderId(), req.sourceSalesOrderLineId());
-                    } else {
-                        log.warn("[{}] could not peg-reserve {} of {} for sales_order={} — free stock insufficient "
-                            + "immediately after credit (concurrent reservation?); SO line falls back to the retry path",
-                            CONSUMER_NAME, payload.completedQuantity(), payload.finishedProductId(),
-                            req.sourceSalesOrderHeaderId());
+            // If this WO fulfils an inventory replenishment, dispatch-and-fulfil
+            // it here. A completed replenishment WO is proof its dispatch
+            // happened, so markDispatched (idempotent) runs before markFulfilled
+            // rather than waiting for ReplenishmentDispatched(WORK_ORDER) to have
+            // been processed first — closing the completion-vs-dispatch race
+            // order-independently (the WO twin of the PR→PO link fix).
+            if (payload.replenishmentRequestId() != null) {
+                Optional<ReplenishmentRequest> r = replenishmentRequests.findById(
+                    ReplenishmentRequestId.of(payload.replenishmentRequestId()));
+                if (r.isPresent()
+                    && r.get().status() != ReplenishmentRequest.Status.FULFILLED
+                    && r.get().status() != ReplenishmentRequest.Status.CANCELLED) {
+                    ReplenishmentRequest req = r.get();
+                    // requested -> dispatched, or idempotent no-op if ReplenishmentDispatched already won the race.
+                    req.markDispatched(ReplenishmentRequest.DispatchedAggregateKind.WORK_ORDER, payload.aggregateId());
+                    // Atomic peg: an order-pegged replenishment's output is dedicated
+                    // to the originating SO line. Reserve it in THIS transaction (right
+                    // after the on_hand credit) so it never enters free ATP and can't be
+                    // stolen by a concurrent order. The generated available_quantity
+                    // (on_hand - reserved) stays flat, so reporting's ATP view excludes
+                    // it automatically. Releasing this peg on cancel is the un-peg job.
+                    if (req.reason() == ReplenishmentRequest.Reason.ORDER_PEGGED) {
+                        boolean pegged = stockBalances.tryReserveOnHand(
+                            warehouseId, payload.finishedProductId(), payload.completedQuantity());
+                        if (pegged) {
+                            log.info("[{}] pegged {} of {} ({}) to sales_order={} sales_order_line={} (atomic credit+reserve)",
+                                CONSUMER_NAME, payload.completedQuantity(), payload.finishedProductSku(),
+                                payload.finishedProductId(), req.sourceSalesOrderHeaderId(), req.sourceSalesOrderLineId());
+                        } else {
+                            log.warn("[{}] could not peg-reserve {} of {} for sales_order={} — free stock insufficient "
+                                + "immediately after credit (concurrent reservation?); SO line falls back to the retry path",
+                                CONSUMER_NAME, payload.completedQuantity(), payload.finishedProductId(),
+                                req.sourceSalesOrderHeaderId());
+                        }
                     }
+                    req.markFulfilled();
+                    replenishmentRequests.save(req);
+                    log.info("[{}] fulfilled replenishment_request={} via work_order={}",
+                        CONSUMER_NAME, req.id().value(), payload.aggregateId());
                 }
-                req.markFulfilled();
-                replenishmentRequests.save(req);
-                log.info("[{}] fulfilled replenishment_request={} via work_order={}",
-                    CONSUMER_NAME, req.id().value(), payload.aggregateId());
             }
         }
     }

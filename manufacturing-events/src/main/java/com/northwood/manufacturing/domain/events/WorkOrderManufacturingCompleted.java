@@ -18,6 +18,13 @@ import java.util.UUID;
  *
  * <p>{@link Quantity} isn't used here — we send raw {@link BigDecimal} for the
  * completed quantity to keep the wire format flat for cross-service consumers.
+ *
+ * <p>{@code replenishmentRequestId} is non-null only when this WO was released
+ * to fulfil an inventory replenishment (it forwards the WO's own
+ * {@code replenishmentRequestId}). Inventory's production-confirmation handler
+ * reads it to resolve the originating {@code ReplenishmentRequest} and
+ * dispatch-and-fulfil it self-sufficiently, so this event's arrival order
+ * relative to {@code ReplenishmentDispatched} no longer matters.
  */
 public record WorkOrderManufacturingCompleted(
     UUID eventId,
@@ -26,6 +33,7 @@ public record WorkOrderManufacturingCompleted(
     UUID salesOrderHeaderId,
     UUID salesOrderLineId,
     UUID parentWorkOrderId,
+    UUID replenishmentRequestId,
     UUID finishedProductId,
     String finishedProductSku,
     BigDecimal completedQuantity,

@@ -49,7 +49,7 @@ class WorkOrderManufacturingCompletedWipHandlerTest {
         UUID eventId = UUID.randomUUID();
         WorkOrderManufacturingCompleted payload = new WorkOrderManufacturingCompleted(
             eventId, WORK_ORDER, "WO-001",
-            null, null, null,
+            null, null, null, null,
             FG, "FG-001", new BigDecimal(completedQty), Instant.now());
         return new EventEnvelope(
             eventId, "WorkOrder", WORK_ORDER,
