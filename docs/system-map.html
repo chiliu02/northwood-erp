@@ -2849,7 +2849,15 @@ window.NORTHWOOD_PROJECTIONS = [
             'text-background-padding': '2px',
             'text-background-shape': 'round-rectangle',
             'text-wrap': 'wrap',
-            'text-max-width': '170px',
+            // Headroom over the longest wrapped condition line
+            // ("[PURCHASE_REQUISITION kind, on") so a line that nearly fills the
+            // box isn't clipped on its last glyph by font-metric / sub-pixel
+            // rounding (Segoe UI renders these a touch wider than the wrap is
+            // measured at). Kept under ~235px so the two-line labels
+            // ("markDispatched" / "[PURCHASE_REQUISITION]") don't repack onto one
+            // wide line, and centred labels (x≈200) stay clear of the side-column
+            // nodes at x=0 / x=400.
+            'text-max-width': '220px',
             // Vertical stagger for parallel same-pair edge labels (0 otherwise).
             'text-margin-y': 'data(parDy)'
           }
