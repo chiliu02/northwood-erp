@@ -17,9 +17,10 @@ import tools.jackson.databind.ObjectMapper;
  * Idempotent inbox handler for {@code purchasing.PurchaseOrderCreated} owning the
  * replenishment PR→PO link. Sibling of
  * {@link PurchasingReplenishmentDispatchedHandler} — together they are the
- * inventory replenishment concern's view of the purchasing leg (kept in one
- * concern rather than split across the line-facts seeder, which is what created
- * the original ordering race).
+ * inventory replenishment concern's view of the purchasing leg (kept here rather
+ * than bolted onto the line-facts seeder — a cohesion fix; the race itself came
+ * from the two purchasing events being keyed by different aggregate ids, and is
+ * closed by the order-independence below, not by the move).
  *
  * <p><strong>Self-sufficient / order-independent.</strong> A
  * {@code PurchaseOrderCreated} carrying {@code sourceReplenishmentRequestId} is

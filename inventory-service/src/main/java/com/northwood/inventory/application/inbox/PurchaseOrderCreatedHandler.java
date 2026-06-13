@@ -15,10 +15,12 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p><strong>Single responsibility.</strong> The PR→PO replenishment link is
  * <em>not</em> handled here — it is owned by the replenishment concern
- * ({@link ReplenishmentPurchaseOrderLinkHandler}, a separate consumer of the
- * same event). Keeping the two side-effects in one consumer was what created
- * the dispatch-vs-PO-created ordering race; the link now lives with the
- * dispatch logic and resolves order-independently.
+ * ({@link ReplenishmentPurchaseOrderLinkHandler}, a separate handler of the
+ * same event). It was previously bolted on here only because this handler
+ * already consumed {@code PurchaseOrderCreated}; that was a cohesion smell, not
+ * the cause of the dispatch-vs-PO-created race (the race is the two purchasing
+ * events being keyed by different aggregate ids → different partitions). The
+ * link now lives with the dispatch concern, where it is made order-independent.
  */
 @Component
 public class PurchaseOrderCreatedHandler extends AbstractInboxHandler<PurchaseOrderCreated> {
