@@ -54,93 +54,75 @@ Both files are run under `/docker-entrypoint-initdb.d/` exactly once on first bo
 
 ## Aggregate status fields and schema CHECK constraints
 
-Every aggregate root carries a `status` field even when only one value is actively produced today. The schema CHECK constraint on the corresponding column lists every value that *could* be written under a future workflow path, not just what Java writes now. This section catalogues the pattern, the three flavours of `'draft'` it uses, and the per-aggregate inventory of "what Java actually writes today vs what the schema allows."
+Every aggregate root carries a `status` field even when only one value is actively produced today, but the nested `Status` enum and the column `CHECK (status IN (...))` track the **produced** set — what some Java path, DB trigger, or SQL-literal projection actually writes — not a forward-prep possibility space. This section catalogues that pattern, the values kept despite having no Java producer, and the three flavours of `'draft'` that survive.
 
-### The schema-prep convention
+### Enum mirrors the produced CHECK set
 
-The `status` column on every aggregate header table has a `CHECK (status IN (...))` constraint listing the full possibility space. The nested `Status` enum on the aggregate mirrors that list exactly — including values Java never writes. Those latent values get a one-line Javadoc tag:
+The enum on each aggregate mirrors its column CHECK exactly, and both list only what gets written. Forward-prep values that no path produced — intermediate approval states, partial-progress states, unbuilt cancel/reverse paths — were retired from both the enum and the CHECK, and column DEFAULTs were repointed to a produced value.
 
-```java
-/** Schema-prep — not currently produced by Java. */
-PENDING("pending"),
-```
+A value is **kept despite having no Java producer** only when a runtime path depends on it:
 
-Three reasons the latent values exist:
+1. **Trigger / SQL-literal producers.** The `maintain_allocation_totals` trigger on `customer_invoice_header` / `supplier_invoice_header` flips `status` to `partially_paid` / `paid` as payments allocate; `JdbcPurchaseOrderPaymentProjection` writes PO `paid`; the same trigger's reversal branch reads `payment_allocation` `reversed`. Java never writes these, but the enum has to read them back so `Status.fromCode(...)` doesn't throw.
+2. **Domain-guard terminals.** `PurchaseRequisition.Status.REJECTED` and `WorkOrder.Status.CLOSED` / `CANCELLED` are named by `Assert.state` guards (and tests) that block operating on a finished aggregate; `SupplierInvoice.MatchStatus.VARIANCE` is a 3-way-match outcome the aggregate + tests accept. No happy path emits them, but removing them would drop a real invariant or an accepted input.
 
-1. **Trigger-written values.** The `maintain_allocation_totals` trigger on `customer_invoice_header` / `supplier_invoice_header` flips `status` to `partially_paid` or `paid` as payments allocate. Java never writes those — it only writes `posted` — but the enum has to know them so reads via `Status.fromCode(...)` don't throw.
-2. **Future workflow paths.** `CustomerInvoice.Status.DRAFT` and `CANCELLED` are listed for the eventual "save draft invoice / cancel before posting" UI that doesn't exist yet. The schema CHECK is the forward-compat surface; Java will start producing them when the workflow lands.
-3. **Hand-inserted DEFAULT rows.** `SupplierInvoice.MatchStatus.NOT_MATCHED` is the column's DB DEFAULT. Java's `record()` factory always writes a real outcome (`MATCHED` / `VARIANCE` / `FAILED`), but seed data or hand-INSERTed rows can land at `not_matched`. The enum has to read that back.
-
-User direction 2026-05-19 (memory): *"don't propose dropping a single-valued status to tidy up; schema-prep for future cancel/reverse paths is deliberate. New aggregates get a status from day one."*
+(Earlier project direction kept *all* single-valued / forward-prep statuses as deliberate schema-prep; that was reversed for this showcase — values with no producer are retired unless they fall under one of the two cases above.)
 
 ### The three flavours of `'draft'`
 
-The `'draft'` literal appears in 9 separate aggregate CHECK constraints, and it means three substantially different things depending on aggregate:
+After the schema-prep retirement `'draft'` survives in two aggregates, meaning something different in each:
 
 - **(A) Load-bearing transient** — Java writes `draft` as step 1 of a two-phase save, then UPDATEs to the final state inside the same transaction. The row is never observed at `draft` from outside the transaction.
 
   Only case: **`finance.journal_entry_header`**. The `guard_journal_line_immutability` DB trigger rejects line INSERTs once the header is `posted`. So `JdbcJournalEntryRepository.save()` inserts the header at `draft`, INSERTs the lines while the trigger is happy, then UPDATEs the header to `posted`. The `draft` value is essential — without it the schema can't enforce "lines are immutable after posting."
 
-- **(B) Schema-prep for future workflow** — Java never writes `draft` today; the value is reserved for a "save without committing" path that doesn't exist yet.
-
-  Cases (all tagged `/** Schema-prep — not currently produced by Java [or trigger]. */`):
-  - `sales.sales_order_header` — `SalesOrder.Status.DRAFT`
-  - `inventory.goods_receipt_header` — `GoodsReceipt.Status.DRAFT`
-  - `inventory.shipment_header` — `Shipment.Status.DRAFT`
-  - `finance.customer_invoice_header` — `CustomerInvoice.Status.DRAFT`
-  - `finance.supplier_invoice_header` — `SupplierInvoice.Status.DRAFT`
-  - `finance.payment` — `Payment.Status.DRAFT`
-  - `purchasing.purchase_requisition_header` — `PurchaseRequisition.Status.DRAFT`
-
-  For these, the schema CHECK includes `draft` so a future UI can stage in-progress documents without breaking the constraint when production code starts writing it. The column DEFAULT is sometimes `draft` (e.g. `purchase_requisition_header`, `purchase_order_header`) and sometimes the active first state (e.g. `customer_invoice_header DEFAULT 'draft'` — but Java always writes `posted` via `create()`, bypassing the DEFAULT).
-
 - **(C) Active first phase** — Java writes `draft` as the initial state on creation; an explicit user action transitions to the next state.
 
-  Cases:
   - `manufacturing.bom_header` — `Bom.Status.DRAFT` → `ACTIVE` (BOM authoring: build the structure first, then activate it for production use).
   - `purchasing.purchase_order_header` — `PurchaseOrder.Status.DRAFT` → `SENT` (via `approve()` when `autoApprove=false`; the manual-PR path lands at `draft` and waits for a human approval. The shortage-driven auto-PR path skips `draft` and goes straight to `sent`.)
 
-Implication: searching `WHERE status = 'draft'` in operational queries means different things in different schemas. The same literal isn't the same concept.
+The former **(B) schema-prep `draft`** — on sales orders, goods receipts, shipments, customer/supplier invoices, payments, and purchase requisitions — was retired; those columns now DEFAULT to their produced first state (`posted` / `approved`).
+
+Implication: searching `WHERE status = 'draft'` still means different things in (A) vs (C) — a transient pre-posting journal-entry header vs a real awaiting-action BOM or PO.
 
 ### Aggregate status inventory
 
 Per-aggregate summary of what Java writes today (✓) vs what the schema CHECK allows but Java doesn't write (◯). Cross-reference for "is this safe to drop from the CHECK?" — almost always no, per the user direction above.
 
-| Aggregate | Table | Java-written today (✓) | Schema-prep (◯) |
-|---|---|---|---|
-| `Product` | `product.product` | active, inactive, discontinued | — |
-| `Customer` | `sales.customer` | active, inactive, blocked | — |
-| `SalesOrder` | `sales.sales_order_header` | submitted, in_fulfilment, partially_shipped, shipped, completed, cancelled, rejected | draft, confirmed |
-| `StockReservation` | `inventory.stock_reservation_header` + `_line` | reserved, partially_reserved, failed | pending, released, consumed |
-| `GoodsReceipt` | `inventory.goods_receipt_header` | posted, reversed ‡ | draft |
-| `Shipment` | `inventory.shipment_header` | posted, reversed ‡ | draft |
-| `Bom` | `manufacturing.bom_header` | draft (C), active, inactive | — |
-| `WorkOrder` | `manufacturing.work_order` | released, in_progress, completed, closed, cancelled | planned, material_check_pending, waiting_for_materials, partially_completed, blocked |
-| `WorkOrder` (material_status) | `manufacturing.work_order` | reservation_pending, reserved, partially_reserved, shortage | not_checked, issued |
-| `PurchaseRequisition` | `purchasing.purchase_requisition_header` | pending_approval, approved, rejected, converted | draft, cancelled |
-| `PurchaseOrder` | `purchasing.purchase_order_header` | draft (C), sent, received | pending_approval, approved, partially_received, paid, closed, cancelled, rejected |
-| `CustomerInvoice` | `finance.customer_invoice_header` | posted | draft, partially_paid †, paid †, cancelled |
-| `SupplierInvoice` | `finance.supplier_invoice_header` | approved, three_way_match_failed, cancelled | draft, three_way_match_pending, three_way_match_passed, posted, partially_paid †, paid †, on_hold |
-| `SupplierInvoice` (match_status) | `finance.supplier_invoice_header` | matched, variance, failed | not_matched |
-| `Payment` | `finance.payment` | posted | draft, cancelled, reversed |
-| `PaymentAllocation` | `finance.payment_allocation` | posted | reversed |
-| `JournalEntry` | `finance.journal_entry_header` | draft (A), posted, reversed | — |
+| Aggregate | Table | Status values |
+|---|---|---|
+| `Product` | `product.product` | active, inactive, discontinued |
+| `Customer` | `sales.customer` | active, inactive, blocked |
+| `SalesOrder` | `sales.sales_order_header` | submitted, in_fulfilment, partially_shipped, shipped, completed, cancelled, rejected |
+| `StockReservation` | `inventory.stock_reservation_header` + `_line` | reserved, partially_reserved, failed, released |
+| `GoodsReceipt` | `inventory.goods_receipt_header` | posted |
+| `Shipment` | `inventory.shipment_header` | posted |
+| `StockAdjustment` | `inventory.stock_adjustment` | posted |
+| `Bom` | `manufacturing.bom_header` | draft (C), active, inactive |
+| `WorkOrder` | `manufacturing.work_order` | released, in_progress, completed, closed §, cancelled § |
+| `WorkOrder` (material_status) | `manufacturing.work_order` | reservation_pending, reserved, partially_reserved, shortage |
+| `PurchaseRequisition` | `purchasing.purchase_requisition_header` | approved, rejected §, converted |
+| `PurchaseOrder` | `purchasing.purchase_order_header` | draft (C), sent, partially_received, received, paid †, cancelled |
+| `CustomerInvoice` | `finance.customer_invoice_header` | posted, partially_paid †, paid † |
+| `SupplierInvoice` | `finance.supplier_invoice_header` | three_way_match_failed, approved, partially_paid †, paid †, cancelled |
+| `SupplierInvoice` (match_status) | `finance.supplier_invoice_header` | matched, variance §, failed |
+| `Payment` | `finance.payment` | posted |
+| `PaymentAllocation` | `finance.payment_allocation` | posted, reversed § |
+| `JournalEntry` | `finance.journal_entry_header` | draft (A), posted, reversed |
 
-‡ — `reversed` reachable today only through a future reversal flow that doesn't have a UI; the value is allowed by CHECK and the enum can read it back, but no Java code path currently emits the transition.
+† — written by a DB trigger or a SQL-literal projection, not by aggregate Java: invoice `partially_paid` / `paid` come from the `maintain_allocation_totals` trigger; PO `paid` is written by `JdbcPurchaseOrderPaymentProjection`.
 
-† — written by the `maintain_allocation_totals` DB trigger as payments allocate, not by Java.
+§ — no Java producer, but retained because a runtime path depends on the value: the `WorkOrder` / `PurchaseRequisition` terminals back `Assert.state` guards (and a test) that block operating on a finished aggregate; `match_status = variance` is a 3-way-match outcome the aggregate + tests accept; `payment_allocation.reversed` is the `maintain_allocation_totals` trigger's reversal target. `JournalEntry` `reversed` is genuinely produced (the reversal flow is shipped).
 
-(A), (C) — `draft` flavour from the previous section; (A) = load-bearing transient, (C) = active first phase. All other `draft` entries in the table are (B) schema-prep.
+(A), (C) — `draft` flavour from the section above; (A) = load-bearing transient, (C) = active first phase.
 
 ### Read path
 
-Every aggregate's persistence layer reads back via `Status.fromCode(rs.getString("status"))`. Because `fromCode` throws `IllegalArgumentException` on unknown values, *all* CHECK-allowed values must be enum members — including schema-prep — or the next time the trigger or a future workflow writes them, the read explodes. This is why we keep the schema-prep enum members rather than slimming down to "only what Java writes."
+Every aggregate's persistence layer reads back via `Status.fromCode(rs.getString("status"))`, which throws `IllegalArgumentException` on an unknown value. The enum and the column CHECK now list the same produced set, so a fresh database never feeds `fromCode` a value it doesn't know. **Caveat:** the live AWS demo DB still carries the older, looser CHECKs (the baseline edit isn't ALTERed onto it), so a hand-inserted or pre-existing row at a now-removed value would throw on read — but new rows can't reach those values, so this only bites legacy data.
 
-### Drop-status review checklist
+### Adding a value back to a status CHECK
 
-If you find yourself wanting to drop a value from a status CHECK because "Java doesn't write it":
+Forward-prep values were retired (see the inventory above). When a future workflow starts producing one again, add it to **both** the enum and the column CHECK together, and:
 
-1. **Check the column DEFAULT** — if the DEFAULT is the value you want to drop, you need to update the DEFAULT in the same change.
-2. **Check the triggers** — `maintain_allocation_totals`, `guard_journal_line_immutability`, and similar may write values Java doesn't.
+1. **Set / repoint the column DEFAULT** if the new value should be the initial state.
+2. **Check the triggers** — `maintain_allocation_totals`, `guard_journal_line_immutability`, and similar write values Java doesn't.
 3. **Check the seed in `config/postgresql/northwood_erp_seed.sql`** — hand-INSERTed seed rows can carry values that no factory produces.
-4. **Confirm with the user before proposing the drop.** Per the standing memory, single-valued status fields are deliberate forward-compat surface.

@@ -416,19 +416,19 @@ When inventory raises a manufacturing-routed Replenishment Request (REQ-INV-082)
 **REQ-MFG-040 ✅ — Reserve raw materials at WO release** *(shipped)*
 Each WO material line asks inventory to reserve its quantity. A shortage triggers REQ-XBC-080 (the unified replenishment loop, Trigger B — inventory raises a Replenishment Request and routes it to purchasing through the same channel as reorder-point breaches).
 
-**REQ-MFG-041 ✅ — Material check status per WO** *(shipped)*
-A WO carries a material status: `not_checked` → `material_check_pending` → `waiting_for_materials` or `released` based on reservation outcomes. Only `released` WOs may begin operations.
+**REQ-MFG-041 ✅ — Material reservation status per WO** *(shipped)*
+A WO carries a material status reflecting its raw-material reservation: `reservation_pending` → `reserved` / `partially_reserved` / `shortage` based on the reservation outcome. A `shortage` drives the replenishment loop (REQ-MFG-040); the WO is released and may begin operations once materials are reserved.
 
 ### 4.6 Operations and completion
 
 **REQ-MFG-050 ✅ — Complete an operation** *(shipped)*
-A shop-floor operator marks an operation complete. The system stamps actual-completion time and advances to the next operation. The WO moves between `planned` → `in_progress` → `partially_completed` → `completed` based on operation progress.
+A shop-floor operator marks an operation complete. The system stamps actual-completion time and advances to the next operation. The WO moves `released` → `in_progress` → `completed` based on operation progress.
 
 **REQ-MFG-051 ✅ — Skip an operation** *(shipped)*
 An authorised operator may skip an operation (with a reason). Skipped operations are auditable but do not block WO completion.
 
 **REQ-MFG-052 ✅ — Parent on children gating** *(shipped)*
-A parent WO's operations cannot start until all child sub-assembly WOs are completed. The system enforces this automatically; the parent shows as `waiting_for_materials` until children are done.
+A parent WO's operations cannot start until all child sub-assembly WOs are completed. The system enforces this automatically; the parent stays `released` with its operations blocked until children are done.
 
 ### 4.7 WO cancellation
 
@@ -480,10 +480,9 @@ Setting the same price as already on file emits no event and writes no audit row
 | Source type | Trigger | Status |
 |---|---|---|
 | `manual`              | A buyer raises a requisition through the UI                                                                            | Shipped |
-| `stock_replenishment` | Inventory's automatic replenishment loop (REQ-INV-080) raised a purchasing-routed replenishment — covers BOTH reorder-point breaches AND former WO raw-material shortages | Shipped |
-| `work_order_shortage` | *(retired by the replenishment redesign)* — was: manufacturing's shortage signal triggered purchasing directly          | Removed; historical rows preserved |
+| `stock_replenishment` | Inventory's automatic replenishment loop (REQ-INV-080) raises a purchasing-routed replenishment — covers BOTH reorder-point breaches AND WO raw-material shortages | Shipped |
 
-*Note:* the `work_order_shortage` flow is being retired specifically to enforce the manufacturing↔purchasing decoupling (REQ-INV-087). Existing PRs already in the database with that source type remain readable; the CHECK constraint keeps the value valid as a historical marker. The Java path that produced new ones (`PurchaseRequisitionService.createForWorkOrderShortage(...)` plus `purchasing.RawMaterialShortageDetectedHandler`) is **deleted** as part of the replenishment redesign.
+*Note:* a former `work_order_shortage` source type (manufacturing's shortage signal triggering purchasing directly) was removed when the manufacturing↔purchasing decoupling (REQ-INV-087) re-routed WO shortages through inventory's Replenishment Request — they now arrive as `stock_replenishment`. The source type and its Java path are gone, not just dormant.
 
 **REQ-PUR-021 ✅ — Auto-approval policy** *(shipped)*
 PRs created by the `stock_replenishment` flow auto-approve at creation (configurable via `northwood.purchasing.shortagePoAutoApprove`, default true) — so the operator experience is the same whether the request came from a reorder-point breach or a WO raw-material shortage. Manual PRs continue to land at draft and require buyer approval.

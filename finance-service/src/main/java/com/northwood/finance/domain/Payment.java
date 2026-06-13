@@ -173,12 +173,13 @@ public final class Payment {
 
     /**
      * Allocation status (on {@link PaymentAllocation} child). Mirrors the
-     * schema CHECK on {@code finance.payment_allocation.status}. Today's Java
-     * only writes {@code POSTED}; {@code REVERSED} is schema-prep.
+     * schema CHECK on {@code finance.payment_allocation.status}. Java writes
+     * {@code POSTED}; the {@code posted ↔ reversed} flip and its running-total
+     * effect are handled by the {@code maintain_allocation_totals} DB trigger,
+     * so {@code REVERSED} is retained as the trigger's reversal target.
      */
     public enum AllocationStatus {
         POSTED("posted"),
-        /** Schema-prep — not currently produced by Java. */
         REVERSED("reversed");
 
         private final String code;

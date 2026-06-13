@@ -192,7 +192,7 @@ case "reserved" -> ...;                       // ❌ string literal; producer re
 ```
 
 Same pattern for source/type/method/kind fields:
-- `PurchaseRequisitionCreated.SOURCE_TYPE_MANUAL` / `SOURCE_TYPE_LOW_STOCK` / `SOURCE_TYPE_WORK_ORDER_SHORTAGE`.
+- `PurchaseRequisitionCreated.SOURCE_TYPE_MANUAL` / `SOURCE_TYPE_STOCK_REPLENISHMENT`.
 - `CustomerPaymentReceived.INVOICE_STATUS_PAID` / `INVOICE_STATUS_PARTIALLY_PAID`.
 
 ### When the column is on an aggregate but the consumer is a projection in another service
