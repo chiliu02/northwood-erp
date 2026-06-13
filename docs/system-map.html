@@ -289,6 +289,7 @@
   .saga-block > .gap-callout,
   .saga-block > .saga-graph-toolbar,
   .saga-block > .saga-graph,
+  .saga-block > .saga-note,
   .saga-block > .mermaid-source {
     margin-left: 1rem;
     margin-right: 1rem;
@@ -392,6 +393,39 @@
     font-size: 0.78rem;
     overflow-x: auto;
   }
+  .saga-note {
+    background: #f1f6fb;
+    border: 1px solid #b6d4ef;
+    border-left: 4px solid #4a8fd6;
+    border-radius: 5px;
+    margin: 0.6rem 0 1rem;
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+  .saga-note > summary {
+    cursor: pointer;
+    padding: 0.55rem 0.85rem;
+    font-weight: 600;
+    color: #1f5189;
+    list-style: none;
+  }
+  .saga-note > summary::-webkit-details-marker { display: none; }
+  .saga-note > summary::before {
+    content: "▸";
+    display: inline-block;
+    margin-right: 0.5rem;
+    color: #4a8fd6;
+    transition: transform 0.15s ease;
+  }
+  .saga-note[open] > summary::before { transform: rotate(90deg); }
+  .saga-note .saga-note-body {
+    padding: 0 0.95rem 0.7rem 1.4rem;
+  }
+  .saga-note .saga-note-body p { margin: 0.5rem 0; }
+  .saga-note .saga-note-body ol,
+  .saga-note .saga-note-body ul { margin: 0.4rem 0; padding-left: 1.3rem; }
+  .saga-note .saga-note-body li { margin: 0.3rem 0; }
+  .saga-note .saga-note-body strong { color: #1f5189; }
 
   .hidden { display: none !important; }
 
@@ -673,6 +707,24 @@ stateDiagram-v2
     rejected --> [*]
     </pre>
   </details>
+  <details class="saga-note">
+    <summary><code>stock_reservation_incomplete</code> ⇄ <code>stock_reservation_requested</code> — park &amp; retry under contention</summary>
+    <div class="saga-note-body">
+      <p>The back-edge <code>stock_reservation_incomplete&nbsp;→&nbsp;stock_reservation_requested</code> is a <strong>retry spin-loop</strong>: the saga parks on a partial/failed reservation, waits for inventory to replenish the short lines, then retries the reservation against the now-restocked pool. It is the one cycle that makes this graph <strong>not a DAG</strong> — and that is fine: it is a bounded retry, not non-termination (see <em>Why it always terminates</em> below).</p>
+
+      <p><strong>Parking (entry).</strong> On <code>StockReserved [shortage]</code> the saga records the short lines in its outstanding-replenishment set (<code>FulfilmentSagaData.outstandingReplenishmentLineIds</code>) and parks at <code>stock_reservation_incomplete</code>. Inventory has already raised a <code>ReplenishmentRequest</code> for each short line <em>in the same transaction</em> as the reservation (<code>StockReservationService.reserveForSalesOrder</code>) — inventory is the single make-vs-buy decision + trigger point, so the saga only waits, it never routes supply itself.</p>
+
+      <p><strong>Eager partial reservation.</strong> Reservation is <strong>per-line, claim-what-you-can</strong>, not all-or-nothing. <code>reserveUpTo</code> grabs <code>min(available, wanted)</code> for each line and holds it on <code>stock_balance.reserved_quantity</code> immediately; only the <em>shortfall</em> becomes a <code>ReplenishmentRequest</code>. So a line wanting 100 with 30 on hand reserves 30 now (status <code>partially_reserved</code>) and replenishes 70. In a multi-line order a fully-coverable line reserves and holds straight away while only the short lines sit in the outstanding set.</p>
+
+      <p><strong>Retry (exit back to <code>requested</code>).</strong> Each short line's <code>inventory.ReplenishmentFulfilled</code> removes that line from the outstanding set (<code>ReplenishmentFulfilledHandler</code> → <code>applyReplenishmentFulfilled</code>). When the set empties <em>and</em> at least one drained line was a make-to-stock top-up, the saga re-enters <code>stock_reservation_requested</code> and re-emits <code>StockReservationRequested</code>. The retry re-reserves the <strong>whole order</strong>, not just the patched line: the <code>UNIQUE(sales_order_header_id)</code> on the reservation header forces <code>cancelPriorSalesOrderReservation</code> to release the prior held lines back to the pool and re-reserve the full current line set from the sales-side line snapshot.</p>
+
+      <p><strong>The loop can cycle.</strong> The retry is not assumed to win — the re-emitted <code>StockReservationRequested</code> can itself come back <code>partially_reserved</code>/<code>failed</code> (the replenishment under-delivered, or a concurrent order took the topped-up stock in the release/re-reserve window), re-parking at <code>stock_reservation_incomplete</code> with the new shortage. <code>reserveUpTo</code>'s bounded backoff-retry absorbs the brief race; the workload is single-tenant in the demo so it is effectively never hit.</p>
+
+      <p><strong>The other two exits</strong> (both leave the loop): <code>ReplenishmentFulfilled</code> where every drained line was <em>order-pegged</em> (to_order, reserved on completion) goes straight to <code>supply_secured</code> — re-reserving would re-peg; and <code>ReplenishmentCancelled</code> for any short line (unsourceable SKU / no active BOM / no approved vendor) moves the whole order to <code>rejected</code>.</p>
+
+      <p><strong>Why it always terminates.</strong> The cycle is safe because every lap makes measurable progress toward a terminal: each iteration is gated on a real <code>ReplenishmentFulfilled</code> event (it parks, it does not busy-spin) and always carries its two guaranteed exits — fully reserved → <code>supply_secured</code>, or unsourceable → <code>rejected</code>. Acyclicity is sufficient for termination but not necessary; what matters for a saga is that <em>every cycle has a guaranteed exit</em>, which this one does.</p>
+    </div>
+  </details>
 </details>
 
 <details class="saga-block">
@@ -693,6 +745,26 @@ stateDiagram-v2
     raw_materials_reserved --> completed : applyManufacturingCompleted [last op]
     completed --> [*]
     </pre>
+  </details>
+  <details class="saga-note">
+    <summary><code>raw_material_shortage</code> self-loop &amp; ⇄ <code>raw_material_reservation_requested</code> — narrow, then retry</summary>
+    <div class="saga-note-body">
+      <p>This saga carries <strong>two cyclic edges</strong> — the WO analogue of the SO reservation-retry loop, with one extra wrinkle. The self-loop <code>raw_material_shortage&nbsp;→&nbsp;raw_material_shortage</code> (<em>narrow</em>) progressively whittles down a stashed shortage as goods receipts trickle in; the larger loop <code>raw_material_shortage&nbsp;→&nbsp;raw_material_reservation_requested&nbsp;→&nbsp;raw_material_shortage</code> (<em>unpark</em>, then retry comes back short) re-attempts the whole reservation. Either is a cycle, so this graph is <strong>not a DAG</strong> — and, as with the SO saga, that is fine: each lap makes monotone progress (see <em>Why it always terminates</em>).</p>
+
+      <p><strong>Parking (entry).</strong> On <code>RawMaterialsReserved [shortage]</code> the saga transitions to <code>raw_material_shortage</code> and <strong>stashes the per-product remaining shortage</strong> on its own data row (<code>applyRawMaterialsReserved</code> → <code>stashShortageOnSaga</code>, persisting <code>shortageByProductId</code> in the saga's <code>dataJson</code>). Unlike the SO saga it records the outstanding work as a <em>quantity-per-product map</em>, not just a set of line ids — because recovery arrives as partial deliveries that must be subtracted, not toggled.</p>
+
+      <p><strong>Eager partial reservation.</strong> Same per-component, claim-what-you-can logic as the SO side (shared <code>reserveUpTo</code> in <code>StockReservationService</code>): <code>reserveForWorkOrder</code> grabs <code>min(available, required)</code> for each BOM component and holds it on <code>stock_balance.reserved_quantity</code>; only the shortfall per component is reported back as the shortage to stash and replenish.</p>
+
+      <p><strong>The self-loop (<em>narrow</em>).</strong> Each covering <code>inventory.GoodsReceived</code> (a receipt against a purchasing PO) is processed by <code>GoodsReceivedHandler</code> → <code>unparkOrNarrowShortage</code> → <code>decideUnpark</code>: for every product the saga is short on, it subtracts the received quantity from the stashed remaining (<code>remaining = max(0, remaining − received)</code>). If <strong>some</strong> product is still short, the decision is <code>NARROW</code> — the saga rewrites the smaller stash and <strong>stays parked</strong> at <code>raw_material_shortage</code>. That is the self-loop: a WO short on three materials may take several receipts, narrowing each time, before it is whole.</p>
+
+      <p><strong>Unpark + retry (the larger loop).</strong> Once the last product reaches zero remaining, the decision is <code>UNPARK</code>: the saga moves to <code>raw_material_reservation_requested</code> and <code>GoodsReceivedHandler</code> re-emits <code>RawMaterialReservationRequested</code> (via <code>RawMaterialReservationRequestEmitter</code> — the same emitter the worker used initially) to retry reservation against the now-restocked materials. As on the SO side, the retry re-reserves the <strong>whole WO</strong>, not just the patched component: the <code>UNIQUE(work_order_id)</code> on the reservation header forces <code>cancelPriorReservationFor</code> to release the prior held components and re-reserve the full component set.</p>
+
+      <p><strong>The loop can cycle.</strong> The retry is not assumed to win — the re-emitted reservation can come back <code>shortage</code> again (a concurrent WO/SO drew the restocked material, or the receipt under-covered against the BOM), dropping the saga back to <code>raw_material_shortage</code> with a fresh stash to narrow.</p>
+
+      <p><strong>Fan-in by product.</strong> Recovery is keyed on the received products, not on one WO: a single <code>GoodsReceived</code> asks <code>WorkOrderShortageRecoveryQueryPort.findShortageSagaIdsForReceivedProducts</code> for <em>every</em> shortage-parked saga waiting on any received product and narrows/unparks each. So one receipt can advance many parked work orders at once.</p>
+
+      <p><strong>Why it always terminates — and how it differs from the SO loop.</strong> The stashed <code>shortageByProductId</code> is a strictly-decreasing progress measure: every receipt that touches it only shrinks the remaining (<code>NARROW</code> never grows it), and zero-remaining forces <code>UNPARK</code>. The cycle therefore cannot spin without progress. The key difference from the SO saga: there is <strong>no unsourceable <code>rejected</code> terminal</strong> — a make-to-stock WO has no "give up" exit; it parks until purchasing eventually delivers the covering receipt, so liveness here is contingent on supply arriving rather than bounded by a reject. The only forward exit is <em>fully covered → <code>raw_materials_reserved</code> → <code>completed</code></em>.</p>
+    </div>
   </details>
 </details>
 
@@ -739,6 +811,13 @@ stateDiagram-v2
     fulfilled --> [*]
     cancelled --> [*]
     </pre>
+  </details>
+  <details class="saga-note">
+    <summary><code>dispatched → dispatched</code> self-loop — idempotent PO-link stamp, not a retry cycle</summary>
+    <div class="saga-note-body">
+      <p>The self-edge <code>dispatched&nbsp;→&nbsp;dispatched</code> (<code>linkPurchaseOrder</code> on <code>PurchaseOrderCreated</code>) is a cycle in graph terms, but — unlike the SO and WO shortage loops — it is <strong>not</strong> a park-and-retry cycle. It is a <strong>state-preserving, one-shot, idempotent stamp</strong>: when the requisition's <code>PurchaseOrderCreated</code> lands it records <code>linked_purchase_order_id</code> (so a later <code>GoodsReceived</code> can resolve back to the request) <em>without changing state</em> — the request stays <code>dispatched</code>.</p>
+      <p>It cannot spin: re-arrival of the same PO no-ops (<code>linkPurchaseOrder</code> returns early), and a <em>different</em> PO when one is already linked throws (<code>Assert.state</code>). So it fires at most once meaningfully — there is no waiting, no re-attempt, and no progress measure to worry about. The machine doesn't move; only a field is filled in.</p>
+    </div>
   </details>
   <p class="desc"><code>reason</code> (<code>reorder_point_breach</code> | <code>work_order_shortage</code> | <code>sales_order_shortage</code> | <code>order_pegged</code>) carries why the request was raised; <code>dispatched_aggregate_kind</code> + <code>dispatched_aggregate_id</code> identify the downstream WO / PR; <code>linked_purchase_order_id</code> stamps the PO that ends the purchasing leg so a later <code>GoodsReceived</code> can resolve back to the request. Emits <code>inventory.ReplenishmentRequested</code> on the <code>request</code> transition, <code>inventory.ReplenishmentFulfilled</code> on <code>markFulfilled</code>, and <code>inventory.ReplenishmentCancelled</code> on <code>markCancelled</code> — the failure counterpart, which for a <code>sales_order_shortage</code> / <code>order_pegged</code> request flips the originating sales order to <code>rejected</code>. <code>ReplenishmentFulfilled.pegged</code> is set <code>= (reason == order_pegged)</code>: an order-pegged request's output is reserved to the originating SO line atomically with the stock credit (WO completion or goods receipt), so <code>pegged=true</code> tells sales to ship direct without a re-reservation retry.</p>
 </details>
