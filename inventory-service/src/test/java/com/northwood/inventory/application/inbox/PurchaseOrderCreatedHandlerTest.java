@@ -87,7 +87,7 @@ class PurchaseOrderCreatedHandlerTest {
                 "RM", "R", new BigDecimal("1"), new BigDecimal("1"))
         ));
         when(inbox.alreadyProcessed(eq(envelope.eventId()),
-            eq(PurchaseOrderCreatedHandler.CONSUMER_NAME))).thenReturn(true);
+            eq(PurchaseOrderCreatedHandler.HANDLER_NAME))).thenReturn(true);
 
         handler.handle(envelope);
 

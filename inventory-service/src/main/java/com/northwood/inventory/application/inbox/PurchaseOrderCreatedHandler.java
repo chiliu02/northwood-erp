@@ -25,7 +25,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class PurchaseOrderCreatedHandler extends AbstractInboxHandler<PurchaseOrderCreated> {
 
-    public static final String CONSUMER_NAME = "inventory.purchase-order-line-facts";
+    public static final String HANDLER_NAME = "inventory.purchase-order-line-facts";
 
     private final PurchaseOrderLineFactsProjection projection;
 
@@ -34,7 +34,7 @@ public class PurchaseOrderCreatedHandler extends AbstractInboxHandler<PurchaseOr
         PurchaseOrderLineFactsProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, PurchaseOrderCreated.class, PurchaseOrderCreated.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, PurchaseOrderCreated.class, PurchaseOrderCreated.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 
@@ -48,6 +48,6 @@ public class PurchaseOrderCreatedHandler extends AbstractInboxHandler<PurchaseOr
             );
         }
         log.info("[{}] seeded purchase_order_line_facts for purchase_order={} ({} line(s))",
-            CONSUMER_NAME, payload.aggregateId(), payload.lines().size());
+            HANDLER_NAME, payload.aggregateId(), payload.lines().size());
     }
 }

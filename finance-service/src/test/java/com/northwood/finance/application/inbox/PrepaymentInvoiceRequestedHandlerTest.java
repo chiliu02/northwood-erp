@@ -70,7 +70,7 @@ class PrepaymentInvoiceRequestedHandlerTest {
     @Test void already_processed_short_circuits() {
         EventEnvelope envelope = event();
         when(inbox.alreadyProcessed(eq(envelope.eventId()),
-            eq(PrepaymentInvoiceRequestedHandler.CONSUMER_NAME))).thenReturn(true);
+            eq(PrepaymentInvoiceRequestedHandler.HANDLER_NAME))).thenReturn(true);
 
         handler.handle(envelope);
 

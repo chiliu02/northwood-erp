@@ -89,7 +89,7 @@ class StockReservedHandlerTest {
 
     @Test void already_processed_short_circuits() {
         EventEnvelope envelope = event("reserved", BigDecimal.ZERO);
-        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(StockReservedHandler.CONSUMER_NAME)))
+        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(StockReservedHandler.HANDLER_NAME)))
             .thenReturn(true);
 
         handler.handle(envelope);

@@ -18,7 +18,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ReplenishmentStrategyChangedHandler extends AbstractInboxHandler<ReplenishmentStrategyChanged> {
 
-    public static final String CONSUMER_NAME = "purchasing.product-replenishment-strategy";
+    public static final String HANDLER_NAME = "purchasing.product-replenishment-strategy";
 
     private final ReplenishmentStrategyProjection projection;
 
@@ -27,7 +27,7 @@ public class ReplenishmentStrategyChangedHandler extends AbstractInboxHandler<Re
         ReplenishmentStrategyProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, ReplenishmentStrategyChanged.class, ReplenishmentStrategyChanged.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ReplenishmentStrategyChanged.class, ReplenishmentStrategyChanged.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 
@@ -36,7 +36,7 @@ public class ReplenishmentStrategyChangedHandler extends AbstractInboxHandler<Re
         projection.applyReplenishmentStrategy(payload.aggregateId(), payload.newReplenishmentStrategy());
 
         log.info("[{}] applied {} ({}) for product_id={} → strategy={}",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(),
             payload.aggregateId(), payload.newReplenishmentStrategy());
     }
 }

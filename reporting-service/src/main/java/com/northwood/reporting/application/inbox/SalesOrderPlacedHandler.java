@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class SalesOrderPlacedHandler extends AbstractInboxHandler<SalesOrderPlaced> {
 
-    public static final String CONSUMER_NAME = "reporting.sales-order-360.order-placed";
+    public static final String HANDLER_NAME = "reporting.sales-order-360.order-placed";
 
     private final SalesOrder360Projection projection;
 
@@ -20,7 +20,7 @@ public class SalesOrderPlacedHandler extends AbstractInboxHandler<SalesOrderPlac
         SalesOrder360Projection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, SalesOrderPlaced.class, SalesOrderPlaced.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, SalesOrderPlaced.class, SalesOrderPlaced.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 

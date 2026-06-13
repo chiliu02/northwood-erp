@@ -44,7 +44,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class StockReservedHandler extends AbstractInboxHandler<StockReserved> {
 
-    public static final String CONSUMER_NAME = "sales.fulfilment-saga";
+    public static final String HANDLER_NAME = "sales.fulfilment-saga";
 
     private final SalesOrderFulfilmentSagaManager sagaManager;
     private final SalesOrderService salesOrders;
@@ -59,7 +59,7 @@ public class StockReservedHandler extends AbstractInboxHandler<StockReserved> {
         SalesOrderLineSnapshotPort lineSnapshots,
         ObjectMapper json
     ) {
-        super(inbox, json, StockReserved.class, StockReserved.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, StockReserved.class, StockReserved.EVENT_TYPE, HANDLER_NAME);
         this.sagaManager = sagaManager;
         this.salesOrders = salesOrders;
         this.readyToShipEmitter = readyToShipEmitter;
@@ -81,7 +81,7 @@ public class StockReservedHandler extends AbstractInboxHandler<StockReserved> {
         }
 
         log.info("[{}] sales_order={} status={} saga_state={} (reservation_id={})",
-            CONSUMER_NAME, payload.salesOrderId(), payload.status(), newState, payload.stockReservationId());
+            HANDLER_NAME, payload.salesOrderId(), payload.status(), newState, payload.stockReservationId());
     }
 
     /**

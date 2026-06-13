@@ -85,7 +85,7 @@ class GoodsReceivedHandlerTest {
     @Test void already_processed_short_circuits() {
         EventEnvelope envelope = event("100");
         when(inbox.alreadyProcessed(eq(envelope.eventId()),
-            eq(GoodsReceivedHandler.CONSUMER_NAME))).thenReturn(true);
+            eq(GoodsReceivedHandler.HANDLER_NAME))).thenReturn(true);
 
         handler.handle(envelope);
 

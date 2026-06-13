@@ -26,7 +26,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class CustomerPaymentReceivedHandler extends AbstractInboxHandler<CustomerPaymentReceived> {
 
-    public static final String CONSUMER_NAME = "sales.fulfilment-saga.customer-payment-received";
+    public static final String HANDLER_NAME = "sales.fulfilment-saga.customer-payment-received";
 
     private final SalesOrderFulfilmentSagaManager sagaManager;
     private final SalesOrderService salesOrders;
@@ -39,7 +39,7 @@ public class CustomerPaymentReceivedHandler extends AbstractInboxHandler<Custome
         SalesOrderUpfrontPaymentSettledEmitter upfrontSettledEmitter,
         ObjectMapper json
     ) {
-        super(inbox, json, CustomerPaymentReceived.class, CustomerPaymentReceived.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, CustomerPaymentReceived.class, CustomerPaymentReceived.EVENT_TYPE, HANDLER_NAME);
         this.sagaManager = sagaManager;
         this.salesOrders = salesOrders;
         this.upfrontSettledEmitter = upfrontSettledEmitter;

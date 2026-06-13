@@ -31,7 +31,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
 
-    public static final String CONSUMER_NAME = "finance.po-line-facts.goods-received";
+    public static final String HANDLER_NAME = "finance.po-line-facts.goods-received";
 
     private final PurchaseOrderLineFactsProjection projection;
     private final JournalEntryService journals;
@@ -42,7 +42,7 @@ public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
         JournalEntryService journals,
         ObjectMapper json
     ) {
-        super(inbox, json, GoodsReceived.class, GoodsReceived.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, GoodsReceived.class, GoodsReceived.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
         this.journals = journals;
     }
@@ -72,7 +72,7 @@ public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
         );
 
         log.info("[{}] applied receipt {} for purchase_order={} ({} line(s))",
-            CONSUMER_NAME, payload.goodsReceiptNumber(),
+            HANDLER_NAME, payload.goodsReceiptNumber(),
             payload.purchaseOrderHeaderId(), payload.lines().size());
     }
 }

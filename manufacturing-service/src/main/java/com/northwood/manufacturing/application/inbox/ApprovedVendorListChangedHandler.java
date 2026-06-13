@@ -16,7 +16,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ApprovedVendorListChangedHandler extends AbstractInboxHandler<ApprovedVendorListChanged> {
 
-    public static final String CONSUMER_NAME = "manufacturing.approved-vendor-projector";
+    public static final String HANDLER_NAME = "manufacturing.approved-vendor-projector";
 
     private final ProductApprovedVendorProjection projection;
 
@@ -25,7 +25,7 @@ public class ApprovedVendorListChangedHandler extends AbstractInboxHandler<Appro
         ProductApprovedVendorProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, ApprovedVendorListChanged.class, ApprovedVendorListChanged.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ApprovedVendorListChanged.class, ApprovedVendorListChanged.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 

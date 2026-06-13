@@ -27,7 +27,7 @@ import tools.jackson.databind.ObjectMapper;
 public class PurchasingReplenishmentUndispatchableHandler
     extends AbstractInboxHandler<ReplenishmentUndispatchable> {
 
-    public static final String CONSUMER_NAME = "inventory.replenishment.pur-undispatchable";
+    public static final String HANDLER_NAME = "inventory.replenishment.pur-undispatchable";
 
     private final ReplenishmentRequestRepository replenishmentRequests;
 
@@ -36,7 +36,7 @@ public class PurchasingReplenishmentUndispatchableHandler
         ReplenishmentRequestRepository replenishmentRequests,
         ObjectMapper json
     ) {
-        super(inbox, json, ReplenishmentUndispatchable.class, ReplenishmentUndispatchable.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ReplenishmentUndispatchable.class, ReplenishmentUndispatchable.EVENT_TYPE, HANDLER_NAME);
         this.replenishmentRequests = replenishmentRequests;
     }
 
@@ -47,7 +47,7 @@ public class PurchasingReplenishmentUndispatchableHandler
         );
         if (existing.isEmpty()) {
             log.warn("[{}] {} ({}) for unknown replenishment_request={} (product={}) — ignored",
-                CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+                HANDLER_NAME, envelope.eventType(), envelope.eventId(),
                 payload.replenishmentRequestId(), payload.productId());
             return;
         }
@@ -56,6 +56,6 @@ public class PurchasingReplenishmentUndispatchableHandler
         replenishmentRequests.save(r);
 
         log.info("[{}] replenishment={} cancelled (purchasing undispatchable: {})",
-            CONSUMER_NAME, r.id().value(), payload.reason());
+            HANDLER_NAME, r.id().value(), payload.reason());
     }
 }

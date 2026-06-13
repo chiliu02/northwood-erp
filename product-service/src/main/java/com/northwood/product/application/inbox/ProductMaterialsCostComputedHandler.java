@@ -43,7 +43,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ProductMaterialsCostComputedHandler extends AbstractInboxHandler<ProductMaterialsCostComputed> {
 
-    public static final String CONSUMER_NAME = "product.materials-cost-rebased";
+    public static final String HANDLER_NAME = "product.materials-cost-rebased";
 
     private final ProductService productService;
 
@@ -52,7 +52,7 @@ public class ProductMaterialsCostComputedHandler extends AbstractInboxHandler<Pr
         ProductService productService,
         ObjectMapper json
     ) {
-        super(inbox, json, ProductMaterialsCostComputed.class, ProductMaterialsCostComputed.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ProductMaterialsCostComputed.class, ProductMaterialsCostComputed.EVENT_TYPE, HANDLER_NAME);
         this.productService = productService;
     }
 
@@ -64,7 +64,7 @@ public class ProductMaterialsCostComputedHandler extends AbstractInboxHandler<Pr
         var cost = payload.standardCost() != null ? payload.standardCost() : payload.materialsCost();
         if (cost == null || payload.currencyCode() == null) {
             log.info("[{}] skipping {} ({}) for product_id={} — cost/currencyCode null (reason={})",
-                CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+                HANDLER_NAME, envelope.eventType(), envelope.eventId(),
                 payload.aggregateId(), payload.reason());
             return;
         }
@@ -76,7 +76,7 @@ public class ProductMaterialsCostComputedHandler extends AbstractInboxHandler<Pr
         );
 
         log.info("[{}] applied {} ({}) for product_id={} → standard_cost={} {} (reason={})",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(),
             payload.aggregateId(), cost, payload.currencyCode(),
             payload.reason());
     }

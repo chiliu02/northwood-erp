@@ -66,7 +66,7 @@ class MakeVsBuyChangedHandlerTest {
 
     @Test void already_processed_short_circuits() {
         EventEnvelope envelope = event(false, true);
-        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(MakeVsBuyChangedHandler.CONSUMER_NAME)))
+        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(MakeVsBuyChangedHandler.HANDLER_NAME)))
             .thenReturn(true);
 
         handler.handle(envelope);

@@ -21,7 +21,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class SalesPriceChangedHandler extends AbstractInboxHandler<SalesPriceChanged> {
 
-    public static final String CONSUMER_NAME = "sales.product-card-projector";
+    public static final String HANDLER_NAME = "sales.product-card-projector";
 
     private final SalesPriceProjection projection;
 
@@ -30,7 +30,7 @@ public class SalesPriceChangedHandler extends AbstractInboxHandler<SalesPriceCha
         SalesPriceProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, SalesPriceChanged.class, SalesPriceChanged.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, SalesPriceChanged.class, SalesPriceChanged.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 
@@ -43,7 +43,7 @@ public class SalesPriceChangedHandler extends AbstractInboxHandler<SalesPriceCha
         );
 
         log.info("[{}] applied {} ({}) for product_id={} → {} {}",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(),
             payload.aggregateId(), payload.newSalesPrice(), payload.currencyCode());
     }
 }

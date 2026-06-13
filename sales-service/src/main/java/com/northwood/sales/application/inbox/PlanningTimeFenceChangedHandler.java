@@ -22,7 +22,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class PlanningTimeFenceChangedHandler extends AbstractInboxHandler<PlanningTimeFenceChanged> {
 
-    public static final String CONSUMER_NAME = "sales.product-planning-time-fence-projector";
+    public static final String HANDLER_NAME = "sales.product-planning-time-fence-projector";
 
     private final PlanningTimeFenceProjection projection;
 
@@ -31,7 +31,7 @@ public class PlanningTimeFenceChangedHandler extends AbstractInboxHandler<Planni
         PlanningTimeFenceProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, PlanningTimeFenceChanged.class, PlanningTimeFenceChanged.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, PlanningTimeFenceChanged.class, PlanningTimeFenceChanged.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 
@@ -43,7 +43,7 @@ public class PlanningTimeFenceChangedHandler extends AbstractInboxHandler<Planni
         );
 
         log.info("[{}] applied {} ({}) for product_id={} → {} day(s)",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(),
             payload.aggregateId(), payload.newPlanningTimeFenceDays());
     }
 }

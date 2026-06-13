@@ -21,7 +21,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class SalesOrderLineReservationChangedHandler extends AbstractInboxHandler<SalesOrderLineReservationChanged> {
 
-    public static final String CONSUMER_NAME = "sales.fulfilment-saga.line-reservation-changed";
+    public static final String HANDLER_NAME = "sales.fulfilment-saga.line-reservation-changed";
 
     private final SalesOrderFulfilmentSagaManager sagaManager;
 
@@ -33,7 +33,7 @@ public class SalesOrderLineReservationChangedHandler extends AbstractInboxHandle
         super(inbox, json,
             SalesOrderLineReservationChanged.class,
             SalesOrderLineReservationChanged.EVENT_TYPE,
-            CONSUMER_NAME);
+            HANDLER_NAME);
         this.sagaManager = sagaManager;
     }
 
@@ -43,7 +43,7 @@ public class SalesOrderLineReservationChangedHandler extends AbstractInboxHandle
         String state = sagaManager.applyLineReservationChanged(
             payload.aggregateId(), payload.salesOrderLineId(), lineIsShort);
         log.info("[{}] processed {} ({}) for sales_order={} line={} short={} → saga {}",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(),
             payload.aggregateId(), payload.salesOrderLineId(), lineIsShort, state);
     }
 }

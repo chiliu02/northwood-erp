@@ -124,7 +124,7 @@ class SalesOrderShippedHandlerTest {
     @Test void already_processed_short_circuits() {
         EventEnvelope envelope = event(PaymentTerms.ON_SHIPMENT.code());
         when(inbox.alreadyProcessed(eq(envelope.eventId()),
-            eq(SalesOrderShippedHandler.CONSUMER_NAME))).thenReturn(true);
+            eq(SalesOrderShippedHandler.HANDLER_NAME))).thenReturn(true);
 
         handler.handle(envelope);
 

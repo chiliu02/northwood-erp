@@ -79,7 +79,7 @@ class SubAssembliesConsumedHandlerTest {
                 UUID.randomUUID(), UUID.randomUUID(), new BigDecimal("1"))
         ));
         when(inbox.alreadyProcessed(eq(envelope.eventId()),
-            eq(SubAssembliesConsumedHandler.CONSUMER_NAME))).thenReturn(true);
+            eq(SubAssembliesConsumedHandler.HANDLER_NAME))).thenReturn(true);
 
         handler.handle(envelope);
 

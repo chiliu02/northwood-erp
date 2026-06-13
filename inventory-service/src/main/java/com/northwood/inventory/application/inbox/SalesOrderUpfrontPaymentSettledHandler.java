@@ -17,7 +17,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class SalesOrderUpfrontPaymentSettledHandler extends AbstractInboxHandler<SalesOrderUpfrontPaymentSettled> {
 
-    public static final String CONSUMER_NAME = "inventory.sales-order-line-facts.upfront-settled";
+    public static final String HANDLER_NAME = "inventory.sales-order-line-facts.upfront-settled";
 
     private final SalesOrderLineFactsProjection projection;
 
@@ -26,7 +26,7 @@ public class SalesOrderUpfrontPaymentSettledHandler extends AbstractInboxHandler
         SalesOrderLineFactsProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, SalesOrderUpfrontPaymentSettled.class, SalesOrderUpfrontPaymentSettled.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, SalesOrderUpfrontPaymentSettled.class, SalesOrderUpfrontPaymentSettled.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 
@@ -35,6 +35,6 @@ public class SalesOrderUpfrontPaymentSettledHandler extends AbstractInboxHandler
         projection.applyUpfrontPaymentSettled(payload.aggregateId());
 
         log.info("[{}] flipped upfront_settled=true for sales_order={}",
-            CONSUMER_NAME, payload.aggregateId());
+            HANDLER_NAME, payload.aggregateId());
     }
 }

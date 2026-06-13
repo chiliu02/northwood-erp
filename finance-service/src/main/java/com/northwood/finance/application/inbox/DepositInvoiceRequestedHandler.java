@@ -19,7 +19,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class DepositInvoiceRequestedHandler extends AbstractInboxHandler<DepositInvoiceRequested> {
 
-    public static final String CONSUMER_NAME = "finance.customer-invoice.deposit-requested";
+    public static final String HANDLER_NAME = "finance.customer-invoice.deposit-requested";
 
     private final CustomerInvoiceService invoices;
 
@@ -28,7 +28,7 @@ public class DepositInvoiceRequestedHandler extends AbstractInboxHandler<Deposit
         CustomerInvoiceService invoices,
         ObjectMapper json
     ) {
-        super(inbox, json, DepositInvoiceRequested.class, DepositInvoiceRequested.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, DepositInvoiceRequested.class, DepositInvoiceRequested.EVENT_TYPE, HANDLER_NAME);
         this.invoices = invoices;
     }
 
@@ -37,6 +37,6 @@ public class DepositInvoiceRequestedHandler extends AbstractInboxHandler<Deposit
         invoices.createFromDepositRequest(payload);
 
         log.info("[{}] auto-deposit-invoiced sales_order={} ({})",
-            CONSUMER_NAME, payload.aggregateId(), payload.orderNumber());
+            HANDLER_NAME, payload.aggregateId(), payload.orderNumber());
     }
 }

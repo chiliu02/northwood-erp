@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 public class WorkOrderManufacturingCompletedHandler
     extends AbstractInboxHandler<WorkOrderManufacturingCompleted> {
 
-    public static final String CONSUMER_NAME = "reporting.sales-order-360.manufacturing-completed";
+    public static final String HANDLER_NAME = "reporting.sales-order-360.manufacturing-completed";
 
     private final SalesOrder360Projection projection;
 
@@ -21,7 +21,7 @@ public class WorkOrderManufacturingCompletedHandler
         SalesOrder360Projection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, WorkOrderManufacturingCompleted.class, WorkOrderManufacturingCompleted.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, WorkOrderManufacturingCompleted.class, WorkOrderManufacturingCompleted.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 
@@ -31,12 +31,12 @@ public class WorkOrderManufacturingCompletedHandler
             // Sub-assembly child — only the top-level WO completion advances
             // the order's manufacturing_status.
             log.debug("[{}] skipping sub-assembly WO {} (parent={})",
-                CONSUMER_NAME, payload.aggregateId(), payload.parentWorkOrderId());
+                HANDLER_NAME, payload.aggregateId(), payload.parentWorkOrderId());
             return;
         }
         if (payload.salesOrderHeaderId() == null) {
             log.debug("[{}] WO {} has no sales-order link; not part of any 360 view",
-                CONSUMER_NAME, payload.aggregateId());
+                HANDLER_NAME, payload.aggregateId());
             return;
         }
         projection.recordManufacturingCompleted(payload.salesOrderHeaderId(), payload.occurredAt(), envelope.actorUserId());

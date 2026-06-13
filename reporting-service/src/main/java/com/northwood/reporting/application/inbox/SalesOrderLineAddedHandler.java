@@ -17,12 +17,12 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class SalesOrderLineAddedHandler extends AbstractInboxHandler<SalesOrderLineAdded> {
 
-    public static final String CONSUMER_NAME = "reporting.sales-order-360.line-added";
+    public static final String HANDLER_NAME = "reporting.sales-order-360.line-added";
 
     private final SalesOrder360Projection projection;
 
     public SalesOrderLineAddedHandler(InboxPort inbox, SalesOrder360Projection projection, ObjectMapper json) {
-        super(inbox, json, SalesOrderLineAdded.class, SalesOrderLineAdded.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, SalesOrderLineAdded.class, SalesOrderLineAdded.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 

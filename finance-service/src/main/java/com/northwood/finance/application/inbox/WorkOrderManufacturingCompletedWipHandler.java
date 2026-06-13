@@ -31,7 +31,7 @@ import tools.jackson.databind.ObjectMapper;
 public class WorkOrderManufacturingCompletedWipHandler
     extends AbstractInboxHandler<WorkOrderManufacturingCompleted> {
 
-    public static final String CONSUMER_NAME = "finance.wip.work-order-completed";
+    public static final String HANDLER_NAME = "finance.wip.work-order-completed";
 
     private final JournalEntryService journals;
     private final ProductCardLookup productCards;
@@ -47,7 +47,7 @@ public class WorkOrderManufacturingCompletedWipHandler
         super(inbox, json,
             WorkOrderManufacturingCompleted.class,
             WorkOrderManufacturingCompleted.EVENT_TYPE,
-            CONSUMER_NAME);
+            HANDLER_NAME);
         this.journals = journals;
         this.productCards = productCards;
         this.workOrderWip = workOrderWip;
@@ -60,13 +60,13 @@ public class WorkOrderManufacturingCompletedWipHandler
         BigDecimal amount = qty.multiply(stdCost);
         if (amount.signum() <= 0) {
             log.debug("[{}] work_order={} finished_product={} has zero standard-cost value — skipping WIP settlement",
-                CONSUMER_NAME, payload.aggregateId(), payload.finishedProductId());
+                HANDLER_NAME, payload.aggregateId(), payload.finishedProductId());
             return;
         }
 
         if (!workOrderWip.markCompleted(payload.aggregateId(), payload.finishedProductId())) {
             log.debug("[{}] work_order={} WIP already settled at completion — skipping",
-                CONSUMER_NAME, payload.aggregateId());
+                HANDLER_NAME, payload.aggregateId());
             return;
         }
 
@@ -82,6 +82,6 @@ public class WorkOrderManufacturingCompletedWipHandler
             postingDate
         );
         log.info("[{}] settled WIP at completion for work_order={} ({} @ std cost, amount={})",
-            CONSUMER_NAME, payload.workOrderNumber(), qty, amount);
+            HANDLER_NAME, payload.workOrderNumber(), qty, amount);
     }
 }

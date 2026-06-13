@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 @Component("atp_RawMaterialsReservedHandler")
 public class RawMaterialsReservedHandler extends AbstractInboxHandler<RawMaterialsReserved> {
 
-    public static final String CONSUMER_NAME = "reporting.atp.raw-materials-reserved";
+    public static final String HANDLER_NAME = "reporting.atp.raw-materials-reserved";
 
     private final AvailableToPromiseProjection projection;
 
@@ -20,7 +20,7 @@ public class RawMaterialsReservedHandler extends AbstractInboxHandler<RawMateria
         AvailableToPromiseProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, RawMaterialsReserved.class, RawMaterialsReserved.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, RawMaterialsReserved.class, RawMaterialsReserved.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 

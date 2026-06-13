@@ -31,7 +31,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class WorkOrderConversionAppliedHandler extends AbstractInboxHandler<WorkOrderConversionApplied> {
 
-    public static final String CONSUMER_NAME = "finance.wip.work-order-conversion-applied";
+    public static final String HANDLER_NAME = "finance.wip.work-order-conversion-applied";
 
     private final JournalEntryService journals;
 
@@ -39,7 +39,7 @@ public class WorkOrderConversionAppliedHandler extends AbstractInboxHandler<Work
         super(inbox, json,
             WorkOrderConversionApplied.class,
             WorkOrderConversionApplied.EVENT_TYPE,
-            CONSUMER_NAME);
+            HANDLER_NAME);
         this.journals = journals;
     }
 
@@ -70,7 +70,7 @@ public class WorkOrderConversionAppliedHandler extends AbstractInboxHandler<Work
             postingDate
         );
         log.info("[{}] applied conversion to WIP for work_order={} actual={} standard={} variance={}",
-            CONSUMER_NAME, payload.aggregateId(),
+            HANDLER_NAME, payload.aggregateId(),
             payload.actualConversionCost(), payload.standardConversionCost(), variance);
     }
 

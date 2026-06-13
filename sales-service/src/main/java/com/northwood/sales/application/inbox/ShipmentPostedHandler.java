@@ -33,7 +33,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ShipmentPostedHandler extends AbstractInboxHandler<ShipmentPosted> {
 
-    public static final String CONSUMER_NAME = "sales.fulfilment-saga.shipment-posted";
+    public static final String HANDLER_NAME = "sales.fulfilment-saga.shipment-posted";
 
     private final SalesOrderFulfilmentSagaManager sagaManager;
     private final SalesOrderService salesOrders;
@@ -44,7 +44,7 @@ public class ShipmentPostedHandler extends AbstractInboxHandler<ShipmentPosted> 
         SalesOrderService salesOrders,
         ObjectMapper json
     ) {
-        super(inbox, json, ShipmentPosted.class, ShipmentPosted.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ShipmentPosted.class, ShipmentPosted.EVENT_TYPE, HANDLER_NAME);
         this.sagaManager = sagaManager;
         this.salesOrders = salesOrders;
     }
@@ -76,7 +76,7 @@ public class ShipmentPostedHandler extends AbstractInboxHandler<ShipmentPosted> 
             salesOrders.completeOrder(payload.salesOrderHeaderId());
         }
         log.info("[{}] sales_order={} → {} (shipment={}, orderFullyShipped={})",
-            CONSUMER_NAME, payload.salesOrderHeaderId(), newState, payload.shipmentNumber(),
+            HANDLER_NAME, payload.salesOrderHeaderId(), newState, payload.shipmentNumber(),
             outcome.orderFullyShipped());
     }
 }

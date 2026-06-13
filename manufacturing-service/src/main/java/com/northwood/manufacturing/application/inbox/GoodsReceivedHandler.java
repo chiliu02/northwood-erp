@@ -35,7 +35,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
 
-    public static final String CONSUMER_NAME = "manufacturing.make-to-order.goods-received";
+    public static final String HANDLER_NAME = "manufacturing.make-to-order.goods-received";
 
     private final WorkOrderSagaManager sagaManager;
     private final WorkOrderShortageRecoveryQueryPort recovery;
@@ -48,7 +48,7 @@ public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
         RawMaterialReservationRequestEmitter reservationEmitter,
         ObjectMapper json
     ) {
-        super(inbox, json, GoodsReceived.class, GoodsReceived.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, GoodsReceived.class, GoodsReceived.EVENT_TYPE, HANDLER_NAME);
         this.sagaManager = sagaManager;
         this.recovery = recovery;
         this.reservationEmitter = reservationEmitter;
@@ -81,7 +81,7 @@ public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
         }
 
         log.info("[{}] processed receipt {} for purchase_order={}; unparked={}, narrowed={}",
-            CONSUMER_NAME, payload.goodsReceiptNumber(),
+            HANDLER_NAME, payload.goodsReceiptNumber(),
             payload.purchaseOrderHeaderId(), unparkedCount, narrowedCount);
     }
 }

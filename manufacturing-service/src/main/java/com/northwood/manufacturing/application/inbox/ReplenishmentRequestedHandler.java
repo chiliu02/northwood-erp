@@ -41,7 +41,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ReplenishmentRequestedHandler extends AbstractInboxHandler<ReplenishmentRequested> {
 
-    public static final String CONSUMER_NAME = "manufacturing.replenishment-dispatcher";
+    public static final String HANDLER_NAME = "manufacturing.replenishment-dispatcher";
 
     private final WorkOrderReleaseService releaseService;
     private final BomLookup boms;
@@ -54,7 +54,7 @@ public class ReplenishmentRequestedHandler extends AbstractInboxHandler<Replenis
         OutboxAppender outbox,
         ObjectMapper json
     ) {
-        super(inbox, json, ReplenishmentRequested.class, ReplenishmentRequested.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ReplenishmentRequested.class, ReplenishmentRequested.EVENT_TYPE, HANDLER_NAME);
         this.releaseService = releaseService;
         this.boms = boms;
         this.outbox = outbox;
@@ -64,7 +64,7 @@ public class ReplenishmentRequestedHandler extends AbstractInboxHandler<Replenis
     protected void apply(ReplenishmentRequested payload, EventEnvelope envelope) {
         if (!ReplenishmentRequested.TARGET_SERVICE_MANUFACTURING.equals(payload.targetService())) {
             log.debug("[{}] skipping {} ({}) — targetService={} routes to a different service",
-                CONSUMER_NAME, envelope.eventType(), envelope.eventId(), payload.targetService());
+                HANDLER_NAME, envelope.eventType(), envelope.eventId(), payload.targetService());
             return;
         }
 
@@ -86,7 +86,7 @@ public class ReplenishmentRequestedHandler extends AbstractInboxHandler<Replenis
             log.warn(
                 "[{}] product_id={} has no active BOM — emitting {} for replenishment_request={} (qty={}); "
                     + "inventory will cancel the request.",
-                CONSUMER_NAME, productId, ReplenishmentUndispatchable.EVENT_TYPE, payload.aggregateId(), payload.quantity()
+                HANDLER_NAME, productId, ReplenishmentUndispatchable.EVENT_TYPE, payload.aggregateId(), payload.quantity()
             );
             return;
         }
@@ -105,7 +105,7 @@ public class ReplenishmentRequestedHandler extends AbstractInboxHandler<Replenis
 
         WorkOrder wo = releaseService.releaseForReplenishment(command);
         log.info("[{}] released stock-replenishment work_order={} ({}) for replenishment_request={} (sku={}, qty={})",
-            CONSUMER_NAME, wo.id().value(), wo.workOrderNumber(),
+            HANDLER_NAME, wo.id().value(), wo.workOrderNumber(),
             payload.aggregateId(), identity.get().productSku(), payload.quantity());
     }
 }

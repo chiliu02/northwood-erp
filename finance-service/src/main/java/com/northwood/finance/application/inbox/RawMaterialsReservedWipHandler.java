@@ -36,7 +36,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class RawMaterialsReservedWipHandler extends AbstractInboxHandler<RawMaterialsReserved> {
 
-    public static final String CONSUMER_NAME = "finance.wip.raw-materials-reserved";
+    public static final String HANDLER_NAME = "finance.wip.raw-materials-reserved";
 
     private final JournalEntryService journals;
     private final ProductCardLookup productCards;
@@ -49,7 +49,7 @@ public class RawMaterialsReservedWipHandler extends AbstractInboxHandler<RawMate
         WorkOrderWipProjection workOrderWip,
         ObjectMapper json
     ) {
-        super(inbox, json, RawMaterialsReserved.class, RawMaterialsReserved.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, RawMaterialsReserved.class, RawMaterialsReserved.EVENT_TYPE, HANDLER_NAME);
         this.journals = journals;
         this.productCards = productCards;
         this.workOrderWip = workOrderWip;
@@ -59,7 +59,7 @@ public class RawMaterialsReservedWipHandler extends AbstractInboxHandler<RawMate
     protected void apply(RawMaterialsReserved payload, EventEnvelope envelope) {
         if (!RawMaterialsReserved.STATUS_RESERVED.equals(payload.status())) {
             log.debug("[{}] work_order={} status={} — not fully reserved, no WIP charge",
-                CONSUMER_NAME, payload.workOrderId(), payload.status());
+                HANDLER_NAME, payload.workOrderId(), payload.status());
             return;
         }
 
@@ -74,13 +74,13 @@ public class RawMaterialsReservedWipHandler extends AbstractInboxHandler<RawMate
         BigDecimal total = lineCosts.stream().map(LineCost::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
         if (total.signum() <= 0) {
             log.debug("[{}] work_order={} has zero standard-cost materials — skipping WIP charge",
-                CONSUMER_NAME, payload.workOrderId());
+                HANDLER_NAME, payload.workOrderId());
             return;
         }
 
         if (!workOrderWip.chargeRawMaterials(payload.workOrderId(), total)) {
             log.debug("[{}] work_order={} raw materials already charged to WIP — skipping",
-                CONSUMER_NAME, payload.workOrderId());
+                HANDLER_NAME, payload.workOrderId());
             return;
         }
 
@@ -95,6 +95,6 @@ public class RawMaterialsReservedWipHandler extends AbstractInboxHandler<RawMate
             postingDate
         );
         log.info("[{}] charged raw materials to WIP for work_order={} (total={}, {} line(s))",
-            CONSUMER_NAME, payload.workOrderId(), total, lineCosts.size());
+            HANDLER_NAME, payload.workOrderId(), total, lineCosts.size());
     }
 }

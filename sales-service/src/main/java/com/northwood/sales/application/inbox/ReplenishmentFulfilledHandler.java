@@ -46,7 +46,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ReplenishmentFulfilledHandler extends AbstractInboxHandler<ReplenishmentFulfilled> {
 
-    public static final String CONSUMER_NAME = "sales.fulfilment-saga.replenishment-fulfilled";
+    public static final String HANDLER_NAME = "sales.fulfilment-saga.replenishment-fulfilled";
 
     private final SalesOrderFulfilmentSagaManager sagaManager;
     private final SalesOrderLineSnapshotPort lineSnapshots;
@@ -62,7 +62,7 @@ public class ReplenishmentFulfilledHandler extends AbstractInboxHandler<Replenis
         super(inbox, json,
             ReplenishmentFulfilled.class,
             ReplenishmentFulfilled.EVENT_TYPE,
-            CONSUMER_NAME);
+            HANDLER_NAME);
         this.sagaManager = sagaManager;
         this.lineSnapshots = lineSnapshots;
         this.outbox = outbox;
@@ -74,7 +74,7 @@ public class ReplenishmentFulfilledHandler extends AbstractInboxHandler<Replenis
         UUID salesOrderLineId = payload.sourceSalesOrderLineId();
         if (salesOrderHeaderId == null || salesOrderLineId == null) {
             log.debug("[{}] {} ({}) carries null sales-order back-reference — not a SO-shortage replenishment, skipping",
-                CONSUMER_NAME, envelope.eventType(), envelope.eventId());
+                HANDLER_NAME, envelope.eventType(), envelope.eventId());
             return;
         }
 
@@ -90,7 +90,7 @@ public class ReplenishmentFulfilledHandler extends AbstractInboxHandler<Replenis
             // completion, no retry needed.
             emitRetryStockReservation(salesOrderHeaderId);
             log.info("[{}] sales_order={} → stock_reservation_requested; re-emitting {} to retry reservation",
-                CONSUMER_NAME, salesOrderHeaderId, StockReservationRequested.EVENT_TYPE);
+                HANDLER_NAME, salesOrderHeaderId, StockReservationRequested.EVENT_TYPE);
         }
     }
 
@@ -98,7 +98,7 @@ public class ReplenishmentFulfilledHandler extends AbstractInboxHandler<Replenis
         List<LineSnapshot> snapshots = lineSnapshots.findLines(salesOrderHeaderId);
         if (snapshots.isEmpty()) {
             log.warn("[{}] sales_order={} has no line snapshots; cannot re-emit StockReservationRequested",
-                CONSUMER_NAME, salesOrderHeaderId);
+                HANDLER_NAME, salesOrderHeaderId);
             return;
         }
         List<StockReservationRequested.RequestedLine> requestedLines = new ArrayList<>();

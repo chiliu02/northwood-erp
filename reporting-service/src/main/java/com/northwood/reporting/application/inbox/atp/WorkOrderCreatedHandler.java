@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 @Component("atp_WorkOrderCreatedHandler")
 public class WorkOrderCreatedHandler extends AbstractInboxHandler<WorkOrderCreated> {
 
-    public static final String CONSUMER_NAME = "reporting.atp.work-order-created";
+    public static final String HANDLER_NAME = "reporting.atp.work-order-created";
 
     private final AvailableToPromiseProjection projection;
 
@@ -20,7 +20,7 @@ public class WorkOrderCreatedHandler extends AbstractInboxHandler<WorkOrderCreat
         AvailableToPromiseProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, WorkOrderCreated.class, WorkOrderCreated.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, WorkOrderCreated.class, WorkOrderCreated.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 

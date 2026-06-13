@@ -43,7 +43,7 @@ import tools.jackson.databind.ObjectMapper;
 public class ReplenishmentPurchaseOrderLinkHandler
     extends AbstractInboxHandler<PurchaseOrderCreated> {
 
-    public static final String CONSUMER_NAME = "inventory.replenishment.pur-po-created";
+    public static final String HANDLER_NAME = "inventory.replenishment.pur-po-created";
 
     private final ReplenishmentRequestRepository replenishmentRequests;
 
@@ -52,7 +52,7 @@ public class ReplenishmentPurchaseOrderLinkHandler
         ReplenishmentRequestRepository replenishmentRequests,
         ObjectMapper json
     ) {
-        super(inbox, json, PurchaseOrderCreated.class, PurchaseOrderCreated.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, PurchaseOrderCreated.class, PurchaseOrderCreated.EVENT_TYPE, HANDLER_NAME);
         this.replenishmentRequests = replenishmentRequests;
     }
 
@@ -65,7 +65,7 @@ public class ReplenishmentPurchaseOrderLinkHandler
             ReplenishmentRequestId.of(payload.sourceReplenishmentRequestId()));
         if (found.isEmpty()) {
             log.warn("[{}] {} ({}) for unknown replenishment_request={} (purchase_order={}) — ignored",
-                CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+                HANDLER_NAME, envelope.eventType(), envelope.eventId(),
                 payload.sourceReplenishmentRequestId(), payload.aggregateId());
             return;
         }
@@ -79,6 +79,6 @@ public class ReplenishmentPurchaseOrderLinkHandler
         replenishmentRequests.save(r);
 
         log.info("[{}] linked replenishment_request={} to purchase_order={} (via PurchaseOrderCreated, PR={})",
-            CONSUMER_NAME, r.id().value(), payload.aggregateId(), payload.purchaseRequisitionHeaderId());
+            HANDLER_NAME, r.id().value(), payload.aggregateId(), payload.purchaseRequisitionHeaderId());
     }
 }

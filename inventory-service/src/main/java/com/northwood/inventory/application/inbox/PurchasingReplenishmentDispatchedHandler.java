@@ -30,7 +30,7 @@ import tools.jackson.databind.ObjectMapper;
 public class PurchasingReplenishmentDispatchedHandler
     extends AbstractInboxHandler<ReplenishmentDispatched> {
 
-    public static final String CONSUMER_NAME = "inventory.replenishment.pur-dispatched";
+    public static final String HANDLER_NAME = "inventory.replenishment.pur-dispatched";
 
     private final ReplenishmentRequestRepository replenishmentRequests;
 
@@ -39,7 +39,7 @@ public class PurchasingReplenishmentDispatchedHandler
         ReplenishmentRequestRepository replenishmentRequests,
         ObjectMapper json
     ) {
-        super(inbox, json, ReplenishmentDispatched.class, ReplenishmentDispatched.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ReplenishmentDispatched.class, ReplenishmentDispatched.EVENT_TYPE, HANDLER_NAME);
         this.replenishmentRequests = replenishmentRequests;
     }
 
@@ -50,7 +50,7 @@ public class PurchasingReplenishmentDispatchedHandler
         );
         if (existing.isEmpty()) {
             log.warn("[{}] {} ({}) for unknown replenishment_request={} (purchase_requisition={}) — ignored",
-                CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+                HANDLER_NAME, envelope.eventType(), envelope.eventId(),
                 payload.replenishmentRequestId(), payload.aggregateId());
             return;
         }
@@ -59,6 +59,6 @@ public class PurchasingReplenishmentDispatchedHandler
         replenishmentRequests.save(r);
 
         log.info("[{}] replenishment={} dispatched to purchase_requisition={}",
-            CONSUMER_NAME, r.id().value(), payload.aggregateId());
+            HANDLER_NAME, r.id().value(), payload.aggregateId());
     }
 }

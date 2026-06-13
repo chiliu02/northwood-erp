@@ -117,7 +117,7 @@ class RawMaterialsReservedWipHandlerTest {
 
     @Test void already_processed_short_circuits() {
         EventEnvelope envelope = event(RawMaterialsReserved.STATUS_RESERVED, reserved(RM_A, "1"));
-        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(RawMaterialsReservedWipHandler.CONSUMER_NAME)))
+        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(RawMaterialsReservedWipHandler.HANDLER_NAME)))
             .thenReturn(true);
 
         handler.handle(envelope);

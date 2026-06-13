@@ -43,7 +43,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class SalesOrderShippedHandler extends AbstractInboxHandler<SalesOrderShipped> {
 
-    public static final String CONSUMER_NAME = "finance.customer-invoice.shipped-order";
+    public static final String HANDLER_NAME = "finance.customer-invoice.shipped-order";
 
     private final CustomerInvoiceService invoices;
     private final PaymentService payments;
@@ -58,7 +58,7 @@ public class SalesOrderShippedHandler extends AbstractInboxHandler<SalesOrderShi
         ProductCardLookup productCards,
         ObjectMapper json
     ) {
-        super(inbox, json, SalesOrderShipped.class, SalesOrderShipped.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, SalesOrderShipped.class, SalesOrderShipped.EVENT_TYPE, HANDLER_NAME);
         this.invoices = invoices;
         this.payments = payments;
         this.journals = journals;
@@ -72,10 +72,10 @@ public class SalesOrderShippedHandler extends AbstractInboxHandler<SalesOrderShi
         if (PaymentTerms.CASH_ON_DELIVERY.code().equals(payload.paymentTerms())) {
             payments.recordCashOnDeliveryPayment(invoiceId.value(), payload.shipmentDate());
             log.info("[{}] auto-invoiced + COD-settled sales_order={} (shipment={})",
-                CONSUMER_NAME, payload.aggregateId(), payload.shipmentNumber());
+                HANDLER_NAME, payload.aggregateId(), payload.shipmentNumber());
         } else {
             log.info("[{}] auto-invoiced sales_order={} (shipment={})",
-                CONSUMER_NAME, payload.aggregateId(), payload.shipmentNumber());
+                HANDLER_NAME, payload.aggregateId(), payload.shipmentNumber());
         }
 
         postCostOfGoodsShipped(payload);
@@ -106,7 +106,7 @@ public class SalesOrderShippedHandler extends AbstractInboxHandler<SalesOrderShi
         if (fallbackToShipmentCostLines > 0) {
             log.debug("[{}] shipment {} had {} line(s) with no product_card.standard_cost — fell back to "
                     + "shipment-stamped unitCost (projection cold-start). See design-notes.md → COGS standard cost.",
-                CONSUMER_NAME, payload.shipmentNumber(), fallbackToShipmentCostLines);
+                HANDLER_NAME, payload.shipmentNumber(), fallbackToShipmentCostLines);
         }
         journals.postShipmentCost(
             payload.shipmentHeaderId(),

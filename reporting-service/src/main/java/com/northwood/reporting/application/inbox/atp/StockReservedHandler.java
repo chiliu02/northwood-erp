@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 @Component("atp_StockReservedHandler")
 public class StockReservedHandler extends AbstractInboxHandler<StockReserved> {
 
-    public static final String CONSUMER_NAME = "reporting.atp.stock-reserved";
+    public static final String HANDLER_NAME = "reporting.atp.stock-reserved";
 
     private final AvailableToPromiseProjection projection;
 
@@ -20,7 +20,7 @@ public class StockReservedHandler extends AbstractInboxHandler<StockReserved> {
         AvailableToPromiseProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, StockReserved.class, StockReserved.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, StockReserved.class, StockReserved.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 

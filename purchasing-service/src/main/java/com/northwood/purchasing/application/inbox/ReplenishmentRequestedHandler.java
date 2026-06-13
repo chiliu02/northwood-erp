@@ -49,7 +49,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ReplenishmentRequestedHandler extends AbstractInboxHandler<ReplenishmentRequested> {
 
-    public static final String CONSUMER_NAME = "purchasing.replenishment-dispatcher";
+    public static final String HANDLER_NAME = "purchasing.replenishment-dispatcher";
 
     private final PurchaseRequisitionService requisitions;
     private final OutboxAppender outbox;
@@ -60,7 +60,7 @@ public class ReplenishmentRequestedHandler extends AbstractInboxHandler<Replenis
         OutboxAppender outbox,
         ObjectMapper json
     ) {
-        super(inbox, json, ReplenishmentRequested.class, ReplenishmentRequested.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ReplenishmentRequested.class, ReplenishmentRequested.EVENT_TYPE, HANDLER_NAME);
         this.requisitions = requisitions;
         this.outbox = outbox;
     }
@@ -69,7 +69,7 @@ public class ReplenishmentRequestedHandler extends AbstractInboxHandler<Replenis
     protected void apply(ReplenishmentRequested payload, EventEnvelope envelope) {
         if (!ReplenishmentRequested.TARGET_SERVICE_PURCHASING.equals(payload.targetService())) {
             log.debug("[{}] skipping {} ({}) — targetService={} routes to a different service",
-                CONSUMER_NAME, envelope.eventType(), envelope.eventId(), payload.targetService());
+                HANDLER_NAME, envelope.eventType(), envelope.eventId(), payload.targetService());
             return;
         }
 
@@ -112,13 +112,13 @@ public class ReplenishmentRequestedHandler extends AbstractInboxHandler<Replenis
                 Instant.now()
             ), InventoryAggregateTypes.REPLENISHMENT_REQUEST, envelope.actorUserId());
             log.warn("[{}] no vendor for product={} — emitting {} for replenishment_request={} (qty={}); inventory will cancel the request",
-                CONSUMER_NAME, payload.productId(), ReplenishmentUndispatchable.EVENT_TYPE,
+                HANDLER_NAME, payload.productId(), ReplenishmentUndispatchable.EVENT_TYPE,
                 payload.aggregateId(), payload.quantity());
             return;
         }
 
         log.info("[{}] created stock-replenishment PR={} ({}) for replenishment_request={} (product={}, qty={}, reason={})",
-            CONSUMER_NAME, prId.get(), requisitionNumber, payload.aggregateId(),
+            HANDLER_NAME, prId.get(), requisitionNumber, payload.aggregateId(),
             payload.productId(), payload.quantity(), payload.reason());
     }
 }

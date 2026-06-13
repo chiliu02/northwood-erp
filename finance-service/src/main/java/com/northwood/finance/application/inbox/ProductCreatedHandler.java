@@ -20,7 +20,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ProductCreatedHandler extends AbstractInboxHandler<ProductCreated> {
 
-    public static final String CONSUMER_NAME = "finance.product-created";
+    public static final String HANDLER_NAME = "finance.product-created";
 
     private final ProductCardProjection projection;
 
@@ -29,7 +29,7 @@ public class ProductCreatedHandler extends AbstractInboxHandler<ProductCreated> 
         ProductCardProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, ProductCreated.class, ProductCreated.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ProductCreated.class, ProductCreated.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 
@@ -38,7 +38,7 @@ public class ProductCreatedHandler extends AbstractInboxHandler<ProductCreated> 
         projection.seed(payload.aggregateId());
 
         log.info("[{}] applied {} ({}) for product_id={} sku={}",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(),
             payload.aggregateId(), payload.sku());
     }
 }

@@ -91,7 +91,7 @@ class SubAssembliesConsumedWipHandlerTest {
     @Test void already_processed_short_circuits() {
         ConsumedItem item = new ConsumedItem(UUID.randomUUID(), SUB_A, new BigDecimal("1"));
         EventEnvelope envelope = event(item);
-        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(SubAssembliesConsumedWipHandler.CONSUMER_NAME)))
+        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(SubAssembliesConsumedWipHandler.HANDLER_NAME)))
             .thenReturn(true);
 
         handler.handle(envelope);

@@ -18,7 +18,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ValuationClassChangedHandler extends AbstractInboxHandler<ValuationClassChanged> {
 
-    public static final String CONSUMER_NAME = "finance.product-valuation-class-projector";
+    public static final String HANDLER_NAME = "finance.product-valuation-class-projector";
 
     private final ProductCardProjection projection;
 
@@ -27,7 +27,7 @@ public class ValuationClassChangedHandler extends AbstractInboxHandler<Valuation
         ProductCardProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, ValuationClassChanged.class, ValuationClassChanged.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ValuationClassChanged.class, ValuationClassChanged.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 

@@ -16,7 +16,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class PurchaseOrderCancelledHandler extends AbstractInboxHandler<PurchaseOrderCancelled> {
 
-    public static final String CONSUMER_NAME = "reporting.po-tracking.po-cancelled";
+    public static final String HANDLER_NAME = "reporting.po-tracking.po-cancelled";
 
     private final PurchaseOrderTrackingProjection projection;
 
@@ -25,7 +25,7 @@ public class PurchaseOrderCancelledHandler extends AbstractInboxHandler<Purchase
         PurchaseOrderTrackingProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, PurchaseOrderCancelled.class, PurchaseOrderCancelled.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, PurchaseOrderCancelled.class, PurchaseOrderCancelled.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 
@@ -34,7 +34,7 @@ public class PurchaseOrderCancelledHandler extends AbstractInboxHandler<Purchase
         projection.recordPoCancelled(payload.aggregateId(), payload.occurredAt(), envelope.actorUserId());
 
         log.info("[{}] applied {} ({}) for po={} (by={})",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(),
             payload.aggregateId(), payload.cancelledBy());
     }
 }

@@ -162,7 +162,7 @@ class WorkOrderManufacturingCompletedHandlerTest {
     @Test void already_processed_short_circuits() {
         EventEnvelope envelope = event(null);
         when(inbox.alreadyProcessed(eq(envelope.eventId()),
-            eq(WorkOrderManufacturingCompletedHandler.CONSUMER_NAME))).thenReturn(true);
+            eq(WorkOrderManufacturingCompletedHandler.HANDLER_NAME))).thenReturn(true);
 
         handler.handle(envelope);
 

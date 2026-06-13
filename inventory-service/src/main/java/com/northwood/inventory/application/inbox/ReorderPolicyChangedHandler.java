@@ -22,7 +22,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ReorderPolicyChangedHandler extends AbstractInboxHandler<ReorderPolicyChanged> {
 
-    public static final String CONSUMER_NAME = "inventory.stock-item-projector";
+    public static final String HANDLER_NAME = "inventory.stock-item-projector";
 
     private final ProductCardProjection projection;
 
@@ -31,7 +31,7 @@ public class ReorderPolicyChangedHandler extends AbstractInboxHandler<ReorderPol
         ProductCardProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, ReorderPolicyChanged.class, ReorderPolicyChanged.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ReorderPolicyChanged.class, ReorderPolicyChanged.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 
@@ -45,7 +45,7 @@ public class ReorderPolicyChangedHandler extends AbstractInboxHandler<ReorderPol
 
         log.info(
             "[{}] applied {} ({}) for product_id={} → reorder_point={}, reorder_quantity={}",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(),
             payload.aggregateId(), payload.newReorderPoint(), payload.newReorderQuantity()
         );
     }

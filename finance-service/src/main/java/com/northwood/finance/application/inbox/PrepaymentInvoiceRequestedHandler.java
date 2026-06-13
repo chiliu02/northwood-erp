@@ -19,7 +19,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class PrepaymentInvoiceRequestedHandler extends AbstractInboxHandler<PrepaymentInvoiceRequested> {
 
-    public static final String CONSUMER_NAME = "finance.customer-invoice.prepayment-requested";
+    public static final String HANDLER_NAME = "finance.customer-invoice.prepayment-requested";
 
     private final CustomerInvoiceService invoices;
 
@@ -28,7 +28,7 @@ public class PrepaymentInvoiceRequestedHandler extends AbstractInboxHandler<Prep
         CustomerInvoiceService invoices,
         ObjectMapper json
     ) {
-        super(inbox, json, PrepaymentInvoiceRequested.class, PrepaymentInvoiceRequested.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, PrepaymentInvoiceRequested.class, PrepaymentInvoiceRequested.EVENT_TYPE, HANDLER_NAME);
         this.invoices = invoices;
     }
 
@@ -37,6 +37,6 @@ public class PrepaymentInvoiceRequestedHandler extends AbstractInboxHandler<Prep
         invoices.createFromPrepaymentRequest(payload);
 
         log.info("[{}] auto-prepayment-invoiced sales_order={} ({})",
-            CONSUMER_NAME, payload.aggregateId(), payload.orderNumber());
+            HANDLER_NAME, payload.aggregateId(), payload.orderNumber());
     }
 }

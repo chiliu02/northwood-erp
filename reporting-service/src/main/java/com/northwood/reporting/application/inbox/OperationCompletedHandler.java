@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class OperationCompletedHandler extends AbstractInboxHandler<OperationCompleted> {
 
-    public static final String CONSUMER_NAME = "reporting.production-planning.operation-completed";
+    public static final String HANDLER_NAME = "reporting.production-planning.operation-completed";
 
     private final ProductionPlanningProjection projection;
 
@@ -20,7 +20,7 @@ public class OperationCompletedHandler extends AbstractInboxHandler<OperationCom
         ProductionPlanningProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, OperationCompleted.class, OperationCompleted.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, OperationCompleted.class, OperationCompleted.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 

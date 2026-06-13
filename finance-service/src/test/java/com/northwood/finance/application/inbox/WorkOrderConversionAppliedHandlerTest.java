@@ -75,7 +75,7 @@ class WorkOrderConversionAppliedHandlerTest {
 
     @Test void already_processed_short_circuits() {
         EventEnvelope envelope = event(new BigDecimal("135.00"), new BigDecimal("135.00"));
-        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(WorkOrderConversionAppliedHandler.CONSUMER_NAME)))
+        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(WorkOrderConversionAppliedHandler.HANDLER_NAME)))
             .thenReturn(true);
 
         handler.handle(envelope);

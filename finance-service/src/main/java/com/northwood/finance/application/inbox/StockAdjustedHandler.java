@@ -38,7 +38,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class StockAdjustedHandler extends AbstractInboxHandler<StockAdjusted> {
 
-    public static final String CONSUMER_NAME = "finance.gl.stock-adjusted";
+    public static final String HANDLER_NAME = "finance.gl.stock-adjusted";
 
     private final JournalEntryService journals;
     private final ProductCardLookup productCards;
@@ -49,7 +49,7 @@ public class StockAdjustedHandler extends AbstractInboxHandler<StockAdjusted> {
         ProductCardLookup productCards,
         ObjectMapper json
     ) {
-        super(inbox, json, StockAdjusted.class, StockAdjusted.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, StockAdjusted.class, StockAdjusted.EVENT_TYPE, HANDLER_NAME);
         this.journals = journals;
         this.productCards = productCards;
     }
@@ -62,7 +62,7 @@ public class StockAdjustedHandler extends AbstractInboxHandler<StockAdjusted> {
             log.debug(
                 "[{}] stock adjustment {} for product {} has no product_card.standard_cost yet — "
                     + "GL post skipped (projection cold-start). See design-notes.md → stock-adjustment standard cost.",
-                CONSUMER_NAME, payload.adjustmentNumber(), payload.productId()
+                HANDLER_NAME, payload.adjustmentNumber(), payload.productId()
             );
         }
         BigDecimal amount = qty.multiply(standardCost.orElse(BigDecimal.ZERO));
@@ -82,6 +82,6 @@ public class StockAdjustedHandler extends AbstractInboxHandler<StockAdjusted> {
         );
 
         log.info("[{}] posted GL for stock adjustment {} ({} {} @ standard cost)",
-            CONSUMER_NAME, payload.adjustmentNumber(), payload.direction(), qty.toPlainString());
+            HANDLER_NAME, payload.adjustmentNumber(), payload.direction(), qty.toPlainString());
     }
 }

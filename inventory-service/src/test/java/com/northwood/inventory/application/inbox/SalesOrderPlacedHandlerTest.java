@@ -88,7 +88,7 @@ class SalesOrderPlacedHandlerTest {
                 "SKU", "P", new BigDecimal("1"), new BigDecimal("1"))
         ));
         when(inbox.alreadyProcessed(eq(envelope.eventId()),
-            eq(SalesOrderPlacedHandler.CONSUMER_NAME))).thenReturn(true);
+            eq(SalesOrderPlacedHandler.HANDLER_NAME))).thenReturn(true);
 
         handler.handle(envelope);
 

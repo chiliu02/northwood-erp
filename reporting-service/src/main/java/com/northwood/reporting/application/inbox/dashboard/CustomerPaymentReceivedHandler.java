@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 @Component("dashboard_CustomerPaymentReceivedHandler")
 public class CustomerPaymentReceivedHandler extends AbstractInboxHandler<CustomerPaymentReceived> {
 
-    public static final String CONSUMER_NAME = "reporting.dashboard.customer-payment-received";
+    public static final String HANDLER_NAME = "reporting.dashboard.customer-payment-received";
 
     private final FinancialDashboardProjection projection;
 
@@ -20,7 +20,7 @@ public class CustomerPaymentReceivedHandler extends AbstractInboxHandler<Custome
         FinancialDashboardProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, CustomerPaymentReceived.class, CustomerPaymentReceived.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, CustomerPaymentReceived.class, CustomerPaymentReceived.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 

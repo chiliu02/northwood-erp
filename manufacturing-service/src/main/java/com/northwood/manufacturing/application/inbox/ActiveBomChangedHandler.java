@@ -16,7 +16,7 @@ import tools.jackson.databind.ObjectMapper;
  * existing {@code bom_header.is_active} column during the migration period.
  *
  * <p>Renamed from {@code BomActivatedHandler} 2026-05-14 to track
- * the producer-side event rename; {@code CONSUMER_NAME} is unchanged
+ * the producer-side event rename; {@code HANDLER_NAME} is unchanged
  * ({@code manufacturing.product-active-bom-projector}) — it was named
  * after the read-model column it maintains, not after the event, so the
  * inbox dedupe key survives the rename without coordination.
@@ -24,7 +24,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ActiveBomChangedHandler extends AbstractInboxHandler<ActiveBomChanged> {
 
-    public static final String CONSUMER_NAME = "manufacturing.product-active-bom-projector";
+    public static final String HANDLER_NAME = "manufacturing.product-active-bom-projector";
 
     private final ProductActiveBomProjection projection;
     private final MaterialsCostRollupService rollup;
@@ -35,7 +35,7 @@ public class ActiveBomChangedHandler extends AbstractInboxHandler<ActiveBomChang
         MaterialsCostRollupService rollup,
         ObjectMapper json
     ) {
-        super(inbox, json, ActiveBomChanged.class, ActiveBomChanged.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ActiveBomChanged.class, ActiveBomChanged.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
         this.rollup = rollup;
     }

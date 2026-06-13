@@ -33,7 +33,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class SubAssembliesConsumedWipHandler extends AbstractInboxHandler<SubAssembliesConsumed> {
 
-    public static final String CONSUMER_NAME = "finance.wip.sub-assemblies-consumed";
+    public static final String HANDLER_NAME = "finance.wip.sub-assemblies-consumed";
 
     private final JournalEntryService journals;
     private final ProductCardLookup productCards;
@@ -46,7 +46,7 @@ public class SubAssembliesConsumedWipHandler extends AbstractInboxHandler<SubAss
         WorkOrderWipProjection workOrderWip,
         ObjectMapper json
     ) {
-        super(inbox, json, SubAssembliesConsumed.class, SubAssembliesConsumed.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, SubAssembliesConsumed.class, SubAssembliesConsumed.EVENT_TYPE, HANDLER_NAME);
         this.journals = journals;
         this.productCards = productCards;
         this.workOrderWip = workOrderWip;
@@ -65,7 +65,7 @@ public class SubAssembliesConsumedWipHandler extends AbstractInboxHandler<SubAss
         BigDecimal total = lineCosts.stream().map(LineCost::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
         if (total.signum() <= 0) {
             log.debug("[{}] parent work_order={} consumed zero standard-cost sub-assemblies — skipping",
-                CONSUMER_NAME, payload.aggregateId());
+                HANDLER_NAME, payload.aggregateId());
             return;
         }
 
@@ -82,6 +82,6 @@ public class SubAssembliesConsumedWipHandler extends AbstractInboxHandler<SubAss
             postingDate
         );
         log.info("[{}] rolled {} consumed sub-assembl(ies) into WIP for parent work_order={} (total={})",
-            CONSUMER_NAME, lineCosts.size(), payload.aggregateId(), total);
+            HANDLER_NAME, lineCosts.size(), payload.aggregateId(), total);
     }
 }

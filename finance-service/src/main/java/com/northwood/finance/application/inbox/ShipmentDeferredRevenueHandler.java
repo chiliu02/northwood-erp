@@ -29,7 +29,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ShipmentDeferredRevenueHandler extends AbstractInboxHandler<ShipmentPosted> {
 
-    public static final String CONSUMER_NAME = "finance.deferred-revenue.shipment-posted";
+    public static final String HANDLER_NAME = "finance.deferred-revenue.shipment-posted";
 
     private final JournalEntryService journals;
     private final CustomerInvoiceRepository customerInvoices;
@@ -40,7 +40,7 @@ public class ShipmentDeferredRevenueHandler extends AbstractInboxHandler<Shipmen
         CustomerInvoiceRepository customerInvoices,
         ObjectMapper json
     ) {
-        super(inbox, json, ShipmentPosted.class, ShipmentPosted.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ShipmentPosted.class, ShipmentPosted.EVENT_TYPE, HANDLER_NAME);
         this.journals = journals;
         this.customerInvoices = customerInvoices;
     }
@@ -72,7 +72,7 @@ public class ShipmentDeferredRevenueHandler extends AbstractInboxHandler<Shipmen
                     postingDate
                 );
                 log.info("[{}] recognised deferred revenue for {} invoice {} (sales_order={}, total={} {})",
-                    CONSUMER_NAME, existing.get().invoiceType().code(), existing.get().invoiceNumber(),
+                    HANDLER_NAME, existing.get().invoiceType().code(), existing.get().invoiceNumber(),
                     payload.salesOrderHeaderId(), existing.get().totalAmount(), existing.get().currencyCode());
             }
         }

@@ -16,7 +16,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class MakeVsBuyChangedHandler extends AbstractInboxHandler<MakeVsBuyChanged> {
 
-    public static final String CONSUMER_NAME = "manufacturing.product-replenishment-projector";
+    public static final String HANDLER_NAME = "manufacturing.product-replenishment-projector";
 
     private final ProductReplenishmentProjection projection;
 
@@ -25,7 +25,7 @@ public class MakeVsBuyChangedHandler extends AbstractInboxHandler<MakeVsBuyChang
         ProductReplenishmentProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, MakeVsBuyChanged.class, MakeVsBuyChanged.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, MakeVsBuyChanged.class, MakeVsBuyChanged.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 
@@ -38,7 +38,7 @@ public class MakeVsBuyChangedHandler extends AbstractInboxHandler<MakeVsBuyChang
         );
 
         log.info("[{}] applied {} ({}) for product_id={} → purchased={}, manufactured={}",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(),
             payload.aggregateId(), payload.newIsPurchased(), payload.newIsManufactured());
     }
 }

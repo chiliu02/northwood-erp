@@ -17,7 +17,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class SupplierProductPriceChangedHandler extends AbstractInboxHandler<SupplierProductPriceChanged> {
 
-    public static final String CONSUMER_NAME = "manufacturing.materials-cost-rollup";
+    public static final String HANDLER_NAME = "manufacturing.materials-cost-rollup";
 
     private final MaterialsCostRollupService rollup;
 
@@ -26,7 +26,7 @@ public class SupplierProductPriceChangedHandler extends AbstractInboxHandler<Sup
         MaterialsCostRollupService rollup,
         ObjectMapper json
     ) {
-        super(inbox, json, SupplierProductPriceChanged.class, SupplierProductPriceChanged.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, SupplierProductPriceChanged.class, SupplierProductPriceChanged.EVENT_TYPE, HANDLER_NAME);
         this.rollup = rollup;
     }
 

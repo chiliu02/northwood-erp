@@ -89,7 +89,7 @@ class SalesOrderShippedHandlerTest {
     @Test void already_processed_short_circuits() {
         EventEnvelope envelope = event(List.of(
             line(new BigDecimal("1"), new BigDecimal("100.00"), new BigDecimal("40.00"))));
-        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(SalesOrderShippedHandler.CONSUMER_NAME)))
+        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(SalesOrderShippedHandler.HANDLER_NAME)))
             .thenReturn(true);
 
         handler.handle(envelope);

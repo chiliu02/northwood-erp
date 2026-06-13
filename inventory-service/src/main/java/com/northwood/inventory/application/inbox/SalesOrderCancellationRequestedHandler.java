@@ -17,7 +17,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class SalesOrderCancellationRequestedHandler extends AbstractInboxHandler<SalesOrderCancellationRequested> {
 
-    public static final String CONSUMER_NAME = "inventory.sales-cancel";
+    public static final String HANDLER_NAME = "inventory.sales-cancel";
 
     private final StockReservationService reservation;
 
@@ -26,7 +26,7 @@ public class SalesOrderCancellationRequestedHandler extends AbstractInboxHandler
         StockReservationService reservation,
         ObjectMapper json
     ) {
-        super(inbox, json, SalesOrderCancellationRequested.class, SalesOrderCancellationRequested.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, SalesOrderCancellationRequested.class, SalesOrderCancellationRequested.EVENT_TYPE, HANDLER_NAME);
         this.reservation = reservation;
     }
 
@@ -35,6 +35,6 @@ public class SalesOrderCancellationRequestedHandler extends AbstractInboxHandler
         reservation.releaseForSalesOrder(payload.aggregateId());
 
         log.info("[{}] processed {} ({}) for sales_order={}",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(), payload.aggregateId());
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(), payload.aggregateId());
     }
 }

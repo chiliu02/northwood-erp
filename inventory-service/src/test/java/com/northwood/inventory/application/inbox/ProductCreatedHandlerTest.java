@@ -58,7 +58,7 @@ class ProductCreatedHandlerTest {
 
     @Test void already_processed_short_circuits() {
         EventEnvelope envelope = event();
-        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(ProductCreatedHandler.CONSUMER_NAME)))
+        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(ProductCreatedHandler.HANDLER_NAME)))
             .thenReturn(true);
 
         handler.handle(envelope);

@@ -41,7 +41,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ProductDiscontinuedHandler extends AbstractInboxHandler<ProductDiscontinued> {
 
-    public static final String CONSUMER_NAME = "manufacturing.product-discontinued";
+    public static final String HANDLER_NAME = "manufacturing.product-discontinued";
 
     private final ProductReplenishmentProjection replenishment;
     private final ProductActiveBomProjection activeBom;
@@ -54,7 +54,7 @@ public class ProductDiscontinuedHandler extends AbstractInboxHandler<ProductDisc
         BomLookup boms,
         ObjectMapper json
     ) {
-        super(inbox, json, ProductDiscontinued.class, ProductDiscontinued.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ProductDiscontinued.class, ProductDiscontinued.EVENT_TYPE, HANDLER_NAME);
         this.replenishment = replenishment;
         this.activeBom = activeBom;
         this.boms = boms;
@@ -72,11 +72,11 @@ public class ProductDiscontinuedHandler extends AbstractInboxHandler<ProductDisc
             log.warn(
                 "[{}] product_id={} discontinued; cascade-cleared active BOM on parent product_id={}. "
                     + "Parent FG will now reject new orders with rejected_no_bom until a new BOM revision is activated.",
-                CONSUMER_NAME, productId, parentId
+                HANDLER_NAME, productId, parentId
             );
         }
 
         log.info("[{}] applied {} ({}) for product_id={} (replenishment flags off + active BOM cleared + {} parent BOM(s) cascade-cleared)",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(), productId, affectedParents.size());
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(), productId, affectedParents.size());
     }
 }

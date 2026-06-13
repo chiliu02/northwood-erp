@@ -19,7 +19,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class RawMaterialReservationRequestedHandler extends AbstractInboxHandler<RawMaterialReservationRequested> {
 
-    public static final String CONSUMER_NAME = "inventory.raw-material-reservation";
+    public static final String HANDLER_NAME = "inventory.raw-material-reservation";
 
     private final StockReservationService reservation;
 
@@ -28,7 +28,7 @@ public class RawMaterialReservationRequestedHandler extends AbstractInboxHandler
         StockReservationService reservation,
         ObjectMapper json
     ) {
-        super(inbox, json, RawMaterialReservationRequested.class, RawMaterialReservationRequested.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, RawMaterialReservationRequested.class, RawMaterialReservationRequested.EVENT_TYPE, HANDLER_NAME);
         this.reservation = reservation;
     }
 
@@ -37,6 +37,6 @@ public class RawMaterialReservationRequestedHandler extends AbstractInboxHandler
         reservation.reserveForWorkOrder(payload);
 
         log.info("[{}] processed {} ({}) for work_order={}",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(), payload.workOrderId());
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(), payload.workOrderId());
     }
 }

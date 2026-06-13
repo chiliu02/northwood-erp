@@ -86,7 +86,7 @@ class ProductMaterialsCostComputedHandlerTest {
 
     @Test void already_processed_short_circuits() {
         EventEnvelope envelope = event(MATERIALS_COST, STANDARD_COST, CURRENCY);
-        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(ProductMaterialsCostComputedHandler.CONSUMER_NAME)))
+        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(ProductMaterialsCostComputedHandler.HANDLER_NAME)))
             .thenReturn(true);
 
         handler.handle(envelope);

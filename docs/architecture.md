@@ -111,13 +111,13 @@ public record CustomerInvoiceCreated(...) implements DomainEvent {
 Handler:
 ```java
 public class CustomerInvoiceCreatedHandler extends AbstractInboxHandler<CustomerInvoiceCreated> {
-    public static final String CONSUMER_NAME = "sales.fulfilment-saga.customer-invoice-created";
+    public static final String HANDLER_NAME = "sales.fulfilment-saga.customer-invoice-created";
     // ...
-    super(inbox, json, CustomerInvoiceCreated.class, CustomerInvoiceCreated.EVENT_TYPE, CONSUMER_NAME);
+    super(inbox, json, CustomerInvoiceCreated.class, CustomerInvoiceCreated.EVENT_TYPE, HANDLER_NAME);
 }
 ```
 
-Handlers keep `CONSUMER_NAME` as their own constant (per-handler, used as the inbox dedupe key). They do **not** redeclare `EVENT_TYPE` — that creates a duplicated literal that drifts on rename. The literal lives on the event record exactly once. Rule-of-thumb test for any new event-type usage: would a refactor IDE rename of the event class find this site? If not (i.e. it's a string literal), replace with `<Event>.EVENT_TYPE` and add the import.
+Handlers keep `HANDLER_NAME` as their own constant (per-handler, used as the inbox dedupe key). They do **not** redeclare `EVENT_TYPE` — that creates a duplicated literal that drifts on rename. The literal lives on the event record exactly once. Rule-of-thumb test for any new event-type usage: would a refactor IDE rename of the event class find this site? If not (i.e. it's a string literal), replace with `<Event>.EVENT_TYPE` and add the import.
 
 Exception: `shared` module tests (e.g. `OutboxDrainerTest`) deliberately use string literals because that module has no compile dep on the events jars — the tests exercise the publisher mechanism with arbitrary throwaway event-type values, not specific business events. Don't introduce events-jar deps into `shared` to "fix" that.
 

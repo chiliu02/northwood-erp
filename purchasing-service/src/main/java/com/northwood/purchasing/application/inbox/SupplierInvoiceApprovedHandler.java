@@ -25,7 +25,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class SupplierInvoiceApprovedHandler extends AbstractInboxHandler<SupplierInvoiceApproved> {
 
-    public static final String CONSUMER_NAME = "purchasing.p2p.supplier-invoice-approved";
+    public static final String HANDLER_NAME = "purchasing.p2p.supplier-invoice-approved";
 
     private final PurchaseToPaySagaManager sagaManager;
     private final PurchaseOrderPaymentProjection paymentProjection;
@@ -36,7 +36,7 @@ public class SupplierInvoiceApprovedHandler extends AbstractInboxHandler<Supplie
         PurchaseOrderPaymentProjection paymentProjection,
         ObjectMapper json
     ) {
-        super(inbox, json, SupplierInvoiceApproved.class, SupplierInvoiceApproved.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, SupplierInvoiceApproved.class, SupplierInvoiceApproved.EVENT_TYPE, HANDLER_NAME);
         this.sagaManager = sagaManager;
         this.paymentProjection = paymentProjection;
     }

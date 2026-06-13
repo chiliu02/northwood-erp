@@ -21,7 +21,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class InventoryCancellationAppliedHandler extends AbstractInboxHandler<InventorySalesOrderCancellationApplied> {
 
-    public static final String CONSUMER_NAME = "sales.compensation-inventory-ack";
+    public static final String HANDLER_NAME = "sales.compensation-inventory-ack";
 
     private final SalesOrderFulfilmentSagaManager sagaManager;
     private final SalesOrderCompensationEmitter compensationEmitter;
@@ -32,7 +32,7 @@ public class InventoryCancellationAppliedHandler extends AbstractInboxHandler<In
         SalesOrderCompensationEmitter compensationEmitter,
         ObjectMapper json
     ) {
-        super(inbox, json, InventorySalesOrderCancellationApplied.class, InventorySalesOrderCancellationApplied.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, InventorySalesOrderCancellationApplied.class, InventorySalesOrderCancellationApplied.EVENT_TYPE, HANDLER_NAME);
         this.sagaManager = sagaManager;
         this.compensationEmitter = compensationEmitter;
     }
@@ -45,6 +45,6 @@ public class InventoryCancellationAppliedHandler extends AbstractInboxHandler<In
         }
 
         log.info("[{}] processed {} ({}) for sales_order={}",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(), payload.aggregateId());
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(), payload.aggregateId());
     }
 }

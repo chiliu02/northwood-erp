@@ -131,7 +131,7 @@ class ReplenishmentPurchaseOrderLinkHandlerTest {
     @Test void already_processed_short_circuits() {
         EventEnvelope envelope = event(UUID.randomUUID());
         when(inbox.alreadyProcessed(eq(envelope.eventId()),
-            eq(ReplenishmentPurchaseOrderLinkHandler.CONSUMER_NAME))).thenReturn(true);
+            eq(ReplenishmentPurchaseOrderLinkHandler.HANDLER_NAME))).thenReturn(true);
 
         handler.handle(envelope);
 

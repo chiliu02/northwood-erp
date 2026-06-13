@@ -29,19 +29,19 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class SubAssembliesConsumedHandler extends AbstractInboxHandler<SubAssembliesConsumed> {
 
-    public static final String CONSUMER_NAME = "inventory.wip-consume";
+    public static final String HANDLER_NAME = "inventory.wip-consume";
 
     private final WipBalanceWriter wipBalances;
 
     public SubAssembliesConsumedHandler(InboxPort inbox, WipBalanceWriter wipBalances, ObjectMapper json) {
-        super(inbox, json, SubAssembliesConsumed.class, SubAssembliesConsumed.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, SubAssembliesConsumed.class, SubAssembliesConsumed.EVENT_TYPE, HANDLER_NAME);
         this.wipBalances = wipBalances;
     }
 
     @Override
     protected void apply(SubAssembliesConsumed payload, EventEnvelope envelope) {
         if (payload.items() == null || payload.items().isEmpty()) {
-            log.debug("[{}] {} carried no items — nothing to consume", CONSUMER_NAME, envelope.eventId());
+            log.debug("[{}] {} carried no items — nothing to consume", HANDLER_NAME, envelope.eventId());
         } else {
             for (SubAssembliesConsumed.ConsumedItem item : payload.items()) {
                 wipBalances.decrement(item.productId(), item.quantity());
@@ -49,7 +49,7 @@ public class SubAssembliesConsumedHandler extends AbstractInboxHandler<SubAssemb
         }
 
         log.info("[{}] consumed {} sub-assembly item(s) for parent work_order={}",
-            CONSUMER_NAME,
+            HANDLER_NAME,
             payload.items() == null ? 0 : payload.items().size(),
             payload.aggregateId());
     }

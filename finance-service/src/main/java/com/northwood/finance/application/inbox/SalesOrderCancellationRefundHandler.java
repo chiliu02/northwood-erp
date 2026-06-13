@@ -38,7 +38,7 @@ import tools.jackson.databind.ObjectMapper;
 public class SalesOrderCancellationRefundHandler
     extends AbstractInboxHandler<SalesOrderCancellationRequested> {
 
-    public static final String CONSUMER_NAME = "finance.refund.sales-order-cancellation";
+    public static final String HANDLER_NAME = "finance.refund.sales-order-cancellation";
 
     private final JournalEntryService journals;
     private final CustomerInvoiceRepository customerInvoices;
@@ -52,7 +52,7 @@ public class SalesOrderCancellationRefundHandler
         super(inbox, json,
             SalesOrderCancellationRequested.class,
             SalesOrderCancellationRequested.EVENT_TYPE,
-            CONSUMER_NAME);
+            HANDLER_NAME);
         this.journals = journals;
         this.customerInvoices = customerInvoices;
     }
@@ -62,14 +62,14 @@ public class SalesOrderCancellationRefundHandler
         Optional<ShipmentTimeInvoice> found = customerInvoices.findInvoiceForShipment(payload.aggregateId());
         if (found.isEmpty()) {
             log.debug("[{}] sales_order={} has no invoice — nothing to refund (on-shipment/COD cancelled pre-invoice)",
-                CONSUMER_NAME, payload.aggregateId());
+                HANDLER_NAME, payload.aggregateId());
             return;
         }
         ShipmentTimeInvoice invoice = found.get();
         if (invoice.invoiceType() != CustomerInvoice.InvoiceType.PREPAYMENT
             && invoice.invoiceType() != CustomerInvoice.InvoiceType.DEPOSIT) {
             log.debug("[{}] sales_order={} up-front invoice is {} — no Customer Deposits balance to refund",
-                CONSUMER_NAME, payload.aggregateId(), invoice.invoiceType().code());
+                HANDLER_NAME, payload.aggregateId(), invoice.invoiceType().code());
             return;
         }
 
@@ -77,13 +77,13 @@ public class SalesOrderCancellationRefundHandler
             .map(PaymentSnapshot::paidAmount).orElse(BigDecimal.ZERO);
         if (paid.signum() <= 0) {
             log.debug("[{}] sales_order={} {} invoice unpaid — nothing in 2110, clean cancel suffices",
-                CONSUMER_NAME, payload.aggregateId(), invoice.invoiceType().code());
+                HANDLER_NAME, payload.aggregateId(), invoice.invoiceType().code());
             return;
         }
 
         if (!customerInvoices.markRefunded(invoice.customerInvoiceHeaderId())) {
             log.debug("[{}] sales_order={} invoice {} already refunded — skipping",
-                CONSUMER_NAME, payload.aggregateId(), invoice.invoiceNumber());
+                HANDLER_NAME, payload.aggregateId(), invoice.invoiceNumber());
             return;
         }
 
@@ -99,6 +99,6 @@ public class SalesOrderCancellationRefundHandler
             postingDate
         );
         log.info("[{}] refunded {} {} for cancelled sales_order={} (invoice {})",
-            CONSUMER_NAME, paid, invoice.currencyCode(), payload.aggregateId(), invoice.invoiceNumber());
+            HANDLER_NAME, paid, invoice.currencyCode(), payload.aggregateId(), invoice.invoiceNumber());
     }
 }

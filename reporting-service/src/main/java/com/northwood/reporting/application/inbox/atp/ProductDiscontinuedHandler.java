@@ -16,7 +16,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component("atp_ProductDiscontinuedHandler")
 public class ProductDiscontinuedHandler extends AbstractInboxHandler<ProductDiscontinued> {
 
-    public static final String CONSUMER_NAME = "reporting.atp.product-discontinued";
+    public static final String HANDLER_NAME = "reporting.atp.product-discontinued";
 
     private final AvailableToPromiseProjection projection;
 
@@ -25,7 +25,7 @@ public class ProductDiscontinuedHandler extends AbstractInboxHandler<ProductDisc
         AvailableToPromiseProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, ProductDiscontinued.class, ProductDiscontinued.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ProductDiscontinued.class, ProductDiscontinued.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 

@@ -163,7 +163,7 @@ class RawMaterialsReservedHandlerTest {
         EventEnvelope envelope = event(wo, "reserved",
             List.of(reserved(UUID.randomUUID(), UUID.randomUUID())));
         when(inbox.alreadyProcessed(eq(envelope.eventId()),
-            eq(RawMaterialsReservedHandler.CONSUMER_NAME))).thenReturn(true);
+            eq(RawMaterialsReservedHandler.HANDLER_NAME))).thenReturn(true);
 
         handler.handle(envelope);
 

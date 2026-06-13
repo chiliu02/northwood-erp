@@ -94,7 +94,7 @@ class StockAdjustedHandlerTest {
 
     @Test void already_processed_short_circuits() {
         EventEnvelope envelope = event(StockAdjusted.DIRECTION_IN, new BigDecimal("1"));
-        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(StockAdjustedHandler.CONSUMER_NAME)))
+        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(StockAdjustedHandler.HANDLER_NAME)))
             .thenReturn(true);
 
         handler.handle(envelope);

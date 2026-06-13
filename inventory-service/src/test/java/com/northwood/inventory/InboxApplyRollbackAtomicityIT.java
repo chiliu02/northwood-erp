@@ -162,7 +162,7 @@ class InboxApplyRollbackAtomicityIT {
 
         Integer inboxAfterFailure = jdbc.queryForObject(
             "SELECT COUNT(*) FROM inventory.inbox_message WHERE message_id = ? AND consumer_name = ?",
-            Integer.class, eventId, RollbackProbeHandler.CONSUMER_NAME
+            Integer.class, eventId, RollbackProbeHandler.HANDLER_NAME
         );
         assertThat(inboxAfterFailure)
             .withFailMessage("a failed apply must not leave an inbox row").isZero();
@@ -180,7 +180,7 @@ class InboxApplyRollbackAtomicityIT {
 
         Integer inboxFinal = jdbc.queryForObject(
             "SELECT COUNT(*) FROM inventory.inbox_message WHERE message_id = ? AND consumer_name = ?",
-            Integer.class, eventId, RollbackProbeHandler.CONSUMER_NAME
+            Integer.class, eventId, RollbackProbeHandler.HANDLER_NAME
         );
         assertThat(inboxFinal)
             .withFailMessage("redelivery must record exactly one inbox row").isEqualTo(1);
@@ -236,13 +236,13 @@ class InboxApplyRollbackAtomicityIT {
     static class RollbackProbeHandler extends AbstractInboxHandler<ReorderPolicyChanged> {
 
         static final String EVENT_TYPE = "test.RollbackProbe";
-        static final String CONSUMER_NAME = "inventory.rollback-probe-test";
+        static final String HANDLER_NAME = "inventory.rollback-probe-test";
 
         private final JdbcTemplate jdbc;
         private final ProbeState state;
 
         RollbackProbeHandler(InboxPort inbox, ObjectMapper json, JdbcTemplate jdbc, ProbeState state) {
-            super(inbox, json, ReorderPolicyChanged.class, EVENT_TYPE, CONSUMER_NAME);
+            super(inbox, json, ReorderPolicyChanged.class, EVENT_TYPE, HANDLER_NAME);
             this.jdbc = jdbc;
             this.state = state;
         }

@@ -17,7 +17,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component("dashboard_CustomerDeactivatedHandler")
 public class CustomerDeactivatedHandler extends AbstractInboxHandler<CustomerDeactivated> {
 
-    public static final String CONSUMER_NAME = "reporting.dashboard.customer-deactivated";
+    public static final String HANDLER_NAME = "reporting.dashboard.customer-deactivated";
 
     private final CustomerDashboardProjection projection;
 
@@ -26,7 +26,7 @@ public class CustomerDeactivatedHandler extends AbstractInboxHandler<CustomerDea
         CustomerDashboardProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, CustomerDeactivated.class, CustomerDeactivated.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, CustomerDeactivated.class, CustomerDeactivated.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 

@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class BoardWorkOrderCompletedHandler extends AbstractInboxHandler<WorkOrderManufacturingCompleted> {
 
-    public static final String CONSUMER_NAME = "reporting.production-planning.work-order-completed";
+    public static final String HANDLER_NAME = "reporting.production-planning.work-order-completed";
 
     private final ProductionPlanningProjection projection;
 
@@ -26,7 +26,7 @@ public class BoardWorkOrderCompletedHandler extends AbstractInboxHandler<WorkOrd
         ProductionPlanningProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, WorkOrderManufacturingCompleted.class, WorkOrderManufacturingCompleted.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, WorkOrderManufacturingCompleted.class, WorkOrderManufacturingCompleted.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 

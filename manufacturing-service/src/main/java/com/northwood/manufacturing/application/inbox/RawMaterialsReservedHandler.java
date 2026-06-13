@@ -48,7 +48,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class RawMaterialsReservedHandler extends AbstractInboxHandler<RawMaterialsReserved> {
 
-    public static final String CONSUMER_NAME = "manufacturing.make-to-order.raw-materials-reserved";
+    public static final String HANDLER_NAME = "manufacturing.make-to-order.raw-materials-reserved";
 
     private final WorkOrderSagaManager sagaManager;
     private final WorkOrderRepository workOrders;
@@ -61,7 +61,7 @@ public class RawMaterialsReservedHandler extends AbstractInboxHandler<RawMateria
         OutboxAppender outbox,
         ObjectMapper json
     ) {
-        super(inbox, json, RawMaterialsReserved.class, RawMaterialsReserved.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, RawMaterialsReserved.class, RawMaterialsReserved.EVENT_TYPE, HANDLER_NAME);
         this.sagaManager = sagaManager;
         this.workOrders = workOrders;
         this.outbox = outbox;
@@ -91,7 +91,7 @@ public class RawMaterialsReservedHandler extends AbstractInboxHandler<RawMateria
         }
 
         log.info("[{}] work_order={} status={} → {} (reservation={})",
-            CONSUMER_NAME, payload.workOrderId(), payload.status(), newState, payload.stockReservationId());
+            HANDLER_NAME, payload.workOrderId(), payload.status(), newState, payload.stockReservationId());
     }
 
     private static WorkOrder.MaterialStatus toMaterialStatus(String reservationStatus) {

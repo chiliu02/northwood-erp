@@ -40,7 +40,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class RawMaterialShortageDetectedHandler extends AbstractInboxHandler<RawMaterialShortageDetected> {
 
-    public static final String CONSUMER_NAME = "inventory.shortage-to-replenishment";
+    public static final String HANDLER_NAME = "inventory.shortage-to-replenishment";
 
     private final ReplenishmentDetectionService detection;
     private final WarehouseLookup warehouses;
@@ -51,7 +51,7 @@ public class RawMaterialShortageDetectedHandler extends AbstractInboxHandler<Raw
         WarehouseLookup warehouses,
         ObjectMapper json
     ) {
-        super(inbox, json, RawMaterialShortageDetected.class, RawMaterialShortageDetected.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, RawMaterialShortageDetected.class, RawMaterialShortageDetected.EVENT_TYPE, HANDLER_NAME);
         this.detection = detection;
         this.warehouses = warehouses;
     }
@@ -63,7 +63,7 @@ public class RawMaterialShortageDetectedHandler extends AbstractInboxHandler<Raw
         for (RawMaterialShortageDetected.ShortageComponent c : payload.components()) {
             if (c.shortageQuantity() == null || c.shortageQuantity().signum() <= 0) {
                 log.debug("[{}] skipping component product_id={} with non-positive shortage_quantity={}",
-                    CONSUMER_NAME, c.componentProductId(), c.shortageQuantity());
+                    HANDLER_NAME, c.componentProductId(), c.shortageQuantity());
                 continue;
             }
             detection.raiseIfNoneOpen(
@@ -75,7 +75,7 @@ public class RawMaterialShortageDetectedHandler extends AbstractInboxHandler<Raw
             raised++;
         }
         log.info("[{}] processed {} ({}) for work_order={} warehouse={}: bridged {} of {} component(s) → ReplenishmentRequest(s)",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(),
             payload.workOrderId(), payload.warehouseCode(),
             raised, payload.components().size());
     }

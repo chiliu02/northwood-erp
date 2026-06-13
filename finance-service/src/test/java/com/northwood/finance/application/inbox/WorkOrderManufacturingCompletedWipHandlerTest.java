@@ -90,7 +90,7 @@ class WorkOrderManufacturingCompletedWipHandlerTest {
 
     @Test void already_processed_short_circuits() {
         EventEnvelope envelope = event("10");
-        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(WorkOrderManufacturingCompletedWipHandler.CONSUMER_NAME)))
+        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(WorkOrderManufacturingCompletedWipHandler.HANDLER_NAME)))
             .thenReturn(true);
 
         handler.handle(envelope);

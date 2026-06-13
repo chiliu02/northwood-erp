@@ -21,7 +21,7 @@ import tools.jackson.databind.ObjectMapper;
 public class ManufacturingReplenishmentDispatchedHandler
     extends AbstractInboxHandler<ReplenishmentDispatched> {
 
-    public static final String CONSUMER_NAME = "reporting.replenishment-history.mfg-dispatched";
+    public static final String HANDLER_NAME = "reporting.replenishment-history.mfg-dispatched";
 
     private final ReplenishmentHistoryProjection projection;
 
@@ -30,7 +30,7 @@ public class ManufacturingReplenishmentDispatchedHandler
         ReplenishmentHistoryProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, ReplenishmentDispatched.class, ReplenishmentDispatched.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ReplenishmentDispatched.class, ReplenishmentDispatched.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 
@@ -44,7 +44,7 @@ public class ManufacturingReplenishmentDispatchedHandler
         );
 
         log.info("[{}] applied {} ({}) for replenishment_request={} → work_order={}",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(),
             payload.replenishmentRequestId(), payload.aggregateId());
     }
 }

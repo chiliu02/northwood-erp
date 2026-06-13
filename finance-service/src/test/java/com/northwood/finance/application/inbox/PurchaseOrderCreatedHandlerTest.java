@@ -76,7 +76,7 @@ class PurchaseOrderCreatedHandlerTest {
     @Test void already_processed_short_circuits() {
         EventEnvelope envelope = event(List.of(line(10, "5")));
         when(inbox.alreadyProcessed(eq(envelope.eventId()),
-            eq(PurchaseOrderCreatedHandler.CONSUMER_NAME))).thenReturn(true);
+            eq(PurchaseOrderCreatedHandler.HANDLER_NAME))).thenReturn(true);
 
         handler.handle(envelope);
 

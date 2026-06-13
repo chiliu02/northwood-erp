@@ -20,7 +20,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ProductCreatedHandler extends AbstractInboxHandler<ProductCreated> {
 
-    public static final String CONSUMER_NAME = "manufacturing.product-replenishment-seeder";
+    public static final String HANDLER_NAME = "manufacturing.product-replenishment-seeder";
 
     private final ProductReplenishmentProjection projection;
 
@@ -29,7 +29,7 @@ public class ProductCreatedHandler extends AbstractInboxHandler<ProductCreated> 
         ProductReplenishmentProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, ProductCreated.class, ProductCreated.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ProductCreated.class, ProductCreated.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 
@@ -38,7 +38,7 @@ public class ProductCreatedHandler extends AbstractInboxHandler<ProductCreated> 
         projection.seedDefaultsFromProductType(payload.aggregateId(), payload.productType());
 
         log.info("[{}] seeded {} ({}) for product_id={}, type={}",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(),
             payload.aggregateId(), payload.productType());
     }
 }

@@ -16,7 +16,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class CustomerDeactivatedHandler extends AbstractInboxHandler<CustomerDeactivated> {
 
-    public static final String CONSUMER_NAME = "finance.ar.customer-deactivated";
+    public static final String HANDLER_NAME = "finance.ar.customer-deactivated";
 
     private final CustomerInvoiceCollectionsProjection projection;
 
@@ -25,7 +25,7 @@ public class CustomerDeactivatedHandler extends AbstractInboxHandler<CustomerDea
         CustomerInvoiceCollectionsProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, CustomerDeactivated.class, CustomerDeactivated.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, CustomerDeactivated.class, CustomerDeactivated.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 
@@ -33,7 +33,7 @@ public class CustomerDeactivatedHandler extends AbstractInboxHandler<CustomerDea
     protected void apply(CustomerDeactivated payload, EventEnvelope envelope) {
         int flagged = projection.flagOutstandingForCollections(payload.aggregateId());
         log.info("[{}] applied {} ({}) for customer_id={} flagged={} invoice(s)",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(),
             payload.aggregateId(), flagged);
     }
 }

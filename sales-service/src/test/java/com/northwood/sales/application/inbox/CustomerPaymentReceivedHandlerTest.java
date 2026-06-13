@@ -109,7 +109,7 @@ class CustomerPaymentReceivedHandlerTest {
 
     @Test void already_processed_short_circuits() {
         EventEnvelope envelope = event("paid", true);
-        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(CustomerPaymentReceivedHandler.CONSUMER_NAME)))
+        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(CustomerPaymentReceivedHandler.HANDLER_NAME)))
             .thenReturn(true);
 
         handler.handle(envelope);

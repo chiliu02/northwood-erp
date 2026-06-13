@@ -22,7 +22,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
 
-    public static final String CONSUMER_NAME = "purchasing.p2p.goods-received";
+    public static final String HANDLER_NAME = "purchasing.p2p.goods-received";
 
     private final PurchaseToPaySagaManager sagaManager;
     private final PurchaseOrderReceiptProjection receiptProjection;
@@ -33,7 +33,7 @@ public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
         PurchaseOrderReceiptProjection receiptProjection,
         ObjectMapper json
     ) {
-        super(inbox, json, GoodsReceived.class, GoodsReceived.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, GoodsReceived.class, GoodsReceived.EVENT_TYPE, HANDLER_NAME);
         this.sagaManager = sagaManager;
         this.receiptProjection = receiptProjection;
     }
@@ -44,7 +44,7 @@ public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
         for (GoodsReceived.ReceivedLine rl : payload.lines()) {
             if (rl.purchaseOrderLineId() == null) {
                 log.warn("[{}] receipt line {} has no purchase_order_line_id; skipping match",
-                    CONSUMER_NAME, rl.receiptLineId());
+                    HANDLER_NAME, rl.receiptLineId());
                 continue;
             }
             receiptLines.add(new ReceiptLine(rl.purchaseOrderLineId(), rl.receivedQuantity()));
@@ -54,7 +54,7 @@ public class GoodsReceivedHandler extends AbstractInboxHandler<GoodsReceived> {
         sagaManager.applyGoodsReceived(payload.purchaseOrderHeaderId(), outcome.fullyReceived());
 
         log.info("[{}] purchase_order={} → {} ({} line(s) received, fully={})",
-            CONSUMER_NAME, payload.purchaseOrderHeaderId(),
+            HANDLER_NAME, payload.purchaseOrderHeaderId(),
             outcome.fullyReceived() ? PurchaseOrder.Status.RECEIVED.code() : PurchaseOrder.Status.PARTIALLY_RECEIVED.code(),
             payload.lines().size(), outcome.fullyReceived());
     }

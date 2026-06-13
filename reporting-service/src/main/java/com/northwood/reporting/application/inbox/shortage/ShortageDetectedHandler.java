@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 @Component("shortage_ShortageDetectedHandler")
 public class ShortageDetectedHandler extends AbstractInboxHandler<RawMaterialShortageDetected> {
 
-    public static final String CONSUMER_NAME = "reporting.material-shortage.shortage-detected";
+    public static final String HANDLER_NAME = "reporting.material-shortage.shortage-detected";
 
     private final MaterialShortageProjection projection;
 
@@ -20,7 +20,7 @@ public class ShortageDetectedHandler extends AbstractInboxHandler<RawMaterialSho
         MaterialShortageProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, RawMaterialShortageDetected.class, RawMaterialShortageDetected.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, RawMaterialShortageDetected.class, RawMaterialShortageDetected.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 

@@ -47,7 +47,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class WorkOrderManufacturingCompletedHandler extends AbstractInboxHandler<WorkOrderManufacturingCompleted> {
 
-    public static final String CONSUMER_NAME = "inventory.production-confirmation";
+    public static final String HANDLER_NAME = "inventory.production-confirmation";
 
     private final StockBalanceWriter stockBalances;
     private final WipBalanceWriter wipBalances;
@@ -64,7 +64,7 @@ public class WorkOrderManufacturingCompletedHandler extends AbstractInboxHandler
         StockMovementWriter movements,
         ReplenishmentRequestRepository replenishmentRequests
     ) {
-        super(inbox, json, WorkOrderManufacturingCompleted.class, WorkOrderManufacturingCompleted.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, WorkOrderManufacturingCompleted.class, WorkOrderManufacturingCompleted.EVENT_TYPE, HANDLER_NAME);
         this.stockBalances = stockBalances;
         this.wipBalances = wipBalances;
         this.warehouses = warehouses;
@@ -82,7 +82,7 @@ public class WorkOrderManufacturingCompletedHandler extends AbstractInboxHandler
             // wip_movement table.
             wipBalances.bump(warehouseId, payload.finishedProductId(), payload.completedQuantity());
             log.info("[{}] bumped WIP balance for sub-assembly {} ({}) by {} (work_order={}, parent={})",
-                CONSUMER_NAME, payload.finishedProductSku(), payload.finishedProductId(),
+                HANDLER_NAME, payload.finishedProductSku(), payload.finishedProductId(),
                 payload.completedQuantity(), payload.aggregateId(), payload.parentWorkOrderId());
         } else {
             // Top-level FG completion → bump shippable stock + audit row.
@@ -95,7 +95,7 @@ public class WorkOrderManufacturingCompletedHandler extends AbstractInboxHandler
                 StockMovementSourceTypes.WORK_ORDER, payload.aggregateId(), null
             );
             log.info("[{}] bumped FG stock_balance for {} ({}) by {} (work_order={})",
-                CONSUMER_NAME, payload.finishedProductSku(), payload.finishedProductId(),
+                HANDLER_NAME, payload.finishedProductSku(), payload.finishedProductId(),
                 payload.completedQuantity(), payload.aggregateId());
 
             // If this WO fulfils an inventory replenishment, dispatch-and-fulfil
@@ -124,19 +124,19 @@ public class WorkOrderManufacturingCompletedHandler extends AbstractInboxHandler
                             warehouseId, payload.finishedProductId(), payload.completedQuantity());
                         if (pegged) {
                             log.info("[{}] pegged {} of {} ({}) to sales_order={} sales_order_line={} (atomic credit+reserve)",
-                                CONSUMER_NAME, payload.completedQuantity(), payload.finishedProductSku(),
+                                HANDLER_NAME, payload.completedQuantity(), payload.finishedProductSku(),
                                 payload.finishedProductId(), req.sourceSalesOrderHeaderId(), req.sourceSalesOrderLineId());
                         } else {
                             log.warn("[{}] could not peg-reserve {} of {} for sales_order={} — free stock insufficient "
                                 + "immediately after credit (concurrent reservation?); SO line falls back to the retry path",
-                                CONSUMER_NAME, payload.completedQuantity(), payload.finishedProductId(),
+                                HANDLER_NAME, payload.completedQuantity(), payload.finishedProductId(),
                                 req.sourceSalesOrderHeaderId());
                         }
                     }
                     req.markFulfilled();
                     replenishmentRequests.save(req);
                     log.info("[{}] fulfilled replenishment_request={} via work_order={}",
-                        CONSUMER_NAME, req.id().value(), payload.aggregateId());
+                        HANDLER_NAME, req.id().value(), payload.aggregateId());
                 }
             }
         }

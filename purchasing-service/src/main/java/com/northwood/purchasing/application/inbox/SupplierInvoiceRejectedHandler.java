@@ -21,7 +21,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class SupplierInvoiceRejectedHandler extends AbstractInboxHandler<SupplierInvoiceRejected> {
 
-    public static final String CONSUMER_NAME = "purchasing.p2p.supplier-invoice-rejected";
+    public static final String HANDLER_NAME = "purchasing.p2p.supplier-invoice-rejected";
 
     private final PurchaseToPaySagaManager sagaManager;
 
@@ -30,7 +30,7 @@ public class SupplierInvoiceRejectedHandler extends AbstractInboxHandler<Supplie
         PurchaseToPaySagaManager sagaManager,
         ObjectMapper json
     ) {
-        super(inbox, json, SupplierInvoiceRejected.class, SupplierInvoiceRejected.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, SupplierInvoiceRejected.class, SupplierInvoiceRejected.EVENT_TYPE, HANDLER_NAME);
         this.sagaManager = sagaManager;
     }
 
@@ -38,6 +38,6 @@ public class SupplierInvoiceRejectedHandler extends AbstractInboxHandler<Supplie
     protected void apply(SupplierInvoiceRejected payload, EventEnvelope envelope) {
         sagaManager.applySupplierInvoiceRejected(payload.purchaseOrderHeaderId());
         log.info("[{}] po={} reason='{}' → saga failed",
-            CONSUMER_NAME, payload.purchaseOrderHeaderId(), payload.reason());
+            HANDLER_NAME, payload.purchaseOrderHeaderId(), payload.reason());
     }
 }

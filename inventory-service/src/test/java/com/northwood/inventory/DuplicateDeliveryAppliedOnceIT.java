@@ -148,7 +148,7 @@ class DuplicateDeliveryAppliedOnceIT {
         // (a wrongly-applied B would have inserted a second inbox row).
         Integer duplicateInboxRows = jdbc.queryForObject(
             "SELECT COUNT(*) FROM inventory.inbox_message WHERE message_id = ? AND consumer_name = ?",
-            Integer.class, duplicatedEventId, ReorderPolicyChangedHandler.CONSUMER_NAME
+            Integer.class, duplicatedEventId, ReorderPolicyChangedHandler.HANDLER_NAME
         );
         assertThat(duplicateInboxRows)
             .withFailMessage("duplicate eventId must be recorded exactly once (the dedup gate skips the redelivery)")
@@ -158,7 +158,7 @@ class DuplicateDeliveryAppliedOnceIT {
         // listener kept consuming past the deduped duplicate.
         Integer markerInboxRows = jdbc.queryForObject(
             "SELECT COUNT(*) FROM inventory.inbox_message WHERE message_id = ? AND consumer_name = ?",
-            Integer.class, markerEventId, ReorderPolicyChangedHandler.CONSUMER_NAME
+            Integer.class, markerEventId, ReorderPolicyChangedHandler.HANDLER_NAME
         );
         assertThat(markerInboxRows).isEqualTo(1);
     }

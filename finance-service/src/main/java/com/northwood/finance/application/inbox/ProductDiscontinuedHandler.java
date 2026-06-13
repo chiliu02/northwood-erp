@@ -16,7 +16,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ProductDiscontinuedHandler extends AbstractInboxHandler<ProductDiscontinued> {
 
-    public static final String CONSUMER_NAME = "finance.product-discontinued";
+    public static final String HANDLER_NAME = "finance.product-discontinued";
 
     private final ProductCardProjection projection;
 
@@ -25,7 +25,7 @@ public class ProductDiscontinuedHandler extends AbstractInboxHandler<ProductDisc
         ProductCardProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, ProductDiscontinued.class, ProductDiscontinued.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ProductDiscontinued.class, ProductDiscontinued.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 
@@ -34,7 +34,7 @@ public class ProductDiscontinuedHandler extends AbstractInboxHandler<ProductDisc
         projection.applyDiscontinued(payload.aggregateId(), payload.occurredAt());
 
         log.info("[{}] applied {} ({}) for product_id={} (discontinued_at={})",
-            CONSUMER_NAME, envelope.eventType(), envelope.eventId(),
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(),
             payload.aggregateId(), payload.occurredAt());
     }
 }

@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class SupplierInvoiceApprovedHandler extends AbstractInboxHandler<SupplierInvoiceApproved> {
 
-    public static final String CONSUMER_NAME = "reporting.po-tracking.invoice-approved";
+    public static final String HANDLER_NAME = "reporting.po-tracking.invoice-approved";
 
     private final PurchaseOrderTrackingProjection projection;
 
@@ -20,7 +20,7 @@ public class SupplierInvoiceApprovedHandler extends AbstractInboxHandler<Supplie
         PurchaseOrderTrackingProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, SupplierInvoiceApproved.class, SupplierInvoiceApproved.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, SupplierInvoiceApproved.class, SupplierInvoiceApproved.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 

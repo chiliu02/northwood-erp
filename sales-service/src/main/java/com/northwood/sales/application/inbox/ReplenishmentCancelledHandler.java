@@ -33,7 +33,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ReplenishmentCancelledHandler extends AbstractInboxHandler<ReplenishmentCancelled> {
 
-    public static final String CONSUMER_NAME = "sales.fulfilment-saga.replenishment-cancelled";
+    public static final String HANDLER_NAME = "sales.fulfilment-saga.replenishment-cancelled";
 
     private final SalesOrderFulfilmentSagaManager sagaManager;
     private final SalesOrderRepository salesOrders;
@@ -44,7 +44,7 @@ public class ReplenishmentCancelledHandler extends AbstractInboxHandler<Replenis
         SalesOrderRepository salesOrders,
         ObjectMapper json
     ) {
-        super(inbox, json, ReplenishmentCancelled.class, ReplenishmentCancelled.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, ReplenishmentCancelled.class, ReplenishmentCancelled.EVENT_TYPE, HANDLER_NAME);
         this.sagaManager = sagaManager;
         this.salesOrders = salesOrders;
     }
@@ -55,7 +55,7 @@ public class ReplenishmentCancelledHandler extends AbstractInboxHandler<Replenis
         UUID salesOrderLineId = payload.sourceSalesOrderLineId();
         if (salesOrderHeaderId == null || salesOrderLineId == null) {
             log.debug("[{}] {} ({}) carries null sales-order back-reference — not a SO-shortage replenishment, skipping",
-                CONSUMER_NAME, envelope.eventType(), envelope.eventId());
+                HANDLER_NAME, envelope.eventType(), envelope.eventId());
             return;
         }
 
@@ -80,12 +80,12 @@ public class ReplenishmentCancelledHandler extends AbstractInboxHandler<Replenis
         SalesOrder order = salesOrders.findById(SalesOrderId.of(salesOrderHeaderId)).orElse(null);
         if (order == null) {
             log.warn("[{}] sales_order={} rejected by saga but could not load SalesOrder; skipping aggregate reject. "
-                + "Downstream compensation (stock release) will NOT fire.", CONSUMER_NAME, salesOrderHeaderId);
+                + "Downstream compensation (stock release) will NOT fire.", HANDLER_NAME, salesOrderHeaderId);
             return;
         }
         order.reject("Replenishment for a short line could not be sourced: " + reason);
         salesOrders.save(order);
         log.info("[{}] sales_order={} rejected (replenishment cancelled for line={}); compensation requested",
-            CONSUMER_NAME, salesOrderHeaderId, salesOrderLineId);
+            HANDLER_NAME, salesOrderHeaderId, salesOrderLineId);
     }
 }

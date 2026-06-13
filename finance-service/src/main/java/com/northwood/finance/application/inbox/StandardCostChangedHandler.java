@@ -18,7 +18,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class StandardCostChangedHandler extends AbstractInboxHandler<StandardCostChanged> {
 
-    public static final String CONSUMER_NAME = "finance.product-standard-cost-projector";
+    public static final String HANDLER_NAME = "finance.product-standard-cost-projector";
 
     private final ProductCardProjection projection;
 
@@ -27,7 +27,7 @@ public class StandardCostChangedHandler extends AbstractInboxHandler<StandardCos
         ProductCardProjection projection,
         ObjectMapper json
     ) {
-        super(inbox, json, StandardCostChanged.class, StandardCostChanged.EVENT_TYPE, CONSUMER_NAME);
+        super(inbox, json, StandardCostChanged.class, StandardCostChanged.EVENT_TYPE, HANDLER_NAME);
         this.projection = projection;
     }
 

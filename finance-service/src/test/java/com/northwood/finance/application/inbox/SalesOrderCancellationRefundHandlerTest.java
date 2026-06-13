@@ -135,7 +135,7 @@ class SalesOrderCancellationRefundHandlerTest {
 
     @Test void already_processed_short_circuits() {
         EventEnvelope envelope = event();
-        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(SalesOrderCancellationRefundHandler.CONSUMER_NAME)))
+        when(inbox.alreadyProcessed(eq(envelope.eventId()), eq(SalesOrderCancellationRefundHandler.HANDLER_NAME)))
             .thenReturn(true);
 
         handler.handle(envelope);
