@@ -17,6 +17,15 @@ import java.util.UUID;
  * production-planning-board can compute {@code open_purchase_orders_count}
  * per WO. Existing consumers that don't read the field can ignore it
  * (Jackson 3 default deserialisation tolerates unknown fields).
+ *
+ * <p>{@code sourceReplenishmentRequestId} is non-null only when the originating
+ * PR was raised by inventory's replenishment loop (PR.source_type=
+ * 'stock_replenishment'); it forwards the PR's own
+ * {@code source_replenishment_request_id}. Inventory's replenishment-link
+ * handler reads it to resolve the originating {@code ReplenishmentRequest} and
+ * stamp the PR→PO link ({@code markDispatched} + {@code linkPurchaseOrder})
+ * self-sufficiently, so this event's arrival order relative to
+ * {@code ReplenishmentDispatched} no longer matters.
  */
 public record PurchaseOrderCreated(
     UUID eventId,
@@ -27,6 +36,7 @@ public record PurchaseOrderCreated(
     String supplierName,
     UUID purchaseRequisitionHeaderId,
     UUID sourceWorkOrderId,
+    UUID sourceReplenishmentRequestId,
     String currencyCode,
     BigDecimal totalAmount,
     String status,

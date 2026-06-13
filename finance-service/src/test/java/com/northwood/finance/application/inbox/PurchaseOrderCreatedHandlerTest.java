@@ -52,7 +52,7 @@ class PurchaseOrderCreatedHandlerTest {
         UUID eventId = UUID.randomUUID();
         PurchaseOrderCreated payload = new PurchaseOrderCreated(
             eventId, PO, "PO-001", SUPPLIER, "SUP-001", "Acme",
-            UUID.randomUUID(), null, Currencies.AUD,
+            UUID.randomUUID(), null, null, Currencies.AUD,
             new BigDecimal("0"), "draft", lines, Instant.now()
         );
         return new EventEnvelope(

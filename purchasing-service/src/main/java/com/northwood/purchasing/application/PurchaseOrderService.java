@@ -142,6 +142,7 @@ public class PurchaseOrderService {
             supplier,
             pr.id().value(),
             pr.sourceWorkOrderId(),
+            pr.sourceReplenishmentRequestId(),
             Currencies.BASE_CURRENCY,
             lines,
             autoApprove

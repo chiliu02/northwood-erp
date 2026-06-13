@@ -153,6 +153,7 @@ public final class PurchaseOrder {
         Supplier supplier,
         UUID purchaseRequisitionHeaderId,
         UUID sourceWorkOrderId,
+        UUID sourceReplenishmentRequestId,
         String currencyCode,
         List<PurchaseOrderLine> lines,
         boolean autoApprove
@@ -203,6 +204,7 @@ public final class PurchaseOrder {
             supplier.id().value(), supplier.supplierCode(), supplier.name(),
             purchaseRequisitionHeaderId,
             sourceWorkOrderId,
+            sourceReplenishmentRequestId,
             po.currencyCode,
             total,
             initialStatus.code(),

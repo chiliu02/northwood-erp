@@ -30,14 +30,13 @@ class PurchaseOrderCreatedHandlerTest {
 
     @Mock InboxPort inbox;
     @Mock PurchaseOrderLineFactsProjection projection;
-    @Mock com.northwood.inventory.domain.ReplenishmentRequestRepository replenishmentRequests;
 
     private final ObjectMapper json = new ObjectMapper();
     private PurchaseOrderCreatedHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new PurchaseOrderCreatedHandler(inbox, projection, replenishmentRequests, json);
+        handler = new PurchaseOrderCreatedHandler(inbox, projection, json);
     }
 
     private EventEnvelope event(List<PurchaseOrderCreated.OrderLine> lines) {
@@ -45,7 +44,7 @@ class PurchaseOrderCreatedHandlerTest {
         PurchaseOrderCreated payload = new PurchaseOrderCreated(
             eventId, PO, "PO-001",
             UUID.randomUUID(), "SUP-001", "Acme Supplies",
-            UUID.randomUUID(), null, Currencies.AUD,
+            UUID.randomUUID(), null, null, Currencies.AUD,
             new BigDecimal("500.00"), "draft",
             lines, Instant.now()
         );

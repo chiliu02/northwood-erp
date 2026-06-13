@@ -10,6 +10,7 @@ import com.northwood.inventory.application.inbox.ManufacturingReplenishmentUndis
 import com.northwood.inventory.application.inbox.PurchaseOrderCreatedHandler;
 import com.northwood.inventory.application.inbox.PurchasingReplenishmentDispatchedHandler;
 import com.northwood.inventory.application.inbox.PurchasingReplenishmentUndispatchableHandler;
+import com.northwood.inventory.application.inbox.ReplenishmentPurchaseOrderLinkHandler;
 import com.northwood.inventory.application.inbox.RawMaterialReservationRequestedHandler;
 import com.northwood.inventory.application.inbox.RawMaterialShortageDetectedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderCancellationRequestedHandler;
@@ -118,10 +119,12 @@ public final class InventoryTestKit {
         bus.register(new SalesOrderPlacedHandler(inbox, salesOrderLineFacts, json));
         bus.register(new SalesOrderUpfrontPaymentSettledHandler(inbox, salesOrderLineFacts, json));
 
-        // Close-the-loop replenishment dispatch handlers.
+        // Close-the-loop replenishment dispatch handlers. The PR→PO link lives
+        // here (the replenishment concern), not on the line-facts seeder.
         bus.register(new ManufacturingReplenishmentDispatchedHandler(inbox, replenishmentRequests, json));
         bus.register(new PurchasingReplenishmentDispatchedHandler(inbox, replenishmentRequests, json));
-        bus.register(new PurchaseOrderCreatedHandler(inbox, purchaseOrderLineFacts, replenishmentRequests, json));
+        bus.register(new ReplenishmentPurchaseOrderLinkHandler(inbox, replenishmentRequests, json));
+        bus.register(new PurchaseOrderCreatedHandler(inbox, purchaseOrderLineFacts, json));
 
         // Manufacturing<->purchasing decoupling bridge (REQ-INV-080 Trigger B / REQ-INV-087):
         // a WO raw-material shortage flows through inventory as a work_order_shortage
