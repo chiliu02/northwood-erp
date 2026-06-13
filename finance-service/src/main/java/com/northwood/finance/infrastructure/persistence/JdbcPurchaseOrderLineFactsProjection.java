@@ -68,19 +68,22 @@ public class JdbcPurchaseOrderLineFactsProjection implements PurchaseOrderLineFa
         if (purchaseOrderLineId == null || receivedQuantity == null || receivedQuantity.signum() <= 0) {
             return;
         }
-        int rows = jdbc.update("""
-            UPDATE finance.purchase_order_line_facts
-               SET received_quantity = received_quantity + ?
-             WHERE purchase_order_line_id = ?
+        // Upsert-seed (order-independent): a GoodsReceived can race ahead of the
+        // PurchaseOrderCreated that seeds the full facts (different aggregate keys
+        // → different partitions). Insert a partial row carrying just the received
+        // quantity; PurchaseOrderCreated later fills the PO facts via its own
+        // ON CONFLICT upsert, which leaves received_quantity untouched. Additive +
+        // inbox-deduped, so redelivery is safe — replaces the old bare UPDATE that
+        // silently dropped the receipt when the row didn't exist yet.
+        jdbc.update("""
+            INSERT INTO finance.purchase_order_line_facts (purchase_order_line_id, received_quantity)
+            VALUES (?, ?)
+            ON CONFLICT (purchase_order_line_id) DO UPDATE SET
+                received_quantity = purchase_order_line_facts.received_quantity + EXCLUDED.received_quantity
             """,
-            receivedQuantity, purchaseOrderLineId
+            purchaseOrderLineId, receivedQuantity
         );
-        if (rows == 0) {
-            log.warn("po_line_facts row missing for purchase_order_line_id={}; receipt of {} dropped (PO event may not have arrived yet)",
-                purchaseOrderLineId, receivedQuantity);
-        } else {
-            log.debug("bumped received_quantity by {} on po_line_facts {}", receivedQuantity, purchaseOrderLineId);
-        }
+        log.debug("bumped received_quantity by {} on po_line_facts {}", receivedQuantity, purchaseOrderLineId);
     }
 
     @Override

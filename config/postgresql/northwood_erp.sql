@@ -2154,14 +2154,20 @@ CREATE TRIGGER trg_work_order_wip_updated_at
 -- repeat invoices can detect over-invoicing.
 CREATE TABLE finance.purchase_order_line_facts (
     purchase_order_line_id UUID PRIMARY KEY,
-    purchase_order_header_id UUID NOT NULL,
+    -- The PO-fact columns are nullable so inventory.GoodsReceived can upsert-seed
+    -- a partial row (just received_quantity) when it races ahead of the
+    -- purchasing.PurchaseOrderCreated that supplies the full facts (the two are
+    -- keyed on different aggregate ids → different partitions). PurchaseOrderCreated
+    -- then fills them via its own ON CONFLICT upsert. By 3-way-match time the PO
+    -- event has always landed, so the match never reads a partial row.
+    purchase_order_header_id UUID,
     supplier_id UUID,
     supplier_name VARCHAR(200),
     currency_code CHAR(3) NOT NULL DEFAULT 'AUD',
-    product_id UUID NOT NULL,
-    product_sku VARCHAR(50) NOT NULL,
-    product_name VARCHAR(200) NOT NULL,
-    ordered_quantity NUMERIC(18, 4) NOT NULL,
+    product_id UUID,
+    product_sku VARCHAR(50),
+    product_name VARCHAR(200),
+    ordered_quantity NUMERIC(18, 4),
     unit_price NUMERIC(18, 6) NOT NULL DEFAULT 0,
     received_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
     invoiced_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
