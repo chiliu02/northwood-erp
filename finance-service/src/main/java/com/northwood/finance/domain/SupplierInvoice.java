@@ -39,23 +39,13 @@ public final class SupplierInvoice {
      * {@code manualReject()} write APPROVED / THREE_WAY_MATCH_FAILED /
      * CANCELLED in Java; the {@code maintain_allocation_totals} DB trigger
      * subsequently flips to PARTIALLY_PAID / PAID as supplier payments
-     * allocate. Other values are schema-prep for future workflow extensions.
+     * allocate.
      */
     public enum Status {
-        /** Schema-prep — not currently produced by Java or trigger. */
-        DRAFT("draft"),
-        /** Schema-prep — not currently produced by Java or trigger. */
-        THREE_WAY_MATCH_PENDING("three_way_match_pending"),
-        /** Schema-prep — not currently produced by Java or trigger. */
-        THREE_WAY_MATCH_PASSED("three_way_match_passed"),
         THREE_WAY_MATCH_FAILED("three_way_match_failed"),
         APPROVED("approved"),
-        /** Schema-prep — not currently produced by Java or trigger. */
-        POSTED("posted"),
         PARTIALLY_PAID("partially_paid"),
         PAID("paid"),
-        /** Schema-prep — not currently produced by Java or trigger. */
-        ON_HOLD("on_hold"),
         CANCELLED("cancelled");
 
         private final String code;
@@ -79,13 +69,10 @@ public final class SupplierInvoice {
     /**
      * Three-way match outcome (separate field from {@link Status}). Mirrors
      * the schema CHECK on {@code finance.supplier_invoice_header.match_status}.
-     * Java writes MATCHED / VARIANCE / FAILED via {@code record()};
-     * {@code NOT_MATCHED} is the DB DEFAULT for hand-inserted rows that
-     * haven't yet run match.
+     * Java writes MATCHED / VARIANCE / FAILED via {@code record()} (the match
+     * runs synchronously at record time, so there is no unmatched state).
      */
     public enum MatchStatus {
-        /** Schema-prep — not currently produced by Java; DB DEFAULT for hand-inserted rows. */
-        NOT_MATCHED("not_matched"),
         MATCHED("matched"),
         VARIANCE("variance"),
         FAILED("failed");

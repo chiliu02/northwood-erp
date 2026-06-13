@@ -297,10 +297,10 @@ class WorkOrderTest {
         @Test void rejects_value_outside_happy_path_set() {
             // The enum type itself ensures only schema-allowed values reach
             // this method (compile-time). The aggregate's internal guard
-            // narrows further to the three expected outcomes — NOT_CHECKED
-            // and ISSUED are valid schema values but never legal here.
+            // narrows further to the three expected outcomes — RESERVATION_PENDING
+            // is a valid schema value but never a legal reservation outcome here.
             WorkOrder wo = release(List.of(op(10)));
-            assertThatThrownBy(() -> wo.applyReservationOutcome(WorkOrder.MaterialStatus.NOT_CHECKED))
+            assertThatThrownBy(() -> wo.applyReservationOutcome(WorkOrder.MaterialStatus.RESERVATION_PENDING))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Unknown material status");
         }

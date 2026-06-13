@@ -43,15 +43,10 @@ public final class StockReservation {
      * constants — those are the contract surface, not this enum.
      */
     public enum Status {
-        /** Schema-prep — not currently produced by Java. */
-        PENDING("pending"),
         RESERVED("reserved"),
         PARTIALLY_RESERVED("partially_reserved"),
         FAILED("failed"),
-        /** Schema-prep — not currently produced by Java. */
-        RELEASED("released"),
-        /** Schema-prep — not currently produced by Java. */
-        CONSUMED("consumed");
+        RELEASED("released");
 
         private final String code;
 

@@ -64,27 +64,16 @@ public final class PurchaseOrder {
      * Purchase-order header status. Mirrors the schema CHECK on
      * {@code purchasing.purchase_order_header.status}. Lifecycle:
      * {@code DRAFT → SENT → PARTIALLY_RECEIVED → RECEIVED → PAID} (driven by
-     * inbox handlers + receipt projection). Auto-approve flow skips
-     * {@code DRAFT}. Schema-prep values are intermediate workflow states that
-     * Java doesn't yet produce.
+     * inbox handlers + the receipt/payment projections); the auto-approve flow
+     * starts at {@code SENT} (skipping {@code DRAFT}), and a draft PO that is
+     * rejected goes to {@code CANCELLED}.
      */
     public enum Status {
         DRAFT("draft"),
-        /** Schema-prep — not currently produced by Java. */
-        PENDING_APPROVAL("pending_approval"),
-        /** Schema-prep — not currently produced by Java. */
-        APPROVED("approved"),
         SENT("sent"),
         PARTIALLY_RECEIVED("partially_received"),
         RECEIVED("received"),
-        /** Schema-prep — not currently produced by Java. */
-        PARTIALLY_INVOICED("partially_invoiced"),
-        /** Schema-prep — not currently produced by Java. */
-        INVOICED("invoiced"),
         PAID("paid"),
-        /** Schema-prep — not currently produced by Java. */
-        CLOSED("closed"),
-        /** Schema-prep — not currently produced by Java. */
         CANCELLED("cancelled");
 
         private final String code;
@@ -107,22 +96,12 @@ public final class PurchaseOrder {
 
     /**
      * Purchase-order line status. Mirrors the schema CHECK on
-     * {@code purchasing.purchase_order_line.status}. Today's Java only writes
-     * {@code OPEN} (initial); the remaining values are schema-prep for the
-     * per-line receipt + invoice progression (Phase 2).
+     * {@code purchasing.purchase_order_line.status}. Lines are created
+     * {@code OPEN}; per-line receipt/invoice progression is tracked on the
+     * header and line quantities, not a per-line status, today.
      */
     public enum LineStatus {
-        OPEN("open"),
-        /** Schema-prep — not currently produced by Java. */
-        PARTIALLY_RECEIVED("partially_received"),
-        /** Schema-prep — not currently produced by Java. */
-        RECEIVED("received"),
-        /** Schema-prep — not currently produced by Java. */
-        INVOICED("invoiced"),
-        /** Schema-prep — not currently produced by Java. */
-        CLOSED("closed"),
-        /** Schema-prep — not currently produced by Java. */
-        CANCELLED("cancelled");
+        OPEN("open");
 
         private final String code;
 

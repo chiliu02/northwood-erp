@@ -15,16 +15,11 @@ package com.northwood.manufacturing.domain.events;
  */
 public final class WorkOrderStatuses {
 
-    public static final String PLANNED = "planned";
-    public static final String MATERIAL_CHECK_PENDING = "material_check_pending";
-    public static final String WAITING_FOR_MATERIALS = "waiting_for_materials";
     public static final String RELEASED = "released";
     public static final String IN_PROGRESS = "in_progress";
-    public static final String PARTIALLY_COMPLETED = "partially_completed";
     public static final String COMPLETED = "completed";
     public static final String CLOSED = "closed";
     public static final String CANCELLED = "cancelled";
-    public static final String BLOCKED = "blocked";
 
     private WorkOrderStatuses() {}
 }

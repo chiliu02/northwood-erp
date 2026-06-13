@@ -52,26 +52,15 @@ public final class WorkOrder {
     /**
      * Work-order lifecycle status. Mirrors the schema CHECK on
      * {@code manufacturing.work_order.status}. Lifecycle:
-     * {@code RELEASED} / {@code PLANNED} → {@code IN_PROGRESS} →
-     * {@code COMPLETED}; {@code CANCELLED} and {@code CLOSED} are terminal
-     * side rails.
+     * {@code RELEASED} → {@code IN_PROGRESS} → {@code COMPLETED};
+     * {@code CANCELLED} and {@code CLOSED} are terminal side rails.
      */
     public enum Status {
-        /** Schema-prep — not currently produced by Java. */
-        PLANNED("planned"),
-        /** Schema-prep — not currently produced by Java. */
-        MATERIAL_CHECK_PENDING("material_check_pending"),
-        /** Schema-prep — not currently produced by Java. */
-        WAITING_FOR_MATERIALS("waiting_for_materials"),
         RELEASED("released"),
         IN_PROGRESS("in_progress"),
-        /** Schema-prep — not currently produced by Java. */
-        PARTIALLY_COMPLETED("partially_completed"),
         COMPLETED("completed"),
         CLOSED("closed"),
-        CANCELLED("cancelled"),
-        /** Schema-prep — not currently produced by Java. */
-        BLOCKED("blocked");
+        CANCELLED("cancelled");
 
         private final String code;
 
@@ -96,14 +85,10 @@ public final class WorkOrder {
      * schema CHECK on {@code manufacturing.work_order.material_status}.
      */
     public enum MaterialStatus {
-        /** Schema-prep — not currently produced by Java. */
-        NOT_CHECKED("not_checked"),
         RESERVATION_PENDING("reservation_pending"),
         RESERVED("reserved"),
         PARTIALLY_RESERVED("partially_reserved"),
-        SHORTAGE("shortage"),
-        /** Schema-prep — not currently produced by Java. */
-        ISSUED("issued");
+        SHORTAGE("shortage");
 
         private final String code;
 
@@ -133,9 +118,7 @@ public final class WorkOrder {
         REQUIRED("required"),
         RESERVED("reserved"),
         PARTIALLY_RESERVED("partially_reserved"),
-        SHORTAGE("shortage"),
-        /** Schema-prep — not currently produced by Java. */
-        ISSUED("issued");
+        SHORTAGE("shortage");
 
         private final String code;
 
@@ -430,7 +413,7 @@ public final class WorkOrder {
 
         target.markCompleted(actualMinutes);
 
-        if (status == Status.RELEASED || status == Status.PLANNED) {
+        if (status == Status.RELEASED) {
             this.status = Status.IN_PROGRESS;
             if (this.actualStartAt == null) {
                 this.actualStartAt = Instant.now();
@@ -549,7 +532,7 @@ public final class WorkOrder {
 
         target.markSkipped();
 
-        if (status == Status.RELEASED || status == Status.PLANNED) {
+        if (status == Status.RELEASED) {
             this.status = Status.IN_PROGRESS;
             if (this.actualStartAt == null) {
                 this.actualStartAt = Instant.now();

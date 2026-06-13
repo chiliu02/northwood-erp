@@ -93,18 +93,11 @@ public final class Payment {
 
     /**
      * Payment lifecycle status. Mirrors the schema CHECK on
-     * {@code finance.payment.status}. Today's Java only ever writes
-     * {@code POSTED}; {@code DRAFT} / {@code CANCELLED} / {@code REVERSED}
-     * are schema-prep for future workflow paths.
+     * {@code finance.payment.status}. A payment is posted in a single step;
+     * {@code POSTED} is the only state Java produces.
      */
     public enum Status {
-        /** Schema-prep — not currently produced by Java. */
-        DRAFT("draft"),
-        POSTED("posted"),
-        /** Schema-prep — not currently produced by Java. */
-        CANCELLED("cancelled"),
-        /** Schema-prep — not currently produced by Java. */
-        REVERSED("reversed");
+        POSTED("posted");
 
         private final String code;
 

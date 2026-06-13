@@ -11,15 +11,17 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Aggregate root for a purchase requisition: header + lines. Three sources
+ * Aggregate root for a purchase requisition: header + lines. Two sources
  * (matching the schema's CHECK constraint):
  *
  * <ul>
  *   <li>{@code manual} — created via the REST endpoint by a buyer.</li>
- *   <li>{@code low_stock} — auto-created by inventory's reorder-policy
- *       trigger (out of scope for phase 1).</li>
- *   <li>{@code work_order_shortage} — auto-created by purchasing's inbox
- *       handler when manufacturing reports a raw-material shortage.</li>
+ *   <li>{@code stock_replenishment} — auto-created by purchasing's
+ *       {@code ReplenishmentRequestedHandler} in response to an
+ *       {@code inventory.ReplenishmentRequested} event routed to purchasing
+ *       (covers both reorder-point breaches and work-order raw-material
+ *       shortages, which inventory funnels through its own
+ *       {@code ReplenishmentRequest}).</li>
  * </ul>
  *
  * <p>Phase 1 simplification: every requisition is auto-approved at creation
@@ -53,22 +55,11 @@ public final class PurchaseRequisition {
     /**
      * Purchase-requisition source classifier. Mirrors the schema CHECK on
      * {@code purchasing.purchase_requisition_header.source_type}. Drives which
-     * source ids the row carries: {@code MANUAL} → neither, {@code LOW_STOCK}
-     * → {@code source_product_id}, {@code WORK_ORDER_SHORTAGE} →
-     * {@code source_work_order_id}.
+     * source ids the row carries: {@code MANUAL} → none,
+     * {@code STOCK_REPLENISHMENT} → {@code source_replenishment_request_id}.
      */
     public enum SourceType {
         MANUAL("manual"),
-        /** Schema-prep — not currently produced by Java. */
-        LOW_STOCK("low_stock"),
-        /**
-         * Historical — was the WO-shortage auto-requisition source until
-         * the manufacturing-purchasing decoupling retired the producer. Historical rows keep this value; new
-         * Java-emitted rows use {@link #STOCK_REPLENISHMENT} instead, with
-         * the WO shortage now routed through inventory's
-         * {@code ReplenishmentRequest} (see {@code project_235_mfg_pur_decoupling}).
-         */
-        WORK_ORDER_SHORTAGE("work_order_shortage"),
         /**
          * Created by purchasing's {@code ReplenishmentRequestedHandler}
          * in response to {@code inventory.ReplenishmentRequested} with
@@ -97,19 +88,15 @@ public final class PurchaseRequisition {
 
     /**
      * Purchase-requisition header status. Mirrors the schema CHECK on
-     * {@code purchasing.purchase_requisition_header.status}. Phase 1 collapses
-     * {@code pending_approval → approved} on creation; {@code CONVERTED} is
-     * set by {@link #markConverted()} once a PO is created from the PR.
+     * {@code purchasing.purchase_requisition_header.status}. Requisitions
+     * auto-approve at creation ({@code APPROVED}); {@code CONVERTED} is set by
+     * {@link #markConverted()} once a PO is created from the PR; {@code REJECTED}
+     * is the terminal for a requisition that is declined.
      */
     public enum Status {
-        /** Schema-prep — not currently produced by Java. */
-        DRAFT("draft"),
-        PENDING_APPROVAL("pending_approval"),
         APPROVED("approved"),
         REJECTED("rejected"),
-        CONVERTED("converted"),
-        /** Schema-prep — not currently produced by Java. */
-        CANCELLED("cancelled");
+        CONVERTED("converted");
 
         private final String code;
 
@@ -131,16 +118,11 @@ public final class PurchaseRequisition {
 
     /**
      * Purchase-requisition line status. Mirrors the schema CHECK on
-     * {@code purchasing.purchase_requisition_line.status}. Today's Java only
-     * writes {@code OPEN} (initial); {@code CONVERTED} / {@code CANCELLED} are
-     * schema-prep for per-line conversion tracking (Phase 2).
+     * {@code purchasing.purchase_requisition_line.status}. Lines are created
+     * {@code OPEN}; there is no per-line lifecycle today.
      */
     public enum LineStatus {
-        OPEN("open"),
-        /** Schema-prep — not currently produced by Java. */
-        CONVERTED("converted"),
-        /** Schema-prep — not currently produced by Java. */
-        CANCELLED("cancelled");
+        OPEN("open");
 
         private final String code;
 
@@ -173,12 +155,10 @@ public final class PurchaseRequisition {
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
 
     /**
-     * Factory: a new requisition. Auto-approves at creation (phase 1). Used
-     * for {@link SourceType#MANUAL} + {@link SourceType#LOW_STOCK} +
-     * {@link SourceType#WORK_ORDER_SHORTAGE} (historical) paths. The
-     * {@link SourceType#STOCK_REPLENISHMENT} path goes through
-     * {@link #createForStockReplenishment} instead — that factory also
-     * emits a sibling {@code purchasing.ReplenishmentDispatched}.
+     * Factory: a new requisition. Auto-approves at creation (phase 1). Used for
+     * the {@link SourceType#MANUAL} path. The {@link SourceType#STOCK_REPLENISHMENT}
+     * path goes through {@link #createForStockReplenishment} instead — that
+     * factory also emits a sibling {@code purchasing.ReplenishmentDispatched}.
      */
     public static PurchaseRequisition create(
         String requisitionNumber,
@@ -318,12 +298,6 @@ public final class PurchaseRequisition {
             case MANUAL -> Assert.argument(
                 workOrderId == null && productId == null && replenishmentRequestId == null,
                 "manual requisitions cannot carry source ids");
-            case LOW_STOCK -> Assert.argument(
-                productId != null && workOrderId == null && replenishmentRequestId == null,
-                "low_stock requisitions need source_product_id only");
-            case WORK_ORDER_SHORTAGE -> Assert.argument(
-                workOrderId != null && productId == null && replenishmentRequestId == null,
-                "work_order_shortage requisitions need source_work_order_id only");
             case STOCK_REPLENISHMENT -> Assert.argument(
                 replenishmentRequestId != null && workOrderId == null && productId == null,
                 "stock_replenishment requisitions need source_replenishment_request_id only");
@@ -333,8 +307,8 @@ public final class PurchaseRequisition {
     /**
      * Mark this requisition as converted to a purchase order. Idempotent — a
      * requisition already in {@code converted} is a no-op so a redelivered
-     * trigger doesn't trip optimistic concurrency. Other terminal states
-     * ({@code rejected}, {@code cancelled}) reject the call.
+     * trigger doesn't trip optimistic concurrency. The terminal
+     * {@code rejected} state rejects the call.
      */
     public void markConverted() {
         if (status == Status.CONVERTED) {

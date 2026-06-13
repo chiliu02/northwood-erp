@@ -92,21 +92,20 @@ class JdbcPurchaseRequisitionRepositoryIT {
 
     @Test
     void save_insert_then_findById_round_trips_header_and_line_and_emits_outbox() {
-        UUID workOrderId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
         PurchaseRequisitionLine line = new PurchaseRequisitionLine(
             UUID.randomUUID(), 1, productId, "RM-IT-1", "Raw Material 1",
             new BigDecimal("5"), null, null, null, PurchaseRequisition.LineStatus.OPEN);
 
         PurchaseRequisition pr = PurchaseRequisition.create(
-            "PR-RT-001", PurchaseRequisition.SourceType.WORK_ORDER_SHORTAGE,
-            workOrderId, null, "planner", List.of(line));
+            "PR-RT-001", PurchaseRequisition.SourceType.MANUAL,
+            null, null, "planner", List.of(line));
         save(pr);
 
         PurchaseRequisition r = REPO.findById(pr.id()).orElseThrow();
         assertThat(r.requisitionNumber()).isEqualTo("PR-RT-001");
-        assertThat(r.sourceType()).isEqualTo(PurchaseRequisition.SourceType.WORK_ORDER_SHORTAGE);
-        assertThat(r.sourceWorkOrderId()).isEqualTo(workOrderId);
+        assertThat(r.sourceType()).isEqualTo(PurchaseRequisition.SourceType.MANUAL);
+        assertThat(r.sourceWorkOrderId()).isNull();
         assertThat(r.sourceProductId()).isNull();
         assertThat(r.status()).isEqualTo(pr.status());
         assertThat(r.version()).isEqualTo(1L);

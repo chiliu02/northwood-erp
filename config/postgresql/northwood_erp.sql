@@ -288,8 +288,16 @@ CREATE SEQUENCE product.outbox_message_seq;
 
 CREATE TABLE product.outbox_message (
     outbox_message_id UUID NOT NULL DEFAULT shared.uuid_generate_v7(),
-    -- The polling cursor. Increases monotonically per row write; consumers
-    -- track last_sequence_number and SELECT WHERE sequence_number > :cursor.
+    -- Per-row monotonic ordinal. NOTE: this describes a cursor-polling design
+    -- intent (consumers track last_sequence_number and SELECT WHERE
+    -- sequence_number > :cursor). The LIVE drainer does NOT poll that way — it
+    -- selects WHERE status IN ('pending','failed') ORDER BY sequence_number
+    -- (JdbcOutboxAdapter.findPending), a status-flag scan that is immune to the
+    -- commit-order-vs-write-order skip trap (a late-committing low-sequence row
+    -- is simply still 'pending' on a later tick). sequence_number's live role is
+    -- intra-service publish ordering, not a high-water cursor. The read side
+    -- (reporting) consumes over Kafka with container-managed offset commits +
+    -- inbox dedup, not by polling this column.
     sequence_number BIGINT NOT NULL DEFAULT nextval('product.outbox_message_seq'),
     aggregate_type VARCHAR(100) NOT NULL,
     aggregate_id UUID NOT NULL,
@@ -913,8 +921,8 @@ CREATE TABLE inventory.stock_reservation_header (
     sales_order_header_id UUID,
     work_order_id UUID,
     warehouse_id UUID NOT NULL REFERENCES inventory.warehouse(warehouse_id),
-    status VARCHAR(30) NOT NULL DEFAULT 'pending' CHECK (
-        status IN ('pending', 'reserved', 'partially_reserved', 'failed', 'released', 'consumed')
+    status VARCHAR(30) NOT NULL DEFAULT 'reserved' CHECK (
+        status IN ('reserved', 'partially_reserved', 'failed', 'released')
     ),
     version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -947,8 +955,8 @@ CREATE TABLE inventory.stock_reservation_line (
     product_name VARCHAR(200) NOT NULL,
     requested_quantity NUMERIC(18, 4) NOT NULL CHECK (requested_quantity > 0),
     reserved_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
-    status VARCHAR(30) NOT NULL DEFAULT 'pending' CHECK (
-        status IN ('pending', 'reserved', 'partially_reserved', 'failed', 'released', 'consumed')
+    status VARCHAR(30) NOT NULL DEFAULT 'reserved' CHECK (
+        status IN ('reserved', 'partially_reserved', 'failed', 'released')
     ),
     shortage_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
     CHECK (reserved_quantity >= 0 AND reserved_quantity <= requested_quantity),
@@ -971,8 +979,8 @@ CREATE TABLE inventory.stock_movement (
     product_name VARCHAR(200) NOT NULL,
     movement_type VARCHAR(40) NOT NULL CHECK (
         movement_type IN (
-            'purchase_receipt', 'sales_shipment', 'material_issue', 'finished_goods_receipt',
-            'stock_adjustment_in', 'stock_adjustment_out', 'reservation_release'
+            'purchase_receipt', 'sales_shipment', 'finished_goods_receipt',
+            'stock_adjustment_in', 'stock_adjustment_out'
         )
     ),
     direction VARCHAR(10) NOT NULL CHECK (direction IN ('in', 'out')),
@@ -1007,7 +1015,7 @@ CREATE TABLE inventory.goods_receipt_header (
     supplier_name VARCHAR(200),
     warehouse_id UUID NOT NULL REFERENCES inventory.warehouse(warehouse_id),
     receipt_date DATE NOT NULL DEFAULT CURRENT_DATE,
-    status VARCHAR(30) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'posted', 'reversed')),
+    status VARCHAR(30) NOT NULL DEFAULT 'posted' CHECK (status IN ('posted')),
     version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1050,7 +1058,7 @@ CREATE TABLE inventory.stock_adjustment (
     direction VARCHAR(10) NOT NULL CHECK (direction IN ('in', 'out')),
     quantity NUMERIC(18, 4) NOT NULL CHECK (quantity > 0),
     reason VARCHAR(500) NOT NULL,
-    status VARCHAR(30) NOT NULL DEFAULT 'posted' CHECK (status IN ('draft', 'posted', 'reversed')),
+    status VARCHAR(30) NOT NULL DEFAULT 'posted' CHECK (status IN ('posted')),
     version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1077,7 +1085,7 @@ CREATE TABLE inventory.shipment_header (
     customer_name VARCHAR(200),
     warehouse_id UUID NOT NULL REFERENCES inventory.warehouse(warehouse_id),
     shipment_date DATE NOT NULL DEFAULT CURRENT_DATE,
-    status VARCHAR(30) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'posted', 'reversed')),
+    status VARCHAR(30) NOT NULL DEFAULT 'posted' CHECK (status IN ('posted')),
     version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1389,15 +1397,12 @@ CREATE TABLE manufacturing.work_order (
     planned_quantity NUMERIC(18, 4) NOT NULL CHECK (planned_quantity > 0),
     completed_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
     scrapped_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
-    status VARCHAR(40) NOT NULL DEFAULT 'planned' CHECK (
-        status IN (
-            'planned', 'material_check_pending', 'waiting_for_materials', 'released',
-            'in_progress', 'partially_completed', 'completed', 'closed', 'cancelled', 'blocked'
-        )
+    status VARCHAR(40) NOT NULL DEFAULT 'released' CHECK (
+        status IN ('released', 'in_progress', 'completed', 'closed', 'cancelled')
     ),
-    material_status VARCHAR(40) NOT NULL DEFAULT 'not_checked' CHECK (
+    material_status VARCHAR(40) NOT NULL DEFAULT 'reservation_pending' CHECK (
         material_status IN (
-            'not_checked', 'reservation_pending', 'reserved', 'partially_reserved', 'shortage', 'issued'
+            'reservation_pending', 'reserved', 'partially_reserved', 'shortage'
         )
     ),
     planned_start_date DATE,
@@ -1457,7 +1462,7 @@ CREATE TABLE manufacturing.work_order_material (
     unit_cost NUMERIC(18, 6) NOT NULL DEFAULT 0,
     total_cost NUMERIC(18, 2) NOT NULL DEFAULT 0,
     status VARCHAR(30) NOT NULL DEFAULT 'required' CHECK (
-        status IN ('required', 'reserved', 'partially_reserved', 'shortage', 'issued')
+        status IN ('required', 'reserved', 'partially_reserved', 'shortage')
     ),
     -- One row per component per work order (was missing in v1).
     UNIQUE (work_order_id, component_product_id),
@@ -1813,24 +1818,20 @@ CREATE TABLE purchasing.product_card (
 CREATE TABLE purchasing.purchase_requisition_header (
     purchase_requisition_header_id UUID PRIMARY KEY DEFAULT shared.uuid_generate_v7(),
     requisition_number VARCHAR(50) NOT NULL UNIQUE,
-    -- Source columns: a requisition either originates manually, from low-stock
-    -- (legacy/schema-prep), from a work-order shortage (legacy/historical only
-    -- — the producer has since been retired), or from
+    -- Source columns: a requisition either originates manually, or from
     -- inventory.replenishment_request (the automatic-replenishment loop —
-    -- covers both reorder-point breaches AND ex-WO-shortage triggers, which
-    -- now route through inventory's ReplenishmentRequest).
-    --
-    -- 'work_order_shortage' is kept in the CHECK because historical rows may
-    -- still reference it; new rows from Java code use 'stock_replenishment'
-    -- instead (see purchasing.PurchaseRequisitionService.createForStockReplenishment).
+    -- covers both reorder-point breaches AND work-order raw-material
+    -- shortages, which route through inventory's ReplenishmentRequest and
+    -- arrive here as 'stock_replenishment'; see
+    -- purchasing.PurchaseRequisitionService.createForStockReplenishment).
     source_type VARCHAR(40) NOT NULL DEFAULT 'manual' CHECK (
-        source_type IN ('manual', 'low_stock', 'work_order_shortage', 'stock_replenishment')
+        source_type IN ('manual', 'stock_replenishment')
     ),
-    source_product_id UUID,                      -- set when source_type = 'low_stock'
-    source_work_order_id UUID,                   -- set when source_type = 'work_order_shortage' (historical)
+    source_product_id UUID,                      -- reserved; no current source_type populates it
+    source_work_order_id UUID,                   -- reserved; no current source_type populates it
     source_replenishment_request_id UUID,        -- set when source_type = 'stock_replenishment'
-    status VARCHAR(30) NOT NULL DEFAULT 'draft' CHECK (
-        status IN ('draft', 'pending_approval', 'approved', 'rejected', 'converted', 'cancelled')
+    status VARCHAR(30) NOT NULL DEFAULT 'approved' CHECK (
+        status IN ('approved', 'rejected', 'converted')
     ),
     requested_by VARCHAR(100),
     version BIGINT NOT NULL DEFAULT 0,
@@ -1843,8 +1844,6 @@ CREATE TABLE purchasing.purchase_requisition_header (
     last_modified_by VARCHAR(64),
     CHECK (
         (source_type = 'manual' AND source_product_id IS NULL AND source_work_order_id IS NULL AND source_replenishment_request_id IS NULL) OR
-        (source_type = 'low_stock' AND source_product_id IS NOT NULL AND source_work_order_id IS NULL AND source_replenishment_request_id IS NULL) OR
-        (source_type = 'work_order_shortage' AND source_product_id IS NULL AND source_work_order_id IS NOT NULL AND source_replenishment_request_id IS NULL) OR
         (source_type = 'stock_replenishment' AND source_product_id IS NULL AND source_work_order_id IS NULL AND source_replenishment_request_id IS NOT NULL)
     )
 );
@@ -1870,7 +1869,7 @@ CREATE TABLE purchasing.purchase_requisition_line (
     required_date DATE,
     suggested_supplier_id UUID,
     suggested_supplier_name VARCHAR(200),
-    status VARCHAR(30) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'converted', 'cancelled')),
+    status VARCHAR(30) NOT NULL DEFAULT 'open' CHECK (status IN ('open')),
     UNIQUE (purchase_requisition_header_id, line_number)
 );
 
@@ -1888,10 +1887,7 @@ CREATE TABLE purchasing.purchase_order_header (
     order_date DATE NOT NULL DEFAULT CURRENT_DATE,
     expected_receipt_date DATE,
     status VARCHAR(40) NOT NULL DEFAULT 'draft' CHECK (
-        status IN (
-            'draft', 'pending_approval', 'approved', 'sent', 'partially_received', 'received',
-            'partially_invoiced', 'invoiced', 'paid', 'closed', 'cancelled'
-        )
+        status IN ('draft', 'sent', 'partially_received', 'received', 'paid', 'cancelled')
     ),
     currency_code CHAR(3) NOT NULL DEFAULT 'AUD',
     exchange_rate NUMERIC(18, 8) NOT NULL DEFAULT 1.0 CHECK (exchange_rate > 0),
@@ -1936,7 +1932,7 @@ CREATE TABLE purchasing.purchase_order_line (
     tax_amount NUMERIC(18, 2) NOT NULL DEFAULT 0,
     line_total NUMERIC(18, 2) NOT NULL CHECK (line_total >= 0),
     status VARCHAR(30) NOT NULL DEFAULT 'open' CHECK (
-        status IN ('open', 'partially_received', 'received', 'invoiced', 'closed', 'cancelled')
+        status IN ('open')
     ),
     UNIQUE (purchase_order_header_id, line_number),
     CHECK (received_quantity >= 0 AND received_quantity <= ordered_quantity),
@@ -2215,8 +2211,8 @@ CREATE TABLE finance.customer_invoice_header (
     customer_name VARCHAR(200) NOT NULL,
     invoice_date DATE NOT NULL DEFAULT CURRENT_DATE,
     due_date DATE,
-    status VARCHAR(30) NOT NULL DEFAULT 'draft' CHECK (
-        status IN ('draft', 'posted', 'partially_paid', 'paid', 'cancelled')
+    status VARCHAR(30) NOT NULL DEFAULT 'posted' CHECK (
+        status IN ('posted', 'partially_paid', 'paid')
     ),
     -- Discriminator between the two AR commercial patterns. 'commercial' =
     -- invoice created at shipment, posts Dr AR / Cr Revenue at creation, payment
@@ -2306,14 +2302,11 @@ CREATE TABLE finance.supplier_invoice_header (
     supplier_name VARCHAR(200) NOT NULL,
     invoice_date DATE NOT NULL DEFAULT CURRENT_DATE,
     due_date DATE,
-    status VARCHAR(40) NOT NULL DEFAULT 'draft' CHECK (
-        status IN (
-            'draft', 'three_way_match_pending', 'three_way_match_passed', 'three_way_match_failed',
-            'approved', 'posted', 'partially_paid', 'paid', 'on_hold', 'cancelled'
-        )
+    status VARCHAR(40) NOT NULL DEFAULT 'approved' CHECK (
+        status IN ('three_way_match_failed', 'approved', 'partially_paid', 'paid', 'cancelled')
     ),
-    match_status VARCHAR(40) NOT NULL DEFAULT 'not_matched' CHECK (
-        match_status IN ('not_matched', 'matched', 'variance', 'failed')
+    match_status VARCHAR(40) NOT NULL DEFAULT 'matched' CHECK (
+        match_status IN ('matched', 'variance', 'failed')
     ),
     currency_code CHAR(3) NOT NULL DEFAULT 'AUD',
     exchange_rate NUMERIC(18, 8) NOT NULL DEFAULT 1.0 CHECK (exchange_rate > 0),
@@ -2387,8 +2380,8 @@ CREATE TABLE finance.payment (
     -- amount_allocated = SUM(payment_allocation.allocated_amount) for this payment.
     -- Maintained by trigger; constraint ensures we never over-allocate.
     amount_allocated NUMERIC(18, 2) NOT NULL DEFAULT 0,
-    status VARCHAR(30) NOT NULL DEFAULT 'draft' CHECK (
-        status IN ('draft', 'posted', 'cancelled', 'reversed')
+    status VARCHAR(30) NOT NULL DEFAULT 'posted' CHECK (
+        status IN ('posted')
     ),
     version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -3200,7 +3193,11 @@ CREATE TABLE reporting.financial_dashboard_daily (
 CREATE TABLE reporting.projection_checkpoint (
     projection_name VARCHAR(100) PRIMARY KEY,
     -- Outbox cursor: BIGINT sequence_number, NOT created_at, to avoid the
-    -- transaction-commit-ordering vs row-write-ordering trap.
+    -- transaction-commit-ordering vs row-write-ordering trap. NOTE: design
+    -- intent / not on the live path — reporting projections consume over Kafka
+    -- with container-managed offset commits + inbox dedup, not by polling source
+    -- outboxes WHERE sequence_number > last_sequence_number. This column is kept
+    -- for the future cursor-polling option; treat it as vestigial today.
     last_sequence_number BIGINT,
     last_event_type VARCHAR(100),
     last_processed_at TIMESTAMPTZ,

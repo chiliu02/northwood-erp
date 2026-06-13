@@ -22,8 +22,7 @@ import java.util.UUID;
  * magnitude + direction.
  *
  * <p>Emits {@link StockAdjusted} for finance: the GL entry that values the
- * delta at standard cost. {@code DRAFT}/{@code REVERSED} are schema-prep, not
- * produced by Java today (mirrors {@link GoodsReceipt.Status}).
+ * delta at standard cost. An adjustment is posted in a single step.
  */
 public final class StockAdjustment {
 
@@ -35,11 +34,7 @@ public final class StockAdjustment {
 
     /** Adjustment lifecycle status. Mirrors the schema CHECK on {@code inventory.stock_adjustment.status}. */
     public enum Status {
-        /** Schema-prep — not currently produced by Java. */
-        DRAFT("draft"),
-        POSTED("posted"),
-        /** Schema-prep — not currently produced by Java. */
-        REVERSED("reversed");
+        POSTED("posted");
 
         private final String code;
 

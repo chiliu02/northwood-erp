@@ -52,13 +52,9 @@ public final class CustomerInvoice {
      * arrive via the trigger but must be parseable on read.
      */
     public enum Status {
-        /** Schema-prep — not currently produced by Java or trigger. */
-        DRAFT("draft"),
         POSTED("posted"),
         PARTIALLY_PAID("partially_paid"),
-        PAID("paid"),
-        /** Schema-prep — not currently produced by Java or trigger. */
-        CANCELLED("cancelled");
+        PAID("paid");
 
         private final String code;
 

@@ -59,35 +59,6 @@ public class JdbcMaterialShortageProjection implements MaterialShortageProjectio
 
     @Override
     @Transactional
-    public void recordRequisitionLine(
-        UUID productId,
-        String productSku,
-        String productName,
-        Instant occurredAt
-    ) {
-        jdbc.update("""
-            INSERT INTO reporting.material_shortage_view (
-                material_product_id, material_sku, material_name,
-                required_quantity, available_quantity, shortage_quantity,
-                affected_work_orders_count, affected_sales_orders_count,
-                open_purchase_orders_count, incoming_purchase_quantity,
-                status, updated_at
-            ) VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 'purchase_requested', now())
-            ON CONFLICT (material_product_id) DO UPDATE SET
-                material_sku = EXCLUDED.material_sku,
-                material_name = EXCLUDED.material_name,
-                status = CASE
-                    WHEN material_shortage_view.status = 'open' THEN 'purchase_requested'
-                    ELSE material_shortage_view.status
-                END,
-                updated_at = now()
-            """,
-            productId, productSku, productName
-        );
-    }
-
-    @Override
-    @Transactional
     public void recordPurchaseOrderLine(
         UUID productId,
         String productSku,

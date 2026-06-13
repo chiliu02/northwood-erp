@@ -30,20 +30,11 @@ public final class GoodsReceipt {
 
     /**
      * Goods-receipt lifecycle status. Mirrors the schema CHECK on
-     * {@code inventory.goods_receipt_header.status}. Today's Java only ever
-     * writes {@code POSTED}; {@code DRAFT} is the schema default for
-     * hand-inserted rows, and {@code REVERSED} is forward-prep for a future
-     * data-entry-correction flow (counter-stock-movement). Design discussion
-     * 2026-05-19: `cancelled` was renamed to `reversed` in the schema CHECK
-     * migration to match the accounting semantics (you can't cancel a physical
-     * receipt; you can only reverse it with a counter-entry).
+     * {@code inventory.goods_receipt_header.status}. A goods receipt is posted
+     * in a single step; {@code POSTED} is the only state Java produces.
      */
     public enum Status {
-        /** Schema-prep — not currently produced by Java. */
-        DRAFT("draft"),
-        POSTED("posted"),
-        /** Schema-prep — not currently produced by Java. */
-        REVERSED("reversed");
+        POSTED("posted");
 
         private final String code;
 

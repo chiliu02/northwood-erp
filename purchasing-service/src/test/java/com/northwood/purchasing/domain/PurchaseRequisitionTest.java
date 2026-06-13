@@ -44,24 +44,6 @@ class PurchaseRequisitionTest {
             )).isInstanceOf(IllegalArgumentException.class);
         }
 
-        @Test void low_stock_requires_source_product_only() {
-            assertThatThrownBy(() -> PurchaseRequisition.create(
-                "PR-001", PurchaseRequisition.SourceType.LOW_STOCK, null, null, "system", List.of(line())
-            )).isInstanceOf(IllegalArgumentException.class);
-            assertThatThrownBy(() -> PurchaseRequisition.create(
-                "PR-001", PurchaseRequisition.SourceType.LOW_STOCK, WO, PRODUCT, "system", List.of(line())
-            )).isInstanceOf(IllegalArgumentException.class);
-        }
-
-        @Test void work_order_shortage_requires_source_work_order_only() {
-            assertThatThrownBy(() -> PurchaseRequisition.create(
-                "PR-001", PurchaseRequisition.SourceType.WORK_ORDER_SHORTAGE, null, null, "system", List.of(line())
-            )).isInstanceOf(IllegalArgumentException.class);
-            assertThatThrownBy(() -> PurchaseRequisition.create(
-                "PR-001", PurchaseRequisition.SourceType.WORK_ORDER_SHORTAGE, WO, PRODUCT, "system", List.of(line())
-            )).isInstanceOf(IllegalArgumentException.class);
-        }
-
         @Test void rejects_unknown_source_type_at_db_boundary() {
             // SourceType.fromCode is the wire→enum boundary; the enum parameter
             // on create() makes unknown values a compile-time impossibility.
@@ -78,15 +60,15 @@ class PurchaseRequisitionTest {
 
         @Test void emits_PurchaseRequisitionCreated_with_full_lines() {
             PurchaseRequisition pr = PurchaseRequisition.create(
-                "PR-001", PurchaseRequisition.SourceType.WORK_ORDER_SHORTAGE, WO, null, "system",
+                "PR-001", PurchaseRequisition.SourceType.MANUAL, null, null, "system",
                 List.of(line(), line())
             );
             List<DomainEvent> events = pr.pullPendingEvents();
             assertThat(events).hasSize(1).first().isInstanceOf(PurchaseRequisitionCreated.class);
             PurchaseRequisitionCreated e = (PurchaseRequisitionCreated) events.get(0);
             assertThat(e.lines()).hasSize(2);
-            assertThat(e.sourceType()).isEqualTo("work_order_shortage");
-            assertThat(e.sourceWorkOrderId()).isEqualTo(WO);
+            assertThat(e.sourceType()).isEqualTo("manual");
+            assertThat(e.sourceWorkOrderId()).isNull();
         }
 
         @Test void create_rejects_STOCK_REPLENISHMENT_with_factory_redirect() {

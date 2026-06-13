@@ -16,13 +16,9 @@ import com.northwood.shared.domain.Assert;
 public enum StockMovementType {
     PURCHASE_RECEIPT("purchase_receipt"),
     SALES_SHIPMENT("sales_shipment"),
-    /** Schema-prep — not currently produced by Java. */
-    MATERIAL_ISSUE("material_issue"),
     FINISHED_GOODS_RECEIPT("finished_goods_receipt"),
     STOCK_ADJUSTMENT_IN("stock_adjustment_in"),
-    STOCK_ADJUSTMENT_OUT("stock_adjustment_out"),
-    /** Schema-prep — not currently produced by Java. */
-    RESERVATION_RELEASE("reservation_release");
+    STOCK_ADJUSTMENT_OUT("stock_adjustment_out");
 
     private final String code;
 

@@ -29,13 +29,6 @@ public interface MaterialShortageProjection {
         BigDecimal shortageQuantity,
         Instant occurredAt);
 
-    /** Per requested line on a {@code PurchaseRequisitionCreated} event. */
-    void recordRequisitionLine(
-        UUID productId,
-        String productSku,
-        String productName,
-        Instant occurredAt);
-
     /** Per line on a {@code PurchaseOrderCreated} event. */
     void recordPurchaseOrderLine(
         UUID productId,
