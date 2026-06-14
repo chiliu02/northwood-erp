@@ -1,11 +1,19 @@
 # ===========================================================================
 # Front-door DNS.
 #
-# Aliases the friendly name at the ALWAYS-ON S3 front-door site (frontdoor.tf),
+# Points the friendly name at the ALWAYS-ON S3 front-door site (frontdoor.tf),
 # not the web box — so http://<front_door_domain>/ stays reachable even when the
 # fleet is stopped for cost-saving (the page's "Demo hours" notice explains the
-# app is asleep). An A alias to an S3 website endpoint requires the bucket name
-# to equal the record name, which frontdoor.tf guarantees.
+# app is asleep).
+#
+# CNAME, not an A-alias. An A-alias to the S3 website endpoint is the "textbook"
+# approach, but in practice Route 53 returned NODATA for it here (the alias never
+# evaluated to an address — every authoritative NS answered the record with an
+# empty A set, while serving the rest of the zone fine). A CNAME to the S3 website
+# endpoint resolves through ordinary DNS (endpoint -> regional S3 A records), which
+# works reliably; it's legal because front_door_domain is a sub-domain, not the
+# zone apex. The HTTP Host header stays <front_door_domain>, so S3 still matches
+# the bucket (bucket name == domain, per frontdoor.tf).
 #
 # Deliberately scoped to the front door ONLY. The operational ERP UI (:8090),
 # Keycloak (:8080) and the BFF (:8089) stay on the Elastic IP — the OIDC issuer
@@ -26,11 +34,7 @@ resource "aws_route53_record" "front_door" {
   count   = var.front_door_domain != "" ? 1 : 0
   zone_id = data.aws_route53_zone.primary[0].zone_id
   name    = var.front_door_domain
-  type    = "A"
-
-  alias {
-    name                   = aws_s3_bucket_website_configuration.front_door[0].website_endpoint
-    zone_id                = aws_s3_bucket.front_door[0].hosted_zone_id
-    evaluate_target_health = false
-  }
+  type    = "CNAME"
+  ttl     = 300
+  records = [aws_s3_bucket_website_configuration.front_door[0].website_endpoint]
 }

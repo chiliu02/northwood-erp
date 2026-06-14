@@ -138,7 +138,7 @@ SPA (`spa/`) from the private artifacts bucket on first boot.
 
 ```powershell
 terraform output front_door_url        # open this first — the guest "start here" page (http://<ip>/)
-terraform output front_door_domain_url # the always-on front door via DNS (alias -> S3 static site, so it stays up even when the fleet is stopped), e.g. http://www.northwood.chiliu02.com/; empty front_door_domain => IP-only via front_door_url
+terraform output front_door_domain_url # the always-on front door via DNS (CNAME -> S3 static site, so it stays up even when the fleet is stopped), e.g. http://www.northwood.chiliu02.com/; empty front_door_domain => IP-only via front_door_url
 terraform output web_public_ip       # operational ERP UI on http://<ip>:8090  ·  Keycloak on :8080  (BFF :8089 is proxied by the SPA nginx)
 terraform output instance_ids        # aws ssm start-session --target <data-id>
 # on the data box:  docker exec -it northwood-postgres psql -U postgres -d northwood_erp \
@@ -234,11 +234,14 @@ terraform destroy
 - **The guest front door is served from S3, not the web box.** The "start here"
   welcome page is static HTML, so `frontdoor.tf` hosts it on an S3 static-website
   bucket (public-read, HTTP — matching the demo's no-TLS posture) and the
-  front-door DNS name (`dns.tf`) aliases to it. This keeps the entry page
+  front-door DNS name (`dns.tf`) **CNAMEs** to it. This keeps the entry page
   reachable **even when the fleet is stopped** for cost-saving — its built-in
-  "Demo hours" notice then explains the app is asleep. The bucket name must equal
-  `front_door_domain` (the requirement for a Route 53 alias to an S3 website
-  endpoint), and it's a separate public bucket holding only the rendered page —
+  "Demo hours" notice then explains the app is asleep. (A CNAME, not an A-alias:
+  Route 53's A-alias to the S3 website endpoint returned NODATA in practice, so a
+  plain CNAME to the website endpoint — legal because it's a sub-domain — is used
+  instead; see the note in `dns.tf`.) The bucket name must still equal
+  `front_door_domain` so the S3 website serves the right bucket for that `Host`
+  header, and it's a separate public bucket holding only the rendered page —
   the artifacts bucket stays private. The web box still serves an identical copy
   on `:80` when up (rendered the same way, from `config/welcome.html.template`
   with the EIP-based `${ERP_URL}` substituted). Only the DNS target moved to S3;
