@@ -19,7 +19,7 @@ public interface InboxEnvelopeHandler {
     /** Whether this handler cares about a given event type (e.g. {@code "product.ReorderPolicyChanged"}). */
     boolean handles(String eventType);
 
-    /** Stable consumer name persisted to the inbox row for idempotency. */
+    /** Stable handler name persisted to the inbox row for idempotency. */
     String handlerName();
 
     /** Apply the envelope. Implementations must be idempotent. */

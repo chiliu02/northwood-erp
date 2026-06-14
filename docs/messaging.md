@@ -101,13 +101,15 @@ Reliable delivery + idempotent consumption are the cornerstone of this architect
 | Published in `sequence_number` order; row marked `published` only after broker ack | `OutboxDrainer.drain()` `.join()`s each send before `OutboxPort.update(…published)` | `OutboxDrainerTest.drain_publishes_each_row_marks_published_and_saves`; `JdbcOutboxAdapterIT.findPending_returns_rows_in_sequence_number_order…` + `…update_marks_published…` |
 | Broker failure → row left `failed` → retried next tick | per-row try/catch marks `failed`, continues the batch | `OutboxDrainerTest.drain_partial_failure_marks_failed_row_and_continues` |
 | Concurrent drainers never double-claim a row | `findPending` `FOR UPDATE SKIP LOCKED` held inside the drain `@Transactional` | `JdbcOutboxAdapterIT.findPending_skips_rows_locked_by_another_transaction` |
-| Crash after broker ack, before the `published` mark → row re-published next tick (duplicate on the topic) | at-least-once publish; duplicate carries the same `eventId` → collapsed by the consumer inbox | **doc-only** (process crash); the absorbing dedup is covered by `JdbcInboxAdapterIT` + `DuplicateDeliveryAppliedOnceIT` |
+| Crash after broker ack, before the `published` mark → row re-published next tick (duplicate on the topic) | at-least-once publish; duplicate carries the same `eventId` → collapsed by the inbox | **doc-only** (process crash); the absorbing dedup is covered by `JdbcInboxAdapterIT` + `DuplicateDeliveryAppliedOnceIT` |
 
 ### Consumer — idempotent consumption (the inbox; exactly-once effect)
 
+> This is the **Idempotent Consumer** pattern (Hohpe & Woolf, *Enterprise Integration Patterns*; Richardson, *microservices.io*). What that pattern names the *consumer* — the per-message processor whose identity keys the dedup — is exactly one **handler** here, so the dedup identity is named *handler* throughout (`handler_name`); *consumer* refers only to the messaging *side* — this `Consumer` section, paired with `Producer` above — never the dedup key.
+
 | Guarantee | Mechanism | Covered by |
 |---|---|---|
-| Dedup keyed `(message_id, handler_name)`, independent per consumer | inbox row + `alreadyProcessed` check | `JdbcInboxAdapterIT.recordProcessed_then_alreadyProcessed_is_true`, `…dedup_is_keyed_per_consumer` |
+| Dedup keyed `(message_id, handler_name)`, independent per handler | inbox row + `alreadyProcessed` check | `JdbcInboxAdapterIT.recordProcessed_then_alreadyProcessed_is_true`, `…dedup_is_keyed_per_handler` |
 | Concurrent duplicate of the same message serialized (TOCTOU race closed) | advisory-lock gate (default), held across `handle()`'s tx | `JdbcInboxAdapterIT.advisory_lock_serializes_a_concurrent_duplicate` |
 | `apply` + `recordProcessed` atomic; `apply` throws → both roll back → reprocessable | `handle()` `@Transactional` boundary | `InboxApplyRollbackAtomicityIT.applyThrows_rollsBackAtomically_thenAppliesOnceOnRedelivery` (inventory, Testcontainers Kafka + Postgres) |
 | Offset committed only after the listener returns successfully | container-managed commit, default `BATCH` ack mode | `KafkaInboxDispatcherDeliveryIT.offset_commits_only_after_the_listener_returns_successfully` |
@@ -245,7 +247,11 @@ The inbox is what converts Kafka's at-least-once *delivery* into exactly-once *e
 
 Kafka (and any broker, and Cassandra CDC — see `docs/infrastructure.md`) gives **at-least-once** delivery. The same event can arrive more than once: consumer-group rebalances, offset-commit gaps, replay from `earliest`, a redelivery after a processing error. A naive consumer that applies every delivery double-posts journal entries, double-reserves stock, double-increments balances.
 
-The **inbox pattern** records that it has processed `(message_id, handler_name)` and refuses to apply the same pair twice — exactly-once *effect*. The event may be *delivered* many times; its side effects land exactly once. The key is that the dedup record and the side effects commit **in one transaction**: if the side effects roll back, so does the "processed" record (the event becomes reprocessable); if they commit, the record commits with them (the event is durably done).
+The **inbox pattern** records that it has processed `(message_id, handler_name)` and refuses to apply the same pair twice — exactly-once *effect*. The event may be *delivered* many times; its side effects land exactly once.
+
+The chain to hold onto: **exactly-once-effect ⟺ the `(message_id, handler_name)` key ⟺ each event is processed by each handler of its event type exactly once.** Because the key is the *pair* (`handler_name`, not `message_id` alone), "exactly once" is scoped **per handler**: every handler whose `handles(eventType)` matches applies the event exactly once, *independently*. One event of type `A` fanned out to N handlers → N effects, each landing once; a redelivery of `A` only races each handler against its own prior row. (Keying on `message_id` alone would be the *wrong* guarantee — the first handler's row would suppress the other N−1.)
+
+The remaining key point is that the dedup record and the side effects commit **in one transaction**: if the side effects roll back, so does the "processed" record (the event becomes reprocessable); if they commit, the record commits with them (the event is durably done).
 
 ### The flow — `AbstractInboxHandler.handle()`
 

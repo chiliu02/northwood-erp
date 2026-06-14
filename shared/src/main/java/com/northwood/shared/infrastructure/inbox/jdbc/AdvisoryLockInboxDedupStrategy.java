@@ -44,7 +44,7 @@ final class AdvisoryLockInboxDedupStrategy implements InboxDedupStrategy {
 
     @Override
     public boolean alreadyProcessed(UUID messageId, String handlerName) {
-        // Statement 1: take (or wait for) the per-(message, consumer) advisory
+        // Statement 1: take (or wait for) the per-(message, handler) advisory
         // lock; held until the surrounding transaction ends. ResultSetExtractor
         // discards the void result without tripping queryForObject's type check.
         jdbc.query(ACQUIRE_LOCK_SQL,

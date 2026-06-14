@@ -23,6 +23,6 @@ public final class InMemoryInboxPort implements InboxPort {
 
     @Override
     public synchronized void recordProcessed(InboxRow row) {
-        processed.add(new Key(row.getMessageId(), row.getConsumerName()));
+        processed.add(new Key(row.getMessageId(), row.getHandlerName()));
     }
 }

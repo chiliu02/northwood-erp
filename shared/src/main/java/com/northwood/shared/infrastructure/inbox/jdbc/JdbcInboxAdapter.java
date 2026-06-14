@@ -51,7 +51,7 @@ public class JdbcInboxAdapter implements InboxPort {
             """,
             row.getInboxMessageId(),
             row.getMessageId(),
-            row.getConsumerName(),
+            row.getHandlerName(),
             row.getEventType(),
             row.getEventVersion(),
             row.getSourceSequenceNumber(),

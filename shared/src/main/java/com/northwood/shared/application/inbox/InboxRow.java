@@ -6,7 +6,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Column;
 
 /**
- * Inbox row. Used to make event consumption idempotent: a consumer records
+ * Inbox row. Used to make event consumption idempotent: a handler records
  * (message_id, handler_name) before applying the event, so a redelivery
  * doesn't double-apply.
  */
@@ -78,7 +78,7 @@ public final class InboxRow {
 
     public UUID getInboxMessageId()       { return inboxMessageId; }
     public UUID getMessageId()            { return messageId; }
-    public String getConsumerName()       { return handlerName; }
+    public String getHandlerName()       { return handlerName; }
     public String getEventType()          { return eventType; }
     public int getEventVersion()          { return eventVersion; }
     public Long getSourceSequenceNumber() { return sourceSequenceNumber; }

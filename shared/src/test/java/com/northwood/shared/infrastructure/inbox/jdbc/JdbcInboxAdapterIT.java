@@ -36,7 +36,7 @@ import tools.jackson.databind.ObjectMapper;
  *   <li>{@code alreadyProcessed} against a real {@code COUNT(*)} — false for an
  *       unseen message, true once {@code recordProcessed} has landed the row;</li>
  *   <li>dedup is keyed on {@code (message_id, handler_name)} — the same message
- *       seen by a different consumer is still "unprocessed" for that consumer
+ *       seen by a different handler is still "unprocessed" for that handler
  *       (the property that lets every service consume the same event);</li>
  *   <li>{@code recordProcessed} persists all columns and casts {@code payload}
  *       via {@code ?::jsonb};</li>
@@ -105,36 +105,36 @@ class JdbcInboxAdapterIT {
     @Test
     void recordProcessed_then_alreadyProcessed_is_true() {
         UUID messageId = UUID.randomUUID();
-        String consumer = "product.ProductMaterialsCostComputedHandler";
+        String handler = "product.ProductMaterialsCostComputedHandler";
 
         ADAPTER.recordProcessed(InboxRow.processed(
-            UUID.randomUUID(), messageId, consumer,
+            UUID.randomUUID(), messageId, handler,
             "manufacturing.ProductMaterialsCostComputed", 1, 7L, "{}"
         ));
 
-        assertThat(ADAPTER.alreadyProcessed(messageId, consumer)).isTrue();
+        assertThat(ADAPTER.alreadyProcessed(messageId, handler)).isTrue();
     }
 
     @Test
-    void dedup_is_keyed_per_consumer() {
+    void dedup_is_keyed_per_handler() {
         UUID messageId = UUID.randomUUID();
         ADAPTER.recordProcessed(InboxRow.processed(
-            UUID.randomUUID(), messageId, "consumer.A",
+            UUID.randomUUID(), messageId, "handler.A",
             "product.SomeEvent", 1, null, "{}"
         ));
 
-        assertThat(ADAPTER.alreadyProcessed(messageId, "consumer.A")).isTrue();
-        assertThat(ADAPTER.alreadyProcessed(messageId, "consumer.B")).isFalse();
+        assertThat(ADAPTER.alreadyProcessed(messageId, "handler.A")).isTrue();
+        assertThat(ADAPTER.alreadyProcessed(messageId, "handler.B")).isFalse();
     }
 
     @Test
     void recordProcessed_persists_all_columns_and_casts_payload_jsonb() {
         UUID messageId = UUID.randomUUID();
-        String consumer = "product.SomeHandler";
+        String handler = "product.SomeHandler";
         String payload = "{\"productId\":\"abc\",\"cost\":42.5}";
 
         ADAPTER.recordProcessed(InboxRow.processed(
-            UUID.randomUUID(), messageId, consumer,
+            UUID.randomUUID(), messageId, handler,
             "manufacturing.ProductMaterialsCostComputed", 2, 99L, payload
         ));
 
@@ -145,7 +145,7 @@ class JdbcInboxAdapterIT {
             FROM product.inbox_message
             WHERE message_id = ? AND handler_name = ?
             """,
-            messageId, consumer
+            messageId, handler
         );
 
         assertThat(row.get("event_type")).isEqualTo("manufacturing.ProductMaterialsCostComputed");
@@ -168,7 +168,7 @@ class JdbcInboxAdapterIT {
     @Test
     void advisory_lock_serializes_a_concurrent_duplicate() throws Exception {
         UUID messageId = UUID.randomUUID();
-        String consumer = "product.RaceHandler";
+        String handler = "product.RaceHandler";
 
         CountDownLatch firstRecorded = new CountDownLatch(1);   // first inserted (uncommitted), holds the lock
         CountDownLatch secondAttempting = new CountDownLatch(1); // second is about to block on the lock
@@ -180,9 +180,9 @@ class JdbcInboxAdapterIT {
         Thread first = new Thread(() -> {
             try (var conn = newTxnConnection()) {
                 JdbcInboxAdapter adapter = adapterOn(conn);
-                firstSaw.set(adapter.alreadyProcessed(messageId, consumer)); // false; takes the lock
+                firstSaw.set(adapter.alreadyProcessed(messageId, handler)); // false; takes the lock
                 adapter.recordProcessed(InboxRow.processed(
-                    UUID.randomUUID(), messageId, consumer, "product.SomeEvent", 1, null, "{}"));
+                    UUID.randomUUID(), messageId, handler, "product.SomeEvent", 1, null, "{}"));
                 firstRecorded.countDown();
                 await(releaseFirst);
                 conn.commit(); // releases the advisory lock
@@ -197,7 +197,7 @@ class JdbcInboxAdapterIT {
                 JdbcInboxAdapter adapter = adapterOn(conn);
                 await(firstRecorded);          // first holds the lock with an uncommitted row
                 secondAttempting.countDown();
-                secondSaw.set(adapter.alreadyProcessed(messageId, consumer)); // blocks, then true
+                secondSaw.set(adapter.alreadyProcessed(messageId, handler)); // blocks, then true
                 conn.commit();
             } catch (Throwable t) {
                 error.compareAndSet(null, t);

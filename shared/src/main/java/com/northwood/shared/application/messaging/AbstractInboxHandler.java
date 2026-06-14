@@ -13,8 +13,16 @@ import tools.jackson.databind.ObjectMapper;
  * Common boilerplate for inbox handlers — every concrete handler in the
  * codebase shares the same shape: dedupe via inbox, deserialise the payload,
  * apply the side effects, record the inbox row. Subclasses pass their event
- * type and consumer name through the constructor and implement
+ * type and handler name through the constructor and implement
  * {@link #apply(Object, EventEnvelope)}; nothing else.
+ *
+ * <p><strong>Exactly-once effect is per handler.</strong> The inbox row is keyed
+ * on {@code (message_id, handler_name)} — not {@code message_id} alone — so each
+ * event is applied exactly once by <em>each</em> handler whose {@link #handles}
+ * matches its event type. N handlers subscribed to one event type each process it
+ * once, independently; at-least-once delivery may invoke a handler repeatedly for
+ * the same event, but every invocation after the first hits that handler's own
+ * {@code (message_id, handler_name)} row and no-ops.
  *
  * <p>None of {@link #handle}, {@link #handles}, or {@link #handlerName} are
  * declared {@code final}, even though the latter two have no AOP advice on
