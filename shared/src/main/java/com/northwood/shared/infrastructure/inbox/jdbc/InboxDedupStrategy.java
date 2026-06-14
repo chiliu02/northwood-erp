@@ -24,7 +24,7 @@ import java.util.UUID;
  *
  * <p>An implementation does two things in one call, inside the consumer's
  * {@code @Transactional} boundary: report whether
- * {@code (messageId, consumerName)} was already processed, AND guard the
+ * {@code (messageId, handlerName)} was already processed, AND guard the
  * caller's about-to-run processing against a concurrent duplicate (a redelivery
  * landing on a second thread during a consumer-group rebalance). The shared
  * audit/dedup row is written separately by
@@ -35,5 +35,5 @@ import java.util.UUID;
  */
 public interface InboxDedupStrategy {
 
-    boolean alreadyProcessed(UUID messageId, String consumerName);
+    boolean alreadyProcessed(UUID messageId, String handlerName);
 }

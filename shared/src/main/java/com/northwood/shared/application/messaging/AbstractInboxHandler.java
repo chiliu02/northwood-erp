@@ -16,14 +16,14 @@ import tools.jackson.databind.ObjectMapper;
  * type and consumer name through the constructor and implement
  * {@link #apply(Object, EventEnvelope)}; nothing else.
  *
- * <p>None of {@link #handle}, {@link #handles}, or {@link #consumerName} are
+ * <p>None of {@link #handle}, {@link #handles}, or {@link #handlerName} are
  * declared {@code final}, even though the latter two have no AOP advice on
  * their own. The reason is the {@code @Transactional} annotation on
  * {@code handle()}: it triggers Spring to create a CGLIB proxy for the whole
  * class, which Objenesis instantiates without invoking the constructor — so
  * every instance field on the proxy is null. CGLIB cannot override final
  * methods, so any final method runs on the proxy with {@code this.eventType}
- * / {@code this.consumerName} = null and NPEs on the first call.
+ * / {@code this.handlerName} = null and NPEs on the first call.
  * Spring Kafka wraps the NPE in {@code ListenerExecutionFailedException} and
  * the bounded-retry path eventually publishes the message to the
  * {@code <topic>.dlt} dead-letter topic — silently unless DLT topics are
@@ -42,20 +42,20 @@ public abstract class AbstractInboxHandler<P> implements InboxEnvelopeHandler {
     protected final ObjectMapper json;
     private final Class<P> payloadType;
     private final String eventType;
-    private final String consumerName;
+    private final String handlerName;
 
     protected AbstractInboxHandler(
         InboxPort inbox,
         ObjectMapper json,
         Class<P> payloadType,
         String eventType,
-        String consumerName
+        String handlerName
     ) {
         this.inbox = inbox;
         this.json = json;
         this.payloadType = payloadType;
         this.eventType = eventType;
-        this.consumerName = consumerName;
+        this.handlerName = handlerName;
     }
 
     @Override
@@ -64,8 +64,8 @@ public abstract class AbstractInboxHandler<P> implements InboxEnvelopeHandler {
     }
 
     @Override
-    public String consumerName() {
-        return consumerName;
+    public String handlerName() {
+        return handlerName;
     }
 
     @Override
@@ -74,9 +74,9 @@ public abstract class AbstractInboxHandler<P> implements InboxEnvelopeHandler {
         if (!handles(envelope.eventType())) {
             return;
         }
-        if (inbox.alreadyProcessed(envelope.eventId(), consumerName)) {
+        if (inbox.alreadyProcessed(envelope.eventId(), handlerName)) {
             log.debug("[{}] skipping already-processed {} ({})",
-                consumerName, envelope.eventType(), envelope.eventId());
+                handlerName, envelope.eventType(), envelope.eventId());
             return;
         }
 
@@ -94,7 +94,7 @@ public abstract class AbstractInboxHandler<P> implements InboxEnvelopeHandler {
         inbox.recordProcessed(InboxRow.processed(
             UUID.randomUUID(),
             envelope.eventId(),
-            consumerName,
+            handlerName,
             envelope.eventType(),
             envelope.eventVersion(),
             null,

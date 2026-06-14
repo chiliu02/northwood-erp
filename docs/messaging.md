@@ -107,7 +107,7 @@ Reliable delivery + idempotent consumption are the cornerstone of this architect
 
 | Guarantee | Mechanism | Covered by |
 |---|---|---|
-| Dedup keyed `(message_id, consumer_name)`, independent per consumer | inbox row + `alreadyProcessed` check | `JdbcInboxAdapterIT.recordProcessed_then_alreadyProcessed_is_true`, `…dedup_is_keyed_per_consumer` |
+| Dedup keyed `(message_id, handler_name)`, independent per consumer | inbox row + `alreadyProcessed` check | `JdbcInboxAdapterIT.recordProcessed_then_alreadyProcessed_is_true`, `…dedup_is_keyed_per_consumer` |
 | Concurrent duplicate of the same message serialized (TOCTOU race closed) | advisory-lock gate (default), held across `handle()`'s tx | `JdbcInboxAdapterIT.advisory_lock_serializes_a_concurrent_duplicate` |
 | `apply` + `recordProcessed` atomic; `apply` throws → both roll back → reprocessable | `handle()` `@Transactional` boundary | `InboxApplyRollbackAtomicityIT.applyThrows_rollsBackAtomically_thenAppliesOnceOnRedelivery` (inventory, Testcontainers Kafka + Postgres) |
 | Offset committed only after the listener returns successfully | container-managed commit, default `BATCH` ack mode | `KafkaInboxDispatcherDeliveryIT.offset_commits_only_after_the_listener_returns_successfully` |
@@ -220,7 +220,7 @@ A business transaction is two trace-time halves: the synchronous **request** (BF
 
 ## Consumer side
 
-- **One inbox table per service** (`<schema>.inbox_message`) — dedupe by `(consumer_name, event_id)`. Idempotent against redelivery / consumer-group rebalance / replay from `earliest` offset. The dedup *gate* (a config-selectable strategy — advisory lock by default), the `@Transactional` check → apply → record flow, and the rebalance-window race it closes are detailed in **[Consumer-side idempotency](#consumer-side-idempotency-exactly-once-effect)** below.
+- **One inbox table per service** (`<schema>.inbox_message`) — dedupe by `(handler_name, event_id)`. Idempotent against redelivery / consumer-group rebalance / replay from `earliest` offset. The dedup *gate* (a config-selectable strategy — advisory lock by default), the `@Transactional` check → apply → record flow, and the rebalance-window race it closes are detailed in **[Consumer-side idempotency](#consumer-side-idempotency-exactly-once-effect)** below.
 - **`KafkaInboxDispatcher`** — single `@KafkaListener` per consuming service, subscribed to the topics declared in `northwood.kafka.subscribe-topics` (per-service config in `application-kafka.yml`). Spring's `ConcurrentKafkaListenerContainerFactory` auto-applies the `DefaultErrorHandler` built by `KafkaMessagingAutoConfiguration.inboxErrorHandler` — transient exceptions retried under an `ExponentialBackOff` (default 5 min budget), poison/deterministic exceptions (`NOT_RETRYABLE`) dead-lettered on the first failure.
 - **`@KafkaListener` concurrency**: `northwood.kafka.listener.concurrency` sets the listener thread count and **defaults to the topic partition count** (`northwood.kafka.topic.partitions`, default 3) — one consumer thread per partition out of the box. A `BeanPostProcessor` in `KafkaMessagingAutoConfiguration` clamps the effective value to `max(1, min(requested, partitions))` on the auto-configured `ConcurrentKafkaListenerContainerFactory` (Spring Boot 4 dropped the `ConcurrentKafkaListenerContainerFactoryCustomizer` hook), so an over-set concurrency can't spawn idle threads — within a group Kafka assigns at most one consumer per partition. The dispatcher's `apply()` is stateless beyond the inbox + projection writes; thread safety relies on per-row DB locking + idempotent SQL.
 - **`DltRedriver`** — a *second* per-service `@KafkaListener` (group `<service>-dlt-redriver`, pattern `.+\.dlt`), enabled by `northwood.kafka.dlt.redrive.enabled`. Auto-drains the DLT: for each record it reads the `kafka_dlt-original-consumer-group` header and **re-applies only its own** (others belong to other services' redrivers), retrying through the live `KafkaInboxDispatcher` fan-out up to `max-attempts` (with `delay` between), then parking the rest in `<topic>.dlt.parked`. **Header for routing, partition for concurrency**: the DLT key stays `aggregateId` (so partitions keep ordering + parallelism), and the listener uses ordinary group subscription with configurable `concurrency`, so a slow (blocking) redrive on one partition never stalls the others. It catches every re-apply failure and returns normally, so the `inboxErrorHandler` never fires on it (no `.dlt.dlt`). Full rationale: `DltRedriver` Javadoc.
@@ -245,7 +245,7 @@ The inbox is what converts Kafka's at-least-once *delivery* into exactly-once *e
 
 Kafka (and any broker, and Cassandra CDC — see `docs/infrastructure.md`) gives **at-least-once** delivery. The same event can arrive more than once: consumer-group rebalances, offset-commit gaps, replay from `earliest`, a redelivery after a processing error. A naive consumer that applies every delivery double-posts journal entries, double-reserves stock, double-increments balances.
 
-The **inbox pattern** records that it has processed `(message_id, consumer_name)` and refuses to apply the same pair twice — exactly-once *effect*. The event may be *delivered* many times; its side effects land exactly once. The key is that the dedup record and the side effects commit **in one transaction**: if the side effects roll back, so does the "processed" record (the event becomes reprocessable); if they commit, the record commits with them (the event is durably done).
+The **inbox pattern** records that it has processed `(message_id, handler_name)` and refuses to apply the same pair twice — exactly-once *effect*. The event may be *delivered* many times; its side effects land exactly once. The key is that the dedup record and the side effects commit **in one transaction**: if the side effects roll back, so does the "processed" record (the event becomes reprocessable); if they commit, the record commits with them (the event is durably done).
 
 ### The flow — `AbstractInboxHandler.handle()`
 
@@ -255,7 +255,7 @@ Every concrete inbox handler extends `shared.application.messaging.AbstractInbox
 @Transactional
 public void handle(EventEnvelope envelope) {
     if (!handles(envelope.eventType())) return;               // 1. not my event
-    if (inbox.alreadyProcessed(eventId, consumerName)) return; // 2. dedup gate
+    if (inbox.alreadyProcessed(eventId, handlerName)) return; // 2. dedup gate
     P payload = deserialize(envelope);                         // 3. decode
     apply(payload, envelope);                                  // 4a. side effects
     inbox.recordProcessed(InboxRow.processed(...));            // 4b. record
@@ -287,11 +287,11 @@ thread A: apply + record ───────────┤
 thread B: apply + record ───────────┘  both apply → double effect
 ```
 
-Two threads can only run this concurrently for the *same* `(message_id, consumer_name)` if the same message is being processed twice at once. On Kafka that requires **two consumers in the group simultaneously owning the same partition** — which happens only in the brief overlap window of a consumer-group rebalance (the old owner hasn't finished/committed when the new owner starts). Single-consumer-per-partition is the steady state, so the race is rare — but "rare" is not "never", and at higher `@KafkaListener` concurrency or under aggressive rebalancing it's a real bug.
+Two threads can only run this concurrently for the *same* `(message_id, handler_name)` if the same message is being processed twice at once. On Kafka that requires **two consumers in the group simultaneously owning the same partition** — which happens only in the brief overlap window of a consumer-group rebalance (the old owner hasn't finished/committed when the new owner starts). Single-consumer-per-partition is the steady state, so the race is rare — but "rare" is not "never", and at higher `@KafkaListener` concurrency or under aggressive rebalancing it's a real bug.
 
 #### Why the database's own constraint does NOT save you
 
-`inbox_message` looks like it has a uniqueness guard — `UNIQUE (message_id, consumer_name, processed_at)` — but it does **not** enforce one-row-per-`(message_id, consumer_name)`. `processed_at` is in the key only because the table is `PARTITION BY RANGE (processed_at)` and PostgreSQL requires the partition key to appear in every unique constraint. Two duplicate inserts at different `processed_at` instants both satisfy this constraint and both succeed. So a concurrent double-insert is **not** rejected by the DB — the bare check-then-insert genuinely double-applies. **Dedup safety rests on the gate, not on the table constraint.**
+`inbox_message` looks like it has a uniqueness guard — `UNIQUE (message_id, handler_name, processed_at)` — but it does **not** enforce one-row-per-`(message_id, handler_name)`. `processed_at` is in the key only because the table is `PARTITION BY RANGE (processed_at)` and PostgreSQL requires the partition key to appear in every unique constraint. Two duplicate inserts at different `processed_at` instants both satisfy this constraint and both succeed. So a concurrent double-insert is **not** rejected by the DB — the bare check-then-insert genuinely double-applies. **Dedup safety rests on the gate, not on the table constraint.**
 
 #### The backstop: idempotent projection writes
 
@@ -324,13 +324,13 @@ Selected in `JdbcInboxAutoConfiguration`. A service can also register its own `I
 
 ### Option B — advisory lock (default, PostgreSQL)
 
-`AdvisoryLockInboxDedupStrategy`. Serialize processing of a given `(message_id, consumer_name)` with a **transaction-scoped** PostgreSQL advisory lock, then check existence:
+`AdvisoryLockInboxDedupStrategy`. Serialize processing of a given `(message_id, handler_name)` with a **transaction-scoped** PostgreSQL advisory lock, then check existence:
 
 ```sql
 -- statement 1: acquire (or wait for) the lock; released at transaction end
-SELECT pg_advisory_xact_lock(hashtextextended(? , 0));   -- ? = messageId + ':' + consumerName
+SELECT pg_advisory_xact_lock(hashtextextended(? , 0));   -- ? = messageId + ':' + handlerName
 -- statement 2: fresh snapshot now that the lock is held
-SELECT EXISTS (SELECT 1 FROM inbox_message WHERE message_id = ? AND consumer_name = ?);
+SELECT EXISTS (SELECT 1 FROM inbox_message WHERE message_id = ? AND handler_name = ?);
 ```
 
 `pg_advisory_xact_lock` is held until the consumer's transaction commits or rolls back — the *same* `@Transactional` boundary that wraps check → apply → record. So thread B, racing the same message, blocks at the lock until thread A commits, then re-checks against A's now-committed row, sees it, and skips. The race above is closed. No schema change.
@@ -341,7 +341,7 @@ The lock is acquired in **its own statement before** the `EXISTS` check — neve
 
 #### Cost and limits
 
-Negligible cost. Advisory locks live in a PostgreSQL in-memory hash table — no disk, no row locks, no bloat. Contention happens **only between duplicates of the same `(message_id, consumer_name)`**; distinct messages hash to distinct keys and never wait on each other. So the only thing that ever blocks is an actual concurrent duplicate — exactly the case we *want* to serialize. The `hashtextextended` 64-bit hash can in principle collide (two unrelated keys serialize unnecessarily); the probability is negligible and a collision costs only a little extra serialization, never correctness.
+Negligible cost. Advisory locks live in a PostgreSQL in-memory hash table — no disk, no row locks, no bloat. Contention happens **only between duplicates of the same `(message_id, handler_name)`**; distinct messages hash to distinct keys and never wait on each other. So the only thing that ever blocks is an actual concurrent duplicate — exactly the case we *want* to serialize. The `hashtextextended` 64-bit hash can in principle collide (two unrelated keys serialize unnecessarily); the probability is negligible and a collision costs only a little extra serialization, never correctness.
 
 PostgreSQL-specific, though. Other engines have advisory-lock equivalents with different APIs/semantics (SQL Server `sp_getapplock`, Oracle `DBMS_LOCK`, MySQL `GET_LOCK` is *session*- not transaction-scoped). If Northwood ever leaves PostgreSQL, switch to Option A.
 
@@ -350,21 +350,21 @@ PostgreSQL-specific, though. Other engines have advisory-lock equivalents with d
 `unique-claim`. Instead of locking, *claim* the work with a conditional write and let a unique constraint reject the duplicate:
 
 ```sql
-INSERT INTO inbox_dedup (message_id, consumer_name) VALUES (?, ?) ON CONFLICT DO NOTHING;
+INSERT INTO inbox_dedup (message_id, handler_name) VALUES (?, ?) ON CONFLICT DO NOTHING;
 -- rows affected == 0  → already claimed/processed → skip
 -- rows affected == 1  → we won the claim → proceed to apply + recordProcessed
 ```
 
 This is the **portable** mechanism: a conditional write on a uniqueness constraint exists in essentially every SQL engine *and* most NoSQL stores (DynamoDB conditional `PutItem`, MongoDB unique index, Cassandra `INSERT … IF NOT EXISTS`). It's the strategy to pick when the store isn't PostgreSQL.
 
-**Why it's deferred, and why it needs its own table.** Option A requires a real `UNIQUE (message_id, consumer_name)`. The existing `inbox_message` *cannot* carry one — its `PARTITION BY RANGE (processed_at)` forces `processed_at` into every unique constraint (above). So Option A needs a small dedicated table that is *not* range-partitioned:
+**Why it's deferred, and why it needs its own table.** Option A requires a real `UNIQUE (message_id, handler_name)`. The existing `inbox_message` *cannot* carry one — its `PARTITION BY RANGE (processed_at)` forces `processed_at` into every unique constraint (above). So Option A needs a small dedicated table that is *not* range-partitioned:
 
 ```sql
 CREATE TABLE <service>.inbox_dedup (
     message_id     UUID         NOT NULL,
-    consumer_name  VARCHAR(150) NOT NULL,
+    handler_name  VARCHAR(150) NOT NULL,
     claimed_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    PRIMARY KEY (message_id, consumer_name)   -- the real dedup key the partitioned table can't have
+    PRIMARY KEY (message_id, handler_name)   -- the real dedup key the partitioned table can't have
 );
 ```
 
@@ -386,7 +386,7 @@ CREATE TABLE <service>.inbox_dedup (
 
 ### Verification
 
-`JdbcInboxAdapterIT.advisory_lock_serializes_a_concurrent_duplicate` (in `shared`, real Postgres via Testcontainers) is the proof the in-process `SynchronousBus` harness can't give: two real transactions race the same `(message_id, consumer_name)`; the first holds the lock with an *uncommitted* inbox row; the second's `alreadyProcessed` must block on the lock and, once released, read a fresh snapshot showing the row → returns `true`. Without the lock its `EXISTS` would run against the uncommitted insert and return `false` (double-apply). Asserting the second sees `true` is the distinguishing observation. This partially closes the multi-partition race-verification gap flagged in the audit items (2, 7) below.
+`JdbcInboxAdapterIT.advisory_lock_serializes_a_concurrent_duplicate` (in `shared`, real Postgres via Testcontainers) is the proof the in-process `SynchronousBus` harness can't give: two real transactions race the same `(message_id, handler_name)`; the first holds the lock with an *uncommitted* inbox row; the second's `alreadyProcessed` must block on the lock and, once released, read a fresh snapshot showing the row → returns `true`. Without the lock its `EXISTS` would run against the uncommitted insert and return `false` (double-apply). Asserting the second sees `true` is the distinguishing observation. This partially closes the multi-partition race-verification gap flagged in the audit items (2, 7) below.
 
 The consumer-container contracts — offset-commit-only-after-success (with redelivery-on-failure), malformed-envelope skip, and DLT-after-retries — are pinned by `KafkaInboxDispatcherDeliveryIT` (in `shared`, real Kafka via Testcontainers). The complete guarantee → test map is the *Reliability & idempotency* matrix near the top of this doc.
 

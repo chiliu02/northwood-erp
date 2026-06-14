@@ -6,7 +6,7 @@ import org.springframework.jdbc.core.ResultSetExtractor;
 
 /**
  * Option B dedup gate (the default, PostgreSQL-only): serialize the processing
- * of a given {@code (message_id, consumer_name)} with a transaction-scoped
+ * of a given {@code (message_id, handler_name)} with a transaction-scoped
  * advisory lock, then check whether the inbox row already exists.
  *
  * <p>{@code pg_advisory_xact_lock} is held until the consumer's transaction
@@ -34,7 +34,7 @@ final class AdvisoryLockInboxDedupStrategy implements InboxDedupStrategy {
         "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))";
 
     private static final String EXISTS_SQL =
-        "SELECT EXISTS (SELECT 1 FROM inbox_message WHERE message_id = ? AND consumer_name = ?)";
+        "SELECT EXISTS (SELECT 1 FROM inbox_message WHERE message_id = ? AND handler_name = ?)";
 
     private final JdbcTemplate jdbc;
 
@@ -43,16 +43,16 @@ final class AdvisoryLockInboxDedupStrategy implements InboxDedupStrategy {
     }
 
     @Override
-    public boolean alreadyProcessed(UUID messageId, String consumerName) {
+    public boolean alreadyProcessed(UUID messageId, String handlerName) {
         // Statement 1: take (or wait for) the per-(message, consumer) advisory
         // lock; held until the surrounding transaction ends. ResultSetExtractor
         // discards the void result without tripping queryForObject's type check.
         jdbc.query(ACQUIRE_LOCK_SQL,
             (ResultSetExtractor<Void>) rs -> null,
-            messageId + ":" + consumerName);
+            messageId + ":" + handlerName);
 
         // Statement 2: fresh snapshot now that the lock is held.
-        Boolean exists = jdbc.queryForObject(EXISTS_SQL, Boolean.class, messageId, consumerName);
+        Boolean exists = jdbc.queryForObject(EXISTS_SQL, Boolean.class, messageId, handlerName);
         return Boolean.TRUE.equals(exists);
     }
 }

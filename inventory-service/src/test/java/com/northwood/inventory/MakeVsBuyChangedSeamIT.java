@@ -153,7 +153,7 @@ class MakeVsBuyChangedSeamIT {
         });
 
         Integer inboxCount = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM inventory.inbox_message WHERE message_id = ? AND consumer_name = ?",
+            "SELECT COUNT(*) FROM inventory.inbox_message WHERE message_id = ? AND handler_name = ?",
             Integer.class, eventId, "inventory.product-replenishment-projector"
         );
         assertThat(inboxCount).isEqualTo(1);

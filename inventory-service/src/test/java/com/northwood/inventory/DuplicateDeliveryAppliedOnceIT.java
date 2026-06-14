@@ -58,7 +58,7 @@ import tools.jackson.databind.ObjectMapper;
  * <p>The dedup gate ({@code AbstractInboxHandler.handle} →
  * {@code InboxPort.alreadyProcessed}) must short-circuit B, leaving exactly one
  * inbox row for {@code E}. The partitioned {@code inbox_message}'s
- * {@code UNIQUE (message_id, consumer_name, processed_at)} does <em>not</em>
+ * {@code UNIQUE (message_id, handler_name, processed_at)} does <em>not</em>
  * enforce this (a second insert at a later instant succeeds — see
  * {@code docs/messaging.md} → Consumer-side idempotency), so a count of 1
  * proves the <em>gate</em> skipped B, not a constraint backstop.
@@ -147,7 +147,7 @@ class DuplicateDeliveryAppliedOnceIT {
         // The duplicate eventId is recorded exactly once → the gate skipped B
         // (a wrongly-applied B would have inserted a second inbox row).
         Integer duplicateInboxRows = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM inventory.inbox_message WHERE message_id = ? AND consumer_name = ?",
+            "SELECT COUNT(*) FROM inventory.inbox_message WHERE message_id = ? AND handler_name = ?",
             Integer.class, duplicatedEventId, ReorderPolicyChangedHandler.HANDLER_NAME
         );
         assertThat(duplicateInboxRows)
@@ -157,7 +157,7 @@ class DuplicateDeliveryAppliedOnceIT {
         // Sanity: the marker (distinct eventId) was itself recorded once and the
         // listener kept consuming past the deduped duplicate.
         Integer markerInboxRows = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM inventory.inbox_message WHERE message_id = ? AND consumer_name = ?",
+            "SELECT COUNT(*) FROM inventory.inbox_message WHERE message_id = ? AND handler_name = ?",
             Integer.class, markerEventId, ReorderPolicyChangedHandler.HANDLER_NAME
         );
         assertThat(markerInboxRows).isEqualTo(1);

@@ -155,7 +155,7 @@ CREATE TABLE inventory.outbox_message_default
 CREATE TABLE inventory.inbox_message (
     inbox_message_id UUID NOT NULL DEFAULT shared.uuid_generate_v7(),
     message_id UUID NOT NULL,
-    consumer_name VARCHAR(150) NOT NULL,
+    handler_name VARCHAR(150) NOT NULL,
     event_type VARCHAR(150) NOT NULL,
     event_version INT NOT NULL DEFAULT 1,
     source_sequence_number BIGINT,
@@ -163,7 +163,7 @@ CREATE TABLE inventory.inbox_message (
     status VARCHAR(30) NOT NULL DEFAULT 'processed' CHECK (status IN ('processed', 'failed')),
     processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (inbox_message_id, processed_at),
-    UNIQUE (message_id, consumer_name, processed_at)
+    UNIQUE (message_id, handler_name, processed_at)
 ) PARTITION BY RANGE (processed_at);
 
 CREATE TABLE inventory.inbox_message_default

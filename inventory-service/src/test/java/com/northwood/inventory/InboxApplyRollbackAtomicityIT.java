@@ -161,7 +161,7 @@ class InboxApplyRollbackAtomicityIT {
             .isEqualByComparingTo(SEED_REORDER_POINT);
 
         Integer inboxAfterFailure = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM inventory.inbox_message WHERE message_id = ? AND consumer_name = ?",
+            "SELECT COUNT(*) FROM inventory.inbox_message WHERE message_id = ? AND handler_name = ?",
             Integer.class, eventId, RollbackProbeHandler.HANDLER_NAME
         );
         assertThat(inboxAfterFailure)
@@ -179,7 +179,7 @@ class InboxApplyRollbackAtomicityIT {
         });
 
         Integer inboxFinal = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM inventory.inbox_message WHERE message_id = ? AND consumer_name = ?",
+            "SELECT COUNT(*) FROM inventory.inbox_message WHERE message_id = ? AND handler_name = ?",
             Integer.class, eventId, RollbackProbeHandler.HANDLER_NAME
         );
         assertThat(inboxFinal)

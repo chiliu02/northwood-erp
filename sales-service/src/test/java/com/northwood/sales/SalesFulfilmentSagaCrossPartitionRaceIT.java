@@ -163,7 +163,7 @@ class SalesFulfilmentSagaCrossPartitionRaceIT {
 
         // Both partitions have drained past E → the race is fully resolved.
         Integer inboxRows = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM sales.inbox_message WHERE message_id = ? AND consumer_name = ?",
+            "SELECT COUNT(*) FROM sales.inbox_message WHERE message_id = ? AND handler_name = ?",
             Integer.class, racedEventId, StockReservedHandler.HANDLER_NAME);
         assertThat(inboxRows)
             .withFailMessage("the cross-partition duplicate must be recorded exactly once "

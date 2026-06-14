@@ -218,7 +218,7 @@ class KafkaInboxDispatcherDeliveryIT {
 
         InboxEnvelopeHandler handler = new InboxEnvelopeHandler() {
             @Override public boolean handles(String eventType) { return EVENT_TYPE.equals(eventType); }
-            @Override public String consumerName() { return "test.AlwaysFailsHandler"; }
+            @Override public String handlerName() { return "test.AlwaysFailsHandler"; }
             @Override public void handle(EventEnvelope envelope) {
                 throw new IllegalStateException("poison payload");   // non-retryable → straight to DLT
             }
@@ -261,7 +261,7 @@ class KafkaInboxDispatcherDeliveryIT {
         AtomicInteger attempts = new AtomicInteger();
         InboxEnvelopeHandler handler = new InboxEnvelopeHandler() {
             @Override public boolean handles(String eventType) { return EVENT_TYPE.equals(eventType); }
-            @Override public String consumerName() { return "test.AlwaysFailsHandler"; }
+            @Override public String handlerName() { return "test.AlwaysFailsHandler"; }
             @Override public void handle(EventEnvelope envelope) {
                 attempts.incrementAndGet();
                 throw toThrow;
@@ -300,7 +300,7 @@ class KafkaInboxDispatcherDeliveryIT {
             AtomicInteger attempts, CountDownLatch succeeded, boolean failFirst) {
         return new InboxEnvelopeHandler() {
             @Override public boolean handles(String eventType) { return EVENT_TYPE.equals(eventType); }
-            @Override public String consumerName() { return "test.DeliveryProbeHandler"; }
+            @Override public String handlerName() { return "test.DeliveryProbeHandler"; }
             @Override public void handle(EventEnvelope envelope) {
                 if (failFirst && attempts.incrementAndGet() == 1) {
                     throw new RuntimeException("simulated mid-processing failure");

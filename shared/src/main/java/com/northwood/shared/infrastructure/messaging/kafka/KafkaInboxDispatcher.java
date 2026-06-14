@@ -43,7 +43,7 @@ public class KafkaInboxDispatcher {
         log.info(
             "KafkaInboxDispatcher wired with {} handler(s): {}",
             handlers.size(),
-            handlers.stream().map(h -> h.consumerName()).toList()
+            handlers.stream().map(h -> h.handlerName()).toList()
         );
     }
 

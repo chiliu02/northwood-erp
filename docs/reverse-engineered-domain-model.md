@@ -403,7 +403,7 @@ Every command context has its own `outbox_message` and `inbox_message` tables (r
 
 Two details matter. First, the publisher drains by **status flag**, not a high-water cursor: `SELECT … WHERE status IN ('pending','failed') ORDER BY sequence_number … FOR UPDATE SKIP LOCKED` (`JdbcOutboxAdapter.findPending`). Because it re-scans *pending* rows each tick rather than paginating past a `sequence_number > :cursor` watermark, the classic commit-order trap — a long tx grabs a low `sequence_number` early but commits *after* a higher one, so a watermark consumer skips the late row forever — cannot bite here; a late-committing low-sequence row is simply still `pending` on a later tick. The `ORDER BY sequence_number` does the weaker job of publishing each batch in write order, which (with one publish in flight per service) means a service never emits out of its own write order. (The `last_sequence_number` column in `projection_checkpoint` describes an earlier cursor-polling design intent; the live read side is Kafka offsets + inbox dedup — see below.) Second, a partial index on `WHERE status IN ('pending','failed')` keeps the working index small as published rows accumulate.
 
-The inbox is for idempotent consumption: each consumer records `(message_id, consumer_name)`, and a config-selectable dedup gate (advisory-lock by default) closes the rebalance-window race so a redelivery doesn't double-apply. See `docs/messaging.md`.
+The inbox is for idempotent consumption: each consumer records `(message_id, handler_name)`, and a config-selectable dedup gate (advisory-lock by default) closes the rebalance-window race so a redelivery doesn't double-apply. See `docs/messaging.md`.
 
 #### Event ordering and disorder
 

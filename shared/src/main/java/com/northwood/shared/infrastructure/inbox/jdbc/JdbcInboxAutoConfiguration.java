@@ -48,7 +48,7 @@ public class JdbcInboxAutoConfiguration {
             case "unique-claim" -> throw new IllegalStateException(
                 "northwood.inbox.dedup-strategy=unique-claim is not wired yet — it needs an "
               + "inbox_dedup table (the partitioned inbox_message can't carry a "
-              + "UNIQUE(message_id, consumer_name)); see docs/messaging.md. "
+              + "UNIQUE(message_id, handler_name)); see docs/messaging.md. "
               + "Use advisory-lock (the default) on PostgreSQL.");
             default -> throw Assert.unknownValue("northwood.inbox.dedup-strategy", strategy);
         };

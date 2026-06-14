@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 /**
  * Production-planning consumer of {@code manufacturing.WorkOrderManufacturingCompleted}.
  * Distinct from {@link WorkOrderManufacturingCompletedHandler} which feeds
- * the sales-360 projection — same event, different consumer_name and
+ * the sales-360 projection — same event, different handler_name and
  * different downstream projection.
  */
 @Component

@@ -175,7 +175,7 @@ class ReorderPolicyChangedSeamIT {
         // The inbox row records the message_id so a redelivery would short-circuit
         // via InboxPort#alreadyProcessed.
         Integer inboxCount = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM inventory.inbox_message WHERE message_id = ? AND consumer_name = ?",
+            "SELECT COUNT(*) FROM inventory.inbox_message WHERE message_id = ? AND handler_name = ?",
             Integer.class, eventId, "inventory.stock-item-projector"
         );
         assertThat(inboxCount).isEqualTo(1);

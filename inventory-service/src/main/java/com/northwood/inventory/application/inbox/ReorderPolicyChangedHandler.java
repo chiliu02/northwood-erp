@@ -16,7 +16,7 @@ import tools.jackson.databind.ObjectMapper;
  * The handler is bus-agnostic by design.
  *
  * <p>Idempotency: the inbox row is INSERTed inside the same transaction as the
- * projection update, keyed on {@code (message_id, consumer_name)}. A redelivery
+ * projection update, keyed on {@code (message_id, handler_name)}. A redelivery
  * shortcuts on {@link InboxPort#alreadyProcessed} and is a safe no-op.
  */
 @Component

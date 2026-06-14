@@ -35,14 +35,14 @@ import tools.jackson.databind.ObjectMapper;
  * <ul>
  *   <li>{@code alreadyProcessed} against a real {@code COUNT(*)} — false for an
  *       unseen message, true once {@code recordProcessed} has landed the row;</li>
- *   <li>dedup is keyed on {@code (message_id, consumer_name)} — the same message
+ *   <li>dedup is keyed on {@code (message_id, handler_name)} — the same message
  *       seen by a different consumer is still "unprocessed" for that consumer
  *       (the property that lets every service consume the same event);</li>
  *   <li>{@code recordProcessed} persists all columns and casts {@code payload}
  *       via {@code ?::jsonb};</li>
  *   <li>the default {@link AdvisoryLockInboxDedupStrategy} actually serializes a
  *       concurrent duplicate — two real transactions racing the same
- *       {@code (message_id, consumer_name)} can't both observe "not processed"
+ *       {@code (message_id, handler_name)} can't both observe "not processed"
  *       (the race the in-process test harness can't exercise).</li>
  * </ul>
  *
@@ -143,7 +143,7 @@ class JdbcInboxAdapterIT {
             SELECT event_type, event_version, source_sequence_number,
                    payload::text AS payload_text, status, processed_at
             FROM product.inbox_message
-            WHERE message_id = ? AND consumer_name = ?
+            WHERE message_id = ? AND handler_name = ?
             """,
             messageId, consumer
         );
@@ -157,7 +157,7 @@ class JdbcInboxAdapterIT {
     }
 
     /**
-     * Two transactions race to process the same {@code (message_id, consumer_name)}.
+     * Two transactions race to process the same {@code (message_id, handler_name)}.
      * {@code first} acquires the advisory lock and records the row but does <em>not</em>
      * commit; {@code second} then calls {@code alreadyProcessed} — which must block on
      * the lock until {@code first} commits, and only then read a fresh snapshot showing

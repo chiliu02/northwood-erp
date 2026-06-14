@@ -12,13 +12,13 @@ import java.util.UUID;
  */
 public final class InMemoryInboxPort implements InboxPort {
 
-    private record Key(UUID messageId, String consumerName) {}
+    private record Key(UUID messageId, String handlerName) {}
 
     private final Set<Key> processed = new HashSet<>();
 
     @Override
-    public synchronized boolean alreadyProcessed(UUID messageId, String consumerName) {
-        return processed.contains(new Key(messageId, consumerName));
+    public synchronized boolean alreadyProcessed(UUID messageId, String handlerName) {
+        return processed.contains(new Key(messageId, handlerName));
     }
 
     @Override

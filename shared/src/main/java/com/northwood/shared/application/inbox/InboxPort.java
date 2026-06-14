@@ -7,7 +7,7 @@ import java.util.UUID;
  */
 public interface InboxPort {
 
-    boolean alreadyProcessed(UUID messageId, String consumerName);
+    boolean alreadyProcessed(UUID messageId, String handlerName);
 
     void recordProcessed(InboxRow row);
 }

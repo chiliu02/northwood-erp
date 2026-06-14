@@ -97,7 +97,7 @@ class DltRedriverIT {
         CountDownLatch succeeded = new CountDownLatch(1);
         InboxEnvelopeHandler handler = new InboxEnvelopeHandler() {
             @Override public boolean handles(String eventType) { return EVENT_TYPE.equals(eventType); }
-            @Override public String consumerName() { return "test.RedriveProbeHandler"; }
+            @Override public String handlerName() { return "test.RedriveProbeHandler"; }
             @Override public void handle(EventEnvelope envelope) {
                 if (attempts.incrementAndGet() == 1) {
                     throw new RuntimeException("transient on first redrive attempt");
@@ -137,7 +137,7 @@ class DltRedriverIT {
         AtomicInteger attempts = new AtomicInteger();
         InboxEnvelopeHandler handler = new InboxEnvelopeHandler() {
             @Override public boolean handles(String eventType) { return EVENT_TYPE.equals(eventType); }
-            @Override public String consumerName() { return "test.RedriveProbeHandler"; }
+            @Override public String handlerName() { return "test.RedriveProbeHandler"; }
             @Override public void handle(EventEnvelope envelope) { attempts.incrementAndGet(); }
         };
         var redriver = redriver(handler, 3, 50);
@@ -173,7 +173,7 @@ class DltRedriverIT {
         AtomicInteger attempts = new AtomicInteger();
         InboxEnvelopeHandler handler = new InboxEnvelopeHandler() {
             @Override public boolean handles(String eventType) { return EVENT_TYPE.equals(eventType); }
-            @Override public String consumerName() { return "test.RedriveProbeHandler"; }
+            @Override public String handlerName() { return "test.RedriveProbeHandler"; }
             @Override public void handle(EventEnvelope envelope) {
                 attempts.incrementAndGet();
                 throw new RuntimeException("permanently unrecoverable");

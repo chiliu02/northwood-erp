@@ -7,7 +7,7 @@ import org.springframework.data.relational.core.mapping.Column;
 
 /**
  * Inbox row. Used to make event consumption idempotent: a consumer records
- * (message_id, consumer_name) before applying the event, so a redelivery
+ * (message_id, handler_name) before applying the event, so a redelivery
  * doesn't double-apply.
  */
 public final class InboxRow {
@@ -33,8 +33,8 @@ public final class InboxRow {
     @Column("message_id")
     private UUID messageId;
 
-    @Column("consumer_name")
-    private String consumerName;
+    @Column("handler_name")
+    private String handlerName;
 
     @Column("event_type")
     private String eventType;
@@ -57,7 +57,7 @@ public final class InboxRow {
     public static InboxRow processed(
         UUID inboxMessageId,
         UUID messageId,
-        String consumerName,
+        String handlerName,
         String eventType,
         int eventVersion,
         Long sourceSequenceNumber,
@@ -66,7 +66,7 @@ public final class InboxRow {
         InboxRow r = new InboxRow();
         r.inboxMessageId = inboxMessageId;
         r.messageId = messageId;
-        r.consumerName = consumerName;
+        r.handlerName = handlerName;
         r.eventType = eventType;
         r.eventVersion = eventVersion;
         r.sourceSequenceNumber = sourceSequenceNumber;
@@ -78,7 +78,7 @@ public final class InboxRow {
 
     public UUID getInboxMessageId()       { return inboxMessageId; }
     public UUID getMessageId()            { return messageId; }
-    public String getConsumerName()       { return consumerName; }
+    public String getConsumerName()       { return handlerName; }
     public String getEventType()          { return eventType; }
     public int getEventVersion()          { return eventVersion; }
     public Long getSourceSequenceNumber() { return sourceSequenceNumber; }

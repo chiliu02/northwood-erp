@@ -133,7 +133,7 @@ Each saga has one source-of-truth class for its state machine; worker shells, in
 | Manager interface | `<service>.application.saga.<Flow>SagaManager` | Orchestration verbs only — lifecycle (`insertStarted`, `requestCompensation`), `drain`, and one `applyXxx` per inbox event |
 | Manager impl | `<service>.infrastructure.saga.Jdbc<Flow>SagaManager` | Extends `SagaManager<S, P>` from `shared.application.saga` |
 | Worker shell | `<service>.infrastructure.saga.<Flow>SagaWorker` | `@Component` with `@Scheduled poll()` + worker-driven `advance(saga)` |
-| Inbox handler shells | `<service>.application.inbox.*Handler` | One per inbox event type, each its own `consumer_name` |
+| Inbox handler shells | `<service>.application.inbox.*Handler` | One per inbox event type, each its own `handler_name` |
 | Cross-handler emitter | `<service>.application.<Flow>*Emitter` (or similar) | Shared cross-handler event emission. `application/`, NOT `application/inbox/` (inbox package is handler-only) |
 
 **Manager dependencies are minimal.** Holds:

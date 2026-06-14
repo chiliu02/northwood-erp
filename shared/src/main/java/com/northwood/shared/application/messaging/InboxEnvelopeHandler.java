@@ -20,7 +20,7 @@ public interface InboxEnvelopeHandler {
     boolean handles(String eventType);
 
     /** Stable consumer name persisted to the inbox row for idempotency. */
-    String consumerName();
+    String handlerName();
 
     /** Apply the envelope. Implementations must be idempotent. */
     void handle(EventEnvelope envelope);

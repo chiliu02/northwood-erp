@@ -331,7 +331,7 @@ CREATE INDEX idx_product_outbox_correlation
 CREATE TABLE product.inbox_message (
     inbox_message_id UUID NOT NULL DEFAULT shared.uuid_generate_v7(),
     message_id UUID NOT NULL,
-    consumer_name VARCHAR(150) NOT NULL,
+    handler_name VARCHAR(150) NOT NULL,
     event_type VARCHAR(150) NOT NULL,
     event_version INT NOT NULL DEFAULT 1,
     source_sequence_number BIGINT,
@@ -339,7 +339,7 @@ CREATE TABLE product.inbox_message (
     status VARCHAR(30) NOT NULL DEFAULT 'processed' CHECK (status IN ('processed', 'failed')),
     processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (inbox_message_id, processed_at),
-    UNIQUE (message_id, consumer_name, processed_at)
+    UNIQUE (message_id, handler_name, processed_at)
 ) PARTITION BY RANGE (processed_at);
 
 CREATE TABLE product.inbox_message_default
@@ -681,7 +681,7 @@ CREATE INDEX idx_sales_outbox_correlation ON sales.outbox_message(correlation_id
 CREATE TABLE sales.inbox_message (
     inbox_message_id UUID NOT NULL DEFAULT shared.uuid_generate_v7(),
     message_id UUID NOT NULL,
-    consumer_name VARCHAR(150) NOT NULL,
+    handler_name VARCHAR(150) NOT NULL,
     event_type VARCHAR(150) NOT NULL,
     event_version INT NOT NULL DEFAULT 1,
     source_sequence_number BIGINT,
@@ -689,7 +689,7 @@ CREATE TABLE sales.inbox_message (
     status VARCHAR(30) NOT NULL DEFAULT 'processed' CHECK (status IN ('processed', 'failed')),
     processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (inbox_message_id, processed_at),
-    UNIQUE (message_id, consumer_name, processed_at)
+    UNIQUE (message_id, handler_name, processed_at)
 ) PARTITION BY RANGE (processed_at);
 CREATE TABLE sales.inbox_message_default PARTITION OF sales.inbox_message DEFAULT;
 
@@ -1185,7 +1185,7 @@ CREATE INDEX idx_inventory_outbox_correlation ON inventory.outbox_message(correl
 CREATE TABLE inventory.inbox_message (
     inbox_message_id UUID NOT NULL DEFAULT shared.uuid_generate_v7(),
     message_id UUID NOT NULL,
-    consumer_name VARCHAR(150) NOT NULL,
+    handler_name VARCHAR(150) NOT NULL,
     event_type VARCHAR(150) NOT NULL,
     event_version INT NOT NULL DEFAULT 1,
     source_sequence_number BIGINT,
@@ -1193,7 +1193,7 @@ CREATE TABLE inventory.inbox_message (
     status VARCHAR(30) NOT NULL DEFAULT 'processed' CHECK (status IN ('processed', 'failed')),
     processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (inbox_message_id, processed_at),
-    UNIQUE (message_id, consumer_name, processed_at)
+    UNIQUE (message_id, handler_name, processed_at)
 ) PARTITION BY RANGE (processed_at);
 CREATE TABLE inventory.inbox_message_default PARTITION OF inventory.inbox_message DEFAULT;
 
@@ -1660,7 +1660,7 @@ CREATE INDEX idx_manufacturing_outbox_correlation ON manufacturing.outbox_messag
 CREATE TABLE manufacturing.inbox_message (
     inbox_message_id UUID NOT NULL DEFAULT shared.uuid_generate_v7(),
     message_id UUID NOT NULL,
-    consumer_name VARCHAR(150) NOT NULL,
+    handler_name VARCHAR(150) NOT NULL,
     event_type VARCHAR(150) NOT NULL,
     event_version INT NOT NULL DEFAULT 1,
     source_sequence_number BIGINT,
@@ -1668,7 +1668,7 @@ CREATE TABLE manufacturing.inbox_message (
     status VARCHAR(30) NOT NULL DEFAULT 'processed' CHECK (status IN ('processed', 'failed')),
     processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (inbox_message_id, processed_at),
-    UNIQUE (message_id, consumer_name, processed_at)
+    UNIQUE (message_id, handler_name, processed_at)
 ) PARTITION BY RANGE (processed_at);
 CREATE TABLE manufacturing.inbox_message_default PARTITION OF manufacturing.inbox_message DEFAULT;
 
@@ -2041,7 +2041,7 @@ CREATE INDEX idx_purchasing_outbox_correlation ON purchasing.outbox_message(corr
 CREATE TABLE purchasing.inbox_message (
     inbox_message_id UUID NOT NULL DEFAULT shared.uuid_generate_v7(),
     message_id UUID NOT NULL,
-    consumer_name VARCHAR(150) NOT NULL,
+    handler_name VARCHAR(150) NOT NULL,
     event_type VARCHAR(150) NOT NULL,
     event_version INT NOT NULL DEFAULT 1,
     source_sequence_number BIGINT,
@@ -2049,7 +2049,7 @@ CREATE TABLE purchasing.inbox_message (
     status VARCHAR(30) NOT NULL DEFAULT 'processed' CHECK (status IN ('processed', 'failed')),
     processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (inbox_message_id, processed_at),
-    UNIQUE (message_id, consumer_name, processed_at)
+    UNIQUE (message_id, handler_name, processed_at)
 ) PARTITION BY RANGE (processed_at);
 CREATE TABLE purchasing.inbox_message_default PARTITION OF purchasing.inbox_message DEFAULT;
 
@@ -2928,7 +2928,7 @@ CREATE INDEX idx_finance_outbox_correlation ON finance.outbox_message(correlatio
 CREATE TABLE finance.inbox_message (
     inbox_message_id UUID NOT NULL DEFAULT shared.uuid_generate_v7(),
     message_id UUID NOT NULL,
-    consumer_name VARCHAR(150) NOT NULL,
+    handler_name VARCHAR(150) NOT NULL,
     event_type VARCHAR(150) NOT NULL,
     event_version INT NOT NULL DEFAULT 1,
     source_sequence_number BIGINT,
@@ -2936,7 +2936,7 @@ CREATE TABLE finance.inbox_message (
     status VARCHAR(30) NOT NULL DEFAULT 'processed' CHECK (status IN ('processed', 'failed')),
     processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (inbox_message_id, processed_at),
-    UNIQUE (message_id, consumer_name, processed_at)
+    UNIQUE (message_id, handler_name, processed_at)
 ) PARTITION BY RANGE (processed_at);
 CREATE TABLE finance.inbox_message_default PARTITION OF finance.inbox_message DEFAULT;
 
@@ -3238,7 +3238,7 @@ CREATE TRIGGER trg_reporting_product_card_updated_at
 CREATE TABLE reporting.inbox_message (
     inbox_message_id UUID NOT NULL DEFAULT shared.uuid_generate_v7(),
     message_id UUID NOT NULL,
-    consumer_name VARCHAR(150) NOT NULL,
+    handler_name VARCHAR(150) NOT NULL,
     event_type VARCHAR(150) NOT NULL,
     event_version INT NOT NULL DEFAULT 1,
     source_sequence_number BIGINT,
@@ -3246,7 +3246,7 @@ CREATE TABLE reporting.inbox_message (
     status VARCHAR(30) NOT NULL DEFAULT 'processed' CHECK (status IN ('processed', 'failed')),
     processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (inbox_message_id, processed_at),
-    UNIQUE (message_id, consumer_name, processed_at)
+    UNIQUE (message_id, handler_name, processed_at)
 ) PARTITION BY RANGE (processed_at);
 CREATE TABLE reporting.inbox_message_default PARTITION OF reporting.inbox_message DEFAULT;
 

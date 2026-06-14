@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Two sites already bitten and now guarded:
  * <ul>
- *   <li>{@code AbstractInboxHandler#handles} / {@code #consumerName} — caused
+ *   <li>{@code AbstractInboxHandler#handles} / {@code #handlerName} — caused
  *       Kafka listener NPE → DLT (caught by ReorderPolicyChangedSeamIT 2026-05-10).</li>
  *   <li>{@code SagaManager#drain} — would have caused saga-worker NPE on
  *       every poll tick under {@code @Profile("kafka")} (caught by audit, no IT).</li>

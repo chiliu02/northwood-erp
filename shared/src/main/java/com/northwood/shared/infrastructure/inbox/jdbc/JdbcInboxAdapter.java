@@ -37,15 +37,15 @@ public class JdbcInboxAdapter implements InboxPort {
     }
 
     @Override
-    public boolean alreadyProcessed(UUID messageId, String consumerName) {
-        return dedup.alreadyProcessed(messageId, consumerName);
+    public boolean alreadyProcessed(UUID messageId, String handlerName) {
+        return dedup.alreadyProcessed(messageId, handlerName);
     }
 
     @Override
     public void recordProcessed(InboxRow row) {
         jdbc.update("""
             INSERT INTO inbox_message (
-                inbox_message_id, message_id, consumer_name, event_type, event_version,
+                inbox_message_id, message_id, handler_name, event_type, event_version,
                 source_sequence_number, payload, status, processed_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?)
             """,
