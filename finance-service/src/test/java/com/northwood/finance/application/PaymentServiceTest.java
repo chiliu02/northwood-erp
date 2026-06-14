@@ -151,10 +151,10 @@ class PaymentServiceTest {
             assertThat(event.invoiceStatusAfter()).isEqualTo("paid");
         }
 
-        @Test void rejects_draft_invoice_status() {
+        @Test void rejects_three_way_match_failed_invoice_status() {
             UUID invoiceId = UUID.randomUUID();
             when(supplierInvoices.findPaymentSnapshot(invoiceId)).thenReturn(Optional.of(
-                supplierSnap(SUPPLIER, Currencies.AUD, "draft", "1000.00", "0.00")
+                supplierSnap(SUPPLIER, Currencies.AUD, "three_way_match_failed", "1000.00", "0.00")
             ));
 
             assertThatThrownBy(() -> service.recordSupplierPayment(new RecordSupplierPaymentCommand(
@@ -233,10 +233,10 @@ class PaymentServiceTest {
             assertThat(event.orderFullySettled()).isFalse();
         }
 
-        @Test void rejects_draft_invoice_status() {
+        @Test void rejects_already_paid_invoice_status() {
             UUID invoiceId = UUID.randomUUID();
             when(customerInvoices.findPaymentSnapshot(invoiceId)).thenReturn(Optional.of(
-                customerSnap(CUSTOMER, Currencies.AUD, "draft", "100.00", "0.00")
+                customerSnap(CUSTOMER, Currencies.AUD, "paid", "100.00", "100.00")
             ));
 
             assertThatThrownBy(() -> service.recordCustomerPayment(new RecordCustomerPaymentCommand(
