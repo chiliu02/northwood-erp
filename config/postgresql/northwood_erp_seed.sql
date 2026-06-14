@@ -1052,6 +1052,46 @@ COMMIT;
 
 
 -- ============================================================================
+-- SEED: AVAILABLE-TO-PROMISE read model (reporting.available_to_promise_view)
+-- Prime the event-sourced ATP projection with the seeded on-hand baseline.
+--
+-- ATP's on_hand_quantity is a pure event accumulator (GoodsReceived +,
+-- ShipmentPosted -, WorkOrderCompleted +); there is no "opening balance" event,
+-- and this seed loads stock directly into inventory.stock_balance via SQL rather
+-- than by replaying events. So without this block the ATP screen renders empty
+-- and reporting's inventory_value KPI (= SUM(atp.on_hand x product_card.cost))
+-- reads 0 on a fresh stack — even though stock_balance and product_card were
+-- seeded. This mirrors how the seed already primes reporting.product_card
+-- directly (the seed hand-maintains projections; no runtime events at boot).
+--
+-- One row per product (LEFT JOIN), mirroring product.ProductCreated which seeds
+-- a row for every product regardless of stock — products with no stock_balance
+-- row resolve to on_hand 0. on_hand is summed across warehouses (ATP is
+-- per-product; stock_balance is per-(warehouse, product)). reserved_* start at
+-- 0 — the seed creates no reservations. DO NOTHING keeps it idempotent and never
+-- clobbers a live row (e.g. a (pending) stub a running consumer may have written
+-- on a manual re-run).
+-- ============================================================================
+
+BEGIN;
+
+INSERT INTO reporting.available_to_promise_view
+        (product_id, product_sku, product_name,
+         on_hand_quantity, available_quantity, stock_status)
+SELECT p.product_id, p.sku, p.name,
+       COALESCE(sb.on_hand, 0), COALESCE(sb.on_hand, 0),
+       CASE WHEN COALESCE(sb.on_hand, 0) > 0 THEN 'available' ELSE 'out_of_stock' END
+  FROM product.product p
+  LEFT JOIN (SELECT product_id, SUM(on_hand_quantity) AS on_hand
+               FROM inventory.stock_balance
+              GROUP BY product_id) sb
+    ON sb.product_id = p.product_id
+ON CONFLICT (product_id) DO NOTHING;
+
+COMMIT;
+
+
+-- ============================================================================
 -- SEED: AGGREGATE VERSION FIXUP
 -- Seeded aggregate-root rows must land at version 1, not the table default 0.
 -- Each Jdbc*Repository.save() uses version() == 0 as its "new, not yet
