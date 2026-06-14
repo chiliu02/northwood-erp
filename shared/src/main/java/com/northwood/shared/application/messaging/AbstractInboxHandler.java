@@ -24,6 +24,15 @@ import tools.jackson.databind.ObjectMapper;
  * the same event, but every invocation after the first hits that handler's own
  * {@code (message_id, handler_name)} row and no-ops.
  *
+ * <p><strong>Every handler is idempotent</strong> — re-applying the same event
+ * has the same effect as applying it once. Two layers guarantee it: the inbox
+ * gate above is the primary mechanism (an exact redelivery is skipped before
+ * {@link #apply} runs, and the rebalance-window TOCTOU race is closed by the
+ * advisory-lock dedup strategy); and {@code apply} should itself use
+ * <em>convergent</em> writes (upserts / {@code ON CONFLICT} / guarded atomic
+ * updates) as the backstop, so even a duplicate that slips the gate causes no
+ * double-effect.
+ *
  * <p>None of {@link #handle}, {@link #handles}, or {@link #handlerName} are
  * declared {@code final}, even though the latter two have no AOP advice on
  * their own. The reason is the {@code @Transactional} annotation on
@@ -110,6 +119,12 @@ public abstract class AbstractInboxHandler<P> implements InboxEnvelopeHandler {
         ));
     }
 
-    /** Apply the deserialised payload. Runs inside the {@code @Transactional} boundary opened by {@link #handle}. */
+    /**
+     * Apply the deserialised payload — <strong>idempotently</strong>. Runs inside the
+     * {@code @Transactional} boundary opened by {@link #handle}. The inbox gate already
+     * skips an exact redelivery, but {@code apply} must still <em>converge</em> on
+     * re-application (upserts / {@code ON CONFLICT} / guarded atomic updates) so a
+     * concurrent duplicate that slips the gate produces no double-effect.
+     */
     protected abstract void apply(P payload, EventEnvelope envelope);
 }
