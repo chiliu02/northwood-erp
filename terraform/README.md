@@ -283,6 +283,20 @@ terraform destroy
 - **Single Kafka broker, RF=1**, carried over from compose — recover-after-restart,
   not failover. Same posture as the local stack; see `docs/messaging.md`.
 
+- **AMIs are pinned via `ignore_changes`, so a routine `apply` never replaces a box.**
+  All four instances default their AMI to the *latest* Amazon Linux 2023 image (the
+  SSM parameter `/aws/service/ami-amazon-linux-latest/al2023-…`). That value changes
+  every time AWS publishes a new image, and an `ami` change **force-replaces** the
+  instance — which on the **data box destroys its root volume (Postgres + Kafka data)
+  and forces a re-seed**, and on the **NAT silently recreates it *running*** (defeating
+  a paused fleet). So each `aws_instance` carries `lifecycle { ignore_changes = [ami] }`:
+  the latest-AMI lookup still picks the image at *first create*, but later AMI drift is
+  ignored and applies stay non-destructive. To intentionally move to a newer AMI, set
+  `var.ami_id` (web/app/data) / `var.nat_ami_id` (NAT) to the new id, or
+  `-replace=module.compute.aws_instance.<x>` — a deliberate act, off the routine path.
+  Even so, **`terraform plan` before applying** and check for instance replacements
+  whenever the data box holds anything you care about.
+
 - **Observability is on the data box** (Tempo, Loki, Prometheus, Grafana as
   containers on a shared `northwood` docker network). The app + web boxes get
   `OTLP_ENDPOINT` (Tempo `:4317`) + `LOKI_URL` (Loki `:3100`), so **traces and logs

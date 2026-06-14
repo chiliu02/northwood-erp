@@ -279,6 +279,16 @@ resource "aws_instance" "data" {
 
   tags       = { Name = "${var.name_prefix}-data" }
   depends_on = [aws_s3_object.baseline_sql, aws_s3_object.seed_sql, aws_s3_object.service_logins_sql, aws_s3_object.postgres_env, aws_s3_object.obs_config]
+
+  # Pin the AMI. local.ami_id resolves the "latest AL2023" SSM parameter, which
+  # changes whenever AWS publishes a new image — and an `ami` change force-REPLACES
+  # the instance, destroying its root volume. On the data box that means losing the
+  # Postgres + Kafka volumes and needing a full re-seed, so a routine `apply` must
+  # never trigger it. To intentionally move to a newer AMI, bump `var.ami_id` (or
+  # taint / -replace this instance) deliberately, off the data path.
+  lifecycle {
+    ignore_changes = [ami]
+  }
 }
 
 resource "aws_instance" "app" {
@@ -310,6 +320,12 @@ resource "aws_instance" "app" {
 
   tags       = { Name = "${var.name_prefix}-app" }
   depends_on = [aws_s3_object.services_env, aws_instance.data]
+
+  # Pin the AMI — see the data box above. A new "latest AL2023" image must not
+  # force-replace a running box on a routine apply; bump var.ami_id deliberately.
+  lifecycle {
+    ignore_changes = [ami]
+  }
 }
 
 resource "aws_instance" "web" {
@@ -350,6 +366,12 @@ resource "aws_instance" "web" {
 
   tags       = { Name = "${var.name_prefix}-web" }
   depends_on = [aws_s3_object.realm, aws_s3_object.keycloak_env, aws_s3_object.bff_env, aws_s3_object.welcome_template, aws_s3_object.spa, aws_instance.app]
+
+  # Pin the AMI — see the data box above. A new "latest AL2023" image must not
+  # force-replace a running box on a routine apply; bump var.ami_id deliberately.
+  lifecycle {
+    ignore_changes = [ami]
+  }
 }
 
 # Stable public IP for the web box so the Keycloak issuer + front-door URLs

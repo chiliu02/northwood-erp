@@ -103,6 +103,16 @@ resource "aws_instance" "nat" {
   EOT
 
   tags = { Name = "${var.name_prefix}-nat" }
+
+  # Pin the AMI. local.nat_ami_id resolves the "latest AL2023" SSM parameter,
+  # which changes whenever AWS publishes a new image — an `ami` change
+  # force-replaces this instance, so a routine `apply` would silently recreate the
+  # NAT (and a freshly created instance comes up *running*, defeating a paused
+  # fleet). The NAT is stateless so the replacement is harmless, but unintended.
+  # To move to a newer AMI, bump `var.nat_ami_id` (or taint) deliberately.
+  lifecycle {
+    ignore_changes = [ami]
+  }
 }
 
 # --------------------------------------------------------------------------

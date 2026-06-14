@@ -202,6 +202,7 @@
 terraform output schedule       # show the active window</code></pre>
       </li>
       <li><b>Note:</b> a schedule only acts at the cron times — applying it mid-window won't stop a running fleet immediately (use <code>ops/stop.ps1</code> for that), and the first auto-start is the next weekday 08:30.</li>
+      <li><b>AMIs are pinned so a routine <code>apply</code> doesn't resurrect a paused box.</b> All four instances default their AMI to the <em>latest</em> Amazon Linux 2023 image (the SSM parameter <code>/aws/service/ami-amazon-linux-latest/al2023-…</code>); that value changes whenever AWS publishes a new image, and an <code>ami</code> change <b>force-replaces</b> the instance — recreating a <em>running</em> box even when the fleet was stopped, and on the <b>data box destroying its root volume (a Postgres + Kafka data loss + re-seed)</b>. So each <code>aws_instance</code> carries <code>lifecycle { ignore_changes = [ami] }</code>: the latest-AMI lookup still picks the image at first create, but later AMI drift is ignored and applies stay non-destructive. Move to a newer AMI deliberately — set <code>var.ami_id</code> / <code>var.nat_ami_id</code>, or <code>-replace</code> the instance — and always <code>terraform plan</code> before applying when the data box matters.</li>
     </ul>
   </main>
 
