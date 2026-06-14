@@ -53,13 +53,18 @@ terraform/
 > (which drops the ECR repos).
 
 ```powershell
-# 1. State backend (local-state bootstrap).
+# 1. State backend (local-state bootstrap). The bucket name defaults to
+#    northwood-tfstate-chiliu02 (matching envs/demo/backend.tf). For your own
+#    deployment pick a globally-unique name:
+#    terraform apply -var="state_bucket_name=northwood-tfstate-<your-account-id>"
 cd terraform/bootstrap
 terraform init
-terraform apply -var="state_bucket_name=northwood-tfstate-<your-account-id>"
+terraform apply
 
 # 2. Point the real config at that bucket.
-#    Edit terraform/envs/demo/backend.tf -> bucket = "<the name above>"  (+ region if not Sydney)
+#    Already set to northwood-tfstate-chiliu02 in terraform/envs/demo/backend.tf.
+#    Only if you overrode the name in step 1: set bucket = "<that name>" there too
+#    (+ region if not Sydney) — backend.tf can't read the var, so the two must match.
 
 # 3. Init the demo env.
 cd ../envs/demo
