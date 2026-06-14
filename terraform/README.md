@@ -72,7 +72,10 @@ terraform init
 cp terraform.tfvars.example terraform.tfvars   # optional: adjust region/tag/etc.
 
 # 4. Create the ECR repos first, so there's somewhere to push the app images.
-terraform apply -target=module.ecr
+#    Quote the flag in PowerShell: it otherwise splits the bare `-target=module.ecr`
+#    token and errors `Invalid target "module"`. (Same for any `-replace=…` flag
+#    below; bash doesn't need the quotes.)
+terraform apply "-target=module.ecr"
 
 # 5. Build the 8 app images (7 services + erp-bff) + the operational ERP SPA, and
 #    push the images to ECR. One run produces every artifact step 6 needs: the
