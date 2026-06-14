@@ -63,16 +63,18 @@ public final class PurchaseOrder {
     /**
      * Purchase-order header status. Mirrors the schema CHECK on
      * {@code purchasing.purchase_order_header.status}. Lifecycle:
-     * {@code DRAFT → SENT → PARTIALLY_RECEIVED → RECEIVED → PAID} (driven by
-     * inbox handlers + the receipt/payment projections); the auto-approve flow
-     * starts at {@code SENT} (skipping {@code DRAFT}), and a draft PO that is
-     * rejected goes to {@code CANCELLED}.
+     * {@code DRAFT → SENT → PARTIALLY_RECEIVED → RECEIVED → PARTIALLY_INVOICED →
+     * INVOICED → PAID} (driven by inbox handlers + the receipt/payment
+     * projections); the auto-approve flow starts at {@code SENT} (skipping
+     * {@code DRAFT}), and a draft PO that is rejected goes to {@code CANCELLED}.
      */
     public enum Status {
         DRAFT("draft"),
         SENT("sent"),
         PARTIALLY_RECEIVED("partially_received"),
         RECEIVED("received"),
+        PARTIALLY_INVOICED("partially_invoiced"),
+        INVOICED("invoiced"),
         PAID("paid"),
         CANCELLED("cancelled");
 

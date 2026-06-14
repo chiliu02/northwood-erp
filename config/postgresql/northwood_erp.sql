@@ -1887,7 +1887,8 @@ CREATE TABLE purchasing.purchase_order_header (
     order_date DATE NOT NULL DEFAULT CURRENT_DATE,
     expected_receipt_date DATE,
     status VARCHAR(40) NOT NULL DEFAULT 'draft' CHECK (
-        status IN ('draft', 'sent', 'partially_received', 'received', 'paid', 'cancelled')
+        status IN ('draft', 'sent', 'partially_received', 'received',
+                   'partially_invoiced', 'invoiced', 'paid', 'cancelled')
     ),
     currency_code CHAR(3) NOT NULL DEFAULT 'AUD',
     exchange_rate NUMERIC(18, 8) NOT NULL DEFAULT 1.0 CHECK (exchange_rate > 0),

@@ -223,7 +223,7 @@ Producer side keeps using its enum (`WorkOrder.Status.RELEASED.code()`). The two
 
 ### What still uses string literals (intentionally)
 
-- **SQL `WHERE` and `CASE` conditions** in cross-service projections — `WHERE current_status IN ('released', 'pending')`. These are engine-side comparisons against current column values, not statuses this code *writes*. Compile-time binding doesn't help here; a comment near the SQL pointing at the constants holder is enough.
+- **SQL `WHERE` and `CASE` conditions** in projections — `WHERE current_status IN ('released', 'pending')`, or a `CASE … THEN 'invoiced' ELSE 'partially_invoiced'` that *writes* a status column. Engine-side comparison can't use a compile-time binding, and a `CASE` whose branches are literals is the same engine-side construct, so these stay literal; a comment near the SQL pointing at the constants holder (or, for a within-service status, at the mirror enum + schema CHECK) is enough. **Beware the blind spot this creates — see the warning under *The "did we cover it" test* below: a literal that *writes* a status is invisible to a Find-Usages sweep, so it can be mistaken for a dead value and pruned while still live.**
 - **Application-layer Commands taking wire-shaped data** (e.g. `RecordSupplierPaymentCommand.paymentMethod : String`) — the controller can't import domain enums (hex rule), so the wire shape lives on the Command and the service converts via `Enum.fromCode(...)` inside its method body. The Command's `@Pattern(...)` annotation pins the input set; the conversion catches drift.
 - **Outbox/inbox status** (`outbox_message.status`) — internal messaging plumbing, not a cross-service contract, so it gets no `<service>-events` constant (this is what's "out of scope" for the rule above). It is *not* literal-everywhere, though: the `JdbcOutboxAdapter` SQL keeps `WHERE status IN ('pending', 'failed')` / `VALUES (…, 'pending')` literal (per the SQL bullet above), while **Java-side** comparisons use the existing `OutboxRow.PENDING` / `OutboxRow.PUBLISHED` / `OutboxRow.FAILED` constants — e.g. `OutboxRow.PENDING.equals(row.getStatus())`, never `"pending".equals(...)`. The in-memory `InMemoryOutboxPort` mirrors this.
 - **Reference-data identifiers** — GL account codes (`"5000"`, `"2100"`), product SKUs (`"FG-TABLE-001"`), customer codes (`"CUST-001"`), supplier codes, warehouse codes, etc. These are foreign-key IDs into reference-data tables, not enumerated states. The set is data-bounded (rows in `finance.gl_account` / `product.product` / `sales.customer` / …), customer-configurable in any real ERP, opaque pass-through to a `*Lookup` rather than a discriminator compared via `switch` / `.equals`. The right shape for these is a **named-alias constants holder** (e.g. `FinanceAccountCodes.AP = "2100"`) when the values are used as a service's policy choice, or a typed VO (`Sku`, `CustomerCode`) when they flow through the domain. Don't promote to an enum: it would lock the set to a code change instead of a data change, and the type system can't verify "2100 is the right account for AP" any more than a String constant can.
@@ -231,6 +231,18 @@ Producer side keeps using its enum (`WorkOrder.Status.RELEASED.code()`). The two
 ### The "did we cover it" test
 
 Find Usages on the producer-side enum value (e.g. `WorkOrder.Status.RELEASED`) — every consumer in every service that pinned to the wire value should show up either through the enum's `code()` (within-service uses) or through the matching cross-service constant (cross-service uses). A string literal that doesn't surface there is the gap.
+
+### Warning: a Find-Usages sweep cannot see a status produced by a SQL literal
+
+The mirror image of the rule above. Because SQL `CASE`/`WHERE` branches stay literal (no compile-time anchor), a status value emitted *only* through such a literal is invisible to "Find Usages of `<Enum>.<VALUE>`" and to JavaLens `find_unused_code`. **It looks dead even though it is live.** This bit once for real: a "retire enum values never produced by Java" sweep deleted `PurchaseOrder.Status.PARTIALLY_INVOICED` / `INVOICED` from both the enum and the `purchase_order_header_status_check` set, because the only producer was `JdbcPurchaseOrderPaymentProjection`'s `CASE … THEN 'invoiced' ELSE 'partially_invoiced'` — a bare SQL string the symbol sweep never saw. The projection kept writing the values; every write then failed the now-narrowed CHECK, wedging the to-pay flow.
+
+**Before retiring any status enum value or narrowing a status CHECK, grep the SQL literal, not just the symbol:**
+
+```
+Grep "'<value>'"  **/infrastructure/persistence/*.java   → expect zero CASE/INSERT/UPDATE producers
+```
+
+A surviving `CASE … THEN '<value>'` / `SET status = '<value>'` / `VALUES (…, '<value>')` is a live producer — keep the value in the enum *and* the CHECK. Only when both the symbol sweep **and** the literal grep come back empty is the value genuinely dead.
 
 ## Instance-field naming: the full aggregate name in plural, not the class-kind suffix
 
