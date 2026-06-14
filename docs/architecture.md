@@ -240,6 +240,20 @@ The `shared` module provides reusable pieces. The module is internally split —
 - `EventEnvelope` (`shared.application.messaging`) — wire format; maps 1:1 to outbox columns including `correlation_id` / `causation_id`.
 - `EventPublisher` (port, `shared.application.messaging`) + `KafkaEventPublisher` (`shared.infrastructure.messaging.kafka`). Registered by `KafkaMessagingAutoConfiguration` under `@Profile("kafka")`.
 
+## Event ordering: the partition-key guarantee and the three legal buckets
+
+The single load-bearing ordering choice is the Kafka **partition key = `aggregateId`** (`KafkaEventPublisher`). It buys exactly one guarantee and no more: **per-aggregate event order is preserved** (all events for one aggregate land on one partition, consumed in write order), while **cross-aggregate and cross-topic order are not** — two aggregates' events, even on the same topic, interleave across partitions, and redelivery (re-seek after a transient failure) reorders on top of that. Disorder enters at four layers — producer drain, Kafka partitioning, consumer concurrency, redelivery — and the consumer side is built to absorb whatever survives rather than to forbid it.
+
+The governing principle: global total order isn't worth buying (single partition / a global sequencer / distributed locks trade away the throughput and availability the event architecture exists for). So the goal is to **minimise the disorder that *matters*** — the intersection of orderings that **can occur** and orderings **correctness depends on** — by buying the cheap local guarantees first (per-aggregate key; causal-by-construction emission — commit the prerequisite before publishing the dependent) and applying the minimum tolerance machinery to the residual. Over-tolerating (making everything order-independent when a cheap causal guarantee was available) is its own over-engineering.
+
+This yields a standing invariant: **every ordering assumption must land in exactly one of three legal buckets** —
+
+- **guaranteed** — same partition (per-aggregate key) or causal emission (prerequisite committed upstream);
+- **guarded** — a source-state / terminal guard makes a late or early event no-op instead of mis-applying;
+- genuinely **don't-care** — commutative / convergent writes (atomic increment, idempotent `ON CONFLICT` upsert), so arrival order is immaterial.
+
+The bug class is the **illegal fourth bucket**: an *implicit* assumption that A precedes B, neither guaranteed nor guarded (a handler reading state a different-keyed event established, which silently no-ops when that event hasn't landed yet). The worked case — `inventory`'s PR→PO link — and the full mechanism catalogue, residual-hazard audit, the reliability/idempotency test matrix, and the (a)/(b)/(c) fix trade-off all live in **`docs/messaging.md`** (*Event disorder: where it enters, how it's absorbed, the three legal buckets* + the audit and rule sections that follow). Idempotent consumption — exactly-once *effect* keyed `(message_id, handler_name)`, once per handler — is what makes the *guarded* and *don't-care* buckets safe under at-least-once delivery; see `docs/messaging.md` → *Consumer-side idempotency*.
+
 ## Spring Data JDBC, not JPA
 
 JDBC is chosen so aggregate boundaries are explicit — loading a Product loads only the Product, with no implicit lazy traversals into other contexts. The infrastructure layer manages SQL directly via `JdbcTemplate`, which lines up cleanly with `version` columns for optimistic concurrency.
