@@ -49,6 +49,7 @@
         <testcontainers.version>1.20.4</testcontainers.version>
         <!-- springdoc 3.x targets Spring Boot 4 / Spring Framework 7 -->
         <springdoc.version>3.0.2</springdoc.version>
+        <jacoco.version>0.8.13</jacoco.version>
     </properties>
 
     <dependencyManagement>
@@ -149,7 +150,78 @@
                     <artifactId>maven-failsafe-plugin</artifactId>
                     <version>3.5.2</version>
                 </plugin>
+                <!-- JaCoCo code-coverage. The agent is woven into both the
+                     surefire (unit) JVM and the failsafe (IT) JVM via two
+                     prepare-agent goals writing separate .exec files; `merge`
+                     + `report` (both in the verify phase) fold them into one
+                     per-module report at target/site/jacoco/index.html. The
+                     project-wide aggregate report lives in test-harness. There
+                     is no coverage gate (no `check` goal) — coverage is a
+                     reporting signal here, not a build-breaker; structural
+                     coverage rules (every aggregate has a domain test, every
+                     Jdbc* has an *IT) are the real contract, see
+                     docs/quality-assurance.md. -->
+                <plugin>
+                    <groupId>org.jacoco</groupId>
+                    <artifactId>jacoco-maven-plugin</artifactId>
+                    <version>${jacoco.version}</version>
+                    <executions>
+                        <execution>
+                            <id>jacoco-prepare-agent</id>
+                            <goals>
+                                <goal>prepare-agent</goal>
+                            </goals>
+                        </execution>
+                        <execution>
+                            <id>jacoco-prepare-agent-integration</id>
+                            <goals>
+                                <goal>prepare-agent-integration</goal>
+                            </goals>
+                        </execution>
+                        <execution>
+                            <id>jacoco-merge-unit-and-it</id>
+                            <phase>verify</phase>
+                            <goals>
+                                <goal>merge</goal>
+                            </goals>
+                            <configuration>
+                                <fileSets>
+                                    <fileSet>
+                                        <directory>${project.build.directory}</directory>
+                                        <includes>
+                                            <include>jacoco.exec</include>
+                                            <include>jacoco-it.exec</include>
+                                        </includes>
+                                    </fileSet>
+                                </fileSets>
+                                <destFile>${project.build.directory}/jacoco-merged.exec</destFile>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>jacoco-report</id>
+                            <phase>verify</phase>
+                            <goals>
+                                <goal>report</goal>
+                            </goals>
+                            <configuration>
+                                <dataFile>${project.build.directory}/jacoco-merged.exec</dataFile>
+                                <outputDirectory>${project.build.directory}/site/jacoco</outputDirectory>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
             </plugins>
         </pluginManagement>
+
+        <!-- Activated for every module (inherited): the executions above come
+             from pluginManagement. Event jars / shared-kernel with no IT just
+             skip the integration exec; report skips cleanly when a module has
+             no execution data. -->
+        <plugins>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
     </build>
 </project>

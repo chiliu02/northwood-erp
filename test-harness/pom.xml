@@ -45,6 +45,14 @@
             <artifactId>inventory-events</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- product-service is not exercised by the in-memory harness; it is
+             depended on only so the JaCoCo report-aggregate below spans all
+             seven services. -->
+        <dependency>
+            <groupId>com.northwood</groupId>
+            <artifactId>product-service</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>com.northwood</groupId>
             <artifactId>sales-service</artifactId>
@@ -87,4 +95,36 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Project-wide aggregate coverage. test-harness is the natural
+                 aggregator: it depends on every service module, so report-aggregate
+                 folds each module's unit (jacoco.exec) and integration (jacoco-it.exec)
+                 data into one cross-module report at
+                 target/site/jacoco-aggregate/index.html. Runs last in the reactor,
+                 after every module's tests have written their exec files. -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>jacoco-aggregate-report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report-aggregate</goal>
+                        </goals>
+                        <configuration>
+                            <title>Northwood ERP — combined unit + integration coverage</title>
+                            <dataFileIncludes>
+                                <dataFileInclude>**/target/jacoco.exec</dataFileInclude>
+                                <dataFileInclude>**/target/jacoco-it.exec</dataFileInclude>
+                            </dataFileIncludes>
+                            <outputDirectory>${project.build.directory}/site/jacoco-aggregate</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>
