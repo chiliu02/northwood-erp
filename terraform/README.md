@@ -137,7 +137,8 @@ SPA (`spa/`) from the private artifacts bucket on first boot.
 ## Verify
 
 ```powershell
-terraform output front_door_url      # open this first — the guest "start here" page (http://<ip>/)
+terraform output front_door_url        # open this first — the guest "start here" page (http://<ip>/)
+terraform output front_door_domain_url # same front door via DNS once it propagates (A record -> web EIP, e.g. http://www.northwood.chiliu02.com/); empty front_door_domain => use front_door_url
 terraform output web_public_ip       # operational ERP UI on http://<ip>:8090  ·  Keycloak on :8080  (BFF :8089 is proxied by the SPA nginx)
 terraform output instance_ids        # aws ssm start-session --target <data-id>
 # on the data box:  docker exec -it northwood-postgres psql -U postgres -d northwood_erp \
