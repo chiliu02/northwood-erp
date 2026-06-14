@@ -81,7 +81,12 @@
     <div class="diagram">
 
       <div class="cloud"><img src="https://api.iconify.design/mdi/web.svg"/> <b>Internet</b> &nbsp;<span style="color:#5f6b7a">browser</span></div>
-      <div class="arrow">Front door&nbsp;:80&nbsp;&nbsp;·&nbsp;&nbsp;ERP UI&nbsp;:8090&nbsp;&nbsp;·&nbsp;&nbsp;OIDC&nbsp;:8080</div>
+      <div class="arrow">Guest front door → S3 (always-on)&nbsp;&nbsp;·&nbsp;&nbsp;ERP UI&nbsp;:8090&nbsp;&nbsp;·&nbsp;&nbsp;OIDC&nbsp;:8080 → web box</div>
+
+      <div style="display:flex;justify-content:center;">
+        <div class="res wide" style="max-width:580px;"><img src="https://api.iconify.design/logos/aws-s3.svg"/><b>Guest front door</b><span>S3 static website · always-on (survives a fleet stop) · DNS alias → here · "Enter the ERP" → web box ↓</span></div>
+      </div>
+      <div class="arrow"></div>
 
       <div class="region">
         <div class="lbl"><img src="aws-icons/g-region.svg"/> AWS Region · single AZ</div>
@@ -100,7 +105,7 @@
             <div class="ec2">
               <div class="lbl"><img src="aws-icons/ec2.svg"/> EC2 · public IP · docker-compose · SSM-only shell</div>
               <div class="row">
-                <div class="res"><img src="https://api.iconify.design/logos/nginx.svg"/><b>Front door</b><span>:80 · nginx · static "start here" page</span></div>
+                <div class="res"><img src="https://api.iconify.design/logos/nginx.svg"/><b>Front door</b><span>:80 · nginx · "start here" page (when up; canonical copy is the S3 site ↑)</span></div>
                 <div class="res"><img src="https://api.iconify.design/logos/nginx.svg"/><b>ERP SPA</b><span>:8090 · nginx · serves erp-web-ui + proxies /api,/oauth2,/login,/logout → BFF</span></div>
                 <div class="res"><img src="https://api.iconify.design/logos/spring-icon.svg"/><b>erp-web-ui-bff</b><span>:8089 · API + OIDC (behind the SPA nginx)</span></div>
                 <div class="res"><img src="https://api.iconify.design/simple-icons/keycloak.svg"/><b>Keycloak</b><span>:8080 · public (browser OIDC redirect)</span></div>
@@ -155,7 +160,7 @@
 
     <h2>The three tiers (stacked, 1 EC2 each)</h2>
     <ul>
-      <li><b>Public subnet</b> — 1 EC2 (public IP), <code>web-sg</code> opens <code>:80</code> + <code>:8090</code> + <code>:8089</code> + <code>:8080</code>: a guest <b>front door</b> (nginx static page on <code>:80</code>), the <b>operational ERP SPA</b> (nginx on <code>:8090</code> serving <code>erp-web-ui</code>), <code>erp-web-ui-bff</code> (<code>:8089</code>), and Keycloak (<code>:8080</code>). The only internet-facing box; Keycloak is here so the browser can reach it for OIDC. The front door (<code>:80</code>) is the first thing to open — its "Enter the ERP" link is baked from <code>ERP_URL</code> at boot (the SPA on <code>:8090</code>), so a visitor lands on the bare public IP and clicks through. The SPA nginx reverse-proxies <code>/api</code>, <code>/oauth2</code>, <code>/login</code>, <code>/logout</code> to the BFF so the SPA's relative calls + the OIDC code flow run same-origin (no CORS); the BFF uses <code>server.forward-headers-strategy=framework</code> so it builds the OIDC <code>redirect_uri</code> against the public <code>:8090</code> origin.</li>
+      <li><b>Public subnet</b> — 1 EC2 (public IP), <code>web-sg</code> opens <code>:80</code> + <code>:8090</code> + <code>:8089</code> + <code>:8080</code>: a guest <b>front door</b> (nginx static page on <code>:80</code>), the <b>operational ERP SPA</b> (nginx on <code>:8090</code> serving <code>erp-web-ui</code>), <code>erp-web-ui-bff</code> (<code>:8089</code>), and Keycloak (<code>:8080</code>). The only internet-facing box; Keycloak is here so the browser can reach it for OIDC. The guest <b>front door</b> is the first thing to open, and its canonical copy is hosted <b>off the fleet on an S3 static website</b> (the friendly DNS name aliases to it), so it stays reachable <b>even when the fleet is stopped</b> — its built-in "Demo hours" notice then explains the app is asleep until the next weekday start. Its "Enter the ERP" link is baked from <code>ERP_URL</code> (the SPA on <code>:8090</code>) — dead while the fleet is stopped, live once it's up. The web box still serves an identical copy on <code>:80</code> when running (rendered the same way from <code>config/welcome.html.template</code>); only the DNS target lives on S3. The SPA nginx reverse-proxies <code>/api</code>, <code>/oauth2</code>, <code>/login</code>, <code>/logout</code> to the BFF so the SPA's relative calls + the OIDC code flow run same-origin (no CORS); the BFF uses <code>server.forward-headers-strategy=framework</code> so it builds the OIDC <code>redirect_uri</code> against the public <code>:8090</code> origin.</li>
       <li><b>Private subnet #1 (app)</b> — 1 EC2 (no public IP), <code>app-sg</code> allows only the web tier: the 7 services.</li>
       <li><b>Private subnet #2 (infra)</b> — 1 EC2 (no public IP), <code>infra-sg</code> allows only the app tier: Postgres + Kafka (+ optional observability). Most-protected, two hops from the internet.</li>
     </ul>
@@ -187,7 +192,7 @@
 
     <h2>Pause / resume (cost saver)</h2>
     <ul>
-      <li><b>Stop, don't destroy, to pause.</b> <code>terraform destroy</code> tears the demo down; to just stop paying overnight or on weekends, <b>stop the EC2 fleet</b> (web + app + data + NAT) instead. Stopping keeps the ECR images, the gp3 root volumes (so Postgres + Kafka data survive), the pinned private IPs and the web box's <b>Elastic IP</b> — so the Keycloak issuer URL and front-door DNS stay valid and the resume needs <b>no DB re-seed</b> (every container runs <code>--restart unless-stopped</code> on a docker systemd service, so it returns on boot). While stopped you pay only for EBS + the Elastic IP (~$10/mo); ECR is ~$0.10/GB-mo, so keeping the images is a <em>time</em> saver (no rebuild/push), not a cost. It's out-of-band from Terraform — <code>aws_instance</code> has no power-state, so <code>terraform plan</code> shows no drift.</li>
+      <li><b>Stop, don't destroy, to pause.</b> <code>terraform destroy</code> tears the demo down; to just stop paying overnight or on weekends, <b>stop the EC2 fleet</b> (web + app + data + NAT) instead. Stopping keeps the ECR images, the gp3 root volumes (so Postgres + Kafka data survive), the pinned private IPs and the web box's <b>Elastic IP</b> — so the Keycloak issuer URL stays valid and the resume needs <b>no DB re-seed</b> (every container runs <code>--restart unless-stopped</code> on a docker systemd service, so it returns on boot). The <b>guest front door stays reachable while stopped</b> — it's the S3 static site, independent of the fleet, and its "Demo hours" notice explains the app is asleep. While stopped you pay only for EBS + the Elastic IP (~$10/mo); ECR is ~$0.10/GB-mo, so keeping the images is a <em>time</em> saver (no rebuild/push), not a cost. It's out-of-band from Terraform — <code>aws_instance</code> has no power-state, so <code>terraform plan</code> shows no drift.</li>
       <li><b>By hand</b> — the two scripts discover the four boxes by the <code>northwood-demo-*</code> Name tag (so the NAT box, absent from the <code>instance_ids</code> output, is paused too):
         <pre><code>./terraform/ops/stop.ps1            # stop the fleet
 ./terraform/ops/start.ps1 -Wait     # start it again, block until running</code></pre>

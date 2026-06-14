@@ -138,7 +138,7 @@ SPA (`spa/`) from the private artifacts bucket on first boot.
 
 ```powershell
 terraform output front_door_url        # open this first — the guest "start here" page (http://<ip>/)
-terraform output front_door_domain_url # same front door via DNS once it propagates (A record -> web EIP, e.g. http://www.northwood.chiliu02.com/); empty front_door_domain => use front_door_url
+terraform output front_door_domain_url # the always-on front door via DNS (alias -> S3 static site, so it stays up even when the fleet is stopped), e.g. http://www.northwood.chiliu02.com/; empty front_door_domain => IP-only via front_door_url
 terraform output web_public_ip       # operational ERP UI on http://<ip>:8090  ·  Keycloak on :8080  (BFF :8089 is proxied by the SPA nginx)
 terraform output instance_ids        # aws ssm start-session --target <data-id>
 # on the data box:  docker exec -it northwood-postgres psql -U postgres -d northwood_erp \
@@ -152,10 +152,13 @@ terraform output grafana_access_hint # SSM port-forward 3000 to the data box, th
 overnight or on weekends, **stop the EC2 fleet instead of destroying it**.
 Stopping keeps the ECR images, the gp3 root volumes (so Postgres + Kafka data
 survive), the pinned private IPs, and the web box's Elastic IP — so the Keycloak
-issuer URL and front-door DNS stay valid, and the resume is fast with **no DB
-re-seed** (every container runs `--restart unless-stopped` on a docker systemd
-service, so it comes back on boot). While stopped you pay only for EBS + the
-Elastic IP (~$10/mo) instead of the running fleet. ECR itself is ~$0.10/GB-mo, so
+issuer URL stays valid, and the resume is fast with **no DB re-seed** (every
+container runs `--restart unless-stopped` on a docker systemd service, so it
+comes back on boot). The **guest front door stays reachable while stopped** — it
+is a static page on S3 (`frontdoor.tf`), independent of the fleet, and its
+built-in "Demo hours" notice explains the app is asleep until the next weekday
+start. While stopped you pay only for EBS + the Elastic IP (~$10/mo) instead of
+the running fleet. ECR itself is ~$0.10/GB-mo, so
 keeping the images costs almost nothing — it's a *time* saver (no rebuild/push),
 not a cost.
 
@@ -227,6 +230,20 @@ terraform destroy
   Terraform (`aws_s3_object.spa`, a `fileset` over `erp-web-ui/dist`), so **build the
   SPA before `apply`** — step 5 does this for you (`-SkipSpa` to opt out). Production
   serves the SPA from S3/CloudFront (`docs/aws-architecture.html`).
+
+- **The guest front door is served from S3, not the web box.** The "start here"
+  welcome page is static HTML, so `frontdoor.tf` hosts it on an S3 static-website
+  bucket (public-read, HTTP — matching the demo's no-TLS posture) and the
+  front-door DNS name (`dns.tf`) aliases to it. This keeps the entry page
+  reachable **even when the fleet is stopped** for cost-saving — its built-in
+  "Demo hours" notice then explains the app is asleep. The bucket name must equal
+  `front_door_domain` (the requirement for a Route 53 alias to an S3 website
+  endpoint), and it's a separate public bucket holding only the rendered page —
+  the artifacts bucket stays private. The web box still serves an identical copy
+  on `:80` when up (rendered the same way, from `config/welcome.html.template`
+  with the EIP-based `${ERP_URL}` substituted). Only the DNS target moved to S3;
+  the operational SPA + Keycloak stay on the EIP, so the page's "Enter the ERP"
+  link is dead while the fleet is stopped — expected.
 
 - **NAT *instance*, not a NAT Gateway or VPC endpoints.** The private subnets need
   outbound internet to pull third-party images (Postgres/Kafka from Docker Hub,

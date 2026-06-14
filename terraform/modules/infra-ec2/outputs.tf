@@ -8,6 +8,11 @@ output "front_door_url" {
   value       = "http://${aws_eip.web.public_ip}${var.welcome_port == 80 ? "" : ":${var.welcome_port}"}/"
 }
 
+output "erp_url" {
+  description = "Operational ERP SPA origin the front-door 'Enter the ERP' link targets (EIP-based; on :ui_port). Used to render the S3 front-door page too."
+  value       = local.erp_url
+}
+
 output "web_private_ip" {
   value = aws_instance.web.private_ip
 }
