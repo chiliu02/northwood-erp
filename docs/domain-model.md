@@ -1,8 +1,8 @@
-# Northwood ERP — Domain Model Reverse-Engineered from the Schema
+# Northwood ERP — Domain Model
 
-A strategic and tactical Domain-Driven Design analysis derived from `config/postgresql/northwood_erp.sql` (the baseline schema — Liquibase changelogs start empty, so the baseline is the source of truth) cross-checked against the service code. This document treats the database schemas as evidence of bounded-context decomposition and works backwards to the domain model: aggregates, entities, value objects, services, and events.
+A strategic and tactical Domain-Driven Design analysis of the Northwood codebase **as it stands today** — the aggregates, entities, value objects, domain services, and events as implemented in the service code, with the baseline schema (`config/postgresql/northwood_erp.sql` — Liquibase changelogs start empty, so the baseline is the source of truth) as the corroborating structural record. It is a living model, kept in step with the implementation: an update of the project's original DDD analysis, re-grounded in the current code.
 
-A note on direction: a real DDD effort starts with conversations, event storming, and the ubiquitous language, then arrives at a model — the schema is a downstream artifact. Reading a schema *as if* it were the model produces useful inferences but conflates "what we persisted" with "what we modelled". Treat this document as a reverse-engineered map; gaps and oddities point at places where the design conversation should still happen.
+A note on direction: a textbook DDD effort starts with conversations, event storming, and the ubiquitous language, then arrives at a model — the schema is a downstream artifact. This document runs alongside the implementation rather than ahead of it: it captures the model the running system currently expresses, and is corrected as the code evolves. So where the code and this document disagree, **the code wins** and this document is the thing that gets fixed. Gaps and oddities flagged inline mark the places where the design conversation is still worth having.
 
 A note on naming: tables are **singular**, and a master-detail parent takes the `_header` suffix only when its child is `_line` (`sales_order_header` + `sales_order_line`; but `work_order` + `work_order_material`). FK columns end in `_id`. This document uses the PascalCase **aggregate/class** names from the Java model and the snake_case **table** names from the schema interchangeably; the mapping is 1:1 unless noted.
 
@@ -82,7 +82,7 @@ A note on what's *not* on the diagram: there is no Anti-Corruption Layer yet, be
 
 ## 2. Tactical Design Per Context
 
-For each context: ubiquitous language, aggregates with their composition, value objects, domain services (logic that doesn't fit on an aggregate but is still domain logic), application services (orchestration / use-case entry points), and domain events (with their wire-format `EVENT_TYPE`). Where the schema reveals an issue with the modelling, it is called out inline.
+For each context: ubiquitous language, aggregates with their composition, value objects, domain services (logic that doesn't fit on an aggregate but is still domain logic), application services (orchestration / use-case entry points), and domain events (with their wire-format `EVENT_TYPE`). Where the code or schema reveals an issue with the modelling, it is called out inline.
 
 ### 2.1 Product Master
 
@@ -105,7 +105,7 @@ Product (root)
 └─ status, version, created_at, updated_at, created_by, last_modified_by
 ```
 
-`Product` is the only aggregate root in this context. **`UnitOfMeasure` is not an aggregate** — `product.unit_of_measure` is read-only reference/seed data with no mutating class, repository, or events; `Product` references it by `base_uom_id`. (An earlier reading of this document modelled UoM as a separate aggregate with a `UnitOfMeasureRegistered` event; neither the class nor the event exists.)
+`Product` is the only aggregate root in this context. **`UnitOfMeasure` is not an aggregate** — `product.unit_of_measure` is read-only reference/seed data with no mutating class, repository, or events; `Product` references it by `base_uom_id`. (An earlier draft of this model treated UoM as a separate aggregate with a `UnitOfMeasureRegistered` event; neither the class nor the event exists in the code.)
 
 **Value objects.** `Sku` (validated `^[A-Z][A-Z0-9_-]{1,49}$`, in the shared kernel), `Money` (amount + currency, shared kernel), `ProductType`, `ReplenishmentStrategy`, `ValuationClass`, `Status` (all nested enums carrying `code()` / `fromCode()`), `ReorderPolicy` (the `reorder_point` + `reorder_quantity` pair), and `ApprovedVendor` (a value-object record projected as a child collection to `product.approved_vendor`). The schema flattens these into columns, which is normal for a relational projection.
 
@@ -251,7 +251,7 @@ WorkOrderSaga (process manager)   ◄── NOT "MakeToOrderSaga"
    work_order_id (unique), saga_state, data, lease …
 ```
 
-**Routing and work centres are now modelled** (an earlier reading of this document listed production capacity as an unmodelled gap). `WorkCenter` carries `labour_rate_per_minute` / `overhead_rate_per_minute`; `Routing` (`routing_header` + `routing_operation`) is the active-per-product operation template, lifecycle-managed like a BOM. At release, the routing operations are snapshotted onto `work_order_operation` with planned setup/run minutes. What is *still* unmodelled is **finite-capacity scheduling** — there is no work-centre load/ATP calculation; routing supplies costing, not a capacity constraint.
+**Routing and work centres are now modelled** (an earlier draft of this model listed production capacity as an unmodelled gap). `WorkCenter` carries `labour_rate_per_minute` / `overhead_rate_per_minute`; `Routing` (`routing_header` + `routing_operation`) is the active-per-product operation template, lifecycle-managed like a BOM. At release, the routing operations are snapshotted onto `work_order_operation` with planned setup/run minutes. What is *still* unmodelled is **finite-capacity scheduling** — there is no work-centre load/ATP calculation; routing supplies costing, not a capacity constraint.
 
 **Design note — the saga is make-to-stock-shaped.** The saga is named `WorkOrderSaga` (table `work_order_saga`); the older `MakeToOrderSaga` name is gone. It is entered directly at `work_order_created` (the old `started` seed state, which only fed the sales-driven make-to-order path, was retired), and its real states are just `work_order_created → raw_material_reservation_requested → raw_materials_reserved | raw_material_shortage → completed | failed`. A make-to-stock replenishment work order runs this *same* lifecycle with `sales_order_header_id` null. To-order demand reaches manufacturing the same way any other demand does — via Inventory's `ReplenishmentRequested` (`target_service = manufacturing`), not via a dedicated MTO path.
 
@@ -296,7 +296,7 @@ PurchaseToPaySaga (process manager)
 └─ saga_id, purchase_order_header_id (unique), sales_order_header_id (nullable cross-saga key), …
 ```
 
-**The supplier catalogue exists** (an earlier reading of this document listed it as a gap). `SupplierProductPrice` is a real aggregate (tiered, effective-dated prices, emitting `SupplierProductPriceChanged` with no-op suppression on an identical price); `product_approved_vendor` is purchasing's projection of product master's approved-vendor list. `Supplier` is likewise a full aggregate now — `register` / `changeStatus` / `updateDetails`, not a reference row.
+**The supplier catalogue exists** (an earlier draft of this model listed it as a gap). `SupplierProductPrice` is a real aggregate (tiered, effective-dated prices, emitting `SupplierProductPriceChanged` with no-op suppression on an identical price); `product_approved_vendor` is purchasing's projection of product master's approved-vendor list. `Supplier` is likewise a full aggregate now — `register` / `changeStatus` / `updateDetails`, not a reference row.
 
 **Design note — work-order shortages arrive through Inventory.** Purchasing has **no direct manufacturing listener**. A manufacturing raw-material shortage becomes an inventory `ReplenishmentRequest`; purchasing's `ReplenishmentRequestedHandler` consumes `inventory.ReplenishmentRequested` and creates a requisition with `source_type = stock_replenishment`, emitting `PurchaseRequisitionCreated` + `ReplenishmentDispatched` (or `ReplenishmentUndispatchable` when no approved vendor exists) in one transaction. The `work_order_shortage` source value is retained as schema-prep / history but no longer has a producer. Approval is single-step today: requisitions auto-approve at creation; a shortage-driven PO with a known price auto-sends, a manual PO lands at `draft`.
 
@@ -346,7 +346,7 @@ JournalEntry (root, write-once)  + List[JournalEntryLine]
    ◄── posted entries can only transition to reversed
 ```
 
-**Not aggregates.** `gl_account` (chart of accounts) and `tax_code` are **reference data** read via lookup ports — neither is an aggregate (an earlier reading modelled `Account` and `TaxCode` as roots). `exchange_rate` is reference data; `product_card`, `work_order_wip` (perpetual WIP sub-ledger), and `purchase_order_line_facts` (three-way-match reference) are projections.
+**Not aggregates.** `gl_account` (chart of accounts) and `tax_code` are **reference data** read via lookup ports — neither is an aggregate (an earlier draft of this model treated `Account` and `TaxCode` as roots). `exchange_rate` is reference data; `product_card`, `work_order_wip` (perpetual WIP sub-ledger), and `purchase_order_line_facts` (three-way-match reference) are projections.
 
 **Design note — `PaymentAllocation` is a child value object, not its own aggregate.** It is a record embedded in `Payment.allocations`, created atomically with the payment. The cross-aggregate invariant it enforces — allocated ≤ invoice outstanding, and Σ allocations ≤ payment amount — is maintained **eagerly by a database trigger** (`maintain_allocation_totals`) that keeps `payment.amount_allocated` and `*_invoice_header.paid_amount` in step. This is the *totals get projections* rule applied to money: the paid-amount running total is never promoted to an aggregate that could diverge from the allocations that produced it.
 
@@ -461,7 +461,7 @@ A *Shared Kernel* is the right context-mapping pattern for these. Note that `Add
 
 ## 4. Observations and Gaps
 
-What has closed since this document's first reverse-engineering, and what is still implicit:
+What has closed since this model's earlier drafts, and what is still implicit:
 
 **Now modelled (schema present; some logic still thin):**
 
