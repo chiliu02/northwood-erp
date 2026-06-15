@@ -13,6 +13,11 @@ output "issuer_url" {
   value       = local.kc_issuer
 }
 
+output "grafana_url" {
+  description = "Public, read-only Grafana URL (https://<grafana_hostname>) when published via Caddy; empty when not exposed."
+  value       = local.grafana_host != "" ? "https://${local.grafana_host}" : ""
+}
+
 output "web_private_ip" {
   value = aws_instance.web.private_ip
 }

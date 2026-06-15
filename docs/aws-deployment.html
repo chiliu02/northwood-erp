@@ -174,14 +174,19 @@
 
     <h2>Accessing Grafana</h2>
     <ul>
-      <li>Grafana runs on the <b>infra EC2</b> (<code>:3000</code>) with <b>no public IP</b>, and <code>infra-sg</code> never opens <code>:3000</code> — to the internet or even tier-to-tier — so it is <b>not browser-reachable directly</b>. Reach it over an <b>SSM port-forward</b> (no SSH, no public endpoint, nothing to open):
+      <li>Grafana runs on the <b>infra EC2</b> (<code>:3000</code>) with <b>no public IP</b>. It's published two ways:
+        <ul>
+          <li><b>Public, read-only</b> — the web-box <b>Caddy</b> reverse-proxies <code>grafana_hostname</code> (e.g. <code>grafana.northwood.chiliu02.com</code>, HTTPS) to the data box's <code>:3000</code>; <code>infra-sg</code> opens <code>:3000</code> only to the web tier for this. Anonymous access is <b>Viewer</b> (read-only): visitors browse the dashboards but can't edit/delete them, add data sources, or reach Explore. <code>terraform output grafana_url</code>. Set <code>grafana_hostname = ""</code> to keep it private.</li>
+          <li><b>Admin</b> — an <b>SSM port-forward</b> (no SSH, no public admin endpoint) gives the full role:
         <pre><code>terraform output grafana_access_hint
 # aws ssm start-session --target &lt;data-instance-id&gt; \
 #   --document-name AWS-StartPortForwardingSession \
 #   --parameters portNumber=3000,localPortNumber=3000
-# then open http://localhost:3000</code></pre>
+# then open http://localhost:3000  (admin)</code></pre>
+          </li>
+        </ul>
       </li>
-      <li>Only present when <code>enable_observability = true</code>. The tunnelled Grafana runs <b>anonymous-admin</b> (login form disabled) — safe precisely because it is never internet-exposed; the SSM tunnel <em>is</em> the access control. Exposing it publicly would mean hardening that auth first.</li>
+      <li>Only present when <code>enable_observability = true</code>. The login form is disabled; the public Viewer role + the SSM-only admin path are the access control.</li>
     </ul>
 
     <h2>What's gone</h2>

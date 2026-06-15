@@ -91,6 +91,18 @@ resource "aws_vpc_security_group_ingress_rule" "app_from_infra" {
 }
 
 # ---- infra-sg: Postgres + Kafka from app; telemetry from app + web --------
+# Grafana (:3000) from the web tier so the Caddy edge can reverse-proxy the public,
+# read-only Grafana hostname to the data box. Harmless when observability is off
+# (nothing listens on :3000).
+resource "aws_vpc_security_group_ingress_rule" "infra_grafana_from_web" {
+  security_group_id            = aws_security_group.this["infra"].id
+  description                  = "Grafana :3000 from web tier (Caddy reverse-proxy)"
+  ip_protocol                  = "tcp"
+  from_port                    = 3000
+  to_port                      = 3000
+  referenced_security_group_id = aws_security_group.this["web"].id
+}
+
 resource "aws_vpc_security_group_ingress_rule" "infra_postgres_from_app" {
   security_group_id            = aws_security_group.this["infra"].id
   description                  = "Postgres from services"

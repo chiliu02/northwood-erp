@@ -18,6 +18,7 @@
 # front_door_domain = "www.northwood.chiliu02.com"   # welcome page (CloudFront + S3)
 # ui_hostname       = "app.northwood.chiliu02.com"   # operational ERP UI (Caddy)
 # auth_hostname     = "auth.northwood.chiliu02.com"  # Keycloak / OIDC issuer (Caddy)
+# grafana_hostname  = "grafana.northwood.chiliu02.com"  # public READ-ONLY Grafana (Caddy → data :3000); "" => SSM-only
 # acme_email        = ""                              # Let's Encrypt contact (optional)
 
 # Observability: run the Tempo/Loki/Prometheus/Grafana box on the data EC2

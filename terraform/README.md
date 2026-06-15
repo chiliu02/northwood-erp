@@ -149,7 +149,8 @@ terraform output web_public_ip        # the stable Elastic IP the ui/auth hostna
 terraform output instance_ids        # aws ssm start-session --target <data-id>
 # on the data box:  docker exec -it northwood-postgres psql -U postgres -d northwood_erp \
 #                     -c "select count(*) from sales.customer;"
-terraform output grafana_access_hint # SSM port-forward 3000 to the data box, then open localhost:3000
+terraform output grafana_url         # public READ-ONLY Grafana (anonymous Viewer, https via Caddy)
+terraform output grafana_access_hint # SSM port-forward for ADMIN access to the same Grafana
 ```
 
 ## Pause / resume (cost saver)
@@ -309,8 +310,11 @@ terraform destroy
   containers on a shared `northwood` docker network). The app + web boxes get
   `OTLP_ENDPOINT` (Tempo `:4317`) + `LOKI_URL` (Loki `:3100`), so **traces and logs
   flow push-based out of the box**. Toggle the tier with `enable_observability`.
-  Reach Grafana via SSM port-forward — it has no public IP
-  (`terraform output grafana_access_hint`).
+  Grafana (on the private data box, no public IP) is published two ways: a
+  **public read-only** URL (anonymous Viewer) proxied through the web-box Caddy at
+  `grafana_hostname` (`terraform output grafana_url`), and **admin** access over an
+  SSM port-forward to `:3000` (`terraform output grafana_access_hint`). Set
+  `grafana_hostname = ""` to keep it SSM-only.
   - **Metrics caveat:** Prometheus *scrape* of
     `/actuator/prometheus` needs service discovery; here it self-scrapes and runs the
     OTLP receiver, so service-metric panels stay empty until SD/OTLP-push is wired —

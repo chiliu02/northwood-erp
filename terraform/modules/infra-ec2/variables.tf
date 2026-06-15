@@ -174,6 +174,12 @@ variable "acme_email" {
   default     = ""
 }
 
+variable "grafana_hostname" {
+  description = "FQDN for the public, read-only Grafana. Caddy on the web box terminates TLS here and reverse-proxies the data box's :3000. Empty (or observability disabled) => Grafana is not published (SSM port-forward only)."
+  type        = string
+  default     = ""
+}
+
 variable "caddy_image" {
   description = "Caddy image for on-box TLS termination (Let's Encrypt). Pulled from Docker Hub via the IGW."
   type        = string

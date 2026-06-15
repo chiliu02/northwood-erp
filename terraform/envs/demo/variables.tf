@@ -50,6 +50,12 @@ variable "acme_email" {
   default     = ""
 }
 
+variable "grafana_hostname" {
+  description = "FQDN for public, read-only Grafana (Caddy → data box :3000). Anonymous access is Viewer. Empty => Grafana stays private (SSM port-forward only). Requires enable_observability."
+  type        = string
+  default     = "grafana.northwood.chiliu02.com"
+}
+
 variable "enable_observability" {
   description = "Run Tempo/Loki/Prometheus/Grafana on the data box + point the apps at it (OTLP traces + Loki logs)."
   type        = bool

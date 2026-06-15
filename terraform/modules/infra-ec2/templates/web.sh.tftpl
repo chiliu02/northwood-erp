@@ -112,6 +112,12 @@ ${ui_host} {
 ${auth_host} {
   reverse_proxy localhost:8080
 }
+%{ if grafana_host != "" ~}
+
+${grafana_host} {
+  reverse_proxy ${data_ip}:3000
+}
+%{ endif ~}
 CADDYFILE
 docker run -d --name northwood-caddy --restart unless-stopped \
   --network host \
