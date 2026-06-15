@@ -7,16 +7,20 @@ Three EC2 instances across one public + two private subnets, with a small NAT
 
 | Tier | Subnet | EC2 runs |
 |---|---|---|
-| web  | public (public IP, `web-sg` :80 + :8090 + :8089 + :8080) | guest **front door** (nginx :80) + **operational ERP SPA** (nginx :8090) + `erp-web-ui-bff` (:8089) + Keycloak (:8080) |
+| web  | public (public IP, `web-sg` :443 + :80) | **Caddy** TLS edge (:443) → **operational ERP SPA** (nginx, loopback :8090) + `erp-web-ui-bff` (:8089) + Keycloak (loopback :8080) |
 | app  | private (`app-sg`) | the 7 services |
 | data | private (`infra-sg`) | Postgres + Kafka + (optional) LGTM observability |
 
-The operational `erp-web-ui` SPA is served **from the web box** by an nginx on
-`:8090` that reverse-proxies `/api`, `/oauth2`, `/login`, `/logout` to the BFF
-(same-origin, so the SPA's relative calls + the OIDC code flow work without
-CORS). Hosting the SPAs on **S3/CloudFront**, and the fully-managed
-**production** variant (ECS Fargate / Aurora / MSK / Cognito), are out of scope
-here — production is documented in **docs/aws-architecture.html**.
+Everything operational is fronted by **Caddy** on the web box, which terminates
+**HTTPS** (Let's Encrypt) for the ERP UI (`ui_hostname`) and Keycloak
+(`auth_hostname`) and reverse-proxies cleartext to the containers behind it
+(loopback-bound, so Caddy is the only public entry). The `erp-web-ui` SPA's nginx
+reverse-proxies `/api`, `/oauth2`, `/login`, `/logout` to the BFF (same-origin,
+so the SPA's relative calls + the OIDC code flow work without CORS). The guest
+**front door** (welcome page) is served separately over HTTPS by **CloudFront +
+S3** (`frontdoor.tf`), so it stays up even when the fleet is stopped. The
+fully-managed **production** variant (ECS Fargate / Aurora / MSK / Cognito) is
+out of scope here — see **docs/aws-architecture.html**.
 
 ```
 terraform/
@@ -38,10 +42,11 @@ terraform/
 ## Prerequisites
 
 - Terraform >= 1.10, AWS CLI v2 (authenticated), Docker daemon, Maven, Java 21.
-- An IAM principal with VPC/EC2/ECR/Secrets-Manager/IAM/S3/SSM permissions.
-- No ACM cert / domain needed — the demo serves **HTTP** on the web box's public IP.
-  (For HTTPS / a stable OIDC redirect, put the production stack in front — see
-  `docs/aws-architecture.html`.)
+- An IAM principal with VPC/EC2/ECR/Secrets-Manager/IAM/S3/SSM/ACM/CloudFront/Route53 permissions.
+- A **Route 53 public hosted zone** (`dns_zone_name`, default `chiliu02.com`). The
+  stack issues real certs against sub-domains of it — CloudFront/ACM for the
+  welcome page, Let's Encrypt (on-box Caddy) for the ERP UI + Keycloak — so all
+  three surfaces are **HTTPS** with browser-trusted certs. No bare-IP HTTP.
 
 ## Bring-up
 
@@ -91,14 +96,13 @@ terraform apply "-target=module.ecr"
 #    + the SPA staged to S3).
 terraform apply
 
-# 7. Done — browser OIDC works out of the box: the web box has a stable Elastic IP
-#    and Keycloak's issuer defaults to it. Grab the entry points:
-terraform output front_door_url   # guest "start here" page
-terraform output web_public_ip    # the stable Elastic IP (also the issuer host)
-#    Optional — to front it with a real domain instead, point DNS at the EIP and
-#    re-apply (user-data only re-runs on replacement, so force-replace the boxes):
-#    terraform apply -var="keycloak_hostname=<your-dns-name>" \
-#      -replace=module.compute.aws_instance.web -replace=module.compute.aws_instance.app
+# 7. Done. Terraform creates the Route 53 records (app/auth → web Elastic IP,
+#    front door → CloudFront), CloudFront provisions its ACM cert, and Caddy
+#    fetches Let's Encrypt certs for the UI + Keycloak on first boot (allow a
+#    minute for the ACM cert + DNS propagation + the ACME challenge). Entry points:
+terraform output front_door_url       # guest "start here" page (https, CloudFront)
+terraform output erp_ui_url           # the ERP UI (https, Let's Encrypt)
+terraform output keycloak_issuer_url  # the OIDC issuer (https)
 ```
 
 > **Why the two-phase apply (4 → 5 → 6) — first bring-up only.** Each EC2's
@@ -115,17 +119,18 @@ terraform output web_public_ip    # the stable Elastic IP (also the issuer host)
 > recreate the affected box(es):
 > `terraform apply -replace=module.compute.aws_instance.app` (or `.web`, or both).
 
-> **Keycloak issuer rides the web box's Elastic IP.** OIDC redirects the browser to
-> Keycloak, so `KC_HOSTNAME` / the issuer must be the web box's **public** address.
-> The module allocates a stable **Elastic IP** for the web box and defaults the
-> issuer to it, so browser login works on the **first** apply — no second re-apply,
-> and the address survives instance replacement / stop-start. The front door's
-> **"Enter the ERP"** link reuses the same address (→ the operational SPA on `:8090`).
-> To front it with a real domain, point DNS at the EIP and re-apply with
-> `-var="keycloak_hostname=<your-dns-name>"`. Because `user_data_replace_on_change`
-> is false, that change is in-place and won't re-run user-data on the live boxes —
-> add `-replace=module.compute.aws_instance.web -replace=module.compute.aws_instance.app`
-> to force the recreation that re-bakes the issuer.
+> **Keycloak issuer + UI ride the web box's Elastic IP, over HTTPS.** OIDC redirects
+> the browser to Keycloak, so the issuer must be a stable public **HTTPS** address.
+> The module allocates a stable **Elastic IP** for the web box; `dns.tf` A-records
+> `ui_hostname` + `auth_hostname` to it, and on-box **Caddy** terminates Let's
+> Encrypt TLS for both. So the issuer (`https://<auth_hostname>/realms/northwood`)
+> and the UI (`https://<ui_hostname>`) survive instance replacement / stop-start,
+> and the front door's **"Enter the ERP"** link targets the UI hostname. Override
+> the names with `-var="ui_hostname=…" -var="auth_hostname=…"` (must be sub-domains
+> of `dns_zone_name`). Because `user_data_replace_on_change` is false, a hostname
+> change is in-place and won't re-run user-data on the live boxes — add
+> `-replace=module.compute.aws_instance.web -replace=module.compute.aws_instance.app`
+> to force the recreation that re-bakes the issuer + re-issues certs.
 
 Bring-up order (data → app → web) is handled by Terraform's graph: the boxes use
 **pinned static private IPs** (`10.0.1.10 / .2.10 / .3.10`, set in `envs/demo/main.tf`)
@@ -137,9 +142,10 @@ SPA (`spa/`) from the private artifacts bucket on first boot.
 ## Verify
 
 ```powershell
-terraform output front_door_url        # open this first — the guest "start here" page (http://<ip>/)
-terraform output front_door_domain_url # the always-on front door via DNS (CNAME -> S3 static site, so it stays up even when the fleet is stopped), e.g. http://www.northwood.chiliu02.com/; empty front_door_domain => IP-only via front_door_url
-terraform output web_public_ip       # operational ERP UI on http://<ip>:8090  ·  Keycloak on :8080  (BFF :8089 is proxied by the SPA nginx)
+terraform output front_door_url       # open this first — the guest "start here" page (https, CloudFront -> S3; stays up while the fleet is stopped)
+terraform output erp_ui_url           # operational ERP UI (https, on-box Caddy / Let's Encrypt)
+terraform output keycloak_issuer_url  # Keycloak OIDC issuer (https)
+terraform output web_public_ip        # the stable Elastic IP the ui/auth hostnames resolve to
 terraform output instance_ids        # aws ssm start-session --target <data-id>
 # on the data box:  docker exec -it northwood-postgres psql -U postgres -d northwood_erp \
 #                     -c "select count(*) from sales.customer;"
@@ -217,36 +223,32 @@ terraform destroy
 
 ## Design decisions worth knowing
 
-- **The operational SPA is served from the web box by nginx (not S3/CloudFront).**
+- **The operational SPA is served from the web box, behind the Caddy TLS edge.**
   `erp-web-ui` is a Vite SPA that calls the BFF with **relative** paths (`/api`,
-  `/oauth2`, `/login`, `/logout`), so it must be served same-origin as the BFF. On
-  this minimal demo we skip S3/CloudFront and instead run an nginx on the web box
-  (`:8090`) that serves the built `dist/` and reverse-proxies those four prefixes to
-  the BFF (`:8089`). The BFF runs with `server.forward-headers-strategy=framework`,
-  so the `X-Forwarded-*` headers nginx sends let Spring build the OIDC `redirect_uri`
-  / `{baseUrl}` against the public `:8090` origin. The realm's `localhost:8089` +
-  `localhost:5174` redirect URIs / web origins are rewritten to `<public-host>:8090`
-  at import time (host-side `sed` in the web user-data). `dist/` is staged to S3 by
-  Terraform (`aws_s3_object.spa`, a `fileset` over `erp-web-ui/dist`), so **build the
-  SPA before `apply`** — step 5 does this for you (`-SkipSpa` to opt out). Production
-  serves the SPA from S3/CloudFront (`docs/aws-architecture.html`).
+  `/oauth2`, `/login`, `/logout`), so it must be served same-origin as the BFF. An
+  nginx on the web box (loopback `:8090`) serves the built `dist/` and
+  reverse-proxies those four prefixes to the BFF (`:8089`); **Caddy** sits in front
+  on `:443`, terminating Let's Encrypt TLS for `ui_hostname`. The BFF runs with
+  `server.forward-headers-strategy=framework`, so the `X-Forwarded-Proto: https` /
+  `X-Forwarded-Host` headers (set by Caddy, forwarded by nginx) let Spring build the
+  OIDC `redirect_uri` / `{baseUrl}` against the public `https://<ui_hostname>`
+  origin. The realm's `http://localhost:8089` + `http://localhost:5174` redirect
+  URIs / web origins are rewritten to `https://<ui_hostname>` at import time
+  (host-side `sed` in the web user-data). `dist/` is staged to S3 by Terraform
+  (`aws_s3_object.spa`, a `fileset` over `erp-web-ui/dist`), so **build the SPA
+  before `apply`** — step 5 does this for you (`-SkipSpa` to opt out).
 
-- **The guest front door is served from S3, not the web box.** The "start here"
-  welcome page is static HTML, so `frontdoor.tf` hosts it on an S3 static-website
-  bucket (public-read, HTTP — matching the demo's no-TLS posture) and the
-  front-door DNS name (`dns.tf`) **CNAMEs** to it. This keeps the entry page
-  reachable **even when the fleet is stopped** for cost-saving — its built-in
-  "Demo hours" notice then explains the app is asleep. (A CNAME, not an A-alias:
-  Route 53's A-alias to the S3 website endpoint returned NODATA in practice, so a
-  plain CNAME to the website endpoint — legal because it's a sub-domain — is used
-  instead; see the note in `dns.tf`.) The bucket name must still equal
-  `front_door_domain` so the S3 website serves the right bucket for that `Host`
-  header, and it's a separate public bucket holding only the rendered page —
-  the artifacts bucket stays private. The web box still serves an identical copy
-  on `:80` when up (rendered the same way, from `config/welcome.html.template`
-  with the EIP-based `${ERP_URL}` substituted). Only the DNS target moved to S3;
-  the operational SPA + Keycloak stay on the EIP, so the page's "Enter the ERP"
-  link is dead while the fleet is stopped — expected.
+- **The guest front door is served by CloudFront + S3, not the web box.** The
+  "start here" welcome page is static HTML, so `frontdoor.tf` hosts it on an S3
+  static-website bucket with **CloudFront** in front for HTTPS (S3 website
+  endpoints are HTTP-only; CloudFront uses an ACM cert for `front_door_domain`,
+  validated via Route 53), and the front-door DNS name (`dns.tf`) **aliases** to the
+  distribution. This keeps the entry page reachable over HTTPS **even when the fleet
+  is stopped** for cost-saving — its built-in "Demo hours" notice then explains the
+  app is asleep. It's a separate public bucket holding only the rendered page (with
+  the `https://<ui_hostname>` `${ERP_URL}` "Enter the ERP" link baked in) — the
+  artifacts bucket stays private. While the fleet is stopped the front door is up
+  but its "Enter the ERP" link is dead (the UI box is off) — expected.
 
 - **NAT *instance*, not a NAT Gateway or VPC endpoints.** The private subnets need
   outbound internet to pull third-party images (Postgres/Kafka from Docker Hub,
@@ -263,10 +265,13 @@ terraform destroy
   via the instance role and pull them. Postgres/Kafka/Keycloak/LGTM are pulled
   straight from their registries through the NAT — no mirroring.
 
-- **Keycloak is public (on the web box).** It must be browser-reachable for the OIDC
-  redirect, so it shares the public web EC2 with the BFF. Because the services reach
-  that same public issuer through the NAT, **no issuer/JWKS split is needed** — they
-  just set `KEYCLOAK_ISSUER_URI` to the public host.
+- **Keycloak is public over HTTPS (behind Caddy on the web box).** It must be
+  browser-reachable for the OIDC redirect, so it shares the public web EC2 with the
+  BFF — fronted by Caddy on `auth_hostname` (`KC_PROXY_HEADERS=xforwarded` so it
+  trusts the `X-Forwarded-*` and mints `https` issuer/redirect URLs). Because the
+  services reach that same public issuer through the NAT (over `:443`), **no
+  issuer/JWKS split is needed** — they just set `KEYCLOAK_ISSUER_URI` to
+  `https://<auth_hostname>/realms/northwood`.
 
 - **Per-service DB login roles (the load-bearing invariant, made real).** The baseline
   `config/postgresql/northwood_erp.sql` ships the `<svc>_service` roles as `NOLOGIN`. Terraform

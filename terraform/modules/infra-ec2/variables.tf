@@ -67,20 +67,14 @@ variable "bff_port" {
   default = 8089
 }
 
-variable "welcome_port" {
-  description = "Public port for the guest front-door (static welcome) page on the web box. 80 = bare-IP entry; 8080/8089 are taken by Keycloak/BFF."
-  type        = number
-  default     = 80
-}
-
 variable "welcome_image" {
-  description = "nginx image for the front-door static page (pulled from Docker Hub via the IGW)."
+  description = "nginx image for the operational ERP SPA container (pulled from Docker Hub via the IGW)."
   type        = string
   default     = "nginx:1.27-alpine"
 }
 
 variable "ui_port" {
-  description = "Public port for the operational ERP SPA on the web box. An nginx serves the built erp-web-ui here and reverse-proxies /api,/oauth2,/login,/logout to the BFF (:8089). This is the 'Enter the ERP' target and the OIDC redirect/origin host."
+  description = "Loopback port the operational ERP SPA nginx listens on. Caddy reverse-proxies the ui_hostname to localhost:<this>; nginx serves the built erp-web-ui and proxies /api,/oauth2,/login,/logout to the BFF (:8089). Not internet-exposed."
   type        = number
   default     = 8090
 }
@@ -164,10 +158,26 @@ variable "enable_observability" {
   default     = true
 }
 
-variable "keycloak_hostname" {
-  description = "Public hostname/IP clients use to reach Keycloak (the web EC2's public address) — the OIDC issuer. Empty => falls back to the web box private IP (browser login won't work until set)."
+variable "ui_hostname" {
+  description = "FQDN for the operational ERP SPA. Caddy on the web box terminates Let's Encrypt TLS here and proxies the SPA nginx; also the OIDC redirect/origin host (https://<this>)."
+  type        = string
+}
+
+variable "auth_hostname" {
+  description = "FQDN for Keycloak — the OIDC issuer host (https://<this>/realms/northwood). Caddy terminates TLS here and proxies to Keycloak on :8080."
+  type        = string
+}
+
+variable "acme_email" {
+  description = "Contact email Caddy registers with Let's Encrypt. Empty => anonymous registration."
   type        = string
   default     = ""
+}
+
+variable "caddy_image" {
+  description = "Caddy image for on-box TLS termination (Let's Encrypt). Pulled from Docker Hub via the IGW."
+  type        = string
+  default     = "caddy:2-alpine"
 }
 
 variable "postgres_superuser_password" {

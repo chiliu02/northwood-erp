@@ -32,17 +32,13 @@ locals {
   app_ip  = var.private_ips.app
   web_ip  = var.private_ips.web
 
-  # Keycloak's public issuer (browser OIDC). Defaults to the web box's stable
-  # Elastic IP so browser login works out of the box; an explicit
-  # var.keycloak_hostname (e.g. a DNS name) still overrides it.
-  kc_host   = var.keycloak_hostname != "" ? var.keycloak_hostname : aws_eip.web.public_ip
-  kc_issuer = "http://${local.kc_host}:8080/realms/northwood"
-
-  # The front-door "Enter the ERP" link targets the operational ERP SPA, served
-  # by an nginx on the web box (ui_port) that reverse-proxies /api,/oauth2,/login,
-  # /logout to the BFF. Reuses kc_host (the web box's stable Elastic IP) so it's
-  # browser-reachable; same host the OIDC redirect_uri + web origins resolve to.
-  erp_url = "http://${local.kc_host}:${var.ui_port}"
+  # Keycloak's public issuer + the ERP SPA origin are HTTPS, terminated by the
+  # on-box Caddy (Let's Encrypt). Both are real DNS names A-record'd to the web
+  # box's stable Elastic IP (dns.tf), so they survive instance replacement and
+  # stop/start. The "Enter the ERP" front-door link targets erp_url; the OIDC
+  # redirect_uri + web origins resolve to the same ui_hostname.
+  kc_issuer = "https://${var.auth_hostname}/realms/northwood"
+  erp_url   = "https://${var.ui_hostname}"
 
   kafka_boot    = "${local.data_ip}:9092"
   otlp_endpoint = var.enable_observability ? "http://${local.data_ip}:4317" : ""
@@ -110,16 +106,6 @@ resource "aws_s3_object" "realm" {
   key    = "keycloak/northwood-realm.json"
   source = "${var.repo_root}/config/keycloak/northwood-realm.json"
   etag   = filemd5("${var.repo_root}/config/keycloak/northwood-realm.json")
-}
-
-# Guest front-door page template. The web box renders ${ERP_URL} at boot
-# (host-side sed) before serving it via a plain nginx container — same output
-# as the docker-compose envsubst path, different runtime.
-resource "aws_s3_object" "welcome_template" {
-  bucket = aws_s3_bucket.artifacts.id
-  key    = "welcome/index.html.template"
-  source = "${var.repo_root}/config/welcome.html.template"
-  etag   = filemd5("${var.repo_root}/config/welcome.html.template")
 }
 
 # Built operational ERP SPA (erp-web-ui/dist). Staged file-by-file under spa/;
@@ -350,7 +336,10 @@ resource "aws_instance" "web" {
     keycloak_image = var.images.keycloak
     bff_name       = var.bff_name
     bff_port       = var.bff_port
-    keycloak_host  = local.kc_host
+    ui_host        = var.ui_hostname
+    auth_host      = var.auth_hostname
+    caddy_image    = var.caddy_image
+    acme_email     = var.acme_email
     kc_issuer      = local.kc_issuer
     kafka_boot     = local.kafka_boot
     app_ip         = local.app_ip
@@ -358,14 +347,13 @@ resource "aws_instance" "web" {
     otlp_endpoint  = local.otlp_endpoint
     loki_url       = local.loki_url
     welcome_image  = var.welcome_image
-    welcome_port   = var.welcome_port
     erp_url        = local.erp_url
     ui_port        = var.ui_port
     web_ip         = local.web_ip
   })
 
   tags       = { Name = "${var.name_prefix}-web" }
-  depends_on = [aws_s3_object.realm, aws_s3_object.keycloak_env, aws_s3_object.bff_env, aws_s3_object.welcome_template, aws_s3_object.spa, aws_instance.app]
+  depends_on = [aws_s3_object.realm, aws_s3_object.keycloak_env, aws_s3_object.bff_env, aws_s3_object.spa, aws_instance.app]
 
   # Pin the AMI — see the data box above. A new "latest AL2023" image must not
   # force-replace a running box on a routine apply; bump var.ami_id deliberately.

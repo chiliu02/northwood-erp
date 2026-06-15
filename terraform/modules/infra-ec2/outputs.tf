@@ -1,16 +1,16 @@
 output "web_public_ip" {
-  description = "Stable Elastic IP of the web EC2 (front door :80, erp-bff :8089, Keycloak :8080). Survives instance replacement; it is the Keycloak issuer host."
+  description = "Stable Elastic IP of the web EC2 — the Caddy TLS edge (:443/:80). The ui_hostname + auth_hostname A-records resolve here; survives instance replacement."
   value       = aws_eip.web.public_ip
 }
 
-output "front_door_url" {
-  description = "Guest front-door (start-here) page — the first thing to open."
-  value       = "http://${aws_eip.web.public_ip}${var.welcome_port == 80 ? "" : ":${var.welcome_port}"}/"
+output "erp_url" {
+  description = "Operational ERP SPA origin (https://<ui_hostname>) the front-door 'Enter the ERP' link targets. Used to render the front-door page too."
+  value       = local.erp_url
 }
 
-output "erp_url" {
-  description = "Operational ERP SPA origin the front-door 'Enter the ERP' link targets (EIP-based; on :ui_port). Used to render the S3 front-door page too."
-  value       = local.erp_url
+output "issuer_url" {
+  description = "Keycloak OIDC issuer (https://<auth_hostname>/realms/northwood)."
+  value       = local.kc_issuer
 }
 
 output "web_private_ip" {

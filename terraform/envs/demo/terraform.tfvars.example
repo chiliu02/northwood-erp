@@ -10,10 +10,15 @@
 # Empty schema instead of the populated demo dataset.
 # load_seed_data = false
 
-# Keycloak public address (DNS or the web EC2's public IP) used as the OIDC issuer.
-# Browser OIDC login won't work until this is set — set it after the first apply
-# once the public IP is known, or point it at an Elastic IP.
-# keycloak_hostname = "http://<web-ec2-public-ip>:8080"
+# Public HTTPS hostnames. dns_zone_name is an existing Route 53 public zone; the
+# three surfaces are sub-domains of it. ui/auth get real Let's Encrypt certs from
+# the on-box Caddy; the front door gets a CloudFront/ACM cert. All default under
+# chiliu02.com — override for your own zone.
+# dns_zone_name     = "chiliu02.com"
+# front_door_domain = "www.northwood.chiliu02.com"   # welcome page (CloudFront + S3)
+# ui_hostname       = "app.northwood.chiliu02.com"   # operational ERP UI (Caddy)
+# auth_hostname     = "auth.northwood.chiliu02.com"  # Keycloak / OIDC issuer (Caddy)
+# acme_email        = ""                              # Let's Encrypt contact (optional)
 
 # Observability: run the Tempo/Loki/Prometheus/Grafana box on the data EC2
 # and point the apps at it. Set false to skip it (and its cost).
