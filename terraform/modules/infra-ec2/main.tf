@@ -44,6 +44,13 @@ locals {
   otlp_endpoint = var.enable_observability ? "http://${local.data_ip}:4317" : ""
   loki_url      = var.enable_observability ? "http://${local.data_ip}:3100/loki/api/v1/push" : ""
 
+  # Grafana is published over HTTPS by the on-box Caddy (grafana_hostname A-record'd
+  # to the web Elastic IP, dns.tf), reverse-proxied to the data box's :3000. Anonymous
+  # access is Viewer (read-only) so demo visitors can browse the dashboards but not
+  # change anything (see data.sh.tftpl). Empty (= not published) unless observability
+  # is enabled and a hostname is set.
+  grafana_host = var.enable_observability && var.grafana_hostname != "" ? var.grafana_hostname : ""
+
   # ALTER ROLE … LOGIN so each service authenticates as its own role.
   service_logins_sql = join("\n", [
     for svc, pw in var.service_db_passwords :
@@ -261,6 +268,7 @@ resource "aws_instance" "data" {
     advertise_ip         = local.data_ip
     enable_observability = var.enable_observability
     obs_images           = var.observability_images
+    grafana_host         = local.grafana_host
   })
 
   tags       = { Name = "${var.name_prefix}-data" }
@@ -350,6 +358,8 @@ resource "aws_instance" "web" {
     erp_url        = local.erp_url
     ui_port        = var.ui_port
     web_ip         = local.web_ip
+    data_ip        = local.data_ip
+    grafana_host   = local.grafana_host
   })
 
   tags       = { Name = "${var.name_prefix}-web" }

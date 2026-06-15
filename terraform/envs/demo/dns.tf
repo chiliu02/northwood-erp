@@ -50,3 +50,14 @@ resource "aws_route53_record" "auth" {
   ttl     = 300
   records = [module.compute.web_public_ip]
 }
+
+# Public, read-only Grafana — Caddy on the web box proxies it to the data box's
+# :3000. Only when observability is on and a hostname is set.
+resource "aws_route53_record" "grafana" {
+  count   = var.enable_observability && var.grafana_hostname != "" ? 1 : 0
+  zone_id = data.aws_route53_zone.primary.zone_id
+  name    = var.grafana_hostname
+  type    = "A"
+  ttl     = 300
+  records = [module.compute.web_public_ip]
+}

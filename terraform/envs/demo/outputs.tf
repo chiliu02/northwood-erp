@@ -37,9 +37,14 @@ output "instance_ids" {
   value       = module.compute.instance_ids
 }
 
+output "grafana_url" {
+  description = "Public, read-only Grafana (anonymous Viewer) via Caddy. Empty when not published or observability disabled."
+  value       = module.compute.grafana_url
+}
+
 output "grafana_access_hint" {
-  description = "Grafana has no public IP — port-forward 3000 over SSM to the data box."
-  value       = var.enable_observability ? "aws ssm start-session --target ${module.compute.instance_ids.data} --document-name AWS-StartPortForwardingSession --parameters portNumber=3000,localPortNumber=3000  # then open http://localhost:3000" : "observability disabled"
+  description = "Admin access to Grafana (full role) — port-forward 3000 over SSM to the data box. The public grafana_url is read-only."
+  value       = var.enable_observability ? "aws ssm start-session --target ${module.compute.instance_ids.data} --document-name AWS-StartPortForwardingSession --parameters portNumber=3000,localPortNumber=3000  # then open http://localhost:3000 (admin)" : "observability disabled"
 }
 
 output "artifacts_bucket" {

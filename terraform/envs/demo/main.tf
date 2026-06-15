@@ -85,6 +85,7 @@ module "compute" {
   ui_hostname          = var.ui_hostname
   auth_hostname        = var.auth_hostname
   acme_email           = var.acme_email
+  grafana_hostname     = var.grafana_hostname
   enable_observability = var.enable_observability
 
   postgres_superuser_password = module.secrets.postgres_superuser_password
