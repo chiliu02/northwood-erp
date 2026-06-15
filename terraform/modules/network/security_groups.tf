@@ -18,12 +18,24 @@ locals {
   }
 }
 
+# A security group's name AND description are immutable, so editing either forces
+# a replacement. The default destroy-before-create makes that replacement deadlock:
+# AWS refuses to delete the old SG while instances or other SGs' rules still
+# reference it (DependencyViolation), so the apply hangs ~15 min and errors.
+# create_before_destroy builds the new SG first, repoints every dependent to it,
+# then drops the old one — no deadlock. It requires name_prefix (not a fixed name)
+# so the old + new SGs can coexist with distinct names during the swap; the
+# friendly, stable name stays on the Name tag (which everything keys off anyway).
 resource "aws_security_group" "this" {
   for_each    = local.sgs
-  name        = "${var.name_prefix}-${each.key}-sg"
+  name_prefix = "${var.name_prefix}-${each.key}-sg-"
   description = each.value
   vpc_id      = aws_vpc.this.id
   tags        = { Name = "${var.name_prefix}-${each.key}-sg" }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_vpc_security_group_egress_rule" "all" {
