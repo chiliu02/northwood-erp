@@ -64,6 +64,24 @@
   .foot { margin-top: 1.6rem; padding-top: 1.1rem; border-top: 1px solid var(--border);
           color: var(--muted); font-size: 13px; }
   .foot b { color: var(--secondary); }
+  details.section { margin: 1.4rem 0 0; border-top: 1px solid var(--border); padding-top: .35rem; }
+  details.section > summary {
+    cursor: pointer; list-style: none; user-select: none;
+    display: flex; align-items: center; gap: .55rem;
+    font-size: .8rem; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); font-weight: 600; padding: .55rem 0;
+  }
+  details.section > summary::-webkit-details-marker { display: none; }
+  details.section > summary::before {
+    content: "\25B8"; font-size: .7rem; transition: transform .15s ease; display: inline-block;
+  }
+  details.section[open] > summary::before { transform: rotate(90deg); }
+  details.section > summary:hover { color: var(--secondary); }
+  details.section > summary:hover::before { color: var(--accent); }
+  ul.stack { list-style: none; padding: 0; margin: .3rem 0 .6rem; }
+  ul.stack li { position: relative; padding: .32rem 0 .32rem 1.15rem; color: var(--secondary); font-size: 13.5px; }
+  ul.stack li::before { content: "\25AA"; position: absolute; left: 0; top: .42rem; color: var(--accent); font-size: .85em; }
+  ul.stack b { color: var(--text); }
 </style>
 </head>
 <body>
@@ -72,26 +90,40 @@
 
     <h1>Welcome — let's get you started.</h1>
     <p class="lead">A self-contained <b>event-driven microservices ERP</b>: seven services coordinating order-to-cash, procure-to-pay, and make-to-stock through Sagas, an outbox/inbox event bus, and real Keycloak sign-in.</p>
-    <p class="sub">This is a hands-on demo — drive it yourself in the browser. Here's the quickest way in.</p>
 
-    <h2>Start here</h2>
-    <ol>
-      <li><b>Click "Enter the ERP" below.</b> You'll be sent to the Keycloak sign-in screen — the demo uses real login, not a bypass.</li>
-      <li><b>Sign in. Every persona's password is the same as its username.</b> A friendly first login is <code>sarah</code> / <code>sarah</code> — a sales clerk who can place orders and watch them fulfil end-to-end.</li>
-      <li><b>Find the Demo Guide inside the app</b> — the <b>?</b> icon in the top bar — for the full cast (13 personas, each a different role) and ten step-by-step walkthroughs.</li>
-      <li><b>Switch persona</b> whenever you like: sign out (top-right) and sign back in as someone else — the UI re-reads your role automatically.</li>
-    </ol>
+    <details class="section">
+      <summary>Tech stack</summary>
+      <ul class="stack">
+        <li><b>Java 21</b> · <b>Spring Boot 4.0.5</b> (Spring Framework 7, Jakarta EE 11) · Maven multi-module</li>
+        <li><b>PostgreSQL 17</b> — schema-per-service in one DB (<code>search_path = &lt;service&gt;, shared</code> per connection)</li>
+        <li><b>Liquibase</b> migrations (manually wired — Spring Boot 4 ships no auto-config)</li>
+        <li><b>Spring Data JDBC</b> — chosen over JPA for explicit aggregate boundaries</li>
+        <li><b>Kafka 4.1.2</b> (KRaft, single broker) — JSON wire format via Jackson 3</li>
+        <li><b>Keycloak 26</b> + Spring Security — OIDC code flow for the ERP SPA</li>
+        <li><b>Testcontainers</b> for the integration-test seam</li>
+        <li><b>React 18 + Vite + Tailwind v4</b> ERP SPA · <b>TanStack Query</b> for data fetching</li>
+        <li><b>OpenTelemetry + LGTM</b> — Prometheus · Tempo · Loki · Grafana, auto-instrumented (one correlated trace per Saga)</li>
+        <li><b>Terraform</b> IaC — single-AZ EC2 running the images via <code>docker run</code>, pushed to ECR</li>
+      </ul>
+    </details>
 
-    <div class="actions">
-      <a class="btn primary" href="${ERP_URL}">Enter the ERP →</a>
-    </div>
-
-    <div class="notice">
-      <span class="clock">⏰</span>
-      <div><b>Demo hours.</b> To keep running costs down, Northwood is on a weekday schedule — it starts at <b>8:30&nbsp;AM</b> and stops at <b>5:00&nbsp;PM</b> <span class="tz">(Australia/Sydney)</span>, and stays offline on weekends. Outside those hours the app may be asleep; check back during business hours.</div>
-    </div>
-
-    <p class="foot">First time with Northwood? Once you're signed in, open the <b>Demo Guide</b> (the <b>?</b> icon, top bar) — it walks you through placing an order, building it on the production floor, and paying for it, one persona at a time.</p>
+    <details class="section">
+      <summary>Start here</summary>
+      <p class="sub" style="margin:.2rem 0 .7rem;">This is a hands-on demo — drive it yourself in the browser. Here's the quickest way in.</p>
+      <ol>
+        <li><b>Click "Enter the ERP" below.</b> You'll be sent to the Keycloak sign-in screen — the demo uses real login, not a bypass.</li>
+        <li><b>Sign in. Every persona's password is the same as its username.</b> A friendly first login is <code>sarah</code> / <code>sarah</code> — a sales clerk who can place orders and watch them fulfil end-to-end.</li>
+        <li><b>Find the Demo Guide inside the app</b> — the <b>?</b> icon in the top bar — for the full cast (13 personas, each a different role) and ten step-by-step walkthroughs.</li>
+        <li><b>Switch persona</b> whenever you like: sign out (top-right) and sign back in as someone else — the UI re-reads your role automatically.</li>
+      </ol>
+      <div class="actions">
+        <a class="btn primary" href="${ERP_URL}">Enter the ERP →</a>
+      </div>
+      <div class="notice">
+        <span class="clock">⏰</span>
+        <div><b>Demo hours.</b> To keep running costs down, Northwood is on a weekday schedule — it starts at <b>8:30&nbsp;AM</b> and stops at <b>5:00&nbsp;PM</b> <span class="tz">(Australia/Sydney)</span>, and stays offline on weekends. Outside those hours the app may be asleep; check back during business hours.</div>
+      </div>
+    </details>
   </div>
 </body>
 </html>
