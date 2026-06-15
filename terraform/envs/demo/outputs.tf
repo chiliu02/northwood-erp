@@ -1,21 +1,21 @@
 output "web_public_ip" {
-  description = "Public entry point — open http://<this>/ for the guest front door; the ERP UI (erp-web-ui-bff) is on :8089, Keycloak on :8080."
+  description = "Stable Elastic IP of the web box (the Caddy TLS edge). The ERP UI + Keycloak hostnames A-record here."
   value       = module.compute.web_public_ip
 }
 
 output "front_door_url" {
-  description = "Guest 'start here' page — the first URL to hand a visitor. Links into the ERP UI + Demo Guide."
-  value       = module.compute.front_door_url
+  description = "Guest 'start here' page (HTTPS via CloudFront) — the first URL to hand a visitor. Links into the ERP UI + Demo Guide."
+  value       = var.front_door_domain != "" ? "https://${var.front_door_domain}/" : "(no front_door_domain set)"
 }
 
-output "front_door_domain_url" {
-  description = "Friendly front-door URL once DNS propagates (A record → web box Elastic IP). Empty front_door_domain => only the IP-based front_door_url is available."
-  value       = var.front_door_domain != "" ? "http://${var.front_door_domain}/" : "(no front_door_domain set — use front_door_url)"
+output "erp_ui_url" {
+  description = "Operational ERP SPA — the 'Enter the ERP' target (HTTPS, Let's Encrypt via on-box Caddy)."
+  value       = module.compute.erp_url
 }
 
-output "keycloak_hostname_hint" {
-  description = "The Keycloak issuer host. Defaults to the web box's stable Elastic IP (browser OIDC works out of the box); override with -var keycloak_hostname=<DNS name> for a real domain."
-  value       = var.keycloak_hostname != "" ? var.keycloak_hostname : "Defaulting to web Elastic IP ${module.compute.web_public_ip} (browser OIDC works); set -var keycloak_hostname=<Route 53 name> to override."
+output "keycloak_issuer_url" {
+  description = "Keycloak OIDC issuer (HTTPS, Let's Encrypt via on-box Caddy)."
+  value       = module.compute.issuer_url
 }
 
 output "ecr_repository_urls" {

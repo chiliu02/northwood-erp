@@ -35,28 +35,16 @@ variable "subnet_cidrs" {
   }
 }
 
-variable "bff_port" {
-  description = "erp-web-ui-bff port, exposed to the internet on the public EC2."
+variable "https_port" {
+  description = "Public HTTPS port the Caddy TLS edge listens on (the only operational entry to the web EC2)."
   type        = number
-  default     = 8089
-}
-
-variable "keycloak_port" {
-  description = "Keycloak port — public (browser OIDC redirect) + reachable from the app tier for JWKS."
-  type        = number
-  default     = 8080
+  default     = 443
 }
 
 variable "welcome_port" {
-  description = "Guest front-door (static welcome page) port — public on the web EC2. Keep in sync with the infra-ec2 module's welcome_port (both default 80)."
+  description = "Public HTTP port on the web EC2. Caddy uses it for the Let's Encrypt HTTP-01 challenge and the http->https redirect (named for the legacy front-door port; both default 80)."
   type        = number
   default     = 80
-}
-
-variable "ui_port" {
-  description = "Operational ERP SPA port — public on the web EC2. An nginx on this port serves the built erp-web-ui and reverse-proxies /api,/oauth2,/login,/logout to the BFF. Keep in sync with the infra-ec2 module's ui_port (both default 8090)."
-  type        = number
-  default     = 8090
 }
 
 variable "app_port_range" {

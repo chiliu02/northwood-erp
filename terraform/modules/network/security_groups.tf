@@ -3,7 +3,7 @@
 # web SG faces 0.0.0.0/0). Standalone rule resources so SGs can reference each
 # other without inline-block dependency cycles.
 #
-#   web   : public EC2 (front door :80 + erp-bff :8089 + Keycloak :8080) — internet-facing
+#   web   : public EC2 (Caddy TLS edge :443 + :80 ACME/redirect) — internet-facing
 #   app   : services EC2 (8081-8087) — from web only
 #   infra : data EC2 (Postgres 5432 / Kafka 9092 / telemetry) — from app/web
 #   nat   : NAT instance — forwards egress for the private subnets
@@ -11,7 +11,7 @@
 
 locals {
   sgs = {
-    web   = "Public EC2 - front door 80 + erp-bff 8089 + Keycloak 8080 (internet-facing)"
+    web   = "Public EC2 - Caddy TLS edge :443 + :80 ACME/redirect (internet-facing)"
     app   = "Services EC2 - 8081-8087, private"
     infra = "Data EC2 - Postgres 5432 / Kafka 9092 / observability, private"
     nat   = "NAT instance - egress for the private subnets"
@@ -34,40 +34,26 @@ resource "aws_vpc_security_group_egress_rule" "all" {
   cidr_ipv4         = "0.0.0.0/0"
 }
 
-# ---- web-sg: front door + erp-bff + Keycloak from the internet ------------
-resource "aws_vpc_security_group_ingress_rule" "web_front_door" {
+# ---- web-sg: Caddy TLS edge from the internet -----------------------------
+# Caddy is the only public entry. It terminates TLS for the ERP UI + Keycloak
+# hostnames on :443 and serves the Let's Encrypt HTTP-01 challenge + http->https
+# redirect on :80. The BFF (:8089), Keycloak (:8080) and SPA nginx (:8090) sit
+# behind it (loopback-bound) and are NOT internet-exposed.
+resource "aws_vpc_security_group_ingress_rule" "web_https" {
   security_group_id = aws_security_group.this["web"].id
-  description       = "Guest front door (static welcome page) from internet"
+  description       = "HTTPS (Caddy TLS edge) from internet"
+  ip_protocol       = "tcp"
+  from_port         = var.https_port
+  to_port           = var.https_port
+  cidr_ipv4         = "0.0.0.0/0"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "web_http" {
+  security_group_id = aws_security_group.this["web"].id
+  description       = "HTTP (Caddy ACME HTTP-01 challenge + redirect to HTTPS) from internet"
   ip_protocol       = "tcp"
   from_port         = var.welcome_port
   to_port           = var.welcome_port
-  cidr_ipv4         = "0.0.0.0/0"
-}
-
-resource "aws_vpc_security_group_ingress_rule" "web_bff" {
-  security_group_id = aws_security_group.this["web"].id
-  description       = "erp-web-ui-bff from internet"
-  ip_protocol       = "tcp"
-  from_port         = var.bff_port
-  to_port           = var.bff_port
-  cidr_ipv4         = "0.0.0.0/0"
-}
-
-resource "aws_vpc_security_group_ingress_rule" "web_keycloak_internet" {
-  security_group_id = aws_security_group.this["web"].id
-  description       = "Keycloak from internet (browser OIDC redirect)"
-  ip_protocol       = "tcp"
-  from_port         = var.keycloak_port
-  to_port           = var.keycloak_port
-  cidr_ipv4         = "0.0.0.0/0"
-}
-
-resource "aws_vpc_security_group_ingress_rule" "web_ui" {
-  security_group_id = aws_security_group.this["web"].id
-  description       = "Operational ERP SPA (nginx) from internet"
-  ip_protocol       = "tcp"
-  from_port         = var.ui_port
-  to_port           = var.ui_port
   cidr_ipv4         = "0.0.0.0/0"
 }
 

@@ -1,40 +1,52 @@
 # ===========================================================================
-# Front-door DNS.
+# Public DNS for the three HTTPS surfaces (all sub-domains of dns_zone_name).
 #
-# Points the friendly name at the ALWAYS-ON S3 front-door site (frontdoor.tf),
-# not the web box — so http://<front_door_domain>/ stays reachable even when the
-# fleet is stopped for cost-saving (the page's "Demo hours" notice explains the
-# app is asleep).
+#   front_door  (welcome page) : ALIAS -> the always-on CloudFront distribution
+#                                (frontdoor.tf), so it stays reachable over HTTPS
+#                                even when the EC2 fleet is stopped for cost-saving.
+#   ui_hostname (ERP SPA)      : A  -> the web box Elastic IP. Caddy on the box
+#   auth_hostname (Keycloak)   : A  -> the web box Elastic IP. terminates TLS
+#                                (Let's Encrypt) for both and proxies the
+#                                loopback-bound SPA nginx / Keycloak.
 #
-# CNAME, not an A-alias. An A-alias to the S3 website endpoint is the "textbook"
-# approach, but in practice Route 53 returned NODATA for it here (the alias never
-# evaluated to an address — every authoritative NS answered the record with an
-# empty A set, while serving the rest of the zone fine). A CNAME to the S3 website
-# endpoint resolves through ordinary DNS (endpoint -> regional S3 A records), which
-# works reliably; it's legal because front_door_domain is a sub-domain, not the
-# zone apex. The HTTP Host header stays <front_door_domain>, so S3 still matches
-# the bucket (bucket name == domain, per frontdoor.tf).
-#
-# Deliberately scoped to the front door ONLY. The operational ERP UI (:8090),
-# Keycloak (:8080) and the BFF (:8089) stay on the Elastic IP — the OIDC issuer
-# and realm redirect URIs are pinned to the IP (var.keycloak_hostname), and the
-# front door's "Enter the ERP" link still targets the IP. So this record is
-# purely the entry-page hostname and touches neither the realm nor the UI.
-# HTTP only (no TLS, S3 website endpoints are HTTP); pointing the UI/issuer at a
-# domain would be a separate, larger change (Keycloak hostname + realm reimport
-# + app reissue).
+# The ui/auth records point at the stable Elastic IP, so they (and the certs
+# Caddy issues for them) survive instance replacement + stop/start. The OIDC
+# issuer + realm redirect URIs are pinned to auth_hostname / ui_hostname — the
+# whole browser auth flow runs over HTTPS end to end.
 # ===========================================================================
 
 data "aws_route53_zone" "primary" {
-  count = var.front_door_domain != "" ? 1 : 0
-  name  = var.dns_zone_name
+  name = var.dns_zone_name
 }
 
+# Front door — ALIAS to CloudFront. An alias (not CNAME) is required because the
+# record can sit at any name and resolves to CloudFront's A/AAAA set directly.
 resource "aws_route53_record" "front_door" {
   count   = var.front_door_domain != "" ? 1 : 0
-  zone_id = data.aws_route53_zone.primary[0].zone_id
+  zone_id = data.aws_route53_zone.primary.zone_id
   name    = var.front_door_domain
-  type    = "CNAME"
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.front_door[0].domain_name
+    zone_id                = aws_cloudfront_distribution.front_door[0].hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+# Operational ERP SPA + Keycloak — A records to the web box Elastic IP.
+resource "aws_route53_record" "ui" {
+  zone_id = data.aws_route53_zone.primary.zone_id
+  name    = var.ui_hostname
+  type    = "A"
   ttl     = 300
-  records = [aws_s3_bucket_website_configuration.front_door[0].website_endpoint]
+  records = [module.compute.web_public_ip]
+}
+
+resource "aws_route53_record" "auth" {
+  zone_id = data.aws_route53_zone.primary.zone_id
+  name    = var.auth_hostname
+  type    = "A"
+  ttl     = 300
+  records = [module.compute.web_public_ip]
 }

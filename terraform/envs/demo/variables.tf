@@ -27,8 +27,25 @@ variable "load_seed_data" {
   default     = true
 }
 
-variable "keycloak_hostname" {
-  description = "Public address (DNS or the web EC2's public IP) used as Keycloak's KC_HOSTNAME / OIDC issuer. Empty => falls back to the web box's private IP (browser OIDC login won't work until set — set it after first apply once the public IP is known, or use an Elastic IP)."
+# ---- public hostnames (HTTPS — see frontdoor.tf / dns.tf) ------------------
+# All three are sub-domains of dns_zone_name, A-record'd to the web box Elastic
+# IP (ui/auth) or the front-door CloudFront distribution (welcome). A public CA
+# can't issue a cert for a bare IP, so the operational surfaces need real names.
+
+variable "ui_hostname" {
+  description = "FQDN for the operational ERP SPA. The on-box Caddy terminates TLS here (Let's Encrypt) and reverse-proxies the SPA nginx. This is the 'Enter the ERP' target and the OIDC redirect/origin host."
+  type        = string
+  default     = "app.northwood.chiliu02.com"
+}
+
+variable "auth_hostname" {
+  description = "FQDN for Keycloak — the OIDC issuer (https://<this>/realms/northwood). Caddy terminates TLS here and proxies to Keycloak."
+  type        = string
+  default     = "auth.northwood.chiliu02.com"
+}
+
+variable "acme_email" {
+  description = "Contact email Caddy registers with Let's Encrypt (expiry/renewal notices). Empty => Caddy registers anonymously (certs still issue)."
   type        = string
   default     = ""
 }
@@ -48,7 +65,7 @@ variable "dns_zone_name" {
 }
 
 variable "front_door_domain" {
-  description = "FQDN A-record'd to the web box Elastic IP for the guest front door (HTTP only). Empty => no record (reach the front door by IP). Does NOT affect the ERP UI / Keycloak issuer, which stay on the IP."
+  description = "FQDN for the always-on guest front door, served over HTTPS by CloudFront in front of the S3 welcome bucket (frontdoor.tf). Empty => no CloudFront/record (reach the front door only via the operational hosts)."
   type        = string
   default     = "www.northwood.chiliu02.com"
 }

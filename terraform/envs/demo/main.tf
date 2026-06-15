@@ -82,7 +82,9 @@ module "compute" {
 
   repo_root            = local.repo_root
   load_seed_data       = var.load_seed_data
-  keycloak_hostname    = var.keycloak_hostname
+  ui_hostname          = var.ui_hostname
+  auth_hostname        = var.auth_hostname
+  acme_email           = var.acme_email
   enable_observability = var.enable_observability
 
   postgres_superuser_password = module.secrets.postgres_superuser_password
