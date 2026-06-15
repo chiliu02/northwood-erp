@@ -67,12 +67,13 @@ docker run -d --name prometheus --restart unless-stopped --network northwood \
   ${obs_images.prometheus} --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.retention.time=24h --web.enable-otlp-receiver
 
 # Anonymous access is Viewer (read-only): when Grafana is published over the public
-# Caddy edge (grafana_host set), demo visitors can browse the dashboards but cannot
-# edit/delete them, add data sources, or reach Explore. GF_SERVER_ROOT_URL makes
-# Grafana emit correct absolute links behind the reverse proxy.
+# Caddy edge (grafana_host set), demo visitors can browse the dashboards and use
+# Explore (GF_USERS_VIEWERS_CAN_EDIT lets Viewers edit panels in-browser + Explore)
+# but cannot SAVE dashboards, add data sources, or reach admin — nothing persists.
+# GF_SERVER_ROOT_URL makes Grafana emit correct absolute links behind the proxy.
 docker run -d --name grafana --restart unless-stopped --network northwood \
   -p 3000:3000 \
-  -e GF_AUTH_ANONYMOUS_ENABLED=true -e GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer -e GF_AUTH_DISABLE_LOGIN_FORM=true \
+  -e GF_AUTH_ANONYMOUS_ENABLED=true -e GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer -e GF_AUTH_DISABLE_LOGIN_FORM=true -e GF_USERS_VIEWERS_CAN_EDIT=true \
 %{ if grafana_host != "" ~}
   -e GF_SERVER_ROOT_URL=https://${grafana_host}/ \
 %{ endif ~}
