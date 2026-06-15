@@ -118,7 +118,7 @@
       </ol>
       <div class="actions">
         <a class="btn primary" href="${ERP_URL}">Enter the ERP →</a>
-        <a class="btn secondary" href="https://grafana.northwood.chiliu02.com" target="_blank" rel="noopener">View Grafana (read-only) →</a>
+        <a class="btn secondary" href="${GRAFANA_URL}" target="_blank" rel="noopener">View Grafana (read-only) →</a>
       </div>
       <div class="notice">
         <span class="clock">⏰</span>

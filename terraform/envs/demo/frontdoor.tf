@@ -18,11 +18,18 @@
 
 locals {
   # Render the same template the web box uses, substituting the EIP-based ERP
-  # origin. `$${ERP_URL}` is the literal token the on-box `sed` also replaces.
+  # origin and the public read-only Grafana URL. `$${ERP_URL}` / `$${GRAFANA_URL}`
+  # are the literal tokens the on-box `envsubst` also replaces. When Grafana is
+  # not published (grafana_url empty), fall back to "#" so the link is inert
+  # rather than leaking the unreplaced token.
   front_door_html = var.front_door_domain != "" ? replace(
-    file("${local.repo_root}/config/welcome.html.template"),
-    "$${ERP_URL}",
-    module.compute.erp_url,
+    replace(
+      file("${local.repo_root}/config/welcome.html.template"),
+      "$${ERP_URL}",
+      module.compute.erp_url,
+    ),
+    "$${GRAFANA_URL}",
+    module.compute.grafana_url != "" ? module.compute.grafana_url : "#",
   ) : ""
 }
 

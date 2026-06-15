@@ -126,15 +126,17 @@ services:
   # and the Demo Guide. Deliberately separate from erp-web-ui-bff (own port, no
   # auth, no SPA) so it stays up independently and depends on nothing but itself.
   #
-  # The "Enter the ERP" / "Demo Guide" links are injected from ERP_URL at start
-  # (envsubst over the mounted template → the served index.html), so local
-  # (:8089 BFF) and AWS (its own URL) differ by env var only, with no edit to the
-  # HTML. Override: `ERP_URL=https://erp.example.com docker compose up -d welcome`.
+  # The "Enter the ERP" / "View Grafana" links are injected from ERP_URL /
+  # GRAFANA_URL at start (envsubst over the mounted template → the served
+  # index.html), so local (:8089 BFF, :3000 Grafana) and AWS (their own URLs)
+  # differ by env var only, with no edit to the HTML. Override:
+  # `ERP_URL=https://erp.example.com docker compose up -d welcome`.
   welcome:
     image: nginx:1.27-alpine
     container_name: northwood-welcome
     environment:
       ERP_URL: ${ERP_URL:-http://localhost:8089}
+      GRAFANA_URL: ${GRAFANA_URL:-http://localhost:3000}
     ports:
       - "8080:80"
     volumes:
@@ -142,7 +144,7 @@ services:
     command:
       - /bin/sh
       - -c
-      - envsubst '$$ERP_URL' < /etc/nginx/welcome-src/index.html.template > /usr/share/nginx/html/index.html && exec nginx -g 'daemon off;'
+      - envsubst '$$ERP_URL $$GRAFANA_URL' < /etc/nginx/welcome-src/index.html.template > /usr/share/nginx/html/index.html && exec nginx -g 'daemon off;'
 
   # Optional: pgAdmin for database inspection. Uncomment to enable.
   # pgadmin:
