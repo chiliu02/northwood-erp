@@ -14,7 +14,7 @@
     <artifactId>load-test</artifactId>
     <name>Northwood :: Load Test</name>
     <description>
-        Concurrent order-to-cash load test (docs/concurrent-load-test.md §5.3) — the
+        Concurrent order-to-cash load test (docs/concurrent-load-test.md §7) — the
         REST execution. A Gatling Java-DSL simulation drives many concurrent users
         against a LIVE, seeded Northwood stack (docker compose + the running
         services + Keycloak); the shared JDBC InvariantVerifier asserts the

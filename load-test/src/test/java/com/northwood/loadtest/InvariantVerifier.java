@@ -70,6 +70,41 @@ public final class InvariantVerifier {
         }
     }
 
+    /**
+     * Convergence is eventual — the final payment → {@code completed} saga
+     * transition is itself an async Kafka round-trip, so a single-shot check
+     * right after the injection drains can see sagas still mid-flight. Poll
+     * convergence (invariant 1, {@code docs/concurrent-load-test.md} §6) until
+     * either every fulfilment saga is terminal or the deadline elapses, then run
+     * the full conservation check once (no-oversell + double-entry are
+     * monotone-stable once sagas are terminal). Throws {@link AssertionError} on
+     * any remaining violation, with a census of stuck sagas.
+     */
+    public void assertAllEventually(long deadlineSeconds) {
+        long deadlineNanos = System.nanoTime() + deadlineSeconds * 1_000_000_000L;
+        long unconverged = Long.MAX_VALUE;
+        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
+             Statement statement = conn.createStatement()) {
+            while (System.nanoTime() < deadlineNanos) {
+                unconverged = scalarCount(statement, UNCONVERGED_SAGAS_SQL);
+                if (unconverged == 0) {
+                    break;
+                }
+                Thread.sleep(2_000);
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("InvariantVerifier could not query " + jdbcUrl, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("InvariantVerifier convergence wait interrupted", e);
+        }
+        if (unconverged > 0) {
+            throw new AssertionError("Load-test invariants violated:\n  - convergence: " + unconverged
+                + " fulfilment saga(s) still non-terminal after " + deadlineSeconds + "s\n  - census: " + stuckSagaCensus());
+        }
+        assertAll();
+    }
+
     /** Run every invariant and return the list of violation messages (empty = all held). */
     public List<String> check() {
         List<String> violations = new ArrayList<>();
@@ -94,6 +129,25 @@ public final class InvariantVerifier {
             throw new IllegalStateException("InvariantVerifier could not query " + jdbcUrl, e);
         }
         return violations;
+    }
+
+    /** A {@code state → count} census of the non-terminal fulfilment sagas, for the failure message. */
+    private String stuckSagaCensus() {
+        String sql = """
+            SELECT saga_state, count(*) FROM sales.sales_order_fulfilment_saga
+            WHERE saga_state NOT IN ('completed', 'rejected', 'compensated', 'failed')
+            GROUP BY saga_state ORDER BY count(*) DESC""";
+        List<String> rows = new ArrayList<>();
+        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
+             Statement statement = conn.createStatement();
+             ResultSet rs = statement.executeQuery(sql)) {
+            while (rs.next()) {
+                rows.add(rs.getString(1) + "=" + rs.getLong(2));
+            }
+        } catch (SQLException e) {
+            return "<census query failed: " + e.getMessage() + ">";
+        }
+        return rows.isEmpty() ? "<none>" : String.join(", ", rows);
     }
 
     private static long scalarCount(Statement statement, String sql) throws SQLException {
