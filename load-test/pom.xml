@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.northwood</groupId>
+        <artifactId>northwood-erp</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>load-test</artifactId>
+    <name>Northwood :: Load Test</name>
+    <description>
+        Concurrent order-to-cash load test (docs/concurrent-load-test.md §5.3) — the
+        REST execution. A Gatling Java-DSL simulation drives many concurrent users
+        against a LIVE, seeded Northwood stack (docker compose + the running
+        services + Keycloak); the shared JDBC InvariantVerifier asserts the
+        conservation invariants after the injection drains. NOT part of the default
+        reactor — see the parent POM's `load-test` profile. Requires a running stack
+        (it is not, and cannot be, a self-contained CI test).
+    </description>
+
+    <properties>
+        <gatling.version>3.11.5</gatling.version>
+        <gatling-maven-plugin.version>4.9.6</gatling-maven-plugin.version>
+    </properties>
+
+    <dependencies>
+        <!-- Gatling Java DSL (pulls gatling-core/http javaapi). Test scope: the
+             simulation lives under src/test/java, the gatling-maven-plugin runs it. -->
+        <dependency>
+            <groupId>io.gatling.highcharts</groupId>
+            <artifactId>gatling-charts-highcharts</artifactId>
+            <version>${gatling.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- PostgreSQL driver for the post-run InvariantVerifier (plain JDBC). -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>io.gatling</groupId>
+                <artifactId>gatling-maven-plugin</artifactId>
+                <version>${gatling-maven-plugin.version}</version>
+            </plugin>
+        </plugins>
+    </build>
+</project>

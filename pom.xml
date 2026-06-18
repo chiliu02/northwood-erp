@@ -224,4 +224,16 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- Concurrent load test (docs/concurrent-load-test.md §5.3). Deliberately
+             OUT of the default <modules> so `mvn verify` stays fast and CI does not
+             pull the Gatling toolchain. Build/run it explicitly with -Pload-test. -->
+        <profile>
+            <id>load-test</id>
+            <modules>
+                <module>load-test</module>
+            </modules>
+        </profile>
+    </profiles>
 </project>
