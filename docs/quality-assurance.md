@@ -237,4 +237,7 @@ Stated plainly so they are not mistaken for coverage:
 - **`reporting-service` dashboards** are partly verified only through the live demo
   walkthrough (`docs/demo-script.md`), not automated tests — the §4 low number reflects this.
 - **No load / performance / chaos testing.** The architecture is built for it (per-aggregate
-  partition keys, `SKIP LOCKED` drains) but it is not exercised under load in CI.
+  partition keys, `SKIP LOCKED` drains) but it is not exercised under load in CI. The
+  correctness-under-contention load test is **designed but not yet built** —
+  `docs/concurrent-load-test.md` (shared Testcontainers backend, Gatling REST + Playwright UI
+  executions, invariant-based assertions, and a demo mode over the live compose + LGTM stack).
