@@ -1,5 +1,8 @@
 # Maven
 target/
+
+# jqwik failure-replay store (property-test seeds)
+.jqwik-database
 pom.xml.tag
 pom.xml.releaseBackup
 pom.xml.versionsBackup
