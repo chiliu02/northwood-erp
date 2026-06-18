@@ -84,10 +84,28 @@ mvn -Pload-test -pl load-test exec:java `
   the whole order-to-cash role bundle (sales_clerk + warehouse_clerk + accountant) so one
   virtual user can drive the end-to-end flow.
 
-## Out of scope here (the focused / operations tier)
+## Focused race probes — `ConcurrentRaceProbesTest`
+
+Deliberate two-worker collisions on a single aggregate (`CyclicBarrier`-synchronised), each
+asserting an exactly-once / no-half-state property against the live DB. Run:
+
+```powershell
+mvn -Pload-test -pl load-test test "-Dtest=ConcurrentRaceProbesTest"
+```
+
+- **TC-DOUBLE-PAY** (green) — two concurrent full customer payments on one invoice allocate
+  exactly once; the second is rejected by `CHECK (paid_amount <= total_amount)` + the
+  row-locking allocation trigger.
+- **TC-DOUBLE-SHIP** / **TC-CANCEL-SHIP** (`@Disabled`) — these probes **found real races** and
+  are quarantined pending fixes (filed in `dev-todo.md`): concurrent double-ship double-decrements
+  `inventory.stock_balance.on_hand_quantity` (no synchronous over-ship guard in `ShipmentService`),
+  and concurrent cancel-vs-ship can leave an order both shipped and cancelled (the
+  `anyLineShipped()` cancel gate reads sales-local state that lags the async shipment event).
+  The test bodies are kept as the executable spec; re-enable once the guards land.
+
+## Out of scope here (the operations / supply tier)
 
 The **supply-side replenishment driver** (goods receipt / work-order completion for
-undersized-stock shortage paths) and the deliberate **two-worker collision probes**
-(TC-DOUBLE-SHIP, TC-DOUBLE-PAY, TC-CANCEL-SHIP, …) are the focused tier. This module proves
-the conservation invariants hold under concurrent placement / shipment / payment on the shared
-`stock_balance` and GL rows for the ample-stock path.
+undersized-stock shortage paths) and the remaining focused cases (TC-PAY-FIRST, TC-PARTIAL-SHIP,
+TC-SUPPLY-DUP). This module proves the conservation invariants hold under concurrent placement /
+shipment / payment on the shared `stock_balance` and GL rows for the ample-stock path.
