@@ -115,25 +115,106 @@ Seed fixtures with the same product/customer/BOM/stock factories the acceptance 
 
 ---
 
-## 4. The fulfilment journey
+## 4. Actors, eligibility, and work-selection
 
-A virtual user's order-to-cash is more than the customer-facing calls — fulfilment needs
-backend *actor* steps. Model them as distinct roles, mirroring production:
+Order-to-cash is not one virtual user — it is several **roles acting concurrently**, each
+picking work from its own pool. The naming used throughout (and in the demo): **Sarah** places
+orders, **Mike** ships, **Olivia** receives payments; the supply side (goods receipt, work-order
+completion) follows the same model with receiving/production workers. The customer-facing steps
+and the operations steps run as **separate concurrent drivers** so the customer load stays
+realistic while the supply/cash side drains at its own rate — which is exactly what surfaces the
+`stock_reservation_incomplete` dwell, the retry loop, and the out-of-order arrivals.
 
-| Step | Actor | REST surface |
-|---|---|---|
-| Place order | customer (sales clerk) | `POST /api/sales-orders` (sales-service) |
-| (shortage) raise WO / PO | system | event-driven — no call; saga + inventory route it |
-| Goods receipt / WO completion | warehouse / production | inventory + manufacturing endpoints |
-| Ship | warehouse | inventory shipment endpoint |
-| Pay | accountant | `POST /api/payments/customer` (finance-service) |
+### 4.1 Each actor sees only an *eligible pool*
 
-So the Gatling/Playwright **customer scenario** does *place → (await supply) → pay*, while a
-lightweight **operations driver** (a second, low-rate Gatling scenario or a scheduled robot)
-performs the warehouse/production steps — goods receipt, WO completion, shipment — for orders
-that have reached the relevant state. This separation keeps the customer load realistic and
-lets the supply side drain at its own rate, which is what surfaces the
-`stock_reservation_incomplete` dwell and retry behaviour.
+No actor picks from all orders — each is gated by saga/aggregate state, so "randomly picks goods
+to ship" really means *randomly picks among the orders that are currently shippable*. Picking
+outside the pool is a no-op/reject, not useful load.
+
+| Actor | Action | Eligibility (what enters the pool) | REST surface |
+| --- | --- | --- | --- |
+| **Sarah** (sales clerk) | place order | none — she is the source | `POST /api/sales-orders` |
+| Sarah / manager | amend / cancel | order exists ∧ `!anyLineShipped()` ∧ not terminal | `POST /api/sales-orders/{id}/lines`, `…/cancel` |
+| receiving | goods receipt | a dispatched replenishment request with a PO awaiting goods | inventory goods-receipt endpoint |
+| production | WO completion | a released work order | manufacturing endpoint |
+| **Mike** (warehouse) | ship | saga at `SUPPLY_SECURED` (lines reserved / supply pegged-in) | inventory shipment endpoint |
+| **Olivia** (accountant) | receive payment | an *open* customer invoice exists | `POST /api/payments/customer` |
+
+> **Olivia's pool depends on payment terms**, so it is not simply "shipped orders." Deposit and
+> prepayment invoices enter her pool **before** shipment (saga `awaiting_prepayment`); the
+> commercial invoice enters **after** `ShipmentPosted`; COD auto-settles without her. Running the
+> full product matrix across mixed terms keeps her pool a realistic blend of pre- and post-ship
+> invoices.
+
+### 4.2 Selection strategy — within the eligible pool
+
+Two strategies, both worth running because they cover different failure shapes:
+
+- **FIFO** — oldest-eligible first (by eligibility timestamp). Deterministic given a fixed arrival
+  order; models a disciplined work queue.
+- **Random** — uniform pick among the *current* eligible set, from a **seeded** RNG with the seed
+  logged for reproducibility; models real-world arbitrary pickup.
+- *(variant)* **priority** — highest production-board priority first, mirroring the real
+  reprioritisation path; useful for the supply side, not core to o2c.
+
+### 4.3 Same-role concurrency — disjoint vs overlapping
+
+The key dimension the question raises: when **several Mikes (or several Olivias) share one pool**,
+do they claim disjoint work or can two land on the same order?
+
+- **Claimed / disjoint** — a shared work queue with an atomic take (`poll()` removes), mirroring
+  `SELECT … FOR UPDATE SKIP LOCKED`. Each order goes to exactly one worker. Tests throughput and
+  that the drain neither drops nor duplicates work.
+- **Overlapping / with replacement** — each worker independently queries the backend's eligible
+  pool; the same order stays visible to multiple workers until its state advances out of
+  eligibility. **This is the race-finder** — two ship commands (or two payments) on one aggregate
+  collide on purpose, exercising the optimistic-version guard and command idempotency.
+
+### 4.4 The selection × overlap matrix
+
+| Selection ↓ / Overlap → | **Claimed (disjoint)** | **Overlapping (with replacement)** |
+| --- | --- | --- |
+| **FIFO** | orderly drain; baseline throughput; no collision | **thundering herd** — every worker converges on the *same* oldest-eligible order ⇒ maximal same-aggregate command collision (sharpest idempotency probe) |
+| **Random** | realistic spread; no double-work | realistic load **plus scattered collisions** ⇒ idempotency under lifelike conditions (the **default** race hunt) |
+
+Reading it: FIFO + overlapping is a deliberate worst case (all workers target the head); random +
+overlapping is the realistic default; the claimed column validates the clean drain and that
+claiming itself is correct. **All four cells are run** — they are not redundant.
+
+### 4.5 Cross-role interleaving
+
+Sarah, Mike, and Olivia running together (different rates) produces the genuinely interesting
+orderings the single-actor view never reaches: payment landing before an order is fully shipped, a
+cancel racing a shipment, a partial ship followed by a replenished re-ship. Per-order *event*
+ordering still holds at the messaging layer (partition key = `aggregateId`,
+`docs/messaging.md`); the contention "random + overlapping + multi-role" creates is at the
+**command/aggregate layer** — concurrent commands on one aggregate and out-of-order actor arrival.
+
+### 4.6 Test-case catalogue — different cases for different situations
+
+The dimensions above (§4.1–4.5) compose into a suite of **independently-runnable test cases**, not
+one monolith. Each pins a situation, fixes a generator config, and checks the subset of properties
+(§6) it targets. Run any case alone; CI runs the cheap focused ones, while the stress and demo
+cases run on demand.
+
+| ID | Situation | Config (selection · overlap · products · terms · scale) | Tier | Properties (§6) |
+| --- | --- | --- | --- | --- |
+| **TC-STRESS** | the headline race hunt | random · overlapping · all 4 · mixed · massive | Gatling | all (1–6) |
+| **TC-THROUGHPUT** | clean-drain baseline + metrics | random · claimed · all 4 · mixed · massive | Gatling | 1, 2 |
+| **TC-HERD** | idempotency thundering herd | FIFO · overlapping · 1 SKU · on-ship · ≥ 8 workers | jqwik / Gatling | 4 + no-double-effect |
+| **TC-DOUBLE-SHIP** | two Mikes, one order | random · overlapping · any · — · 2 shippers | jqwik-IT | exactly-one ship + COGS |
+| **TC-DOUBLE-PAY** | two Olivias, one invoice | — · overlapping · any · on-ship · 2 payers | jqwik-IT | 3 + no over-allocation |
+| **TC-CANCEL-SHIP** | cancel races ship | — · overlapping · any · — · cancel + ship | jqwik-IT | `anyLineShipped()` gate, no half-state |
+| **TC-PAY-FIRST** | pay before fully shipped | — · — · any · deposit/prepay · cross-role | jqwik-IT | completion gate (1) |
+| **TC-PARTIAL-SHIP** | multi-line, partial then re-ship | — · — · TO_STOCK · — · staged supply | jqwik-IT | 2 + line-fold rollup |
+| **TC-SUPPLY-DUP** | dup goods-receipt / WO-completion | — · overlapping · supply side · — · 2 receivers | jqwik-IT | 4 + single top-up |
+| **TC-PATH-{TS-PUR,TS-MFG,TO-PUR,TO-MFG}** | one product path saturated | random · overlapping · **one** · mixed · high | Gatling | path-specific 1–4 |
+| **TC-UI** | front-end fidelity, distinct users | Playwright · ~10–50 OIDC users · all 4 · mixed | Playwright | all, smaller set + session isolation |
+| **TC-DEMO** | live showcase | tuned for watchability over the live stack | demo | optional finale |
+
+"—" means the axis is not what the case is about (use the default). The matrix sweep (§4.4) is just
+TC-STRESS / TC-THROUGHPUT / TC-HERD run across its four cells; the focused `TC-*` cases are the
+race probes — each a short scenario that fails fast and points at one property.
 
 > Sales placement is `POST /api/sales-orders`; cancel is `POST /api/sales-orders/{id}/cancel`;
 > line amend is `POST /api/sales-orders/{id}/lines`. Customer payment is
@@ -189,6 +270,43 @@ finale). Each maps to a real failure mode:
    key = `aggregateId`) even though orders interleave globally.
 6. **Empty DLT.** No saga wedged on a `CHECK` violation (the `23514` → DLT-loop failure mode of
    `docs/validations.md`); the dead-letter topic is empty at the end.
+
+### 6.1 This is a property-based test — and the tools that run it
+
+The shape above *is* property-based testing applied to a concurrent, stateful system:
+
+- **Properties** = invariants 1–6, universally quantified over *all* legal interleavings ("for any
+  schedule of Sarah/Mike/Olivia, the ledger balances and nothing oversells") — not example-based
+  assertions.
+- **Generators** = the randomized inputs: which user (Keycloak feeder), which of the four products,
+  which payment terms, the selection strategy and worker-overlap (§4), and the arrival timing — all
+  from a **seeded** RNG, with the seed logged so any failing run replays.
+- **The "for all" quantifier** is approximated by *volume* — thousands of randomized interleavings
+  rather than enumerated cases — the same statistical-coverage bet QuickCheck makes.
+
+**Frameworks / tools** (yes — this need not be hand-rolled):
+
+- **jqwik** (the JUnit 5 property engine) for the in-JVM, controllable cases (`TC-DOUBLE-SHIP …
+  TC-SUPPLY-DUP`, `TC-HERD`). Its **stateful / `Action`-sequence** model fits exactly: generate a
+  random sequence of actor commands (place / ship / pay / cancel / receive), run them against the
+  real services on the Testcontainers backend, and assert the properties after each step. jqwik
+  also **shrinks** — on failure it minimises the command sequence toward the smallest interleaving
+  that still breaks the property, the one thing a hand-rolled loop cannot give you.
+- **Gatling** for the high-volume cases (`TC-STRESS`, `TC-THROUGHPUT`, `TC-PATH-*`): the "generator"
+  is the feeders + seeded RNG and the property check is the `InvariantVerifier` in the `after {}`
+  hook (§7).
+- The rigorous framing is **model-based / linearizability** testing: check that the random
+  concurrent history linearises against a sequential model — here the saga's legal transition
+  function (`SalesOrderFulfilmentSaga.ALL_STATES` + allowed edges) plus the conservation arithmetic
+  (stock, double-entry). jqwik's stateful model expresses this directly; a Jepsen-style external
+  history + linearizability checker is possible but out of scope.
+
+**Honest limit on shrinking.** Deterministic shrinking needs a *controllable scheduler*; with real
+Kafka + Postgres + wall-clock timing a failure may not reproduce identically. So jqwik shrinking is
+used for the in-JVM Testcontainers cases (where the command sequence is the variable); for the
+Gatling stress run, "shrinking" degrades to **seed + full command/event trace capture** for replay,
+and the minimal case is then reconstructed as a jqwik case. A deterministic in-JVM replay (a
+pluggable scheduler over the synchronous-bus harness, `docs/test-harness-dsl.md`) is a stretch goal.
 
 Metrics are **reported, not asserted** (so they never flake the build): orders/sec, p50/p95
 time-to-`COMPLETED` per product type, `TO_STOCK` retry-loop count, max
