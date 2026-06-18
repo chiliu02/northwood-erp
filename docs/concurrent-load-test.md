@@ -197,20 +197,20 @@ one monolith. Each pins a situation, fixes a generator config, and checks the su
 (§6) it targets. Run any case alone; CI runs the cheap focused ones, while the stress and demo
 cases run on demand.
 
-| ID | Situation | Config (selection · overlap · products · terms · scale) | Tier | Properties (§6) |
-| --- | --- | --- | --- | --- |
-| **TC-STRESS** | the headline race hunt | random · overlapping · all 4 · mixed · massive | Gatling | all (1–6) |
-| **TC-THROUGHPUT** | clean-drain baseline + metrics | random · claimed · all 4 · mixed · massive | Gatling | 1, 2 |
-| **TC-HERD** | idempotency thundering herd | FIFO · overlapping · 1 SKU · on-ship · ≥ 8 workers | jqwik / Gatling | 4 + no-double-effect |
-| **TC-DOUBLE-SHIP** | two Mikes, one order | random · overlapping · any · — · 2 shippers | jqwik-IT | exactly-one ship + COGS |
-| **TC-DOUBLE-PAY** | two Olivias, one invoice | — · overlapping · any · on-ship · 2 payers | jqwik-IT | 3 + no over-allocation |
-| **TC-CANCEL-SHIP** | cancel races ship | — · overlapping · any · — · cancel + ship | jqwik-IT | `anyLineShipped()` gate, no half-state |
-| **TC-PAY-FIRST** | pay before fully shipped | — · — · any · deposit/prepay · cross-role | jqwik-IT | completion gate (1) |
-| **TC-PARTIAL-SHIP** | multi-line, partial then re-ship | — · — · TO_STOCK · — · staged supply | jqwik-IT | 2 + line-fold rollup |
-| **TC-SUPPLY-DUP** | dup goods-receipt / WO-completion | — · overlapping · supply side · — · 2 receivers | jqwik-IT | 4 + single top-up |
-| **TC-PATH-{TS-PUR,TS-MFG,TO-PUR,TO-MFG}** | one product path saturated | random · overlapping · **one** · mixed · high | Gatling | path-specific 1–4 |
-| **TC-UI** | front-end fidelity, distinct users | Playwright · ~10–50 OIDC users · all 4 · mixed | Playwright | all, smaller set + session isolation |
-| **TC-DEMO** | live showcase | tuned for watchability over the live stack | demo | optional finale |
+| ID                                        | Situation                          | Config (selection · overlap · products · terms · scale) | Tier            | Properties (§6)                        |
+| ----------------------------------------- | ---------------------------------- | ------------------------------------------------------- | --------------- | -------------------------------------- |
+| **TC-STRESS**                             | the headline race hunt             | random · overlapping · all 4 · mixed · massive          | Gatling         | all (1–6)                              |
+| **TC-THROUGHPUT**                         | clean-drain baseline + metrics     | random · claimed · all 4 · mixed · massive              | Gatling         | 1, 2                                   |
+| **TC-HERD**                               | idempotency thundering herd        | FIFO · overlapping · 1 SKU · on-ship · ≥ 8 workers      | jqwik / Gatling | 4 + no-double-effect                   |
+| **TC-DOUBLE-SHIP**                        | two Mikes, one order               | random · overlapping · any · — · 2 shippers             | jqwik-IT        | exactly-one ship + COGS                |
+| **TC-DOUBLE-PAY**                         | two Olivias, one invoice           | — · overlapping · any · on-ship · 2 payers              | jqwik-IT        | 3 + no over-allocation                 |
+| **TC-CANCEL-SHIP**                        | cancel races ship                  | — · overlapping · any · — · cancel + ship               | jqwik-IT        | `anyLineShipped()` gate, no half-state |
+| **TC-PAY-FIRST**                          | pay before fully shipped           | — · — · any · deposit/prepay · cross-role               | jqwik-IT        | completion gate (1)                    |
+| **TC-PARTIAL-SHIP**                       | multi-line, partial then re-ship   | — · — · TO_STOCK · — · staged supply                    | jqwik-IT        | 2 + line-fold rollup                   |
+| **TC-SUPPLY-DUP**                         | dup goods-receipt / WO-completion  | — · overlapping · supply side · — · 2 receivers         | jqwik-IT        | 4 + single top-up                      |
+| **TC-PATH-{TS-PUR,TS-MFG,TO-PUR,TO-MFG}** | one product path saturated         | random · overlapping · **one** · mixed · high           | Gatling         | path-specific 1–4                      |
+| **TC-UI**                                 | front-end fidelity, distinct users | Playwright · ~10–50 OIDC users · all 4 · mixed          | Playwright      | all, smaller set + session isolation   |
+| **TC-DEMO**                               | live showcase                      | tuned for watchability over the live stack              | demo            | optional finale                        |
 
 "—" means the axis is not what the case is about (use the default). The matrix sweep (§4.4) is just
 TC-STRESS / TC-THROUGHPUT / TC-HERD run across its four cells; the focused `TC-*` cases are the
