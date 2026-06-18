@@ -94,6 +94,17 @@
             <artifactId>assertj-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- jqwik — property-based / generative testing engine for the concurrent
+             load test (docs/concurrent-load-test.md §6.1). Coexists with JUnit
+             Jupiter on the JUnit Platform; its transitive junit-platform-* deps are
+             pinned to the Spring Boot BOM's version. Not centrally managed (parent
+             dependencyManagement) because test-harness is its only consumer. -->
+        <dependency>
+            <groupId>net.jqwik</groupId>
+            <artifactId>jqwik</artifactId>
+            <version>1.9.3</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

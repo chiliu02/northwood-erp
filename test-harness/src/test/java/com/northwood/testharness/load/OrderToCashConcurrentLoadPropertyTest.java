@@ -15,16 +15,23 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
-import org.junit.jupiter.api.RepeatedTest;
-import org.junit.jupiter.api.RepetitionInfo;
+import net.jqwik.api.Arbitraries;
+import net.jqwik.api.Arbitrary;
+import net.jqwik.api.Combinators;
+import net.jqwik.api.ForAll;
+import net.jqwik.api.Property;
+import net.jqwik.api.Provide;
 
 /**
- * Slice 1 of the concurrent load test ({@code docs/concurrent-load-test.md}) — the
- * <strong>in-JVM property-based tier</strong>. It drives randomized order-to-cash
- * sequences across the four product archetypes (to_stock / to_order ×
- * manufactured / purchased) and a pool of users through the <em>real</em> saga,
- * inbox handlers, and Jackson serde over the in-memory {@link World}, then asserts
- * the model-based <em>properties</em> hold for <em>every</em> generated mix:
+ * Slice 5.2 of the concurrent load test ({@code docs/concurrent-load-test.md}) — the
+ * <strong>in-JVM property-based tier</strong>, now driven by <b>jqwik</b> so failing
+ * scenarios <em>shrink</em> to the minimal reproducing mix (§6.1).
+ *
+ * <p>jqwik generates a random list of order specs — each a pick of the four product
+ * archetypes (to_stock / to_order × manufactured / purchased, plus the in-stock
+ * variant), a user from a pool, and a quantity. Every generated mix is driven through
+ * the <em>real</em> saga + inbox handlers + Jackson serde over a fresh in-memory
+ * {@link World}, then the model-based <em>properties</em> must hold:
  *
  * <ol>
  *   <li><b>Convergence</b> — every order's fulfilment saga reaches {@code COMPLETED}.</li>
@@ -33,20 +40,20 @@ import org.junit.jupiter.api.RepetitionInfo;
  *   <li><b>Double-entry</b> — every posted journal entry balances (Σ debits = Σ credits).</li>
  * </ol>
  *
- * <p>Each repetition is one randomized scenario seeded by its repetition index, so a
- * failure is reproducible (the seed is in every assertion message). Orders are driven
- * in phases — place all, secure supply for all, ship all, pay all — so many sagas are
- * in flight together rather than each completing before the next begins.
+ * <p>Orders are driven in phases (place all → secure supply all → ship all → pay all),
+ * each phase shuffled by a per-run seed, so many sagas are in flight together rather
+ * than each completing before the next begins. On failure jqwik prints the shrunk
+ * sample and its reproduction seed.
  *
- * <p><b>What this tier is and is not.</b> Because {@link World#settle()} is single-
- * threaded and each order owns its own product, this exercises saga / handler logic
- * under an arbitrary <em>mix and ordering</em> of orders — it is the property /
- * model-based tier, not the real shared-resource concurrency tier (that is the
- * Testcontainers + Gatling execution, {@code docs/concurrent-load-test.md} §2/§7).
- * Migration to jqwik (stateful Action sequences + shrinking) is the next slice.
+ * <p><b>What this tier is and is not.</b> {@link World#settle()} is single-threaded and
+ * each order owns its own product, so this exercises saga / handler logic under an
+ * arbitrary <em>mix and ordering</em> of orders — the property / model-based tier, not
+ * the real shared-resource concurrency tier (the Testcontainers + Gatling execution,
+ * {@code docs/concurrent-load-test.md} §2/§7).
  */
 class OrderToCashConcurrentLoadPropertyTest {
 
+    private static final int CUSTOMER_POOL = 5;
     private static final BigDecimal SALES_PRICE = BigDecimal.valueOf(100);
     private static final BigDecimal SUPPLIER_PRICE = BigDecimal.valueOf(70);
     private static final BigDecimal SHIP_UNIT_COST = BigDecimal.valueOf(60);
@@ -61,89 +68,97 @@ class OrderToCashConcurrentLoadPropertyTest {
         TO_ORDER_MANUFACTURED
     }
 
+    /** A generated order: which archetype, which user (0..CUSTOMER_POOL-1), and how many units. */
+    private record OrderSpec(Archetype archetype, int customer, int qty) {}
+
+    /** A resolved order ready to drive: its codes plus the generated spec. */
     private record OrderPlan(String orderNumber, String customerCode, String productCode,
                              String productName, Archetype archetype, int qty) {}
 
-    @RepeatedTest(30)
-    void invariants_hold_across_a_randomized_order_to_cash_mix(RepetitionInfo info) {
-        long seed = info.getCurrentRepetition();
-        Random rng = new Random(seed);
+    @Property(tries = 100)
+    void invariants_hold_across_a_randomized_order_to_cash_mix(@ForAll("orderMixes") List<OrderSpec> mix) {
         World world = new World();
-
-        int customerCount = 3 + rng.nextInt(3);            // 3..5 distinct users
-        for (int c = 0; c < customerCount; c++) {
+        for (int c = 0; c < CUSTOMER_POOL; c++) {
             world.seedCustomer(customerCode(c), "Customer " + c);
         }
 
-        int orderCount = 5 + rng.nextInt(8);               // 5..12 orders
-        Archetype[] archetypes = Archetype.values();
         List<OrderPlan> plans = new ArrayList<>();
-        for (int i = 0; i < orderCount; i++) {
-            Archetype archetype = archetypes[rng.nextInt(archetypes.length)];
-            String customer = customerCode(rng.nextInt(customerCount));
-            int qty = 1 + rng.nextInt(4);                  // 1..4 units
+        for (int i = 0; i < mix.size(); i++) {
+            OrderSpec spec = mix.get(i);
             OrderPlan plan = new OrderPlan(
-                "SO-" + seed + "-" + i, customer,
-                "LP-" + seed + "-" + i, "Load product " + i, archetype, qty);
+                "SO-" + i, customerCode(spec.customer() % CUSTOMER_POOL),
+                "LP-" + i, "Load product " + i, spec.archetype(), spec.qty());
             seedProductFor(world, plan);
             plans.add(plan);
         }
 
+        // A per-run RNG only shuffles the phase orderings; the *mix* is jqwik's generated input.
+        Random shuffleRng = new Random(mix.hashCode());
+
         // Phase 1 — place every order (sagas park in flight: SUPPLY_SECURED or awaiting supply).
-        for (OrderPlan plan : shuffled(plans, rng)) {
+        for (OrderPlan plan : shuffled(plans, shuffleRng)) {
             world.placeOrder(plan.orderNumber(), plan.customerCode(),
                 List.of(new World.OrderLineSpec(plan.productCode(), bd(plan.qty()))));
         }
         // Phase 2 — secure supply for every order (goods receipt / work-order completion / already reserved).
-        for (OrderPlan plan : shuffled(plans, rng)) {
+        for (OrderPlan plan : shuffled(plans, shuffleRng)) {
             secureSupply(world, plan);
         }
         // Phase 3 — ship every order.
-        for (OrderPlan plan : shuffled(plans, rng)) {
+        for (OrderPlan plan : shuffled(plans, shuffleRng)) {
             world.ship("SHIP-" + plan.orderNumber(), plan.orderNumber(),
                 List.of(new World.ShipLineSpec(plan.productCode(), bd(plan.qty()), SHIP_UNIT_COST)));
         }
         // Phase 4 — pay every order in full.
-        for (OrderPlan plan : shuffled(plans, rng)) {
+        for (OrderPlan plan : shuffled(plans, shuffleRng)) {
             world.pay("PAY-" + plan.orderNumber(), plan.orderNumber(), SALES_PRICE.multiply(bd(plan.qty())));
         }
 
-        assertConvergence(world, plans, seed);
-        assertNoOversell(world, plans, seed);
-        assertDoubleEntryBalances(world, seed);
+        assertConvergence(world, plans);
+        assertNoOversell(world, plans);
+        assertDoubleEntryBalances(world);
+    }
+
+    @Provide
+    Arbitrary<List<OrderSpec>> orderMixes() {
+        Arbitrary<Archetype> archetype = Arbitraries.of(Archetype.values());
+        Arbitrary<Integer> customer = Arbitraries.integers().between(0, CUSTOMER_POOL - 1);
+        Arbitrary<Integer> quantity = Arbitraries.integers().between(1, 4);
+        Arbitrary<OrderSpec> order = Combinators.combine(archetype, customer, quantity).as(OrderSpec::new);
+        return order.list().ofMinSize(3).ofMaxSize(12);
     }
 
     // ── property assertions ───────────────────────────────────────────────
 
-    private void assertConvergence(World world, List<OrderPlan> plans, long seed) {
+    private void assertConvergence(World world, List<OrderPlan> plans) {
         for (OrderPlan plan : plans) {
             assertThat(world.sagaState(plan.orderNumber()))
-                .as("seed=%d: order %s (%s) must converge to COMPLETED", seed, plan.orderNumber(), plan.archetype())
+                .as("order %s (%s, qty %d) must converge to COMPLETED", plan.orderNumber(), plan.archetype(), plan.qty())
                 .isEqualTo(SalesOrderFulfilmentSaga.COMPLETED);
         }
     }
 
-    private void assertNoOversell(World world, List<OrderPlan> plans, long seed) {
+    private void assertNoOversell(World world, List<OrderPlan> plans) {
         Set<String> productCodes = new LinkedHashSet<>();
         plans.forEach(p -> productCodes.add(p.productCode()));
         for (String productCode : productCodes) {
             StockBalanceView balance = world.stockBalance(productCode);
             assertThat(balance.onHand())
-                .as("seed=%d: %s on-hand must not go negative", seed, productCode)
+                .as("%s on-hand must not go negative", productCode)
                 .isGreaterThanOrEqualTo(BigDecimal.ZERO);
             assertThat(balance.reserved())
-                .as("seed=%d: %s reserved must not go negative", seed, productCode)
+                .as("%s reserved must not go negative", productCode)
                 .isGreaterThanOrEqualTo(BigDecimal.ZERO);
             assertThat(balance.available())
-                .as("seed=%d: %s must not oversell (reserved ≤ on-hand)", seed, productCode)
+                .as("%s must not oversell (reserved ≤ on-hand)", productCode)
                 .isGreaterThanOrEqualTo(BigDecimal.ZERO);
         }
     }
 
-    private void assertDoubleEntryBalances(World world, long seed) {
+    private void assertDoubleEntryBalances(World world) {
         List<JournalEntry> entries = world.journalEntries();
         assertThat(entries)
-            .as("seed=%d: completed orders must have posted journal entries", seed)
+            .as("completed orders must have posted journal entries")
             .isNotEmpty();
         for (JournalEntry entry : entries) {
             BigDecimal debits = BigDecimal.ZERO;
@@ -153,8 +168,7 @@ class OrderToCashConcurrentLoadPropertyTest {
                 credits = credits.add(line.creditAmount());
             }
             assertThat(debits.setScale(2, RoundingMode.HALF_UP))
-                .as("seed=%d: journal %s must balance (debits=%s credits=%s)",
-                    seed, entry.journalNumber(), debits, credits)
+                .as("journal %s must balance (debits=%s credits=%s)", entry.journalNumber(), debits, credits)
                 .isEqualByComparingTo(credits.setScale(2, RoundingMode.HALF_UP));
         }
     }
