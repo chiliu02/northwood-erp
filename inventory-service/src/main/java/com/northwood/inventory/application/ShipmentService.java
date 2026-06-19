@@ -108,6 +108,28 @@ public class ShipmentService {
         }
     }
 
+    /**
+     * Thrown when a shipment line would ship more than the originating sales-order
+     * line's outstanding quantity (its ordered qty minus what has already shipped).
+     * Mapped to HTTP 409. This is the synchronous over-ship guard: two concurrent
+     * shipments of one reserved line race on the line's ship-claim row, and the
+     * one that would push cumulative shipped past ordered is rejected here rather
+     * than silently double-decrementing {@code stock_balance.on_hand_quantity}.
+     */
+    public static class ShipmentLineOverShipException extends ConflictException {
+        public static final String CODE = "SHIPMENT_LINE_OVER_SHIP";
+        private final UUID salesOrderLineId;
+        public ShipmentLineOverShipException(UUID salesOrderLineId, java.math.BigDecimal requestedQuantity) {
+            super(CODE, "Cannot ship %s of sales_order_line=%s — it would exceed the line's outstanding quantity (already fully shipped, or a concurrent shipment claimed it)"
+                .formatted(requestedQuantity, salesOrderLineId));
+            this.salesOrderLineId = salesOrderLineId;
+        }
+        public UUID salesOrderLineId() { return salesOrderLineId; }
+        @Override public Map<String, Object> params() {
+            return Map.of("salesOrderLineId", salesOrderLineId);
+        }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(ShipmentService.class);
 
     private final ShipmentRepository shipments;
@@ -175,6 +197,21 @@ public class ShipmentService {
                 throw new ShipmentLineProductMismatchException(
                     line.salesOrderLineId(), expected.orElse(null), line.productId()
                 );
+            }
+        }
+
+        // Synchronous over-ship guard: atomically claim each linked line's ship
+        // quantity against its outstanding allowance (ordered − already shipped),
+        // row-locked, BEFORE any stock decrement. A second concurrent shipment of
+        // the same line that would push cumulative shipped past ordered is rejected
+        // here, so it cannot double-decrement on_hand. Unlinked manual shipments
+        // (no sales_order_line_id) are not capped — an existing affordance.
+        for (ShipmentLineRequest line : command.lines()) {
+            if (line.salesOrderLineId() == null) {
+                continue;
+            }
+            if (!salesOrderLineFacts.tryClaimShipment(line.salesOrderLineId(), line.shippedQuantity())) {
+                throw new ShipmentLineOverShipException(line.salesOrderLineId(), line.shippedQuantity());
             }
         }
 

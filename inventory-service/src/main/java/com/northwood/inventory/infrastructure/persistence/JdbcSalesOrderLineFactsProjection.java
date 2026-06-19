@@ -1,6 +1,7 @@
 package com.northwood.inventory.infrastructure.persistence;
 
 import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection;
+import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -22,25 +23,74 @@ public class JdbcSalesOrderLineFactsProjection implements SalesOrderLineFactsPro
 
     @Override
     @Transactional
-    public void applySalesOrderPlaced(UUID salesOrderHeaderId, UUID salesOrderLineId, UUID productId, String paymentTerms) {
+    public void applySalesOrderPlaced(UUID salesOrderHeaderId, UUID salesOrderLineId, UUID productId,
+                                      BigDecimal orderedQuantity, String paymentTerms) {
         // paymentTerms is null on legacy events emitted before payment-terms
         // support shipped — let the column DEFAULT 'on_shipment' apply by
         // passing null through the COALESCE on conflict and binding 'on_shipment'
-        // on the initial INSERT.
+        // on the initial INSERT. ON CONFLICT refreshes ordered_quantity but
+        // never resets shipped_quantity (a redelivery must not un-claim already
+        // shipped units).
         String pt = paymentTerms == null ? "on_shipment" : paymentTerms;
         jdbc.update("""
             INSERT INTO inventory.sales_order_line_facts (
-                sales_order_line_id, sales_order_header_id, product_id, payment_terms
-            ) VALUES (?, ?, ?, ?)
+                sales_order_line_id, sales_order_header_id, product_id, ordered_quantity, payment_terms
+            ) VALUES (?, ?, ?, ?, ?)
             ON CONFLICT (sales_order_line_id) DO UPDATE SET
                 sales_order_header_id = EXCLUDED.sales_order_header_id,
                 product_id = EXCLUDED.product_id,
+                ordered_quantity = EXCLUDED.ordered_quantity,
                 payment_terms = EXCLUDED.payment_terms
             """,
-            salesOrderLineId, salesOrderHeaderId, productId, pt
+            salesOrderLineId, salesOrderHeaderId, productId, orderedQuantity, pt
         );
-        log.debug("seeded sales_order_line_facts for line={} (so={}, product={}, payment_terms={})",
-            salesOrderLineId, salesOrderHeaderId, productId, pt);
+        log.debug("seeded sales_order_line_facts for line={} (so={}, product={}, orderedQty={}, payment_terms={})",
+            salesOrderLineId, salesOrderHeaderId, productId, orderedQuantity, pt);
+    }
+
+    @Override
+    @Transactional
+    public void applyLineQuantityChanged(UUID salesOrderLineId, BigDecimal newOrderedQuantity) {
+        jdbc.update("""
+            UPDATE inventory.sales_order_line_facts
+               SET ordered_quantity = ?
+             WHERE sales_order_line_id = ?
+            """,
+            newOrderedQuantity, salesOrderLineId
+        );
+    }
+
+    @Override
+    @Transactional
+    public void applyLineRemoved(UUID salesOrderLineId) {
+        // Guard on shipped=0 so this never trips the shipped<=ordered CHECK
+        // (removal is gated before any line ships; the guard is defence-in-depth).
+        jdbc.update("""
+            UPDATE inventory.sales_order_line_facts
+               SET ordered_quantity = 0
+             WHERE sales_order_line_id = ?
+               AND shipped_quantity = 0
+            """,
+            salesOrderLineId
+        );
+    }
+
+    @Override
+    @Transactional
+    public boolean tryClaimShipment(UUID salesOrderLineId, BigDecimal quantity) {
+        // Atomic, row-locked claim: bump shipped only if it stays within ordered.
+        // Concurrent shipments of one line serialize on this UPDATE's row lock,
+        // so the second-past-the-cap matches 0 rows and is rejected. The
+        // shipped<=ordered CHECK is the backstop if any path bypasses this WHERE.
+        int claimed = jdbc.update("""
+            UPDATE inventory.sales_order_line_facts
+               SET shipped_quantity = shipped_quantity + ?
+             WHERE sales_order_line_id = ?
+               AND shipped_quantity + ? <= ordered_quantity
+            """,
+            quantity, salesOrderLineId, quantity
+        );
+        return claimed == 1;
     }
 
     @Override

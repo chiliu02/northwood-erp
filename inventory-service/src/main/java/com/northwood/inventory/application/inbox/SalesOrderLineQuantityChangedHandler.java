@@ -21,19 +21,24 @@ public class SalesOrderLineQuantityChangedHandler extends AbstractInboxHandler<S
     public static final String HANDLER_NAME = "inventory.sales-order-line-quantity-changed";
 
     private final StockReservationService reservation;
+    private final SalesOrderLineFactsProjection salesOrderLineFacts;
 
     public SalesOrderLineQuantityChangedHandler(
         InboxPort inbox,
         StockReservationService reservation,
+        SalesOrderLineFactsProjection salesOrderLineFacts,
         ObjectMapper json
     ) {
         super(inbox, json, SalesOrderLineQuantityChanged.class, SalesOrderLineQuantityChanged.EVENT_TYPE, HANDLER_NAME);
         this.reservation = reservation;
+        this.salesOrderLineFacts = salesOrderLineFacts;
     }
 
     @Override
     protected void apply(SalesOrderLineQuantityChanged payload, EventEnvelope envelope) {
         reservation.applyLineQuantityChanged(payload.aggregateId(), payload.salesOrderLineId(), payload.newQuantity());
+        // Keep the over-ship cap accurate after a quantity amendment.
+        salesOrderLineFacts.applyLineQuantityChanged(payload.salesOrderLineId(), payload.newQuantity());
         log.info("[{}] processed {} ({}) for sales_order={} line={} newQty={}",
             HANDLER_NAME, envelope.eventType(), envelope.eventId(),
             payload.aggregateId(), payload.salesOrderLineId(), payload.newQuantity());

@@ -19,19 +19,24 @@ public class SalesOrderLineRemovedHandler extends AbstractInboxHandler<SalesOrde
     public static final String HANDLER_NAME = "inventory.sales-order-line-removed";
 
     private final StockReservationService reservation;
+    private final SalesOrderLineFactsProjection salesOrderLineFacts;
 
     public SalesOrderLineRemovedHandler(
         InboxPort inbox,
         StockReservationService reservation,
+        SalesOrderLineFactsProjection salesOrderLineFacts,
         ObjectMapper json
     ) {
         super(inbox, json, SalesOrderLineRemoved.class, SalesOrderLineRemoved.EVENT_TYPE, HANDLER_NAME);
         this.reservation = reservation;
+        this.salesOrderLineFacts = salesOrderLineFacts;
     }
 
     @Override
     protected void apply(SalesOrderLineRemoved payload, EventEnvelope envelope) {
         reservation.applyLineRemoved(payload.aggregateId(), payload.salesOrderLineId());
+        // Zero the over-ship allowance so a removed line can no longer ship.
+        salesOrderLineFacts.applyLineRemoved(payload.salesOrderLineId());
         log.info("[{}] processed {} ({}) for sales_order={} line={}",
             HANDLER_NAME, envelope.eventType(), envelope.eventId(), payload.aggregateId(), payload.salesOrderLineId());
     }

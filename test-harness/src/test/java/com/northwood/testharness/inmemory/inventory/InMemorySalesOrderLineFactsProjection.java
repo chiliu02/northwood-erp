@@ -1,6 +1,7 @@
 package com.northwood.testharness.inmemory.inventory;
 
 import com.northwood.inventory.application.inbox.SalesOrderLineFactsProjection;
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -19,13 +20,46 @@ public final class InMemorySalesOrderLineFactsProjection implements SalesOrderLi
     private final Map<UUID, UUID> headerByLineId = new HashMap<>();
     private final Map<UUID, String> paymentTermsByHeaderId = new HashMap<>();
     private final Map<UUID, Boolean> upfrontSettledByHeaderId = new HashMap<>();
+    private final Map<UUID, BigDecimal> orderedByLineId = new HashMap<>();
+    private final Map<UUID, BigDecimal> shippedByLineId = new HashMap<>();
 
     @Override
-    public void applySalesOrderPlaced(UUID salesOrderHeaderId, UUID salesOrderLineId, UUID productId, String paymentTerms) {
+    public void applySalesOrderPlaced(UUID salesOrderHeaderId, UUID salesOrderLineId, UUID productId,
+                                      BigDecimal orderedQuantity, String paymentTerms) {
         productIdByLineId.put(salesOrderLineId, productId);
         headerByLineId.put(salesOrderLineId, salesOrderHeaderId);
         paymentTermsByHeaderId.put(salesOrderHeaderId, paymentTerms == null ? "on_shipment" : paymentTerms);
         upfrontSettledByHeaderId.putIfAbsent(salesOrderHeaderId, false);
+        orderedByLineId.put(salesOrderLineId, orderedQuantity);
+        shippedByLineId.putIfAbsent(salesOrderLineId, BigDecimal.ZERO);
+    }
+
+    @Override
+    public void applyLineQuantityChanged(UUID salesOrderLineId, BigDecimal newOrderedQuantity) {
+        if (orderedByLineId.containsKey(salesOrderLineId)) {
+            orderedByLineId.put(salesOrderLineId, newOrderedQuantity);
+        }
+    }
+
+    @Override
+    public void applyLineRemoved(UUID salesOrderLineId) {
+        if (shippedByLineId.getOrDefault(salesOrderLineId, BigDecimal.ZERO).signum() == 0) {
+            orderedByLineId.put(salesOrderLineId, BigDecimal.ZERO);
+        }
+    }
+
+    @Override
+    public synchronized boolean tryClaimShipment(UUID salesOrderLineId, BigDecimal quantity) {
+        BigDecimal ordered = orderedByLineId.get(salesOrderLineId);
+        if (ordered == null) {
+            return false;
+        }
+        BigDecimal shipped = shippedByLineId.getOrDefault(salesOrderLineId, BigDecimal.ZERO);
+        if (shipped.add(quantity).compareTo(ordered) > 0) {
+            return false;
+        }
+        shippedByLineId.put(salesOrderLineId, shipped.add(quantity));
+        return true;
     }
 
     @Override

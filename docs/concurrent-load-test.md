@@ -491,7 +491,7 @@ interface OrderDriver {
 |---|---|---|---|
 | **In-JVM property suite** (`test-harness` `OrderToCashConcurrentLoadPropertyTest`, jqwik) | All four archetypes (to_stock/to_order × purchased/manufactured) incl. the supply legs (goods receipt, work-order completion), through the **real** saga + inbox handlers + serde over the in-memory `World` | Saga/handler **logic** correctness under an arbitrary *mix and ordering* of orders; convergence, no-oversell, double-entry per run | ✅ CI-green (100 jqwik tries) |
 | **REST execution** (`load-test` `OrderToCashSimulation`, Gatling) | Many concurrent distinct-user orders, **ample-stock customer-forward path only** (place → reserve → ship → invoice → pay), real Postgres + Kafka | Conservation invariants hold under concurrent reservation on shared `stock_balance` rows + concurrent GL posting | ✅ live: 200 distinct-user orders, all asserted invariants held |
-| **Focused race probes** (`load-test` `ConcurrentRaceProbesTest`) | Deliberate two-worker collisions on one aggregate (barrier-synchronised) | Command-layer exactly-once / no-half-state | ⚠️ double-pay green; **double-ship + cancel-ship FOUND REAL BUGS** (quarantined) |
+| **Focused race probes** (`load-test` `ConcurrentRaceProbesTest`) | Deliberate two-worker collisions on one aggregate (barrier-synchronised) | Command-layer exactly-once / no-half-state | ✅ double-pay + double-ship green (the over-ship bug it found is **fixed**); ⚠️ cancel-ship **FOUND A REAL BUG** (quarantined) |
 | **Web-UI fidelity** (`web-ui-load-test`, Playwright) | N isolated browser contexts, real OIDC login through the SPA → BFF → services | Session isolation / no token bleed / distinct `created_by` | ✅ live: 5 distinct-user sessions, isolation held |
 
 ### 11.2 Does the suite *ensure* correct concurrent behaviour? — No.
@@ -505,7 +505,8 @@ correctness. The honest assessment:
   finance issues one invoice); a simultaneous cancel + ship can leave an order **both shipped and
   cancelled** (the `anyLineShipped()` cancel gate reads sales-local state that lags the async
   shipment event). A 2-in-3 hit rate on a first batch strongly implies **more unprobed races
-  exist**.
+  exist**. *(The double-ship over-ship has since been fixed — a synchronous per-line ship claim in
+  inventory — and its probe re-enabled as a guard; the cancel-vs-ship half-state is still open.)*
 - **The in-JVM tier cannot find true races.** `World.settle()` is single-threaded and each order
   owns its own product — by construction it exercises *ordering*, never *shared-row contention*.
 - **The REST run asserts end-state, not linearizability.** It reads the DB *after* the storm
@@ -526,12 +527,13 @@ correctness. The honest assessment:
 
 Ranked by how much each closes the gap above:
 
-1. **Fix the two found races and re-enable their probes.** Until fixed, those probes *document*
-   bugs, they do not *guard* against them: (a) a synchronous per-`sales_order_line` over-ship
-   claim in inventory so a second concurrent ship is rejected (note the make-to-order ship path
-   ships with `reserved = 0`, so a naive `shipped ≤ reserved` is wrong); (b) a synchronous
-   cross-service agreement between cancel and ship (an order-level lease/version the shipment
-   claims) so they cannot both take effect.
+1. **Fix the remaining found race and re-enable its probe.** (a) The double-ship over-ship is
+   **done** — a synchronous per-`sales_order_line` ship claim in inventory (`sales_order_line_facts`
+   carries `ordered_quantity` + a cumulative `shipped_quantity`, claimed atomically + row-locked
+   before any stock decrement; the make-to-order path ships with `reserved = 0`, so the claim caps
+   on *ordered*, not reserved), its probe re-enabled as a guard. (b) Still open: the cancel-vs-ship
+   half-state needs a synchronous cross-service agreement between cancel and ship (an order-level
+   lease/version the shipment claims) so they cannot both take effect.
 2. **Implement the 3 missing live invariants** in `InvariantVerifier`: idempotency (no duplicate
    journal / reservation / shipment per inbox message), per-aggregate ordering, empty DLT — and
    crank consumer concurrency to force rebalances mid-run, then re-assert (§6).

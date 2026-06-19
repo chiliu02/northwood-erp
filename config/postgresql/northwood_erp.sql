@@ -1132,7 +1132,15 @@ CREATE TABLE inventory.sales_order_line_facts (
         payment_terms IN ('on_shipment', 'prepayment', 'cash_on_delivery', 'deposit')
     ),
     upfront_settled BOOLEAN NOT NULL DEFAULT false,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    -- ordered_quantity (snapshotted from SalesOrderPlaced, kept current by the
+    -- line amend events) and a cumulative shipped_quantity bumped atomically by
+    -- ShipmentService.post's ship-claim. The CHECK is the synchronous over-ship
+    -- guard's backstop: cumulative shipped can never exceed ordered, so two
+    -- concurrent shipments of one line cannot both decrement stock.
+    ordered_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    shipped_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (shipped_quantity >= 0 AND shipped_quantity <= ordered_quantity)
 );
 CREATE INDEX idx_sales_order_line_facts_header ON inventory.sales_order_line_facts(sales_order_header_id);
 CREATE TRIGGER trg_sales_order_line_facts_updated_at

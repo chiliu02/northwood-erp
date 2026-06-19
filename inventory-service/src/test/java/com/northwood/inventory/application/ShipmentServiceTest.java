@@ -8,6 +8,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.northwood.inventory.application.ShipmentService.ShipmentLineOverShipException;
 import com.northwood.inventory.application.ShipmentService.ShipmentLineProductMismatchException;
 import com.northwood.inventory.application.ShipmentService.UnpaidUpfrontOrderException;
 import com.northwood.inventory.application.dto.PostShipmentCommand;
@@ -134,6 +135,7 @@ class ShipmentServiceTest {
         when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
         UUID soLineId = UUID.randomUUID();
         when(salesOrderLineFacts.findProductIdForLine(soLineId)).thenReturn(Optional.of(PRODUCT_1));
+        when(salesOrderLineFacts.tryClaimShipment(soLineId, new BigDecimal("3"))).thenReturn(true);
 
         service.post(cmd(WarehouseCodes.MAIN, List.of(
             new ShipmentLineRequest(soLineId, PRODUCT_1, "SKU-1", "P1",
@@ -142,6 +144,25 @@ class ShipmentServiceTest {
 
         verify(shipments).save(any());
         verify(stockBalances).decrementOnHandAndReleaseReserved(WAREHOUSE, PRODUCT_1, new BigDecimal("3"));
+    }
+
+    @Test void linked_line_over_ship_rejects_with_409_and_no_stock_decrement() {
+        // The ship-claim fails (the line's outstanding allowance is exhausted — e.g.
+        // a concurrent shipment already claimed it). The shipment must be rejected
+        // before any stock decrement, so an over-ship cannot leak inventory.
+        UUID soLineId = UUID.randomUUID();
+        when(salesOrderLineFacts.findProductIdForLine(soLineId)).thenReturn(Optional.of(PRODUCT_1));
+        when(salesOrderLineFacts.tryClaimShipment(soLineId, new BigDecimal("1"))).thenReturn(false);
+
+        assertThatThrownBy(() -> service.post(cmd(WarehouseCodes.MAIN, List.of(
+            new ShipmentLineRequest(soLineId, PRODUCT_1, "SKU-1", "P1",
+                new BigDecimal("1"), new BigDecimal("10.00"))
+        ))))
+            .isInstanceOf(ShipmentLineOverShipException.class)
+            .hasMessageContaining(soLineId.toString());
+
+        verify(shipments, never()).save(any());
+        verify(stockBalances, never()).decrementOnHandAndReleaseReserved(any(), any(), any());
     }
 
     @Test void linked_line_with_mismatched_product_rejects_with_400_exception() {

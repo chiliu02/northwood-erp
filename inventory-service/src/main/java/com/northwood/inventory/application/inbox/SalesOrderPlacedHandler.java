@@ -36,6 +36,7 @@ public class SalesOrderPlacedHandler extends AbstractInboxHandler<SalesOrderPlac
                 payload.aggregateId(),
                 line.lineId(),
                 line.productId(),
+                line.orderedQuantity(),
                 payload.paymentTerms()
             );
         }

@@ -1,5 +1,6 @@
 package com.northwood.inventory.application.inbox;
 
+import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,8 +31,36 @@ public interface SalesOrderLineFactsProjection {
         UUID salesOrderHeaderId,
         UUID salesOrderLineId,
         UUID productId,
+        BigDecimal orderedQuantity,
         String paymentTerms
     );
+
+    /**
+     * Re-stamp a line's {@code ordered_quantity} after a quantity amendment
+     * ({@code sales.SalesOrderLineQuantityChanged}), so the over-ship cap stays
+     * accurate. No-op if no facts row exists yet.
+     */
+    void applyLineQuantityChanged(UUID salesOrderLineId, BigDecimal newOrderedQuantity);
+
+    /**
+     * Zero a removed line's {@code ordered_quantity}
+     * ({@code sales.SalesOrderLineRemoved}) so nothing can ship against it.
+     * Guarded on {@code shipped_quantity = 0} (removal is gated before any ship),
+     * so it never violates the {@code shipped <= ordered} CHECK. No-op otherwise.
+     */
+    void applyLineRemoved(UUID salesOrderLineId);
+
+    /**
+     * Atomically claim {@code quantity} of a line's outstanding ship allowance.
+     * Returns {@code true} when the cumulative shipped stays within
+     * {@code ordered_quantity} (the claim is recorded), {@code false} when it
+     * would over-ship — or when no facts row exists. Row-locked, so concurrent
+     * shipments of one line serialize and only those within the cap succeed:
+     * this is the synchronous guard that prevents a double-ship from
+     * over-decrementing stock. Lines with no {@code sales_order_line_id}
+     * (unlinked manual shipments) are not claimed by the caller.
+     */
+    boolean tryClaimShipment(UUID salesOrderLineId, BigDecimal quantity);
 
     /**
      * Flip {@code upfront_settled = true} on every line of the order. Driven by

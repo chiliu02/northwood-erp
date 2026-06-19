@@ -100,18 +100,12 @@ class ConcurrentRaceProbesTest {
     }
 
     // ── TC-DOUBLE-SHIP ────────────────────────────────────────────────────
-    // FINDING (quarantined): this probe FAILS against the current implementation —
-    // it surfaced a real over-ship race. Two concurrent shipments of one reserved
-    // line BOTH return 201 and each decrements on_hand by the shipped qty (2 stock-out
-    // movements for a 1-unit line). Sales caps the line's shipped_quantity at the
-    // ordered qty and finance issues a single invoice, but inventory leaks the extra
-    // unit: ShipmentService.post has no synchronous "already shipped / outstanding"
-    // guard, and decrementOnHandAndReleaseReserved releases min(reserved, shipped) so
-    // the second ship never trips the reserved>=0 CHECK. A correct fix needs a
-    // synchronous per-sales-order-line ship claim in inventory (the make-to-order
-    // ship path deliberately ships with reserved=0, so "require shipped<=reserved"
-    // is not it). Filed as a backlog finding; re-enable once the guard lands.
-    @Disabled("Reveals an unfixed over-ship race: concurrent double-ship double-decrements on_hand. Tracked as a backlog finding; re-enable once a synchronous ship claim lands.")
+    // Guards the over-ship fix: ShipmentService.post atomically claims each line's
+    // ship quantity against its outstanding allowance (ordered − already shipped) in
+    // inventory.sales_order_line_facts, row-locked, before any stock decrement. Two
+    // concurrent shipments of one reserved line therefore can no longer both succeed —
+    // the one that would push cumulative shipped past ordered is rejected (409), so
+    // on_hand is decremented exactly once.
     @Test
     void twoConcurrentShipments_shipExactlyOnce() throws Exception {
         Order order = placeAndReserve();
