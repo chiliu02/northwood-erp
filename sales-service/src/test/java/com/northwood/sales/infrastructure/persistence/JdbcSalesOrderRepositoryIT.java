@@ -122,7 +122,10 @@ class JdbcSalesOrderRepositoryIT {
         save(order);
 
         SalesOrder loaded = REPO.findById(order.id()).orElseThrow();
-        loaded.cancel("customer changed their mind");
+        // Two-phase cancel collapsed into one persist cycle: request (emits the
+        // event) + confirm (flips status), then a single save.
+        loaded.requestCancellation("customer changed their mind");
+        loaded.confirmCancellation();
         save(loaded);
 
         SalesOrder r = REPO.findById(order.id()).orElseThrow();
@@ -140,10 +143,11 @@ class JdbcSalesOrderRepositoryIT {
         SalesOrder loadedA = REPO.findById(order.id()).orElseThrow();
         SalesOrder loadedB = REPO.findById(order.id()).orElseThrow();
 
-        loadedB.cancel("first");
+        loadedB.requestCancellation("first");
+        loadedB.confirmCancellation();
         save(loadedB); // 1 → 2
 
-        loadedA.cancel("stale");
+        loadedA.requestCancellation("stale");
         assertThatThrownBy(() -> save(loadedA))
             .isInstanceOf(OptimisticLockingFailureException.class);
     }

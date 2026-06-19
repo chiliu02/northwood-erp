@@ -1139,6 +1139,11 @@ CREATE TABLE inventory.sales_order_line_facts (
     -- concurrent shipments of one line cannot both decrement stock.
     ordered_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
     shipped_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+    -- cancelled: set by ShipmentService's cancellation-claim when a cancel request
+    -- wins over a shipment (no line shipped yet). The ship-claim refuses a cancelled
+    -- line (AND NOT cancelled), so this row is the cross-service arbiter for the
+    -- cancel-vs-ship race — whichever of the two claims commits first wins.
+    cancelled BOOLEAN NOT NULL DEFAULT false,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (shipped_quantity >= 0 AND shipped_quantity <= ordered_quantity)
 );

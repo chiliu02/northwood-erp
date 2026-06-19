@@ -302,22 +302,23 @@ public class SalesOrderService {
 
     /**
      * Cancel a sales order and kick off saga compensation. The header is
-     * flipped to {@code 'cancelled'} (with {@code cancelled_at = now()}) and a
-     * {@code sales.SalesOrderCancellationRequested} event is written to the
-     * outbox. The fulfilment saga is moved to {@code 'compensating'}; inventory
-     * acks via {@code InventorySalesOrderCancellationApplied} (the sole
-     * compensation ack), after which the saga advances to
-     * {@code 'compensated'}.
+     * <b>requests</b> cancellation: a {@code sales.SalesOrderCancellationRequested}
+     * event is written to the outbox, but the order status is <b>not</b> changed
+     * here. Inventory arbitrates the request against any concurrent shipment and,
+     * only when no line has shipped, acks via
+     * {@code InventorySalesOrderCancellationApplied} — at which point
+     * {@link #confirmCancellation(UUID)} flips the order to {@code 'cancelled'} and
+     * the fulfilment saga reaches {@code 'compensated'}. If a shipment wins the
+     * race, no ack arrives and the order proceeds as shipped. This two-phase shape
+     * is what makes a concurrent cancel + ship resolve to exactly one outcome
+     * rather than a shipped-and-cancelled half-state.
      *
-     * <p>Cancellable up to (and including) {@code ready_to_ship}; once
-     * {@code goods_shipped} or beyond, the credit-note / return-goods flow
-     * applies (out of scope).
+     * <p>Cancellable while no live line has shipped (in sales' view); once shipped,
+     * the credit-note / return-goods flow applies (out of scope).
      *
      * @throws OrderNotFoundException if no order with this id exists.
-     * @throws OrderNotCancellableException if header status is past cancellation point.
-     * @throws SagaNotFoundException if the fulfilment saga row is missing
-     *         (shouldn't happen in practice; defensive — placement always
-     *         inserts a saga row).
+     * @throws OrderNotCancellableException if a line has already shipped (in sales'
+     *         view) or the order is already terminal.
      */
     @Transactional
     public void cancel(CancelOrderCommand command) {
@@ -325,17 +326,29 @@ public class SalesOrderService {
             .orElseThrow(() -> new OrderNotFoundException(command.salesOrderHeaderId()));
 
         try {
-            order.cancel(command.reason());
+            order.requestCancellation(command.reason());
         } catch (SalesOrder.OrderNotCancellableException e) {
             throw new OrderNotCancellableException(e);
         }
         salesOrders.save(order);
+        // Saga compensation is deferred to confirmCancellation (the inventory
+        // applied-ack), so a shipment that wins the race never triggers a
+        // compensation that should not have happened.
+    }
 
-        try {
-            sagaManager.requestCompensation(command.salesOrderHeaderId());
-        } catch (SalesOrderFulfilmentSagaManager.SagaNotFoundException e) {
-            throw new SagaNotFoundException(command.salesOrderHeaderId());
-        }
+    /**
+     * Phase 2 of cancellation: finalise the order to {@code cancelled} on
+     * inventory's {@code SalesOrderCancellationApplied} ack. A no-op if a shipment
+     * has since landed (the race-loser path — the order stays shipped) or the order
+     * is already terminal. Called from {@code InventoryCancellationAppliedHandler}.
+     */
+    @Transactional
+    public void confirmCancellation(UUID salesOrderHeaderId) {
+        SalesOrder order = salesOrders.findById(SalesOrderId.of(salesOrderHeaderId))
+            .orElseThrow(() -> new IllegalStateException(
+                "No sales_order_header for sales_order_header_id=" + salesOrderHeaderId));
+        order.confirmCancellation();
+        salesOrders.save(order);
     }
 
     @Transactional(readOnly = true)

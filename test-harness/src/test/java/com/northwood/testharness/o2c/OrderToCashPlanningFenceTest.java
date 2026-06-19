@@ -153,8 +153,8 @@ class OrderToCashPlanningFenceTest {
 
         sales.cancel(orderId, "customer changed mind before release");
         assertThat(sales.findSagaBySalesOrderId(orderId).orElseThrow().state())
-            .as("awaiting_release → compensating")
-            .isEqualTo(SalesOrderFulfilmentSaga.COMPENSATING);
+            .as("cancel only requests — the saga is untouched until inventory confirms")
+            .isEqualTo(SalesOrderFulfilmentSaga.AWAITING_RELEASE);
 
         bus.drain();
 

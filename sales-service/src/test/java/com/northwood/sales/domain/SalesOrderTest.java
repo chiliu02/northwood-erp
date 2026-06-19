@@ -189,49 +189,68 @@ class SalesOrderTest {
             );
         }
 
-        @Test void cancellable_when_open() {
+        @Test void requesting_cancellation_emits_event_but_does_not_yet_cancel() {
+            // Phase 1: request emits the event but leaves the status unchanged —
+            // the order is only cancelled once inventory confirms (phase 2).
             SalesOrder so = reconstituteWithStatus(SalesOrder.Status.OPEN);
-            so.cancel("customer changed mind");
-            assertThat(so.status()).isEqualTo(SalesOrder.Status.CANCELLED);
-            assertThat(so.cancelledAt()).isNotNull();
+            so.requestCancellation("customer changed mind");
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.OPEN);
+            assertThat(so.cancelledAt()).isNull();
             assertThat(so.pullPendingEvents()).hasSize(1)
                 .first().isInstanceOf(SalesOrderCancellationRequested.class);
         }
 
-        @Test void cancellable_when_reserved() {
-            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.RESERVED);
-            so.cancel("supply chain disruption");
+        @Test void confirm_cancels_when_open() {
+            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.OPEN);
+            so.requestCancellation("customer changed mind");
+            so.confirmCancellation();
             assertThat(so.status()).isEqualTo(SalesOrder.Status.CANCELLED);
+            assertThat(so.cancelledAt()).isNotNull();
+        }
+
+        @Test void confirm_cancels_when_reserved() {
+            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.RESERVED);
+            so.requestCancellation("supply chain disruption");
+            so.confirmCancellation();
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.CANCELLED);
+        }
+
+        @Test void confirm_is_a_no_op_when_a_line_has_shipped() {
+            // The race-loser path: a shipment landed between the request and the
+            // ack, so the order must stay shipped, never flip to cancelled.
+            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.SHIPPED);
+            so.confirmCancellation();
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.SHIPPED);
         }
 
         @Test void rejected_when_already_shipped() {
             SalesOrder so = reconstituteWithStatus(SalesOrder.Status.SHIPPED);
-            assertThatThrownBy(() -> so.cancel("too late"))
+            assertThatThrownBy(() -> so.requestCancellation("too late"))
                 .isInstanceOf(SalesOrder.OrderNotCancellableException.class)
                 .hasMessageContaining("'shipped'");
         }
 
         @Test void rejected_when_completed() {
             SalesOrder so = reconstituteWithStatus(SalesOrder.Status.COMPLETED);
-            assertThatThrownBy(() -> so.cancel("too late"))
+            assertThatThrownBy(() -> so.requestCancellation("too late"))
                 .isInstanceOf(SalesOrder.OrderNotCancellableException.class);
         }
 
         @Test void rejected_when_already_cancelled() {
             SalesOrder so = reconstituteWithStatus(SalesOrder.Status.CANCELLED);
-            assertThatThrownBy(() -> so.cancel("twice"))
+            assertThatThrownBy(() -> so.requestCancellation("twice"))
                 .isInstanceOf(SalesOrder.OrderNotCancellableException.class);
         }
 
         @Test void rejected_when_rejected() {
             SalesOrder so = reconstituteWithStatus(SalesOrder.Status.REJECTED);
-            assertThatThrownBy(() -> so.cancel("nope"))
+            assertThatThrownBy(() -> so.requestCancellation("nope"))
                 .isInstanceOf(SalesOrder.OrderNotCancellableException.class);
         }
 
         @Test void cancel_event_carries_reason_and_order_number() {
             SalesOrder so = reconstituteWithStatus(SalesOrder.Status.OPEN);
-            so.cancel("test reason");
+            so.requestCancellation("test reason");
             DomainEvent event = so.pullPendingEvents().get(0);
             assertThat(event).isInstanceOf(SalesOrderCancellationRequested.class);
             SalesOrderCancellationRequested cancel = (SalesOrderCancellationRequested) event;
@@ -578,7 +597,8 @@ class SalesOrderTest {
 
         @Test void fold_does_not_undo_a_cancelled_terminal() {
             SalesOrder so = twoOpenLines();
-            so.cancel("changed mind");
+            so.requestCancellation("changed mind");
+            so.confirmCancellation();
             // recordReservation runs the fold, but the terminal is absorbing.
             so.recordReservation(Map.of(10, new BigDecimal("2"), 20, new BigDecimal("5")));
             assertThat(so.status()).isEqualTo(SalesOrder.Status.CANCELLED);

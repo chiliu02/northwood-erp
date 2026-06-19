@@ -448,10 +448,16 @@ public class JdbcSalesOrderFulfilmentSagaManager
         writeData(saga, data);
         sagaPort.update(saga);
 
-        if (data.cancellationAcked() && COMPENSATING.equals(saga.state())) {
+        if (data.cancellationAcked() && !saga.terminalStates().contains(saga.state())) {
+            // Two-phase cancel: the order is only cancelled once inventory confirms
+            // (this ack), so compensation is entered here, directly from the saga's
+            // active state — there is no prior 'compensating' hop, because the cancel
+            // request no longer pre-compensates (a shipment could win the race). A
+            // terminal saga (e.g. 'rejected' via the unsourceable path, which also
+            // releases through this ack) is left untouched.
             saga.transitionTo(COMPENSATED, "cancelled");
             sagaPort.update(saga);
-            log.info("saga {} sales_order={} → compensated (inventory ack triggered completion)",
+            log.info("saga {} sales_order={} → compensated (inventory cancellation ack)",
                 saga.sagaId(), salesOrderHeaderId);
         }
         return saga.state();

@@ -87,10 +87,37 @@ public class JdbcSalesOrderLineFactsProjection implements SalesOrderLineFactsPro
                SET shipped_quantity = shipped_quantity + ?
              WHERE sales_order_line_id = ?
                AND shipped_quantity + ? <= ordered_quantity
+               AND NOT cancelled
             """,
             quantity, salesOrderLineId, quantity
         );
         return claimed == 1;
+    }
+
+    @Override
+    @Transactional
+    public boolean tryClaimCancellation(UUID salesOrderHeaderId) {
+        // Mark every not-yet-shipped line cancelled (row-locked; this is what a
+        // racing ship-claim's NOT cancelled guard then sees). A line that already
+        // shipped keeps cancelled=false and is left intact.
+        jdbc.update("""
+            UPDATE inventory.sales_order_line_facts
+               SET cancelled = true
+             WHERE sales_order_header_id = ?
+               AND shipped_quantity = 0
+            """,
+            salesOrderHeaderId
+        );
+        // Cancellable iff no line of the order has shipped. A shipment that
+        // committed before this claim leaves a shipped line → reject.
+        Integer shippedLines = jdbc.queryForObject("""
+            SELECT count(*) FROM inventory.sales_order_line_facts
+             WHERE sales_order_header_id = ?
+               AND shipped_quantity > 0
+            """,
+            Integer.class, salesOrderHeaderId
+        );
+        return shippedLines == null || shippedLines == 0;
     }
 
     @Override

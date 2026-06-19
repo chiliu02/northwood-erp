@@ -448,37 +448,56 @@ public final class SalesOrder {
     }
 
     /**
-     * Cancel this order. A top-down, order-level command — allowed only while no
-     * live line has shipped and the order has not already reached a terminal.
-     * Once goods have shipped, cancellation requires the credit-note /
-     * return-goods flow which is out of scope.
+     * <b>Request</b> cancellation of this order — phase 1 of the two-phase,
+     * cross-service-arbitrated cancel. A top-down, order-level command, allowed
+     * only while no live line has shipped <em>in sales' view</em> and the order
+     * has not reached a terminal. It does <b>not</b> finalise the status: it only
+     * emits {@link SalesOrderCancellationRequested}. Inventory then arbitrates
+     * against any concurrent shipment (the ship-claim vs the cancellation-claim on
+     * {@code sales_order_line_facts}) and replies — only on its
+     * {@code SalesOrderCancellationApplied} ack does {@link #confirmCancellation()}
+     * move the order to {@code cancelled}. This closes the cancel-vs-ship race: a
+     * shipment that physically committed in inventory before the cancel reached it
+     * wins, and the cancellation is silently dropped (the order ships).
      *
      * <p>The guard reads the <i>lines</i> ({@link #anyLineShipped()}), not a
      * header-status allow-list: the header is a lossy fold, so it can't be the
      * gating oracle (see the class Javadoc). {@link #isTerminal()} blocks a
-     * re-cancel.
+     * re-cancel. Note this sales-local guard only catches shipments sales already
+     * knows about; the inventory arbiter is what catches the in-flight race.
      *
-     * <p>Idempotent in the sense that calling cancel on an already-cancelled
-     * order throws — the application service translates this to HTTP 409. If
-     * idempotent re-cancel is wanted later, swap the throw for a return.
-     *
-     * @throws OrderNotCancellableException if the order has already shipped,
-     *         completed, been cancelled, or rejected.
+     * @throws OrderNotCancellableException if the order has already shipped (in
+     *         sales' view), completed, been cancelled, or rejected.
      */
-    public void cancel(String reason) {
+    public void requestCancellation(String reason) {
         if (isTerminal() || anyLineShipped()) {
             throw new OrderNotCancellableException(id, status);
         }
-        this.status = Status.CANCELLED;
-        this.cancelledAt = Instant.now();
         this.pendingEvents.add(new SalesOrderCancellationRequested(
             UUID.randomUUID(),
             id.value(),
             orderNumber,
             customerId,
             reason,
-            cancelledAt
+            Instant.now()
         ));
+    }
+
+    /**
+     * <b>Confirm</b> cancellation — phase 2, driven by inventory's
+     * {@code SalesOrderCancellationApplied} ack (which inventory emits only when no
+     * line had shipped). Moves the order to the {@code cancelled} terminal. A no-op
+     * if a shipment has since landed ({@link #anyLineShipped()}) or the order is
+     * already terminal — that is the race-loser path: the ack and a late shipment
+     * can interleave, and a shipped order must stay shipped, never flip to
+     * cancelled. Idempotent.
+     */
+    public void confirmCancellation() {
+        if (isTerminal() || anyLineShipped()) {
+            return;
+        }
+        this.status = Status.CANCELLED;
+        this.cancelledAt = Instant.now();
     }
 
     /**

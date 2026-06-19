@@ -501,8 +501,9 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
 
     @Nested
     class ApplyCancellationApplied {
-        // Inventory is the sole compensation ack (manufacturing leg retired),
-        // so an inventory ack from compensating completes the compensation outright.
+        // Two-phase cancel: the inventory ack is the confirmation, so it drives the
+        // saga to compensated directly from whatever active state it is in — there
+        // is no prior 'compensating' hop (the cancel request no longer pre-compensates).
         @Test void inventory_ack_from_compensating_completes_to_compensated() {
             SalesOrderFulfilmentSaga saga = sagaInState(COMPENSATING);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
@@ -512,13 +513,24 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             assertThat(state).isEqualTo(COMPENSATED);
         }
 
-        @Test void inventory_ack_outside_compensating_does_not_complete() {
+        @Test void inventory_ack_from_active_state_completes_to_compensated() {
             SalesOrderFulfilmentSaga saga = sagaInState(SUPPLY_SECURED);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
             String state = manager.applyInventoryCancellationApplied(SO);
 
-            assertThat(state).isEqualTo(SUPPLY_SECURED);
+            assertThat(state).isEqualTo(COMPENSATED);
+        }
+
+        @Test void inventory_ack_on_a_terminal_saga_is_a_no_op() {
+            // The reject path (unsourceable line) also releases via this ack, but the
+            // saga is already terminal — it must stay rejected, not flip to compensated.
+            SalesOrderFulfilmentSaga saga = sagaInState(REJECTED);
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyInventoryCancellationApplied(SO);
+
+            assertThat(state).isEqualTo(REJECTED);
         }
 
         @Test void no_saga_throws_illegal_state() {

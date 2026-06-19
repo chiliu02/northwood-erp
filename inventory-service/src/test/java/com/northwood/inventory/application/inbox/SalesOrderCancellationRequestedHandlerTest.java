@@ -28,13 +28,14 @@ class SalesOrderCancellationRequestedHandlerTest {
 
     @Mock InboxPort inbox;
     @Mock StockReservationService reservation;
+    @Mock SalesOrderLineFactsProjection salesOrderLineFacts;
 
     private final ObjectMapper json = new ObjectMapper();
     private SalesOrderCancellationRequestedHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new SalesOrderCancellationRequestedHandler(inbox, reservation, json);
+        handler = new SalesOrderCancellationRequestedHandler(inbox, reservation, salesOrderLineFacts, json);
     }
 
     private EventEnvelope event() {
@@ -51,10 +52,23 @@ class SalesOrderCancellationRequestedHandlerTest {
         );
     }
 
-    @Test void delegates_release_to_reservation_service_and_records_processed() {
+    @Test void applied_when_no_line_shipped_releases_and_records_processed() {
+        when(salesOrderLineFacts.tryClaimCancellation(SO)).thenReturn(true);
+
         handler.handle(event());
 
         verify(reservation).releaseForSalesOrder(SO);
+        verify(inbox).recordProcessed(any());
+    }
+
+    @Test void rejected_when_a_line_already_shipped_does_not_release() {
+        // A shipment won the cancel-vs-ship race; the cancellation must not release
+        // stock (already consumed) and must not ack (so sales never confirms cancel).
+        when(salesOrderLineFacts.tryClaimCancellation(SO)).thenReturn(false);
+
+        handler.handle(event());
+
+        verify(reservation, never()).releaseForSalesOrder(any());
         verify(inbox).recordProcessed(any());
     }
 

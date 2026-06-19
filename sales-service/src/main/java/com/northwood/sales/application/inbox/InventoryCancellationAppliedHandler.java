@@ -4,6 +4,7 @@ import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.COMPENSAT
 
 import com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied;
 import com.northwood.sales.application.SalesOrderCompensationEmitter;
+import com.northwood.sales.application.SalesOrderService;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
@@ -12,33 +13,40 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Inbox handler for {@code inventory.SalesOrderCancellationApplied}. Asks
- * the manager to record inventory's compensation ack; if the manager flips
- * the saga to {@code 'compensated'} (i.e. manufacturing's ack had already
- * arrived), emits {@code sales.SalesOrderCompensated} via the shared
- * {@link SalesOrderCompensationEmitter}.
+ * Inbox handler for {@code inventory.SalesOrderCancellationApplied} — phase 2 of
+ * the two-phase cancel. Inventory emits this ack only when it confirmed the
+ * cancellation (no line had shipped), so it is the signal to finalise:
+ * {@link SalesOrderService#confirmCancellation} flips the order to
+ * {@code cancelled}, then the manager advances the fulfilment saga to
+ * {@code 'compensated'} and {@code sales.SalesOrderCompensated} is emitted via the
+ * shared {@link SalesOrderCompensationEmitter}. If a shipment won the race this
+ * ack never arrives, so the order rides the normal ship → invoice → pay path.
  */
 @Component
 public class InventoryCancellationAppliedHandler extends AbstractInboxHandler<InventorySalesOrderCancellationApplied> {
 
     public static final String HANDLER_NAME = "sales.compensation-inventory-ack";
 
+    private final SalesOrderService salesOrderService;
     private final SalesOrderFulfilmentSagaManager sagaManager;
     private final SalesOrderCompensationEmitter compensationEmitter;
 
     public InventoryCancellationAppliedHandler(
         InboxPort inbox,
+        SalesOrderService salesOrderService,
         SalesOrderFulfilmentSagaManager sagaManager,
         SalesOrderCompensationEmitter compensationEmitter,
         ObjectMapper json
     ) {
         super(inbox, json, InventorySalesOrderCancellationApplied.class, InventorySalesOrderCancellationApplied.EVENT_TYPE, HANDLER_NAME);
+        this.salesOrderService = salesOrderService;
         this.sagaManager = sagaManager;
         this.compensationEmitter = compensationEmitter;
     }
 
     @Override
     protected void apply(InventorySalesOrderCancellationApplied payload, EventEnvelope envelope) {
+        salesOrderService.confirmCancellation(payload.aggregateId());
         String newState = sagaManager.applyInventoryCancellationApplied(payload.aggregateId());
         if (COMPENSATED.equals(newState)) {
             compensationEmitter.emitCompensated(payload.aggregateId());

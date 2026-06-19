@@ -19,7 +19,6 @@ import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -127,17 +126,13 @@ class ConcurrentRaceProbesTest {
     }
 
     // ── TC-CANCEL-SHIP ────────────────────────────────────────────────────
-    // FINDING (quarantined): this probe FAILS against the current implementation —
-    // it surfaced a real cancel-vs-ship half-state. A manager's cancel and a
-    // clerk's shipment, fired simultaneously, can BOTH take effect: the goods ship
-    // (inventory) AND the order is cancelled (sales). The cancel gate reads
-    // SalesOrder.anyLineShipped(), which is sales-local state updated only when the
-    // async SalesOrderShipped event arrives — so at cancel time the line still looks
-    // unshipped and the cancel is allowed, while the shipment has already posted in
-    // inventory. A correct fix needs the cancel and the ship to agree synchronously
-    // (e.g. an order-level lease/version the shipment claims). Filed as a backlog
-    // finding; re-enable once the cross-service gate is closed.
-    @Disabled("Reveals an unfixed cancel-vs-ship half-state: an order can end both shipped and cancelled. Tracked as a backlog finding; re-enable once the cross-service cancel gate is closed.")
+    // Guards the cancel-vs-ship fix: cancel is two-phase — sales only requests it,
+    // and inventory arbitrates against any concurrent shipment on the same
+    // sales_order_line_facts rows (the cancellation-claim flips cancelled WHERE
+    // nothing shipped; the ship-claim refuses a cancelled line). Whichever commits
+    // first wins, so the order is never both shipped and cancelled: cancel wins →
+    // the ship is rejected and the order is cancelled; ship wins → no applied-ack is
+    // sent, so the cancellation is dropped and the order proceeds as shipped.
     @Test
     void cancelRacingShipment_leavesNoHalfState() throws Exception {
         Order order = placeAndReserve();

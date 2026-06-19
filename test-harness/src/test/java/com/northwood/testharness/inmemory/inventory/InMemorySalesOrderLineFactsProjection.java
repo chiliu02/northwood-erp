@@ -22,6 +22,7 @@ public final class InMemorySalesOrderLineFactsProjection implements SalesOrderLi
     private final Map<UUID, Boolean> upfrontSettledByHeaderId = new HashMap<>();
     private final Map<UUID, BigDecimal> orderedByLineId = new HashMap<>();
     private final Map<UUID, BigDecimal> shippedByLineId = new HashMap<>();
+    private final Map<UUID, Boolean> cancelledByLineId = new HashMap<>();
 
     @Override
     public void applySalesOrderPlaced(UUID salesOrderHeaderId, UUID salesOrderLineId, UUID productId,
@@ -54,12 +55,31 @@ public final class InMemorySalesOrderLineFactsProjection implements SalesOrderLi
         if (ordered == null) {
             return false;
         }
+        if (cancelledByLineId.getOrDefault(salesOrderLineId, false)) {
+            return false;
+        }
         BigDecimal shipped = shippedByLineId.getOrDefault(salesOrderLineId, BigDecimal.ZERO);
         if (shipped.add(quantity).compareTo(ordered) > 0) {
             return false;
         }
         shippedByLineId.put(salesOrderLineId, shipped.add(quantity));
         return true;
+    }
+
+    @Override
+    public synchronized boolean tryClaimCancellation(UUID salesOrderHeaderId) {
+        boolean anyShipped = false;
+        for (UUID lineId : headerByLineId.keySet()) {
+            if (!salesOrderHeaderId.equals(headerByLineId.get(lineId))) {
+                continue;
+            }
+            if (shippedByLineId.getOrDefault(lineId, BigDecimal.ZERO).signum() > 0) {
+                anyShipped = true;
+            } else {
+                cancelledByLineId.put(lineId, true);
+            }
+        }
+        return !anyShipped;
     }
 
     @Override

@@ -58,9 +58,25 @@ public interface SalesOrderLineFactsProjection {
      * shipments of one line serialize and only those within the cap succeed:
      * this is the synchronous guard that prevents a double-ship from
      * over-decrementing stock. Lines with no {@code sales_order_line_id}
-     * (unlinked manual shipments) are not claimed by the caller.
+     * (unlinked manual shipments) are not claimed by the caller. A line a
+     * cancellation already claimed ({@link #tryClaimCancellation}) is refused.
      */
     boolean tryClaimShipment(UUID salesOrderLineId, BigDecimal quantity);
+
+    /**
+     * Atomically claim cancellation of an order: mark every not-yet-shipped line
+     * {@code cancelled} (so a subsequent {@link #tryClaimShipment} is refused) and
+     * report whether the whole order may be cancelled. Returns {@code true} when no
+     * line has shipped — the cancellation applies; {@code false} when a line has
+     * already shipped — a shipment beat the cancel, so the order must proceed as
+     * shipped (the caller must not release stock or ack the cancellation). This is
+     * the cross-service arbiter for the cancel-vs-ship race: it row-locks the same
+     * {@code sales_order_line_facts} rows the ship-claim does, so whichever of
+     * {@code tryClaimCancellation} / {@code tryClaimShipment} commits first wins and
+     * the other is rejected. No facts rows (cancel before placement projected) →
+     * {@code true} (nothing to ship, so cancellable).
+     */
+    boolean tryClaimCancellation(UUID salesOrderHeaderId);
 
     /**
      * Flip {@code upfront_settled = true} on every line of the order. Driven by
