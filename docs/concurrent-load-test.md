@@ -483,14 +483,78 @@ interface OrderDriver {
 
 ---
 
-## 11. Status & non-goals
+## 11. Current status, honest assessment, and gaps
 
-- **Status: design only.** No `load-test` module exists yet; this fills the gap
-  `docs/quality-assurance.md` §8 names ("built for it — per-aggregate partition keys,
-  `SKIP LOCKED` drains — but not exercised under load").
+### 11.1 What is implemented today
+
+| Tier | What it drives | What it proves | Verified |
+|---|---|---|---|
+| **In-JVM property suite** (`test-harness` `OrderToCashConcurrentLoadPropertyTest`, jqwik) | All four archetypes (to_stock/to_order × purchased/manufactured) incl. the supply legs (goods receipt, work-order completion), through the **real** saga + inbox handlers + serde over the in-memory `World` | Saga/handler **logic** correctness under an arbitrary *mix and ordering* of orders; convergence, no-oversell, double-entry per run | ✅ CI-green (100 jqwik tries) |
+| **REST execution** (`load-test` `OrderToCashSimulation`, Gatling) | Many concurrent distinct-user orders, **ample-stock customer-forward path only** (place → reserve → ship → invoice → pay), real Postgres + Kafka | Conservation invariants hold under concurrent reservation on shared `stock_balance` rows + concurrent GL posting | ✅ live: 200 distinct-user orders, all asserted invariants held |
+| **Focused race probes** (`load-test` `ConcurrentRaceProbesTest`) | Deliberate two-worker collisions on one aggregate (barrier-synchronised) | Command-layer exactly-once / no-half-state | ⚠️ double-pay green; **double-ship + cancel-ship FOUND REAL BUGS** (quarantined) |
+| **Web-UI fidelity** (`web-ui-load-test`, Playwright) | N isolated browser contexts, real OIDC login through the SPA → BFF → services | Session isolation / no token bleed / distinct `created_by` | ✅ live: 5 distinct-user sessions, isolation held |
+
+### 11.2 Does the suite *ensure* correct concurrent behaviour? — No.
+
+It **raises confidence and has already caught real defects**, but it does not *guarantee*
+correctness. The honest assessment:
+
+- **The strongest evidence is the probe hit-rate.** Of the first three command-layer collision
+  probes written, **two immediately surfaced real cross-service races** — concurrent double-ship
+  both succeed and double-decrement `on_hand` (inventory over-ship, while sales caps the line and
+  finance issues one invoice); a simultaneous cancel + ship can leave an order **both shipped and
+  cancelled** (the `anyLineShipped()` cancel gate reads sales-local state that lags the async
+  shipment event). A 2-in-3 hit rate on a first batch strongly implies **more unprobed races
+  exist**.
+- **The in-JVM tier cannot find true races.** `World.settle()` is single-threaded and each order
+  owns its own product — by construction it exercises *ordering*, never *shared-row contention*.
+- **The REST run asserts end-state, not linearizability.** It reads the DB *after* the storm
+  drains, so it is blind to races that produce a self-consistent-but-wrong state, transient
+  violations that heal, and anything about the *history* (it never observes the interleaving).
+- **The live verifier implements only 3 of the 6 designed invariants** (§6). No-oversell,
+  double-entry, and convergence are checked; **idempotency-under-redelivery (4), per-aggregate
+  ordering (5), and empty-DLT (6) are not** — and the "force consumer rebalances mid-run and
+  re-assert" step (§6, invariant 4) was never wired.
+- **Methodological ceiling.** "For all interleavings" is approximated by volume + randomness —
+  statistical, not exhaustive. There is no deterministic scheduler, no model checker, no
+  linearizability oracle, and no fault injection. Exactly-once *across failures* (the hard part
+  of distributed correctness) is untested.
+
+**Treat the suite as "increases confidence and finds bugs," not "guarantees correctness."**
+
+### 11.3 Gaps / TODO to move toward "ensures correctness"
+
+Ranked by how much each closes the gap above:
+
+1. **Fix the two found races and re-enable their probes.** Until fixed, those probes *document*
+   bugs, they do not *guard* against them: (a) a synchronous per-`sales_order_line` over-ship
+   claim in inventory so a second concurrent ship is rejected (note the make-to-order ship path
+   ships with `reserved = 0`, so a naive `shipped ≤ reserved` is wrong); (b) a synchronous
+   cross-service agreement between cancel and ship (an order-level lease/version the shipment
+   claims) so they cannot both take effect.
+2. **Implement the 3 missing live invariants** in `InvariantVerifier`: idempotency (no duplicate
+   journal / reservation / shipment per inbox message), per-aggregate ordering, empty DLT — and
+   crank consumer concurrency to force rebalances mid-run, then re-assert (§6).
+3. **Exercise the supply side under live concurrent load.** Build the operations driver (post
+   goods receipts for arrived replenishment POs, complete released work orders) and run the REST
+   sim against **undersized** stock + the two `to_order` SKUs, so the full
+   `shortage → replenishment → PO/WO → goods-receipt/WO-completion → retry-reserve → ship` loop
+   runs end-to-end under load and still converges green (TC-PATH-* in §4.6). Today the live REST
+   run covers only the ample-stock forward path — it produces no goods receipt, work order,
+   purchase order, or supplier invoice.
+4. **Complete the focused-probe matrix** (§4.6): TC-PAY-FIRST, TC-PARTIAL-SHIP, TC-SUPPLY-DUP —
+   the only *deterministic* race finders in the suite.
+5. **(High bar) Linearizability / model-based checking** — record the concurrent history and
+   check it linearises against the saga's transition function + the conservation arithmetic
+   (Jepsen-style), rather than only snapshotting the end state.
+6. **(High bar) Fault injection** — broker kills, partitions, node/crash recovery, to test
+   exactly-once *across failures*, not just under concurrency.
+
+### 11.4 Non-goals (unchanged)
+
 - **Not a throughput benchmark.** Latency/throughput are reported, never asserted. A dedicated
   perf-tuning exercise (capacity planning, GC tuning) is a separate effort.
-- **Not chaos testing.** Network partitions / broker kills / node loss are a further tier not
-  in scope here.
+- **Not chaos testing** in the *current* tiers. Network partitions / broker kills / node loss are
+  the further tier item 6 above names — out of scope for the shipped tiers.
 - **UI scale is intentionally bounded.** The Web-UI execution validates the front-end path, not
   backend capacity; do not grow it to match the REST run.
