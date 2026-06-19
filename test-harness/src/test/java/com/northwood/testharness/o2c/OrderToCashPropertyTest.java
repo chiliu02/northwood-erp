@@ -1,4 +1,4 @@
-package com.northwood.testharness.load;
+package com.northwood.testharness.o2c;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -23,8 +23,8 @@ import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
 
 /**
- * Slice 5.2 of the concurrent load test ({@code docs/concurrent-load-test.md}) — the
- * <strong>in-JVM property-based tier</strong>, now driven by <b>jqwik</b> so failing
+ * The <strong>in-JVM property-based tier</strong> of the concurrent load test
+ * ({@code docs/concurrent-load-test.md}), driven by <b>jqwik</b> so failing
  * scenarios <em>shrink</em> to the minimal reproducing mix (§6.1).
  *
  * <p>jqwik generates a random list of order specs — each a pick of the four product
@@ -51,7 +51,7 @@ import net.jqwik.api.Provide;
  * the real shared-resource concurrency tier (the Testcontainers + Gatling execution,
  * {@code docs/concurrent-load-test.md} §2/§7).
  */
-class OrderToCashConcurrentLoadPropertyTest {
+class OrderToCashPropertyTest {
 
     private static final int CUSTOMER_POOL = 5;
     private static final BigDecimal SALES_PRICE = BigDecimal.valueOf(100);

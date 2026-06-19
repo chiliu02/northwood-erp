@@ -10,7 +10,7 @@ the conservation invariants after the load drains.
 > confirms zero oversell, balanced double-entry, and every fulfilment saga converged.
 > This module is **not** a self-contained CI test — it needs the running multi-service
 > stack. The CI-verified in-JVM property tier lives in `test-harness`
-> (`OrderToCashConcurrentLoadPropertyTest`).
+> (`o2c.OrderToCashPropertyTest`).
 
 It is deliberately **outside the default Maven reactor** (parent POM `load-test` profile), so
 `mvn verify` and CI never pull the Gatling toolchain. Build/run it explicitly with `-Pload-test`.
