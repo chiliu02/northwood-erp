@@ -462,7 +462,7 @@ Open `http://localhost:5174` cold (or sign out). The SPA redirects to Keycloak's
 
 On a Sales Order detail page (any order that has not yet shipped), hover the **Cancel order** action. Sarah's `sales_clerk` doesn't include `sales_manager`, so it is disabled with tooltip "Requires role: sales_manager".
 
-Sign out (top-right), then sign back in on Keycloak as **sam** (password == `sam`). The Cancel action is now enabled. Click it. Saga walks `compensating → compensated`. Audit row stamps `actor_user_id = "sam"`.
+Sign out (top-right), then sign back in on Keycloak as **sam** (password == `sam`). The Cancel action is now enabled. Click it. The cancel is two-phase: inventory confirms it and the saga advances straight to `compensated` (no `compensating` hop). Audit row stamps `actor_user_id = "sam"`.
 
 If you want the loud version: switch to **Aaron** (auditor) first, try to click anything mutating — every mutation action is disabled with a tooltip. Read-only persona; reading works.
 

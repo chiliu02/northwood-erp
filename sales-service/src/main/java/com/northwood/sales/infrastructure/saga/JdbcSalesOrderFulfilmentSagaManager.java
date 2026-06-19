@@ -56,15 +56,12 @@ public class JdbcSalesOrderFulfilmentSagaManager
      * States in which a {@code StockReserved} reply may legitimately advance the
      * saga — the open reservation window ({@code stock_reservation_requested}
      * normally; {@code stock_reservation_incomplete} for the amended-line case
-     * below). Outside this set — terminal, {@code compensating}, or already
-     * shipped/invoiced — the reply is a late straggler (e.g. an in-flight
-     * reservation landing after a cancel moved the saga to {@code compensating})
-     * and must be ignored, never transition the saga forward: advancing a
-     * compensating/terminal saga to {@code ready_to_ship} would resurrect a
-     * cancelled order <em>and</em> strand its compensation (the later
-     * {@code InventoryCancellationApplied} ack only acts from {@code compensating}).
-     * This is the source-state guard every other forward {@code apply*} method
-     * already carries.
+     * below). Outside this set — terminal / {@code compensated}, or already
+     * supply-secured / shipped — the reply is a late straggler (e.g. an in-flight
+     * reservation landing after the order was cancelled) and must be ignored,
+     * never transition the saga forward: re-advancing a compensated/terminal saga
+     * to {@code supply_secured} would resurrect a cancelled order. This is the
+     * source-state guard every other forward {@code apply*} method already carries.
      */
     private static final Set<String> STOCK_RESERVED_SOURCE_STATES = Set.of(
         STOCK_RESERVATION_REQUESTED, STOCK_RESERVATION_INCOMPLETE
@@ -131,15 +128,6 @@ public class JdbcSalesOrderFulfilmentSagaManager
             .map(saga -> readData(saga).paymentTerms());
     }
 
-    @Override
-    @Transactional
-    public void requestCompensation(UUID salesOrderHeaderId) {
-        SalesOrderFulfilmentSaga saga = sagaPort.findBySalesOrderId(salesOrderHeaderId)
-            .orElseThrow(() -> new SagaNotFoundException(salesOrderHeaderId));
-        saga.transitionTo(COMPENSATING, "wait_for_compensation_acks");
-        sagaPort.update(saga);
-    }
-
     // ============================================================
     // Inbox-driven transitions
     // ============================================================
@@ -153,10 +141,10 @@ public class JdbcSalesOrderFulfilmentSagaManager
     ) {
         SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, StockReserved.EVENT_TYPE);
         if (!STOCK_RESERVED_SOURCE_STATES.contains(saga.state())) {
-            // Late straggler: the saga left the reservation window (e.g. a cancel
-            // moved it to compensating, or it already rejected) before this
+            // Late straggler: the saga left the reservation window (e.g. the order
+            // was cancelled/compensated, or it already rejected) before this
             // in-flight StockReserved landed. Ignore it — advancing now would
-            // resurrect a terminal/compensating saga to ready_to_ship. Mirrors the
+            // resurrect a terminal/compensated saga to supply_secured. Mirrors the
             // source-state guard in applyReplenishment* / applyShipmentPosted.
             log.debug("saga {} sales_order={} ignoring {} (state={} outside the reservation window)",
                 saga.sagaId(), salesOrderHeaderId, StockReserved.EVENT_TYPE, saga.state());
@@ -210,7 +198,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
         SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, SalesOrderLineReservationChanged.EVENT_TYPE);
 
         // Only meaningful during the reservation phase. Outside it (pre-reservation,
-        // shipped+, compensating, terminal) the amendment window is closed and
+        // shipped+, compensated, terminal) the amendment window is closed and
         // there's nothing to reconcile.
         if (!RESERVATION_PHASE_STATES.contains(saga.state())) {
             log.debug("saga {} sales_order={} ignoring line-reservation-changed (state={}, line={})",
@@ -402,7 +390,7 @@ public class JdbcSalesOrderFulfilmentSagaManager
         // balance). Latch the settled flag and complete if the order has also
         // shipped. A non-order-settling payment (one of several invoices) is a
         // no-op — the flag stays unset and the gate holds. Only meaningful at
-        // supply_secured; outside it (pre-reservation, terminal, compensating)
+        // supply_secured; outside it (pre-reservation, terminal, compensated)
         // the payment is not the saga's concern.
         if (SUPPLY_SECURED.equals(saga.state())) {
             if (orderFullySettled) {

@@ -57,7 +57,7 @@ Consumers absorb whatever order survives with a small, layered catalogue — che
 |---|---|---|---|
 | **Inbox dedup** — advisory-lock gate; two statements, lock-then-`EXISTS` on a fresh snapshot | redelivery / duplicates (incl. the rebalance-window concurrent duplicate) | apply-once floor | `AbstractInboxHandler.handle` + `AdvisoryLockInboxDedupStrategy` |
 | **Convergent projection** — `INSERT … ON CONFLICT DO UPDATE`, each event writes a disjoint column slice + `COALESCE` | cross-event reorder into a read model (a consequence may seed the stub the originating event later fills) | don't-care / convergent | `JdbcSalesOrder360Projection` (9 entry points, one key) |
-| **Saga source-state guard** — a forward `apply*` no-ops unless `saga.state ∈ SOURCE_STATES` | a late forward event that would wrongly advance a compensating / terminal saga | guarded | `JdbcSalesOrderFulfilmentSagaManager` (`STOCK_RESERVED_SOURCE_STATES`, …) |
+| **Saga source-state guard** — a forward `apply*` no-ops unless `saga.state ∈ SOURCE_STATES` | a late forward event that would wrongly advance a compensated / terminal saga | guarded | `JdbcSalesOrderFulfilmentSagaManager` (`STOCK_RESERVED_SOURCE_STATES`, …) |
 | **Aggregate terminal guard** — cancel/amend read `isTerminal() ‖ anyLineShipped()`, never a header allow-list | a late event after a terminal — caps blast radius to cosmetic line drift | guarded (blast-radius cap) | `SalesOrder` cancel / reject / amend gate |
 | **One-open invariant** — partial unique index + `DuplicateKeyException` catch | concurrent duplicate triggers racing to raise the same request | convergent (DB-arbitrated) | `ReplenishmentDetectionService.raiseIfNoneOpen` |
 | **Causal-by-construction** — commit the prerequisite before emitting the dependent | *removes* the disorder instead of tolerating it (the cheap-guarantee half) | guaranteed | local `replenishment_request` commit; saga row before its reply |
@@ -93,7 +93,7 @@ A skeptical pass over every **join point** — a handler or projection that, whi
 | `sales.StockReservedHandler.recordReservation` | marks lines reserved even on a cancelled order | header fold guards terminal → cosmetic line drift only (the saga transition itself is now guarded — see *Fixed*) |
 | `sales.ShipmentPostedHandler.recordShipped` | marks lines shipped + emits `SalesOrderShipped` | can no longer land on a cancel-won order — inventory's synchronous ship-claim refuses a `cancelled` line (`tryClaimShipment … AND NOT cancelled`), so no `ShipmentPosted` is emitted once a cancellation has been applied (the cancel-vs-ship arbiter, `docs/validations.md` → *Concurrency under contention*); the header fold also guards terminal as a backstop |
 
-**Fixed** (commit on `main`): `sales.JdbcSalesOrderFulfilmentSagaManager.applyStockReserved` — the sole forward `apply*` method (of ~15 across the three sagas) missing a source-state guard; a late `StockReserved` after a cancel could resurrect a `compensating` saga and strand its compensation. Now guarded by `STOCK_RESERVED_SOURCE_STATES`.
+**Fixed** (commit on `main`): `sales.JdbcSalesOrderFulfilmentSagaManager.applyStockReserved` — the sole forward `apply*` method (of ~15 across the three sagas) missing a source-state guard; a late `StockReserved` after a cancel could resurrect a compensated/terminal saga and revive a cancelled order. Now guarded by `STOCK_RESERVED_SOURCE_STATES`.
 
 **Checked and dismissed** — recorded so a future reader doesn't re-flag them:
 

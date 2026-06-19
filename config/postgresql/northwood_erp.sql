@@ -608,9 +608,9 @@ CREATE TABLE sales.sales_order_fulfilment_saga (
             -- saga.data and moves to completed once both land (ship + pay). The
             -- ship → invoice → pay status itself is the line fold + the 360, not a
             -- saga state. Non-terminal: a cancel before shipment still moves it to
-            -- compensating.
+            -- compensated (directly, on inventory's two-phase cancellation ack).
             'supply_secured',
-            'completed', 'compensating', 'compensated', 'failed'
+            'completed', 'compensated', 'failed'
         )
     ),
     current_step VARCHAR(100),

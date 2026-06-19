@@ -52,12 +52,6 @@ public interface SalesOrderFulfilmentSagaManager {
      */
     Optional<String> currentPaymentTerms(UUID salesOrderHeaderId);
 
-    /**
-     * Flip {@code → compensating} in response to a cancel command. Throws
-     * {@link SagaNotFoundException} if no saga exists for the given order.
-     */
-    void requestCompensation(UUID salesOrderHeaderId);
-
     // ------------------------------------------------------------
     // Worker drain (called from SalesOrderFulfilmentSagaWorker)
     // ------------------------------------------------------------
@@ -199,21 +193,13 @@ public interface SalesOrderFulfilmentSagaManager {
 
     /**
      * Apply {@code inventory.SalesOrderCancellationApplied} — the sole
-     * compensation ack (the manufacturing leg was retired). Records the
-     * inventory ack on saga data and, when in {@code compensating}, transitions
-     * {@code compensating → compensated} and returns {@code "compensated"} so the
-     * caller can emit {@code sales.SalesOrderCompensated}.
+     * compensation ack (the manufacturing leg was retired), and the confirmation
+     * half of the two-phase cancel. Records the inventory ack on saga data and,
+     * for any non-terminal saga, transitions it directly to {@code compensated}
+     * (there is no intermediate {@code compensating} state — the cancel request no
+     * longer pre-compensates), returning {@code "compensated"} so the caller can
+     * emit {@code sales.SalesOrderCompensated}. A no-op on a terminal saga (the
+     * {@code rejected}/unsourceable path also releases via this ack).
      */
     String applyInventoryCancellationApplied(UUID salesOrderHeaderId);
-
-    // ------------------------------------------------------------
-    // Exceptions
-    // ------------------------------------------------------------
-
-    /** Thrown by {@link #requestCompensation} when no saga exists for the given order. */
-    class SagaNotFoundException extends RuntimeException {
-        public SagaNotFoundException(UUID salesOrderHeaderId) {
-            super("No fulfilment saga for sales_order_header_id=" + salesOrderHeaderId);
-        }
-    }
 }

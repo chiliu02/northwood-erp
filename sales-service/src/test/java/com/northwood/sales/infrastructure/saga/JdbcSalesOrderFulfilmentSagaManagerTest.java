@@ -2,7 +2,6 @@ package com.northwood.sales.infrastructure.saga;
 
 import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.*;
 
-import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager.SagaNotFoundException;
 import com.northwood.sales.domain.saga.FulfilmentSagaData;
 import com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga;
 import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaPort;
@@ -86,29 +85,6 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
     }
 
     @Nested
-    class RequestCompensation {
-        @Test void flips_saga_to_compensating() {
-            // supply_secured is NON-terminal: a cancel before shipment still
-            // compensates (the top-down broadcast cancel path).
-            SalesOrderFulfilmentSaga saga = sagaInState(SUPPLY_SECURED);
-            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
-
-            manager.requestCompensation(SO);
-
-            assertThat(saga.state()).isEqualTo(COMPENSATING);
-            verify(sagas).update(saga);
-        }
-
-        @Test void throws_when_no_saga() {
-            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> manager.requestCompensation(SO))
-                .isInstanceOf(SagaNotFoundException.class);
-            verify(sagas, never()).update(any());
-        }
-    }
-
-    @Nested
     class ApplyStockReserved {
         @Test void full_reservation_shortcuts_to_supply_secured() {
             SalesOrderFulfilmentSaga saga = sagaInState(STOCK_RESERVATION_REQUESTED);
@@ -177,16 +153,16 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
 
         @Test void late_reply_after_compensation_is_ignored() {
             // A StockReserved in flight when the order was cancelled lands after
-            // the saga reached compensating. Source-state guard: it must NOT
-            // resurrect the saga to supply_secured — that would both revive a
-            // cancelled order and strand its compensation. The reply is a no-op.
-            SalesOrderFulfilmentSaga saga = sagaInState(COMPENSATING);
+            // the saga reached the compensated terminal. Source-state guard: it
+            // must NOT resurrect the saga to supply_secured — that would revive a
+            // cancelled order. The reply is a no-op.
+            SalesOrderFulfilmentSaga saga = sagaInState(COMPENSATED);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
             String state = manager.applyStockReserved(SO, "reserved", Set.of());
 
-            assertThat(state).isEqualTo(COMPENSATING);
-            assertThat(saga.state()).isEqualTo(COMPENSATING);
+            assertThat(state).isEqualTo(COMPENSATED);
+            assertThat(saga.state()).isEqualTo(COMPENSATED);
             verify(sagas, never()).update(any());
         }
     }
@@ -504,15 +480,6 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
         // Two-phase cancel: the inventory ack is the confirmation, so it drives the
         // saga to compensated directly from whatever active state it is in — there
         // is no prior 'compensating' hop (the cancel request no longer pre-compensates).
-        @Test void inventory_ack_from_compensating_completes_to_compensated() {
-            SalesOrderFulfilmentSaga saga = sagaInState(COMPENSATING);
-            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
-
-            String state = manager.applyInventoryCancellationApplied(SO);
-
-            assertThat(state).isEqualTo(COMPENSATED);
-        }
-
         @Test void inventory_ack_from_active_state_completes_to_compensated() {
             SalesOrderFulfilmentSaga saga = sagaInState(SUPPLY_SECURED);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));

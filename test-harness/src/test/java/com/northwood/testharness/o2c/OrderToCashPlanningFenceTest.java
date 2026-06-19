@@ -126,8 +126,8 @@ class OrderToCashPlanningFenceTest {
      * answers with {@code reservationsReleased = 0} so the saga still reaches
      * {@code compensated}. This is the inventory-side tolerance documented on
      * {@code InventorySalesOrderCancellationApplied} — confirmed here for the new
-     * {@code awaiting_release} entry point (which also exercises the
-     * {@code awaiting_release → compensating} transition).
+     * {@code awaiting_release} entry point (the two-phase cancel: request →
+     * inventory ack → {@code compensated}, with nothing reserved).
      */
     @Test
     void cancel_from_awaiting_release_completes_compensation_with_nothing_reserved() throws Exception {

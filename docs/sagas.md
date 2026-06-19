@@ -17,7 +17,7 @@ The notation is shared; the semantics are not. `docs/system-map.html` deliberate
 | States mean | lifecycle of one fact | progress through a multi-step flow |
 | Boundary | one aggregate, one txn per transition | many boundaries, eventual consistency |
 | Owns | a business invariant | only orchestration progress |
-| Undo | a local terminal state (`cancelled`) | distributed compensation (`compensating`/`compensated`) |
+| Undo | a local terminal state (`cancelled`) | distributed compensation (terminal `compensated`) |
 | Emits | its own deltas (drained at `save()`) | commands, if anything — some Sagas emit nothing |
 | Driver | passive — handlers mutate it | active — leased polling worker + retries |
 | Persisted row is | the source of truth | a coordination bookmark (state, lease, retry, `data`) |
@@ -120,7 +120,7 @@ Inbox handlers advance sagas too — the worker handles transitions where the sa
 
 A startup-time `SagaInvariantsAutoConfiguration` validates that every concrete saga's CHECK constraint matches the states its worker / handlers can produce; failures abort startup with a clear delta.
 
-**Only model states the code actually writes.** When a feature adds compensation states for one saga (e.g. cancel-order added `compensating`/`compensated` to sales + manufacturing), don't reflexively add them to other sagas' `ALL_STATES` "in case we need them later." The invariant checker reads `ALL_STATES` as code's claim of what it can produce — anything not in the DB CHECK fails boot. Purchasing's `PurchaseToPaySaga` had `compensating`/`compensated` listed defensively despite no transition code producing them; cleanest fix was removing the dead entries, not extending the schema CHECK to allow what nothing emits. (The two-phase cancel later made sales' own `compensating` unreachable as well — the cancel ack now advances straight to `compensated` — so `compensating` + `requestCompensation` are themselves a pending dead-entry cleanup of exactly this kind.)
+**Only model states the code actually writes.** When a feature adds compensation states for one saga (e.g. cancel-order added `compensating`/`compensated` to sales + manufacturing), don't reflexively add them to other sagas' `ALL_STATES` "in case we need them later." The invariant checker reads `ALL_STATES` as code's claim of what it can produce — anything not in the DB CHECK fails boot. Purchasing's `PurchaseToPaySaga` had `compensating`/`compensated` listed defensively despite no transition code producing them; cleanest fix was removing the dead entries, not extending the schema CHECK to allow what nothing emits. (The two-phase cancel later made sales' own `compensating` unreachable as well — the cancel ack now advances straight to `compensated` — so `compensating` + `requestCompensation` were **removed** for exactly this reason; sales' `ALL_STATES` + the `saga_state` CHECK no longer list `compensating`.)
 
 ## Saga manager class shape — single source of truth per saga
 

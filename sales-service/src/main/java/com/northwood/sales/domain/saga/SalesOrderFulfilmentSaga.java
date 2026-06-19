@@ -24,7 +24,8 @@ import java.util.UUID;
  * the {@code awaiting_prepayment} gate until the up-front payment lands; a
  * planning fence parks at {@code awaiting_release} until the release date. Side
  * rails: {@code rejected} (a short line's replenishment was cancelled —
- * unsourceable / no BOM / no vendor), {@code compensating}, {@code compensated},
+ * unsourceable / no BOM / no vendor), {@code compensated} (the two-phase cancel
+ * path — entered directly from the active state on inventory's cancellation ack),
  * {@code failed}.
  *
  * <p>The saga is pruned to the states some control-flow branches on. The old
@@ -133,12 +134,12 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
      * {@link FulfilmentSagaData#orderSettled} (latched by {@code ShipmentPosted} /
      * {@code CustomerPaymentReceived}) and transitions to {@link #COMPLETED} when
      * both are met. <b>Non-terminal</b>: a cancel before shipment still moves it
-     * {@code → compensating} (the top-down broadcast cancel path). Renamed from
-     * the old {@code ready_to_ship}.
+     * {@code → compensated} on inventory's cancellation ack (the two-phase
+     * cancel path; see {@link #COMPENSATED}). Renamed from the old
+     * {@code ready_to_ship}.
      */
     public static final String SUPPLY_SECURED = "supply_secured";
     public static final String COMPLETED = "completed";
-    public static final String COMPENSATING = "compensating";
     public static final String COMPENSATED = "compensated";
     public static final String FAILED = "failed";
 
@@ -160,7 +161,7 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
         STOCK_RESERVATION_REQUESTED, STOCK_RESERVATION_INCOMPLETE, REJECTED,
         SUPPLY_SECURED,
         COMPLETED,
-        COMPENSATING, COMPENSATED,
+        COMPENSATED,
         FAILED
     );
 
