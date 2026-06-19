@@ -239,5 +239,5 @@ Stated plainly so they are not mistaken for coverage:
 - **No load / performance / chaos testing.** The architecture is built for it (per-aggregate
   partition keys, `SKIP LOCKED` drains) but it is not exercised under load in CI. The
   correctness-under-contention load test is **designed but not yet built** —
-  `docs/concurrent-load-test.md` (shared Testcontainers backend, Gatling REST + Playwright UI
-  executions, invariant-based assertions, and a demo mode over the live compose + LGTM stack).
+  `docs/concurrent-load-test.md` (shared Testcontainers backend, a Gatling REST execution,
+  invariant-based assertions, and a demo mode over the live compose + LGTM stack).

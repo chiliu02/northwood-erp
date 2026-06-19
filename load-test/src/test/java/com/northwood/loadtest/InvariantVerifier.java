@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * The shared assertion core of the concurrent load test
  * ({@code docs/concurrent-load-test.md} §6) — plain cross-schema JDBC, reused by
- * every execution (REST / Web-UI) and by the demo finale. It does not generate
+ * the REST execution, the focused race probes, and the demo finale. It does not generate
  * load; it reads the database <em>after</em> the load drains and asserts the
  * conservation / convergence invariants that contention would violate.
  *

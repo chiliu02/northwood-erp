@@ -6,36 +6,24 @@ throughput benchmark: drive many concurrent order-to-cash flows through the *rea
 prove the system's invariants still hold — no oversell, the ledger balances, every saga
 converges, every inbox message applies exactly once.
 
-It runs in **two executions that share one backend and one assertion core**, differing only
-in the driver at the entry point:
-
-- **REST execution** — the *stress* run. Hundreds–thousands of concurrent orders via HTTP.
-  This is where contention bites. Driven by **Gatling**.
-- **Web-UI execution** — the *fidelity* run. ~10–50 concurrent browser sessions through the
-  real SPA → BFF → services path, each a distinct OIDC user. Driven by **Playwright**.
-
-The UI execution is **deliberately not** as massive as the REST one. Contention is a backend
-property; once the REST run proves the backend survives a storm on shared rows, the UI run's
-job is the orthogonal axis — does the actual front-end / BFF wiring drive the same correct
-flows for real, concurrent, distinct users. A handful of sessions confirms front-end
-concurrency-safety (session isolation, no token bleed, distinct `created_by`) without
-redundantly hammering a backend a browser could never saturate.
+The entry-point driver is **Gatling**: hundreds–thousands of concurrent orders via HTTP against
+the live service REST endpoints. This is where contention bites. A shared JDBC invariant
+verifier asserts the conservation invariants after the load drains.
 
 ---
 
 ## 1. What it proves
 
-| Axis | REST execution | Web-UI execution |
-|---|---|---|
-| Role | stress / contention | integration / fidelity |
-| Concurrency | massive (M threads, hundreds–thousands of orders) | representative (~10–50 sessions) |
-| Entry point | service REST endpoints (direct or via the BFF proxy) | real SPA in a browser |
-| Driver | Gatling (Java DSL) | Playwright (browser contexts) |
-| Finds | races on shared resources — oversell, lost updates, idempotency gaps, ordering | front-end / BFF wiring bugs across concurrent real users |
-| Identity | per-user Keycloak bearer token | per-context real OIDC login |
+| Axis | REST execution |
+|---|---|
+| Role | stress / contention |
+| Concurrency | massive (M threads, hundreds–thousands of orders) |
+| Entry point | service REST endpoints (direct or via the BFF proxy) |
+| Driver | Gatling (Java DSL) |
+| Finds | races on shared resources — oversell, lost updates, idempotency gaps, ordering |
+| Identity | per-user Keycloak bearer token |
 
-Both run the **same invariant suite** (§6) at the end; the UI run just asserts over its
-smaller order set.
+The run executes the **invariant suite** (§6) at the end, over the order set it placed.
 
 ---
 
@@ -56,13 +44,13 @@ single-threaded by construction and have no shared-resource contention by design
               │  • sales · inventory · manufacturing ·            │
               │    purchasing · finance  (SPRING_PROFILES=kafka)  │
               └──────────────────────────────────────────────────┘
-                       ▲                              ▲
-        ┌──────────────┴───────────┐   ┌─────────────┴────────────────┐
-        │  REST driver (Gatling)   │   │  Web-UI driver (Playwright)   │
-        │  massive concurrency     │   │  ~10–50 OIDC sessions         │
-        └──────────────────────────┘   └───────────────────────────────┘
-                       ▲                              ▲
-              ┌────────┴──────────────────────────────┴────────┐
+                                     ▲
+                       ┌─────────────┴────────────┐
+                       │  REST driver (Gatling)    │
+                       │  massive concurrency      │
+                       └───────────────────────────┘
+                                     ▲
+              ┌──────────────────────┴──────────────────────────┐
               │  Shared invariant verifier (JDBC, post-run)     │
               │  no-oversell · double-entry · idempotency ·     │
               │  per-aggregate ordering · convergence · DLT     │
@@ -209,7 +197,6 @@ cases run on demand.
 | **TC-PARTIAL-SHIP**                       | multi-line, partial then re-ship   | — · — · TO_STOCK · — · staged supply                    | jqwik-IT        | 2 + line-fold rollup                   |
 | **TC-SUPPLY-DUP**                         | dup goods-receipt / WO-completion  | — · overlapping · supply side · — · 2 receivers         | jqwik-IT        | 4 + single top-up                      |
 | **TC-PATH-{TS-PUR,TS-MFG,TO-PUR,TO-MFG}** | one product path saturated         | random · overlapping · **one** · mixed · high           | Gatling         | path-specific 1–4                      |
-| **TC-UI**                                 | front-end fidelity, distinct users | Playwright · ~10–50 OIDC users · all 4 · mixed          | Playwright      | all, smaller set + session isolation   |
 | **TC-DEMO**                               | live showcase                      | tuned for watchability over the live stack              | demo            | optional finale                        |
 
 "—" means the axis is not what the case is about (use the default). The matrix sweep (§4.4) is just
@@ -232,17 +219,9 @@ race probes — each a short scenario that fails fast and points at one property
 `preferred_username` claim; commands carry no user id. So distinct users require distinct
 tokens.
 
-- **REST execution** — stand up Keycloak with N demo users (`user-0 … user-{N-1}`). A Gatling
-  feeder mints/holds one bearer token per virtual user; every request carries
-  `Authorization: Bearer …`. Distinct `preferred_username` → distinct `created_by`.
-- **Web-UI execution** — each Playwright browser context performs a **real OIDC login** as a
-  distinct demo user, so identity flows the genuine SPA → BFF → services path.
-
-> **BFF prerequisite for the UI run.** The demo BFF normally stamps a *single* synthetic
-> identity via a shared-secret bypass header (`docs/infrastructure.md`); that cannot produce
-> different users. The UI execution therefore requires the BFF/SPA configured to accept **real
-> OIDC tokens** (bypass disabled) so per-context login produces distinct `created_by`. This is
-> a run-mode toggle, not a code change to the bypass path.
+Stand up Keycloak with N demo users (`user-0 … user-{N-1}`). A Gatling feeder mints/holds one
+bearer token per virtual user; every request carries `Authorization: Bearer …`. Distinct
+`preferred_username` → distinct `created_by`.
 
 ---
 
@@ -325,8 +304,7 @@ invariants (§6) would force fragile JDBC samplers + BeanShell. Gatling is **JVM
 code-first**: it lives in the Maven build, mints Keycloak tokens in plain Java, has an `after`
 lifecycle hook to run the JDBC invariant verifier in-process, and produces an excellent latency
 report for the metrics side. JMeter remains a fine choice only for the *throughput benchmark*
-this test deliberately is not. (A load tool only helps the REST path either way — the UI path
-is Playwright.)
+this test deliberately is not.
 
 ### Module layout
 
@@ -340,7 +318,7 @@ load-test/
     OrderToCashSimulation.java  # the Gatling Java-DSL simulation
     KeycloakFeeder.java         # mints one bearer token per virtual user
     OperationsSimulation.java   # warehouse/production drain (ship, goods-receipt, WO-complete)
-    InvariantVerifier.java      # JDBC post-run checks (§6), shared with the UI execution
+    InvariantVerifier.java      # JDBC post-run checks (§6)
 ```
 
 Wire it under a Maven profile (e.g. `-Pload-test`) so it is reachable only on demand.
@@ -424,10 +402,7 @@ What the audience watches while the load runs:
 - **Grafana** — live orders/sec, traces fanning sales → inventory → manufacturing / purchasing
   → finance, `stock_balance` depleting then replenishing for the `TO_STOCK` SKUs, saga-state
   transition counts. Drill into a *single* sales order *during* the storm via the
-  trace↔log↔metric click-through.
-- **A wall of browser windows** (the Web-UI execution) — each a distinct Keycloak user placing
-  and paying orders simultaneously, flowing through fulfilment in real time. This is the
-  centerpiece; it does not need REST-scale concurrency to be compelling.
+  trace↔log↔metric click-through. This is the centerpiece.
 - **The finale** — run the §6 `InvariantVerifier` live: "5,000 orders across 50 users; zero
   oversell; the ledger balances to the cent; the dead-letter topic is empty."
 
@@ -438,7 +413,6 @@ Demo run:
 docker compose -f docker-compose.yml -f docker-compose.seed.yml -f docker-compose.observability.yml up -d
 # open Grafana (per docs/observability.md), then drive load at a watchable rate:
 mvn -Pload-test -pl load-test gatling:test -Dgatling.simulationClass=com.northwood.loadtest.OrderToCashSimulation -Dusers=300 -Dramp=120
-# and/or launch the Playwright UI sessions (Chrome) for the browser wall
 ```
 
 In demo mode the invariant verifier is an optional flourish rather than a build gate; the
@@ -446,10 +420,10 @@ point is the live picture, with the green verdict as the payoff.
 
 ---
 
-## 9. Shared code, two drivers
+## 9. Shared verifier, one driver
 
-One `OrderDriver` SPI keeps the two executions honest — same seeding, same matrix, same
-verifier; only the entry point differs:
+The Gatling scenario (§7) is the single entry point; the assertion core is factored out so the
+same checks run in the load JVM and standalone as the demo finale:
 
 ```java
 interface OrderDriver {
@@ -461,9 +435,8 @@ interface OrderDriver {
 
 - `RestOrderDriver` — the Gatling scenario above (or a thin HTTP-client driver for the
   Testcontainers IT-mode harness).
-- `WebUiOrderDriver` — Playwright: one browser context per user, real OIDC login, then UI
-  clicks that place and pay. Asserts session isolation (no token bleed) and, via the shared
-  verifier, the same invariants over its smaller order set.
+- `InvariantVerifier` — shared between the in-process `after {}` hook and the standalone demo
+  finale (`exec:java`), so the same §6 verdict is produced either way.
 
 ---
 
@@ -492,7 +465,6 @@ interface OrderDriver {
 | **In-JVM property suite** (`test-harness` `o2c.OrderToCashPropertyTest`, jqwik) | All four archetypes (to_stock/to_order × purchased/manufactured) incl. the supply legs (goods receipt, work-order completion), through the **real** saga + inbox handlers + serde over the in-memory `World` | Saga/handler **logic** correctness under an arbitrary *mix and ordering* of orders; convergence, no-oversell, double-entry per run | ✅ CI-green (100 jqwik tries) |
 | **REST execution** (`load-test` `OrderToCashSimulation`, Gatling) | Many concurrent distinct-user orders, **ample-stock customer-forward path only** (place → reserve → ship → invoice → pay), real Postgres + Kafka | Conservation invariants hold under concurrent reservation on shared `stock_balance` rows + concurrent GL posting | ✅ live: 200 distinct-user orders, all asserted invariants held |
 | **Focused race probes** (`load-test` `ConcurrentRaceProbesTest`) | Deliberate two-worker collisions on one aggregate (barrier-synchronised) | Command-layer exactly-once / no-half-state | ✅ all three green; the two bugs they found (double-ship over-ship, cancel-vs-ship half-state) are **fixed** and now guarded |
-| **Web-UI fidelity** (`web-ui-load-test`, Playwright) | N isolated browser contexts, real OIDC login through the SPA → BFF → services | Session isolation / no token bleed / distinct `created_by` | ✅ live: 5 distinct-user sessions, isolation held |
 
 ### 11.2 Does the suite *ensure* correct concurrent behaviour? — No.
 
@@ -563,5 +535,3 @@ Ranked by how much each closes the gap above:
   perf-tuning exercise (capacity planning, GC tuning) is a separate effort.
 - **Not chaos testing** in the *current* tiers. Network partitions / broker kills / node loss are
   the further tier item 6 above names — out of scope for the shipped tiers.
-- **UI scale is intentionally bounded.** The Web-UI execution validates the front-end path, not
-  backend capacity; do not grow it to match the REST run.
