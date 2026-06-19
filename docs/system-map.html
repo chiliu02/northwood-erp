@@ -1001,7 +1001,7 @@ window.NORTHWOOD_EVENTS = [
     event: "SalesOrderCancellationRequested",
     consumers: [
       { dest: "inventory", name: "inventory.sales-cancel",
-        desc: `Updates <code>inventory.stock_reservation.status</code> (released), releases <code>inventory.stock_balance.reserved_quantity</code>; emits <code>inventory.SalesOrderCancellationApplied</code>. Inventory is the sole compensation <em>ack</em> — the manufacturing sales-cancel handler was deleted (no work order is bound to a sales order).` },
+        desc: `Two-phase cancel arbiter: <code>tryClaimCancellation</code> marks every not-yet-shipped line <code>cancelled</code> on <code>inventory.sales_order_line_facts</code> (the ship-claim then refuses a cancelled line). If no line shipped, releases the reservation (<code>stock_reservation.status='released'</code>, <code>stock_balance.reserved_quantity</code>) and emits <code>inventory.SalesOrderCancellationApplied</code>; if a shipment won the race, it does nothing (no release, no ack) and the order ships. Inventory is the sole compensation <em>ack</em> — the manufacturing sales-cancel handler was deleted (no work order is bound to a sales order).` },
       { dest: "finance", name: "finance.refund.sales-order-cancellation",
         desc: `If the cancelled order's up-front (prepayment/deposit) invoice was paid, refunds it — Dr 2110 Customer Deposits / Cr 1000 Bank, the inverse of the original receipt — and stamps <code>customer_invoice_header.refunded_at</code>. Idempotent; no-op for on-shipment/COD/unpaid. The finance-only refund arm of the cancel (no ack — additional to the inventory compensation).` },
     ]
@@ -1209,7 +1209,7 @@ window.NORTHWOOD_EVENTS = [
     event: "InventorySalesOrderCancellationApplied",
     consumers: [
       { dest: "sales", name: "sales.compensation-inventory-ack",
-        desc: `The header is already <code>CANCELLED</code> — the <code>cancel</code> command is an absorbing override on the composed header (independent of the line fold), set when the order was cancelled, not by this event. This handler records inventory's reservation-release ack (the sole compensation ack — manufacturing's was retired) and emits <code>sales.SalesOrderCompensated</code> as the ack-complete signal. No status write here.` },
+        desc: `The confirmation half of the two-phase cancel: calls <code>SalesOrderService.confirmCancellation</code>, flipping the header → <code>CANCELLED</code> (only now — the cancel request did <em>not</em>), then advances the saga directly to <code>compensated</code> (no <code>compensating</code> hop) and emits <code>sales.SalesOrderCompensated</code>. Inventory sends this ack only when the cancel won the race; if a shipment won, no ack arrives and the order stays shipped.` },
     ]
   },
   {
