@@ -92,6 +92,8 @@ Confirmed **not** at risk (header==Σlines by construction at creation; no later
 | `JdbcStockBalanceWriter.releaseReserved` | `reserved_quantity` · `stock_balance` | `reserved_quantity >= 0` | ✅ fixed — now predicate-guarded (`... AND reserved_quantity >= ?`); a duplicate/over release matches 0 rows + WARN, never drives it negative. Matches the sibling `decrementOnHand` pattern. |
 | `JdbcWipBalanceWriter.decrement` | `on_hand_quantity` · `wip_balance` | `on_hand_quantity >= 0` | ✅ fixed — now predicate-guarded (`... AND on_hand_quantity >= ?`); breach → 0 rows + WARN, no negative. |
 | `JdbcStockBalanceWriter.decrementOnHand` / `tryReserveOnHand` | `on_hand` / `reserved` · `stock_balance` | `>= 0`, `on_hand >= reserved` | ✅ safe — predicate-guarded WHERE; breach → 0 rows → clean `false`. |
+| `JdbcSalesOrderLineFactsProjection.tryClaimShipment` | `shipped_quantity` · `sales_order_line_facts` | `shipped_quantity <= ordered_quantity` | ✅ safe — predicate-guarded + **row-locked claim** (`... AND shipped_quantity + ? <= ordered_quantity AND NOT cancelled`), run in the shipment tx *before* the stock decrement. Two concurrent shipments of one line serialize on the row lock; the second past the cap matches 0 rows → 409, so `on_hand` decrements exactly once. The synchronous over-ship guard (the conservation invariants alone did **not** catch the over-ship — a collision probe did). |
+| `JdbcSalesOrderLineFactsProjection.tryClaimCancellation` | `cancelled` · `sales_order_line_facts` | (arbiter flag, not a CHECK) | ✅ the cross-service cancel-vs-ship arbiter — flips `cancelled` on every not-yet-shipped line; row-locks the same rows `tryClaimShipment` does, so a concurrent cancel + ship resolves to exactly one winner. See the arbiter pattern below. |
 | `JdbcWorkOrderWipProjection.chargeRawMaterials` | `wip_value` · `work_order_wip` | none | ✅ safe — effect-gated `WHERE materials_charged_at IS NULL`. |
 | reporting `*_view` / `finance.purchase_order_line_facts` additive bumps | `invoiced_amount` / `paid_amount` / `received_quantity` / … | **none** | ⚠️ read-model only — no CHECK, so no saga wedge, but a semantic double-count silently drifts the dashboards / 3-way-match facts. Lower priority; recompute-from-source if accuracy becomes load-bearing. |
 
@@ -103,3 +105,54 @@ Confirmed **not** at risk (header==Σlines by construction at creation; no later
 4. Call it from the **api** layer before the write transaction so an invalid request fails fast (read-only pre-check → 4xx).
 5. For an **additive projection write** bounded by a CHECK: make it recompute-from-source, predicate-guarded, or effect-gated — don't lean on `eventId` dedup alone.
 6. Keep the DB `CHECK` as the backstop, never as the only guard.
+
+## Concurrency under contention — the synchronous claim + the cross-service arbiter
+
+A self-contained guard + idempotency is **not enough once two _commands_ race over the same
+outcome.** Two patterns close that gap; both came out of the load-test collision probes
+(`docs/concurrent-load-test.md` §4.6), which found races the conservation invariants are blind
+to.
+
+**Why end-state invariants miss it.** A conservation/end-state check (no oversell, ledger
+balances, sagas converge) runs *after* the dust settles, so it cannot see a race that produces a
+self-consistent-but-wrong state, a transient breach that heals, or a duplicated effect that nets
+out. Command-layer races need a **synchronous guard at the command**, plus a **targeted
+two-worker collision probe** to prove it — an end-state assertion passes on the broken system,
+so it is no evidence of safety.
+
+### Pattern 1 — single-service: claim synchronously before an irreversible effect
+
+Before an irreversible side effect (ship → goods leave; pay → cash moves), make an **atomic,
+row-locked claim** that the action is still allowed, in the *same transaction*, and reject on
+**0 rows** — never lean on the downstream CHECK to surface it. This is the predicate-guarded
+write applied to a *command*: `ShipmentService.post` claims
+`shipped_quantity += qty WHERE shipped+qty <= ordered` on `sales_order_line_facts` **before**
+decrementing `on_hand`, so two concurrent shipments of one line can't both decrement (the
+over-ship bug the probe found).
+
+### Pattern 2 — cross-service: the shared-row arbiter (+ two-phase originator)
+
+When the two racing commands live in **different services** and one is irreversible, the
+schema-per-service + outbox-only invariants forbid a shared lock or a synchronous cross-service
+call. Resolve it without one:
+
+- **Make the service that owns the irreversible effect the arbiter** (here: inventory, which
+  ships).
+- **Both commands claim the same row** in that service's schema (`sales_order_line_facts`): the
+  irreversible command claims via its eligibility predicate (`tryClaimShipment … AND NOT
+  cancelled`); the competing command claims the conflicting flag on the same rows
+  (`tryClaimCancellation` sets `cancelled WHERE shipped_quantity = 0`). The **row lock serializes
+  them — whichever commits first wins**, and the loser matches 0 rows.
+- **The foreign originator goes two-phase.** The service that *initiates* the competing command
+  (here: sales, which cancels) must not finalise synchronously — it only **requests**
+  (`SalesOrder.requestCancellation` emits the event, no status change), the arbiter **acks** only
+  on a win, and the originator **confirms** on the ack (`confirmCancellation` → `cancelled`).
+  Critically, **defer every side effect to the confirmation** — the saga compensation fires on
+  the applied-ack, not at request time, so a *lost* race triggers nothing (the order just ships).
+
+Worked examples: the concurrent **double-ship** over-ship (pattern 1) and the **cancel-vs-ship**
+half-state (pattern 2) — both surfaced by the probes, both fixed here; full flow in
+`docs/sagas.md` → *Cancel compensation flow (two-phase, inventory-arbitrated)*. The same shape is
+the principled answer to the still-open cross-partition PR→PO link race (a sibling cross-service
+TOCTOU): a row both the dispatch and the PO-created handler claim, in the service that owns the
+link.

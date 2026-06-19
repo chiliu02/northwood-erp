@@ -91,7 +91,7 @@ A skeptical pass over every **join point** — a handler or projection that, whi
 | Site | Unconditional side-effect on a late event | Why contained |
 |---|---|---|
 | `sales.StockReservedHandler.recordReservation` | marks lines reserved even on a cancelled order | header fold guards terminal → cosmetic line drift only (the saga transition itself is now guarded — see *Fixed*) |
-| `sales.ShipmentPostedHandler.recordShipped` | marks lines shipped + emits `SalesOrderShipped` | header fold guards terminal; the `SalesOrderShipped` tail is gated unreachable by the shipment picker, which honours `order_status = cancelled` |
+| `sales.ShipmentPostedHandler.recordShipped` | marks lines shipped + emits `SalesOrderShipped` | can no longer land on a cancel-won order — inventory's synchronous ship-claim refuses a `cancelled` line (`tryClaimShipment … AND NOT cancelled`), so no `ShipmentPosted` is emitted once a cancellation has been applied (the cancel-vs-ship arbiter, `docs/validations.md` → *Concurrency under contention*); the header fold also guards terminal as a backstop |
 
 **Fixed** (commit on `main`): `sales.JdbcSalesOrderFulfilmentSagaManager.applyStockReserved` — the sole forward `apply*` method (of ~15 across the three sagas) missing a source-state guard; a late `StockReserved` after a cancel could resurrect a `compensating` saga and strand its compensation. Now guarded by `STOCK_RESERVED_SOURCE_STATES`.
 

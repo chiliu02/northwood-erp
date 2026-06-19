@@ -1048,7 +1048,7 @@ window.NORTHWOOD_EVENTS = [
     event: "SalesOrderPlaced",
     consumers: [
       { dest: "inventory", name: "inventory.sales-order-line-facts",
-        desc: `Seeds <code>inventory.sales_order_line_facts</code> (sales_order_header_id, sales_order_line_id, product_id) — used by shipment-line validation` },
+        desc: `Seeds <code>inventory.sales_order_line_facts</code> (header/line/product + <code>ordered_quantity</code>) — backs the shipment-line product check, the synchronous over-ship ship-claim, and the cancel-vs-ship arbiter` },
       { dest: "reporting", name: "reporting.sales-order-360.order-placed",
         desc: `Creates <code>reporting.sales_order_360_view</code> row (order_number, customer_id, customer_name, order_date, requested_delivery_date, currency_code, total_amount, order_status, payment_terms). All lines start at the <code>open</code> band, so the composed header classifies as <code>open</code>.` },
       { dest: "reporting", name: "reporting.dashboard.sales-order-placed",
@@ -1564,7 +1564,7 @@ window.NORTHWOOD_PROJECTIONS = [
     destinations: [
       { dest: "inventory", tables: [
         { name: "sales_order_line_facts", kind: "read-model",
-          events: ["SalesOrderPlaced"] },
+          events: ["SalesOrderPlaced", "SalesOrderLineQuantityChanged", "SalesOrderLineRemoved", "SalesOrderUpfrontPaymentSettled", "SalesOrderCancellationRequested"] },
         { name: "stock_reservation", kind: "aggregate",
           events: ["StockReservationRequested", "SalesOrderCancellationRequested"] },
         { name: "stock_reservation_line", kind: "aggregate",

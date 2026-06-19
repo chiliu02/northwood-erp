@@ -301,14 +301,14 @@ Place an order **as Sarah (sales_clerk)** for a short quantity so it parks at `s
 
 A disabled Cancel action for sarah vs an enabled one for sam is the simplest live demo of the role gate.
 
-The order now shows `status='cancelled'` with `cancelledAt` set. Behind the scenes:
+A tick after the click the order shows `status='cancelled'` with `cancelledAt` set — cancellation is **two-phase** (the click only *requests* it; inventory confirms), which is what stops a concurrent shipment and cancel ever leaving the order both shipped and cancelled. Behind the scenes:
 
-1. **Sales** — header flipped to `'cancelled'`, saga flipped to `'compensating'`, `sales.SalesOrderCancellationRequested` emitted.
-2. **Inventory** consumes — releases the stock reservation (`stock_balance.reserved_quantity` decremented; reservation header status `'released'`), emits `inventory.SalesOrderCancellationApplied`.
-3. **Sales** consumes that ack. While in `compensating`, the saga advances `compensating → compensated` and emits `sales.SalesOrderCompensated`. (Inventory is the sole compensation ack — no work order is bound to a sales order, so the manufacturing sales-cancel leg, `WorkOrder.cancel`, and `manufacturing.WorkOrderCancelled` were deleted.)
+1. **Sales** — `SalesOrder.requestCancellation` emits `sales.SalesOrderCancellationRequested`. The header is **not** flipped yet and the saga is untouched (a shipment could still win the race).
+2. **Inventory** consumes — claims cancellation on `sales_order_line_facts` (nothing shipped here, so it succeeds), releases the stock reservation (`stock_balance.reserved_quantity` decremented; reservation header status `'released'`), and acks `inventory.SalesOrderCancellationApplied`.
+3. **Sales** consumes that ack — `confirmCancellation` flips the header to `'cancelled'`, the saga advances from its active state **straight to `'compensated'`** (no `compensating` hop — the request didn't pre-compensate), and `sales.SalesOrderCompensated` is emitted. (Inventory is the sole compensation ack — no work order is bound to a sales order, so the manufacturing sales-cancel leg, `WorkOrder.cancel`, and `manufacturing.WorkOrderCancelled` were deleted.)
 4. **Reporting** consumes `sales.SalesOrderCompensated` and flips `sales_order_360_view.order_status` to `'cancelled'`.
 
-Watch the Sales Order detail roll-up walk `stock_reservation_incomplete → compensating → compensated`; afterwards it shows `order_status='cancelled'`.
+Watch the Sales Order detail roll-up walk `stock_reservation_incomplete → compensated`; afterwards it shows `order_status='cancelled'`. (Had a shipment beaten the cancel, inventory would emit **no** ack — the cancel is silently dropped and the order ships instead.)
 
 Once any line has shipped, the cancel is rejected with HTTP 409 — that path requires the credit-note / return-goods flow (out of scope). Hard-cancel by design: WIP from in-progress operations is written off rather than letting production finish (soft-cancel deferred).
 
