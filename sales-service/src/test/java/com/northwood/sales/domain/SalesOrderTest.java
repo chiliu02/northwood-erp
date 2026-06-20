@@ -647,13 +647,17 @@ class SalesOrderTest {
             assertThat(so.status()).isEqualTo(SalesOrder.Status.CANCELLED);
         }
 
-        @Test void reject_sets_rejected_and_emits_cancellation_request() {
+        @Test void reject_sets_rejected_and_emits_cancellation_request_and_rejected() {
             SalesOrder so = twoOpenLines();
             so.pullPendingEvents(); // drain placed
             so.reject("unsourceable");
             assertThat(so.status()).isEqualTo(SalesOrder.Status.REJECTED);
-            assertThat(so.pullPendingEvents()).hasSize(1)
-                .first().isInstanceOf(SalesOrderCancellationRequested.class);
+            // SalesOrderCancellationRequested drives inventory's reservation release;
+            // SalesOrderRejected is the confirmed non-shippable terminal finance refunds on.
+            assertThat(so.pullPendingEvents())
+                .hasSize(2)
+                .anyMatch(SalesOrderCancellationRequested.class::isInstance)
+                .anyMatch(com.northwood.sales.domain.events.SalesOrderRejected.class::isInstance);
         }
 
         @Test void complete_requires_fully_shipped() {

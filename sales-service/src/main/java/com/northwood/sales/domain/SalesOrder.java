@@ -1,6 +1,7 @@
 package com.northwood.sales.domain;
 
 import com.northwood.sales.domain.events.SalesOrderCancellationRequested;
+import com.northwood.sales.domain.events.SalesOrderRejected;
 import com.northwood.sales.domain.events.SalesOrderLineAdded;
 import com.northwood.sales.domain.events.SalesOrderLineQuantityChanged;
 import com.northwood.sales.domain.events.SalesOrderLineRemoved;
@@ -618,6 +619,13 @@ public final class SalesOrder {
      * (system-driven) rather than {@code cancelled} (customer-driven). Idempotent
      * and defensive: a no-op once a live line has shipped or the order reached
      * any terminal (the same line-predicate guard as {@link #cancel}).
+     *
+     * <p>Also emits {@link SalesOrderRejected} — the <b>confirmed</b> non-shippable
+     * terminal. Unlike a user cancel (a two-phase <em>request</em> that inventory
+     * may still lose to a shipment), a reject is definitive at emit time (a rejected
+     * order was never reserved, so it can never ship). Finance refunds a paid
+     * prepayment/deposit off this event, not the cancel request — so a cancel that
+     * loses the cancel-vs-ship race is never refunded-then-shipped.
      */
     public void reject(String reason) {
         if (isTerminal() || anyLineShipped()) {
@@ -626,6 +634,14 @@ public final class SalesOrder {
         this.status = Status.REJECTED;
         cancelAllLines();
         this.pendingEvents.add(new SalesOrderCancellationRequested(
+            UUID.randomUUID(),
+            id.value(),
+            orderNumber,
+            customerId,
+            reason,
+            Instant.now()
+        ));
+        this.pendingEvents.add(new SalesOrderRejected(
             UUID.randomUUID(),
             id.value(),
             orderNumber,

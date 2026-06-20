@@ -1,5 +1,6 @@
 package com.northwood.testharness.kits;
 
+import com.northwood.finance.application.CustomerCancellationRefundService;
 import com.northwood.finance.application.CustomerInvoiceService;
 import com.northwood.finance.application.JournalEntryService;
 import com.northwood.finance.application.PaymentService;
@@ -10,7 +11,9 @@ import com.northwood.finance.application.inbox.ProductCreatedHandler;
 import com.northwood.finance.application.inbox.ProductDiscontinuedHandler;
 import com.northwood.finance.application.inbox.PurchaseOrderCreatedHandler;
 import com.northwood.finance.application.inbox.RawMaterialsReservedWipHandler;
-import com.northwood.finance.application.inbox.SalesOrderCancellationRefundHandler;
+import com.northwood.finance.application.inbox.SalesOrderCompensatedRefundHandler;
+import com.northwood.finance.application.inbox.SalesOrderCompensationFailedRefundHandler;
+import com.northwood.finance.application.inbox.SalesOrderRejectedRefundHandler;
 import com.northwood.finance.application.inbox.SalesOrderShippedHandler;
 import com.northwood.finance.application.inbox.ShipmentDeferredRevenueHandler;
 import com.northwood.finance.application.inbox.StandardCostChangedHandler;
@@ -95,7 +98,10 @@ public final class FinanceTestKit {
         bus.register(new DepositInvoiceRequestedHandler(inbox, customerInvoiceService, json));
         // Refund the up-front amount (Dr 2110 / Cr Bank) when a paid
         // prepayment/deposit order is cancelled pre-shipment.
-        bus.register(new SalesOrderCancellationRefundHandler(inbox, journalService, customerInvoices, json));
+        CustomerCancellationRefundService refundService = new CustomerCancellationRefundService(journalService, customerInvoices);
+        bus.register(new SalesOrderCompensatedRefundHandler(inbox, refundService, json));
+        bus.register(new SalesOrderCompensationFailedRefundHandler(inbox, refundService, json));
+        bus.register(new SalesOrderRejectedRefundHandler(inbox, refundService, json));
         bus.register(new ShipmentDeferredRevenueHandler(inbox, journalService, customerInvoices, json));
         bus.register(new GoodsReceivedHandler(inbox, purchaseOrderLineFacts, journalService, json));
         bus.register(new PurchaseOrderCreatedHandler(inbox, purchaseOrderLineFacts, json));

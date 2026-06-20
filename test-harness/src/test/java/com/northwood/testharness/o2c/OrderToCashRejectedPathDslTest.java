@@ -13,6 +13,7 @@ import static com.northwood.sales.domain.saga.SalesOrderFulfilmentSaga.REJECTED;
 import com.northwood.inventory.domain.events.ReplenishmentCancelled;
 import com.northwood.manufacturing.domain.events.ReplenishmentUndispatchable;
 import com.northwood.sales.domain.SalesOrder;
+import com.northwood.sales.domain.events.SalesOrderRejected;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -49,6 +50,7 @@ class OrderToCashRejectedPathDslTest {
             .and(order("SO-REJ-1").has_status(SalesOrder.Status.REJECTED))
             .and(events_published(
                 ReplenishmentUndispatchable.EVENT_TYPE,
-                ReplenishmentCancelled.EVENT_TYPE));
+                ReplenishmentCancelled.EVENT_TYPE,
+                SalesOrderRejected.EVENT_TYPE));
     }
 }
