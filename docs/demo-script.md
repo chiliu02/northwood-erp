@@ -305,12 +305,12 @@ A tick after the click the order shows `status='cancelled'` with `cancelledAt` s
 
 1. **Sales** — `SalesOrder.requestCancellation` emits `sales.SalesOrderCancellationRequested`. The header is **not** flipped yet and the saga is untouched (a shipment could still win the race).
 2. **Inventory** consumes — claims cancellation on `sales_order_line_facts` (nothing shipped here, so it succeeds), releases the stock reservation (`stock_balance.reserved_quantity` decremented; reservation header status `'released'`), and acks `inventory.SalesOrderCancellationApplied`.
-3. **Sales** consumes that ack — `confirmCancellation` flips the header to `'cancelled'`, the saga advances from its active state **straight to `'compensated'`** (no `compensating` hop — the request didn't pre-compensate), and `sales.SalesOrderCompensated` is emitted. (Inventory is the sole compensation ack — no work order is bound to a sales order, so the manufacturing sales-cancel leg, `WorkOrder.cancel`, and `manufacturing.WorkOrderCancelled` were deleted.)
+3. **Sales** consumes that ack — `confirmCancellation` flips the header to `'cancelled'`. For this **to_stock** order nothing was order-pegged, so the ack carries no compensation legs and the saga advances from its active state **straight to `'compensated'`** (no `compensating` hop), emitting `sales.SalesOrderCompensated`. (A **to_order** order whose PO/WO was already committed instead parks at `compensating` and waits for those legs — see §4.1.2.)
 4. **Reporting** consumes `sales.SalesOrderCompensated` and flips `sales_order_360_view.order_status` to `'cancelled'`.
 
 Watch the Sales Order detail roll-up walk `stock_reservation_incomplete → compensated`; afterwards it shows `order_status='cancelled'`. (Had a shipment beaten the cancel, inventory would emit **no** ack — the cancel is silently dropped and the order ships instead.)
 
-Once any line has shipped, the cancel is rejected with HTTP 409 — that path requires the credit-note / return-goods flow (out of scope). Hard-cancel by design: WIP from in-progress operations is written off rather than letting production finish (soft-cancel deferred).
+Once any line has shipped, the cancel is rejected with HTTP 409 — that path requires the credit-note / return-goods flow (out of scope).
 
 ### 4.1.1 — Cancel a **paid** deposit order → automatic refund
 
@@ -318,11 +318,30 @@ The §4.1 cancel above was an *unpaid* order — nothing had moved through the G
 
 Run Demo 3 (deposit/prepayment) partway: place a **deposit** order (e.g. `paymentTerms:"deposit"`, `depositPercent:50`), then pay the deposit invoice. The deposit settles the up-front gate and the order reserves, so the saga is now at `supply_secured` with **Cr 2110 Customer Deposits** holding the deposit amount — the customer's money is on the balance sheet.
 
-Cancel it (as sam, before shipment). On top of the §4.1 sales↔inventory compensation, **finance** consumes `sales.SalesOrderCancellationRequested` and — seeing a paid prepayment/deposit invoice — posts the refund:
+Cancel it (as sam, before shipment). On top of the §4.1 sales↔inventory compensation, **finance** refunds the money — but it waits for the **confirmed** terminal, not the cancel request: it consumes `sales.SalesOrderCompensated` (the cancel won the cancel-vs-ship race) and — seeing a paid prepayment/deposit invoice — posts the refund:
 
-- **Dr 2110 Customer Deposits / Cr 1000 Bank** for the paid amount (the exact inverse of the original receipt), and stamps `customer_invoice_header.refunded_at` (idempotent — a redelivered cancel can't refund twice).
+- **Dr 2110 Customer Deposits / Cr 1000 Bank** for the paid amount (the exact inverse of the original receipt), and stamps `customer_invoice_header.refunded_at` (idempotent — a redelivered terminal can't refund twice).
+
+This is the fix for the subtle loss a naive refund-on-request would cause: if a shipment beat the cancel, **no** `SalesOrderCompensated` is emitted, so the deposit is *not* refunded (the order ships and the deposit is recognised as revenue instead). A system-rejected order refunds the same way off `sales.SalesOrderRejected`; a `compensation_failed` order (a supply leg couldn't be withdrawn — §4.1.2) still refunds the deposit off `sales.SalesOrderCompensationFailed`.
 
 **What the audience sees:** the Sales Order detail page shows a green **"refunded"** lozenge once the order is cancelled, with a Refund section linking to the journal. Open **Finance → Journal Entries** and find the `customer_refund` posting; 2110 Customer Deposits nets to **zero** across the deposit receipt + the refund. On-shipment and COD orders have nothing in 2110 before shipment, so cancelling them refunds nothing (finance no-ops).
+
+### 4.1.2 — Cancel a **to_order** order → withdraw its committed PO / work order
+
+The §4.1 / §4.1.1 cancels were `to_stock` lines — inventory's reservation release was the whole undo. A **to_order** line is different: its shortage raised a *dedicated, order-pegged* purchase order (buy-to-order) or work order (make-to-order), and cancelling must roll that committed supply back rather than orphan it. This is the multi-leg compensation (REQ-SAL-061).
+
+Run Demo 10 (to_order) partway: place a `to_order` order — e.g. the buy-to-order carpet (`FG-CARPET-001`) or a make-to-order finished good — and let it reach `stock_reservation_incomplete` with its replenishment **dispatched** (a `sent` PO, or a `released` WO), but **before goods are received / production starts**. Then cancel it (as sam).
+
+Behind the scenes the cancel now fans out:
+
+1. **Inventory** (the `inventory.sales-cancel` handler) releases the reservation as before, **and** — owning the peg→PO/WO map — for each in-flight order-pegged replenishment emits `inventory.OrderPeggedSupplyCancellationRequested` (to purchasing for the PO, manufacturing for the WO) and **enumerates those legs** on its `SalesOrderCancellationApplied` ack.
+2. **Sales** stamps the legs and parks the saga at **`compensating`** (not straight to `compensated`).
+3. **Purchasing** withdraws the PO (`sent → cancelled`, emits `purchasing.PurchaseOrderCancelled`) / **Manufacturing** withdraws the WO (`released → cancelled`, releases its reserved raw materials via `manufacturing.WorkOrderCancelled`), and each acks back to sales (`PurchaseOrderCancellationApplied` / `WorkOrderCancellationApplied`).
+4. **Sales** drains each leg; when the set empties the saga reaches **`compensated`** and emits `sales.SalesOrderCompensated`.
+
+**What the audience sees:** the order roll-up walks `stock_reservation_incomplete → compensating → compensated`. Open **Purchasing → Purchase Orders** (or **Manufacturing → Work Orders**) and the pegged PO/WO now reads `cancelled` — withdrawn, not orphaned. The carpet's reserved raw materials (for the WO case) are back in the free pool.
+
+**The un-compensatable leaf.** If you instead let the work order start production (operations in progress) *before* cancelling, that leg **refuses** — the WO is past its firm-commitment cutoff (material is in WIP). Sales records the failure and the saga reaches **`compensation_failed`**, emitting `sales.SalesOrderCompensationFailed` to escalate (an RMA / scrap-WIP write-off — a separate forward process, out of scope). The order is still cancelled cleanly and any deposit still refunds; only the supply residue needs a human.
 
 ### 4.2 — Reservation comes back partial or failed
 
@@ -570,7 +589,7 @@ Then place an order (as Sarah) for the chair beyond on-hand. Same pegged flow as
 
 ### 10.4 — Cancel a pegged order (un-peg)
 
-`to_order` does **not** block cancel. Cancel the carpet order from 10.2 **as Sam** (any pre-shipment state). The compensation un-pegs: if the PO already received (peg reserved), inventory releases the reserve so the carpet returns to the free pool (it behaves as make-to-stock from there); if the PO is still in flight, the peg is dropped and the eventual receipt settles into the pool. Re-check **Reporting → Available-to-Promise** — `reserved` drops back, `available` rises.
+`to_order` does **not** block cancel. Cancel the carpet order from 10.2 **as Sam** (any pre-shipment state). The compensation un-pegs: if the PO already **received** (peg reserved), inventory releases the reserve so the carpet returns to the free pool (it behaves as make-to-stock from there); if the PO is still **in flight** (`sent`, no goods yet), the peg is dropped **and the committed PO is withdrawn** — the multi-leg compensation in §4.1.2 (the saga parks at `compensating` until purchasing acks the PO cancellation), so the PO reads `cancelled` in **Purchasing → Purchase Orders** rather than being left orphaned. Re-check **Reporting → Available-to-Promise** — `reserved` drops back, `available` rises.
 
 ### 10.5 — What this proves
 

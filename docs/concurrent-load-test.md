@@ -193,6 +193,7 @@ cases run on demand.
 | **TC-DOUBLE-SHIP**                        | two Mikes, one order               | random · overlapping · any · — · 2 shippers             | jqwik-IT        | exactly-one ship + COGS                |
 | **TC-DOUBLE-PAY**                         | two Olivias, one invoice           | — · overlapping · any · on-ship · 2 payers              | jqwik-IT        | 3 + no over-allocation                 |
 | **TC-CANCEL-SHIP**                        | cancel races ship                  | — · overlapping · any · — · cancel + ship               | jqwik-IT        | `anyLineShipped()` gate, no half-state |
+| **TC-COMPENSATE-PEGGED**                  | cancel a to_order line pre-receipt | — · — · TO_ORDER · — · cancel before goods receipt      | live-IT         | multi-leg compensation: PO/WO withdrawn, no orphan |
 | **TC-PAY-FIRST**                          | pay before fully shipped           | — · — · any · deposit/prepay · cross-role               | jqwik-IT        | completion gate (1)                    |
 | **TC-PARTIAL-SHIP**                       | multi-line, partial then re-ship   | — · — · TO_STOCK · — · staged supply                    | jqwik-IT        | 2 + line-fold rollup                   |
 | **TC-SUPPLY-DUP**                         | dup goods-receipt / WO-completion  | — · overlapping · supply side · — · 2 receivers         | jqwik-IT        | 4 + single top-up                      |
@@ -464,7 +465,7 @@ interface OrderDriver {
 |---|---|---|---|
 | **In-JVM property suite** (`test-harness` `o2c.OrderToCashPropertyTest`, jqwik) | All four archetypes (to_stock/to_order × purchased/manufactured) incl. the supply legs (goods receipt, work-order completion), through the **real** saga + inbox handlers + serde over the in-memory `World` | Saga/handler **logic** correctness under an arbitrary *mix and ordering* of orders; convergence, no-oversell, double-entry per run | ✅ CI-green (100 jqwik tries) |
 | **REST execution** (`load-test` `OrderToCashSimulation`, Gatling) | Many concurrent distinct-user orders, **ample-stock customer-forward path only** (place → reserve → ship → invoice → pay), real Postgres + Kafka | Conservation invariants hold under concurrent reservation on shared `stock_balance` rows + concurrent GL posting | ✅ live: 200 distinct-user orders, all asserted invariants held |
-| **Focused race probes** (`load-test` `ConcurrentRaceProbesTest`) | Deliberate two-worker collisions on one aggregate (barrier-synchronised) | Command-layer exactly-once / no-half-state | ✅ all three green; the two bugs they found (double-ship over-ship, cancel-vs-ship half-state) are **fixed** and now guarded |
+| **Focused race probes** (`load-test` `ConcurrentRaceProbesTest`) | Deliberate two-worker collisions on one aggregate (barrier-synchronised), plus the sequential **TC-COMPENSATE-PEGGED** multi-leg compensation probe | Command-layer exactly-once / no-half-state; order-pegged supply is withdrawn (not orphaned) on a to_order cancel | ✅ the three race probes green (the two bugs they found — double-ship over-ship, cancel-vs-ship half-state — are **fixed** and guarded); TC-COMPENSATE-PEGGED asserts the PO/WO reaches `cancelled` + saga `compensated` + no orphan replenishment |
 
 ### 11.2 Does the suite *ensure* correct concurrent behaviour? — No.
 
