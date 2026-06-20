@@ -324,53 +324,57 @@ lives in the same two-phase-cancel surface.
 
 ---
 
-## Follow-up — make the cancel *outcome* observable (always-ack + optimistic UI)
+## Follow-up — make the cancel *outcome* observable (derive-only + optimistic UI)
 
-`cancellation_requested_at` (above) surfaces that a cancel is **pending**. It does
-**not** tell the user whether the cancel ultimately **won or lost** the race against a
-concurrent shipment. Today the loss is silent: the cancel command returns `200 OK` at
-submit time (accepted before inventory arbitrates), and if a shipment wins, **no event
-is emitted** — inventory's handler simply logs and returns:
+> **Decided: derive-only** (no new event). An earlier draft of this section proposed an
+> "always-ack" event as a *non-negotiable precondition*; on implementation that turned
+> out to be **overstated** — see the correction below. The chosen approach derives the
+> outcome from `(cancellation_requested_at, order_status)`.
+
+`cancellation_requested_at` (above) surfaces that a cancel is **pending**. The open
+question was how the user learns whether the cancel ultimately **won or lost** the race
+against a concurrent shipment. Today nothing marks the window at all: the cancel returns
+`200 OK` at submit time (accepted before inventory arbitrates), and if a shipment wins,
+inventory's handler simply logs and returns — emitting nothing:
 
 ```java
 boolean applied = salesOrderLineFacts.tryClaimCancellation(orderId);
 if (applied) { reservation.releaseForSalesOrder(orderId); }   // emits InventorySalesOrderCancellationApplied
-else { log.info("cancellation REJECTED — order proceeds as shipped"); }   // ← knows it lost, emits NOTHING
+else { log.info("cancellation REJECTED — order proceeds as shipped"); }   // ← knows it lost, emits nothing
 ```
 
-The outcome is already **correct and deterministic** (row-lock arbitration on
-`sales_order_line_facts` always yields exactly one winner). The only defect is
-**observability**: the losing branch is silent, so nothing downstream — or the user —
-ever learns the cancel failed.
+The outcome itself is already **correct and deterministic** (row-lock arbitration on
+`sales_order_line_facts` yields exactly one winner). The only gap is **observability**.
 
-### Part 1 (foundational) — always-ack
+### The outcome is derivable — no new event needed
 
-Make the arbitration emit a terminal event on **both** branches. Add
-`InventorySalesOrderCancellationRejected`, emitted from the existing `else` branch
-(which already knows it lost):
+The correction to the earlier "always-ack" framing: a cancel can **only** lose when some
+line has `shipped_quantity > 0`, and that quantity is there *because a shipment posted* —
+which emits `inventory.ShipmentPosted` → sales updates the line → `recomputeStatus()` →
+the order becomes `shipped`/`partially_shipped`. **So the race-loss always coincides with
+a shipment sales eventually sees**; the terminal arrives on its own. There is no
+"silent-forever" path — `cancellation_requested_at` + the order status already determine
+the outcome:
 
-- cancel wins → `InventorySalesOrderCancellationApplied` → sales `confirmCancellation()` → `cancelled`
-- ship wins → `InventorySalesOrderCancellationRejected` → sales records a definite
-  **`cancel_rejected`** outcome (order stays shipped)
+| `cancellation_requested_at` | order status | → derived label |
+|---|---|---|
+| set | `open` / `partially_reserved` / `reserved` | `cancelling` (pending) |
+| set | `cancelled` | `cancelled` (cancel won) |
+| set | `shipped` / `partially_shipped` | `cancellation_rejected` (ship won) |
 
-This is the **non-negotiable precondition** for any feedback UX: it guarantees every
-cancel request reaches a terminal, never silence. It also gives
-`cancellation_requested_at` a clean lifecycle — set on request, **cleared/resolved on
-either ack** — closing the stale-timestamp loose end. The change is small (the branch
-exists; it just needs to `outbox.append(...)`), and the new event follows the usual
-conventions (`EVENT_TYPE` constant, partition key per `docs/messaging.md`, idempotent
-inbox handler on the sales side).
+So the plan is **derive-only**: add `cancellation_requested_at` + an idempotent
+`requestCancellation` (above), and have reporting's `sales_order_360_view` and the sales
+view expose this derived label. An explicit `InventorySalesOrderCancellationRejected`
+event was considered and **dropped as redundant** — it would buy only marginal immediacy
+(fires at arbitration time vs. when sales processes `ShipmentPosted`, both ~concurrent
+from inventory) and a discrete audit fact, at the cost of a new event + inventory emit +
+sales handler + an extra column. Liveness under inventory-down is identical either way
+(resolves on recovery).
 
-> Without Part 1, optimistic UI is **unsafe** — the race-loss path would strand the
-> "Cancellation requested…" state forever **even when inventory is up and fast**,
-> because no terminal ever arrives. Inventory-down merely *delays* the terminal; the
-> missing reject event would *prevent* it.
+### Optimistic UI over a durable pending status
 
-### Part 2 — optimistic UI over a durable pending status
-
-With a terminal guaranteed, surface it. The cancel response becomes **`202 Accepted`**
-(not `200` — the outcome is pending, not done) carrying `status: cancelling`. The UI
-then:
+Surface the derived label. The cancel response becomes **`202 Accepted`** (not `200` —
+the outcome is pending, not done) carrying the `cancelling` label. The UI then:
 
 - **Immediate ack** (on the 202, inventory-independent): "✓ Cancellation requested",
   disable the *Cancel* button (no double-submit).
@@ -412,13 +416,15 @@ user-blocking one.
 
 *(Optional pragmatic middle-ground, if a near-synchronous feel is wanted without a sync
 cross-service call: after emitting the request, briefly poll **sales' own** DB for the
-inbox-applied resolution, ~1–2s, returning the resolved view if it lands in time else
-`202` + pending. Requires Part 1, and is cheap on virtual threads — see
-`docs/reactive-and-alternatives.md`.)*
+resolution — the order status flipping to `cancelled` or `shipped` via the normal inbox
+handlers — ~1–2s, returning the resolved view if it lands in time else `202` + pending.
+Cheap on virtual threads — see `docs/reactive-and-alternatives.md`.)*
 
-**Scope note.** Part 1 (always-ack) is a small, self-contained server change that ships
-independently of the multi-leg `compensating` work and is the precondition for the UI.
-Part 2 spans the sales API (202 + the `cancelling` projection) and the SPA/BFF.
+**Scope note.** The derive-only backend (`cancellation_requested_at` + idempotent
+`requestCancellation` + the derived `cancelling` / `cancellation_rejected` label on the
+360 and the sales view + the `202 Accepted` response) is self-contained and ships
+independently of the multi-leg `compensating` work. The optimistic UI spans the SPA/BFF
+(polling the derived label).
 
 ---
 
