@@ -122,26 +122,35 @@ it in the role bundle. Extra base URL tunable for the driver: `manufacturing.bas
 
 ## Focused race probes — `ConcurrentRaceProbesTest`
 
-Deliberate two-worker collisions on a single aggregate (`CyclicBarrier`-synchronised), each
-asserting an exactly-once / no-half-state property against the live DB. Run:
+Seven probes (run all green): barrier-synchronised two-worker collisions plus sequential gate /
+fold / compensation probes, each asserting an exactly-once / no-half-state property against the
+live DB. Run:
 
 ```powershell
 mvn -Pload-test -pl load-test test "-Dtest=ConcurrentRaceProbesTest"
 ```
 
-- **TC-DOUBLE-PAY** (green) — two concurrent full customer payments on one invoice allocate
-  exactly once; the second is rejected by `CHECK (paid_amount <= total_amount)` + the
-  row-locking allocation trigger.
-- **TC-DOUBLE-SHIP** / **TC-CANCEL-SHIP** (`@Disabled`) — these probes **found real races** and
-  are quarantined pending fixes (filed in `dev-todo.md`): concurrent double-ship double-decrements
-  `inventory.stock_balance.on_hand_quantity` (no synchronous over-ship guard in `ShipmentService`),
-  and concurrent cancel-vs-ship can leave an order both shipped and cancelled (the
-  `anyLineShipped()` cancel gate reads sales-local state that lags the async shipment event).
-  The test bodies are kept as the executable spec; re-enable once the guards land.
+- **TC-DOUBLE-PAY** — two concurrent full customer payments on one invoice allocate exactly once;
+  the loser is rejected by `CHECK (paid_amount <= total_amount)` + the row-locking allocation trigger.
+- **TC-DOUBLE-SHIP** — two concurrent shipments of one reserved line ship exactly once; the loser is
+  rejected by the synchronous per-line ship-claim in `ShipmentService` (the over-ship race this
+  probe originally found, now fixed and guarded).
+- **TC-CANCEL-SHIP** — a cancel racing a shipment never leaves an order both shipped and cancelled;
+  cancel is two-phase, inventory-arbitrated on `sales_order_line_facts` (the half-state race this
+  probe originally found, now fixed).
+- **TC-COMPENSATE-PEGGED** — cancelling a buy-to-order line before goods receipt withdraws the
+  pegged PO and drives the saga to `compensated` with no orphan (found + pinned the missing
+  `purchasing.events` subscription).
+- **TC-PAY-FIRST** — a prepayment order cannot ship until the up-front invoice is paid, then
+  completes (completion gate).
+- **TC-PARTIAL-SHIP** — a 2-qty line shipped in halves folds `shipped_quantity` 0→1→2 and walks
+  `reserved → partially_shipped → shipped`, never over-shipping.
+- **TC-SUPPLY-DUP** — two concurrent full goods-receipts on a pegged PO line top up on-hand exactly
+  once (verified 3× under the barrier race).
 
 ## Out of scope here (the operations / supply tier)
 
-The **supply-side replenishment driver** (goods receipt / work-order completion for
-undersized-stock shortage paths) and the remaining focused cases (TC-PAY-FIRST, TC-PARTIAL-SHIP,
-TC-SUPPLY-DUP). This module proves the conservation invariants hold under concurrent placement /
-shipment / payment on the shared `stock_balance` and GL rows for the ample-stock path.
+The deeper supply-side concurrency cases beyond the probes above (e.g. high-volume Gatling
+saturation of each `TC-PATH-*`). This module proves the conservation invariants hold under
+concurrent placement / shipment / payment on the shared `stock_balance` and GL rows, plus the
+focused exactly-once / gate / fold properties.

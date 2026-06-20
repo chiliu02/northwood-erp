@@ -486,7 +486,7 @@ interface OrderDriver {
 |---|---|---|---|
 | **In-JVM property suite** (`test-harness` `o2c.OrderToCashPropertyTest`, jqwik) | All four archetypes (to_stock/to_order × purchased/manufactured) incl. the supply legs (goods receipt, work-order completion), through the **real** saga + inbox handlers + serde over the in-memory `World` | Saga/handler **logic** correctness under an arbitrary *mix and ordering* of orders; convergence, no-oversell, double-entry per run | ✅ CI-green (100 jqwik tries) |
 | **REST execution** (`load-test` `OrderToCashSimulation`, Gatling) | Many concurrent distinct-user orders, **ample-stock customer-forward path only** (place → reserve → ship → invoice → pay), real Postgres + Kafka | **All six §6 invariants** hold under concurrent reservation on shared `stock_balance` rows + concurrent GL posting (convergence, no-oversell, double-entry, idempotency, ordering, empty-DLT) | ✅ live: 50 distinct-user orders, all six asserted invariants held |
-| **Focused race probes** (`load-test` `ConcurrentRaceProbesTest`) | Deliberate two-worker collisions on one aggregate (barrier-synchronised), plus the sequential **TC-COMPENSATE-PEGGED** multi-leg compensation probe | Command-layer exactly-once / no-half-state; order-pegged supply is withdrawn (not orphaned) on a to_order cancel | ✅ the three race probes green (the two bugs they found — double-ship over-ship, cancel-vs-ship half-state — are **fixed** and guarded); TC-COMPENSATE-PEGGED asserts the PO/WO reaches `cancelled` + saga `compensated` + no orphan replenishment |
+| **Focused race probes** (`load-test` `ConcurrentRaceProbesTest`) | 7 probes: barrier-synchronised two-worker collisions (TC-DOUBLE-PAY, TC-DOUBLE-SHIP, TC-CANCEL-SHIP, TC-SUPPLY-DUP) + sequential gate/fold probes (TC-COMPENSATE-PEGGED, TC-PAY-FIRST, TC-PARTIAL-SHIP) | Command-layer exactly-once / no-half-state; order-pegged supply withdrawn (not orphaned) on a to_order cancel; prepayment completion gate; partial-ship line fold; single supply top-up | ✅ all 7 green (0 skipped). The two bugs the race probes found — double-ship over-ship, cancel-vs-ship half-state — are **fixed** and guarded; TC-COMPENSATE-PEGGED found + pinned the missing `purchasing.events` subscription; TC-PAY-FIRST/PARTIAL-SHIP/SUPPLY-DUP confirm the gate, line-fold, and single-top-up properties |
 
 ### 11.2 Does the suite *ensure* correct concurrent behaviour? — No.
 
@@ -558,8 +558,12 @@ Ranked by how much each closes the gap above:
    threw `RoutingNotFoundException`, dead-lettered, and wedged the saga (caught precisely by the
    new convergence + empty-DLT invariants from item 2). Fixed by seeding the three missing routings
    (`northwood_erp_seed.sql`).
-4. **Complete the focused-probe matrix** (§4.6): TC-PAY-FIRST, TC-PARTIAL-SHIP, TC-SUPPLY-DUP —
-   the only *deterministic* race finders in the suite.
+4. **Focused-probe matrix completed** (done). TC-PAY-FIRST (prepayment completion gate — ship
+   refused until the up-front invoice is paid, then the order completes), TC-PARTIAL-SHIP (a 2-qty
+   line shipped in halves: shipped_quantity folds 0→1→2, line status reserved→partially_shipped→
+   shipped, never over-ships), and TC-SUPPLY-DUP (two concurrent full goods-receipts on a pegged PO
+   line top up on-hand exactly once — verified 3× under the barrier race) all land in
+   `ConcurrentRaceProbesTest`. The suite is now **7 probes, all green** (0 skipped).
 5. **(High bar) Linearizability / model-based checking** — record the concurrent history and
    check it linearises against the saga's transition function + the conservation arithmetic
    (Jepsen-style), rather than only snapshotting the end state.

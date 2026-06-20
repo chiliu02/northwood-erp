@@ -215,6 +215,103 @@ class ConcurrentRaceProbesTest {
         assertNoNegativeStock();
     }
 
+    // ── TC-PAY-FIRST ──────────────────────────────────────────────────────
+    // Completion gate (docs/concurrent-load-test.md §4.6 / §6 invariant 1) for the
+    // pay-before-ship pattern. A prepayment order gates at awaiting_prepayment: its
+    // line does not reserve and the warehouse cannot ship until the up-front invoice
+    // is settled. Once paid, the saga walks prepaid → reserved → supply_secured and
+    // posting the shipment latches the order straight to completed (no commercial
+    // invoice / second payment to wait on). Sequential — the property is the gate
+    // ordering, not a two-command collision.
+    @Test
+    void prepaidOrder_cannotShipUntilPaid_thenCompletes() throws Exception {
+        Order order = placePrepayment();
+        Invoice prepayment = awaitPrepaymentInvoice(order.id);
+
+        // Gate: the up-front invoice is unpaid, so the line never reserved and the
+        // shipment must be refused.
+        int earlyShip = ship(loadToken, order, "SHIP-EARLY-" + order.number);
+        assertThat(earlyShip)
+            .as("shipment must be refused before the prepayment lands (got %s)", earlyShip)
+            .isGreaterThanOrEqualTo(400);
+
+        int payCode = post(FINANCE + "/api/payments/customer", loadToken,
+            """
+            {"paymentNumber":"PREPAY-%s","customerInvoiceHeaderId":"%s","amount":%s,"paymentMethod":"bank_transfer"}"""
+                .formatted(order.number, prepayment.id, prepayment.total.toPlainString()));
+        assertThat(payCode).as("prepayment payment accepted").isEqualTo(201);
+
+        // Gate releases: the saga settles the deposit, reserves, and is shippable.
+        awaitReserved(order.id);
+        int shipCode = ship(loadToken, order, "SHIP-" + order.number);
+        assertThat(shipCode).as("shipment accepted once prepaid + reserved").isEqualTo(201);
+
+        String saga = awaitString(
+            "SELECT saga_state FROM sales.sales_order_fulfilment_saga WHERE sales_order_header_id=?",
+            order.id, "completed");
+        assertThat(saga).as("a prepaid order completes once shipped (no further payment)").isEqualTo("completed");
+        assertNoNegativeStock();
+    }
+
+    // ── TC-PARTIAL-SHIP ───────────────────────────────────────────────────
+    // Line-fold rollup (docs/concurrent-load-test.md §4.6) — conservation of shipped
+    // quantity + the composed-state-machine ship band. A 2-qty line, fully reserved,
+    // shipped in two halves: cumulative shipped_quantity must fold 0 → 1 → 2 and the
+    // line status walk reserved → partially_shipped → shipped, never over-shipping
+    // past ordered (the DB CHECK shipped_quantity <= ordered_quantity is the floor).
+    @Test
+    void partialThenFinalShipment_lineFoldRollsUp() throws Exception {
+        Order order = placeAndReserveQty(2);
+
+        assertThat(shipQty(loadToken, order, "SHIPP1-" + order.number, 1))
+            .as("first partial shipment (1 of 2) accepted").isEqualTo(201);
+        assertThat(awaitLineShipped(order.lineId, BigDecimal.ONE))
+            .as("cumulative shipped folds to 1").isEqualByComparingTo(BigDecimal.ONE);
+        assertThat(awaitString("SELECT line_status FROM sales.sales_order_line WHERE sales_order_line_id=?",
+            order.lineId, "partially_shipped"))
+            .as("line is partially_shipped after the first half").isEqualTo("partially_shipped");
+
+        assertThat(shipQty(loadToken, order, "SHIPP2-" + order.number, 1))
+            .as("final shipment (2 of 2) accepted").isEqualTo(201);
+        assertThat(awaitLineShipped(order.lineId, new BigDecimal("2")))
+            .as("cumulative shipped folds to 2, never past ordered").isEqualByComparingTo(new BigDecimal("2"));
+        assertThat(awaitString("SELECT line_status FROM sales.sales_order_line WHERE sales_order_line_id=?",
+            order.lineId, "shipped"))
+            .as("line is shipped once fully dispatched").isEqualTo("shipped");
+        assertNoNegativeStock();
+    }
+
+    // ── TC-SUPPLY-DUP ─────────────────────────────────────────────────────
+    // Idempotency / single-top-up on the supply side (docs/concurrent-load-test.md
+    // §4.6). Two concurrent goods-receipts for the FULL pegged quantity of one
+    // buy-to-order PO line must top up on-hand exactly once: the order-pegged
+    // replenishment is raised for the exact line qty and reserved straight to the SO
+    // line, so a second full receipt crediting the excess would orphan it in free ATP
+    // (dead stock no order can reserve). Verified green (3× under the barrier race):
+    // exactly one receipt succeeds and on-hand rises by the peg qty, not 2× — the
+    // to-order over-receipt guard + the received_quantity ≤ ordered enforcement hold
+    // under the collision (the loser is rejected before any stock credit). Unlike
+    // TC-DOUBLE-PAY this guard is not a single DB CHECK, so the live collision is the
+    // evidence it holds end-to-end.
+    @Test
+    void twoConcurrentGoodsReceipts_topUpExactlyOnce() throws Exception {
+        Order order = placeToOrder();
+        PeggedPo po = awaitPeggedPoForReceipt(order.id);
+        BigDecimal before = onHand(TO_ORDER_PRODUCT_ID);
+
+        int[] codes = race(
+            () -> post(INVENTORY + "/api/goods-receipts", loadToken, goodsReceiptBody(po, "GRA-" + order.number)),
+            () -> post(INVENTORY + "/api/goods-receipts", loadToken, goodsReceiptBody(po, "GRB-" + order.number)));
+
+        assertThat(count(codes, 201))
+            .as("exactly one of two concurrent full goods-receipts on a pegged PO line may top up (codes=%s, %s)", codes[0], codes[1])
+            .isEqualTo(1);
+        assertThat(onHand(TO_ORDER_PRODUCT_ID).subtract(before))
+            .as("pegged on-hand topped up exactly once (peg qty), never doubled into orphaned ATP")
+            .isEqualByComparingTo(po.qty);
+        assertNoNegativeStock();
+    }
+
     // ── flow helpers ──────────────────────────────────────────────────────
 
     private record Order(String id, String number, String lineId, String customerId, String customerName) {}
@@ -349,6 +446,135 @@ class ConcurrentRaceProbesTest {
             sleep(1000);
         }
         return last;
+    }
+
+    /** Poll a line's cumulative shipped_quantity until it reaches {@code target} (or give up). */
+    private BigDecimal awaitLineShipped(String lineId, BigDecimal target) throws Exception {
+        BigDecimal last = BigDecimal.ZERO;
+        for (int i = 0; i < 30; i++) {
+            last = decimal("SELECT shipped_quantity FROM sales.sales_order_line WHERE sales_order_line_id=?", lineId);
+            if (last.compareTo(target) >= 0) {
+                return last;
+            }
+            sleep(1000);
+        }
+        return last;
+    }
+
+    /** Place a prepayment (cash-with-order) line; the saga gates at awaiting_prepayment. */
+    private Order placePrepayment() throws Exception {
+        String number = "PROBE-PRE-" + System.nanoTime();
+        String body = """
+            {"orderNumber":"%s","customerCode":"%s","currencyCode":"AUD","paymentTerms":"prepayment",
+             "lines":[{"productId":"%s","productSku":"%s","productName":"%s","orderedQuantity":1}]}"""
+            .formatted(number, CUSTOMER_CODE, PRODUCT_ID, PRODUCT_SKU, PRODUCT_NAME);
+        HttpResponse<String> resp = send(SALES + "/api/sales-orders", loadToken, body);
+        assertThat(resp.statusCode()).as("place prepayment order: %s", resp.body()).isEqualTo(201);
+        return orderFrom(resp.body(), number);
+    }
+
+    /** Place an N-qty single-line on_shipment order and wait until it is fully reserved. */
+    private Order placeAndReserveQty(int qty) throws Exception {
+        String number = "PROBE-Q" + qty + "-" + System.nanoTime();
+        String body = """
+            {"orderNumber":"%s","customerCode":"%s","currencyCode":"AUD","paymentTerms":"on_shipment",
+             "lines":[{"productId":"%s","productSku":"%s","productName":"%s","orderedQuantity":%d}]}"""
+            .formatted(number, CUSTOMER_CODE, PRODUCT_ID, PRODUCT_SKU, PRODUCT_NAME, qty);
+        HttpResponse<String> resp = send(SALES + "/api/sales-orders", loadToken, body);
+        assertThat(resp.statusCode()).as("place qty-%d order: %s", qty, resp.body()).isEqualTo(201);
+        Order order = orderFrom(resp.body(), number);
+        awaitReserved(order.id);
+        return order;
+    }
+
+    private Order orderFrom(String json, String number) {
+        return new Order(
+            extract(json, "\"id\"\\s*:\\s*\"([^\"]+)\""),
+            number,
+            extract(json, "\"lineId\"\\s*:\\s*\"([^\"]+)\""),
+            extract(json, "\"customerId\"\\s*:\\s*\"([^\"]+)\""),
+            extract(json, "\"customerName\"\\s*:\\s*\"([^\"]*)\""));
+    }
+
+    /** Wait for finance to raise the up-front (prepayment) invoice for the order. */
+    private Invoice awaitPrepaymentInvoice(String orderId) throws Exception {
+        for (int i = 0; i < 40; i++) {
+            try (Connection c = jdbc();
+                 PreparedStatement ps = c.prepareStatement(
+                     "SELECT customer_invoice_header_id, total_amount FROM finance.customer_invoice_header "
+                         + "WHERE sales_order_header_id=? AND invoice_type='prepayment'")) {
+                ps.setObject(1, java.util.UUID.fromString(orderId));
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        return new Invoice(rs.getString(1), rs.getBigDecimal(2));
+                    }
+                }
+            }
+            sleep(1000);
+        }
+        throw new IllegalStateException("no prepayment invoice for order " + orderId);
+    }
+
+    private String shipQtyBody(Order order, String shipmentNumber, int qty) {
+        return """
+            {"shipmentNumber":"%s","salesOrderHeaderId":"%s","salesOrderNumber":"%s",
+             "customerId":"%s","customerName":"%s","warehouseCode":"MAIN",
+             "lines":[{"salesOrderLineId":"%s","productId":"%s","productSku":"%s","productName":"%s","shippedQuantity":%d,"unitCost":%s}]}"""
+            .formatted(shipmentNumber, order.id, order.number, order.customerId, order.customerName,
+                order.lineId, PRODUCT_ID, PRODUCT_SKU, PRODUCT_NAME, qty, UNIT_COST);
+    }
+
+    private int shipQty(String token, Order order, String shipmentNumber, int qty) throws Exception {
+        return post(INVENTORY + "/api/shipments", token, shipQtyBody(order, shipmentNumber, qty));
+    }
+
+    private record PeggedPo(String poId, String poNumber, String supplierId, String supplierName,
+                            String lineId, String productId, String productSku, String productName,
+                            BigDecimal qty, BigDecimal unitPrice) {}
+
+    /** Wait for the order's pegged PO to be created, then read its sole line for a goods-receipt. */
+    private PeggedPo awaitPeggedPoForReceipt(String orderId) throws Exception {
+        String poId = awaitDispatchedPeggedPo(orderId);
+        for (int i = 0; i < 30; i++) {
+            try (Connection c = jdbc();
+                 PreparedStatement ps = c.prepareStatement(
+                     "SELECT h.purchase_order_number, h.supplier_id, h.supplier_name, "
+                         + "l.purchase_order_line_id, l.product_id, l.product_sku, l.product_name, "
+                         + "l.ordered_quantity, l.unit_price "
+                         + "FROM purchasing.purchase_order_header h "
+                         + "JOIN purchasing.purchase_order_line l ON l.purchase_order_header_id = h.purchase_order_header_id "
+                         + "WHERE h.purchase_order_header_id = ?")) {
+                ps.setObject(1, java.util.UUID.fromString(poId));
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        return new PeggedPo(poId, rs.getString(1), rs.getString(2), rs.getString(3),
+                            rs.getString(4), rs.getString(5), rs.getString(6), rs.getString(7),
+                            rs.getBigDecimal(8), rs.getBigDecimal(9));
+                    }
+                }
+            }
+            sleep(1000);
+        }
+        throw new IllegalStateException("no PO line for the pegged PO of order " + orderId);
+    }
+
+    private String goodsReceiptBody(PeggedPo po, String grNumber) {
+        return """
+            {"goodsReceiptNumber":"%s","purchaseOrderHeaderId":"%s","purchaseOrderNumber":"%s",
+             "supplierId":"%s","supplierName":"%s","warehouseCode":"MAIN",
+             "lines":[{"purchaseOrderLineId":"%s","productId":"%s","productSku":"%s","productName":"%s","receivedQuantity":%s,"unitCost":%s}]}"""
+            .formatted(grNumber, po.poId, po.poNumber, po.supplierId, esc(po.supplierName),
+                po.lineId, po.productId, po.productSku, esc(po.productName), po.qty.toPlainString(), po.unitPrice.toPlainString());
+    }
+
+    /** Current on-hand for a product at the MAIN warehouse. */
+    private BigDecimal onHand(String productId) throws Exception {
+        return decimal("SELECT on_hand_quantity FROM inventory.stock_balance "
+            + "WHERE product_id=? AND warehouse_id='00000000-0000-7000-8000-000000000020'", productId);
+    }
+
+    private static String esc(String s) {
+        return s == null ? "" : s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     // ── concurrency + HTTP + JDBC primitives ──────────────────────────────
