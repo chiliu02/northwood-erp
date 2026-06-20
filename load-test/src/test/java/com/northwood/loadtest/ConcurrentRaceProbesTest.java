@@ -58,6 +58,13 @@ class ConcurrentRaceProbesTest {
     private static final String UNIT_COST = "120";
     private static final String CUSTOMER_CODE = "CUST-001";
 
+    // A buy-to-order product (replenishment_strategy = to_order, purchased): each
+    // sales order raises a dedicated order-pegged purchase order. Used by the
+    // multi-leg-compensation probe.
+    private static final String TO_ORDER_PRODUCT_ID = "00000000-0000-7000-8000-000000000501";
+    private static final String TO_ORDER_SKU = "FG-CARPET-001";
+    private static final String TO_ORDER_NAME = "Custom-design Carpet";
+
     private static final Pattern ACCESS_TOKEN = Pattern.compile("\"access_token\"\\s*:\\s*\"([^\"]+)\"");
 
     private static final HttpClient HTTP = HttpClient.newHttpClient();
@@ -163,6 +170,51 @@ class ConcurrentRaceProbesTest {
         assertNoNegativeStock();
     }
 
+    // ── TC-COMPENSATE-PEGGED ──────────────────────────────────────────────
+    // Exercises multi-leg compensation on the live stack: cancelling a to_order
+    // line before its goods are received must WITHDRAW the committed order-pegged
+    // purchase order, not orphan it. Sequential (not a barrier race) — the property
+    // is the multi-leg drain reaching the right terminal, not a two-command
+    // collision. The buy-to-order carpet raises a dedicated PO; once it is sent we
+    // cancel and assert: the PO flips to 'cancelled', the replenishment is
+    // 'cancelled' (no orphan), and the fulfilment saga reaches 'compensated' with
+    // the order header 'cancelled'.
+    @Test
+    void cancellingAToOrderOrder_withdrawsThePeggedPurchaseOrder() throws Exception {
+        Order order = placeToOrder();
+        String purchaseOrderId = awaitDispatchedPeggedPo(order.id);
+
+        int cancelCode = post(SALES + "/api/sales-orders/" + order.id + "/cancel", managerToken,
+            "{\"reason\":\"compensation probe\"}");
+        assertThat(cancelCode)
+            .as("cancel of a pre-shipment to_order line is accepted (202)")
+            .isEqualTo(202);
+
+        // The compensation fans out (inventory → purchasing) + drains asynchronously.
+        String poStatus = awaitString(
+            "SELECT status FROM purchasing.purchase_order_header WHERE purchase_order_header_id=?",
+            purchaseOrderId, "cancelled");
+        assertThat(poStatus)
+            .as("the order-pegged purchase order must be withdrawn, not orphaned")
+            .isEqualTo("cancelled");
+
+        String sagaState = awaitString(
+            "SELECT saga_state FROM sales.sales_order_fulfilment_saga WHERE sales_order_header_id=?",
+            order.id, "compensated");
+        assertThat(sagaState)
+            .as("the fulfilment saga must drain its purchasing leg and reach 'compensated'")
+            .isEqualTo("compensated");
+        assertThat(string("SELECT status FROM sales.sales_order_header WHERE sales_order_header_id=?", order.id))
+            .as("order header must be cancelled")
+            .isEqualTo("cancelled");
+        // No orphan: the order-pegged replenishment must itself be cancelled, never
+        // left 'dispatched' pointing at a withdrawn PO.
+        assertThat(string("SELECT status FROM inventory.replenishment_request WHERE source_sales_order_header_id=? AND reason='order_pegged'", order.id))
+            .as("the order-pegged replenishment must be cancelled (no orphan dispatched row)")
+            .isEqualTo("cancelled");
+        assertNoNegativeStock();
+    }
+
     // ── flow helpers ──────────────────────────────────────────────────────
 
     private record Order(String id, String number, String lineId, String customerId, String customerName) {}
@@ -186,6 +238,64 @@ class ConcurrentRaceProbesTest {
             extract(json, "\"customerName\"\\s*:\\s*\"([^\"]*)\""));
         awaitReserved(order.id);
         return order;
+    }
+
+    /**
+     * Place a buy-to-order line (no stock) so the fulfilment saga pegs it and
+     * inventory raises a dedicated order-pegged replenishment. Does NOT await
+     * 'reserved' (it never reserves — it parks at stock_reservation_incomplete
+     * awaiting its dedicated PO).
+     */
+    private Order placeToOrder() throws Exception {
+        String number = "PROBE-CMP-" + System.nanoTime();
+        String body = """
+            {"orderNumber":"%s","customerCode":"%s","currencyCode":"AUD","paymentTerms":"on_shipment",
+             "lines":[{"productId":"%s","productSku":"%s","productName":"%s","orderedQuantity":1}]}"""
+            .formatted(number, CUSTOMER_CODE, TO_ORDER_PRODUCT_ID, TO_ORDER_SKU, TO_ORDER_NAME);
+        HttpResponse<String> resp = send(SALES + "/api/sales-orders", loadToken, body);
+        assertThat(resp.statusCode()).as("place to_order order: %s", resp.body()).isEqualTo(201);
+        String json = resp.body();
+        return new Order(
+            extract(json, "\"id\"\\s*:\\s*\"([^\"]+)\""),
+            number,
+            extract(json, "\"lineId\"\\s*:\\s*\"([^\"]+)\""),
+            extract(json, "\"customerId\"\\s*:\\s*\"([^\"]+)\""),
+            extract(json, "\"customerName\"\\s*:\\s*\"([^\"]*)\""));
+    }
+
+    /**
+     * Wait for the order's order-pegged replenishment to be dispatched to purchasing
+     * and linked to a created (sent) purchase order; returns that PO id.
+     */
+    private String awaitDispatchedPeggedPo(String orderId) throws Exception {
+        for (int i = 0; i < 60; i++) {
+            try (Connection c = jdbc();
+                 PreparedStatement ps = c.prepareStatement(
+                     "SELECT linked_purchase_order_id FROM inventory.replenishment_request "
+                         + "WHERE source_sales_order_header_id=? AND reason='order_pegged' AND linked_purchase_order_id IS NOT NULL")) {
+                ps.setObject(1, java.util.UUID.fromString(orderId));
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next() && rs.getString(1) != null) {
+                        return rs.getString(1);
+                    }
+                }
+            }
+            sleep(1000);
+        }
+        throw new IllegalStateException("order " + orderId + " never got a linked order-pegged purchase order");
+    }
+
+    /** Poll a single-column string query until it equals {@code expected} (or give up and return the last value). */
+    private String awaitString(String sql, String uuidParam, String expected) throws Exception {
+        String last = null;
+        for (int i = 0; i < 40; i++) {
+            last = string(sql, uuidParam);
+            if (expected.equals(last)) {
+                return last;
+            }
+            sleep(1000);
+        }
+        return last;
     }
 
     private String shipBody(Order order, String shipmentNumber) {
