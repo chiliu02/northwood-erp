@@ -16,6 +16,8 @@ interface DetailLayoutProps {
   title: string;
   subtitle?: string;
   status?: { label: string; tone?: "info" | "success" | "warn" | "error" | "neutral" };
+  /** Optional secondary pill rendered next to the status (e.g. a cancellation marker). */
+  secondaryStatus?: { label: string; tone?: "info" | "success" | "warn" | "error" | "neutral" } | null;
   actions?: ReactNode;
   tabs?: Tab[];
   /** When tabs are absent, this content renders directly under the header. */
@@ -33,6 +35,7 @@ export function DetailLayout({
   title,
   subtitle,
   status,
+  secondaryStatus,
   actions,
   tabs,
   children,
@@ -49,6 +52,7 @@ export function DetailLayout({
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-semibold text-text-primary">{title}</h1>
               {status && <StatusPill label={status.label} tone={status.tone} />}
+              {secondaryStatus && <StatusPill label={secondaryStatus.label} tone={secondaryStatus.tone} />}
             </div>
             {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
           </div>

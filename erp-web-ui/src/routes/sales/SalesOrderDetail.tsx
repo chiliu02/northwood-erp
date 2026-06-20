@@ -198,7 +198,14 @@ export function SalesOrderDetail() {
   // the optimistic UI: a durable "cancellation requested…" state that reconciles to
   // a terminal via polling, plus a toast when it resolves.
   const cancelOutcome = aggregate?.cancellationOutcome ?? "none";
-  const cancelPending = cancelOutcome === "cancelling";
+  // Compact marker shown next to Status (header + Order section). The toast carries
+  // the detailed wording, so this stays terse.
+  const cancelBadge =
+    cancelOutcome === "cancelling"
+      ? { label: "cancelling", tone: "warn" as const }
+      : cancelOutcome === "cancellation_rejected"
+        ? { label: "cancellation rejected", tone: "error" as const }
+        : null;
   const prevOutcome = useRef("none");
   useEffect(() => {
     if (prevOutcome.current === "cancelling" && cancelOutcome !== "cancelling") {
@@ -504,6 +511,7 @@ export function SalesOrderDetail() {
         title={data.orderNumber}
         subtitle={`${data.customerName} — ${data.orderDate}`}
         status={status}
+        secondaryStatus={cancelBadge}
         actions={
           <>
             <Link
@@ -525,15 +533,6 @@ export function SalesOrderDetail() {
                 Cancel order
               </ActionButton>
             )}
-            {cancelPending && (
-              <span
-                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-status-warn/30 bg-status-warn-soft px-3 text-sm font-medium text-status-warn"
-                title="Cancellation requested — inventory is arbitrating against any concurrent shipment."
-              >
-                <Ban className="h-4 w-4" />
-                Cancellation requested…
-              </span>
-            )}
           </>
         }
         tabs={[
@@ -544,17 +543,12 @@ export function SalesOrderDetail() {
               <div className="grid gap-4 lg:grid-cols-2">
                 <FormSection title="Order">
                   <ReadOnlyField label="Order #" value={<span className="font-medium tabular-nums">{data.orderNumber}</span>} />
-                  <ReadOnlyField label="Status" value={<StatusPill label={status.label} tone={status.tone} />} />
-                  {(cancelOutcome === "cancelling" || cancelOutcome === "cancellation_rejected") && (
-                    <ReadOnlyField label="Cancellation" fullWidth value={
-                      <StatusPill
-                        label={cancelOutcome === "cancelling"
-                          ? "requested — awaiting confirmation"
-                          : "rejected — order already shipped"}
-                        tone={cancelOutcome === "cancelling" ? "warn" : "error"}
-                      />
-                    } />
-                  )}
+                  <ReadOnlyField label="Status" value={
+                    <div className="flex items-center gap-2">
+                      <StatusPill label={status.label} tone={status.tone} />
+                      {cancelBadge && <StatusPill label={cancelBadge.label} tone={cancelBadge.tone} />}
+                    </div>
+                  } />
                   <ReadOnlyField label="Customer" value={data.customerName} />
                   <ReadOnlyField label="Currency" value={data.currencyCode} />
                   <ReadOnlyField label="Order date" value={data.orderDate} />
