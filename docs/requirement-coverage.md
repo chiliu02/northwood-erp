@@ -116,7 +116,7 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 | REQ-RPT-030 (Material shortage) | `JdbcMaterialShortageQueryPortIT` | ✅ |
 | REQ-RPT-040 (ATP) | `JdbcAvailableToPromiseProjectionIT` (on-hand/reserved/available triple + incoming-from-purchase/production) | ✅ |
 | REQ-RPT-050 (Financial dashboard) | `JdbcFinancialDashboardProjectionIT`, `JdbcFinancialDashboardQueryPortIT` | ✅ |
-| REQ-RPT-060 (Replenishment history) | — | ❌ not shipped (planned) |
+| REQ-RPT-060 (Replenishment history) | `ReplenishmentHistoryController` (`GET /api/replenishment-history?productId=&limit=`) + `JdbcReplenishmentHistoryProjection` / `JdbcReplenishmentHistoryQueryPort`, fed by the o2c shortage/replenishment DSL flows; SPA activity widget. No focused view-level assertion test. | ⚠️ shipped, thin test |
 
 ## REQ-XBC — Cross-context flows
 
@@ -146,7 +146,7 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 
 ## Known gaps (open)
 
-- **REQ-RPT-060** — Replenishment History view not shipped (planned).
+- **REQ-RPT-060** — Replenishment History view **is shipped** (the earlier "planned" was stale; shipped 2026-05-29). Open only as a *test* gap: the read view + projection are exercised by the o2c replenishment flows but have no focused view-level assertion. Low priority.
 - **REQ-MFG-060 / REQ-SAL-041** — **operator-facing** WO-cancel is still deferred. `WorkOrder.cancel()` now exists on the **compensation** path (a `released` order-pegged WO is withdrawn when its `to_order` sales line is cancelled — REQ-SAL-061; covered by `WorkOrderTest.Cancel` + `OrderToCashCompensateManufacturedLegDslTest`), so both requirements flipped from `(deferred)` to `(partially shipped)`. What remains: a manual cancel endpoint + the **in-progress** case (halt operations, write off WIP for a hard-cancel, or let-WIP-finish-then-scrap for a soft-cancel) — an in-progress WO is an un-compensatable leaf that refuses today. A make-to-stock (pool) WO has no sales-order binding, so it has no compensation trigger and stays uncancellable until the operator path lands.
 - **REQ-FIN-061 / REQ-FIN-062** — **multi-currency is not implemented**; the system runs single-currency (AUD) only (REQ-FIN-060 is the live path). Cross-currency conversion + the `GET /api/exchange-rate` lookup are not delivered (low-priority — project memory), so this is a **feature gap, not a test gap**. If multi-currency is ever built, add a `CurrencyConverter` unit test (pass-through + cross-currency + inverse fallback) + a `JdbcCurrencyConverterIT` then.
 

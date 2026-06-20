@@ -655,8 +655,8 @@ Single-page view of: inventory value, accounts receivable, accounts payable, wor
 
 ### 7.7 Replenishment History *(NEW)*
 
-**REQ-RPT-060 ❌ — Replenishment history view per SKU** *(planned)*
-For any SKU: chronological list of replenishment requests (REQ-INV-081) with their status, target service, requested quantity, and the linked downstream WO or PO. Used by planners reviewing the system's automatic replenishment behaviour.
+**REQ-RPT-060 ✅ — Replenishment history view per SKU** *(shipped)*
+For any SKU: chronological list of replenishment requests (REQ-INV-081) with their status, target service, requested quantity, and the linked downstream WO or PO. Used by planners reviewing the system's automatic replenishment behaviour. Served by `GET /api/replenishment-history?productId=&limit=` (reporting) + the stock-items-page activity widget in both SPAs.
 *URL:* `GET /api/replenishment-history?productId=&limit=`.
 Displayed as a widget on the stock-items page in both the demo SPA and the operational ERP SPA.
 
