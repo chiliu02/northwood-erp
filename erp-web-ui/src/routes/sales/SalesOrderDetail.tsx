@@ -112,11 +112,6 @@ export function SalesOrderDetail() {
     queryKey: ["sales-order-aggregate", id],
     queryFn: () => apiGet<SalesOrderAggregate>(`/api/sales-cmd/sales-orders/${id}`),
     enabled: !!id,
-    // While a cancellation is in flight, poll so the optimistic "Cancellation
-    // requested…" state reconciles to its terminal (cancelled / cancellation_rejected)
-    // without the user refreshing.
-    refetchInterval: (query) =>
-      query.state.data?.cancellationOutcome === "cancelling" ? 2000 : false,
   });
 
   const { data: products } = useQuery({
@@ -216,6 +211,24 @@ export function SalesOrderDetail() {
     prevOutcome.current = cancelOutcome;
   }, [cancelOutcome, data?.orderNumber, toast]);
 
+  // The header Status comes from the 360 (reporting), which lags the sales aggregate.
+  // While a cancellation is in flight — or resolved on the aggregate but not yet
+  // reflected in the 360 — poll *both* queries so the Status (and the outcome) catch
+  // up without a manual refresh. Stops as soon as the 360 reflects the outcome.
+  const cancelReflected =
+    (cancelOutcome === "cancelled" && data?.orderStatus === "cancelled") ||
+    (cancelOutcome === "cancellation_rejected"
+      && (data?.orderStatus === "shipped" || data?.orderStatus === "partially_shipped"));
+  const cancelInFlight = cancelOutcome !== "none" && !cancelReflected;
+  useEffect(() => {
+    if (!cancelInFlight) return;
+    const timer = setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: ["sales-order-360", id] });
+      queryClient.invalidateQueries({ queryKey: ["sales-order-aggregate", id] });
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [cancelInFlight, id, queryClient]);
+
   if (isLoading) {
     return <div className="flex h-full items-center justify-center text-sm text-text-muted">Loading order…</div>;
   }
@@ -238,7 +251,10 @@ export function SalesOrderDetail() {
   // moved — for `goodsMoved`. Without this the UI would offer Amend/Cancel on a
   // partially-shipped order and the server would 409.
   const goodsMoved = ["partially_shipped", "shipped"].includes(data.shipmentStatus);
-  const cancellable = !NON_CANCELLABLE.includes(data.orderStatus) && !goodsMoved;
+  // Also closed once a cancellation is under way / done: the aggregate's outcome is
+  // authoritative and resolves before the 360 orderStatus catches up, so a stale
+  // `reserved` from the 360 must not re-offer Cancel on an already-cancelled order.
+  const cancellable = !NON_CANCELLABLE.includes(data.orderStatus) && !goodsMoved && cancelOutcome === "none";
   // "awaiting prepayment/deposit" only applies while the order is live. A
   // terminal order (cancelled → refunded, rejected, completed) is no longer
   // waiting on the up-front payment.
@@ -498,7 +514,7 @@ export function SalesOrderDetail() {
               <History className="h-4 w-4" />
               View audit
             </Link>
-            {cancellable && !cancelPending && (
+            {cancellable && (
               <ActionButton
                 variant="danger"
                 icon={<Ban className="h-4 w-4" />}
