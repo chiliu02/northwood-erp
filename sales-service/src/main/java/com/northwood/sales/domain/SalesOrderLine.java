@@ -138,7 +138,9 @@ public final class SalesOrderLine {
     /**
      * Soft-cancel the line (line-amendment removal). The row is kept so the line
      * id stays resolvable for inventory to release against; totals exclude
-     * cancelled lines. Package-private — driven by {@link SalesOrder#removeLine}.
+     * cancelled lines. Package-private — driven by {@link SalesOrder#removeLine}
+     * (line-amendment removal) and by the order-level terminals
+     * {@link SalesOrder#confirmCancellation} / {@link SalesOrder#reject}.
      */
     void cancelLine() {
         this.lineStatus = SalesOrder.LineStatus.CANCELLED;

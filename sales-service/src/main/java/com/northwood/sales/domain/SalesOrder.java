@@ -547,6 +547,22 @@ public final class SalesOrder {
         }
         this.status = Status.CANCELLED;
         this.cancelledAt = Instant.now();
+        cancelAllLines();
+    }
+
+    /**
+     * Mark every still-live line {@code cancelled} when the order reaches a top-down
+     * terminal (confirm-cancel / reject). Both callers guard on
+     * {@link #anyLineShipped()}, so no shipped line is ever overwritten. Totals are
+     * deliberately <b>not</b> recomputed — the terminated order keeps its original
+     * amounts as the historical record.
+     */
+    private void cancelAllLines() {
+        for (SalesOrderLine line : lines) {
+            if (!line.isCancelled()) {
+                line.cancelLine();
+            }
+        }
     }
 
     /**
@@ -608,6 +624,7 @@ public final class SalesOrder {
             return;
         }
         this.status = Status.REJECTED;
+        cancelAllLines();
         this.pendingEvents.add(new SalesOrderCancellationRequested(
             UUID.randomUUID(),
             id.value(),

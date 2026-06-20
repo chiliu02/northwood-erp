@@ -234,6 +234,14 @@ class SalesOrderTest {
             assertThat(rejected.cancellationOutcome()).isEqualTo(SalesOrder.CancellationOutcome.CANCELLATION_REJECTED);
         }
 
+        @Test void confirming_cancellation_cancels_the_lines_too() {
+            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.RESERVED);
+            so.requestCancellation("changed mind");
+            so.confirmCancellation();
+            assertThat(so.status()).isEqualTo(SalesOrder.Status.CANCELLED);
+            assertThat(so.lines()).isNotEmpty().allMatch(SalesOrderLine::isCancelled);
+        }
+
         @Test void confirm_cancels_when_open() {
             SalesOrder so = reconstituteWithStatus(SalesOrder.Status.OPEN);
             so.requestCancellation("customer changed mind");
