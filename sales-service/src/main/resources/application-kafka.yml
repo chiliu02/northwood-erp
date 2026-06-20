@@ -57,7 +57,10 @@ northwood:
     #   or tracks manufacturing directly.
     # - finance.events     for CustomerInvoiceCreated + CustomerPaymentReceived
     #   (saga advances past invoice_created → completed).
-    subscribe-topics: product.events,inventory.events,manufacturing.events,finance.events
+    # - purchasing.events  for PurchaseOrderCancellationApplied (the purchasing leg
+    #   of multi-leg compensation — drains the buy-to-order pegged-PO leg so the
+    #   fulfilment saga can reach compensated/compensation_failed).
+    subscribe-topics: product.events,inventory.events,manufacturing.events,finance.events,purchasing.events
     dlt:
       redrive:
         enabled: true             # per-service DLT auto-redrive: re-applies this
