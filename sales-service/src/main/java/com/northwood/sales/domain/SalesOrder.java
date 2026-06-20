@@ -217,6 +217,16 @@ public final class SalesOrder {
     private BigDecimal taxAmount;
     private BigDecimal totalAmount;
     private Instant cancelledAt;
+    /**
+     * When cancellation was first <b>requested</b> (phase 1 of the two-phase
+     * cancel) — set by {@link #requestCancellation}, independent of the terminal
+     * outcome. Stays set whether the cancel ultimately wins (status → cancelled)
+     * or loses to a shipment (status → shipped), so the pending window and its
+     * outcome are derivable from {@code (cancellationRequestedAt, status)}. Null
+     * until a cancel is requested. Also the idempotency latch: a non-null value
+     * makes a repeat {@code requestCancellation} a no-op.
+     */
+    private Instant cancellationRequestedAt;
     private final long version;
     private final List<SalesOrderLine> lines;
     private final List<DomainEvent> pendingEvents = new ArrayList<>();
@@ -260,6 +270,7 @@ public final class SalesOrder {
             Assert.notNull(paymentTerms, "paymentTerms"),
             depositPercent,
             BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+            null,
             null,
             0L,
             new ArrayList<>(lines)
@@ -313,13 +324,14 @@ public final class SalesOrder {
         BigDecimal taxAmount,
         BigDecimal totalAmount,
         Instant cancelledAt,
+        Instant cancellationRequestedAt,
         long version,
         List<SalesOrderLine> lines
     ) {
         return new SalesOrder(
             id, orderNumber, customerId, customerCode, customerName,
             orderDate, requestedDeliveryDate, status, currencyCode, exchangeRate, paymentTerms,
-            depositPercent, subtotalAmount, taxAmount, totalAmount, cancelledAt, version, new ArrayList<>(lines)
+            depositPercent, subtotalAmount, taxAmount, totalAmount, cancelledAt, cancellationRequestedAt, version, new ArrayList<>(lines)
         );
     }
 
@@ -328,7 +340,8 @@ public final class SalesOrder {
         LocalDate orderDate, LocalDate requestedDeliveryDate, Status status, String currencyCode, BigDecimal exchangeRate,
         PaymentTerms paymentTerms,
         BigDecimal depositPercent,
-        BigDecimal subtotalAmount, BigDecimal taxAmount, BigDecimal totalAmount, Instant cancelledAt, long version,
+        BigDecimal subtotalAmount, BigDecimal taxAmount, BigDecimal totalAmount, Instant cancelledAt,
+        Instant cancellationRequestedAt, long version,
         List<SalesOrderLine> lines
     ) {
         this.id = id;
@@ -347,6 +360,7 @@ public final class SalesOrder {
         this.taxAmount = taxAmount;
         this.totalAmount = totalAmount;
         this.cancelledAt = cancelledAt;
+        this.cancellationRequestedAt = cancellationRequestedAt;
         this.version = version;
         this.lines = lines;
     }
@@ -466,6 +480,12 @@ public final class SalesOrder {
      * re-cancel. Note this sales-local guard only catches shipments sales already
      * knows about; the inventory arbiter is what catches the in-flight race.
      *
+     * <p><b>Idempotent.</b> Stamps {@link #cancellationRequestedAt} on the first
+     * call and emits exactly one {@code SalesOrderCancellationRequested}; a repeat
+     * while the cancellation is still in flight (e.g. an impatient double-click) is
+     * a no-op — no second event. The two-phase resolution (inventory's applied ack,
+     * or a shipment winning the race) is what eventually leaves the pending window.
+     *
      * @throws OrderNotCancellableException if the order has already shipped (in
      *         sales' view), completed, been cancelled, or rejected.
      */
@@ -473,6 +493,10 @@ public final class SalesOrder {
         if (isTerminal() || anyLineShipped()) {
             throw new OrderNotCancellableException(id, status);
         }
+        if (cancellationRequestedAt != null) {
+            return;
+        }
+        this.cancellationRequestedAt = Instant.now();
         this.pendingEvents.add(new SalesOrderCancellationRequested(
             UUID.randomUUID(),
             id.value(),
@@ -846,6 +870,7 @@ public final class SalesOrder {
     public BigDecimal taxAmount()             { return taxAmount; }
     public BigDecimal totalAmount()           { return totalAmount; }
     public Instant cancelledAt()              { return cancelledAt; }
+    public Instant cancellationRequestedAt()  { return cancellationRequestedAt; }
     public long version()                     { return version; }
     public List<SalesOrderLine> lines()       { return List.copyOf(lines); }
 

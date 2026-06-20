@@ -507,6 +507,13 @@ CREATE TABLE sales.sales_order_header (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     submitted_at TIMESTAMPTZ,
     cancelled_at TIMESTAMPTZ,
+    -- Phase 1 of the two-phase cancel: stamped when cancellation is first
+    -- *requested* (SalesOrder.requestCancellation), independent of the terminal
+    -- outcome. Stays set whether the cancel wins (status → cancelled) or loses to
+    -- a shipment (status → shipped), so the pending window and its outcome are
+    -- derivable from (cancellation_requested_at, status) by reporting + the UI.
+    -- Also the idempotency latch (a repeat cancel while non-null is a no-op).
+    cancellation_requested_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
     created_by VARCHAR(64),
     last_modified_by VARCHAR(64)

@@ -59,7 +59,7 @@ class SalesOrderServiceAmendTest {
         return SalesOrder.reconstitute(
             SalesOrderId.of(ORDER_ID), "SO-1", CUSTOMER_ID, "CUST-1", "Customer One",
             LocalDate.now(), null, status, Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT, null,
-            new BigDecimal("100"), BigDecimal.ZERO, new BigDecimal("100"), null, version,
+            new BigDecimal("100"), BigDecimal.ZERO, new BigDecimal("100"), null, null, version,
             new ArrayList<>(List.of(new SalesOrderLine(
                 LINE_ID, 10, PRODUCT_ID, "SKU-1", "Widget",
                 new BigDecimal("1"), new BigDecimal("100"), BigDecimal.ZERO,

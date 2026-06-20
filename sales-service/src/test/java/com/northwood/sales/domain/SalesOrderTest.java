@@ -184,6 +184,7 @@ class SalesOrderTest {
                 Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT, null,
                 new BigDecimal("100"), BigDecimal.ZERO, new BigDecimal("100"),
                 null,
+                null,
                 1L,
                 List.of(l)
             );
@@ -196,6 +197,19 @@ class SalesOrderTest {
             so.requestCancellation("customer changed mind");
             assertThat(so.status()).isEqualTo(SalesOrder.Status.OPEN);
             assertThat(so.cancelledAt()).isNull();
+            assertThat(so.pullPendingEvents()).hasSize(1)
+                .first().isInstanceOf(SalesOrderCancellationRequested.class);
+        }
+
+        @Test void requesting_cancellation_is_idempotent_emitting_one_event() {
+            // No immediate status change during the two-phase window can tempt an
+            // impatient user to click Cancel repeatedly; the aggregate stamps
+            // cancellationRequestedAt once and emits exactly one event regardless.
+            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.OPEN);
+            so.requestCancellation("first click");
+            so.requestCancellation("second click");
+            so.requestCancellation("third click");
+            assertThat(so.cancellationRequestedAt()).isNotNull();
             assertThat(so.pullPendingEvents()).hasSize(1)
                 .first().isInstanceOf(SalesOrderCancellationRequested.class);
         }
@@ -272,6 +286,7 @@ class SalesOrderTest {
                 Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT, null,
                 new BigDecimal("100"), BigDecimal.ZERO, new BigDecimal("100"),
                 null,
+                null,
                 3L,
                 List.of(line(BigDecimal.ONE, new BigDecimal("100")))
             );
@@ -312,7 +327,7 @@ class SalesOrderTest {
                 status,
                 Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT, null,
                 new BigDecimal("100"), BigDecimal.ZERO, new BigDecimal("100"),
-                null, 1L, lines
+                null, null, 1L, lines
             );
         }
 
@@ -570,7 +585,7 @@ class SalesOrderTest {
                 SalesOrderId.of(UUID.randomUUID()), "SO-FOLD-001",
                 CUSTOMER, "C", "Cust", LocalDate.now(), null,
                 SalesOrder.Status.OPEN, Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT, null,
-                new BigDecimal("700"), BigDecimal.ZERO, new BigDecimal("700"), null, 1L,
+                new BigDecimal("700"), BigDecimal.ZERO, new BigDecimal("700"), null, null, 1L,
                 List.of(reservableLine(keep, new BigDecimal("2")), reservableLine(drop, new BigDecimal("5"))));
             so.removeLine(drop);
             // Only the live line remains; it is still open → open (the
@@ -585,7 +600,7 @@ class SalesOrderTest {
                 SalesOrderId.of(UUID.randomUUID()), "SO-FOLD-002",
                 CUSTOMER, "C", "Cust", LocalDate.now(), null,
                 SalesOrder.Status.OPEN, Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT, null,
-                new BigDecimal("700"), BigDecimal.ZERO, new BigDecimal("700"), null, 1L,
+                new BigDecimal("700"), BigDecimal.ZERO, new BigDecimal("700"), null, null, 1L,
                 List.of(reservableLine(keep, new BigDecimal("2")), reservableLine(drop, new BigDecimal("5"))));
             so.removeLine(drop);
             so.recordShipped(UUID.randomUUID(), "S", LocalDate.now(),

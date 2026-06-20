@@ -166,7 +166,7 @@ class JdbcSalesOrderRepositoryIT {
             LocalDate.now(), null, SalesOrder.Status.OPEN, "AUD", BigDecimal.ONE,
             PaymentTerms.ON_SHIPMENT, null,
             new BigDecimal("100.00"), BigDecimal.ZERO, new BigDecimal("100.00"),
-            null, 0L, List.of(line));
+            null, null, 0L, List.of(line));
     }
 
     private void save(SalesOrder order) {

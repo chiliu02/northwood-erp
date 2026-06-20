@@ -43,7 +43,8 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
             """
             SELECT sales_order_header_id, order_number, customer_id, customer_code, customer_name,
                    order_date, requested_delivery_date, status, currency_code, exchange_rate,
-                   payment_terms, deposit_percent, subtotal_amount, tax_amount, total_amount, cancelled_at, version
+                   payment_terms, deposit_percent, subtotal_amount, tax_amount, total_amount, cancelled_at,
+                   cancellation_requested_at, version
             FROM sales.sales_order_header WHERE sales_order_header_id = ?
             """,
             HEADER_MAPPER, id.value()
@@ -66,7 +67,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
             h.orderDate, h.requestedDeliveryDate, SalesOrder.Status.fromCode(h.status), h.currencyCode, h.exchangeRate,
             PaymentTerms.fromCode(h.paymentTerms),
             h.depositPercent,
-            h.subtotal, h.tax, h.total, h.cancelledAt, h.version, lines
+            h.subtotal, h.tax, h.total, h.cancelledAt, h.cancellationRequestedAt, h.version, lines
         ));
     }
 
@@ -132,6 +133,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
                 status = ?,
                 subtotal_amount = ?, tax_amount = ?, total_amount = ?,
                 cancelled_at = ?,
+                cancellation_requested_at = ?,
                 version = version + 1,
                 last_modified_by = ?
             WHERE sales_order_header_id = ? AND version = ?
@@ -139,6 +141,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
             o.status().code(),
             o.subtotalAmount(), o.taxAmount(), o.totalAmount(),
             o.cancelledAt() == null ? null : Timestamp.from(o.cancelledAt()),
+            o.cancellationRequestedAt() == null ? null : Timestamp.from(o.cancellationRequestedAt()),
             actor,
             o.id().value(), o.version()
         );
@@ -210,12 +213,13 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
         LocalDate orderDate, LocalDate requestedDeliveryDate, String status, String currencyCode,
         java.math.BigDecimal exchangeRate, String paymentTerms, java.math.BigDecimal depositPercent,
         java.math.BigDecimal subtotal, java.math.BigDecimal tax,
-        java.math.BigDecimal total, Instant cancelledAt, long version
+        java.math.BigDecimal total, Instant cancelledAt, Instant cancellationRequestedAt, long version
     ) {}
 
     private static final RowMapper<SalesOrderHeaderRow> HEADER_MAPPER = (rs, n) -> {
         Date req = rs.getDate("requested_delivery_date");
         Timestamp cancelled = rs.getTimestamp("cancelled_at");
+        Timestamp cancellationRequested = rs.getTimestamp("cancellation_requested_at");
         return new SalesOrderHeaderRow(
             rs.getObject("sales_order_header_id", UUID.class),
             rs.getString("order_number"),
@@ -233,6 +237,7 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
             rs.getBigDecimal("tax_amount"),
             rs.getBigDecimal("total_amount"),
             cancelled == null ? null : cancelled.toInstant(),
+            cancellationRequested == null ? null : cancellationRequested.toInstant(),
             rs.getLong("version")
         );
     };
