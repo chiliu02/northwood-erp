@@ -19,7 +19,7 @@ It is deliberately **outside the default Maven reactor** (parent POM `load-test`
 
 | File | Role |
 |---|---|
-| `InvariantVerifier.java` | The shared assertion core — plain cross-schema JDBC. No oversell, double-entry balance, saga convergence (polled to a deadline, since payment → completed is async). Reused by the REST execution, the focused race probes, and the demo finale. Runnable standalone (`main`). |
+| `InvariantVerifier.java` | The shared assertion core — cross-schema JDBC + one Kafka check. All **six** §6 invariants: saga convergence (polled to a deadline, since payment → completed is async), no oversell, double-entry balance, idempotency (no duplicate `(message_id, handler_name)` inbox apply + no over-shipped/over-reserved line), per-aggregate ordering (forbidden end-states), and empty-DLT (Kafka AdminClient — `*.dlt`/`*.dlt.parked` empty; `-Dkafka.bootstrap=`, default `localhost:9092`). Reused by the REST execution, the focused race probes, and the demo finale. Runnable standalone (`main`). |
 | `KeycloakTokenFeeder.java` | Mints one bearer token per demo user (OAuth2 password grant) so the run drives genuinely different users (distinct `created_by`). |
 | `OrderToCashSimulation.java` | Gatling scenario: place → poll-until-reserved → ship → poll-until-invoiced → pay, per user. Post-run invariant check in `after()`. |
 | `provision-keycloak.ps1` | Idempotently adds the `northwood-loadtest` direct-grant client + N `user-N` load users (the order-to-cash role bundle) to the realm. The operational equivalent of the design doc's `Bootstrap` step. |

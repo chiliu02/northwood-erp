@@ -43,6 +43,15 @@
             <artifactId>postgresql</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Kafka AdminClient for the InvariantVerifier's empty-DLT check
+             (docs/concurrent-load-test.md §6, invariant 6) — the only invariant
+             that lives in Kafka rather than Postgres. Version managed by the
+             Spring Boot BOM. -->
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka-clients</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>

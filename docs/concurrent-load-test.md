@@ -251,6 +251,22 @@ finale). Each maps to a real failure mode:
 6. **Empty DLT.** No saga wedged on a `CHECK` violation (the `23514` → DLT-loop failure mode of
    `docs/validations.md`); the dead-letter topic is empty at the end.
 
+> **Implementation status (all six wired).** `InvariantVerifier` now asserts every invariant
+> above. 1–3 are the original JDBC checks. **4 (idempotency)** is a per-schema check that no
+> `<schema>.inbox_message` holds a duplicate `(message_id, handler_name)` — the table's UNIQUE is
+> `(message_id, handler_name, processed_at)`, so partitioning means the constraint does *not*
+> prevent a duplicate apply (the rebalance-window TOCTOU of `docs/messaging.md`); a duplicate row
+> is a real dedup-gate miss — plus a quantity-effect gate (no over-shipped / over-reserved line).
+> **5 (per-aggregate ordering)** is asserted via the forbidden end-state combinations an
+> out-of-order / lost apply would leave — an order both shipped and cancelled, or a `completed`
+> saga with an unshipped line (end-state JDBC can't observe the *history* directly; these are the
+> observable consequences). **6 (empty DLT)** is the one Kafka-side check — the `InvariantVerifier`
+> opens an AdminClient (`kafka.bootstrap`, default `localhost:9092`) and asserts every
+> `*.events.dlt` / `*.events.dlt.parked` topic has zero records (earliest == latest per partition).
+> The remaining gap is the *active* "force consumer rebalances mid-run and re-assert" sub-step
+> (invariant 4): the assertion is wired, but provoking rebalances during load still needs a
+> consumer restart mid-run (an operational variant), not a verifier change.
+
 ### 6.1 This is a property-based test — and the tools that run it
 
 The shape above *is* property-based testing applied to a concurrent, stateful system:
@@ -469,7 +485,7 @@ interface OrderDriver {
 | Tier | What it drives | What it proves | Verified |
 |---|---|---|---|
 | **In-JVM property suite** (`test-harness` `o2c.OrderToCashPropertyTest`, jqwik) | All four archetypes (to_stock/to_order × purchased/manufactured) incl. the supply legs (goods receipt, work-order completion), through the **real** saga + inbox handlers + serde over the in-memory `World` | Saga/handler **logic** correctness under an arbitrary *mix and ordering* of orders; convergence, no-oversell, double-entry per run | ✅ CI-green (100 jqwik tries) |
-| **REST execution** (`load-test` `OrderToCashSimulation`, Gatling) | Many concurrent distinct-user orders, **ample-stock customer-forward path only** (place → reserve → ship → invoice → pay), real Postgres + Kafka | Conservation invariants hold under concurrent reservation on shared `stock_balance` rows + concurrent GL posting | ✅ live: 200 distinct-user orders, all asserted invariants held |
+| **REST execution** (`load-test` `OrderToCashSimulation`, Gatling) | Many concurrent distinct-user orders, **ample-stock customer-forward path only** (place → reserve → ship → invoice → pay), real Postgres + Kafka | **All six §6 invariants** hold under concurrent reservation on shared `stock_balance` rows + concurrent GL posting (convergence, no-oversell, double-entry, idempotency, ordering, empty-DLT) | ✅ live: 50 distinct-user orders, all six asserted invariants held |
 | **Focused race probes** (`load-test` `ConcurrentRaceProbesTest`) | Deliberate two-worker collisions on one aggregate (barrier-synchronised), plus the sequential **TC-COMPENSATE-PEGGED** multi-leg compensation probe | Command-layer exactly-once / no-half-state; order-pegged supply is withdrawn (not orphaned) on a to_order cancel | ✅ the three race probes green (the two bugs they found — double-ship over-ship, cancel-vs-ship half-state — are **fixed** and guarded); TC-COMPENSATE-PEGGED asserts the PO/WO reaches `cancelled` + saga `compensated` + no orphan replenishment |
 
 ### 11.2 Does the suite *ensure* correct concurrent behaviour? — No.
@@ -492,10 +508,14 @@ correctness. The honest assessment:
 - **The REST run asserts end-state, not linearizability.** It reads the DB *after* the storm
   drains, so it is blind to races that produce a self-consistent-but-wrong state, transient
   violations that heal, and anything about the *history* (it never observes the interleaving).
-- **The live verifier implements only 3 of the 6 designed invariants** (§6). No-oversell,
-  double-entry, and convergence are checked; **idempotency-under-redelivery (4), per-aggregate
-  ordering (5), and empty-DLT (6) are not** — and the "force consumer rebalances mid-run and
-  re-assert" step (§6, invariant 4) was never wired.
+- **The live verifier now implements all 6 designed invariants** (§6) — no-oversell, double-entry,
+  and convergence were the original three; **idempotency-under-redelivery (4), per-aggregate
+  ordering (5), and empty-DLT (6) are now wired** (idempotency as a per-schema duplicate-inbox-apply
+  + over-effect check, ordering as the forbidden-end-state combinations, empty-DLT via a Kafka
+  AdminClient offset check). The one residual is the *active* "force consumer rebalances mid-run and
+  re-assert" sub-step of invariant 4 — the assertion runs, but provoking rebalances during the load
+  still needs a consumer restart mid-run (an operational variant). It remains an **end-state**
+  verifier (the next bullet), so it is still blind to transient-then-healed violations and to history.
 - **Methodological ceiling.** "For all interleavings" is approximated by volume + randomness —
   statistical, not exhaustive. There is no deterministic scheduler, no model checker, no
   linearizability oracle, and no fault injection. Exactly-once *across failures* (the hard part
@@ -517,9 +537,13 @@ Ranked by how much each closes the gap above:
    line). Whichever of the two claims commits first wins, so the order is never both shipped and
    cancelled — no synchronous cross-service call or shared lock needed (which the schema-per-service +
    outbox-only architecture forbids). The remaining work is **breadth**: the items below.
-2. **Implement the 3 missing live invariants** in `InvariantVerifier`: idempotency (no duplicate
-   journal / reservation / shipment per inbox message), per-aggregate ordering, empty DLT — and
-   crank consumer concurrency to force rebalances mid-run, then re-assert (§6).
+2. **The 3 missing live invariants are now implemented** (done). `InvariantVerifier` asserts
+   idempotency (per-schema no-duplicate-`(message_id, handler_name)` inbox apply + no over-shipped /
+   over-reserved line), per-aggregate ordering (the forbidden end-states: shipped-and-cancelled, or a
+   `completed` saga with an unshipped line), and empty-DLT (Kafka AdminClient — every `*.dlt` /
+   `*.dlt.parked` topic empty). Verified live (50-user run + standalone finale, all six green). The
+   one *remaining* sub-step is the active **force-rebalance-mid-run** variant (restart a consumer
+   during the load, then re-assert) — the assertion is wired, the provocation is operational.
 3. **Exercise the supply side under live concurrent load — built, live-run pending.** The
    operations driver is shipped: `OperationsDriver` (a standalone poller) discovers outstanding POs
    + released WOs by JDBC and posts the real goods-receipt / WO-operation-complete actions, and
