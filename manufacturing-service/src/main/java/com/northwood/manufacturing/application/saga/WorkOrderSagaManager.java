@@ -107,4 +107,16 @@ public interface WorkOrderSagaManager {
      * terminal state). Returns null when no saga exists for the WO (logged).
      */
     String applyManufacturingCompleted(UUID workOrderId);
+
+    /**
+     * Terminate the saga at {@code cancelled} when its work order is withdrawn by
+     * order-pegged compensation. Transitions any non-terminal saga to
+     * {@code cancelled} — a clean stop, since a {@code released} WO has nothing
+     * committed to fail over (the WO cutoff in {@code WorkOrder.cancel} refuses an
+     * in-progress WO, so this is never legitimately reached past release).
+     * Idempotent on an already-terminal saga; returns null when no saga exists.
+     * Called from the manufacturing compensation service in the same transaction
+     * as the WO cancel.
+     */
+    String cancel(UUID workOrderId);
 }

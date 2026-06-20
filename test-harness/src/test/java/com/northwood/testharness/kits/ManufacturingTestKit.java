@@ -4,12 +4,14 @@ import com.northwood.manufacturing.application.BomService;
 import com.northwood.manufacturing.application.ConversionCostCalculator;
 import com.northwood.manufacturing.application.MaterialsCostRollupService;
 import com.northwood.manufacturing.application.WorkOrderOperationService;
+import com.northwood.manufacturing.application.WorkOrderCancellationService;
 import com.northwood.manufacturing.application.WorkOrderPrioritisationService;
 import com.northwood.manufacturing.application.WorkOrderReleaseService;
 import com.northwood.manufacturing.application.inbox.ApprovedVendorListChangedHandler;
 import com.northwood.manufacturing.application.inbox.ActiveBomChangedHandler;
 import com.northwood.manufacturing.application.inbox.GoodsReceivedHandler;
 import com.northwood.manufacturing.application.inbox.MakeVsBuyChangedHandler;
+import com.northwood.manufacturing.application.inbox.OrderPeggedSupplyCancellationRequestedHandler;
 import com.northwood.manufacturing.application.inbox.ProductCreatedHandler;
 import com.northwood.manufacturing.application.inbox.ProductDiscontinuedHandler;
 import com.northwood.manufacturing.application.inbox.RawMaterialsReservedHandler;
@@ -119,6 +121,12 @@ public final class ManufacturingTestKit {
         // Manufacturing's dispatcher for stock-replenishment requests routed by
         // inventory's detection-trigger.
         bus.register(new ReplenishmentRequestedHandler(inbox, releaseService, bomLookup, appender, json));
+
+        // Order-pegged compensation: withdraw a released work order when its
+        // to_order sales line is cancelled.
+        WorkOrderCancellationService workOrderCancellation =
+            new WorkOrderCancellationService(workOrders, sagaManager);
+        bus.register(new OrderPeggedSupplyCancellationRequestedHandler(inbox, workOrderCancellation, appender, json));
     }
 
     /**

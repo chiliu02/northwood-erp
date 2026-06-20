@@ -364,6 +364,25 @@ public class StockReservationService {
     }
 
     /**
+     * Release a cancelled work order's raw-material reservation (the manufacturing
+     * leg of order-pegged compensation). Driven by
+     * {@code manufacturing.WorkOrderCancelled}: a {@code released} WO that is
+     * withdrawn before production must hand its reserved raw materials back to the
+     * free pool. Idempotent against the absence of a reservation — a WO whose saga
+     * had not yet reserved (or whose reservation was already released) is a no-op.
+     */
+    @Transactional
+    public void releaseForWorkOrder(UUID workOrderId) {
+        stockReservations.findAnyHeaderIdForWorkOrder(workOrderId).ifPresentOrElse(
+            headerId -> {
+                unwindReservation(headerId);
+                log.info("released raw-material reservation {} for cancelled work_order={}", headerId, workOrderId);
+            },
+            () -> log.info("no live raw-material reservation to release for cancelled work_order={}", workOrderId)
+        );
+    }
+
+    /**
      * Roll back the {@code stock_balance.reserved_quantity} bumps for every
      * line of {@code headerId}, then mark the reservation header
      * {@code 'released'}. Shared subroutine for both release paths.
@@ -456,17 +475,10 @@ public class StockReservationService {
                 dispatchedKind = OrderPeggedSupplyCancellationRequested.DISPATCHED_KIND_PURCHASE_REQUISITION;
                 targetAggregateId = r.linkedPurchaseOrderId();
             }
-            // The manufacturing (work-order) compensation leg is wired in a later
-            // slice — until its consumer + WorkOrder.cancel exist, emitting a leg
-            // here would park the sales saga in 'compensating' with no ack to drain
-            // it. Until then a cancelled released work order is left as-is (the
-            // pre-existing orphaned-WO behaviour, unchanged), and the saga
-            // compensates on the purchasing leg(s) only.
             case WORK_ORDER -> {
-                log.warn("order-pegged replenishment={} for cancelled sales_order={} is a released work order "
-                        + "(work_order={}); manufacturing compensation leg not yet wired — work order left as-is",
-                    r.id().value(), salesOrderHeaderId, r.dispatchedAggregateId());
-                return;
+                targetService = OrderPeggedSupplyCancellationRequested.TARGET_SERVICE_MANUFACTURING;
+                dispatchedKind = OrderPeggedSupplyCancellationRequested.DISPATCHED_KIND_WORK_ORDER;
+                targetAggregateId = r.dispatchedAggregateId();
             }
             default -> {
                 return;

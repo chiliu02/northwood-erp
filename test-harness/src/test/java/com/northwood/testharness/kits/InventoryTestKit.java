@@ -21,6 +21,7 @@ import com.northwood.inventory.application.inbox.SalesOrderPlacedHandler;
 import com.northwood.inventory.application.inbox.SalesOrderUpfrontPaymentSettledHandler;
 import com.northwood.inventory.application.inbox.StockReservationRequestedHandler;
 import com.northwood.inventory.application.inbox.SubAssembliesConsumedHandler;
+import com.northwood.inventory.application.inbox.WorkOrderCancelledHandler;
 import com.northwood.inventory.application.inbox.WorkOrderManufacturingCompletedHandler;
 import com.northwood.shared.application.outbox.OutboxAppender;
 import com.northwood.shared.application.security.CurrentUserAccessor;
@@ -109,6 +110,7 @@ public final class InventoryTestKit {
         bus.register(new StockReservationRequestedHandler(inbox, service, json));
         bus.register(new RawMaterialReservationRequestedHandler(inbox, service, json));
         bus.register(new SalesOrderCancellationRequestedHandler(inbox, service, salesOrderLineFacts, json));
+        bus.register(new WorkOrderCancelledHandler(inbox, service, json));
         bus.register(new SalesOrderLineAddedHandler(inbox, service, json));
         bus.register(new SalesOrderLineRemovedHandler(inbox, service, salesOrderLineFacts, json));
         bus.register(new SalesOrderLineQuantityChangedHandler(inbox, service, salesOrderLineFacts, json));

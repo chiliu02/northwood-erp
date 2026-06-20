@@ -1606,9 +1606,12 @@ CREATE TABLE manufacturing.work_order_saga (
             -- waiting_for_purchased_materials, production_released/started/
             -- completed, finished_goods_received) was aspirational schema-prep
             -- that the saga never implemented — dropped here to keep the CHECK
-            -- aligned with the code.
+            -- aligned with the code. 'cancelled' was added for order-pegged
+            -- compensation: a cancelled to_order manufactured line withdraws its
+            -- released work order (clean termination, distinct from 'failed').
             'work_order_created', 'raw_material_reservation_requested',
-            'raw_materials_reserved', 'raw_material_shortage', 'completed', 'failed'
+            'raw_materials_reserved', 'raw_material_shortage', 'completed', 'failed',
+            'cancelled'
         )
     ),
     current_step VARCHAR(100),
@@ -1632,7 +1635,7 @@ CREATE INDEX idx_work_order_saga_sales_order_header_id
     ON manufacturing.work_order_saga(sales_order_header_id);
 CREATE INDEX idx_work_order_saga_due
     ON manufacturing.work_order_saga(next_retry_at)
-    WHERE saga_state NOT IN ('completed', 'failed');
+    WHERE saga_state NOT IN ('completed', 'failed', 'cancelled');
 CREATE INDEX idx_work_order_saga_data
     ON manufacturing.work_order_saga USING gin (data jsonb_path_ops);
 

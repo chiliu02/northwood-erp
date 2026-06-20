@@ -2,6 +2,7 @@ package com.northwood.manufacturing.domain;
 
 import com.northwood.manufacturing.domain.events.OperationCompleted;
 import com.northwood.manufacturing.domain.events.ReplenishmentDispatched;
+import com.northwood.manufacturing.domain.events.WorkOrderCancelled;
 import com.northwood.manufacturing.domain.events.WorkOrderCreated;
 import com.northwood.manufacturing.domain.events.WorkOrderCreated.MaterialLine;
 import com.northwood.manufacturing.domain.events.WorkOrderCreated.OperationLine;
@@ -486,6 +487,46 @@ public final class WorkOrder {
         this.materialStatus = newMaterialStatus;
     }
 
+    /**
+     * Withdraw this work order as the manufacturing leg of sales-order compensation
+     * — the cancelled {@code to_order} line's order-pegged supply must be undone.
+     * Reachable only from {@code released}: nothing has been physically committed
+     * (no operation started, no material consumed), so the withdrawal is clean.
+     * <ul>
+     *   <li>{@code released} → flip to {@code cancelled} and emit
+     *       {@link WorkOrderCancelled} (inventory releases the reserved raw
+     *       materials; the cross-service ack to the sales saga is emitted by the
+     *       caller).</li>
+     *   <li>already {@code cancelled} → idempotent no-op (redelivered request).</li>
+     *   <li>{@code in_progress} / {@code completed} / {@code closed} → an
+     *       <b>un-compensatable leaf</b>: material is in WIP / the WO is done, so
+     *       undoing it is a scrap-with-GL-loss (a new business transaction) out of
+     *       scope here. Throws {@link WoNotCompensatableException} — the caller emits
+     *       a failure ack and the sales saga reaches {@code compensation_failed}.</li>
+     * </ul>
+     */
+    public void cancel(String reason) {
+        if (status == Status.CANCELLED) {
+            return;   // idempotent — already withdrawn
+        }
+        if (status != Status.RELEASED) {
+            throw new WoNotCompensatableException(id, status);
+        }
+        Status previous = this.status;
+        this.status = Status.CANCELLED;
+        pendingEvents.add(new WorkOrderCancelled(
+            UUID.randomUUID(),
+            id.value(),
+            workOrderNumber,
+            salesOrderHeaderId,
+            salesOrderLineId,
+            replenishmentRequestId,
+            previous.code(),
+            reason,
+            Instant.now()
+        ));
+    }
+
     private void transitionToCompleted() {
         this.status = Status.COMPLETED;
         this.completedQuantity = plannedQuantity;
@@ -575,4 +616,27 @@ public final class WorkOrder {
     public long version()                         { return version; }
     public List<WorkOrderMaterial> materials()    { return List.copyOf(materials); }
     public List<WorkOrderOperation> operations()  { return List.copyOf(operations); }
+
+    /**
+     * Thrown by {@link #cancel} when the work order is past the firm-commitment
+     * cutoff (in progress / completed / closed — material issued to WIP or
+     * operations run) and so cannot be withdrawn by saga compensation; an
+     * un-compensatable leaf. The caller maps this to a failure ack rather than
+     * wedging the saga.
+     */
+    public static final class WoNotCompensatableException extends RuntimeException {
+        private final WorkOrderId workOrderId;
+        private final Status currentStatus;
+
+        public WoNotCompensatableException(WorkOrderId workOrderId, Status currentStatus) {
+            super("Work order " + workOrderId.value() + " is in status '" + currentStatus.code()
+                + "' and cannot be withdrawn by compensation (production already underway — "
+                + "needs a scrap-WIP write-off, not a saga rewind)");
+            this.workOrderId = workOrderId;
+            this.currentStatus = currentStatus;
+        }
+
+        public WorkOrderId workOrderId()  { return workOrderId; }
+        public Status currentStatus()     { return currentStatus; }
+    }
 }

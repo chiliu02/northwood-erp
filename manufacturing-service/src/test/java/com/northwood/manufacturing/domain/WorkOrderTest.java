@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.northwood.manufacturing.domain.events.OperationCompleted;
 import com.northwood.manufacturing.domain.events.ReplenishmentDispatched;
+import com.northwood.manufacturing.domain.events.WorkOrderCancelled;
 import com.northwood.manufacturing.domain.events.WorkOrderCreated;
 import com.northwood.manufacturing.domain.events.WorkOrderManufacturingCompleted;
 import com.northwood.shared.domain.DomainEvent;
@@ -141,6 +142,49 @@ class WorkOrderTest {
                 FG_PRODUCT, "FG-X", "X", BOM, BigDecimal.ONE,
                 List.of(), List.of(op(10))
             )).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Nested
+    class Cancel {
+        @Test void withdraws_a_released_work_order_and_emits_cancelled() {
+            WorkOrder wo = release(List.of(op(10)));
+            wo.pullPendingEvents();   // drain the Created event
+
+            wo.cancel("sales order cancelled");
+
+            assertThat(wo.status()).isEqualTo(WorkOrder.Status.CANCELLED);
+            List<DomainEvent> events = wo.pullPendingEvents();
+            assertThat(events).hasSize(1).first().isInstanceOf(WorkOrderCancelled.class);
+            WorkOrderCancelled cancelled = (WorkOrderCancelled) events.get(0);
+            assertThat(cancelled.previousStatus()).isEqualTo("released");
+            assertThat(cancelled.reason()).isEqualTo("sales order cancelled");
+            assertThat(cancelled.salesOrderHeaderId()).isEqualTo(SO_HEADER);
+            assertThat(cancelled.salesOrderLineId()).isEqualTo(SO_LINE);
+        }
+
+        @Test void already_cancelled_is_an_idempotent_no_op() {
+            WorkOrder wo = release(List.of(op(10)));
+            wo.cancel("first");
+            wo.pullPendingEvents();   // drain Created + first Cancelled
+
+            wo.cancel("redelivered");
+
+            assertThat(wo.status()).isEqualTo(WorkOrder.Status.CANCELLED);
+            assertThat(wo.pullPendingEvents()).isEmpty();   // no duplicate event
+        }
+
+        @Test void refuses_an_in_progress_work_order_as_an_uncompensatable_leaf() {
+            WorkOrder wo = release(List.of(op(10), op(20)));
+            wo.completeOperation(10, new BigDecimal("30"), false);   // RELEASED → IN_PROGRESS
+            wo.pullPendingEvents();
+            assertThat(wo.status()).isEqualTo(WorkOrder.Status.IN_PROGRESS);
+
+            assertThatThrownBy(() -> wo.cancel("too late"))
+                .isInstanceOf(WorkOrder.WoNotCompensatableException.class)
+                .hasMessageContaining("'in_progress'");
+            assertThat(wo.status()).isEqualTo(WorkOrder.Status.IN_PROGRESS);   // unchanged
+            assertThat(wo.pullPendingEvents()).isEmpty();
         }
     }
 

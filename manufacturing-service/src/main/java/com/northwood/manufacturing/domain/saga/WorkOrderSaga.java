@@ -47,8 +47,16 @@ public final class WorkOrderSaga extends SagaInstance {
     public static final String RAW_MATERIAL_SHORTAGE = "raw_material_shortage";
     public static final String COMPLETED = "completed";
     public static final String FAILED = "failed";
+    /**
+     * Terminal — the work order was withdrawn by order-pegged compensation (a
+     * cancelled {@code to_order} manufactured sales line). A clean termination, not
+     * a failure: the WO was still {@code released} (no production committed), so
+     * there is nothing to fail over. Mirrors the purchase-to-pay saga's
+     * {@code cancelled}; distinct from {@code failed} (a broken saga).
+     */
+    public static final String CANCELLED = "cancelled";
 
-    private static final Set<String> TERMINAL_STATES = Set.of(COMPLETED, FAILED);
+    private static final Set<String> TERMINAL_STATES = Set.of(COMPLETED, FAILED, CANCELLED);
 
     /**
      * Every state this saga's code can transition into. Cross-checked at
@@ -61,7 +69,8 @@ public final class WorkOrderSaga extends SagaInstance {
         RAW_MATERIAL_RESERVATION_REQUESTED,
         RAW_MATERIALS_RESERVED, RAW_MATERIAL_SHORTAGE,
         COMPLETED,
-        FAILED
+        FAILED,
+        CANCELLED
     );
 
     private final UUID salesOrderHeaderId;
