@@ -178,6 +178,31 @@ public final class SalesOrder {
     }
 
     /**
+     * Derived label for the two-phase cancel's progress / outcome, computed from
+     * {@code (cancellationRequestedAt, status)} — a read-side projection, not a
+     * stored field. {@code NONE} when no cancellation was requested; otherwise
+     * {@code CANCELLING} while the request is unresolved, {@code CANCELLED} once it
+     * won, or {@code CANCELLATION_REJECTED} once a shipment won the race (the order
+     * shipped). See {@link #cancellationOutcome()}.
+     */
+    public enum CancellationOutcome {
+        NONE("none"),
+        CANCELLING("cancelling"),
+        CANCELLED("cancelled"),
+        CANCELLATION_REJECTED("cancellation_rejected");
+
+        private final String code;
+
+        CancellationOutcome(String code) {
+            this.code = code;
+        }
+
+        public String code() {
+            return code;
+        }
+    }
+
+    /**
      * Wire-format aggregate-type stamped onto {@code sales.outbox_message.aggregate_type}
      * for events this aggregate emits. Same-service outbox writers reference this
      * constant; cross-service emitters that target this aggregate type carry their own
@@ -522,6 +547,27 @@ public final class SalesOrder {
         }
         this.status = Status.CANCELLED;
         this.cancelledAt = Instant.now();
+    }
+
+    /**
+     * Derive the {@link CancellationOutcome} from {@code (cancellationRequestedAt,
+     * status)}. The race-loss is observable here without any extra event: a cancel
+     * can only lose to a shipment, which drives the order to {@code shipped} /
+     * {@code partially_shipped}, so a requested-but-shipped order reads as
+     * {@link CancellationOutcome#CANCELLATION_REJECTED}.
+     */
+    public CancellationOutcome cancellationOutcome() {
+        CancellationOutcome outcome;
+        if (cancellationRequestedAt == null) {
+            outcome = CancellationOutcome.NONE;
+        } else if (status == Status.CANCELLED) {
+            outcome = CancellationOutcome.CANCELLED;
+        } else if (status == Status.SHIPPED || status == Status.PARTIALLY_SHIPPED) {
+            outcome = CancellationOutcome.CANCELLATION_REJECTED;
+        } else {
+            outcome = CancellationOutcome.CANCELLING;
+        }
+        return outcome;
     }
 
     /**

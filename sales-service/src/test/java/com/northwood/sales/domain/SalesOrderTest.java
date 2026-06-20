@@ -12,6 +12,7 @@ import com.northwood.sales.domain.events.SalesOrderShipped;
 import com.northwood.shared.domain.Currencies;
 import com.northwood.shared.domain.DomainEvent;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -212,6 +213,25 @@ class SalesOrderTest {
             assertThat(so.cancellationRequestedAt()).isNotNull();
             assertThat(so.pullPendingEvents()).hasSize(1)
                 .first().isInstanceOf(SalesOrderCancellationRequested.class);
+        }
+
+        @Test void cancellation_outcome_is_derived_from_request_and_status() {
+            SalesOrder so = reconstituteWithStatus(SalesOrder.Status.OPEN);
+            assertThat(so.cancellationOutcome()).isEqualTo(SalesOrder.CancellationOutcome.NONE);
+            so.requestCancellation("changed mind");
+            assertThat(so.cancellationOutcome()).isEqualTo(SalesOrder.CancellationOutcome.CANCELLING);
+            so.confirmCancellation();
+            assertThat(so.cancellationOutcome()).isEqualTo(SalesOrder.CancellationOutcome.CANCELLED);
+
+            // Race-loss: a cancel was requested but a shipment won → the order is
+            // shipped and the outcome reads as rejected, with no extra event.
+            SalesOrder rejected = SalesOrder.reconstitute(
+                SalesOrderId.of(UUID.randomUUID()), "SO-CXL-REJ",
+                CUSTOMER, "CUST-001", "Test Customer", LocalDate.now(), null,
+                SalesOrder.Status.SHIPPED, Currencies.AUD, BigDecimal.ONE, PaymentTerms.ON_SHIPMENT, null,
+                new BigDecimal("100"), BigDecimal.ZERO, new BigDecimal("100"),
+                null, Instant.now(), 1L, List.of(line(BigDecimal.ONE, new BigDecimal("100"))));
+            assertThat(rejected.cancellationOutcome()).isEqualTo(SalesOrder.CancellationOutcome.CANCELLATION_REJECTED);
         }
 
         @Test void confirm_cancels_when_open() {

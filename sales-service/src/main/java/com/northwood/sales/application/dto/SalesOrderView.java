@@ -2,6 +2,7 @@ package com.northwood.sales.application.dto;
 
 import com.northwood.sales.domain.SalesOrder;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -22,6 +23,14 @@ public record SalesOrderView(
     BigDecimal totalAmount,
     String paymentTerms,
     long version,
+    /** When cancellation was first requested (phase 1); null if never. */
+    Instant cancellationRequestedAt,
+    /**
+     * Derived two-phase-cancel label: {@code none} / {@code cancelling} /
+     * {@code cancelled} / {@code cancellation_rejected}. Lets the UI reconcile an
+     * optimistic "Cancellation requested…" state to a terminal by polling.
+     */
+    String cancellationOutcome,
     List<SalesOrderLineView> lines
 ) {
     public static SalesOrderView from(SalesOrder order) {
@@ -40,6 +49,8 @@ public record SalesOrderView(
             order.totalAmount(),
             order.paymentTerms().code(),
             order.version(),
+            order.cancellationRequestedAt(),
+            order.cancellationOutcome().code(),
             order.lines().stream().map(SalesOrderLineView::from).toList()
         );
     }

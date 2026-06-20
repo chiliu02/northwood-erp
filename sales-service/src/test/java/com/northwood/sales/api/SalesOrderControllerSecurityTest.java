@@ -100,6 +100,6 @@ class SalesOrderControllerSecurityTest {
             id, "SO-SEC-1", UUID.randomUUID(), "CUST-001", "Sydney Home Living",
             LocalDate.now(), null, "cancelled", "AUD",
             new BigDecimal("0.00"), new BigDecimal("0.00"), new BigDecimal("0.00"),
-            "on_shipment", 1L, List.of());
+            "on_shipment", 1L, null, "none", List.of());
     }
 }
