@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ban, History, Pencil, Plus, Trash2, Check, X } from "lucide-react";
@@ -58,6 +58,10 @@ interface SalesOrderAggregate {
   requestedDeliveryDate: string | null;
   currencyCode: string;
   version: number;
+  // Two-phase cancel, derived server-side from (cancellationRequestedAt, status):
+  // none | cancelling | cancelled | cancellation_rejected.
+  cancellationOutcome: string;
+  cancellationRequestedAt: string | null;
   lines: SalesOrderLine[];
 }
 
@@ -108,6 +112,11 @@ export function SalesOrderDetail() {
     queryKey: ["sales-order-aggregate", id],
     queryFn: () => apiGet<SalesOrderAggregate>(`/api/sales-cmd/sales-orders/${id}`),
     enabled: !!id,
+    // While a cancellation is in flight, poll so the optimistic "Cancellation
+    // requested…" state reconciles to its terminal (cancelled / cancellation_rejected)
+    // without the user refreshing.
+    refetchInterval: (query) =>
+      query.state.data?.cancellationOutcome === "cancelling" ? 2000 : false,
   });
 
   const { data: products } = useQuery({
@@ -122,8 +131,9 @@ export function SalesOrderDetail() {
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sales-order-360", id] });
+      queryClient.invalidateQueries({ queryKey: ["sales-order-aggregate", id] });
       queryClient.invalidateQueries({ queryKey: ["sales-orders"] });
-      toast.success(`Order ${data?.orderNumber} cancellation requested. Saga will compensate inventory + manufacturing.`);
+      toast.success(`Cancellation requested for ${data?.orderNumber}. Inventory is arbitrating; we'll confirm shortly.`);
       setCancelDialog(false);
       setReason("");
     },
@@ -188,6 +198,23 @@ export function SalesOrderDetail() {
     },
     onError: onAmendError,
   });
+
+  // Two-phase cancel outcome (derived server-side on the aggregate view). Drives
+  // the optimistic UI: a durable "cancellation requested…" state that reconciles to
+  // a terminal via polling, plus a toast when it resolves.
+  const cancelOutcome = aggregate?.cancellationOutcome ?? "none";
+  const cancelPending = cancelOutcome === "cancelling";
+  const prevOutcome = useRef("none");
+  useEffect(() => {
+    if (prevOutcome.current === "cancelling" && cancelOutcome !== "cancelling") {
+      if (cancelOutcome === "cancelled") {
+        toast.success(`Order ${data?.orderNumber ?? ""} cancelled.`);
+      } else if (cancelOutcome === "cancellation_rejected") {
+        toast.error(`Could not cancel ${data?.orderNumber ?? ""} — it had already shipped.`);
+      }
+    }
+    prevOutcome.current = cancelOutcome;
+  }, [cancelOutcome, data?.orderNumber, toast]);
 
   if (isLoading) {
     return <div className="flex h-full items-center justify-center text-sm text-text-muted">Loading order…</div>;
@@ -471,7 +498,7 @@ export function SalesOrderDetail() {
               <History className="h-4 w-4" />
               View audit
             </Link>
-            {cancellable && (
+            {cancellable && !cancelPending && (
               <ActionButton
                 variant="danger"
                 icon={<Ban className="h-4 w-4" />}
@@ -481,6 +508,15 @@ export function SalesOrderDetail() {
               >
                 Cancel order
               </ActionButton>
+            )}
+            {cancelPending && (
+              <span
+                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-status-warn/30 bg-status-warn-soft px-3 text-sm font-medium text-status-warn"
+                title="Cancellation requested — inventory is arbitrating against any concurrent shipment."
+              >
+                <Ban className="h-4 w-4" />
+                Cancellation requested…
+              </span>
             )}
           </>
         }
@@ -509,6 +545,22 @@ export function SalesOrderDetail() {
                       )}
                     </div>
                   } />
+                  {cancelOutcome !== "none" && (
+                    <ReadOnlyField label="Cancellation" fullWidth value={
+                      <StatusPill
+                        label={
+                          cancelOutcome === "cancelling" ? "requested — awaiting confirmation"
+                            : cancelOutcome === "cancelled" ? "cancelled"
+                              : "rejected — order already shipped"
+                        }
+                        tone={
+                          cancelOutcome === "cancellation_rejected" ? "error"
+                            : cancelOutcome === "cancelled" ? "neutral"
+                              : "warn"
+                        }
+                      />
+                    } />
+                  )}
                 </FormSection>
                 <FormSection title="Fulfilment progress">
                   <ReadOnlyField label="Stock" value={<StatusPill label={data.stockStatus || "pending"} tone={toneFor(data.stockStatus)} />} />
@@ -554,13 +606,15 @@ export function SalesOrderDetail() {
         title="Cancel sales order?"
         message={
           <>
-            Cancels <strong>{data.orderNumber}</strong> for {data.customerName}.<br />
-            Header flips to <code>cancelled</code> + saga to <code>compensating</code>; emits
-            <code> sales.SalesOrderCancellationRequested</code>. Inventory releases any
-            stock reservation and acks; that ack is the sole compensation leg, so the
-            saga then advances to <code>compensated</code>.
+            Requests cancellation of <strong>{data.orderNumber}</strong> for {data.customerName}.<br />
+            Emits <code>sales.SalesOrderCancellationRequested</code>; inventory arbitrates
+            against any concurrent shipment. If no line has shipped it releases the stock
+            reservation and acks, and the order becomes <code>cancelled</code>. If a
+            shipment wins the race, the order stays shipped and the cancellation is marked
+            rejected.
             <br />
-            Server returns 409 if the order has already shipped.
+            Returns <code>202 Accepted</code> (the outcome is pending); a <code>409</code>
+            is returned if the order has already shipped in sales' view.
           </>
         }
         confirmLabel="Cancel order"
