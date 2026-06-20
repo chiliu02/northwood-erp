@@ -529,6 +529,16 @@ export function SalesOrderDetail() {
                 <FormSection title="Order">
                   <ReadOnlyField label="Order #" value={<span className="font-medium tabular-nums">{data.orderNumber}</span>} />
                   <ReadOnlyField label="Status" value={<StatusPill label={status.label} tone={status.tone} />} />
+                  {(cancelOutcome === "cancelling" || cancelOutcome === "cancellation_rejected") && (
+                    <ReadOnlyField label="Cancellation" fullWidth value={
+                      <StatusPill
+                        label={cancelOutcome === "cancelling"
+                          ? "requested — awaiting confirmation"
+                          : "rejected — order already shipped"}
+                        tone={cancelOutcome === "cancelling" ? "warn" : "error"}
+                      />
+                    } />
+                  )}
                   <ReadOnlyField label="Customer" value={data.customerName} />
                   <ReadOnlyField label="Currency" value={data.currencyCode} />
                   <ReadOnlyField label="Order date" value={data.orderDate} />
@@ -545,22 +555,6 @@ export function SalesOrderDetail() {
                       )}
                     </div>
                   } />
-                  {cancelOutcome !== "none" && (
-                    <ReadOnlyField label="Cancellation" fullWidth value={
-                      <StatusPill
-                        label={
-                          cancelOutcome === "cancelling" ? "requested — awaiting confirmation"
-                            : cancelOutcome === "cancelled" ? "cancelled"
-                              : "rejected — order already shipped"
-                        }
-                        tone={
-                          cancelOutcome === "cancellation_rejected" ? "error"
-                            : cancelOutcome === "cancelled" ? "neutral"
-                              : "warn"
-                        }
-                      />
-                    } />
-                  )}
                 </FormSection>
                 <FormSection title="Fulfilment progress">
                   <ReadOnlyField label="Stock" value={<StatusPill label={data.stockStatus || "pending"} tone={toneFor(data.stockStatus)} />} />
