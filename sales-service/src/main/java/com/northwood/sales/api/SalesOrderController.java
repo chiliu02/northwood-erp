@@ -54,6 +54,15 @@ public class SalesOrderController {
             .orElse(ResponseEntity.notFound().build());
     }
 
+    /**
+     * Request cancellation of an order. Returns <b>202 Accepted</b>, not 200: the
+     * cancel is two-phase and inventory-arbitrated, so at submit time the outcome is
+     * pending, not done. The returned view carries {@code cancellationOutcome =
+     * cancelling}; the client reconciles to {@code cancelled} or
+     * {@code cancellation_rejected} (a shipment won the race) by polling the order.
+     * A synchronous {@code 409} is still raised if, at submit time, the order is
+     * already terminal or a line has shipped in sales' view.
+     */
     @PostMapping("/{id}/cancel")
     @RequireSalesManager
     public ResponseEntity<SalesOrderView> cancel(
@@ -62,7 +71,7 @@ public class SalesOrderController {
     ) {
         service.cancel(new CancelOrderCommand(id, request.reason()));
         SalesOrderView body = service.findById(id).orElseThrow();
-        return ResponseEntity.ok(body);
+        return ResponseEntity.accepted().body(body);
     }
 
     // ------------------------------------------------------------

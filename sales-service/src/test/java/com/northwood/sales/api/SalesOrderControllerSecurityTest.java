@@ -91,7 +91,7 @@ class SalesOrderControllerSecurityTest {
                 .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_sales_manager")))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(BODY))
-            .andExpect(status().isOk());
+            .andExpect(status().isAccepted());
         verify(service).cancel(any());
     }
 
