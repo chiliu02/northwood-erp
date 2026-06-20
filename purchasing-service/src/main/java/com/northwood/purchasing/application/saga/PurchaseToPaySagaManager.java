@@ -52,6 +52,20 @@ public interface PurchaseToPaySagaManager {
      */
     String cancel(UUID purchaseOrderHeaderId);
 
+    /**
+     * Terminate the saga at {@code cancelled} when the PO is withdrawn by
+     * <b>order-pegged compensation</b> (a cancelled {@code to_order} sales line).
+     * Unlike {@link #cancel} (draft-reject, {@code started} only), this terminates
+     * from any <em>pre-goods</em> non-terminal state ({@code started} /
+     * {@code purchase_order_approved} / {@code waiting_for_goods}) — a clean stop,
+     * because a {@code sent}-but-not-received PO has nothing physically committed to
+     * undo. Idempotent on a terminal / post-goods saga (the PO cutoff in
+     * {@code PurchaseOrder.compensateCancel} means goods-received POs refuse
+     * compensation, so this is never legitimately reached there). Returns null when
+     * no saga exists. Called from {@code PurchaseOrderService.compensateCancel}.
+     */
+    String compensateCancel(UUID purchaseOrderHeaderId);
+
     // ------------------------------------------------------------
     // Worker drain (called from PurchaseToPaySagaWorker)
     // ------------------------------------------------------------

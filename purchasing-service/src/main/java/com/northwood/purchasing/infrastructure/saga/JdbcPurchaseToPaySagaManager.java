@@ -77,6 +77,16 @@ public class JdbcPurchaseToPaySagaManager
         return saga.state();
     }
 
+    /**
+     * Pre-goods non-terminal states a PO compensation may terminate from. Beyond
+     * these (goods received onward) the PO is past the firm-commitment cutoff and
+     * {@code PurchaseOrder.compensateCancel} refuses, so this set is never
+     * legitimately reached there.
+     */
+    private static final Set<String> COMPENSATABLE_STATES = Set.of(
+        STARTED, PURCHASE_ORDER_APPROVED, WAITING_FOR_GOODS
+    );
+
     @Override
     @Transactional
     public String cancel(UUID purchaseOrderHeaderId) {
@@ -88,6 +98,22 @@ public class JdbcPurchaseToPaySagaManager
             saga.transitionTo(CANCELLED, "purchase_order_rejected");
             sagaPort.update(saga);
             log.info("saga {} purchase_order={} → cancelled (draft rejected)",
+                saga.sagaId(), purchaseOrderHeaderId);
+        }
+        return saga.state();
+    }
+
+    @Override
+    @Transactional
+    public String compensateCancel(UUID purchaseOrderHeaderId) {
+        PurchaseToPaySaga saga = sagaPort.findByPurchaseOrderId(purchaseOrderHeaderId).orElse(null);
+        if (saga == null) {
+            return null;
+        }
+        if (COMPENSATABLE_STATES.contains(saga.state())) {
+            saga.transitionTo(CANCELLED, "purchase_order_compensation_cancelled");
+            sagaPort.update(saga);
+            log.info("saga {} purchase_order={} → cancelled (order-pegged compensation)",
                 saga.sagaId(), purchaseOrderHeaderId);
         }
         return saga.state();

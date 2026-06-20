@@ -5,16 +5,21 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * A purchase order has been cancelled. Today this is emitted only from the
- * manual <em>reject-a-draft</em> path — a purchasing manager rejects a draft PO
- * (e.g. wrong supplier, zero-priced lines that can't be approved) via
- * {@code POST /api/purchase-orders/{id}/reject}. The PO flips
- * {@code draft → cancelled} and its purchase-to-pay saga terminates at
- * {@code cancelled} in the same transaction.
+ * A purchase order has been cancelled. Two emitters:
+ * <ul>
+ *   <li>the manual <em>reject-a-draft</em> path — a purchasing manager rejects a
+ *       draft PO (wrong supplier, zero-priced lines) via
+ *       {@code POST /api/purchase-orders/{id}/reject} ({@code draft → cancelled});</li>
+ *   <li>the <em>order-pegged compensation</em> path — a cancelled {@code to_order}
+ *       sales line's committed PO is withdrawn ({@code PurchaseOrder.compensateCancel},
+ *       reachable for a {@code sent} PO too, before any goods arrive).</li>
+ * </ul>
+ * In both cases the purchase-to-pay saga terminates at {@code cancelled} in the same
+ * transaction.
  *
  * <p>{@code previousStatus} records the status the PO held before cancellation
- * ({@code 'draft'} today) so a future cancel-after-sent flow can branch
- * compensation on it. {@code aggregateId} is the purchase-order-header id.
+ * ({@code 'draft'} for a reject, {@code 'sent'} for a typical compensation) so
+ * consumers can branch on it. {@code aggregateId} is the purchase-order-header id.
  */
 public record PurchaseOrderCancelled(
     UUID eventId,

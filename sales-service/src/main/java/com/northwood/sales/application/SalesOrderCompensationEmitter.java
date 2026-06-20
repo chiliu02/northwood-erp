@@ -4,6 +4,7 @@ import com.northwood.sales.domain.SalesOrder;
 import com.northwood.sales.domain.SalesOrderId;
 import com.northwood.sales.domain.SalesOrderRepository;
 import com.northwood.sales.domain.events.SalesOrderCompensated;
+import com.northwood.sales.domain.events.SalesOrderCompensationFailed;
 import com.northwood.shared.application.outbox.OutboxAppender;
 import java.time.Instant;
 import java.util.UUID;
@@ -68,5 +69,34 @@ public class SalesOrderCompensationEmitter {
         );
         outbox.append(event, SalesOrder.AGGREGATE_TYPE);
         log.info("emitted {} for sales_order={}", SalesOrderCompensated.EVENT_TYPE, salesOrderHeaderId);
+    }
+
+    /**
+     * Emit {@code sales.SalesOrderCompensationFailed} — the saga reached
+     * {@code compensation_failed} because at least one order-pegged supply leg
+     * could not be withdrawn (an un-compensatable leaf). The order is cancelled
+     * either way; this is the escalation signal (open an RMA / post a write-off).
+     * Shares the {@code cancelledAt} silent-fallback contract with
+     * {@link #emitCompensated}.
+     */
+    public void emitCompensationFailed(UUID salesOrderHeaderId) {
+        Instant cancelledAt = salesOrders.findById(SalesOrderId.of(salesOrderHeaderId))
+            .map(SalesOrder::cancelledAt)
+            .orElse(null);
+        if (cancelledAt == null) {
+            log.warn(
+                "emitCompensationFailed sales_order={} could not load SalesOrder.cancelledAt; "
+                    + "stamping {}.cancelledAt = now() (audit drift by saga round-trip duration)",
+                salesOrderHeaderId, SalesOrderCompensationFailed.EVENT_TYPE
+            );
+        }
+        SalesOrderCompensationFailed event = new SalesOrderCompensationFailed(
+            UUID.randomUUID(),
+            salesOrderHeaderId,
+            cancelledAt == null ? Instant.now() : cancelledAt,
+            Instant.now()
+        );
+        outbox.append(event, SalesOrder.AGGREGATE_TYPE);
+        log.info("emitted {} for sales_order={}", SalesOrderCompensationFailed.EVENT_TYPE, salesOrderHeaderId);
     }
 }

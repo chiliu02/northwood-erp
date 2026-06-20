@@ -263,6 +263,58 @@ public class PurchaseOrderService {
     }
 
     /**
+     * Outcome of a {@link #compensateCancel} attempt — handed back to the inbox
+     * handler so it can emit the {@code purchasing.PurchaseOrderCancellationApplied}
+     * ack to the sales saga. {@code compensated} is the success flag (PO withdrawn
+     * or already cancelled); {@code previousStatus} is the PO status before the
+     * attempt (null if the PO was not found).
+     */
+    public record CompensationResult(boolean compensated, String previousStatus, String detail) {}
+
+    /**
+     * Withdraw an order-pegged PO as the purchasing leg of sales-order compensation
+     * (driven by {@code inventory.OrderPeggedSupplyCancellationRequested}). Loads
+     * the PO, attempts {@link PurchaseOrder#compensateCancel}, and on success saves
+     * it (emits {@code PurchaseOrderCancelled}) + terminates the P2P saga. Does not
+     * emit the cross-service ack itself — returns a {@link CompensationResult} so the
+     * inbox handler emits {@code PurchaseOrderCancellationApplied} addressed to the
+     * sales saga.
+     *
+     * <ul>
+     *   <li>PO {@code draft}/{@code sent}/already-{@code cancelled} → withdrawn (or
+     *       no-op), {@code compensated = true};</li>
+     *   <li>PO past the firm-commitment cutoff (goods received+) → un-compensatable
+     *       leaf, {@code compensated = false} (the saga escalates to
+     *       {@code compensation_failed});</li>
+     *   <li>PO not found → {@code compensated = false} (treat as a failed leg so the
+     *       saga surfaces it rather than silently completing).</li>
+     * </ul>
+     * The actor is the saga ({@code "system"} — inbox thread, no SecurityContext).
+     */
+    @Transactional
+    public CompensationResult compensateCancel(UUID purchaseOrderHeaderId, String reason) {
+        PurchaseOrder po = purchaseOrders.findById(PurchaseOrderId.of(purchaseOrderHeaderId)).orElse(null);
+        if (po == null) {
+            log.warn("compensate-cancel: no purchase_order {} to withdraw ({}); reporting failed leg",
+                purchaseOrderHeaderId, reason);
+            return new CompensationResult(false, null, "purchase order not found");
+        }
+        String previous = po.status().code();
+        try {
+            po.compensateCancel("system", reason);
+        } catch (PurchaseOrder.PoNotCompensatableException e) {
+            log.warn("compensate-cancel: purchase_order {} is un-compensatable (status={}): {}",
+                purchaseOrderHeaderId, previous, e.getMessage());
+            return new CompensationResult(false, previous, e.getMessage());
+        }
+        purchaseOrders.save(po);
+        sagaManager.compensateCancel(purchaseOrderHeaderId);
+        log.info("compensate-cancel: withdrew purchase_order {} (id={}, was {}) reason={}",
+            po.purchaseOrderNumber(), purchaseOrderHeaderId, previous, reason);
+        return new CompensationResult(true, previous, reason);
+    }
+
+    /**
      * Approve a PO sitting at {@code 'draft'}. Flips the PO to {@code 'sent'}
      * and emits {@code purchasing.PurchaseOrderApproved}; the saga worker
      * advances {@code purchase_order_approved → waiting_for_goods} on its

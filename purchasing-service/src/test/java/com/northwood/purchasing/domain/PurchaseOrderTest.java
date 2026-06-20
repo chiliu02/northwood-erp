@@ -227,6 +227,66 @@ class PurchaseOrderTest {
         }
     }
 
+    @Nested
+    class CompensateCancel {
+        private PurchaseOrder poInStatus(PurchaseOrder.Status status) {
+            return PurchaseOrder.reconstitute(
+                PurchaseOrderId.of(UUID.randomUUID()), "PO-001",
+                UUID.randomUUID(), "SUP-001", "Acme Co", PR_HEADER, Currencies.AUD,
+                new BigDecimal("800.00"), BigDecimal.ZERO, new BigDecimal("800.00"),
+                status, List.of(line(BigDecimal.TEN, new BigDecimal("80"))), 1L
+            );
+        }
+
+        @Test void withdraws_a_sent_po_and_emits_cancelled() {
+            PurchaseOrder po = poInStatus(PurchaseOrder.Status.SENT);
+
+            po.compensateCancel("system", "sales order cancelled");
+
+            assertThat(po.status()).isEqualTo(PurchaseOrder.Status.CANCELLED);
+            List<DomainEvent> events = po.pullPendingEvents();
+            assertThat(events).hasSize(1).first().isInstanceOf(PurchaseOrderCancelled.class);
+            PurchaseOrderCancelled cancelled = (PurchaseOrderCancelled) events.get(0);
+            assertThat(cancelled.previousStatus()).isEqualTo("sent");
+            assertThat(cancelled.reason()).isEqualTo("sales order cancelled");
+        }
+
+        @Test void withdraws_a_draft_po() {
+            PurchaseOrder po = poInStatus(PurchaseOrder.Status.DRAFT);
+
+            po.compensateCancel("system", "sales order cancelled");
+
+            assertThat(po.status()).isEqualTo(PurchaseOrder.Status.CANCELLED);
+            assertThat(po.pullPendingEvents()).hasSize(1);
+        }
+
+        @Test void already_cancelled_is_an_idempotent_no_op() {
+            PurchaseOrder po = poInStatus(PurchaseOrder.Status.CANCELLED);
+
+            po.compensateCancel("system", "redelivered request");
+
+            assertThat(po.status()).isEqualTo(PurchaseOrder.Status.CANCELLED);
+            assertThat(po.pullPendingEvents()).isEmpty();   // no duplicate event
+        }
+
+        @Test void refuses_a_received_po_as_an_uncompensatable_leaf() {
+            PurchaseOrder po = poInStatus(PurchaseOrder.Status.RECEIVED);
+
+            assertThatThrownBy(() -> po.compensateCancel("system", "too late"))
+                .isInstanceOf(PurchaseOrder.PoNotCompensatableException.class)
+                .hasMessageContaining("'received'");
+            assertThat(po.status()).isEqualTo(PurchaseOrder.Status.RECEIVED);   // unchanged
+            assertThat(po.pullPendingEvents()).isEmpty();
+        }
+
+        @Test void refuses_a_partially_received_po() {
+            PurchaseOrder po = poInStatus(PurchaseOrder.Status.PARTIALLY_RECEIVED);
+
+            assertThatThrownBy(() -> po.compensateCancel("system", "too late"))
+                .isInstanceOf(PurchaseOrder.PoNotCompensatableException.class);
+        }
+    }
+
     /**
      * Consistency guard: a draft PO is only approvable when it has a positive
      * total that equals subtotal + tax, with subtotal/tax equal to the line sums.

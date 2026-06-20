@@ -131,6 +131,45 @@ class JdbcPurchaseToPaySagaManagerTest {
             assertThat(state).isNull();
             verify(sagas, never()).update(any());
         }
+
+        @Test void compensate_cancel_terminates_a_sent_pos_saga_from_waiting_for_goods() {
+            PurchaseToPaySaga saga = sagaInState(WAITING_FOR_GOODS);
+            when(sagas.findByPurchaseOrderId(PO)).thenReturn(Optional.of(saga));
+
+            String state = manager.compensateCancel(PO);
+
+            assertThat(state).isEqualTo(CANCELLED);
+            verify(sagas).update(saga);
+        }
+
+        @Test void compensate_cancel_terminates_from_purchase_order_approved() {
+            PurchaseToPaySaga saga = sagaInState(PURCHASE_ORDER_APPROVED);
+            when(sagas.findByPurchaseOrderId(PO)).thenReturn(Optional.of(saga));
+
+            String state = manager.compensateCancel(PO);
+
+            assertThat(state).isEqualTo(CANCELLED);
+            verify(sagas).update(saga);
+        }
+
+        @Test void compensate_cancel_is_a_no_op_past_goods_receipt() {
+            PurchaseToPaySaga saga = sagaInState(GOODS_RECEIVED);
+            when(sagas.findByPurchaseOrderId(PO)).thenReturn(Optional.of(saga));
+
+            String state = manager.compensateCancel(PO);
+
+            assertThat(state).isEqualTo(GOODS_RECEIVED);
+            verify(sagas, never()).update(any());
+        }
+
+        @Test void compensate_cancel_returns_null_when_no_saga() {
+            when(sagas.findByPurchaseOrderId(PO)).thenReturn(Optional.empty());
+
+            String state = manager.compensateCancel(PO);
+
+            assertThat(state).isNull();
+            verify(sagas, never()).update(any());
+        }
     }
 
     @Nested

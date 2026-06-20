@@ -59,6 +59,23 @@ public class ReplenishmentCancelledHandler extends AbstractInboxHandler<Replenis
             return;
         }
 
+        // A cancellation-initiated drop must not be mistaken for an unsourceable-line
+        // failure. When the order is being cancelled, inventory's unpeg cancels its
+        // order-pegged supply (emitting this ReplenishmentCancelled) — but the cancel
+        // / compensation path owns the terminal (→ compensated / compensation_failed),
+        // not reject. The user cancel stamps cancellationRequestedAt (and persists it)
+        // before any event dispatches, so a non-null value distinguishes the two; a
+        // genuine unsourceable reject carries a null timestamp. Leaving the reject to
+        // fire here would race the saga to 'rejected' ahead of the compensation acks
+        // and re-emit a second SalesOrderCancellationRequested.
+        SalesOrder order = salesOrders.findById(SalesOrderId.of(salesOrderHeaderId)).orElse(null);
+        if (order != null && order.cancellationRequestedAt() != null) {
+            log.info("[{}] {} ({}) for sales_order={} line={} is a cancellation-initiated drop "
+                    + "(order already being cancelled); leaving the terminal to the compensation path",
+                HANDLER_NAME, envelope.eventType(), envelope.eventId(), salesOrderHeaderId, salesOrderLineId);
+            return;
+        }
+
         String newState = sagaManager.applyReplenishmentCancelled(salesOrderHeaderId, salesOrderLineId, payload.reason());
         if (REJECTED.equals(newState)) {
             rejectOrder(salesOrderHeaderId, salesOrderLineId, payload.reason());

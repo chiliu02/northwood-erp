@@ -10,6 +10,8 @@ import com.northwood.inventory.domain.StockReservationRepository;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.domain.StockReservationRepository.ReservedLineSnapshot;
 import com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied;
+import com.northwood.inventory.domain.events.InventorySalesOrderCancellationApplied.CompensationLeg;
+import com.northwood.inventory.domain.events.OrderPeggedSupplyCancellationRequested;
 import com.northwood.inventory.domain.events.SalesOrderLineReservationChanged;
 import com.northwood.shared.application.outbox.OutboxAppender;
 import java.math.BigDecimal;
@@ -351,10 +353,10 @@ public class StockReservationService {
             log.info("no live reservation to release for sales_order={}", salesOrderHeaderId);
         }
 
-        unpegForSalesOrder(salesOrderHeaderId);
+        List<CompensationLeg> compensationLegs = unpegForSalesOrder(salesOrderHeaderId);
 
         InventorySalesOrderCancellationApplied ack = new InventorySalesOrderCancellationApplied(
-            UUID.randomUUID(), salesOrderHeaderId, released, List.of(), Instant.now()
+            UUID.randomUUID(), salesOrderHeaderId, released, compensationLegs, Instant.now()
         );
         // actor: saga-driven (inbox thread → no SecurityContext); propagation
         // from the inbound envelope is a B2 follow-up.
@@ -395,8 +397,20 @@ public class StockReservationService {
      * </ul>
      * Sales-order-shortage replenishments are untouched — their reserve lands in
      * the {@code StockReservation} row and is released by {@link #unwindReservation}.
+     *
+     * <p><b>Compensation legs.</b> A {@code DISPATCHED} order-pegged replenishment
+     * raised a committed downstream artifact — a sent PO ({@code purchase_requisition}
+     * kind) or a released work order ({@code work_order} kind). Dropping the peg here
+     * does not withdraw that artifact, so this also emits one
+     * {@code OrderPeggedSupplyCancellationRequested} per such leg (inventory owns the
+     * peg → PO/WO map) and returns the leg set so the caller enumerates it on the
+     * cancellation-applied ack. The sales saga then parks in {@code compensating} and
+     * waits for each leg's {@code *CancellationApplied}. {@code REQUESTED} (no
+     * artifact dispatched yet) and {@code FULFILLED} (artifact already received —
+     * stock returned to the pool, nothing in-flight to cancel) produce no leg.
      */
-    private void unpegForSalesOrder(UUID salesOrderHeaderId) {
+    private List<CompensationLeg> unpegForSalesOrder(UUID salesOrderHeaderId) {
+        List<CompensationLeg> legs = new ArrayList<>();
         for (ReplenishmentRequest r : replenishmentRequests.findOrderPeggedForSalesOrder(salesOrderHeaderId)) {
             switch (r.status()) {
                 case FULFILLED -> {
@@ -405,16 +419,79 @@ public class StockReservationService {
                         r.requestedQuantity(), r.productId(), salesOrderHeaderId);
                 }
                 case REQUESTED, DISPATCHED -> {
+                    boolean dispatched = r.status() == ReplenishmentRequest.Status.DISPATCHED;
                     String priorStatus = r.status().code();
                     r.markCancelled("sales order " + salesOrderHeaderId
                         + " cancelled — dropping order-pegged supply (settles into free pool)");
                     replenishmentRequests.save(r);
                     log.info("dropped in-flight order-pegged replenishment={} (status was {}) for cancelled sales_order={}",
                         r.id().value(), priorStatus, salesOrderHeaderId);
+                    if (dispatched) {
+                        emitSupplyCancellationLeg(r, salesOrderHeaderId, legs);
+                    }
                 }
                 case CANCELLED -> { /* already cancelled — idempotent */ }
             }
         }
+        return legs;
+    }
+
+    /**
+     * Fan out the per-leg supply-cancellation request for a {@code DISPATCHED}
+     * order-pegged replenishment and record the leg for the cancellation ack. The
+     * target artifact is the work order ({@code dispatched_aggregate_id}) for a
+     * manufacturing leg, or the purchase order ({@code linked_purchase_order_id})
+     * for a purchasing leg. A purchasing leg whose PO link has not yet landed (the
+     * cross-partition PR→PO race) is skipped with a WARN — there is no PO id to
+     * target yet; the peg is already dropped above.
+     */
+    private void emitSupplyCancellationLeg(ReplenishmentRequest r, UUID salesOrderHeaderId, List<CompensationLeg> legs) {
+        ReplenishmentRequest.DispatchedAggregateKind kind = r.dispatchedAggregateKind();
+        String targetService;
+        String dispatchedKind;
+        UUID targetAggregateId;
+        switch (kind) {
+            case PURCHASE_REQUISITION -> {
+                targetService = OrderPeggedSupplyCancellationRequested.TARGET_SERVICE_PURCHASING;
+                dispatchedKind = OrderPeggedSupplyCancellationRequested.DISPATCHED_KIND_PURCHASE_REQUISITION;
+                targetAggregateId = r.linkedPurchaseOrderId();
+            }
+            // The manufacturing (work-order) compensation leg is wired in a later
+            // slice — until its consumer + WorkOrder.cancel exist, emitting a leg
+            // here would park the sales saga in 'compensating' with no ack to drain
+            // it. Until then a cancelled released work order is left as-is (the
+            // pre-existing orphaned-WO behaviour, unchanged), and the saga
+            // compensates on the purchasing leg(s) only.
+            case WORK_ORDER -> {
+                log.warn("order-pegged replenishment={} for cancelled sales_order={} is a released work order "
+                        + "(work_order={}); manufacturing compensation leg not yet wired — work order left as-is",
+                    r.id().value(), salesOrderHeaderId, r.dispatchedAggregateId());
+                return;
+            }
+            default -> {
+                return;
+            }
+        }
+        if (targetAggregateId == null) {
+            log.warn("order-pegged replenishment={} (kind={}) for cancelled sales_order={} has no target artifact id yet "
+                    + "(PR→PO link not landed); skipping its compensation leg",
+                r.id().value(), kind.code(), salesOrderHeaderId);
+            return;
+        }
+        outbox.append(new OrderPeggedSupplyCancellationRequested(
+            UUID.randomUUID(),
+            r.id().value(),
+            targetService,
+            dispatchedKind,
+            targetAggregateId,
+            salesOrderHeaderId,
+            r.sourceSalesOrderLineId(),
+            "sales order " + salesOrderHeaderId + " cancelled — withdraw order-pegged supply",
+            Instant.now()
+        ), ReplenishmentRequest.AGGREGATE_TYPE);
+        legs.add(new CompensationLeg(targetService, r.sourceSalesOrderLineId()));
+        log.info("fanned out {} leg for cancelled sales_order={} (replenishment={}, target {}={})",
+            targetService, salesOrderHeaderId, r.id().value(), kind.code(), targetAggregateId);
     }
 
     private void cancelPriorReservationFor(UUID workOrderId, UUID warehouseId) {

@@ -336,6 +336,47 @@ public final class PurchaseOrder {
         ));
     }
 
+    /**
+     * Withdraw this PO as the purchasing leg of sales-order compensation — the
+     * cancelled {@code to_order} line's order-pegged supply must be undone. Unlike
+     * {@link #reject} (manager bins a <em>draft</em>), this is reachable for a PO
+     * already <b>sent</b> to the supplier, because the cancel arrives before any
+     * goods were received:
+     * <ul>
+     *   <li>{@code draft} / {@code sent} → flip to {@code cancelled} and emit
+     *       {@link PurchaseOrderCancelled} (carrying the previous status). Nothing
+     *       was physically committed (no goods received), so the withdrawal is
+     *       clean.</li>
+     *   <li>already {@code cancelled} → idempotent no-op (redelivered request).</li>
+     *   <li>{@code partially_received} / {@code received} / {@code invoiced} /
+     *       {@code paid} → an <b>un-compensatable leaf</b>: goods (partially)
+     *       arrived, so undoing the PO is a goods-receipt-and-return (RMA), a new
+     *       business transaction out of scope here. Throws
+     *       {@link PoNotCompensatableException} — the caller emits a failure ack and
+     *       the sales saga reaches {@code compensation_failed}.</li>
+     * </ul>
+     */
+    public void compensateCancel(String cancelledBy, String reason) {
+        if (status == Status.CANCELLED) {
+            return;   // idempotent — already withdrawn
+        }
+        if (status != Status.DRAFT && status != Status.SENT) {
+            throw new PoNotCompensatableException(id, status);
+        }
+        Status previous = this.status;
+        this.status = Status.CANCELLED;
+        pendingEvents.add(new PurchaseOrderCancelled(
+            UUID.randomUUID(),
+            id.value(),
+            purchaseOrderNumber,
+            supplierId,
+            previous.code(),
+            cancelledBy,
+            reason,
+            Instant.now()
+        ));
+    }
+
     /** Factory: hydrate from the DB; emits no events. */
     public static PurchaseOrder reconstitute(
         PurchaseOrderId id, String purchaseOrderNumber,
@@ -432,6 +473,28 @@ public final class PurchaseOrder {
         public PoNotRejectableException(PurchaseOrderId orderId, Status currentStatus) {
             super("Purchase order " + orderId.value() + " is in status '" + currentStatus.code()
                 + "' and cannot be rejected (only a 'draft' PO can be rejected)");
+            this.orderId = orderId;
+            this.currentStatus = currentStatus;
+        }
+
+        public PurchaseOrderId orderId()  { return orderId; }
+        public Status currentStatus()     { return currentStatus; }
+    }
+
+    /**
+     * Thrown by {@link #compensateCancel} when the PO is past the firm-commitment
+     * cutoff (goods already (partially) received / invoiced / paid) and so cannot
+     * be withdrawn by saga compensation — an un-compensatable leaf. The caller maps
+     * this to a failure ack rather than wedging the saga.
+     */
+    public static final class PoNotCompensatableException extends RuntimeException {
+        private final PurchaseOrderId orderId;
+        private final Status currentStatus;
+
+        public PoNotCompensatableException(PurchaseOrderId orderId, Status currentStatus) {
+            super("Purchase order " + orderId.value() + " is in status '" + currentStatus.code()
+                + "' and cannot be withdrawn by compensation (goods already committed — "
+                + "needs a goods-receipt-and-return, not a saga rewind)");
             this.orderId = orderId;
             this.currentStatus = currentStatus;
         }

@@ -6,6 +6,7 @@ import com.northwood.purchasing.application.SupplierProductPriceService;
 import com.northwood.purchasing.application.inbox.ApprovedVendorListChangedHandler;
 import com.northwood.purchasing.application.inbox.GoodsReceivedHandler;
 import com.northwood.purchasing.application.inbox.MakeVsBuyChangedHandler;
+import com.northwood.purchasing.application.inbox.OrderPeggedSupplyCancellationRequestedHandler;
 import com.northwood.purchasing.application.inbox.ProductDiscontinuedHandler;
 import com.northwood.purchasing.application.inbox.ReplenishmentRequestedHandler;
 import com.northwood.purchasing.application.inbox.ReplenishmentStrategyChangedHandler;
@@ -107,6 +108,7 @@ public final class PurchasingTestKit {
 
         bus.register(outbox);
         bus.register(new ReplenishmentRequestedHandler(inbox, requisitionService, appender, json));
+        bus.register(new OrderPeggedSupplyCancellationRequestedHandler(inbox, purchaseOrderService, appender, json));
         bus.register(new GoodsReceivedHandler(inbox, sagaManager, receiptProjection, json));
         bus.register(new SupplierInvoiceApprovedHandler(inbox, sagaManager, paymentProjection, json));
         bus.register(new SupplierInvoiceRejectedHandler(inbox, sagaManager, json));
