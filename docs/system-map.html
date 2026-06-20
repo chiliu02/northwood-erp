@@ -525,7 +525,8 @@
     <tr><td><code>CustomerPaymentReceived</code></td><td>saga; on full settle <strong>flips header → <code>completed</code></strong></td><td>advances <strong>pay axis</strong>; cross-axis meet ⇒ <code>classify</code> derives <code>completed</code></td></tr>
     <tr><td><code>ReplenishmentFulfilled</code></td><td>saga drops line from outstanding set → retry / <code>ready_to_ship</code></td><td>process drops line; bands advance; header <strong>re-derived</strong></td></tr>
     <tr><td><code>ReplenishmentCancelled</code></td><td>saga → <code>rejected</code>; <strong>flips header → <code>rejected</code></strong></td><td><code>reject</code> <strong>command</strong> (absorbing override); release partial reservation</td></tr>
-    <tr><td><code>InventorySalesOrderCancellationApplied</code></td><td>saga active → <code>compensated</code></td><td>two-phase cancel ack: confirms the order (header → <code>CANCELLED</code>), advances the saga directly to <code>compensated</code>, emits <code>SalesOrderCompensated</code></td></tr>
+    <tr><td><code>InventorySalesOrderCancellationApplied</code></td><td>saga active → <code>compensated</code></td><td>two-phase cancel ack: confirms the order (header → <code>CANCELLED</code>); <strong>no pegged legs</strong> → directly <code>compensated</code> + <code>SalesOrderCompensated</code>; <strong>≥1 pegged PO/WO leg</strong> → parks in <code>compensating</code> until each leg acks</td></tr>
+    <tr><td><code>PurchaseOrderCancellationApplied</code> / <code>WorkOrderCancellationApplied</code></td><td>—</td><td>multi-leg compensation drain: removes the <code>&lt;targetService&gt;:&lt;lineId&gt;</code> leg; set empties → <code>compensated</code> (all withdrawn) or <code>compensation_failed</code> (an un-compensatable leaf → <code>SalesOrderCompensationFailed</code>)</td></tr>
     <tr><td><code>SalesOrderLineReservationChanged</code></td><td>reconciles saga outstanding set; parks/unparks</td><td>updates amended line's reserved qty + <strong>band</strong>; header <strong>re-derived</strong></td></tr>
     <tr><td><code>SalesOrderReadyToShip</code> (→ 360)</td><td><code>order_status → ready_to_ship</code> (saga shortcut)</td><td>reporting-side <strong>derived label</strong> (= all lines <code>reserved</code>); header folds to <code>reserved</code></td></tr>
     <tr><td><code>SalesOrderPlaced</code> (→ 360)</td><td>creates 360 row</td><td>+ all lines <code>open</code> ⇒ header classifies <code>open</code></td></tr>
@@ -1001,9 +1002,7 @@ window.NORTHWOOD_EVENTS = [
     event: "SalesOrderCancellationRequested",
     consumers: [
       { dest: "inventory", name: "inventory.sales-cancel",
-        desc: `Two-phase cancel arbiter: <code>tryClaimCancellation</code> marks every not-yet-shipped line <code>cancelled</code> on <code>inventory.sales_order_line_facts</code> (the ship-claim then refuses a cancelled line). If no line shipped, releases the reservation (<code>stock_reservation.status='released'</code>, <code>stock_balance.reserved_quantity</code>) and emits <code>inventory.SalesOrderCancellationApplied</code>; if a shipment won the race, it does nothing (no release, no ack) and the order ships. Inventory is the sole compensation <em>ack</em> — the manufacturing sales-cancel handler was deleted (no work order is bound to a sales order).` },
-      { dest: "finance", name: "finance.refund.sales-order-cancellation",
-        desc: `If the cancelled order's up-front (prepayment/deposit) invoice was paid, refunds it — Dr 2110 Customer Deposits / Cr 1000 Bank, the inverse of the original receipt — and stamps <code>customer_invoice_header.refunded_at</code>. Idempotent; no-op for on-shipment/COD/unpaid. The finance-only refund arm of the cancel (no ack — additional to the inventory compensation).` },
+        desc: `Two-phase cancel arbiter: <code>tryClaimCancellation</code> marks every not-yet-shipped line <code>cancelled</code> on <code>inventory.sales_order_line_facts</code> (the ship-claim then refuses a cancelled line). If no line shipped, releases the reservation (<code>stock_reservation.status='released'</code>, <code>stock_balance.reserved_quantity</code>) and emits <code>inventory.SalesOrderCancellationApplied</code>; if a shipment won the race, it does nothing (no release, no ack) and the order ships. <strong>Multi-leg compensation:</strong> for each in-flight order-pegged (<code>to_order</code>) replenishment it also fans out <code>inventory.OrderPeggedSupplyCancellationRequested</code> (to purchasing for a sent PO, manufacturing for a released WO) and enumerates those legs on the ack so the sales saga waits for each before declaring <code>compensated</code>.` },
     ]
   },
   {
@@ -1013,6 +1012,28 @@ window.NORTHWOOD_EVENTS = [
     consumers: [
       { dest: "reporting", name: "reporting.sales-order-360.compensated",
         desc: `<code>reporting.sales_order_360_view.order_status</code> → <code>cancelled</code> (plus <code>last_event_at</code>, <code>last_event_type</code>, <code>last_actor_user_id</code>)` },
+      { dest: "finance", name: "finance.refund.sales-order-compensated",
+        desc: `If the cancelled order's up-front (prepayment/deposit) invoice was paid, refunds it — Dr 2110 Customer Deposits / Cr 1000 Bank, the inverse of the original receipt — stamping <code>customer_invoice_header.refunded_at</code> (idempotent; no-op for on-shipment/COD/unpaid). Keys on this <strong>confirmed cancel terminal</strong>, not the cancel request: the request fires before the two-phase cancel arbitrates cancel-vs-ship, so refunding on it would refund-then-ship a cancel that loses the race.` },
+    ]
+  },
+  {
+    source: "sales",
+    aggregate: "SalesOrder",
+    event: "SalesOrderCompensationFailed",
+    consumers: [
+      { dest: "reporting", name: "reporting.sales-order-360.compensation-failed",
+        desc: `Order cancelled but an order-pegged supply leg could not be withdrawn (an un-compensatable leaf — a PO already received, a WO in progress). <code>reporting.sales_order_360_view.order_status</code> → <code>cancelled</code> (same as compensated — the residue is an ops concern, not a different status). Escalation signal for an RMA / scrap write-off.` },
+      { dest: "finance", name: "finance.refund.sales-order-compensation-failed",
+        desc: `Refunds the paid up-front deposit/prepayment exactly like <code>SalesOrderCompensated</code> — the order is cancelled cleanly even though a supply leg couldn't be withdrawn (Dr 2110 / Cr 1000). The un-withdrawn PO/WO is an ops escalation, not a finance posting here.` },
+    ]
+  },
+  {
+    source: "sales",
+    aggregate: "SalesOrder",
+    event: "SalesOrderRejected",
+    consumers: [
+      { dest: "finance", name: "finance.refund.sales-order-rejected",
+        desc: `The confirmed non-shippable terminal for an unsourceable order (emitted by <code>SalesOrder.reject</code> alongside <code>SalesOrderCancellationRequested</code>). Refunds a paid up-front deposit/prepayment (Dr 2110 / Cr 1000) — always safe, since a rejected order was never reserved and so can never ship. The reject counterpart of the <code>SalesOrderCompensated</code> refund.` },
     ]
   },
   {
@@ -1103,7 +1124,16 @@ window.NORTHWOOD_EVENTS = [
     event: "PurchaseOrderCancelled",
     consumers: [
       { dest: "reporting", name: "reporting.po-tracking.po-cancelled",
-        desc: `<code>reporting.purchase_order_tracking_view.po_status</code> flipped to <code>'cancelled'</code> when a draft PO is rejected via <code>POST /api/purchase-orders/{id}/reject</code> — drops the PO out of the open-PO counts. Emitted only from the draft-reject path (manager-gated); the PO flips <code>draft → cancelled</code> and its P2P saga terminates at <code>cancelled</code> in the same transaction.` },
+        desc: `<code>reporting.purchase_order_tracking_view.po_status</code> flipped to <code>'cancelled'</code> — drops the PO out of the open-PO counts. Two emitters: the manager draft-reject (<code>POST /api/purchase-orders/{id}/reject</code>) and <strong>order-pegged compensation</strong> (<code>PurchaseOrder.compensateCancel</code>, reachable for a <code>sent</code> PO too). The PO flips to <code>cancelled</code> and its P2P saga terminates at <code>cancelled</code> in the same transaction.` },
+    ]
+  },
+  {
+    source: "purchasing",
+    aggregate: "PurchaseOrder",
+    event: "PurchaseOrderCancellationApplied",
+    consumers: [
+      { dest: "sales", name: "sales.compensation-purchasing-ack",
+        desc: `The purchasing leg of multi-leg compensation, addressed to the sales fulfilment saga. Drains the <code>purchasing:&lt;lineId&gt;</code> leg via <code>applyCompensationAck</code>; <code>compensated=false</code> (PO already received) records an un-compensatable leaf. When the saga's outstanding-leg set empties → <code>compensated</code> (<code>SalesOrderCompensated</code>) or <code>compensation_failed</code> (<code>SalesOrderCompensationFailed</code>).` },
     ]
   },
   {
@@ -1209,7 +1239,18 @@ window.NORTHWOOD_EVENTS = [
     event: "InventorySalesOrderCancellationApplied",
     consumers: [
       { dest: "sales", name: "sales.compensation-inventory-ack",
-        desc: `The confirmation half of the two-phase cancel: calls <code>SalesOrderService.confirmCancellation</code>, flipping the header → <code>CANCELLED</code> (only now — the cancel request did <em>not</em>), then advances the saga directly to <code>compensated</code> (no <code>compensating</code> hop) and emits <code>sales.SalesOrderCompensated</code>. Inventory sends this ack only when the cancel won the race; if a shipment won, no ack arrives and the order stays shipped.` },
+        desc: `The confirmation half of the two-phase cancel: calls <code>SalesOrderService.confirmCancellation</code>, flipping the header → <code>CANCELLED</code> (only now — the cancel request did <em>not</em>). Carries the enumerated <strong>compensation legs</strong>: <strong>none</strong> → the saga advances directly to <code>compensated</code> + <code>sales.SalesOrderCompensated</code> (the common path); <strong>≥1 order-pegged PO/WO leg</strong> → the saga parks in <code>compensating</code> and waits for each leg's <code>*CancellationApplied</code>. Inventory sends this ack only when the cancel won the race; if a shipment won, no ack arrives and the order stays shipped.` },
+    ]
+  },
+  {
+    source: "inventory",
+    aggregate: "ReplenishmentRequest",
+    event: "OrderPeggedSupplyCancellationRequested",
+    consumers: [
+      { dest: "purchasing", name: "purchasing.order-pegged-supply-cancel",
+        desc: `For a <code>targetService=purchasing</code> leg: withdraws the committed PO (<code>PurchaseOrder.compensateCancel</code> — DRAFT/SENT cancel, received+ refuse) and emits <code>purchasing.PurchaseOrderCancellationApplied</code> back to the sales saga.` },
+      { dest: "manufacturing", name: "manufacturing.order-pegged-supply-cancel",
+        desc: `For a <code>targetService=manufacturing</code> leg: withdraws the released WO (<code>WorkOrder.cancel</code> — RELEASED cancel + raw materials released, in-progress refuse) and emits <code>manufacturing.WorkOrderCancellationApplied</code> back to the sales saga. Inventory fans this out because it owns the peg→PO/WO map; the sales saga is the orchestrator counting the acks.` },
     ]
   },
   {
@@ -1333,6 +1374,24 @@ window.NORTHWOOD_EVENTS = [
         desc: `<code>reporting.available_to_promise_view.completed_work_order_quantity</code> (+= qty); reduces remaining planned` },
       { dest: "finance", name: "finance.wip.work-order-completed",
         desc: `Perpetual WIP: settles <code>finance.work_order_wip</code> and posts Dr 1220 Finished Goods / Cr 1230 WIP at the finished good's standard cost (empties WIP — nets to zero at standard cost). Fires for top-level + sub-assembly children. Idempotent — complete once` },
+    ]
+  },
+  {
+    source: "manufacturing",
+    aggregate: "WorkOrder",
+    event: "WorkOrderCancelled",
+    consumers: [
+      { dest: "inventory", name: "inventory.work-order-cancelled",
+        desc: `A released WO withdrawn by order-pegged compensation. Inventory releases its reserved raw materials back to the free pool (<code>StockReservationService.releaseForWorkOrder</code> — unwinds <code>stock_balance.reserved_quantity</code> + marks the reservation <code>released</code>; idempotent if the WO never reserved).` },
+    ]
+  },
+  {
+    source: "manufacturing",
+    aggregate: "WorkOrder",
+    event: "WorkOrderCancellationApplied",
+    consumers: [
+      { dest: "sales", name: "sales.compensation-manufacturing-ack",
+        desc: `The manufacturing leg of multi-leg compensation, addressed to the sales fulfilment saga. Drains the <code>manufacturing:&lt;lineId&gt;</code> leg via <code>applyCompensationAck</code>; <code>compensated=false</code> (WO in progress) records an un-compensatable leaf. When the saga's outstanding-leg set empties → <code>compensated</code> (<code>SalesOrderCompensated</code>) or <code>compensation_failed</code> (<code>SalesOrderCompensationFailed</code>).` },
     ]
   },
   {
