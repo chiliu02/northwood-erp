@@ -316,9 +316,10 @@ load run is explicit:
 load-test/
   pom.xml                       # gatling-maven-plugin + gatling-charts-highcharts; not in <modules> of the default profile
   src/test/java/com/northwood/loadtest/
-    OrderToCashSimulation.java  # the Gatling Java-DSL simulation
-    KeycloakFeeder.java         # mints one bearer token per virtual user
-    OperationsSimulation.java   # warehouse/production drain (ship, goods-receipt, WO-complete)
+    OrderToCashSimulation.java  # the Gatling Java-DSL simulation (-Dproducts selects the feed)
+    KeycloakTokenFeeder.java    # mints one bearer token per virtual user
+    OperationsDriver.java       # warehouse/production supply drain (goods-receipt + WO-complete); standalone poller run alongside
+    ConcurrentRaceProbesTest.java # focused two-worker collisions (§4.6)
     InvariantVerifier.java      # JDBC post-run checks (§6)
 ```
 
@@ -368,10 +369,14 @@ public class OrderToCashSimulation extends Simulation {
 }
 ```
 
-Run a separate `OperationsSimulation` (low constant rate) alongside, or as a second `setUp`
-scenario, to drain shipment / goods-receipt / WO-completion for orders that have reached the
-right state. Gatling's `after {}` hook calls the shared `InvariantVerifier` so the §6 checks
-run in the same JVM as the load.
+**As built:** the supply side is a standalone `OperationsDriver` poller (the
+"standalone poller" option) rather than a `OperationsSimulation` Gatling scenario — run it
+alongside `OrderToCashSimulation -Dproducts=to-order-products.csv` (the buy-to-order carpet +
+make-to-order chest, undersized) so the shortage paths close. It discovers outstanding POs +
+released WOs by JDBC and posts the real `POST /api/goods-receipts` / `POST /api/work-orders/{id}
+/operations/{seq}/complete` actions (warehouse_clerk + production_planner). The Gatling sim's
+`after {}` hook still calls the shared `InvariantVerifier` so the §6 checks run in the same JVM
+as the load. Run commands: `load-test/README.md` → *Supply-side run*.
 
 ### Commands
 
@@ -515,13 +520,14 @@ Ranked by how much each closes the gap above:
 2. **Implement the 3 missing live invariants** in `InvariantVerifier`: idempotency (no duplicate
    journal / reservation / shipment per inbox message), per-aggregate ordering, empty DLT — and
    crank consumer concurrency to force rebalances mid-run, then re-assert (§6).
-3. **Exercise the supply side under live concurrent load.** Build the operations driver (post
-   goods receipts for arrived replenishment POs, complete released work orders) and run the REST
-   sim against **undersized** stock + the two `to_order` SKUs, so the full
-   `shortage → replenishment → PO/WO → goods-receipt/WO-completion → retry-reserve → ship` loop
-   runs end-to-end under load and still converges green (TC-PATH-* in §4.6). Today the live REST
-   run covers only the ample-stock forward path — it produces no goods receipt, work order,
-   purchase order, or supplier invoice.
+3. **Exercise the supply side under live concurrent load — built, live-run pending.** The
+   operations driver is shipped: `OperationsDriver` (a standalone poller) discovers outstanding POs
+   + released WOs by JDBC and posts the real goods-receipt / WO-operation-complete actions, and
+   `OrderToCashSimulation` takes a `-Dproducts` feed (`to-order-products.csv` = the buy-to-order
+   carpet + make-to-order chest, undersized). Run them in parallel (`README.md` → *Supply-side run*)
+   and the full `shortage → replenishment → PO/WO → goods-receipt/WO-completion → retry-reserve →
+   ship` loop runs end-to-end (TC-PATH-* in §4.6). **Still to do:** the live confirming run on the
+   stack (the code is compile-verified only, same posture as the other live-only load-test slices).
 4. **Complete the focused-probe matrix** (§4.6): TC-PAY-FIRST, TC-PARTIAL-SHIP, TC-SUPPLY-DUP —
    the only *deterministic* race finders in the suite.
 5. **(High bar) Linearizability / model-based checking** — record the concurrent history and

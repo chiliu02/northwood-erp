@@ -70,6 +70,34 @@ mvn -Pload-test -pl load-test exec:java `
   "-Djdbc.url=jdbc:postgresql://localhost:5432/northwood_erp" "-Djdbc.user=postgres" "-Djdbc.password=postgres"
 ```
 
+## Supply-side run — `OperationsDriver`
+
+The default REST run drives only the ample-stock customer-forward path (place → reserve →
+ship → invoice → pay), so it never produces a goods receipt, work order, or PO. To exercise
+the shortage / `to_order` supply paths under live load, run two things in parallel: the
+**customer** load against the `to-order-products.csv` feed (buy-to-order carpet + make-to-order
+chest) with a generous poll, and `OperationsDriver` as the **warehouse/production** actor that
+supplies the parked orders (JDBC discovery → `POST /api/goods-receipts` for outstanding POs +
+`POST /api/work-orders/{id}/operations/{seq}/complete` for released WOs). The full
+`shortage → ReplenishmentRequest → PO/WO → goods-receipt/WO-completion → retry-reserve → ship`
+loop then closes, and the post-run `InvariantVerifier` confirms every fulfilment saga reached a
+terminal with no oversell.
+
+```powershell
+# terminal 1 — the supply driver (drains for 240s; needs warehouse_clerk + production_planner)
+mvn -Pload-test -pl load-test exec:java `
+  "-Dexec.mainClass=com.northwood.loadtest.OperationsDriver" `
+  "-Dexec.classpathScope=test" "-Dexec.args=240"
+
+# terminal 2 — customer load against undersized / to_order SKUs
+mvn -Pload-test -pl load-test gatling:test `
+  "-Dgatling.simulationClass=com.northwood.loadtest.OrderToCashSimulation" `
+  "-Dproducts=to-order-products.csv" "-Dusers=30" "-Dramp=60" "-Dpoll=180" "-Dconverge=240"
+```
+
+Provision the load users with `production_planner` first — `provision-keycloak.ps1` now includes
+it in the role bundle. Extra base URL tunable for the driver: `manufacturing.base` (default 8084).
+
 ## Resolved `TODO(live)` (settled against the running stack)
 
 - **Customer-invoice lookup** — there is **no** server-side `?salesOrderHeaderId=` filter
@@ -81,8 +109,9 @@ mvn -Pload-test -pl load-test exec:java `
 - **Ports** — sales 8082, inventory 8083, finance 8086 (confirmed in each `application.yml`).
 - **`products.csv`** — populated with the seeded in-stock to_stock finished goods.
 - **Auth** — `provision-keycloak.ps1` creates the direct-grant client + N users, each carrying
-  the whole order-to-cash role bundle (sales_clerk + warehouse_clerk + accountant) so one
-  virtual user can drive the end-to-end flow.
+  the whole order-to-cash role bundle (sales_clerk + warehouse_clerk + accountant +
+  production_planner) so one virtual user can drive the end-to-end flow — and the
+  `OperationsDriver` supply side (goods receipt + WO completion) as a load user too.
 
 ## Focused race probes — `ConcurrentRaceProbesTest`
 

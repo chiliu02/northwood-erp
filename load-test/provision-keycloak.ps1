@@ -12,7 +12,9 @@
     * a public, direct-access-grant client `northwood-loadtest` in the `northwood` realm;
     * N users `user-0 … user-{N-1}`, password `password`, each carrying the order-to-cash
       role bundle so ONE virtual user can drive the whole flow (place → ship → pay):
-      sales_clerk + warehouse_clerk + accountant.
+      sales_clerk + warehouse_clerk + accountant, plus production_planner so the
+      supply-side OperationsDriver (§5.6 — goods receipt + work-order completion) can
+      run as a load user too.
 
   Re-running is safe: existing client/users/role-mappings are detected and skipped.
   This is the operational equivalent of the `Bootstrap` step named in the design doc §7,
@@ -32,7 +34,7 @@ param(
     [string]$AdminPassword = "admin",
     [string]$ClientId = "northwood-loadtest",
     [string]$UserPassword = "password",
-    [string[]]$Roles = @("sales_clerk", "warehouse_clerk", "accountant")
+    [string[]]$Roles = @("sales_clerk", "warehouse_clerk", "accountant", "production_planner")
 )
 
 $ErrorActionPreference = "Stop"

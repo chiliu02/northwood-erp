@@ -48,15 +48,33 @@ import java.util.stream.IntStream;
  *       and all services on {@code SPRING_PROFILES_ACTIVE=kafka}.</li>
  *   <li>{@code load-test/provision-keycloak.ps1 -Users <N>} — adds the
  *       {@code northwood-loadtest} direct-grant client + {@code user-0 … user-{N-1}}.</li>
- *   <li>Ample stock for the SKUs in {@code products.csv} (this run uses the in-stock
- *       to_stock finished goods so reservation succeeds at placement; for an
- *       undersized-stock contention run, the supply-side replenishment driver is
- *       the focused/operations tier).</li>
+ *   <li>Ample stock for the SKUs in {@code products.csv} (the default run uses the
+ *       in-stock to_stock finished goods so reservation succeeds at placement).</li>
  * </ol>
  *
  * <p>Run: {@code mvn -Pload-test -pl load-test gatling:test
  * -Dgatling.simulationClass=com.northwood.loadtest.OrderToCashSimulation
  * -Dusers=50 -Dramp=60}.
+ *
+ * <p><b>Supply-side run.</b> To exercise the shortage / {@code to_order} paths
+ * (goods receipt, work-order completion) under live load, run against the
+ * {@code to-order-products.csv} feed with a generous poll, <em>and run
+ * {@link OperationsDriver} in parallel</em> to play the warehouse/production actor:
+ * <pre>
+ *   # terminal 1 — the supply driver (warehouse_clerk + production_planner)
+ *   mvn -Pload-test -pl load-test exec:java \
+ *       -Dexec.mainClass=com.northwood.loadtest.OperationsDriver \
+ *       -Dexec.classpathScope=test -Dexec.args="240"
+ *   # terminal 2 — the customer load against undersized / to_order SKUs
+ *   mvn -Pload-test -pl load-test gatling:test \
+ *       -Dgatling.simulationClass=com.northwood.loadtest.OrderToCashSimulation \
+ *       -Dproducts=to-order-products.csv -Dusers=30 -Dramp=60 -Dpoll=180 -Dconverge=240
+ * </pre>
+ * The full {@code shortage → ReplenishmentRequest → PO/WO → goods-receipt/WO-completion
+ * → retry-reserve → ship → invoice → pay} loop then runs end-to-end, and the post-run
+ * {@code InvariantVerifier} asserts every fulfilment saga reached a terminal state with
+ * no oversell. Provision the load users with production_planner first (the
+ * {@code provision-keycloak.ps1} role bundle).
  */
 public class OrderToCashSimulation extends Simulation {
 
@@ -80,9 +98,12 @@ public class OrderToCashSimulation extends Simulation {
     private final FeederBuilder<Object> users = listFeeder(userRows).circular();
 
     // Seeded product UUIDs to order (productId,productSku,productName,unitCost), from the
-    // demo seed (config/postgresql/northwood_erp_seed.sql). The in-stock to_stock finished
-    // goods reserve from the pool at placement.
-    private final FeederBuilder<String> products = csv("products.csv").random();
+    // demo seed (config/postgresql/northwood_erp_seed.sql). Default products.csv = the
+    // in-stock to_stock finished goods, which reserve from the pool at placement. For the
+    // supply-side run pass -Dproducts=to-order-products.csv (the buy-to-order carpet
+    // + make-to-order chest); those park at stock_reservation_incomplete until the
+    // OperationsDriver supplies the PO/WO, so use a generous -Dpoll (e.g. 180).
+    private final FeederBuilder<String> products = csv(System.getProperty("products", "products.csv")).random();
 
     private final HttpProtocolBuilder httpProtocol = http
         .acceptHeader("application/json")
