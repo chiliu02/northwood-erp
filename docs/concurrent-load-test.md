@@ -544,14 +544,20 @@ Ranked by how much each closes the gap above:
    `*.dlt.parked` topic empty). Verified live (50-user run + standalone finale, all six green). The
    one *remaining* sub-step is the active **force-rebalance-mid-run** variant (restart a consumer
    during the load, then re-assert) — the assertion is wired, the provocation is operational.
-3. **Exercise the supply side under live concurrent load — built, live-run pending.** The
-   operations driver is shipped: `OperationsDriver` (a standalone poller) discovers outstanding POs
-   + released WOs by JDBC and posts the real goods-receipt / WO-operation-complete actions, and
-   `OrderToCashSimulation` takes a `-Dproducts` feed (`to-order-products.csv` = the buy-to-order
-   carpet + make-to-order chest, undersized). Run them in parallel (`README.md` → *Supply-side run*)
-   and the full `shortage → replenishment → PO/WO → goods-receipt/WO-completion → retry-reserve →
-   ship` loop runs end-to-end (TC-PATH-* in §4.6). **Still to do:** the live confirming run on the
-   stack (the code is compile-verified only, same posture as the other live-only load-test slices).
+3. **Exercise the supply side under live concurrent load — done (run green).** `OperationsDriver`
+   (a standalone poller) discovers outstanding POs + released WOs by JDBC and posts the real
+   goods-receipt / WO-operation-complete actions; `OrderToCashSimulation` takes a `-Dproducts` feed
+   (`to-order-products.csv` = the buy-to-order carpet + make-to-order chest). Run in parallel
+   (`README.md` → *Supply-side run*), the full `shortage → replenishment → PO/WO →
+   goods-receipt/WO-completion → retry-reserve → ship` loop runs end-to-end. **Confirmed live:** a
+   12-user to_order run drove 12 sagas to `completed` and 12 work orders to `completed` (3
+   manufacturing-pegged chest trees + 9 purchasing-pegged carpets), all pegged replenishments
+   `fulfilled`, all six §6 invariants green. *The live run earned its keep:* it surfaced that the
+   make-to-order chest (`FG-CHEST-001`) was flipped to `to_order` in the seed but never given a
+   routing — nor its `SA-FRAME-001` / `SA-PANEL-001` sub-assemblies — so every chest WO release
+   threw `RoutingNotFoundException`, dead-lettered, and wedged the saga (caught precisely by the
+   new convergence + empty-DLT invariants from item 2). Fixed by seeding the three missing routings
+   (`northwood_erp_seed.sql`).
 4. **Complete the focused-probe matrix** (§4.6): TC-PAY-FIRST, TC-PARTIAL-SHIP, TC-SUPPLY-DUP —
    the only *deterministic* race finders in the suite.
 5. **(High bar) Linearizability / model-based checking** — record the concurrent history and

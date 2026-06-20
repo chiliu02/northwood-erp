@@ -83,6 +83,13 @@ supplies the parked orders (JDBC discovery → `POST /api/goods-receipts` for ou
 loop then closes, and the post-run `InvariantVerifier` confirms every fulfilment saga reached a
 terminal with no oversell.
 
+> **Confirmed live.** A 12-user to_order run drove 12 sagas + 12 work orders to `completed`
+> (make-to-order chest trees + buy-to-order carpets), all pegged replenishments `fulfilled`, all
+> six invariants green. Note: the make-to-order chest needs an active routing at **every** level
+> of its sub-assembly tree (`FG-CHEST-001 → SA-FRAME-001 → SA-PANEL-001`); the seed now provides
+> them (a missing routing dead-letters the WO release and wedges the saga — the live run is what
+> caught it).
+
 ```powershell
 # terminal 1 — the supply driver (drains for 240s; needs warehouse_clerk + production_planner)
 mvn -Pload-test -pl load-test exec:java `

@@ -124,6 +124,9 @@
 --     Cabinet         00000000-0000-7000-8000-000000000060
 --     Cabinet drawer  00000000-0000-7000-8000-000000000070
 --     Chair           00000000-0000-7000-8000-000000000080
+--     Chest           00000000-0000-7000-8000-000000000090
+--     Chest frame     00000000-0000-7000-8000-0000000000a0
+--     Chest panel     00000000-0000-7000-8000-0000000000b0
 --
 --   Work centers (manufacturing.work_center):
 --     WC-ASSEMBLY     00000000-0000-7000-8000-000000000500
@@ -587,6 +590,39 @@ INSERT INTO manufacturing.routing_operation (
     ('00000000-0000-7000-8000-000000000083', '00000000-0000-7000-8000-000000000080', 30, 'FINISH',   'Varnish + polish', '00000000-0000-7000-8000-000000000500', 5, 20)
 ON CONFLICT (routing_header_id, operation_sequence) DO NOTHING;
 
+-- Chest of Drawers (FG-CHEST-001) make-to-order routing tree. The chest is flipped
+-- to to_order further below, so each sales order pegs a dedicated work order that
+-- recurses through its sub-assemblies (FG-CHEST → SA-FRAME-001 → SA-PANEL-001).
+-- Every level a work order is released for needs an active routing, or
+-- WorkOrderReleaseService throws RoutingNotFoundException and the make-to-order
+-- order wedges (its work-order release dead-letters). SA-DRAWER-001 already has its
+-- routing above; this adds the three that were missing (chest, frame, panel). All
+-- run on WC-ASSEMBLY.
+INSERT INTO manufacturing.routing_header (
+    routing_header_id, finished_product_id, finished_product_sku, finished_product_name, version, status
+) VALUES
+    ('00000000-0000-7000-8000-000000000090', '00000000-0000-7000-8000-000000000300', 'FG-CHEST-001', 'Chest of Drawers',         '1', 'active'),
+    ('00000000-0000-7000-8000-0000000000a0', '00000000-0000-7000-8000-000000000301', 'SA-FRAME-001', 'Chest Frame Sub-assembly', '1', 'active'),
+    ('00000000-0000-7000-8000-0000000000b0', '00000000-0000-7000-8000-000000000302', 'SA-PANEL-001', 'Chest Panel Sub-assembly', '1', 'active')
+ON CONFLICT (finished_product_id, version) DO NOTHING;
+
+INSERT INTO manufacturing.routing_operation (
+    routing_operation_id,
+    routing_header_id, operation_sequence, operation_code, description,
+    work_center_id, planned_setup_minutes, planned_run_minutes
+) VALUES
+    -- Chest carcass (drawers + frame fitted, then finished)
+    ('00000000-0000-7000-8000-000000000091', '00000000-0000-7000-8000-000000000090', 10, 'CUT',      'Cut chest panels',       '00000000-0000-7000-8000-000000000500',  5, 25),
+    ('00000000-0000-7000-8000-000000000092', '00000000-0000-7000-8000-000000000090', 20, 'ASSEMBLE', 'Assemble chest carcass', '00000000-0000-7000-8000-000000000500', 10, 50),
+    ('00000000-0000-7000-8000-000000000093', '00000000-0000-7000-8000-000000000090', 30, 'FINISH',   'Fit drawers + varnish',  '00000000-0000-7000-8000-000000000500',  5, 35),
+    -- Frame sub-assembly
+    ('00000000-0000-7000-8000-0000000000a1', '00000000-0000-7000-8000-0000000000a0', 10, 'CUT',      'Cut frame members',      '00000000-0000-7000-8000-000000000500',  5, 18),
+    ('00000000-0000-7000-8000-0000000000a2', '00000000-0000-7000-8000-0000000000a0', 20, 'ASSEMBLE', 'Assemble frame',         '00000000-0000-7000-8000-000000000500',  5, 22),
+    -- Panel sub-assembly
+    ('00000000-0000-7000-8000-0000000000b1', '00000000-0000-7000-8000-0000000000b0', 10, 'CUT',      'Cut panel boards',       '00000000-0000-7000-8000-000000000500',  5, 12),
+    ('00000000-0000-7000-8000-0000000000b2', '00000000-0000-7000-8000-0000000000b0', 20, 'FINISH',   'Sand + varnish panel',   '00000000-0000-7000-8000-000000000500',  5, 15)
+ON CONFLICT (routing_header_id, operation_sequence) DO NOTHING;
+
 COMMIT;
 
 
@@ -976,6 +1012,9 @@ COMMIT;
 -- SO line) and zero inventory's reorder policy so the make-to-stock reorder
 -- loop never fires for it. stock_balance is already 0 (made on demand).
 -- Idempotent UPDATEs (constant target), like the version fixup below.
+-- The make-to-order work order recurses through the chest's sub-assemblies
+-- (FG-CHEST → SA-FRAME-001 → SA-PANEL-001); each level needs an active routing,
+-- seeded in the MANUFACTURING section above (routing_header 0090/00a0/00b0).
 -- ============================================================================
 
 BEGIN;
