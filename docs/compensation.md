@@ -43,8 +43,19 @@ cancel-vs-ship race):
    `SalesOrderService.confirmCancellation(...)`, which flips the header to
    `cancelled` and advances the saga **directly to the `compensated` terminal**
    (no intermediate `compensating` hop).
-4. If a shipment wins, no ack arrives, the order stays shipped, and the cancel
-   command surfaces `OrderNotCancellable` (409).
+4. If a shipment wins the race, no ack arrives, so sales never confirms and the
+   order stays shipped — and this resolves **silently**: the cancel command already
+   returned `200 OK` at submit time (the request was accepted *before* inventory
+   arbitrated), and nothing notifies the user the cancellation later lost. The
+   synchronous `OrderNotCancellable` (409) is raised *only* when sales already sees
+   the order terminal or a line shipped at submit time
+   (`isTerminal() || anyLineShipped()` in `SalesOrder.requestCancellation`, mapped via
+   the application `OrderNotCancellableException extends ConflictException`) — i.e. a
+   *late* cancel, not the in-flight race. So the race-loser path has **no** end-user
+   feedback that the cancel failed; surfacing it would need an async notification or
+   the SPA re-reading the order status (the `cancellation_requested_at` follow-up
+   below makes the *pending* window visible but does not signal *failure* — the
+   `cancelling` label simply resolves to `shipped`).
 
 Two real undos happen, **both as event choreography, not saga orchestration**:
 
