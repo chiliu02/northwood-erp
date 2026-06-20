@@ -324,6 +324,104 @@ lives in the same two-phase-cancel surface.
 
 ---
 
+## Follow-up — make the cancel *outcome* observable (always-ack + optimistic UI)
+
+`cancellation_requested_at` (above) surfaces that a cancel is **pending**. It does
+**not** tell the user whether the cancel ultimately **won or lost** the race against a
+concurrent shipment. Today the loss is silent: the cancel command returns `200 OK` at
+submit time (accepted before inventory arbitrates), and if a shipment wins, **no event
+is emitted** — inventory's handler simply logs and returns:
+
+```java
+boolean applied = salesOrderLineFacts.tryClaimCancellation(orderId);
+if (applied) { reservation.releaseForSalesOrder(orderId); }   // emits InventorySalesOrderCancellationApplied
+else { log.info("cancellation REJECTED — order proceeds as shipped"); }   // ← knows it lost, emits NOTHING
+```
+
+The outcome is already **correct and deterministic** (row-lock arbitration on
+`sales_order_line_facts` always yields exactly one winner). The only defect is
+**observability**: the losing branch is silent, so nothing downstream — or the user —
+ever learns the cancel failed.
+
+### Part 1 (foundational) — always-ack
+
+Make the arbitration emit a terminal event on **both** branches. Add
+`InventorySalesOrderCancellationRejected`, emitted from the existing `else` branch
+(which already knows it lost):
+
+- cancel wins → `InventorySalesOrderCancellationApplied` → sales `confirmCancellation()` → `cancelled`
+- ship wins → `InventorySalesOrderCancellationRejected` → sales records a definite
+  **`cancel_rejected`** outcome (order stays shipped)
+
+This is the **non-negotiable precondition** for any feedback UX: it guarantees every
+cancel request reaches a terminal, never silence. It also gives
+`cancellation_requested_at` a clean lifecycle — set on request, **cleared/resolved on
+either ack** — closing the stale-timestamp loose end. The change is small (the branch
+exists; it just needs to `outbox.append(...)`), and the new event follows the usual
+conventions (`EVENT_TYPE` constant, partition key per `docs/messaging.md`, idempotent
+inbox handler on the sales side).
+
+> Without Part 1, optimistic UI is **unsafe** — the race-loss path would strand the
+> "Cancellation requested…" state forever **even when inventory is up and fast**,
+> because no terminal ever arrives. Inventory-down merely *delays* the terminal; the
+> missing reject event would *prevent* it.
+
+### Part 2 — optimistic UI over a durable pending status
+
+With a terminal guaranteed, surface it. The cancel response becomes **`202 Accepted`**
+(not `200` — the outcome is pending, not done) carrying `status: cancelling`. The UI
+then:
+
+- **Immediate ack** (on the 202, inventory-independent): "✓ Cancellation requested",
+  disable the *Cancel* button (no double-submit).
+- **Durable, non-blocking pending status** — *not* a blocking spinner. "Cancellation
+  requested…" is a **status on the order** (the `cancelling` 360 label), so the user
+  is free to navigate away, close the tab, and come back; any later view reflects the
+  current state. Reconciliation is "the order resource shows its real status", not
+  "this open tab is held hostage to a websocket".
+- **Eventual reconciliation** when the terminal lands — pushed via SSE/WebSocket if the
+  user is still watching, or simply pulled on next view / refresh — to **"Cancelled"**
+  or **"Couldn't cancel — order already shipped"**.
+
+### Behaviour under delay / inventory down
+
+Acceptance never depends on inventory (the request is durably in the **sales** outbox
+in the same transaction as the aggregate save), so the 202 always returns immediately.
+If inventory is down, the `SalesOrderCancellationRequested` waits durably in Kafka; the
+arbitration — and the terminal — resolve **on recovery**. The order honestly shows
+"Cancellation pending — awaiting fulfilment" meanwhile; the user is never blocked. This
+is safe, not merely tolerable: inventory is the single arbiter and **shipment is also
+inventory-side** (`ShipmentService` + the ship-claim), so during downtime neither the
+cancel-claim nor a shipment advances — the arbitration is *deferred*, never *bypassed*
+— and the arbitration state is DB-persisted, so a crash mid-flight is safe. After a few
+seconds with no resolution the UI may soften the copy ("still processing…") so it reads
+as accepted-and-pending, not hung. A long stall is an **operational** signal (Grafana
+alert on inventory-down / consumer lag / DLT growth — `docs/observability.md`), not a
+user-blocking one.
+
+### What not to do
+
+- **No synchronous cross-service call** to ask inventory "did the cancel win?" — breaks
+  the schema-per-service / outbox-only invariant and couples request latency to a Kafka
+  round-trip.
+- **No blocking spinner** that owns the screen until a terminal arrives — that is what
+  makes inventory-down *feel* like an indefinite wait. The pending state must be a
+  durable, navigable order status.
+- **Don't try to shrink the race window** as "the fix" — it never eliminates the race;
+  the fix is surfacing the outcome, not avoiding it.
+
+*(Optional pragmatic middle-ground, if a near-synchronous feel is wanted without a sync
+cross-service call: after emitting the request, briefly poll **sales' own** DB for the
+inbox-applied resolution, ~1–2s, returning the resolved view if it lands in time else
+`202` + pending. Requires Part 1, and is cheap on virtual threads — see
+`docs/reactive-and-alternatives.md`.)*
+
+**Scope note.** Part 1 (always-ack) is a small, self-contained server change that ships
+independently of the multi-leg `compensating` work and is the precondition for the UI.
+Part 2 spans the sales API (202 + the `cancelling` projection) and the SPA/BFF.
+
+---
+
 ## Open questions for the work session
 
 1. **PO/WO cancellation semantics.** What states of a `PurchaseRequisition`/PO and a
