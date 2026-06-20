@@ -41,11 +41,14 @@ Northwood/
 ├── erp-web-ui-bff/               BFF for the operational ERP SPA (port 8089)
 ├── erp-web-ui/                   React + Vite SPA — operational ERP (port 5174)
 │
+├── test-harness/                 Acceptance-test DSL (`o2c` order-to-cash flows) + the in-JVM property/invariant suite — the CI concurrency tier (in the default reactor)
+├── load-test/                    Concurrent load test — Gatling REST execution + focused race probes + supply-side operations driver (`-Pload-test`, outside the default reactor)
+│
 ├── terraform/                    AWS IaC — single-AZ EC2 + docker-run demo (network · infra-ec2 · ecr · secrets · bootstrap)
 └── docs/                         Architecture, conventions, messaging, sagas, observability, AWS, demo runbook
 ```
 
-17 Maven modules + the ERP SPA (six `*-events` jars carrying the published wire contracts, plus `test-harness`). Every Java service has full DDD layering (`domain` / `application` / `infrastructure` / `api`); all three Sagas drive end-to-end; reporting projects six cross-context views.
+18 Maven modules (17 in the default reactor + the profile-gated `load-test`) + the ERP SPA: the six `*-events` jars carry the published wire contracts; `test-harness` (CI tier) and `load-test` (`-Pload-test`, outside the default reactor) are the test tiers. Every Java service has full DDD layering (`domain` / `application` / `infrastructure` / `api`); all three Sagas drive end-to-end; reporting projects six cross-context views.
 
 ## Stack
 
