@@ -614,10 +614,23 @@ CREATE TABLE sales.sales_order_fulfilment_saga (
             -- it sits here accumulating the orderShipped / orderSettled flags on
             -- saga.data and moves to completed once both land (ship + pay). The
             -- ship → invoice → pay status itself is the line fold + the 360, not a
-            -- saga state. Non-terminal: a cancel before shipment still moves it to
-            -- compensated (directly, on inventory's two-phase cancellation ack).
+            -- saga state. Non-terminal: a cancel before shipment moves it to
+            -- compensated (directly when nothing is pegged) or parks it in
+            -- compensating until the order-pegged PO/WO legs are withdrawn.
             'supply_secured',
-            'completed', 'compensated', 'failed'
+            -- Non-terminal multi-leg compensation drain: a cancel/reject with a
+            -- committed order-pegged PO and/or released work order to withdraw
+            -- parks here until every leg's cancellation ack lands. Empties to
+            -- compensated (all withdrawn) or compensation_failed (an
+            -- un-compensatable leaf — PO already received / WO consuming material).
+            'compensating',
+            -- Terminals. compensation_failed vs failed are DISTINCT on purpose:
+            -- compensation_failed = a successful compensation that surfaced an
+            -- un-compensatable business residue (order cancelled cleanly; a human
+            -- must open an RMA / post a write-off); failed = the saga itself broke
+            -- (unexpected error / retry cap). Different ops responses → different
+            -- terminals.
+            'completed', 'compensated', 'compensation_failed', 'failed'
         )
     ),
     current_step VARCHAR(100),
@@ -644,7 +657,7 @@ CREATE INDEX idx_sales_order_fulfilment_saga_state
     ON sales.sales_order_fulfilment_saga(saga_state);
 CREATE INDEX idx_sales_order_fulfilment_saga_due
     ON sales.sales_order_fulfilment_saga(next_retry_at)
-    WHERE saga_state NOT IN ('completed', 'compensated', 'failed');
+    WHERE saga_state NOT IN ('completed', 'compensated', 'compensation_failed', 'failed');
 CREATE INDEX idx_sales_order_fulfilment_saga_data
     ON sales.sales_order_fulfilment_saga USING gin (data jsonb_path_ops);
 

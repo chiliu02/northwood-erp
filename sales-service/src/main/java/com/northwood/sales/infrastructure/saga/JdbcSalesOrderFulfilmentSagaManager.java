@@ -429,25 +429,83 @@ public class JdbcSalesOrderFulfilmentSagaManager
 
     @Override
     @Transactional
-    public String applyInventoryCancellationApplied(UUID salesOrderHeaderId) {
+    public String applyInventoryCancellationApplied(UUID salesOrderHeaderId, Set<String> outstandingCompensationLegIds) {
         SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId,
             InventorySalesOrderCancellationApplied.EVENT_TYPE);
-        FulfilmentSagaData data = readData(saga).withInventoryCancellationAcked();
-        writeData(saga, data);
-        sagaPort.update(saga);
 
-        if (data.cancellationAcked() && !saga.terminalStates().contains(saga.state())) {
-            // Two-phase cancel: the order is only cancelled once inventory confirms
-            // (this ack), so compensation is entered here, directly from the saga's
-            // active state — there is no prior 'compensating' hop, because the cancel
-            // request no longer pre-compensates (a shipment could win the race). A
-            // terminal saga (e.g. 'rejected' via the unsourceable path, which also
-            // releases through this ack) is left untouched.
+        // A terminal saga (e.g. 'rejected' via the unsourceable path, which also
+        // releases through this ack) is left untouched.
+        if (saga.terminalStates().contains(saga.state())) {
+            log.debug("saga {} sales_order={} ignoring inventory cancellation ack (terminal state={})",
+                saga.sagaId(), salesOrderHeaderId, saga.state());
+            return saga.state();
+        }
+
+        Set<String> legs = outstandingCompensationLegIds == null ? Set.of() : outstandingCompensationLegIds;
+        if (legs.isEmpty()) {
+            // Two-phase cancel, common path: nothing order-pegged to withdraw, so
+            // inventory's reservation release is the whole undo. Enter compensation
+            // directly from the saga's active state — there is no 'compensating'
+            // hop, because the cancel request no longer pre-compensates (a shipment
+            // could win the race).
             saga.transitionTo(COMPENSATED, "cancelled");
             sagaPort.update(saga);
-            log.info("saga {} sales_order={} → compensated (inventory cancellation ack)",
+            log.info("saga {} sales_order={} → compensated (inventory cancellation ack, no pegged legs)",
                 saga.sagaId(), salesOrderHeaderId);
+            return COMPENSATED;
         }
+
+        // Order-pegged supply was committed (a sent PO and/or a released work
+        // order). Stamp the legs and park in 'compensating' until every leg's
+        // *CancellationApplied ack drains the set (applyCompensationAck).
+        writeData(saga, readData(saga).withOutstandingCompensationLegs(legs));
+        saga.transitionTo(COMPENSATING, "await_compensation_legs");
+        saga.parkUntil(Instant.now().plus(Duration.ofDays(1)));
+        sagaPort.update(saga);
+        log.info("saga {} sales_order={} → compensating ({} pegged supply leg(s) to withdraw: {})",
+            saga.sagaId(), salesOrderHeaderId, legs.size(), legs);
+        return COMPENSATING;
+    }
+
+    @Override
+    @Transactional
+    public String applyCompensationAck(UUID salesOrderHeaderId, String legId, boolean failed) {
+        SalesOrderFulfilmentSaga saga = requireSaga(salesOrderHeaderId, "compensation-leg-ack");
+
+        // Only meaningful while draining. A late straggler (saga already terminal,
+        // e.g. compensated/compensation_failed after the last leg) is a no-op.
+        if (!COMPENSATING.equals(saga.state())) {
+            log.debug("saga {} sales_order={} ignoring compensation-leg ack (state={}, leg={})",
+                saga.sagaId(), salesOrderHeaderId, saga.state(), legId);
+            return saga.state();
+        }
+
+        FulfilmentSagaData data = readData(saga);
+        if (!data.outstandingCompensationLegs().contains(legId)) {
+            // Idempotent: leg already drained (duplicate ack delivery).
+            log.debug("saga {} sales_order={} compensation ack for already-drained leg={}; idempotent no-op",
+                saga.sagaId(), salesOrderHeaderId, legId);
+            return saga.state();
+        }
+
+        FulfilmentSagaData updated = data.withCompensationLegAcked(legId, failed);
+        writeData(saga, updated);
+        if (updated.allCompensationLegsAcked()) {
+            String terminal = updated.hasCompensationFailures() ? COMPENSATION_FAILED : COMPENSATED;
+            saga.transitionTo(terminal, updated.hasCompensationFailures()
+                ? "compensation_failed_uncompensatable_leaf" : "all_legs_compensated");
+            sagaPort.update(saga);
+            log.info("saga {} sales_order={} compensation leg={} acked (failed={}) → {} (failed legs: {})",
+                saga.sagaId(), salesOrderHeaderId, legId, failed, terminal, updated.failedCompensationLegs());
+            return terminal;
+        }
+
+        // More legs outstanding — stay parked in 'compensating'.
+        sagaPort.update(saga);
+        log.info("saga {} sales_order={} compensation leg={} acked (failed={}); {} of {} remaining",
+            saga.sagaId(), salesOrderHeaderId, legId, failed,
+            updated.outstandingCompensationLegs().size(),
+            data.outstandingCompensationLegs().size());
         return saga.state();
     }
 

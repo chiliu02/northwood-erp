@@ -9,6 +9,8 @@ import com.northwood.sales.application.saga.SalesOrderFulfilmentSagaManager;
 import com.northwood.shared.application.inbox.InboxPort;
 import com.northwood.shared.application.messaging.AbstractInboxHandler;
 import com.northwood.shared.application.messaging.EventEnvelope;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -47,12 +49,21 @@ public class InventoryCancellationAppliedHandler extends AbstractInboxHandler<In
     @Override
     protected void apply(InventorySalesOrderCancellationApplied payload, EventEnvelope envelope) {
         salesOrderService.confirmCancellation(payload.aggregateId());
-        String newState = sagaManager.applyInventoryCancellationApplied(payload.aggregateId());
+        // Form the leg ids the saga drains: <targetService>:<salesOrderLineId>.
+        // Empty in the common path (nothing order-pegged) → the saga compensates
+        // straight away; a non-empty set parks it in 'compensating'.
+        Set<String> legIds = payload.legs().stream()
+            .map(leg -> leg.targetService() + ":" + leg.salesOrderLineId())
+            .collect(Collectors.toSet());
+        String newState = sagaManager.applyInventoryCancellationApplied(payload.aggregateId(), legIds);
         if (COMPENSATED.equals(newState)) {
             compensationEmitter.emitCompensated(payload.aggregateId());
         }
+        // 'compensating' emits no terminal event yet — each leg's *CancellationApplied
+        // ack drains the set and the final ack emits the terminal (compensated /
+        // compensation_failed) from its own handler.
 
-        log.info("[{}] processed {} ({}) for sales_order={}",
-            HANDLER_NAME, envelope.eventType(), envelope.eventId(), payload.aggregateId());
+        log.info("[{}] processed {} ({}) for sales_order={} ({} pegged leg(s))",
+            HANDLER_NAME, envelope.eventType(), envelope.eventId(), payload.aggregateId(), legIds.size());
     }
 }

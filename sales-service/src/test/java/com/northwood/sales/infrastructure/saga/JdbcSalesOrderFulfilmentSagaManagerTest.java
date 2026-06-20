@@ -477,16 +477,30 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
 
     @Nested
     class ApplyCancellationApplied {
-        // Two-phase cancel: the inventory ack is the confirmation, so it drives the
-        // saga to compensated directly from whatever active state it is in — there
-        // is no prior 'compensating' hop (the cancel request no longer pre-compensates).
-        @Test void inventory_ack_from_active_state_completes_to_compensated() {
+        private static final String PO_LEG = "purchasing:" + LINE_1;
+        private static final String WO_LEG = "manufacturing:" + LINE_2;
+
+        // Two-phase cancel, common path: no order-pegged supply to withdraw, so the
+        // inventory ack drives the saga to compensated directly from whatever active
+        // state it is in — there is no 'compensating' hop.
+        @Test void inventory_ack_with_no_legs_completes_to_compensated() {
             SalesOrderFulfilmentSaga saga = sagaInState(SUPPLY_SECURED);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyInventoryCancellationApplied(SO);
+            String state = manager.applyInventoryCancellationApplied(SO, Set.of());
 
             assertThat(state).isEqualTo(COMPENSATED);
+        }
+
+        // With committed order-pegged supply, the saga parks in 'compensating' until
+        // every leg's *CancellationApplied ack drains the set.
+        @Test void inventory_ack_with_pegged_legs_parks_in_compensating() {
+            SalesOrderFulfilmentSaga saga = sagaInState(SUPPLY_SECURED);
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyInventoryCancellationApplied(SO, Set.of(PO_LEG, WO_LEG));
+
+            assertThat(state).isEqualTo(COMPENSATING);
         }
 
         @Test void inventory_ack_on_a_terminal_saga_is_a_no_op() {
@@ -495,7 +509,7 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
             SalesOrderFulfilmentSaga saga = sagaInState(REJECTED);
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
 
-            String state = manager.applyInventoryCancellationApplied(SO);
+            String state = manager.applyInventoryCancellationApplied(SO, Set.of());
 
             assertThat(state).isEqualTo(REJECTED);
         }
@@ -503,10 +517,66 @@ class JdbcSalesOrderFulfilmentSagaManagerTest {
         @Test void no_saga_throws_illegal_state() {
             when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> manager.applyInventoryCancellationApplied(SO))
+            assertThatThrownBy(() -> manager.applyInventoryCancellationApplied(SO, Set.of()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("inventory.SalesOrderCancellationApplied");
             verify(sagas, never()).update(any());
+        }
+    }
+
+    @Nested
+    class ApplyCompensationAck {
+        private static final String PO_LEG = "purchasing:" + LINE_1;
+        private static final String WO_LEG = "manufacturing:" + LINE_2;
+
+        private SalesOrderFulfilmentSaga compensatingWith(String... legs) {
+            return sagaInState(COMPENSATING,
+                FulfilmentSagaData.none().withOutstandingCompensationLegs(Set.of(legs)));
+        }
+
+        @Test void last_leg_with_no_failures_reaches_compensated() {
+            SalesOrderFulfilmentSaga saga = compensatingWith(PO_LEG);
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyCompensationAck(SO, PO_LEG, false);
+
+            assertThat(state).isEqualTo(COMPENSATED);
+        }
+
+        @Test void a_failed_leg_reaches_compensation_failed() {
+            SalesOrderFulfilmentSaga saga = compensatingWith(PO_LEG);
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyCompensationAck(SO, PO_LEG, true);
+
+            assertThat(state).isEqualTo(COMPENSATION_FAILED);
+        }
+
+        @Test void a_non_final_leg_stays_in_compensating() {
+            SalesOrderFulfilmentSaga saga = compensatingWith(PO_LEG, WO_LEG);
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyCompensationAck(SO, PO_LEG, false);
+
+            assertThat(state).isEqualTo(COMPENSATING);
+        }
+
+        @Test void duplicate_ack_for_a_drained_leg_is_a_no_op() {
+            SalesOrderFulfilmentSaga saga = compensatingWith(WO_LEG);   // PO_LEG already drained
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyCompensationAck(SO, PO_LEG, false);
+
+            assertThat(state).isEqualTo(COMPENSATING);
+        }
+
+        @Test void ack_outside_compensating_is_a_no_op() {
+            SalesOrderFulfilmentSaga saga = sagaInState(COMPENSATED);
+            when(sagas.findBySalesOrderId(SO)).thenReturn(Optional.of(saga));
+
+            String state = manager.applyCompensationAck(SO, PO_LEG, false);
+
+            assertThat(state).isEqualTo(COMPENSATED);
         }
     }
 }

@@ -192,14 +192,42 @@ public interface SalesOrderFulfilmentSagaManager {
     String applyCustomerPaymentReceived(UUID salesOrderHeaderId, boolean invoiceFullySettled, boolean orderFullySettled);
 
     /**
-     * Apply {@code inventory.SalesOrderCancellationApplied} — the sole
-     * compensation ack (the manufacturing leg was retired), and the confirmation
-     * half of the two-phase cancel. Records the inventory ack on saga data and,
-     * for any non-terminal saga, transitions it directly to {@code compensated}
-     * (there is no intermediate {@code compensating} state — the cancel request no
-     * longer pre-compensates), returning {@code "compensated"} so the caller can
-     * emit {@code sales.SalesOrderCompensated}. A no-op on a terminal saga (the
-     * {@code rejected}/unsourceable path also releases via this ack).
+     * Apply {@code inventory.SalesOrderCancellationApplied} — inventory's
+     * reservation-release ack and the confirmation half of the two-phase cancel.
+     * {@code outstandingCompensationLegIds} enumerates the order-pegged supply
+     * legs (formed by the handler as {@code <targetService>:<salesOrderLineId>})
+     * whose committed PO / released work order must still be withdrawn:
+     * <ul>
+     *   <li><b>Empty</b> (the common case — nothing pegged, or the peg already
+     *       fulfilled) — the reservation release is the whole undo, so a
+     *       non-terminal saga transitions directly to {@code compensated},
+     *       returning {@code "compensated"} so the caller emits
+     *       {@code sales.SalesOrderCompensated}.</li>
+     *   <li><b>Non-empty</b> — stamp the legs on saga data and park the saga in
+     *       {@code compensating} (returns {@code "compensating"}; no terminal event
+     *       yet). Each leg's later {@code *CancellationApplied} ack drains via
+     *       {@link #applyCompensationAck}.</li>
+     * </ul>
+     * A no-op on a terminal saga (the {@code rejected}/unsourceable path also
+     * releases via this ack).
      */
-    String applyInventoryCancellationApplied(UUID salesOrderHeaderId);
+    String applyInventoryCancellationApplied(UUID salesOrderHeaderId, Set<String> outstandingCompensationLegIds);
+
+    /**
+     * Apply a single compensation-leg ack ({@code purchasing.PurchaseOrderCancellationApplied}
+     * / {@code manufacturing.WorkOrderCancellationApplied}) — the multi-leg drain.
+     * Removes {@code legId} from the saga's {@code outstandingCompensationLegs}
+     * ({@code failed=true} also records it as an un-compensatable leaf). When the
+     * outstanding set empties the saga branches:
+     * <ul>
+     *   <li>no failures → {@code compensated} (returns {@code "compensated"} → emit
+     *       {@code sales.SalesOrderCompensated});</li>
+     *   <li>any failure → {@code compensation_failed} (returns
+     *       {@code "compensation_failed"} → emit {@code sales.SalesOrderCompensationFailed}).</li>
+     * </ul>
+     * Idempotent against duplicate acks (leg already absent) and against acks for a
+     * saga no longer in {@code compensating} (late straggler / terminal). Returns
+     * the saga's state (unchanged) on a no-op so the caller emits no terminal event.
+     */
+    String applyCompensationAck(UUID salesOrderHeaderId, String legId, boolean failed);
 }

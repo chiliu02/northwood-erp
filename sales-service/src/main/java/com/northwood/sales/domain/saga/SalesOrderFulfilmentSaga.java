@@ -140,11 +140,50 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
      */
     public static final String SUPPLY_SECURED = "supply_secured";
     public static final String COMPLETED = "completed";
+    /**
+     * Non-terminal compensation drain. A cancel/reject with committed order-pegged
+     * supply to withdraw (a sent PO and/or a released work order) parks here while
+     * the saga waits for every leg's {@code *CancellationApplied} ack — the
+     * multi-leg generalisation of the old straight-to-{@code compensated} jump.
+     * Reached only when inventory's cancellation ack enumerates ≥1 PO/WO leg; a
+     * cancel with nothing pegged still goes directly to {@link #COMPENSATED}. The
+     * drain keeps servicing this state (it is in neither the terminal set nor the
+     * worker's {@code activeStates} — it is woken by inbox acks). Empties to
+     * {@link #COMPENSATED} (all legs withdrawn) or {@link #COMPENSATION_FAILED}
+     * (an un-compensatable leaf refused).
+     */
+    public static final String COMPENSATING = "compensating";
     public static final String COMPENSATED = "compensated";
+    /**
+     * Terminal: compensation completed but at least one order-pegged supply leg
+     * could not be withdrawn (a PO the supplier already received, a work order
+     * already consuming material). The undo of such a leaf is itself a business
+     * transaction (goods-receipt-and-return, scrap-WIP-with-GL-loss) out of scope
+     * here, so the saga surfaces the partial failure for manual intervention via
+     * {@code sales.SalesOrderCompensationFailed} rather than silently reporting a
+     * clean {@code compensated}.
+     *
+     * <p><b>Not the same as {@link #FAILED}.</b> {@code compensation_failed} is a
+     * <i>business outcome</i> — the orchestration worked exactly as designed (the
+     * order was cancelled, the reservation released) and is reporting a residue a
+     * human must clear (open an RMA, post a write-off). {@code failed} is a
+     * <i>saga-health</i> terminal — the orchestration itself broke (an unexpected
+     * error, or the retry cap exhausted). One says "the supplier already shipped,
+     * do a return"; the other says "the saga is wedged, investigate". They drive
+     * different ops responses, so they are deliberately distinct terminals.
+     */
+    public static final String COMPENSATION_FAILED = "compensation_failed";
+    /**
+     * Terminal: the saga itself failed to make progress — an unexpected error in
+     * the forward flow, or (planned) the retry cap exhausted. Generic saga-death
+     * terminal shared by all three Northwood sagas; contrast
+     * {@link #COMPENSATION_FAILED}, which is a successful compensation that
+     * surfaced an un-compensatable business residue, not a broken saga.
+     */
     public static final String FAILED = "failed";
 
     private static final Set<String> TERMINAL_STATES = Set.of(
-        COMPLETED, COMPENSATED, FAILED, REJECTED
+        COMPLETED, COMPENSATED, COMPENSATION_FAILED, FAILED, REJECTED
     );
 
     /**
@@ -161,7 +200,7 @@ public final class SalesOrderFulfilmentSaga extends SagaInstance {
         STOCK_RESERVATION_REQUESTED, STOCK_RESERVATION_INCOMPLETE, REJECTED,
         SUPPLY_SECURED,
         COMPLETED,
-        COMPENSATED,
+        COMPENSATING, COMPENSATED, COMPENSATION_FAILED,
         FAILED
     );
 

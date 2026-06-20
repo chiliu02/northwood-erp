@@ -29,11 +29,25 @@ import java.util.UUID;
  *       {@code stock_reservation_requested} to retry reservation against the
  *       now-restocked inventory. A {@code ReplenishmentCancelled} for any of
  *       these lines rejects the order outright.</li>
- *   <li>{@link #inventoryCancellationAcked} — the compensation ack; the saga
- *       advances to {@code compensated} once inventory confirms the cancel.
- *       The manufacturing leg of the compensation gate was retired — no work
- *       order is bound to a sales order — so inventory is now the sole
- *       compensation contract.</li>
+ *   <li>{@link #outstandingCompensationLegs} / {@link #failedCompensationLegs} —
+ *       the <b>multi-leg compensation drain</b> (a third instance of the
+ *       set-drain join the outstanding-replenishment set already demonstrates).
+ *       On cancel/reject, inventory enumerates the order-pegged supply legs whose
+ *       committed PO / released work order must be withdrawn (leg id
+ *       {@code "<targetService>:<salesOrderLineId>"} —
+ *       {@code "purchasing:<lineId>"} / {@code "manufacturing:<lineId>"});
+ *       {@code applyInventoryCancellationApplied} stamps
+ *       them as {@code outstandingCompensationLegs} and the saga parks in
+ *       {@code compensating}. Each arriving {@code PurchaseOrderCancellationApplied}
+ *       / {@code WorkOrderCancellationApplied} drains its leg via
+ *       {@link #withCompensationLegAcked(String, boolean)} — a failure ack (an
+ *       un-compensatable leaf: a PO already received, a WO already consuming
+ *       material) also records the leg in {@code failedCompensationLegs}. When the
+ *       outstanding set empties the saga branches: no failures → {@code compensated};
+ *       any failure → {@code compensation_failed}. The reservation undo is <em>not</em>
+ *       a tracked leg — inventory's cancellation ack is itself the proof it
+ *       released; zero PO/WO legs means the saga goes straight to {@code compensated}
+ *       (the common path).</li>
  *   <li>{@link #requestedDeliveryDate} — the order's need-by date (ISO-8601
  *       {@code yyyy-MM-dd}), stamped at saga creation so the worker can compute
  *       the planning-time-fence release date ({@code need-by − max line fence})
@@ -57,28 +71,32 @@ import java.util.UUID;
  * </ul>
  *
  * <p>The compact constructor defaults null fields so saga rows written before a
- * field existed (or carrying just {@code {}}) deserialise cleanly.
+ * field existed (or carrying just {@code {}}) deserialise cleanly. A legacy blob
+ * still carrying the retired {@code inventoryCancellationAcked} boolean latch (now
+ * generalised into the compensation-leg sets) is tolerated by Jackson 3's
+ * default-disabled {@code FAIL_ON_UNKNOWN_PROPERTIES} — the unknown field is
+ * ignored, keeping this domain record free of serde annotations.
  */
 public record FulfilmentSagaData(
-    Boolean inventoryCancellationAcked,
     String paymentTerms,
     Set<UUID> outstandingReplenishmentLineIds,
     Boolean sawNonPeggedReplenishment,
     String requestedDeliveryDate,
     Boolean orderShipped,
-    Boolean orderSettled
+    Boolean orderSettled,
+    Set<String> outstandingCompensationLegs,
+    Set<String> failedCompensationLegs
 ) {
 
     public FulfilmentSagaData {
-        // Boxed Boolean (not boolean) so Jackson maps missing JSON fields to
-        // null on legacy saga.data blobs without tripping
-        // FAIL_ON_NULL_FOR_PRIMITIVES; the compact constructor unboxes to false.
-        inventoryCancellationAcked = inventoryCancellationAcked != null && inventoryCancellationAcked;
         // paymentTerms stays null on legacy rows; consumers fall back to the
         // on-shipment path.
         outstandingReplenishmentLineIds = outstandingReplenishmentLineIds == null
             ? Set.of()
             : outstandingReplenishmentLineIds;
+        // Boxed Boolean (not boolean) so Jackson maps missing JSON fields to
+        // null on legacy saga.data blobs without tripping
+        // FAIL_ON_NULL_FOR_PRIMITIVES; the compact constructor unboxes to false.
         // true once any non-pegged (shortage top-up) replenishment has
         // been fulfilled, meaning the saga must retry reservation rather than
         // ship straight off the order-pegged peg. Legacy/missing → false.
@@ -88,48 +106,44 @@ public record FulfilmentSagaData(
         // Completion-gate flags; legacy/missing → false.
         orderShipped = orderShipped != null && orderShipped;
         orderSettled = orderSettled != null && orderSettled;
+        // Compensation-drain sets; legacy/missing → empty (no compensation in flight).
+        outstandingCompensationLegs = outstandingCompensationLegs == null
+            ? Set.of()
+            : outstandingCompensationLegs;
+        failedCompensationLegs = failedCompensationLegs == null
+            ? Set.of()
+            : failedCompensationLegs;
     }
 
     public static FulfilmentSagaData none() {
-        return new FulfilmentSagaData(false, null, Set.of(), false, null, false, false);
+        return new FulfilmentSagaData(null, Set.of(), false, null, false, false, Set.of(), Set.of());
     }
 
     /** Stamp the order's commercial payment terms at saga creation. */
     public FulfilmentSagaData withPaymentTerms(String paymentTerms) {
         return new FulfilmentSagaData(
-            inventoryCancellationAcked,
             paymentTerms,
             new LinkedHashSet<>(outstandingReplenishmentLineIds),
             sawNonPeggedReplenishment,
             requestedDeliveryDate,
             orderShipped,
-            orderSettled
+            orderSettled,
+            new LinkedHashSet<>(outstandingCompensationLegs),
+            new LinkedHashSet<>(failedCompensationLegs)
         );
     }
 
     /** Stamp the order's need-by date (ISO {@code yyyy-MM-dd}) at saga creation. */
     public FulfilmentSagaData withRequestedDeliveryDate(String requestedDeliveryDate) {
         return new FulfilmentSagaData(
-            inventoryCancellationAcked,
             paymentTerms,
             new LinkedHashSet<>(outstandingReplenishmentLineIds),
             sawNonPeggedReplenishment,
             requestedDeliveryDate,
             orderShipped,
-            orderSettled
-        );
-    }
-
-    /** Record inventory's compensation ack ({@code inventory.SalesOrderCancellationApplied}). */
-    public FulfilmentSagaData withInventoryCancellationAcked() {
-        return new FulfilmentSagaData(
-            true,
-            paymentTerms,
-            new LinkedHashSet<>(outstandingReplenishmentLineIds),
-            sawNonPeggedReplenishment,
-            requestedDeliveryDate,
-            orderShipped,
-            orderSettled
+            orderSettled,
+            new LinkedHashSet<>(outstandingCompensationLegs),
+            new LinkedHashSet<>(failedCompensationLegs)
         );
     }
 
@@ -140,13 +154,14 @@ public record FulfilmentSagaData(
      */
     public FulfilmentSagaData withOutstandingReplenishmentLineIds(Set<UUID> lineIds) {
         return new FulfilmentSagaData(
-            inventoryCancellationAcked,
             paymentTerms,
             lineIds == null ? Set.of() : new LinkedHashSet<>(lineIds),
             sawNonPeggedReplenishment,
             requestedDeliveryDate,
             orderShipped,
-            orderSettled
+            orderSettled,
+            new LinkedHashSet<>(outstandingCompensationLegs),
+            new LinkedHashSet<>(failedCompensationLegs)
         );
     }
 
@@ -165,13 +180,14 @@ public record FulfilmentSagaData(
         Set<UUID> next = new LinkedHashSet<>(outstandingReplenishmentLineIds);
         next.remove(salesOrderLineId);
         return new FulfilmentSagaData(
-            inventoryCancellationAcked,
             paymentTerms,
             next,
             sawNonPeggedReplenishment || !pegged,
             requestedDeliveryDate,
             orderShipped,
-            orderSettled
+            orderSettled,
+            new LinkedHashSet<>(outstandingCompensationLegs),
+            new LinkedHashSet<>(failedCompensationLegs)
         );
     }
 
@@ -182,13 +198,14 @@ public record FulfilmentSagaData(
      */
     public FulfilmentSagaData withOrderShipped() {
         return new FulfilmentSagaData(
-            inventoryCancellationAcked,
             paymentTerms,
             new LinkedHashSet<>(outstandingReplenishmentLineIds),
             sawNonPeggedReplenishment,
             requestedDeliveryDate,
             true,
-            orderSettled
+            orderSettled,
+            new LinkedHashSet<>(outstandingCompensationLegs),
+            new LinkedHashSet<>(failedCompensationLegs)
         );
     }
 
@@ -199,13 +216,64 @@ public record FulfilmentSagaData(
      */
     public FulfilmentSagaData withOrderSettled() {
         return new FulfilmentSagaData(
-            inventoryCancellationAcked,
             paymentTerms,
             new LinkedHashSet<>(outstandingReplenishmentLineIds),
             sawNonPeggedReplenishment,
             requestedDeliveryDate,
             orderShipped,
-            true
+            true,
+            new LinkedHashSet<>(outstandingCompensationLegs),
+            new LinkedHashSet<>(failedCompensationLegs)
+        );
+    }
+
+    /**
+     * Stamp the outstanding compensation-leg set when a cancel/reject lands with
+     * committed order-pegged supply to withdraw ({@code "PO:<lineId>"} /
+     * {@code "WO:<lineId>"}). Replaces today's single-ack latch: an empty set
+     * means nothing to compensate (the saga goes straight to {@code compensated});
+     * a non-empty set parks the saga in {@code compensating} until every leg acks.
+     */
+    public FulfilmentSagaData withOutstandingCompensationLegs(Set<String> legIds) {
+        return new FulfilmentSagaData(
+            paymentTerms,
+            new LinkedHashSet<>(outstandingReplenishmentLineIds),
+            sawNonPeggedReplenishment,
+            requestedDeliveryDate,
+            orderShipped,
+            orderSettled,
+            legIds == null ? Set.of() : new LinkedHashSet<>(legIds),
+            new LinkedHashSet<>(failedCompensationLegs)
+        );
+    }
+
+    /**
+     * Drain a single compensation leg when its ack arrives. Idempotent on a leg
+     * id already absent (redelivery) — the same guard
+     * {@link #withReplenishmentLineFulfilled} uses. A {@code failed} ack (the
+     * downstream service refused: an un-compensatable leaf) also records the leg
+     * in {@link #failedCompensationLegs} so the terminal branch can escalate to
+     * {@code compensation_failed} rather than silently completing.
+     */
+    public FulfilmentSagaData withCompensationLegAcked(String legId, boolean failed) {
+        if (!outstandingCompensationLegs.contains(legId)) {
+            return this;
+        }
+        Set<String> nextOutstanding = new LinkedHashSet<>(outstandingCompensationLegs);
+        nextOutstanding.remove(legId);
+        Set<String> nextFailed = new LinkedHashSet<>(failedCompensationLegs);
+        if (failed) {
+            nextFailed.add(legId);
+        }
+        return new FulfilmentSagaData(
+            paymentTerms,
+            new LinkedHashSet<>(outstandingReplenishmentLineIds),
+            sawNonPeggedReplenishment,
+            requestedDeliveryDate,
+            orderShipped,
+            orderSettled,
+            nextOutstanding,
+            nextFailed
         );
     }
 
@@ -226,9 +294,18 @@ public record FulfilmentSagaData(
         return sawNonPeggedReplenishment;
     }
 
-    /** Inventory has acked the cancel — the saga can advance to {@code compensated}. */
-    public boolean cancellationAcked() {
-        return Boolean.TRUE.equals(inventoryCancellationAcked);
+    /** True when every outstanding compensation leg has been acked. */
+    public boolean allCompensationLegsAcked() {
+        return outstandingCompensationLegs.isEmpty();
+    }
+
+    /**
+     * True when at least one compensation leg failed (an un-compensatable leaf) —
+     * the saga must reach {@code compensation_failed}, not {@code compensated},
+     * once the outstanding set empties.
+     */
+    public boolean hasCompensationFailures() {
+        return !failedCompensationLegs.isEmpty();
     }
 
     /** Completion gate: the order has been fully shipped. */

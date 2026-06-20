@@ -354,7 +354,7 @@ public class StockReservationService {
         unpegForSalesOrder(salesOrderHeaderId);
 
         InventorySalesOrderCancellationApplied ack = new InventorySalesOrderCancellationApplied(
-            UUID.randomUUID(), salesOrderHeaderId, released, Instant.now()
+            UUID.randomUUID(), salesOrderHeaderId, released, List.of(), Instant.now()
         );
         // actor: saga-driven (inbox thread → no SecurityContext); propagation
         // from the inbound envelope is a B2 follow-up.

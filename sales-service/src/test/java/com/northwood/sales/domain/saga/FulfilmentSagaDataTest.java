@@ -12,8 +12,7 @@ class FulfilmentSagaDataTest {
     @Nested
     class CompactConstructor {
         @Test void defaults_null_fields() {
-            FulfilmentSagaData d = new FulfilmentSagaData(null, null, null, null, null, null, null);
-            assertThat(d.inventoryCancellationAcked()).isFalse();
+            FulfilmentSagaData d = new FulfilmentSagaData(null, null, null, null, null, null, null, null);
             assertThat(d.paymentTerms()).isNull();                       // null = legacy fallback (on_shipment)
             assertThat(d.outstandingReplenishmentLineIds()).isEmpty();
             assertThat(d.sawNonPeggedReplenishment()).isFalse();
@@ -21,13 +20,16 @@ class FulfilmentSagaDataTest {
             assertThat(d.isOrderShipped()).isFalse();                    // completion-gate flags default false
             assertThat(d.isOrderSettled()).isFalse();
             assertThat(d.isReadyToComplete()).isFalse();
+            assertThat(d.outstandingCompensationLegs()).isEmpty();       // no compensation in flight
+            assertThat(d.failedCompensationLegs()).isEmpty();
         }
 
         @Test void none_factory_yields_empty_data() {
             FulfilmentSagaData d = FulfilmentSagaData.none();
             assertThat(d.outstandingReplenishmentLineIds()).isEmpty();
             assertThat(d.allReplenishmentLinesFulfilled()).isTrue();
-            assertThat(d.cancellationAcked()).isFalse();
+            assertThat(d.allCompensationLegsAcked()).isTrue();
+            assertThat(d.hasCompensationFailures()).isFalse();
         }
     }
 
@@ -54,7 +56,7 @@ class FulfilmentSagaDataTest {
                 .withRequestedDeliveryDate("2026-07-01")
                 .withPaymentTerms("prepayment")
                 .withOutstandingReplenishmentLineIds(Set.of(UUID.randomUUID()))
-                .withInventoryCancellationAcked();
+                .withOutstandingCompensationLegs(Set.of("purchasing:" + UUID.randomUUID()));
             assertThat(d.requestedDeliveryDate()).isEqualTo("2026-07-01");
         }
     }
@@ -145,22 +147,56 @@ class FulfilmentSagaDataTest {
     }
 
     @Nested
-    class CompensationAcks {
-        @Test void inventory_ack_satisfies_the_gate() {
-            // Inventory is the sole compensation ack (manufacturing leg retired).
-            FulfilmentSagaData none = FulfilmentSagaData.none();
-            assertThat(none.cancellationAcked()).isFalse();
-
-            FulfilmentSagaData inv = none.withInventoryCancellationAcked();
-            assertThat(inv.cancellationAcked()).isTrue();
+    class CompensationLegDrain {
+        @Test void empty_set_means_nothing_to_compensate() {
+            FulfilmentSagaData d = FulfilmentSagaData.none();
+            assertThat(d.allCompensationLegsAcked()).isTrue();
+            assertThat(d.hasCompensationFailures()).isFalse();
         }
 
-        @Test void acks_preserve_other_fields() {
+        @Test void draining_each_leg_empties_the_set() {
+            String po = "purchasing:" + UUID.randomUUID();
+            String wo = "manufacturing:" + UUID.randomUUID();
+            FulfilmentSagaData d = FulfilmentSagaData.none()
+                .withOutstandingCompensationLegs(Set.of(po, wo));
+            assertThat(d.allCompensationLegsAcked()).isFalse();
+
+            d = d.withCompensationLegAcked(po, false);
+            assertThat(d.outstandingCompensationLegs()).containsExactly(wo);
+            assertThat(d.allCompensationLegsAcked()).isFalse();
+
+            d = d.withCompensationLegAcked(wo, false);
+            assertThat(d.allCompensationLegsAcked()).isTrue();
+            assertThat(d.hasCompensationFailures()).isFalse();
+        }
+
+        @Test void draining_absent_leg_is_idempotent() {
+            String po = "purchasing:" + UUID.randomUUID();
+            FulfilmentSagaData d = FulfilmentSagaData.none()
+                .withOutstandingCompensationLegs(Set.of(po))
+                .withCompensationLegAcked("manufacturing:" + UUID.randomUUID(), false);   // not in the set
+            assertThat(d.outstandingCompensationLegs()).containsExactly(po);
+        }
+
+        @Test void a_failed_leg_is_recorded_as_an_uncompensatable_leaf() {
+            String po = "purchasing:" + UUID.randomUUID();
+            String wo = "manufacturing:" + UUID.randomUUID();
+            FulfilmentSagaData d = FulfilmentSagaData.none()
+                .withOutstandingCompensationLegs(Set.of(po, wo))
+                .withCompensationLegAcked(po, false)
+                .withCompensationLegAcked(wo, true);
+            assertThat(d.allCompensationLegsAcked()).isTrue();
+            assertThat(d.hasCompensationFailures()).isTrue();
+            assertThat(d.failedCompensationLegs()).containsExactly(wo);
+        }
+
+        @Test void legs_preserve_other_fields() {
+            String po = "purchasing:" + UUID.randomUUID();
             FulfilmentSagaData d = FulfilmentSagaData.none()
                 .withPaymentTerms("on_shipment")
-                .withInventoryCancellationAcked();
+                .withOutstandingCompensationLegs(Set.of(po));
             assertThat(d.paymentTerms()).isEqualTo("on_shipment");
-            assertThat(d.inventoryCancellationAcked()).isTrue();
+            assertThat(d.outstandingCompensationLegs()).containsExactly(po);
         }
     }
 }
