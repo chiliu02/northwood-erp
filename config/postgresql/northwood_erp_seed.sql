@@ -199,13 +199,13 @@ INSERT INTO product.product (
     -- (frame + drawer), and depth 3 (panel).
     ('00000000-0000-7000-8000-000000000300', 'FG-CHEST-001', 'Chest of Drawers',
      'Wooden chest of drawers with two drawers and a panelled frame', 'finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  true,  1490.00, 512.50,  1,  3, 'finished_goods'),
+     true, false, true,  true,  1490.00, 703.00,  1,  3, 'finished_goods'),
     ('00000000-0000-7000-8000-000000000301', 'SA-FRAME-001', 'Chest Frame Sub-assembly',
      'Panelled frame that holds the chest drawers',                   'semi_finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  false, 0.00,     304.00,  0,  0, 'semi_finished_goods'),
+     true, false, true,  false, 0.00,     397.00,  0,  0, 'semi_finished_goods'),
     ('00000000-0000-7000-8000-000000000302', 'SA-PANEL-001', 'Side Panel Sub-assembly',
      'Side panel built from board + varnish + screws',                'semi_finished_good', '00000000-0000-7000-8000-000000000010',
-     true, false, true,  false, 0.00,     102.00,  0,  0, 'semi_finished_goods'),
+     true, false, true,  false, 0.00,     129.75,  0,  0, 'semi_finished_goods'),
     -- Simple FG demo set: a chair. Re-uses RM-LEG/BOARD/SCREW/VARNISH, so adds
     -- no new raws. The chair BOM (in SEED: MANUFACTURING) is the first one in
     -- the seed that carries non-zero scrap_factor_percent values — exercises
@@ -850,9 +850,9 @@ INSERT INTO finance.product_card (
     ('00000000-0000-7000-8000-000000000201',  84.75, 'AUD', 'semi_finished_goods'), -- SA-DRAWER-001
     ('00000000-0000-7000-8000-000000000202',  18.00, 'AUD', 'raw_materials'),       -- RM-DRAWER-FRONT-001
     ('00000000-0000-7000-8000-000000000203',  14.00, 'AUD', 'raw_materials'),       -- RM-DRAWER-RUNNER-001
-    ('00000000-0000-7000-8000-000000000300', 512.50, 'AUD', 'finished_goods'),      -- FG-CHEST-001
-    ('00000000-0000-7000-8000-000000000301', 304.00, 'AUD', 'semi_finished_goods'), -- SA-FRAME-001
-    ('00000000-0000-7000-8000-000000000302', 102.00, 'AUD', 'semi_finished_goods'), -- SA-PANEL-001
+    ('00000000-0000-7000-8000-000000000300', 703.00, 'AUD', 'finished_goods'),      -- FG-CHEST-001 (605.50 material + 97.50 conversion)
+    ('00000000-0000-7000-8000-000000000301', 397.00, 'AUD', 'semi_finished_goods'), -- SA-FRAME-001 (359.50 material + 37.50 conversion)
+    ('00000000-0000-7000-8000-000000000302', 129.75, 'AUD', 'semi_finished_goods'), -- SA-PANEL-001 (102 material + 27.75 conversion)
     ('00000000-0000-7000-8000-000000000400', 207.65, 'AUD', 'finished_goods')       -- FG-CHAIR-001
 ON CONFLICT (product_id) DO NOTHING;
 
@@ -881,9 +881,9 @@ VALUES
     ('00000000-0000-7000-8000-000000000201',  84.75, 'AUD'),  -- SA-DRAWER-001
     ('00000000-0000-7000-8000-000000000202',  18.00, 'AUD'),
     ('00000000-0000-7000-8000-000000000203',  14.00, 'AUD'),
-    ('00000000-0000-7000-8000-000000000300', 512.50, 'AUD'),  -- FG-CHEST-001
-    ('00000000-0000-7000-8000-000000000301', 304.00, 'AUD'),  -- SA-FRAME-001
-    ('00000000-0000-7000-8000-000000000302', 102.00, 'AUD'),  -- SA-PANEL-001
+    ('00000000-0000-7000-8000-000000000300', 703.00, 'AUD'),  -- FG-CHEST-001 (605.50 material + 97.50 conversion)
+    ('00000000-0000-7000-8000-000000000301', 397.00, 'AUD'),  -- SA-FRAME-001 (359.50 material + 37.50 conversion)
+    ('00000000-0000-7000-8000-000000000302', 129.75, 'AUD'),  -- SA-PANEL-001 (102 material + 27.75 conversion)
     ('00000000-0000-7000-8000-000000000400', 207.65, 'AUD')   -- FG-CHAIR-001
 ON CONFLICT (product_id) DO NOTHING;
 
