@@ -47,7 +47,50 @@ It is deliberately **outside the default Maven reactor** (parent POM `load-test`
      "UPDATE inventory.stock_balance SET on_hand_quantity=100000 WHERE warehouse_id='00000000-0000-7000-8000-000000000020' AND product_id IN ('00000000-0000-7000-8000-000000000400','00000000-0000-7000-8000-000000000001','00000000-0000-7000-8000-000000000200');"
    ```
 
+   > Steps 2–3 are baked into `reset-data.ps1` (below): the stock bump it applies serves
+   > **both** the default and supply-side runs, and Keycloak users survive a data reset (their
+   > volume is untouched), so once provisioned they stay provisioned.
+
+## Reset the data between runs — run the tests in ANY order
+
+**The tests share one Postgres (§2 of the design doc) — that is the point, it is where
+contention lives. The price: a test that intentionally leaves orders non-terminal contaminates
+the *next* test's post-run `InvariantVerifier`.** Its convergence check (invariant 1) polls for
+*every* saga in the database to reach a terminal state and cannot tell a leftover from a fresh
+order, so it fails with a census of the previous test's orders — a false negative that has
+nothing to do with the system under test.
+
+The sharpest offender is **`ConcurrentRaceProbesTest`**: its probes drive orders through
+ship / cancel / partial-ship but **deliberately never pay them**, so their fulfilment sagas
+*correctly* sit at `wait_for_completion` forever. Run the probes before a Gatling o2c run and
+that run's verifier fails with `convergence: N fulfilment saga(s) still non-terminal` —
+every one a `PROBE-*` order, none of the load orders.
+
+Rather than mandate a run *order*, make every test order-independent: **reset to a clean,
+seeded, stock-bumped slate before each test.**
+
+```powershell
+./reset-data.ps1   # ~15-20s: recreates the Postgres data volume (baseline + seed re-run),
+                   # re-applies the prerequisite stock bumps, leaves Kafka / Keycloak / the
+                   # observability tier / the five host services running (they auto-reconnect).
+```
+
+It recreates **only** the Postgres data volume — the guaranteed-clean path of
+`docker compose down -v` scoped to Postgres, so the baseline init + demo seed both re-run. The
+services' HikariCP pools reconnect to the fresh database; their committed Kafka offsets mean no
+prior event is redelivered. Verified: a 200-user o2c run is fully green immediately after a reset
+with **no** service restart. Run it before **each** of the three test invocations below and the
+order they run in stops mattering.
+
 ## Run
+
+```powershell
+./reset-data.ps1            # clean slate first — see "Reset the data between runs" above
+mvn -Pload-test -pl load-test gatling:test `
+  "-Dgatling.simulationClass=com.northwood.loadtest.OrderToCashSimulation" `
+  "-Dusers=200" "-Dramp=40"
+# Gatling HTML report: load-test/target/gatling/<sim>-<ts>/index.html
+```
 
 ```powershell
 mvn -Pload-test -pl load-test gatling:test `
@@ -85,12 +128,16 @@ terminal with no oversell.
 
 > **Confirmed live.** A 12-user to_order run drove 12 sagas + 12 work orders to `completed`
 > (make-to-order chest trees + buy-to-order carpets), all pegged replenishments `fulfilled`, all
-> six invariants green. Note: the make-to-order chest needs an active routing at **every** level
-> of its sub-assembly tree (`FG-CHEST-001 → SA-FRAME-001 → SA-PANEL-001`); the seed now provides
-> them (a missing routing dead-letters the WO release and wedges the saga — the live run is what
-> caught it).
+> six invariants green. A 30-user run is green on the same path. Note: the make-to-order chest
+> needs an active routing at **every** level of its sub-assembly tree
+> (`FG-CHEST-001 → SA-FRAME-001 → SA-PANEL-001`); the seed now provides them (a missing routing
+> dead-letters the WO release and wedges the saga — the live run is what caught it).
 
 ```powershell
+./reset-data.ps1   # clean slate first (see "Reset the data between runs"); it leaves
+                   # FG-CHEST / FG-CARPET at zero stock so the to_order shortage path fires,
+                   # and bumps every RM-* so the chest's nested WOs never hit a raw shortage.
+
 # terminal 1 — the supply driver (drains for 240s; needs warehouse_clerk + production_planner)
 mvn -Pload-test -pl load-test exec:java `
   "-Dexec.mainClass=com.northwood.loadtest.OperationsDriver" `
@@ -124,9 +171,15 @@ it in the role bundle. Extra base URL tunable for the driver: `manufacturing.bas
 
 Seven probes (run all green): barrier-synchronised two-worker collisions plus sequential gate /
 fold / compensation probes, each asserting an exactly-once / no-half-state property against the
-live DB. Run:
+live DB.
+
+> **These probes leave orders non-terminal on purpose** (they ship / cancel / partial-ship but
+> never pay), so their sagas correctly stay at `wait_for_completion` — which would trip a
+> *later* Gatling run's convergence verifier. `reset-data.ps1` before each test removes that
+> coupling (see "Reset the data between runs"); reset first here too so the probes start clean.
 
 ```powershell
+./reset-data.ps1   # clean slate first
 mvn -Pload-test -pl load-test test "-Dtest=ConcurrentRaceProbesTest"
 ```
 

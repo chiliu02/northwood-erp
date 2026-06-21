@@ -475,6 +475,17 @@ interface OrderDriver {
   Tempo/TraceQL demo panel must match on the lowercase shape (`~/.claude/notes/spring-boot-4.md`).
 - **Unique order numbers per (user, iteration)** to avoid collisions in any business-id
   registry.
+- **Shared-DB cross-test contamination → reset before each test.** The shared backend (§2) is
+  deliberate, but it means one test's residue is the next test's input. The post-run
+  `InvariantVerifier` convergence check (§6, invariant 1) polls for *every* saga in the database
+  to reach a terminal state — it cannot distinguish a leftover from a fresh order. So a test that
+  intentionally leaves orders non-terminal makes the *next* test's verifier fail with a census of
+  the previous test's orders (a false negative). The sharpest case is the focused race probes
+  (§4.6): they ship / cancel / partial-ship orders but never pay them, so those sagas correctly
+  sit at `wait_for_completion` forever. **Fix:** don't mandate a run order — reset to a clean,
+  seeded, stock-bumped slate before each test (`load-test/reset-data.ps1`, which recreates only
+  the Postgres data volume and leaves Kafka / Keycloak / the services running). This makes the
+  tests order-independent.
 
 ---
 
