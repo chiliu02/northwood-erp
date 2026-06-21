@@ -1,7 +1,6 @@
 package com.northwood.inventory.infrastructure.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.northwood.inventory.application.dto.StockBalanceView;
 import com.zaxxer.hikari.HikariDataSource;
@@ -28,7 +27,6 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -256,19 +254,21 @@ class JdbcStockBalanceWriterIT {
     }
 
     @Test
-    void decrementOnHandAndReleaseReserved_below_zero_violates_schema_CHECK() {
+    void decrementOnHandAndReleaseReserved_below_zero_is_a_guarded_noop() {
         TX.executeWithoutResult(s -> WRITER.bump(SEED_WAREHOUSE_ID, productId, new BigDecimal("2")));
 
-        // Trying to ship more than on_hand violates CHECK (on_hand_quantity >= 0).
-        // This is the failure mode that the shipment-line product-validation
-        // defends against — if a buggy client mismatches productId, the shipment
-        // hits this CHECK eventually.
-        assertThatThrownBy(() ->
-            TX.executeWithoutResult(s -> WRITER.decrementOnHandAndReleaseReserved(
-                SEED_WAREHOUSE_ID, productId, new BigDecimal("5")))
-        )
-            .isInstanceOf(DataIntegrityViolationException.class)
-            .hasMessageContaining("violates check constraint");
+        // Trying to ship more than on_hand must NOT raise stock_balance_check
+        // (23514) — that would abort the transaction and, on the inbox path,
+        // wedge the consumer. The `on_hand_quantity >= ?` guard makes it a
+        // no-op: zero rows affected, returns false, balance untouched. The
+        // caller (ShipmentService) maps false to a 409.
+        Boolean applied = TX.execute(s -> WRITER.decrementOnHandAndReleaseReserved(
+            SEED_WAREHOUSE_ID, productId, new BigDecimal("5")));
+
+        assertThat(applied).isFalse();
+        Balance b = read();
+        assertThat(b.onHand()).isEqualByComparingTo("2");
+        assertThat(b.reserved()).isEqualByComparingTo("0");
     }
 
     @Test

@@ -3,11 +3,13 @@ package com.northwood.inventory.application;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.northwood.inventory.application.ShipmentService.InsufficientOnHandToShipException;
 import com.northwood.inventory.application.ShipmentService.ShipmentLineOverShipException;
 import com.northwood.inventory.application.ShipmentService.ShipmentLineProductMismatchException;
 import com.northwood.inventory.application.ShipmentService.UnpaidUpfrontOrderException;
@@ -51,6 +53,10 @@ class ShipmentServiceTest {
     @BeforeEach
     void setUp() {
         service = new ShipmentService(shipments, stockBalances, movements, warehouses, salesOrderLineFacts, replenishmentDetection);
+        // Default to "on-hand covers the shipment" so the happy-path tests reach
+        // the movement/replenishment side effects. Lenient: the validation-
+        // failure tests reject before the decrement and never consume this stub.
+        lenient().when(stockBalances.decrementOnHandAndReleaseReserved(any(), any(), any())).thenReturn(true);
     }
 
     private PostShipmentCommand cmd(String warehouseCode, List<ShipmentLineRequest> lines) {
@@ -261,5 +267,27 @@ class ShipmentServiceTest {
 
         verify(shipments, never()).save(any());
         verify(stockBalances, never()).decrementOnHandAndReleaseReserved(any(), any(), any());
+    }
+
+    @Test void line_with_insufficient_on_hand_rejects_with_409_and_records_no_movement() {
+        // The guarded decrement returns false (on-hand can't cover the shipment —
+        // e.g. a make-to-order build that hasn't landed). The post must reject
+        // with a 409 rather than letting the stock_balance CHECK throw a 500, and
+        // must NOT leak a stock movement. The @Transactional boundary rolls the
+        // whole post back in production; here we assert no movement is recorded.
+        when(warehouses.findIdByCode(WarehouseCodes.MAIN)).thenReturn(WAREHOUSE);
+        when(stockBalances.decrementOnHandAndReleaseReserved(WAREHOUSE, PRODUCT_1, new BigDecimal("1")))
+            .thenReturn(false);
+
+        assertThatThrownBy(() -> service.post(cmd(WarehouseCodes.MAIN, List.of(
+            new ShipmentLineRequest(null, PRODUCT_1, "SKU", "P",
+                new BigDecimal("1"), new BigDecimal("10.00"))
+        ))))
+            .isInstanceOf(InsufficientOnHandToShipException.class)
+            .hasMessageContaining(PRODUCT_1.toString());
+
+        verify(movements, never()).record(
+            any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(replenishmentDetection, never()).checkAfterOnHandDecrement(any(), any());
     }
 }

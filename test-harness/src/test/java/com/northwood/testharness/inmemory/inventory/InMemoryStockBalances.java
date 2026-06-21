@@ -53,12 +53,17 @@ public final class InMemoryStockBalances implements StockBalanceWriter, StockBal
     }
 
     @Override
-    public void decrementOnHandAndReleaseReserved(UUID warehouseId, UUID productId, BigDecimal shippedQty) {
+    public boolean decrementOnHandAndReleaseReserved(UUID warehouseId, UUID productId, BigDecimal shippedQty) {
+        if (shippedQty == null || shippedQty.signum() <= 0) return false;
         Balance b = balances.get(new Key(warehouseId, productId));
-        if (b == null) return;
+        if (b == null) return false;
+        // Guard: on_hand must cover the shipment (mirrors the JDBC writer's
+        // `on_hand_quantity >= ?` predicate) so it can never go negative.
+        if (b.onHand.compareTo(shippedQty) < 0) return false;
         b.onHand = b.onHand.subtract(shippedQty);
         BigDecimal release = b.reserved.min(shippedQty);
         b.reserved = b.reserved.subtract(release);
+        return true;
     }
 
     @Override

@@ -124,27 +124,32 @@ public class JdbcStockBalanceWriter implements StockBalanceWriter {
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
-    public void decrementOnHandAndReleaseReserved(UUID warehouseId, UUID productId, BigDecimal shippedQty) {
+    public boolean decrementOnHandAndReleaseReserved(UUID warehouseId, UUID productId, BigDecimal shippedQty) {
         if (shippedQty == null || shippedQty.signum() <= 0) {
-            return;
+            return false;
         }
         // Single-statement update: drop on_hand and release reserved (capped at
-        // current reserved so it can't go negative). Reserved is 0 for the
+        // current reserved so it can't go negative). Guarded so on_hand can
+        // never go negative: the `on_hand_quantity >= ?` predicate makes a
+        // would-be breach affect zero rows (return false) instead of raising
+        // stock_balance_check (23514) — which previously aborted the tx and, on
+        // the ship REST path, surfaced as a 500. Reserved is 0 for the
         // make-to-order-with-failed-reservation path, so the release becomes a
-        // no-op there; on_hand was bumped by manufacturing confirmation to a
-        // non-negative value, so the decrement is safe.
+        // no-op there; a legitimately-built FG has on_hand >= shipped and passes.
         int rows = jdbc.update("""
             UPDATE inventory.stock_balance
                SET on_hand_quantity  = on_hand_quantity - ?,
                    reserved_quantity = reserved_quantity - LEAST(reserved_quantity, ?),
                    version = version + 1
              WHERE warehouse_id = ? AND product_id = ?
+               AND on_hand_quantity >= ?
             """,
-            shippedQty, shippedQty, warehouseId, productId
+            shippedQty, shippedQty, warehouseId, productId, shippedQty
         );
         if (rows == 0) {
-            log.warn("no stock_balance row for warehouse={} product={} on shipment-side decrement; goods may have been built without a confirmation event",
-                warehouseId, productId);
+            log.warn("ship-side decrement no-op for warehouse={} product={} qty={}: on_hand can't cover the shipment "
+                + "(no balance row, or goods not actually on hand)", warehouseId, productId, shippedQty);
         }
+        return rows > 0;
     }
 }

@@ -33,9 +33,15 @@ public interface StockBalanceWriter {
      * Apply a shipment-side decrement: drop {@code on_hand_quantity} by
      * {@code shippedQty} AND release {@code reserved_quantity} up to the
      * same amount (capped at the current reserved). Both deltas land in
-     * one statement.
+     * one statement, applied <em>only</em> when {@code on_hand_quantity >=
+     * shippedQty} so the write can never drive on-hand negative (which would
+     * breach {@code on_hand >= reserved} / {@code on_hand >= 0} → a 23514 that
+     * aborts the transaction and, on the inbox path, wedges the consumer).
+     * Returns {@code true} when applied, {@code false} when the row is missing
+     * or on-hand can't cover the shipment — the caller maps that to a 409 (the
+     * goods aren't actually on hand to ship) rather than throwing a 500.
      */
-    void decrementOnHandAndReleaseReserved(UUID warehouseId, UUID productId, BigDecimal shippedQty);
+    boolean decrementOnHandAndReleaseReserved(UUID warehouseId, UUID productId, BigDecimal shippedQty);
 
     /**
      * Atomically bump {@code reserved_quantity} by {@code quantity} only if

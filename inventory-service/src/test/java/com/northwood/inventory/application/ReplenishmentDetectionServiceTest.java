@@ -47,8 +47,13 @@ class ReplenishmentDetectionServiceTest {
 
     @BeforeEach
     void setUp() {
+        // Real saver over the mocked repository: without a live transaction the
+        // NESTED savepoint is a no-op, so it delegates straight to save() — the
+        // DuplicateKeyException still propagates to the service's catch, which is
+        // what these tests exercise.
         service = new ReplenishmentDetectionService(
-            reorderPolicies, stockBalances, productCards, replenishmentRequests, outbox
+            reorderPolicies, stockBalances, productCards, replenishmentRequests,
+            new ReplenishmentRequestSaver(replenishmentRequests), outbox
         );
     }
 

@@ -3,6 +3,7 @@ package com.northwood.testharness.kits;
 import com.northwood.inventory.application.GoodsReceiptService;
 import com.northwood.inventory.application.ShipmentService;
 import com.northwood.inventory.application.ReplenishmentDetectionService;
+import com.northwood.inventory.application.ReplenishmentRequestSaver;
 import com.northwood.inventory.application.StockReservationService;
 import com.northwood.inventory.domain.WarehouseCodes;
 import com.northwood.inventory.application.inbox.ManufacturingReplenishmentDispatchedHandler;
@@ -91,7 +92,8 @@ public final class InventoryTestKit {
         OutboxAppender appender = new OutboxAppender(outbox, json, new CurrentUserAccessor());
         this.replenishmentRequests = new InMemoryReplenishmentRequestRepository(appender, json);
         this.replenishmentDetection = new ReplenishmentDetectionService(
-            reorderPolicies, stockBalances, productReplenishment, replenishmentRequests, appender
+            reorderPolicies, stockBalances, productReplenishment, replenishmentRequests,
+            new ReplenishmentRequestSaver(replenishmentRequests), appender
         );
         this.service = new StockReservationService(
             reservations, stockBalances, stockBalances, warehouses, replenishmentDetection,

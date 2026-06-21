@@ -130,6 +130,30 @@ public class ShipmentService {
         }
     }
 
+    /**
+     * Thrown when a shipment line's {@code on_hand_quantity} can't cover the
+     * shipped quantity at decrement time. Mapped to HTTP 409. The goods aren't
+     * actually on hand — typically a make-to-order line whose build hasn't
+     * landed, or whose shared stock pool was drawn down by a concurrent
+     * shipment of the same SKU. Rejecting cleanly here (rather than letting the
+     * {@code stock_balance_check} 23514 abort the transaction with a 500) keeps
+     * the whole post — including the {@code tryClaimShipment} over-ship claim —
+     * atomically rolled back, leaving no half-state.
+     */
+    public static class InsufficientOnHandToShipException extends ConflictException {
+        public static final String CODE = "INSUFFICIENT_ON_HAND_TO_SHIP";
+        private final UUID productId;
+        public InsufficientOnHandToShipException(UUID warehouseId, UUID productId, BigDecimal shippedQuantity) {
+            super(CODE, "Cannot ship %s of product=%s from warehouse=%s — on-hand stock does not cover the shipment (goods not yet built, or drawn down by a concurrent shipment)"
+                .formatted(shippedQuantity, productId, warehouseId));
+            this.productId = productId;
+        }
+        public UUID productId() { return productId; }
+        @Override public Map<String, Object> params() {
+            return Map.of("productId", productId);
+        }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(ShipmentService.class);
 
     private final ShipmentRepository shipments;
@@ -244,7 +268,12 @@ public class ShipmentService {
         shipments.save(shipment);
 
         for (ShipmentLine l : lines) {
-            stockBalances.decrementOnHandAndReleaseReserved(warehouseId, l.productId(), l.shippedQuantity());
+            if (!stockBalances.decrementOnHandAndReleaseReserved(warehouseId, l.productId(), l.shippedQuantity())) {
+                // On-hand can't cover the shipment — reject the whole post (the
+                // tryClaimShipment claim above rolls back with it) rather than
+                // driving on_hand negative into a 23514/500.
+                throw new InsufficientOnHandToShipException(warehouseId, l.productId(), l.shippedQuantity());
+            }
             movements.record(
                 warehouseId, l.productId(), l.productSku(), l.productName(),
                 StockMovementType.SALES_SHIPMENT, StockMovementDirection.OUT,

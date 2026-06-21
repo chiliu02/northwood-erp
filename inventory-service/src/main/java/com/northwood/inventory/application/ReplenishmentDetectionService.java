@@ -40,7 +40,11 @@ import org.springframework.transaction.annotation.Transactional;
  * {@link DuplicateKeyException} which is caught and logged at DEBUG (the
  * semantic intent of the invariant is "ignore the second trigger while the
  * first is still open"; both threads observe the breach, both attempt to
- * raise, exactly one succeeds).
+ * raise, exactly one succeeds). The losing insert is wrapped in a savepoint
+ * (via {@link ReplenishmentRequestSaver}, {@code Propagation.NESTED}) so the
+ * duplicate rolls back only that insert — a plain {@code save} would leave the
+ * whole PostgreSQL transaction aborted (25P02 on the next statement), which on
+ * the inbox-handler path wedges the consumer in an infinite retry.
  *
  * <p>The second trigger source ({@code RawMaterialShortageDetected} → inventory
  * bridge) does NOT call this method — it builds the request directly with
@@ -58,6 +62,7 @@ public class ReplenishmentDetectionService {
     private final StockBalanceLookup stockBalances;
     private final ProductCardLookup productCards;
     private final ReplenishmentRequestRepository replenishmentRequests;
+    private final ReplenishmentRequestSaver requestSaver;
     private final OutboxAppender outbox;
 
     public ReplenishmentDetectionService(
@@ -65,12 +70,14 @@ public class ReplenishmentDetectionService {
         StockBalanceLookup stockBalances,
         ProductCardLookup productCards,
         ReplenishmentRequestRepository replenishmentRequests,
+        ReplenishmentRequestSaver requestSaver,
         OutboxAppender outbox
     ) {
         this.reorderPolicies = reorderPolicies;
         this.stockBalances = stockBalances;
         this.productCards = productCards;
         this.replenishmentRequests = replenishmentRequests;
+        this.requestSaver = requestSaver;
         this.outbox = outbox;
     }
 
@@ -145,7 +152,14 @@ public class ReplenishmentDetectionService {
             productId, warehouseId, quantity, target, reason
         );
         try {
-            replenishmentRequests.save(r);
+            // Saved through a savepoint (ReplenishmentRequestSaver, NESTED
+            // propagation): a DuplicateKeyException from the partial unique index
+            // rolls back ONLY this insert, leaving the surrounding transaction
+            // clean. A plain save() here would abort the whole PostgreSQL
+            // transaction on the duplicate, so a later statement (the inbox
+            // record write, when this runs from an inbox handler) fails with
+            // 25P02 and wedges the consumer in an infinite retry.
+            requestSaver.save(r);
             log.info("raised replenishment_request {} for product_id={} warehouse_id={} qty={} → {} (reason={})",
                 r.id().value(), productId, warehouseId, quantity, target.code(), reason.code());
         } catch (DuplicateKeyException e) {
