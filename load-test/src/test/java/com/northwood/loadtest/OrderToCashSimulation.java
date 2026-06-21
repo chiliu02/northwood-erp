@@ -3,6 +3,7 @@ package com.northwood.loadtest;
 import static io.gatling.javaapi.core.CoreDsl.StringBody;
 import static io.gatling.javaapi.core.CoreDsl.asLongAsDuring;
 import static io.gatling.javaapi.core.CoreDsl.csv;
+import static io.gatling.javaapi.core.CoreDsl.doIf;
 import static io.gatling.javaapi.core.CoreDsl.exec;
 import static io.gatling.javaapi.core.CoreDsl.global;
 import static io.gatling.javaapi.core.CoreDsl.jsonPath;
@@ -116,7 +117,8 @@ public class OrderToCashSimulation extends Simulation {
         .exec(session -> session
             .set("orderNumber", "LOAD-" + session.userId() + "-" + System.nanoTime())
             .set("orderStatus", "")
-            .set("invoiceId", ""))
+            .set("invoiceId", "")
+            .set("invoiceTotal", ""))
         .exec(http("place-order")
             .post(SALES_BASE + "/api/sales-orders")
             .header("Authorization", "Bearer #{token}")
@@ -183,7 +185,14 @@ public class OrderToCashSimulation extends Simulation {
                     .check(
                         jsonPath("$[?(@.salesOrderHeaderId=='#{orderId}')].id").optional().saveAs("invoiceId"),
                         jsonPath("$[?(@.salesOrderHeaderId=='#{orderId}')].totalAmount").optional().saveAs("invoiceTotal")))))
-        .exec(http("pay")
+        // Only pay when an invoice was actually found. If the order stalled (no
+        // invoice within POLL_SECONDS) invoiceId stays empty and invoiceTotal is
+        // unset — building the pay body with an unset #{invoiceTotal} would throw
+        // "No attribute named 'invoiceTotal'" and register a misleading KO. Skip
+        // instead: the genuine non-completion surfaces through the post-run
+        // InvariantVerifier convergence check, which is the verdict that matters.
+        .doIf(session -> !session.getString("invoiceId").isEmpty())
+        .then(http("pay")
             .post(FINANCE_BASE + "/api/payments/customer")
             .header("Authorization", "Bearer #{token}")
             .body(StringBody("""
