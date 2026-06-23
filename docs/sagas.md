@@ -212,3 +212,288 @@ A saga's lifecycle is spread across many traces — each event-driven hop is its
 - `{ .northwood.sales_order_id = "<sales-order uuid>" }` — the order plus the WO sub-saga it triggered.
 
 The cross-saga key flows on the **SO→WO** path because the WO saga row carries `sales_order_header_id` for SO-shortage-driven work orders (null for pool/reorder WOs — correctly uncorrelated to any order, per *Why the Sales Order Fulfilment Saga does not drive manufacturing* above). **SO→PO is a deferred follow-up:** purchasing's `purchase_to_pay_saga` is keyed by PO and doesn't carry the originating order, so PO-saga milestones currently omit `sales_order_id`.
+
+## Code-level walkthrough — the cast and how a tick flows
+
+A from-the-classes view of the machinery. Read this first when you need a mental model of which type does what before diving into the per-saga detail above.
+
+**The cast (and where each lives):**
+
+| Piece | Layer / module | Role |
+|---|---|---|
+| `SagaInstance` | `shared-kernel/.../domain/saga` | Abstract **state row** — the persistent Saga state machine |
+| `SagaPort<S>` | `shared/.../application/saga` | Persistence interface (`claimDue` / `findBySagaId` / `update` / `insert`) |
+| `SagaManager<S, P>` | `shared/.../application/saga` | Abstract **polling driver** — transaction + lease + retry harness |
+| `<Flow>Saga` (e.g. `SalesOrderFulfilmentSaga`) | `<service>/domain/saga` | Concrete Saga row: adds the domain key + state constants + `apply*` transitions |
+| `<Flow>SagaManager` + `Jdbc<Flow>SagaAdapter` | `<service>/application` + `infrastructure` | Concrete manager subclass; JDBC impl of the port |
+| `<Flow>SagaWorker` | `<service>/infrastructure/saga` | Spring `@Scheduled` shell that owns the cadence + the forward `advance` side effects |
+
+Three flows ride this base: **sales-order fulfilment**, **work-order** (manufacturing), and **purchase-to-pay** (purchasing).
+
+**Responsibilities:**
+
+- **`SagaInstance` (shared-kernel, framework-free)** — the Saga *as data*. Holds `state`, `currentStep`, the lease columns (`leaseOwner` / `leaseExpiresAt`), the retry columns (`retryCount` / `nextRetryAt` / `lastError`), the optimistic-lock `version`, and a JSON `data` blob. Exposes **intent-named mutators** so logic never pokes fields directly: `transitionTo(state, step)` (advance, clear retry metadata, stamp `completedAt` if terminal, set the transient `stateAdvanced` marker), `scheduleRetry(when, error)` / `parkUntil(when)`, `acquireLease` / `releaseLease`, `incrementVersion`. Subclasses add the domain key (e.g. `salesOrderId`), the state-name constants, and the `apply<Event>` methods that fold an incoming event into a new state.
+- **`SagaManager<S, P>` (shared base)** — the reusable **polling harness**; its one real method is `drain(batchSize, workerId, advanceFn)`:
+  1. In its own `REQUIRES_NEW` transaction, calls `sagaPort.claimDue(...)` to lease a batch.
+  2. For **each** Saga, in **its own** transaction: runs the caller's `advanceFn`, then `releaseLease()`, then `sagaPort.update(saga)`. Per-Saga isolation means one Saga's failure rolls back only its own outbox writes.
+  3. On exception: a **second fresh transaction** reloads the row (to discard partial in-memory mutations) and records `scheduleRetry(...)` — so the failure trail is durable.
+
+  It is deliberately Spring-free (testable without a context) and stays *Saga-state-only* — it never emits events itself. `drain` is intentionally **not `final`**: the `@Transactional` on the subclass makes Spring CGLIB-proxy the class, and a final method on a proxy instantiated without the constructor would NPE on the first field access.
+- **`SagaPort<S>` / `Jdbc<Flow>SagaAdapter`** — persistence. The load-bearing method is `claimDue`, a single atomic `UPDATE … RETURNING` that leases rows where `state IN (activeStates) AND next_retry_at <= now() AND (lease free or expired)`, using `FOR UPDATE SKIP LOCKED` — that's what makes multi-replica workers safe. `update` enforces optimistic locking via `WHERE saga_id = ? AND version = ?`, and records a tracing milestone only when `consumeStateAdvanced()` is true.
+- **`<Flow>SagaWorker`** — the Spring glue and the **brains of the forward advance**. It is `@Scheduled(fixedDelay = poll-interval)` → `manager.drain(BATCH, workerId, this::advance)`. Its `advance(saga)` is a `switch (saga.state())` dispatching to private methods that compute side effects (read snapshots, build domain events, append to the outbox). Side effects live *here*, not in the manager — keeping the base Saga-state-only. The `workerId` is `"<saga>-worker@" + jvmRuntimeName` so replicas get distinct lease owners.
+
+**Two ways a Saga advances:**
+
+1. **Time / poll-driven (forward):** the worker's `@Scheduled poll()` → `drain` → `advance` switches on state → emits the next event to the outbox → `transitionTo` next state. This handles states the Saga can leave on its own (e.g. `started → request deposit invoice`, `awaiting_release → emit deferred reservation`).
+2. **Event-driven (reactive):** an **inbox handler** (e.g. `GoodsReceivedHandler`, `RawMaterialsReservedHandler`) consumes a Kafka event, looks up the Saga via the manager, and calls an `apply<Event>` transition on it (e.g. `applyStockReserved`). This is how external facts (a reservation result, a goods receipt, an invoice approval) move the Saga forward.
+
+**One tick, end to end:**
+
+```
+@Scheduled poll()  ──►  manager.drain(batch, workerId, this::advance)
+                              │  (SagaManager base)
+                              ├─ tx1: sagaPort.claimDue(...)   ← lease rows, FOR UPDATE SKIP LOCKED
+                              └─ per saga, tx2:
+                                     advance(saga)   ← worker: switch(state) → outbox.append(event)
+                                     saga.releaseLease()
+                                     sagaPort.update(saga)   ← optimistic version check
+                              (on error → tx3: reload + scheduleRetry)
+
+meanwhile, Kafka events ──► inbox handler ──► saga.apply<Event>(...) ──► sagaPort.update
+```
+
+So the **base** owns *polling, leasing, per-Saga transactions, and retry*; the **worker** owns *cadence and forward side effects*; the **inbox handlers** own *reactive transitions*; the **Saga row** owns *state and legal transitions*; the **port / adapter** owns *atomic claim + optimistic-locked persistence*. The only cross-service contract is the outbox — Sagas never call another service directly.
+
+### Sequence diagrams (one per Saga)
+
+Mermaid sequence diagrams of the three flows, grounded in the managers / workers / inbox handlers. Across all three: the **worker** owns only the self-driven hops (no inbound event needed); every other transition is **inbox-handler driven** (`apply*` on the manager); the **manager never emits** — outbox writes / projections / aggregate calls live in the worker shell or inbox handler.
+
+**Sales Order Fulfilment — forward flow:**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant SOS as SalesOrderService<br/>(sales app)
+    participant Mgr as SalesOrderFulfilmentSagaManager
+    participant Saga as sales_order_fulfilment_saga<br/>(row)
+    participant Wkr as SalesOrderFulfilmentSagaWorker<br/>(@Scheduled)
+    participant OB as Outbox → Kafka
+    participant INV as Inventory service
+    participant FIN as Finance service
+
+    Client->>SOS: POST /api/sales-orders
+    SOS->>Mgr: insertStarted(orderId, data)
+    Mgr->>Saga: INSERT state=started
+
+    Note over Wkr,Saga: worker poll() → drain → advance(saga)
+    Wkr->>Saga: claimDue (lease)
+    alt prepayment / deposit terms
+        Wkr->>OB: PrepaymentInvoiceRequested
+        Wkr->>Saga: transitionTo(awaiting_prepayment)
+        FIN-->>SOS: CustomerPaymentReceived (prepayment)
+        SOS->>Mgr: applyCustomerPaymentReceived(...)
+        Mgr->>Saga: transitionTo(prepaid)
+    else on_shipment (time fence)
+        Wkr->>OB: StockReservationRequested
+        Wkr->>Saga: transitionTo(stock_reservation_requested)
+    end
+
+    INV-->>SOS: StockReserved (+ raises ReplenishmentRequest for short lines)
+    SOS->>Mgr: applyStockReserved(status, shortLineIds)
+    alt fully reserved
+        Mgr->>Saga: transitionTo(supply_secured)
+    else partial / failed
+        Mgr->>Saga: transitionTo(stock_reservation_incomplete) + park<br/>record outstandingReplenishmentLineIds
+        opt order line amended while parked
+            INV-->>SOS: SalesOrderLineReservationChanged(lineId, lineIsShort)
+            SOS->>Mgr: applyLineReservationChanged(lineId, lineIsShort)
+            Mgr->>Saga: add / remove line in outstanding set
+        end
+        loop per short line
+            INV-->>SOS: ReplenishmentFulfilled(lineId)
+            SOS->>Mgr: applyReplenishmentFulfilled(lineId, pegged)
+        end
+        alt all pegged
+            Mgr->>Saga: transitionTo(supply_secured)
+        else needs re-reservation
+            Mgr->>Saga: transitionTo(stock_reservation_requested)
+            SOS->>OB: StockReservationRequested (retry)
+        end
+        opt any line unsourceable
+            INV-->>SOS: ReplenishmentCancelled(lineId)
+            SOS->>Mgr: applyReplenishmentCancelled(...)
+            Mgr->>Saga: transitionTo(rejected)
+            SOS->>OB: SalesOrderCancellationRequested
+        end
+    end
+
+    Note over SOS,FIN: post-supply leg — event-reactive completion gate
+    INV-->>SOS: ShipmentPosted
+    SOS->>OB: SalesOrderShipped → finance invoice
+    SOS->>Mgr: applyShipmentPosted(orderFullyShipped)
+    Mgr->>Saga: latch orderShipped
+    FIN-->>SOS: CustomerPaymentReceived
+    SOS->>Mgr: applyCustomerPaymentReceived(orderFullySettled)
+    Mgr->>Saga: latch orderSettled
+    Note over Saga: when orderShipped && orderSettled → transitionTo(completed)
+```
+
+**Sales Order Fulfilment — compensation (two-phase cancel, inventory-arbitrated):**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant SOS as SalesOrderService
+    participant Agg as SalesOrder (aggregate)
+    participant Mgr as SagaManager
+    participant Saga as saga row
+    participant OB as Outbox → Kafka
+    participant INV as Inventory service
+    participant LEG as Purchasing / Manufacturing<br/>(order-pegged comp. legs)
+
+    Client->>SOS: POST /api/sales-orders/{id}/cancel
+    alt a line already shipped (anyLineShipped)
+        SOS-->>Client: 409 Conflict
+    else
+        SOS->>Agg: requestCancellation()
+        Agg->>OB: SalesOrderCancellationRequested
+        Note over SOS,Saga: header NOT flipped, saga untouched yet
+        INV->>INV: tryClaimCancellation (mark unshipped lines cancelled)
+        alt no line had shipped
+            INV->>INV: release reservation (idempotent)
+            INV-->>SOS: SalesOrderCancellationApplied(legIds)
+            SOS->>Agg: confirmCancellation() (header → cancelled)
+            SOS->>Mgr: applyInventoryCancellationApplied(legIds)
+            alt no order-pegged legs committed (common path)
+                Mgr->>Saga: transitionTo(compensated)
+                SOS->>OB: SalesOrderCompensated
+            else order-pegged PO / WO legs outstanding
+                Mgr->>Saga: park in compensating<br/>record outstandingCompensationLegs
+                loop per leg
+                    LEG-->>SOS: PurchaseOrderCancellationApplied /<br/>WorkOrderCancellationApplied(legId, failed)
+                    SOS->>Mgr: applyCompensationAck(legId, failed)
+                    Mgr->>Saga: drain leg from outstanding set
+                end
+                alt all legs drained, none failed
+                    Mgr->>Saga: transitionTo(compensated)
+                    SOS->>OB: SalesOrderCompensated
+                else any leg un-compensatable
+                    Mgr->>Saga: transitionTo(compensation_failed)
+                    SOS->>OB: SalesOrderCompensationFailed
+                end
+            end
+        else a shipment won the race
+            Note over INV: no ack — cancel silently dropped,<br/>order rides ship → invoice → pay
+        end
+    end
+```
+
+**Work Order Saga (manufacturing, make-to-stock):**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant WRS as WorkOrderReleaseService
+    participant WO as WorkOrder (aggregate)
+    participant Mgr as WorkOrderSagaManager
+    participant Saga as work_order_saga (row)
+    participant Wkr as WorkOrderSagaWorker<br/>(@Scheduled)
+    participant Emit as RawMaterialReservationRequestEmitter
+    participant OB as Outbox → Kafka
+    participant INV as Inventory service
+    participant WOS as WorkOrderOperationService
+    participant CMP as Manufacturing<br/>compensation service
+
+    Note over WRS: triggered by inventory replenishment (reorder / shortage)
+    WRS->>WO: release WO (+ recurse sub-assembly children)
+    WRS->>Mgr: insertAttachedToWorkOrder(woId, data)
+    Mgr->>Saga: INSERT state=work_order_created
+
+    Note over Wkr,Saga: worker poll() → drain → advance(saga)
+    Wkr->>Saga: claimDue (lease), state=work_order_created
+    Wkr->>Emit: emitFor(workOrderId)
+    Emit->>OB: RawMaterialReservationRequested
+    Wkr->>Saga: transitionTo(raw_material_reservation_requested) + park
+
+    INV-->>Mgr: RawMaterialsReserved(status, shortageByProductId)<br/>(via RawMaterialsReservedHandler)
+    alt status = reserved
+        Mgr->>Saga: transitionTo(raw_materials_reserved)
+    else shortage
+        Mgr->>Saga: stash shortage, transitionTo(raw_material_shortage) + park
+        Note over INV: shortage replenished elsewhere
+        INV-->>Mgr: GoodsReceived(receivedByProductId)<br/>(via GoodsReceivedHandler)
+        Mgr->>Saga: unparkOrNarrowShortage
+        alt every shortage covered
+            Mgr->>Saga: transitionTo(raw_material_reservation_requested)
+            Note over Emit,OB: GoodsReceivedHandler re-emits<br/>RawMaterialReservationRequested
+        else still short
+            Mgr->>Saga: narrow shortage, stay raw_material_shortage
+        end
+    end
+
+    Note over WOS: operations completed inline
+    WOS->>Mgr: applyManufacturingCompleted(woId)
+    Mgr->>Saga: transitionTo(completed)
+    Note over WO: parent-on-children join —<br/>WorkOrder.onChildCompleted cascades up<br/>(in-aggregate, one txn)
+
+    opt order-pegged compensation (pre-completion, code path)
+        CMP->>Mgr: cancel(workOrderId)
+        Mgr->>Saga: transitionTo(cancelled)
+    end
+```
+
+**Purchase-to-Pay Saga (purchasing):**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant POS as PurchaseOrderService
+    participant PO as PurchaseOrder (aggregate)
+    participant Mgr as PurchaseToPaySagaManager
+    participant Saga as purchase_to_pay_saga (row)
+    participant Wkr as PurchaseToPaySagaWorker<br/>(@Scheduled)
+    participant INV as Inventory service
+    participant FIN as Finance service
+
+    Note over POS: PO created from approved requisition (same txn)
+    POS->>Mgr: insertStarted(poId, salesOrderId?)
+    Mgr->>Saga: INSERT state=started
+
+    alt shortage-driven (auto-approve) or manual POST /approve
+        POS->>PO: approve()
+        POS->>Mgr: approve(poId)
+        Mgr->>Saga: transitionTo(purchase_order_approved)
+    end
+
+    Note over Wkr,Saga: worker poll() → drain → advance(saga)
+    Wkr->>Saga: claimDue, state=purchase_order_approved
+    Wkr->>Saga: transitionTo(waiting_for_goods) + park
+
+    INV-->>Mgr: GoodsReceived(fullyReceived)<br/>(via GoodsReceivedHandler)
+    Mgr->>Saga: transitionTo(goods_received)
+
+    alt invoice approved
+        FIN-->>Mgr: SupplierInvoiceApproved<br/>(via SupplierInvoiceApprovedHandler)
+        Mgr->>Saga: transitionTo(supplier_invoice_approved)
+    else invoice rejected
+        FIN-->>Mgr: SupplierInvoiceRejected<br/>(via SupplierInvoiceRejectedHandler)
+        Mgr->>Saga: transitionTo(failed)
+    end
+
+    FIN-->>Mgr: SupplierPaymentMade(fullySettled)<br/>(via SupplierPaymentMadeHandler)
+    alt fully settled
+        Mgr->>Saga: transitionTo(completed)
+    else partial
+        Mgr->>Saga: transitionTo(supplier_partially_paid)
+        Note over FIN,Saga: subsequent payments stay here<br/>until fully settled → completed
+    end
+
+    opt draft rejected / order-pegged compensation (pre-goods only)
+        Client->>POS: POST /reject  (or compensation)
+        POS->>Mgr: cancel / compensateCancel(poId)
+        Mgr->>Saga: transitionTo(cancelled)
+    end
+```
