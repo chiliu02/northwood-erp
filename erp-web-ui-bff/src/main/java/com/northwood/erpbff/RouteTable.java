@@ -37,6 +37,9 @@ public class RouteTable {
         new Route("/api/atp",                  "reporting",     null),
         new Route("/api/replenishment-history","reporting",     null),
 
+        // -------- Search read models (Elasticsearch, search-service) --------
+        new Route("/api/search",               "search",        null),
+
         // -------- Owning-service catalogs --------
         new Route("/api/products",             "product",       null),
         new Route("/api/stock-items",          "inventory",     null),

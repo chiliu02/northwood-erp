@@ -1,0 +1,23 @@
+# Loaded only when SPRING_PROFILES_ACTIVE=kafka. search-service is inbox-only —
+# it consumes producer events and projects them into Elasticsearch. No outbox /
+# EventPublisher; idempotency comes from upsert-by-document-id (document id =
+# aggregate id), so no Postgres inbox table is needed.
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: search-service          # distinct group → own offsets
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # auto-offset-reset=earliest so a fresh/dropped index replays history from
+      # offset 0 — the disposable-read-model rebuild story.
+      auto-offset-reset: earliest
+    listener:
+      observation-enabled: true
+
+northwood:
+  kafka:
+    # Read model A (product catalog) consumes product.events. B/C widen this to
+    # the other producers / every topic; each projector filters the event types
+    # it cares about via InboxEnvelopeHandler.handles(...).
+    subscribe-topics: product.events

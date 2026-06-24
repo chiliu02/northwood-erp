@@ -139,6 +139,42 @@ services:
       timeout: 3s
       retries: 10
 
+  # Elasticsearch: the search-side CQRS read model (docs/elasticsearch.md +
+  # docs/read-architecture.md step 4). search-service projects domain events from
+  # the Kafka log into ES indices (product-catalog full-text / fuzzy / facets)
+  # and serves /api/search/**. Single-node, security OFF — local showcase only,
+  # never production. The indices are disposable: drop one and replay the log.
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.0.4
+    container_name: northwood-elasticsearch
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - northwood-esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # Kibana: dashboards over the ES read models (read model C — audit / event
+  # analytics, docs/elasticsearch.md). Optional for the showcase; waits for ES.
+  kibana:
+    image: docker.elastic.co/kibana/kibana:9.0.4
+    container_name: northwood-kibana
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
   # -------- Guest front door: a standalone "start here" intro page --------
   #
   # A single static HTML page on its own port (http://localhost:8080) — the
@@ -279,6 +315,7 @@ volumes:
   northwood-kafkadata:
   northwood-keycloakdata:
   northwood-redisdata:
+  northwood-esdata:
   northwood-prometheusdata:
   northwood-tempodata:
   northwood-lokidata:

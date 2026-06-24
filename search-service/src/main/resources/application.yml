@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: search-service
+  profiles:
+    default: dev
+  # Elasticsearch read models (docs/elasticsearch.md). search-service owns no
+  # Postgres — its indices are derived from the event log and rebuildable by
+  # replay, so there is no datasource / Liquibase here.
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Every endpoint requires a valid Keycloak JWT (shared
+          # OAuth2ResourceServerSecurityConfig), reached through the BFF proxy
+          # the same way as every other /api/** service.
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/northwood}
+
+server:
+  port: ${SEARCH_PORT:8093}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  observations:
+    enable:
+      tasks.scheduled.execution: false
+      spring.security: false
+  tracing:
+    sampling:
+      probability: ${NORTHWOOD_TRACING_SAMPLING:1.0}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTLP_ENDPOINT:http://localhost:4317}
+          transport: grpc
+
+logging:
+  level:
+    com.northwood: DEBUG

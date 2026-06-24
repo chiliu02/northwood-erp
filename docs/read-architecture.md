@@ -207,8 +207,10 @@ Each step is independently valuable and de-risks the next:
 3. **Redis cache-aside on reporting** ✅ *shipped* — cache-aside on the three hot read models (ATP /
    financial-dashboard / sales-order-360) with event-driven, after-commit eviction at the projection-write
    seam (the wiring ES will reuse). `reporting-service`; see `docs/redis.md` Part 2.
-4. **Elasticsearch search-service (A→B→C)** — add the `search` field to GraphQL once ES exists; reuse the
-   eviction-from-inbox pattern from step 3.
+4. **Elasticsearch search-service (A→B→C)** — 🟡 *in progress*: the `search-service` module (port 8093) is
+   built with **read model A** (product catalog: full-text/fuzzy/facets/autocomplete) live and the BFF
+   `/api/search` route wired; **B** (global cross-service search) and **C** (audit/event analytics) pending,
+   then add the `search` field to GraphQL. See `docs/elasticsearch.md`.
 5. **GraphQL subscriptions + cross-layer fan-out** — the final `event → ES + Redis + GraphQL` unification.
 
 ---

@@ -17,6 +17,7 @@ public class ErpBffTargets {
     private String purchasing;
     private String finance;
     private String reporting;
+    private String search;
 
     public String forName(String name) {
         return switch (name) {
@@ -27,6 +28,7 @@ public class ErpBffTargets {
             case "purchasing"    -> purchasing;
             case "finance"       -> finance;
             case "reporting"     -> reporting;
+            case "search"        -> search;
             default -> throw new IllegalArgumentException("Unknown BFF target: " + name);
         };
     }
@@ -45,4 +47,6 @@ public class ErpBffTargets {
     public void setFinance(String v) { this.finance = v; }
     public String getReporting()     { return reporting; }
     public void setReporting(String v) { this.reporting = v; }
+    public String getSearch()        { return search; }
+    public void setSearch(String v)  { this.search = v; }
 }
