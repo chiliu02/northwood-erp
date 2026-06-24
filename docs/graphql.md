@@ -74,6 +74,7 @@ type Query {
   products: [Product!]!                  # product   GET /api/products
   product(id: ID!): Product              # product   GET /api/products/{id}
   customer(id: ID!): Customer            # sales     GET /api/customers/{id}
+  search(q: String, type: String): GlobalSearchResult!   # search GET /api/search (Elasticsearch read model B)
 }
 
 type SalesOrder {                        # source: sales SalesOrderView
@@ -281,7 +282,7 @@ erp-graphql-bff/
     upstream/ErpTargets.java                # copy of ErpBffTargets (@ConfigurationProperties)
     upstream/BffAccessTokenAccessor.java    # copied
     upstream/UpstreamClient.java            # JDK HttpClient wrapper, Bearer + Jackson(tools.jackson), async
-    graphql/QueryController.java            # @QueryMapping salesOrders/salesOrder/products/product/customer
+    graphql/QueryController.java            # @QueryMapping salesOrders/salesOrder/products/product/customer/search
     graphql/ProductBatchController.java     # @BatchMapping Product.stock, Product.atp
     graphql/SalesOrderBatchController.java  # @BatchMapping SalesOrderLine.product, SalesOrder.customer
     graphql/MutationController.java         # @MutationMapping placeOrder

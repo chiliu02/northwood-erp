@@ -59,6 +59,7 @@ northwood:
       inventory: http://localhost:8083
       finance:   http://localhost:8086
       reporting: http://localhost:8087
+      search:    http://localhost:8093
 
 logging:
   level:

@@ -1,6 +1,7 @@
 package com.northwood.graphqlbff.graphql;
 
 import com.northwood.graphqlbff.dto.CustomerView;
+import com.northwood.graphqlbff.dto.GlobalSearchResultView;
 import com.northwood.graphqlbff.dto.ProductView;
 import com.northwood.graphqlbff.dto.SalesOrder360View;
 import com.northwood.graphqlbff.dto.SalesOrderView;
@@ -51,5 +52,17 @@ public class QueryController {
     @QueryMapping
     public CustomerView customer(@Argument String id, GraphQLContext context) {
         return upstream.getCustomer(UUID.fromString(id), ContextTokens.accessToken(context));
+    }
+
+    /**
+     * Global cross-service search — delegates to search-service's Elasticsearch
+     * read model B (one fuzzy query across every bounded context). The
+     * relevance/fuzzy/facets are things the relational read models can't do; this
+     * field is the GraphQL entry point to them.
+     */
+    @QueryMapping
+    public GlobalSearchResultView search(
+        @Argument String q, @Argument String type, GraphQLContext context) {
+        return upstream.globalSearch(q, type, ContextTokens.accessToken(context));
     }
 }

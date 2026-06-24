@@ -207,11 +207,11 @@ Each step is independently valuable and de-risks the next:
 3. **Redis cache-aside on reporting** ✅ *shipped* — cache-aside on the three hot read models (ATP /
    financial-dashboard / sales-order-360) with event-driven, after-commit eviction at the projection-write
    seam (the wiring ES will reuse). `reporting-service`; see `docs/redis.md` Part 2.
-4. **Elasticsearch search-service (A→B→C)** — 🟡 *near done*: the `search-service` module (port 8093) is built
-   with all three read models live — **A** (product catalog: full-text/fuzzy/facets/autocomplete), **B** (global
-   cross-service search over one `entities` index), **C** (audit/event analytics over `audit-events` + Kibana) —
-   and the BFF `/api/search` route wired. Remaining: add the `search` field to GraphQL (step 5 territory). See
-   `docs/elasticsearch.md`.
+4. **Elasticsearch search-service (A→B→C)** ✅ *shipped* — the `search-service` module (port 8093) with all
+   three read models live: **A** (product catalog: full-text/fuzzy/facets/autocomplete), **B** (global
+   cross-service search over one `entities` index), **C** (audit/event analytics over `audit-events` + Kibana);
+   the BFF `/api/search` route wired; and the GraphQL `search(q, type)` field in `erp-graphql-bff` delegating to
+   read model B. See `docs/elasticsearch.md`.
 5. **GraphQL subscriptions + cross-layer fan-out** — the final `event → ES + Redis + GraphQL` unification.
 
 ---

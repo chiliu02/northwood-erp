@@ -2,6 +2,7 @@ package com.northwood.graphqlbff.upstream;
 
 import com.northwood.graphqlbff.dto.AvailableToPromiseView;
 import com.northwood.graphqlbff.dto.CustomerView;
+import com.northwood.graphqlbff.dto.GlobalSearchResultView;
 import com.northwood.graphqlbff.dto.PlaceOrderInput;
 import com.northwood.graphqlbff.dto.ProductView;
 import com.northwood.graphqlbff.dto.SalesOrder360View;
@@ -10,9 +11,11 @@ import com.northwood.graphqlbff.dto.StockItemView;
 import java.io.IOException;
 import java.lang.reflect.Array;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -79,6 +82,25 @@ public class UpstreamClient {
         return getList("reporting", "/api/atp", token, AvailableToPromiseView.class);
     }
 
+    /**
+     * Global cross-service search (search-service read model B,
+     * {@code GET /api/search}). One ES query ranks every bounded context — the
+     * "one box, every context" entry point the GraphQL {@code search} field
+     * exposes. {@code q} and {@code type} are optional (blank q → match all).
+     */
+    public GlobalSearchResultView globalSearch(String q, String type, String token) {
+        StringBuilder path = new StringBuilder("/api/search");
+        String separator = "?";
+        if (q != null && !q.isBlank()) {
+            path.append(separator).append("q=").append(encode(q));
+            separator = "&";
+        }
+        if (type != null && !type.isBlank()) {
+            path.append(separator).append("type=").append(encode(type));
+        }
+        return getOne("search", path.toString(), token, GlobalSearchResultView.class);
+    }
+
     // -------------------------------------------------- mutation
 
     public SalesOrderView placeOrder(PlaceOrderInput input, String token) {
@@ -115,6 +137,10 @@ public class UpstreamClient {
         Class<T[]> arrayType = (Class<T[]>) Array.newInstance(type, 0).getClass();
         T[] array = json.readValue(response.body(), arrayType);
         return Arrays.asList(array);
+    }
+
+    private static String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
     private HttpRequest.Builder newRequest(String service, String path, String token) {

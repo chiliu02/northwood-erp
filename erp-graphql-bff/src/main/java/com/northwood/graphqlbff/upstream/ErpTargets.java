@@ -4,8 +4,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * Per-target service URLs, populated from {@code northwood.bff.targets.*}.
- * Only the four services the GraphQL graph traverses are bound (product,
- * sales, inventory, reporting); finance is kept for parity/future fields.
+ * Only the services the GraphQL graph traverses are bound (product, sales,
+ * inventory, reporting, search); finance is kept for parity/future fields.
  * Mirrors {@code erp-web-ui-bff}'s {@code ErpBffTargets} (the BFF deliberately
  * carries no dependency on the service modules).
  */
@@ -17,6 +17,7 @@ public class ErpTargets {
     private String inventory;
     private String finance;
     private String reporting;
+    private String search;
 
     public String forName(String name) {
         return switch (name) {
@@ -25,6 +26,7 @@ public class ErpTargets {
             case "inventory" -> inventory;
             case "finance"   -> finance;
             case "reporting" -> reporting;
+            case "search"    -> search;
             default -> throw new IllegalArgumentException("Unknown GraphQL BFF target: " + name);
         };
     }
@@ -39,4 +41,6 @@ public class ErpTargets {
     public void setFinance(String v)  { this.finance = v; }
     public String getReporting()      { return reporting; }
     public void setReporting(String v) { this.reporting = v; }
+    public String getSearch()         { return search; }
+    public void setSearch(String v)   { this.search = v; }
 }

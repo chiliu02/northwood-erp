@@ -26,6 +26,7 @@ type Query {
   products: [Product!]!
   product(id: ID!): Product
   customer(id: ID!): Customer
+  search(q: String, type: String): GlobalSearchResult!   # search-service GET /api/search (read model B)
 }
 
 type SalesOrder {                        # source: sales SalesOrderView
@@ -102,6 +103,27 @@ type Customer {                          # source: sales CustomerView
   defaultPaymentTerms: String
   billingAddress: String
   shippingAddress: String
+}
+
+type GlobalSearchResult {                # source: search-service GlobalSearchResults (read model B)
+  totalHits: Int!
+  hits: [EntityHit!]!
+  entityTypeFacets: [FacetBucket!]!      # counts per entity type, for a "filter by type" UI
+}
+
+type EntityHit {                         # one hit, any bounded context
+  entityType: String!                    # product / customer / sales_order / supplier / purchase_order / customer_invoice
+  entityId: ID!
+  title: String                          # display name / document number
+  code: String                           # sku / customer code / order or PO / invoice number
+  subtitle: String                       # email / counterparty / product type
+  status: String
+  score: Float                           # Elasticsearch relevance score
+}
+
+type FacetBucket {
+  key: String!
+  count: Int!
 }
 
 type SalesOrderSummary {                 # source: reporting SalesOrder360View (list, no lines)

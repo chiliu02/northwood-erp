@@ -11,12 +11,13 @@
 > 2. **Global cross-service search** (one box over every bounded context) — ✅ **implemented** (`entities` index)
 > 3. **Audit/event analytics** (aggregations + Kibana) — ✅ **implemented** (`audit-events` index)
 >
-> **Status:** the `search-service` module (recommended option below) is built, with read models A + B + C live.
-> The remaining cross-cutting wiring is the `search` GraphQL field and the eventual retirement of the BFF's
-> in-memory audit fan-out (C is its successor; the swap is a separate follow-up). One implementation note vs
-> this plan: the projectors have **no Postgres inbox** — search-service owns no database, so idempotency comes
-> from **upsert-by-document-id** (document id = aggregate/event id) rather than the `inbox_message` table. They
-> implement `InboxEnvelopeHandler` directly (see *Where the projector lives*).
+> **Status:** the `search-service` module (recommended option below) is built, with read models A + B + C live,
+> the BFF `/api/search` route wired, and a GraphQL `search(q, type)` field in `erp-graphql-bff` delegating to
+> read model B. The one remaining loose end is the eventual retirement of the BFF's in-memory audit fan-out (C
+> is its successor; the swap is a separate follow-up). One implementation note vs this plan: the projectors have
+> **no Postgres inbox** — search-service owns no database, so idempotency comes from **upsert-by-document-id**
+> (document id = aggregate/event id) rather than the `inbox_message` table. They implement
+> `InboxEnvelopeHandler` directly (see *Where the projector lives*).
 
 ---
 
