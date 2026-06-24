@@ -8,13 +8,14 @@
 > **Scope: A + B + C** — three Elasticsearch read models off the one event log, built with the same projector
 > mechanism and increasing in reach:
 > 1. **Product catalog search** (full-text/fuzzy/autocomplete/facets) — ✅ **implemented** (`search-service`)
-> 2. **Global cross-service search** (one box over every bounded context) — pending
+> 2. **Global cross-service search** (one box over every bounded context) — ✅ **implemented** (`entities` index)
 > 3. **Audit/event analytics** (aggregations + Kibana, retiring the in-memory audit fan-out) — pending
 >
-> **Status:** the `search-service` module (recommended option below) is built, with read model A live. One
-> implementation note vs this plan: the projectors have **no Postgres inbox** — search-service owns no database,
-> so idempotency comes from **upsert-by-document-id** (document id = aggregate id) rather than the
-> `inbox_message` table. They implement `InboxEnvelopeHandler` directly (see *Where the projector lives*).
+> **Status:** the `search-service` module (recommended option below) is built, with read models A + B live (the
+> `search` GraphQL field is the remaining cross-cutting wiring). One implementation note vs this plan: the
+> projectors have **no Postgres inbox** — search-service owns no database, so idempotency comes from
+> **upsert-by-document-id** (document id = aggregate id) rather than the `inbox_message` table. They implement
+> `InboxEnvelopeHandler` directly (see *Where the projector lives*).
 
 ---
 
@@ -153,6 +154,15 @@ Design choice: **one `entities` index with a `type` discriminator** (simplest cr
 **per-entity indices queried with a multi-index search** (cleaner mappings). For a demo, a single index with a
 `type` keyword field is the least friction. Result: `GET /api/search?q=acme` returns customers, orders, invoices
 and products in one relevance-ranked list — one box, every bounded context.
+
+**As built:** the single-`entities`-index choice was taken. `EntityDocument` carries `entityType`
+(discriminator + facet) + `title`/`code` multi-fields + `subtitle`/`status`; the document id is
+`<entityType>:<aggregateId>` (no cross-type id collisions, idempotent upserts). Six projectors index
+**product** (`ProductCreated`), **customer** (`CustomerRegistered`), **sales_order** (`SalesOrderPlaced`),
+**supplier** (`SupplierRegistered`), **purchase_order** (`PurchaseOrderCreated`) and **customer_invoice**
+(`CustomerInvoiceCreated`) — all four entity-bearing contexts. `GET /api/search?q=&type=` does one fuzzy
+`multi_match` over `title`/`code` with an `entityType` terms facet (counts per type) and an optional type filter.
+Status is as-of-creation today (live status rollup is a follow-up).
 
 ---
 

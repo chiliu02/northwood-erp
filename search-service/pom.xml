@@ -27,10 +27,23 @@
             <artifactId>shared</artifactId>
         </dependency>
         <!-- Event types this service projects into Elasticsearch. Read model A
-             (product catalog) needs product-events; B/C add the others. -->
+             (product catalog) needs product-events; read model B (global
+             cross-service search) adds sales / purchasing / finance. -->
         <dependency>
             <groupId>com.northwood</groupId>
             <artifactId>product-events</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.northwood</groupId>
+            <artifactId>sales-events</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.northwood</groupId>
+            <artifactId>purchasing-events</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.northwood</groupId>
+            <artifactId>finance-events</artifactId>
         </dependency>
 
         <dependency>
