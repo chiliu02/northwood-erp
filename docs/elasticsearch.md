@@ -9,13 +9,14 @@
 > mechanism and increasing in reach:
 > 1. **Product catalog search** (full-text/fuzzy/autocomplete/facets) — ✅ **implemented** (`search-service`)
 > 2. **Global cross-service search** (one box over every bounded context) — ✅ **implemented** (`entities` index)
-> 3. **Audit/event analytics** (aggregations + Kibana, retiring the in-memory audit fan-out) — pending
+> 3. **Audit/event analytics** (aggregations + Kibana) — ✅ **implemented** (`audit-events` index)
 >
-> **Status:** the `search-service` module (recommended option below) is built, with read models A + B live (the
-> `search` GraphQL field is the remaining cross-cutting wiring). One implementation note vs this plan: the
-> projectors have **no Postgres inbox** — search-service owns no database, so idempotency comes from
-> **upsert-by-document-id** (document id = aggregate id) rather than the `inbox_message` table. They implement
-> `InboxEnvelopeHandler` directly (see *Where the projector lives*).
+> **Status:** the `search-service` module (recommended option below) is built, with read models A + B + C live.
+> The remaining cross-cutting wiring is the `search` GraphQL field and the eventual retirement of the BFF's
+> in-memory audit fan-out (C is its successor; the swap is a separate follow-up). One implementation note vs
+> this plan: the projectors have **no Postgres inbox** — search-service owns no database, so idempotency comes
+> from **upsert-by-document-id** (document id = aggregate/event id) rather than the `inbox_message` table. They
+> implement `InboxEnvelopeHandler` directly (see *Where the projector lives*).
 
 ---
 
@@ -174,6 +175,16 @@ retires the in-memory merge in `AuditAggregatorController` and showcases ES's an
 search side. Same CQRS shape — just the broadest read model off the same log (subscribes to all topics, not
 just the entity-bearing ones), and the projector is the simplest of the three: no entity merge logic, just
 append each decoded `EventEnvelope` as a document.
+
+**As built:** a single catch-all `AuditEventHandler` (its `handles(...)` returns true for every type, so the
+shared Kafka dispatcher routes all events to it) appends one `AuditEventDocument` per event, keyed by
+`eventId` (idempotent overwrite). search-service now subscribes to **all six** topics. `occurredAt` is stored
+as epoch-millis mapped to an ES `date` (robust, no string-date parsing, still Kibana-histogram-friendly);
+`payload` is kept as analyzed `text` for full-text. `GET /api/search/audit?q=&service=&eventType=` returns
+newest-first hits with `terms` facets on `sourceService` / `eventType` / `aggregateType` (the "events per
+service / type" counts); Kibana charts the same index over time. This is the **successor** to the BFF's
+in-memory `AuditAggregatorController` fan-out — actually deleting that controller (and repointing the SPA Event
+Log / Saga Console) is a deliberate separate follow-up, so both coexist for now.
 
 ---
 

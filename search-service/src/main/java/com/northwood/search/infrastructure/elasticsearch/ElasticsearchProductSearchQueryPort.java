@@ -1,18 +1,14 @@
 package com.northwood.search.infrastructure.elasticsearch;
 
 import co.elastic.clients.elasticsearch._types.aggregations.Aggregation;
-import co.elastic.clients.elasticsearch._types.aggregations.StringTermsBucket;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import com.northwood.search.application.ProductSearchQueryPort;
-import com.northwood.search.application.dto.FacetBucket;
 import com.northwood.search.application.dto.ProductSearchCriteria;
 import com.northwood.search.application.dto.ProductSearchResults;
 import com.northwood.search.application.dto.ProductSearchView;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.elasticsearch.client.elc.ElasticsearchAggregation;
-import org.springframework.data.elasticsearch.client.elc.ElasticsearchAggregations;
 import org.springframework.data.elasticsearch.client.elc.NativeQuery;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.SearchHit;
@@ -96,8 +92,8 @@ public class ElasticsearchProductSearchQueryPort implements ProductSearchQueryPo
         return new ProductSearchResults(
             hits.getTotalHits(),
             views,
-            facetBuckets(hits, AGG_PRODUCT_TYPE),
-            facetBuckets(hits, AGG_STATUS)
+            EsAggregations.termsFacet(hits, AGG_PRODUCT_TYPE),
+            EsAggregations.termsFacet(hits, AGG_STATUS)
         );
     }
 
@@ -124,20 +120,5 @@ public class ElasticsearchProductSearchQueryPort implements ProductSearchQueryPo
 
     private static Aggregation termsAggregation(String field) {
         return Aggregation.of(a -> a.terms(t -> t.field(field)));
-    }
-
-    private static List<FacetBucket> facetBuckets(SearchHits<ProductDocument> hits, String aggName) {
-        if (!(hits.getAggregations() instanceof ElasticsearchAggregations aggregations)) {
-            return List.of();
-        }
-        ElasticsearchAggregation aggregation = aggregations.aggregationsAsMap().get(aggName);
-        if (aggregation == null) {
-            return List.of();
-        }
-        List<FacetBucket> buckets = new ArrayList<>();
-        for (StringTermsBucket bucket : aggregation.aggregation().getAggregate().sterms().buckets().array()) {
-            buckets.add(new FacetBucket(bucket.key().stringValue(), bucket.docCount()));
-        }
-        return buckets;
     }
 }

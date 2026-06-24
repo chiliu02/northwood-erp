@@ -12,7 +12,8 @@ import org.springframework.stereotype.Component;
 /**
  * Creates each Elasticsearch read-model index with the mapping derived from its
  * {@code @Document} record's annotations on startup, if it does not already
- * exist ({@code products} = read model A, {@code entities} = read model B). The
+ * exist ({@code products} = read model A, {@code entities} = read model B,
+ * {@code audit-events} = read model C). The
  * explicit mapping is load-bearing: the multi-field {@code text} sub-fields that
  * power fuzzy match and prefix autocomplete must be mapped <em>before</em> the
  * projectors index any document (ES dynamic mapping would otherwise guess types
@@ -29,7 +30,8 @@ public class ElasticsearchIndexInitializer implements ApplicationRunner {
 
     private static final List<Class<?>> INDEXED_DOCUMENTS = List.of(
         ProductDocument.class,
-        EntityDocument.class
+        EntityDocument.class,
+        AuditEventDocument.class
     );
 
     private final ElasticsearchOperations elasticsearch;

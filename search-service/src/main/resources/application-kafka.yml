@@ -18,7 +18,8 @@ spring:
 northwood:
   kafka:
     # Read model A (product catalog) consumes product.events; read model B
-    # (global cross-service search) adds sales / purchasing / finance. C (audit
-    # analytics) will widen to every topic. Each projector filters the event
-    # types it cares about via InboxEnvelopeHandler.handles(...).
-    subscribe-topics: product.events,sales.events,purchasing.events,finance.events
+    # (global cross-service search) adds sales / purchasing / finance; read model
+    # C (audit / event analytics) needs every topic (its catch-all projector
+    # indexes all events). Each projector filters the event types it cares about
+    # via InboxEnvelopeHandler.handles(...); the audit one handles all.
+    subscribe-topics: product.events,sales.events,inventory.events,manufacturing.events,purchasing.events,finance.events

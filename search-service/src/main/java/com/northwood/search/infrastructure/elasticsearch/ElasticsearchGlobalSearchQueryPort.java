@@ -1,17 +1,13 @@
 package com.northwood.search.infrastructure.elasticsearch;
 
 import co.elastic.clients.elasticsearch._types.aggregations.Aggregation;
-import co.elastic.clients.elasticsearch._types.aggregations.StringTermsBucket;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import com.northwood.search.application.GlobalSearchQueryPort;
 import com.northwood.search.application.dto.EntitySearchView;
-import com.northwood.search.application.dto.FacetBucket;
 import com.northwood.search.application.dto.GlobalSearchResults;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.elasticsearch.client.elc.ElasticsearchAggregation;
-import org.springframework.data.elasticsearch.client.elc.ElasticsearchAggregations;
 import org.springframework.data.elasticsearch.client.elc.NativeQuery;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.SearchHit;
@@ -69,21 +65,7 @@ public class ElasticsearchGlobalSearchQueryPort implements GlobalSearchQueryPort
                 d.entityType(), d.entityId(), d.title(), d.code(), d.subtitle(), d.status(), hit.getScore()));
         }
 
-        return new GlobalSearchResults(hits.getTotalHits(), views, entityTypeFacets(hits));
-    }
-
-    private static List<FacetBucket> entityTypeFacets(SearchHits<EntityDocument> hits) {
-        if (!(hits.getAggregations() instanceof ElasticsearchAggregations aggregations)) {
-            return List.of();
-        }
-        ElasticsearchAggregation aggregation = aggregations.aggregationsAsMap().get(AGG_ENTITY_TYPE);
-        if (aggregation == null) {
-            return List.of();
-        }
-        List<FacetBucket> buckets = new ArrayList<>();
-        for (StringTermsBucket bucket : aggregation.aggregation().getAggregate().sterms().buckets().array()) {
-            buckets.add(new FacetBucket(bucket.key().stringValue(), bucket.docCount()));
-        }
-        return buckets;
+        return new GlobalSearchResults(
+            hits.getTotalHits(), views, EsAggregations.termsFacet(hits, AGG_ENTITY_TYPE));
     }
 }
