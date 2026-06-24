@@ -238,7 +238,7 @@ These need no operator action and lose nothing — the outbox is the durable pro
 ### Caveats that shape the runbook
 
 - **Detection is manual today.** Automated alerting on stuck outbox / stuck saga / error-rate is deferred. Until it lands, discovery relies on logs, Grafana, and direct table queries — the data is all there (`outbox_message.status = 'failed'` + `last_error`; `*_saga` rows with climbing `retry_count` + `last_error`; DLT topic depth).
-- **BFF restart (non-messaging).** `erp-web-ui-bff` holds OIDC session/token state in-JVM, so a restart logs every user out (re-login; Redis-backed sessions are deferred). The synchronous *command* path is also not durable — a POST in flight when a service dies is lost and the client must resubmit; only state that already committed (and so its outbox row) survives.
+- **BFF restart (non-messaging).** `erp-web-ui-bff` now keeps its OIDC session **and** the OAuth2 authorized client (Keycloak tokens) in Redis via Spring Session (`docs/redis.md` Part 1), so a restart no longer logs users out and replicas can share logins. The synchronous *command* path is also not durable — a POST in flight when a service dies is lost and the client must resubmit; only state that already committed (and so its outbox row) survives.
 - **Replaying/rebuilding a projection.** Kafka retains the log, so offset-rewind replay is possible; to *re-apply* (not merely re-skip) the target consumer's `inbox_message` rows for those messages must be cleared first. Under a future SQS swap this would not be replayable — replay would mean re-draining the outbox.
 
 ## Producer side

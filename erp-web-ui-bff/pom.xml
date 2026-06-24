@@ -48,6 +48,22 @@
             <artifactId>spring-boot-starter-oauth2-client</artifactId>
         </dependency>
 
+        <!-- Distributed sessions. The BFF holds the OIDC SecurityContext AND
+             the OAuth2 authorized-client (Keycloak tokens) in the HttpSession;
+             Spring Session moves that session into Redis, so a BFF restart no
+             longer logs every user out and two BFF replicas can share logins.
+             spring-boot-starter-data-redis brings the Lettuce connection +
+             RedisConnectionFactory the session store binds to. See
+             docs/redis.md (Part 1) and docs/read-architecture.md (step 1). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+        </dependency>
+
         <!-- Tracing. The BFF doesn't depend on `shared` (which is where the
              seven services pick up this starter), so it gets it directly:
              without a Tracer + OTLP exporter the BFF emits no server span and,

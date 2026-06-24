@@ -3,6 +3,19 @@ spring:
     name: erp-web-ui-bff
   profiles:
     default: dev
+  # Distributed session store. With spring-session-data-redis on the classpath
+  # the HttpSession (SecurityContext + the OAuth2 authorized client / Keycloak
+  # tokens — see BffSecurityConfig's session-backed client repository) lives in
+  # Redis instead of JVM memory: sessions survive a BFF restart and are shared
+  # across replicas. Lettuce connects lazily, so the context still starts when
+  # Redis is down — only live requests need it.
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  session:
+    store-type: redis
+    timeout: 30m
   security:
     oauth2:
       client:

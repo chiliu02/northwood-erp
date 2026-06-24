@@ -57,11 +57,18 @@ HttpSession. So moving only the session to Redis would still leave the **access 
 after a restart the user appears authenticated (SecurityContext is in Redis) but the token lookup returns null,
 and upstream calls fail. Two clean ways to fix it — pick one:
 
-- **(Recommended) Switch to the session-backed repository.** Change `BffAccessTokenAccessor` to use
-  `OAuth2AuthorizedClientRepository` (default `HttpSessionOAuth2AuthorizedClientRepository`), which stores the
-  authorized client in the `HttpSession` — and therefore in Redis automatically once Spring Session is on.
-  The accessor runs in request scope, so it has the request/response needed:
-  `repo.loadAuthorizedClient(registrationId, authentication, request)`.
+- **(Recommended, implemented) Switch to the session-backed repository — and register it explicitly.** Change
+  `BffAccessTokenAccessor` to use `OAuth2AuthorizedClientRepository`, which stores the authorized client in the
+  `HttpSession` — and therefore in Redis once Spring Session is on. The accessor is a singleton but every call
+  runs on a request thread, so it resolves the current request from `RequestContextHolder` and reads
+  `repo.loadAuthorizedClient(registrationId, authentication, request)` — the four callers keep their signatures.
+  **The catch:** the *default* `OAuth2AuthorizedClientRepository` is **not** session-backed. Spring Boot
+  auto-configures an `InMemoryOAuth2AuthorizedClientService`, and the default repository
+  (`AuthenticatedPrincipalOAuth2AuthorizedClientRepository`) **delegates to that in-memory service for
+  authenticated principals** — so just swapping the injected type would still leave the token in per-JVM memory.
+  Fix it by registering a `HttpSessionOAuth2AuthorizedClientRepository` `@Bean` in `BffSecurityConfig`; that one
+  bean makes *both* the login-time save and the accessor's read go through the session. (So `BffSecurityConfig`
+  gains exactly that bean — it is otherwise unchanged.)
 - **(Alternative) Redis-backed `OAuth2AuthorizedClientService`.** Provide a custom `OAuth2AuthorizedClientService`
   bean that persists to Redis. Keeps the accessor's current signature, but is more code than option 1.
 
@@ -184,7 +191,8 @@ logical DBs or instances.
 
 - **Session:** `erp-web-ui-bff/pom.xml`, `erp-graphql-bff/pom.xml` (deps); each `application.yml` (session +
   redis); `BffAccessTokenAccessor.java` in both BFFs (switch to `OAuth2AuthorizedClientRepository`, the gotcha
-  above). `BffSecurityConfig` unchanged.
+  above), plus a `HttpSessionOAuth2AuthorizedClientRepository` `@Bean` in `BffSecurityConfig` (the in-memory-service
+  trap, the gotcha above) — `BffSecurityConfig` is otherwise unchanged.
 - **Cache:** `reporting-service/pom.xml` (deps); `@EnableCaching` on `ReportingApplication`;
   `@Cacheable` on `Jdbc{AvailableToPromise,FinancialDashboard,SalesOrder360}QueryPort`;
   `@CacheEvict` (or explicit evict) in the matching `application/inbox/{atp,dashboard,…}` handlers and

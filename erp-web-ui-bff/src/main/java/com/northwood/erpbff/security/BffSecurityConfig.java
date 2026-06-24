@@ -9,6 +9,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.oauth2.client.oidc.web.logout.OidcClientInitiatedLogoutSuccessHandler;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.HttpSessionOAuth2AuthorizedClientRepository;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
@@ -87,6 +89,29 @@ public class BffSecurityConfig {
                 PathPatternRequestMatcher.withDefaults().matcher("/api/**")
             ));
         return http.build();
+    }
+
+    /**
+     * Store the OAuth2 authorized client (the Keycloak access/refresh tokens)
+     * in the {@code HttpSession} — and therefore in Redis once Spring Session
+     * is on — rather than in per-JVM memory.
+     *
+     * <p>This bean is the load-bearing half of the Redis-session fix. Spring
+     * Boot auto-configures an {@code InMemoryOAuth2AuthorizedClientService},
+     * and the <em>default</em> {@code OAuth2AuthorizedClientRepository}
+     * ({@code AuthenticatedPrincipalOAuth2AuthorizedClientRepository}) delegates
+     * to that in-memory service for authenticated principals. So moving only
+     * the session to Redis would still leave the tokens in JVM memory: after a
+     * restart the user looks authenticated (SecurityContext is in Redis) but the
+     * token lookup returns null and every upstream call fails. Registering the
+     * session-backed repository explicitly makes both the login-time save and
+     * {@link BffAccessTokenAccessor}'s read go through the session, so the tokens
+     * ride into Redis with it. See docs/redis.md (Part 1) — "the token store is
+     * the part people miss."
+     */
+    @Bean
+    public OAuth2AuthorizedClientRepository authorizedClientRepository() {
+        return new HttpSessionOAuth2AuthorizedClientRepository();
     }
 
     /**

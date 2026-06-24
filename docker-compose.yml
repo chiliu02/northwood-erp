@@ -119,6 +119,26 @@ services:
       retries: 12
       start_period: 30s
 
+  # Redis: distributed session/cache store for the read side. Today it backs
+  # erp-web-ui-bff's Spring Session (so a BFF restart no longer logs users out
+  # and replicas can share logins — see docs/redis.md Part 1); the same instance
+  # is earmarked for reporting cache-aside and the GraphQL BFF's sessions as the
+  # read-architecture rolls out (docs/read-architecture.md). One shared Redis is
+  # fine for the showcase; production would split sessions vs cache into separate
+  # logical DBs or instances.
+  redis:
+    image: redis:7
+    container_name: northwood-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - northwood-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   # -------- Guest front door: a standalone "start here" intro page --------
   #
   # A single static HTML page on its own port (http://localhost:8080) — the
@@ -258,6 +278,7 @@ volumes:
   northwood-pgdata:
   northwood-kafkadata:
   northwood-keycloakdata:
+  northwood-redisdata:
   northwood-prometheusdata:
   northwood-tempodata:
   northwood-lokidata:
