@@ -1,0 +1,19 @@
+# Loaded only when SPRING_PROFILES_ACTIVE=...,kafka. Activates the GraphQL
+# subscription source: a consumer on every *.events topic that pushes decoded
+# DomainEvents into the Reactor sink behind Subscription.events. Under the
+# default dev profile the subscription field exists but never emits.
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      # Distinct group-id from erp-web-ui-bff so the two BFFs keep independent
+      # offsets — both can run, each at its own consumer position.
+      group-id: erp-graphql-bff
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # Real-time peek, not an audit log; new events only.
+      auto-offset-reset: latest
+
+northwood:
+  events:
+    subscribe-topics: product.events,sales.events,inventory.events,manufacturing.events,purchasing.events,finance.events

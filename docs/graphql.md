@@ -1,7 +1,9 @@
 # Spring GraphQL Demo for Northwood ERP
 
 > A **design/plan doc** for a GraphQL showcase, grounded in the real REST DTOs the Northwood services
-> already expose, so the schema below maps 1:1 to existing fields. Not yet implemented.
+> already expose, so the schema below maps 1:1 to existing fields. **Implemented** as the `erp-graphql-bff`
+> module (read-architecture step 2) — see *Implementation notes* at the foot for the deltas between this plan
+> and what shipped.
 
 ---
 
@@ -363,3 +365,36 @@ claim, and fits the module (no DB/aggregates, so the project's "every `Jdbc*` ha
 - Query depth/complexity limits (mentioned as a GraphQL risk; not needed for a demo).
 - A true batch-by-ids upstream endpoint (current list-fetch batching is fine at demo scale).
 - Persisted queries / HTTP caching.
+
+---
+
+## Implementation notes (deltas from this plan)
+
+What shipped follows the plan above; the differences worth recording:
+
+- **DTO fields are the *full* upstream records, verbatim.** Mirroring every component (not just the schema
+  subset) means Jackson deserialises upstream JSON exactly with no unknown-property handling. The schema
+  exposes a subset; e.g. `SalesOrderLine` gained `backorderedQuantity` (a real `SalesOrderLineView` field the
+  original plan omitted).
+- **`id` rename via `@JsonProperty`.** Upstream keys are `productId` / `customerId`; the schema exposes them as
+  `id`. The mirrored `ProductView` / `CustomerView` name the component `id` with
+  `@JsonProperty("productId")` / `@JsonProperty("customerId")`, so Spring GraphQL's default property mapping
+  resolves `id` with zero extra resolver code. (jackson-annotations stays at `com.fasterxml.jackson.annotation`
+  even on Jackson 3.)
+- **`ID` arguments bound as `String`, parsed to `UUID` in the resolver** (and `PlaceOrderLineInput.productId`
+  kept as `String`) — sidesteps any String→UUID argument-binding conversion; the string serialises straight
+  into the sales command's `UUID` field.
+- **`DateTime` scalar ⇒ `OffsetDateTime`, not `Instant`.** The graphql-java `DateTime` scalar serialises
+  `OffsetDateTime`/`ZonedDateTime` but not `Instant`, so `DomainEvent.occurredAt` is an `OffsetDateTime` and the
+  Kafka decoder normalises the envelope's instant to UTC.
+- **`graphql-java-extended-scalars` pinned to `24.0`** (newest published) against the graphql-java `25.0` the
+  Boot 4.0.5 BOM ships — the `Coercing` scalar API is unchanged 24→25.
+- **Security: everything authenticated, only actuator health/prometheus permitted.** Rather than permitting
+  `/graphiql/**`, an unauthenticated navigation is redirected to Keycloak by `oauth2Login`; after login GraphiQL
+  loads and its same-origin `/graphql` calls carry the session. `GraphqlSecurityConfig` also registers the
+  session-backed `HttpSessionOAuth2AuthorizedClientRepository` (read-architecture step 1), so tokens ride in
+  Redis. The Keycloak `northwood-bff` client gained the `:8088` redirect URIs.
+- **Batching proof test deferred.** The end-to-end `GraphQlTester` "one upstream call per type" test needs Boot
+  4's GraphQL test-slice (`@GraphQlTest` relocated out of `spring-boot-test-autoconfigure`); shipped instead is a
+  deterministic `BatchLoadersTest` covering the association/miss→null behaviour the `@BatchMapping` loaders rely
+  on. The batching is still observable live via the one-line-per-upstream-call logs (the *money slide*).

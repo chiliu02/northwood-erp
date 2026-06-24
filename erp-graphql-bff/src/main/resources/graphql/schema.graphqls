@@ -1,0 +1,149 @@
+# Northwood GraphQL BFF schema.
+#
+# Field names mirror the real service view records 1:1 (verified against
+# sales/product/inventory/reporting *View records). Scalar-typed fields use the
+# graphql-java extended scalars registered in ScalarConfig.
+#
+# Resolution map (which backend answers each type):
+#   Query.salesOrders        -> reporting GET /api/sales-orders   (SalesOrder360View)
+#   Query.salesOrder(id)     -> sales     GET /api/sales-orders/{id} (SalesOrderView, has lines)
+#   Query.products / product -> product   GET /api/products[/{id}]
+#   Query.customer(id)       -> sales     GET /api/customers/{id}
+#   SalesOrder.customer      -> sales     GET /api/customers     (batched by customerId)
+#   SalesOrderLine.product   -> product   GET /api/products      (batched by productId)
+#   Product.stock            -> inventory GET /api/stock-items   (batched by productId)
+#   Product.atp              -> reporting GET /api/atp           (batched by productId)
+#   Mutation.placeOrder      -> sales     POST /api/sales-orders
+#   Subscription.events      -> live *.events Kafka feed (kafka profile only)
+
+scalar BigDecimal
+scalar Date          # java.time.LocalDate
+scalar DateTime      # java.time.OffsetDateTime
+
+type Query {
+  salesOrders: [SalesOrderSummary!]!
+  salesOrder(id: ID!): SalesOrder
+  products: [Product!]!
+  product(id: ID!): Product
+  customer(id: ID!): Customer
+}
+
+type SalesOrder {                        # source: sales SalesOrderView
+  id: ID!
+  orderNumber: String!
+  orderDate: Date
+  requestedDeliveryDate: Date
+  status: String
+  currencyCode: String
+  subtotalAmount: BigDecimal
+  taxAmount: BigDecimal
+  totalAmount: BigDecimal
+  paymentTerms: String
+  customer: Customer                     # resolved from customerId -> batch loader
+  lines: [SalesOrderLine!]!              # embedded in SalesOrderView.lines
+}
+
+type SalesOrderLine {                    # source: sales SalesOrderLineView
+  lineId: ID!
+  lineNumber: Int
+  productSku: String
+  orderedQuantity: BigDecimal
+  reservedQuantity: BigDecimal
+  shippedQuantity: BigDecimal
+  backorderedQuantity: BigDecimal
+  unitPrice: BigDecimal
+  lineTotal: BigDecimal
+  lineStatus: String
+  product: Product                       # resolved from productId -> batch loader (N+1 hotspot)
+}
+
+type Product {                           # source: product ProductView
+  id: ID!
+  sku: String!
+  name: String
+  description: String
+  productType: String
+  salesPrice: BigDecimal
+  standardCost: BigDecimal
+  status: String
+  stock: StockItem                       # resolved from productId -> inventory batch loader
+  atp: AvailableToPromise                # resolved from productId -> reporting batch loader
+}
+
+type StockItem {                         # source: inventory StockItemView
+  productId: ID!
+  productSku: String
+  productName: String
+  onHand: BigDecimal
+  reserved: BigDecimal
+  available: BigDecimal
+  reorderPoint: BigDecimal
+}
+
+type AvailableToPromise {                # source: reporting AvailableToPromiseView
+  productId: ID!
+  onHandQuantity: BigDecimal
+  reservedForSales: BigDecimal
+  reservedForProduction: BigDecimal
+  availableQuantity: BigDecimal
+  incomingFromProduction: BigDecimal
+  incomingFromPurchase: BigDecimal
+  earliestAvailableDate: Date
+  stockStatus: String
+}
+
+type Customer {                          # source: sales CustomerView
+  id: ID!
+  customerCode: String
+  name: String
+  email: String
+  phone: String
+  status: String
+  defaultPaymentTerms: String
+  billingAddress: String
+  shippingAddress: String
+}
+
+type SalesOrderSummary {                 # source: reporting SalesOrder360View (list, no lines)
+  salesOrderHeaderId: ID!
+  orderNumber: String!
+  customerName: String
+  orderStatus: String
+  totalAmount: BigDecimal
+  outstandingAmount: BigDecimal
+  hasShortage: Boolean
+}
+
+type Mutation {
+  placeOrder(input: PlaceOrderInput!): SalesOrder    # POST sales /api/sales-orders
+}
+
+input PlaceOrderInput {
+  orderNumber: String!
+  customerCode: String!                  # NB: command keys on customerCode, not customerId
+  currencyCode: String!
+  requestedDeliveryDate: Date
+  paymentTerms: String
+  depositPercent: BigDecimal
+  lines: [PlaceOrderLineInput!]!
+}
+input PlaceOrderLineInput {
+  productId: ID!
+  productSku: String!
+  productName: String!
+  orderedQuantity: BigDecimal!
+  unitPrice: BigDecimal
+  taxRate: BigDecimal
+}
+
+type Subscription {
+  events: DomainEvent!                   # live *.events Kafka feed
+}
+type DomainEvent {
+  eventId: ID!
+  eventType: String!
+  sourceService: String!
+  aggregateType: String
+  aggregateId: ID
+  occurredAt: DateTime
+}

@@ -168,7 +168,7 @@
     {
       "clientId": "northwood-bff",
       "name": "Northwood ERP BFF",
-      "description": "Confidential client used by erp-web-ui-bff for the OIDC authorization-code flow. Holds the access token in a server-side session and forwards it as Bearer on every call to a Northwood service.",
+      "description": "Confidential client used by erp-web-ui-bff (8089) and erp-graphql-bff (8088) for the OIDC authorization-code flow. Holds the access token in a server-side session and forwards it as Bearer on every call to a Northwood service.",
       "enabled": true,
       "publicClient": false,
       "secret": "northwood-bff-secret",
@@ -180,14 +180,17 @@
       "redirectUris": [
         "http://localhost:8089/login/oauth2/code/keycloak",
         "http://localhost:8089/*",
+        "http://localhost:8088/login/oauth2/code/keycloak",
+        "http://localhost:8088/*",
         "http://localhost:5174/*"
       ],
       "webOrigins": [
         "http://localhost:8089",
+        "http://localhost:8088",
         "http://localhost:5174"
       ],
       "attributes": {
-        "post.logout.redirect.uris": "http://localhost:8089/##http://localhost:5174/"
+        "post.logout.redirect.uris": "http://localhost:8089/##http://localhost:8088/##http://localhost:5174/"
       },
       "fullScopeAllowed": true
     },

@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.northwood</groupId>
+        <artifactId>northwood-erp</artifactId>
+        <version>0.2.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>erp-graphql-bff</artifactId>
+    <name>Northwood :: ERP GraphQL BFF</name>
+    <description>
+        GraphQL Backend-for-Frontend (port 8088), parallel to erp-web-ui-bff.
+        One typed query stitches a sales order across sales / product /
+        inventory / reporting with DataLoader batching, a placeOrder mutation,
+        and a live *.events Kafka subscription. DTOs are mirrored locally so the
+        module carries no dependency on the service / shared modules (same
+        "stay light" intent as erp-web-ui-bff). See docs/graphql.md and
+        docs/read-architecture.md (step 2).
+    </description>
+
+    <properties>
+        <!-- Not managed by the Spring Boot BOM. 24.0 is the newest published
+             release; it runs against the graphql-java 25.0 that
+             spring-boot-starter-graphql pulls in (the Coercing scalar API is
+             unchanged 24→25). Newest numeric version verified on Maven Central. -->
+        <graphql-extended-scalars.version>24.0</graphql-extended-scalars.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-graphql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Subscription transport: GraphQL-over-WebSocket so GraphiQL can run
+             the events subscription. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
+        <!-- OIDC code flow against Keycloak — same wiring as erp-web-ui-bff.
+             The BFF holds the user's tokens in the (Redis-backed) session and
+             forwards them as Bearer to the seven resource-server services. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-client</artifactId>
+        </dependency>
+
+        <!-- Distributed sessions (read-architecture step 1): the OIDC session +
+             OAuth2 authorized client live in Redis, so this BFF can restart /
+             scale without logging users out. Mirrors erp-web-ui-bff. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+        </dependency>
+
+        <!-- Subscription source: consume the *.events topics. -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+
+        <!-- BigDecimal / Date / DateTime custom scalars. -->
+        <dependency>
+            <groupId>com.graphql-java</groupId>
+            <artifactId>graphql-java-extended-scalars</artifactId>
+            <version>${graphql-extended-scalars.version}</version>
+        </dependency>
+
+        <!-- Actuator + Prometheus registry for parity with erp-web-ui-bff
+             (health probe + RED metrics scrape). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.graphql</groupId>
+            <artifactId>spring-graphql-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

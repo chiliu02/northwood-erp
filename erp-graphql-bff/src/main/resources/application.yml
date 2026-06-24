@@ -1,0 +1,65 @@
+spring:
+  application:
+    name: erp-graphql-bff
+  profiles:
+    default: dev
+  # Distributed session store (read-architecture step 1) — same as
+  # erp-web-ui-bff: the OIDC session + OAuth2 authorized client (Keycloak
+  # tokens, via GraphqlSecurityConfig's session-backed client repository) live
+  # in Redis, so this BFF survives a restart and can run more than one replica.
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  session:
+    store-type: redis
+    timeout: 30m
+  security:
+    oauth2:
+      client:
+        registration:
+          # Same confidential code flow + client as erp-web-ui-bff. The
+          # northwood-bff Keycloak client must list this BFF's redirect URI
+          # (http://localhost:8088/login/oauth2/code/keycloak) among its valid
+          # redirect URIs — see config/keycloak/northwood-realm.json.
+          keycloak:
+            provider: keycloak
+            client-id: northwood-bff
+            client-secret: ${KEYCLOAK_BFF_CLIENT_SECRET:northwood-bff-secret}
+            authorization-grant-type: authorization_code
+            scope: openid,profile,email
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+        provider:
+          keycloak:
+            issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/northwood}
+            user-name-attribute: preferred_username
+  graphql:
+    graphiql:
+      enabled: true          # interactive IDE at /graphiql
+    websocket:
+      path: /graphql         # subscriptions transport (same path as the HTTP endpoint)
+
+server:
+  port: 8088
+
+# Health probe + Prometheus scrape parity with erp-web-ui-bff.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+
+# Per-target service URLs (only the four the GraphQL graph traverses). Override
+# per environment via NORTHWOOD_BFF_TARGETS_* env vars.
+northwood:
+  bff:
+    targets:
+      product:   http://localhost:8081
+      sales:     http://localhost:8082
+      inventory: http://localhost:8083
+      finance:   http://localhost:8086
+      reporting: http://localhost:8087
+
+logging:
+  level:
+    com.northwood.graphqlbff: INFO

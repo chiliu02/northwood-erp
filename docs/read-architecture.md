@@ -200,10 +200,10 @@ go in `erp-web-ui-bff`'s `RouteTable` as usual.
 
 Each step is independently valuable and de-risks the next:
 
-1. **Redis sessions** — smallest change, unblocks scaling/restart of the BFFs (incl. the GraphQL one). Prereq
-   for running GraphQL in anything but single-instance.
-2. **GraphQL BFF (queries + DataLoader)** — the composition layer; immediately useful over the existing REST
-   services.
+1. **Redis sessions** ✅ *shipped* — smallest change, unblocks scaling/restart of the BFFs (incl. the GraphQL
+   one). Prereq for running GraphQL in anything but single-instance. (`erp-web-ui-bff` + `erp-graphql-bff`.)
+2. **GraphQL BFF (queries + DataLoader + mutation + subscription)** ✅ *shipped* — the composition layer over
+   the existing REST services. New `erp-graphql-bff` module (port 8088); see `docs/graphql.md`.
 3. **Redis cache-aside on reporting** — speeds up the resolvers GraphQL now drives; introduces event-driven
    eviction (the wiring ES will reuse).
 4. **Elasticsearch search-service (A→B→C)** — add the `search` field to GraphQL once ES exists; reuse the
