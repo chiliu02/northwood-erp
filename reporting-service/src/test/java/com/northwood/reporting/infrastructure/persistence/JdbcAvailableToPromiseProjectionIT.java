@@ -17,6 +17,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import com.northwood.reporting.infrastructure.cache.ReportingCacheEvictor;
+import org.springframework.cache.support.NoOpCacheManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.lifecycle.Startables;
@@ -52,7 +54,7 @@ class JdbcAvailableToPromiseProjectionIT {
         DATA_SOURCE.setPassword(POSTGRES.getPassword());
         DATA_SOURCE.setConnectionInitSql("SET search_path = reporting, shared");
         JDBC = new JdbcTemplate(DATA_SOURCE);
-        PROJECTION = new JdbcAvailableToPromiseProjection(JDBC);
+        PROJECTION = new JdbcAvailableToPromiseProjection(JDBC, new ReportingCacheEvictor(new NoOpCacheManager()));
     }
 
     private static void applySqlFile(Path file) {

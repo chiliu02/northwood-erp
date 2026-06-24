@@ -2,11 +2,13 @@ package com.northwood.reporting.infrastructure.persistence;
 
 import com.northwood.reporting.application.dto.AvailableToPromiseView;
 import com.northwood.reporting.application.AvailableToPromiseQueryPort;
+import com.northwood.reporting.infrastructure.cache.ReportingCacheNames;
 import java.sql.Date;
 import java.sql.Timestamp;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -53,6 +55,7 @@ public class JdbcAvailableToPromiseQueryPort implements AvailableToPromiseQueryP
     }
 
     @Override
+    @Cacheable(cacheNames = ReportingCacheNames.ATP, key = "#productId")
     public Optional<AvailableToPromiseView> findByProductId(UUID productId) {
         List<AvailableToPromiseView> rows = jdbc.query(
             SELECT_BASE + " WHERE product_id = ?", MAPPER, productId);

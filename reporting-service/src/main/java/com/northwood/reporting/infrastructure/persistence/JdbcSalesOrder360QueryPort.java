@@ -2,11 +2,13 @@ package com.northwood.reporting.infrastructure.persistence;
 
 import com.northwood.reporting.application.dto.SalesOrder360View;
 import com.northwood.reporting.application.SalesOrder360QueryPort;
+import com.northwood.reporting.infrastructure.cache.ReportingCacheNames;
 import java.sql.Date;
 import java.sql.Timestamp;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -67,6 +69,7 @@ public class JdbcSalesOrder360QueryPort implements SalesOrder360QueryPort {
     }
 
     @Override
+    @Cacheable(cacheNames = ReportingCacheNames.SALES_ORDER_360, key = "#salesOrderHeaderId")
     public Optional<SalesOrder360View> findBySalesOrderId(UUID salesOrderHeaderId) {
         List<SalesOrder360View> rows = jdbc.query(
             SELECT_ALL + " WHERE sales_order_header_id = ?",

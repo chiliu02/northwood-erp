@@ -1,6 +1,7 @@
 package com.northwood.reporting.infrastructure.persistence;
 
 import com.northwood.reporting.application.inbox.FinancialDashboardProjection;
+import com.northwood.reporting.infrastructure.cache.ReportingCacheEvictor;
 import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.sql.Date;
@@ -11,13 +12,21 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Each write evicts the {@code financial-dashboard} cache (after the
+ * transaction commits) so the next {@code findSnapshot} recomputes. The
+ * scheduled {@code FinancialDashboardBalanceWorker} drives the same eviction
+ * through {@link #refreshDailyBalances}. See {@link ReportingCacheEvictor}.
+ */
 @Repository
 public class JdbcFinancialDashboardProjection implements FinancialDashboardProjection {
 
     private final JdbcTemplate jdbc;
+    private final ReportingCacheEvictor cacheEvictor;
 
-    public JdbcFinancialDashboardProjection(JdbcTemplate jdbc) {
+    public JdbcFinancialDashboardProjection(JdbcTemplate jdbc, ReportingCacheEvictor cacheEvictor) {
         this.jdbc = jdbc;
+        this.cacheEvictor = cacheEvictor;
     }
 
     @Override
@@ -26,6 +35,7 @@ public class JdbcFinancialDashboardProjection implements FinancialDashboardProje
         BigDecimal v = amount == null ? BigDecimal.ZERO : amount;
         if (v.signum() <= 0) return;
         upsertMoney("sales_revenue", v, currencyCode, occurredAt, true);
+        cacheEvictor.evictFinancialDashboard();
     }
 
     @Override
@@ -34,6 +44,7 @@ public class JdbcFinancialDashboardProjection implements FinancialDashboardProje
         BigDecimal v = amount == null ? BigDecimal.ZERO : amount;
         if (v.signum() <= 0) return;
         upsertMoney("cost_of_goods_sold", v, currencyCode, occurredAt, true);
+        cacheEvictor.evictFinancialDashboard();
     }
 
     @Override
@@ -42,6 +53,7 @@ public class JdbcFinancialDashboardProjection implements FinancialDashboardProje
         BigDecimal v = amount == null ? BigDecimal.ZERO : amount;
         if (v.signum() <= 0) return;
         upsertMoney("cash_received", v, currencyCode, occurredAt, false);
+        cacheEvictor.evictFinancialDashboard();
     }
 
     @Override
@@ -50,6 +62,7 @@ public class JdbcFinancialDashboardProjection implements FinancialDashboardProje
         BigDecimal v = amount == null ? BigDecimal.ZERO : amount;
         if (v.signum() <= 0) return;
         upsertMoney("cash_paid", v, currencyCode, occurredAt, false);
+        cacheEvictor.evictFinancialDashboard();
     }
 
     @Override
@@ -115,6 +128,7 @@ public class JdbcFinancialDashboardProjection implements FinancialDashboardProje
             currency,    // open SO filter
             currency     // open PO filter
         );
+        cacheEvictor.evictFinancialDashboard();
     }
 
     private void upsertMoney(String column, BigDecimal delta, String currencyCode,

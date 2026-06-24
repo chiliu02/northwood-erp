@@ -204,8 +204,9 @@ Each step is independently valuable and de-risks the next:
    one). Prereq for running GraphQL in anything but single-instance. (`erp-web-ui-bff` + `erp-graphql-bff`.)
 2. **GraphQL BFF (queries + DataLoader + mutation + subscription)** ✅ *shipped* — the composition layer over
    the existing REST services. New `erp-graphql-bff` module (port 8088); see `docs/graphql.md`.
-3. **Redis cache-aside on reporting** — speeds up the resolvers GraphQL now drives; introduces event-driven
-   eviction (the wiring ES will reuse).
+3. **Redis cache-aside on reporting** ✅ *shipped* — cache-aside on the three hot read models (ATP /
+   financial-dashboard / sales-order-360) with event-driven, after-commit eviction at the projection-write
+   seam (the wiring ES will reuse). `reporting-service`; see `docs/redis.md` Part 2.
 4. **Elasticsearch search-service (A→B→C)** — add the `search` field to GraphQL once ES exists; reuse the
    eviction-from-inbox pattern from step 3.
 5. **GraphQL subscriptions + cross-layer fan-out** — the final `event → ES + Redis + GraphQL` unification.

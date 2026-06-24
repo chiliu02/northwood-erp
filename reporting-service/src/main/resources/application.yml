@@ -3,6 +3,20 @@ spring:
     name: reporting-service
   profiles:
     default: dev
+  # Cache-aside on the hot read models, backed by Redis and invalidated from the
+  # event stream (docs/redis.md Part 2). The 60s TTL is the backstop — the
+  # primary invalidation is the per-write evict in the Jdbc*Projection writers
+  # (ReportingCacheEvictor). Redis is an accelerator, not a hard dependency:
+  # ReportingCacheConfig installs a logging error handler so reads fall through
+  # to Postgres when Redis is down.
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  cache:
+    type: redis
+    redis:
+      time-to-live: 60s
   datasource:
     url: ${REPORTING_DB_URL:jdbc:postgresql://localhost:5432/northwood_erp?currentSchema=reporting,shared}
     username: ${REPORTING_DB_USER:postgres}

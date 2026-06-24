@@ -66,6 +66,18 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Cache-aside on the hot read models (ATP / financial dashboard /
+             sales-order-360), backed by Redis and invalidated from the Kafka
+             event stream — see docs/redis.md Part 2. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
         <!-- Liquibase comes transitively via the shared module. -->
 
         <dependency>

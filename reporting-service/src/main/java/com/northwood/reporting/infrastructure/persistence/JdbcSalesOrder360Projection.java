@@ -4,6 +4,7 @@ package com.northwood.reporting.infrastructure.persistence;
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
 import com.northwood.inventory.domain.events.StockReserved;
 import com.northwood.reporting.application.inbox.SalesOrder360Projection;
+import com.northwood.reporting.infrastructure.cache.ReportingCacheEvictor;
 import com.northwood.shared.domain.Currencies;
 import java.math.BigDecimal;
 import java.sql.Date;
@@ -34,9 +35,11 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
     private static final String STOCK_STATUS_NOT_AVAILABLE = "not_available";
 
     private final JdbcTemplate jdbc;
+    private final ReportingCacheEvictor cacheEvictor;
 
-    public JdbcSalesOrder360Projection(JdbcTemplate jdbc) {
+    public JdbcSalesOrder360Projection(JdbcTemplate jdbc, ReportingCacheEvictor cacheEvictor) {
         this.jdbc = jdbc;
+        this.cacheEvictor = cacheEvictor;
     }
 
     @Override
@@ -122,6 +125,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
         );
         log.info("seeded sales_order_360 for {} ({}) total={} payment_terms={}",
             orderNumber, salesOrderHeaderId, totalAmount, pt);
+        cacheEvictor.evictSalesOrder360(salesOrderHeaderId);
     }
 
     @Override
@@ -171,6 +175,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
             actorUserId
         );
         log.info("refreshed sales_order_360 total for {} → {} ({})", salesOrderHeaderId, total, eventType);
+        cacheEvictor.evictSalesOrder360(salesOrderHeaderId);
     }
 
     @Override
@@ -213,6 +218,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
             Timestamp.from(occurredAt == null ? Instant.now() : occurredAt),
             actorUserId
         );
+        cacheEvictor.evictSalesOrder360(salesOrderHeaderId);
     }
 
     @Override
@@ -299,6 +305,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
             actorUserId,
             orderStatusTarget, orderStatusTarget
         );
+        cacheEvictor.evictSalesOrder360(salesOrderHeaderId);
     }
 
     @Override
@@ -377,6 +384,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
             Timestamp.from(occurredAt == null ? Instant.now() : occurredAt),
             actorUserId
         );
+        cacheEvictor.evictSalesOrder360(salesOrderHeaderId);
     }
 
     @Override
@@ -440,6 +448,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
             Timestamp.from(occurredAt == null ? Instant.now() : occurredAt),
             actorUserId
         );
+        cacheEvictor.evictSalesOrder360(salesOrderHeaderId);
     }
 
     @Override
@@ -518,6 +527,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
             orderFullyShipped,                                  // shipment_status CASE
             orderFullyShipped, orderFullyShipped, orderFullyShipped  // order_status CASE (completed / shipped / partial)
         );
+        cacheEvictor.evictSalesOrder360(salesOrderHeaderId);
     }
 
     @Override
@@ -563,6 +573,7 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
             Timestamp.from(occurredAt == null ? Instant.now() : occurredAt),
             actorUserId
         );
+        cacheEvictor.evictSalesOrder360(salesOrderHeaderId);
     }
 
     @Override
@@ -648,5 +659,6 @@ public class JdbcSalesOrder360Projection implements SalesOrder360Projection {
             Timestamp.from(occurredAt == null ? Instant.now() : occurredAt),
             actorUserId
         );
+        cacheEvictor.evictSalesOrder360(salesOrderHeaderId);
     }
 }

@@ -1,10 +1,13 @@
 package com.northwood.reporting.application.dto;
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
+// Serializable so the read-side Redis cache can store it (Spring's default
+// Redis cache uses JDK value serialization) — see ReportingCacheConfig.
 public record SalesOrder360View(
     UUID salesOrderHeaderId,
     String orderNumber,
@@ -29,4 +32,4 @@ public record SalesOrder360View(
     String lastEventType,
     Instant lastEventAt,
     Instant updatedAt
-) {}
+) implements Serializable {}

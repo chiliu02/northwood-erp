@@ -2,6 +2,7 @@ package com.northwood.reporting.infrastructure.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.northwood.reporting.infrastructure.cache.ReportingCacheEvictor;
 import com.zaxxer.hikari.HikariDataSource;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -17,6 +18,7 @@ import java.time.ZoneId;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.cache.support.NoOpCacheManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.lifecycle.Startables;
@@ -53,7 +55,7 @@ class JdbcFinancialDashboardProjectionIT {
         DATA_SOURCE.setPassword(POSTGRES.getPassword());
         DATA_SOURCE.setConnectionInitSql("SET search_path = reporting, shared");
         JDBC = new JdbcTemplate(DATA_SOURCE);
-        PROJECTION = new JdbcFinancialDashboardProjection(JDBC);
+        PROJECTION = new JdbcFinancialDashboardProjection(JDBC, new ReportingCacheEvictor(new NoOpCacheManager()));
     }
 
     private static void applySqlFile(Path file) {

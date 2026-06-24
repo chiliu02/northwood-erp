@@ -1,6 +1,7 @@
 package com.northwood.reporting.infrastructure.persistence;
 
 import com.northwood.reporting.application.inbox.AvailableToPromiseProjection;
+import com.northwood.reporting.infrastructure.cache.ReportingCacheEvictor;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -12,14 +13,20 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * JDBC adapter for {@link AvailableToPromiseProjection}. See the
  * interface for which event drives which column.
+ *
+ * <p>Every write evicts the touched product's {@code atp} cache entry (after the
+ * handler transaction commits) so the next read reflects the new availability —
+ * see {@link ReportingCacheEvictor}.
  */
 @Repository
 public class JdbcAvailableToPromiseProjection implements AvailableToPromiseProjection {
 
     private final JdbcTemplate jdbc;
+    private final ReportingCacheEvictor cacheEvictor;
 
-    public JdbcAvailableToPromiseProjection(JdbcTemplate jdbc) {
+    public JdbcAvailableToPromiseProjection(JdbcTemplate jdbc, ReportingCacheEvictor cacheEvictor) {
         this.jdbc = jdbc;
+        this.cacheEvictor = cacheEvictor;
     }
 
     @Override
@@ -30,6 +37,7 @@ public class JdbcAvailableToPromiseProjection implements AvailableToPromiseProje
     ) {
         BigDecimal qty = orderedQuantity == null ? BigDecimal.ZERO : orderedQuantity;
         upsertWith(productId, productSku, productName, "incoming_from_purchase", qty);
+        cacheEvictor.evictAtp(productId);
     }
 
     @Override
@@ -66,6 +74,7 @@ public class JdbcAvailableToPromiseProjection implements AvailableToPromiseProje
             """,
             productId, productSku, productName, qty, qty
         );
+        cacheEvictor.evictAtp(productId);
     }
 
     @Override
@@ -74,6 +83,7 @@ public class JdbcAvailableToPromiseProjection implements AvailableToPromiseProje
         BigDecimal qty = reservedQuantity == null ? BigDecimal.ZERO : reservedQuantity;
         if (qty.signum() <= 0) return;
         upsertWith(productId, "(pending)", "(pending)", "reserved_for_sales", qty);
+        cacheEvictor.evictAtp(productId);
     }
 
     @Override
@@ -82,6 +92,7 @@ public class JdbcAvailableToPromiseProjection implements AvailableToPromiseProje
         BigDecimal qty = reservedQuantity == null ? BigDecimal.ZERO : reservedQuantity;
         if (qty.signum() <= 0) return;
         upsertWith(productId, "(pending)", "(pending)", "reserved_for_production", qty);
+        cacheEvictor.evictAtp(productId);
     }
 
     @Override
@@ -121,6 +132,7 @@ public class JdbcAvailableToPromiseProjection implements AvailableToPromiseProje
             productId, productSku, productName,
             qty, qty, qty, qty, qty
         );
+        cacheEvictor.evictAtp(productId);
     }
 
     @Override
@@ -132,6 +144,7 @@ public class JdbcAvailableToPromiseProjection implements AvailableToPromiseProje
         BigDecimal qty = plannedQuantity == null ? BigDecimal.ZERO : plannedQuantity;
         if (qty.signum() <= 0) return;
         upsertWith(productId, productSku, productName, "incoming_from_production", qty);
+        cacheEvictor.evictAtp(productId);
     }
 
     @Override
@@ -171,6 +184,7 @@ public class JdbcAvailableToPromiseProjection implements AvailableToPromiseProje
             """,
             productId, productSku, completed, completed, planned, planned
         );
+        cacheEvictor.evictAtp(productId);
     }
 
     @Override
@@ -190,6 +204,7 @@ public class JdbcAvailableToPromiseProjection implements AvailableToPromiseProje
             """,
             productId, sku, name
         );
+        cacheEvictor.evictAtp(productId);
     }
 
     /**
@@ -255,5 +270,6 @@ public class JdbcAvailableToPromiseProjection implements AvailableToPromiseProje
             """,
             productId, Timestamp.from(discontinuedAt)
         );
+        cacheEvictor.evictAtp(productId);
     }
 }

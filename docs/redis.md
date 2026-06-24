@@ -2,7 +2,9 @@
 
 > A **design/plan doc** for introducing Redis to Northwood, grounded in the real module/package layout.
 > Two parts: (1) distributed BFF sessions, (2) cache-aside on reporting read models with event-driven
-> invalidation. Not yet implemented.
+> invalidation. **Both parts are now implemented.** One implementation deviation from this plan is
+> called out inline below: eviction lives at the **projection-write seam**, not on the inbox handlers
+> (the handler-level `@CacheEvict` the plan sketched would never fire — see *Event-driven eviction*).
 
 ---
 
@@ -127,14 +129,27 @@ subpackages. Each handler knows the entity it just changed, so it can evict the 
 | `financial-dashboard` | `application.inbox.dashboard.*` (`CustomerInvoiceCreatedHandler`, `CustomerPaymentReceivedHandler`, `SupplierPaymentMadeHandler`, `SalesOrderShippedHandler`, …) **and** the scheduled `infrastructure.dashboard.FinancialDashboardBalanceWorker` | invoice/payment/shipment events + periodic balance recompute |
 | `sales-order-360` (by id) | the `SalesOrder360*Handler` family (`SalesOrderPlaced`, `…LineAdded/QuantityChanged/Removed`, `…StockReserved`, `…ReadyToShip`, `…Shipped`, `…Compensated`, …) | any event mutating that order's 360 view |
 
-Mechanism: `@CacheEvict(cacheNames = "...", key = "...")` on the handler's `apply(...)`, **or** an explicit
-`cache.evict(key)` call right after the projection write. Evict the **specific key**, not the whole cache.
+**Mechanism — as shipped (deviates from the sketch above).** `@CacheEvict` on the handler's `apply(...)`
+**does not work here**: every handler extends `AbstractInboxHandler`, whose `@Transactional handle()` calls
+`apply()` by **self-invocation**, which bypasses the CGLIB proxy — the annotation never fires. So eviction
+moved to the **single projection-write seam** each read model funnels through (`Jdbc{AvailableToPromise,
+FinancialDashboard,SalesOrder360}Projection`), via a small `ReportingCacheEvictor` the projection calls as a
+separate bean. This also collapses the eviction surface from ~25 handlers to 3 projections, each of which
+already holds the exact key it just wrote, and covers the scheduled `FinancialDashboardBalanceWorker` for
+free (it writes through `FinancialDashboardProjection.refreshDailyBalances`). ATP and 360 evict the
+**specific key**; the financial-dashboard cache (keyed only by currency, a few entries, aggregating across
+many projections) is cleared whole.
 
 ```java
-// in the inbox handler that just updated the ATP projection for a product
-@CacheEvict(cacheNames = "atp", key = "#productId")
-protected void apply(...) { /* projection write */ }
+// JdbcAvailableToPromiseProjection — after the upsert that changed availability
+upsertWith(productId, productSku, productName, "incoming_from_purchase", qty);
+cacheEvictor.evictAtp(productId);   // deferred to afterCommit — see below
 ```
+
+The evict is **deferred to `afterCommit`** of the handler transaction (`ReportingCacheEvictor` registers a
+`TransactionSynchronization`): evicting before commit would let a concurrent read in the gap re-populate the
+entry from the not-yet-committed row and pin it for the full TTL — the very race the consistency note warns
+about. With no transaction in scope it evicts immediately. The per-cache TTL stays the backstop.
 
 ## Consistency note
 
@@ -193,10 +208,13 @@ logical DBs or instances.
   redis); `BffAccessTokenAccessor.java` in both BFFs (switch to `OAuth2AuthorizedClientRepository`, the gotcha
   above), plus a `HttpSessionOAuth2AuthorizedClientRepository` `@Bean` in `BffSecurityConfig` (the in-memory-service
   trap, the gotcha above) — `BffSecurityConfig` is otherwise unchanged.
-- **Cache:** `reporting-service/pom.xml` (deps); `@EnableCaching` on `ReportingApplication`;
-  `@Cacheable` on `Jdbc{AvailableToPromise,FinancialDashboard,SalesOrder360}QueryPort`;
-  `@CacheEvict` (or explicit evict) in the matching `application/inbox/{atp,dashboard,…}` handlers and
-  `FinancialDashboardBalanceWorker`.
+- **Cache:** `reporting-service/pom.xml` (deps: `spring-boot-starter-cache` + `spring-boot-starter-data-redis`);
+  `@EnableCaching` on `ReportingApplication`; `infrastructure/cache/` holds `ReportingCacheNames` (shared
+  cache-name constants), `ReportingCacheConfig` (TTL via property + a `LoggingCacheErrorHandler` so reads fall
+  through to Postgres when Redis is down), and `ReportingCacheEvictor` (after-commit eviction);
+  `@Cacheable` on `Jdbc{AvailableToPromise,FinancialDashboard,SalesOrder360}QueryPort`; `cacheEvictor.evict*`
+  calls in the matching `Jdbc*Projection` writers (which also covers `FinancialDashboardBalanceWorker`).
+  The three cached View/Snapshot records are `Serializable` (Boot's default Redis value serializer is JDK-based).
 - **Infra:** `docker-compose*.yml` (+ the seed compose) — add `redis`.
 
 ---
@@ -218,8 +236,11 @@ logical DBs or instances.
    → confirm the `atp::{productId}` key is evicted and the next `GET` is a fresh `miss` reflecting new numbers.
 4. Watch the cache-hit-ratio panel in Grafana under read load.
 
-**Tests:** an `@SpringBootTest` slice with an embedded/Testcontainers Redis asserting (a) second read hits the
-cache (mock the JDBC port, verify it's called once), and (b) the relevant inbox handler evicts the right key.
+**Tests:** `ReportingCacheEvictorTest` (plain unit test) covers the genuinely new logic — the no-transaction
+fast path evicts immediately, an in-transaction evict is deferred until `afterCommit`, financial-dashboard
+clears the whole cache, and a missing cache is tolerated. The `@Cacheable`/`@Cacheable`-key wiring and Redis
+serialization are verified by the manual end-to-end above (the constants are shared between read and evict
+sides, so a cache-name typo can't drift them apart).
 
 ---
 

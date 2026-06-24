@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.northwood.finance.domain.events.CustomerPaymentReceived;
 import com.northwood.inventory.domain.events.StockReserved;
+import com.northwood.reporting.infrastructure.cache.ReportingCacheEvictor;
 import com.zaxxer.hikari.HikariDataSource;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -20,6 +21,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.cache.support.NoOpCacheManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.lifecycle.Startables;
@@ -63,7 +65,7 @@ class JdbcSalesOrder360ProjectionIT {
         DATA_SOURCE.setPassword(POSTGRES.getPassword());
         DATA_SOURCE.setConnectionInitSql("SET search_path = reporting, shared");
         JDBC = new JdbcTemplate(DATA_SOURCE);
-        PROJECTION = new JdbcSalesOrder360Projection(JDBC);
+        PROJECTION = new JdbcSalesOrder360Projection(JDBC, new ReportingCacheEvictor(new NoOpCacheManager()));
     }
 
     private static void applySqlFile(Path file) {

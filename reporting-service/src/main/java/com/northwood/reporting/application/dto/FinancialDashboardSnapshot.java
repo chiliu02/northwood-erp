@@ -1,5 +1,6 @@
 package com.northwood.reporting.application.dto;
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.Instant;
 
@@ -25,4 +26,4 @@ public record FinancialDashboardSnapshot(
     int openPurchaseOrdersCount,
     int openWorkOrdersCount,
     Instant asOf
-) {}
+) implements Serializable {}

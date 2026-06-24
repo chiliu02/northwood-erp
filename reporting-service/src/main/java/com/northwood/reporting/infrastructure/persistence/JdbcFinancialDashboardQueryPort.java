@@ -3,6 +3,7 @@ package com.northwood.reporting.infrastructure.persistence;
 import com.northwood.reporting.application.dto.FinancialDashboardSnapshot;
 import com.northwood.reporting.application.dto.FinancialDashboardView;
 import com.northwood.reporting.application.FinancialDashboardQueryPort;
+import com.northwood.reporting.infrastructure.cache.ReportingCacheNames;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Timestamp;
@@ -10,6 +11,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -71,6 +73,7 @@ public class JdbcFinancialDashboardQueryPort implements FinancialDashboardQueryP
     }
 
     @Override
+    @Cacheable(cacheNames = ReportingCacheNames.FINANCIAL_DASHBOARD, key = "#currencyCode")
     public FinancialDashboardSnapshot findSnapshot(String currencyCode) {
         // AR = amounts billed to customers but not yet collected — only
         // invoiced lines count (placed-but-not-yet-invoiced sits in backlog,
