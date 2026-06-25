@@ -74,7 +74,7 @@ Northwood/
 |---|---|---|
 | JDK | 21 | All Java modules |
 | Maven | 3.9+ | Multi-module build |
-| Docker + Compose | recent | Postgres 17, Kafka 4.1.2, Keycloak 26, Redis 7, Elasticsearch 9 + Kibana, LGTM observability (Prometheus/Tempo/Loki/Grafana) |
+| Docker + Compose | recent | Postgres 17, Kafka 4.1.2, Keycloak 26, LGTM observability (Prometheus/Tempo/Loki/Grafana) |
 | Node.js + npm | 20+ | The React/Vite ERP SPA |
 
 Developed on Windows (PowerShell), but the build is OS-neutral — macOS and Linux work with the same Maven / npm / Docker commands; translate the PowerShell snippets below to your shell.
@@ -84,7 +84,7 @@ Developed on Windows (PowerShell), but the build is OS-neutral — macOS and Lin
 Quick backend smoke:
 
 ```powershell
-docker compose up -d                        # infra, empty schema (postgres + kafka + keycloak)
+docker compose up -d                        # infra, empty schema (postgres + kafka + keycloak + redis + elasticsearch + kibana)
 # ↑ for a database pre-loaded with demo fixtures instead, layer in the seed override:
 #   docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d
 mvn install -DskipTests
@@ -95,6 +95,8 @@ mvn -pl product-service spring-boot:run     # one service in one terminal
 For the **operational ERP UI**, follow [`erp-web-ui/README.md`](erp-web-ui/README.md): bring up Postgres + reporting-service + `erp-web-ui-bff`, then `npm run dev` in `erp-web-ui/` and open `http://localhost:5174` and sign in. The full multi-service walkthrough lives in **`docs/demo-script.md`**.
 
 The **LGTM observability tier** comes up with the same `docker compose up`. With services running under the `kafka` profile, open **Grafana at <http://localhost:3000>** (anonymous admin) to watch a single placed order as one correlated trace (Tempo) → logs (Loki) → RED metrics (Prometheus) across sales → inventory → finance. Wiring + worked example: [`docs/observability.md`](docs/observability.md).
+
+For the **read side**, run `search-service` and `erp-graphql-bff` under the `kafka` profile too. Hit Elasticsearch search directly (`GET http://localhost:8093/api/search/products?q=labtop`, fuzzy/faceted) or open **GraphiQL at <http://localhost:8088/graphiql>** to run the `search` query that hydrates each hit with live stock/ATP and the live `events` subscription over WebSocket. Design: [`docs/read-architecture.md`](docs/read-architecture.md); walkthrough: `docs/demo-script.md` (Demo 11).
 
 ## Demo credentials & secrets
 
