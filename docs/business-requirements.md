@@ -21,6 +21,7 @@ Each requirement carries a stable identifier (`REQ-<context>-<seq>`) so it can b
 | `REQ-RPT-*`   | Reporting (read-only views) |
 | `REQ-XBC-*`   | Cross-context business flows |
 | `REQ-SEC-*`   | Security / roles |
+| `REQ-READ-*`  | Read architecture (search / GraphQL / caching) |
 
 Each entry follows this shape, with a delivery-status icon directly after the code — **✅ shipped · ⚠️ partially shipped · ❌ not shipped** (planned / deferred):
 
@@ -757,6 +758,46 @@ Demo accounts include one user per role.
 
 **REQ-SEC-002 ✅ — Audit trail** *(shipped)*
 Every state-changing API call is recorded in the audit trail with: actor, endpoint, body summary, target aggregate. Visible via `GET /api/audit-entries`.
+
+---
+
+## 10. Read architecture — search, GraphQL, caching (REQ-READ)
+
+The read side is layered on the same event log that feeds reporting (one write → several read-side reactions). Full design: `docs/read-architecture.md` (with `elasticsearch.md`, `redis.md`, `graphql.md`). None of these change the write side; they are derived, rebuildable views.
+
+### 10.1 Search (Elasticsearch)
+
+**REQ-READ-001 ✅ — Product catalog search** *(shipped)*
+Full-text, **typo-tolerant** (fuzzy) product search with relevance ranking, `productType`/`status`/price filters, terms **facets** (counts per bucket), and prefix **autocomplete** — the things a SQL `LIKE` can't do. Served by the new `search-service` (port 8093) from an Elasticsearch `products` index, kept current by projecting `product.*` events.
+*URL:* `GET /api/search/products?q=&type=&status=&minPrice=&maxPrice=` + `GET /api/search/products/suggest?q=`.
+*Acceptance:* `q=labtop` returns the "Laptop" SKU; the response carries `productType`/`status` facet counts.
+
+**REQ-READ-002 ✅ — Global cross-service search** *(shipped)*
+One search box over every bounded context: `GET /api/search?q=acme` returns matching customers, sales orders, suppliers, purchase orders, invoices and products in one relevance-ranked list, with a per-type facet. Backed by a single Elasticsearch `entities` index (a `type` discriminator) fed by `product`/`sales`/`purchasing`/`finance` events. The search-side successor to the BFF's in-memory audit fan-out.
+*URL:* `GET /api/search?q=&type=`.
+
+**REQ-READ-003 ✅ — Audit / event analytics** *(shipped)*
+Every `*.events` message is projected into an Elasticsearch `audit-events` index for full-text + time-range audit search and aggregations (events per service / type), with Kibana over the same index. Retires (succeeds) the in-memory cross-service audit timeline.
+*URL:* `GET /api/search/audit?q=&service=&eventType=`.
+
+### 10.2 GraphQL aggregation
+
+**REQ-READ-010 ✅ — Aggregated GraphQL read API** *(shipped)*
+A GraphQL Backend-for-Frontend (`erp-graphql-bff`, port 8088) stitches the REST services into one typed graph with DataLoader batching (one upstream call per type, not per row), a `placeOrder` mutation, and field-selected composition. Reached through the same OIDC/proxy path as the SPAs.
+
+**REQ-READ-011 ✅ — Search results drill into live data (find → hydrate)** *(shipped)*
+A GraphQL `search` query finds via Elasticsearch (stale-tolerant ranking) and hydrates each hit's **fresh** authoritative record live from the owning service — a product hit exposes current price + live stock/ATP, an order/customer hit its current state. "Find stale-tolerant, show fresh": ranking may lag, the displayed values do not.
+
+**REQ-READ-012 ✅ — Live event subscription feed** *(shipped)*
+A GraphQL subscription (`events(aggregateType, eventType, sourceService)`) pushes domain events live over WebSocket as they flow on the Kafka log, optionally filtered (watch one aggregate/event type). The live-push reaction of the shared read-side backbone.
+
+### 10.3 Caching & sessions (Redis)
+
+**REQ-READ-020 ✅ — Read-model cache-aside** *(shipped)*
+Reporting's hot read models (ATP, financial-dashboard, sales-order-360) are cache-aside in Redis with **event-driven, after-commit eviction** (the projection write that changes a row evicts its key) plus a short TTL backstop. Degrades gracefully — a Redis outage falls through to Postgres, never an error.
+
+**REQ-READ-021 ✅ — Distributed BFF sessions** *(shipped)*
+Both BFFs keep their OIDC session + Keycloak tokens in Redis (Spring Session), so a BFF restart no longer logs users out and the BFFs can run more than one replica.
 
 ---
 

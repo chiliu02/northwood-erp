@@ -546,6 +546,7 @@
 
 <h2>Cross-axis index</h2>
 <p>For each event: who emits it, who consumes it (the consumer-handler), what tables get written (the write-target table), and which saga state machines are driven by it (derived). One row per event class.</p>
+<p><strong>One implicit consumer is not re-listed per row:</strong> <code>search-service</code> additionally runs a catch-all audit projector that consumes <strong>every</strong> <code>*.events</code> message into its Elasticsearch <code>audit-events</code> index (read model C — full-text + per-service/per-type aggregations + Kibana dashboards), the search-side successor to the BFF's in-memory audit fan-out. It is therefore an implicit <code>search</code> consumer of <em>all</em> events; the explicit <code>search</code> consumer rows below cover only its targeted <code>products</code> (read model A) and <code>entities</code> (read model B) indices.</p>
 <div class="filter-bar">
   <input type="search" id="filter-input" placeholder="Filter by event / aggregate / handler / table name…" autocomplete="off">
   <span class="meta" id="filter-count"></span>
@@ -891,6 +892,8 @@ window.NORTHWOOD_EVENTS = [
         desc: `<code>reporting.available_to_promise_view.product_sku</code>, <code>product_name</code> — backfills identity onto pending-stub rows` },
       { dest: "purchasing", name: "purchasing.product-created",
         desc: `<code>purchasing.product_card (product_id, product_sku, product_name, is_purchased)</code> — upserts the name snapshot (so the supplier-price list view shows a SKU/name instead of a raw product UUID) plus a day-zero <code>is_purchased</code> default derived from <code>product_type</code>. Shares the one-row-per-product card with <code>product-discontinued</code> (owns <code>discontinued_at</code>) and <code>product-make-vs-buy</code> (owns the authoritative <code>is_purchased</code>); on-conflict leaves <code>is_purchased</code> alone so a make-vs-buy event that landed first wins` },
+      { dest: "search", name: "search.products + search.entities",
+        desc: `Elasticsearch <code>products</code> index (read model A — full-text/fuzzy/facets/autocomplete) AND <code>entities</code> index (read model B — global cross-service search). Idempotent upsert keyed by product id.` },
     ]
   },
   {
@@ -910,6 +913,8 @@ window.NORTHWOOD_EVENTS = [
         desc: `<code>reporting.available_to_promise_view.discontinued_at</code> — UI consumers filter / grey-out on <code>IS NOT NULL</code>` },
       { dest: "inventory", name: "inventory.product-discontinued",
         desc: `Stamps <code>inventory.product_card.discontinued_at</code> (placeholder for future reorder-alert suppression) AND sets <code>is_purchased=false, is_manufactured=false</code> so make-vs-buy routing classifies discontinued SKUs as unsourceable (logs + skips) rather than dispatching a replenishment. One consolidated <code>product_card</code> projection (the former <code>stock_item</code> was folded in).` },
+      { dest: "search", name: "search.products",
+        desc: `Elasticsearch <code>products</code> index — <code>status='discontinued'</code> (status facet).` },
     ]
   },
   {
@@ -928,6 +933,8 @@ window.NORTHWOOD_EVENTS = [
     consumers: [
       { dest: "sales", name: "sales.product-pricing-projector",
         desc: `<code>sales.product_card.sales_price</code>, <code>currency_code</code>` },
+      { dest: "search", name: "search.products",
+        desc: `Elasticsearch <code>products</code> index — partial update of <code>salesPrice</code>.` },
     ]
   },
   {
@@ -994,7 +1001,10 @@ window.NORTHWOOD_EVENTS = [
     source: "sales",
     aggregate: "Customer",
     event: "CustomerRegistered",
-    consumers: []
+    consumers: [
+      { dest: "search", name: "search.entities",
+        desc: `Elasticsearch <code>entities</code> index (read model B) — indexes the customer (type=customer): name/code/email.` },
+    ]
   },
   {
     source: "sales",
@@ -1074,6 +1084,8 @@ window.NORTHWOOD_EVENTS = [
         desc: `Creates <code>reporting.sales_order_360_view</code> row (order_number, customer_id, customer_name, order_date, requested_delivery_date, currency_code, total_amount, order_status, payment_terms). All lines start at the <code>open</code> band, so the composed header classifies as <code>open</code>.` },
       { dest: "reporting", name: "reporting.dashboard.sales-order-placed",
         desc: `<code>reporting.financial_dashboard_daily.sales_orders_placed_count</code> (per dashboard_date, currency_code)` },
+      { dest: "search", name: "search.entities",
+        desc: `Elasticsearch <code>entities</code> index (read model B) — indexes the order (type=sales_order): order number + customer.` },
     ]
   },
   {
@@ -1153,6 +1165,8 @@ window.NORTHWOOD_EVENTS = [
         desc: `<code>reporting.financial_dashboard_daily.purchase_orders_created_count</code> (per dashboard_date, currency_code)` },
       { dest: "reporting", name: "reporting.material-shortage.po-created",
         desc: `<code>reporting.material_shortage_view.po_ordered_quantity</code>, <code>po_created_at</code> per matching material line; also updates <code>production_planning_board.open_purchase_orders_count</code>` },
+      { dest: "search", name: "search.entities",
+        desc: `Elasticsearch <code>entities</code> index (read model B) — indexes the PO (type=purchase_order): PO number + supplier.` },
     ]
   },
   {
@@ -1173,15 +1187,19 @@ window.NORTHWOOD_EVENTS = [
         desc: `<code>manufacturing.product_card.materials_cost</code>, <code>currency_code</code>, <code>materials_cost_reason</code>, <code>materials_cost_captured_at</code> — rerun for every product whose preferred supplier matches` },
     ]
   },
-  // Supplier master aggregate (onboard / edit / status). No cross-service
-  // consumer today — other services snapshot supplier name/code onto PO lines +
-  // approved-vendor rows rather than projecting supplier master — but the events
-  // are the navigation anchor for a future supplier-directory projection.
+  // Supplier master aggregate (onboard / edit / status). The transactional
+  // services snapshot supplier name/code onto PO lines + approved-vendor rows
+  // rather than projecting supplier master; the search read side is the first
+  // genuine cross-service consumer (global entity search), and the events stay
+  // the navigation anchor for a future supplier-directory projection.
   {
     source: "purchasing",
     aggregate: "Supplier",
     event: "SupplierRegistered",
-    consumers: []
+    consumers: [
+      { dest: "search", name: "search.entities",
+        desc: `Elasticsearch <code>entities</code> index (read model B) — indexes the supplier (type=supplier).` },
+    ]
   },
   {
     source: "purchasing",
@@ -1426,6 +1444,8 @@ window.NORTHWOOD_EVENTS = [
         desc: `<code>reporting.sales_order_360_view.invoiced_amount</code>, <code>invoiced_at</code>` },
       { dest: "reporting", name: "reporting.dashboard.customer-invoice-created",
         desc: `<code>reporting.financial_dashboard_daily.customer_invoices_amount</code> (+= amount, per currency)` },
+      { dest: "search", name: "search.entities",
+        desc: `Elasticsearch <code>entities</code> index (read model B) — indexes the invoice (type=customer_invoice): invoice number + customer.` },
     ]
   },
   {
@@ -1961,6 +1981,29 @@ window.NORTHWOOD_PROJECTIONS = [
       { dest: "reporting", tables: [
         { name: "purchase_order_tracking_view", kind: "read-model",
           events: ["SupplierInvoiceApproved"] },
+      ]},
+    ]
+  },
+
+  // ============================================================
+  // search (Elasticsearch read side — indices, not Postgres tables)
+  // search-service owns no database; idempotency is by ES document id
+  // (no inbox_message table). audit-events is the catch-all read model C —
+  // fed by EVERY *.events message, so it carries no per-event list here
+  // (the catch-all is described in the Cross-axis index intro instead of
+  // attaching a search row to all ~70 events).
+  // ============================================================
+  {
+    source: "search",
+    aggregate: "(Elasticsearch indices)",
+    destinations: [
+      { dest: "search", tables: [
+        { name: "products (ES index)", kind: "read-model",
+          events: ["ProductCreated", "SalesPriceChanged", "ProductDiscontinued"] },
+        { name: "entities (ES index)", kind: "read-model",
+          events: ["ProductCreated", "CustomerRegistered", "SalesOrderPlaced", "SupplierRegistered", "PurchaseOrderCreated", "CustomerInvoiceCreated"] },
+        { name: "audit-events (ES index)", kind: "read-model",
+          events: [] },
       ]},
     ]
   },
@@ -3297,7 +3340,7 @@ window.NORTHWOOD_PROJECTIONS = [
   // =====================================================
 
   function serviceOrder(a, b) {
-    const order = ['product', 'sales', 'inventory', 'manufacturing', 'purchasing', 'finance', 'reporting'];
+    const order = ['product', 'sales', 'inventory', 'manufacturing', 'purchasing', 'finance', 'reporting', 'search'];
     return order.indexOf(a) - order.indexOf(b);
   }
 

@@ -1,6 +1,6 @@
 # Northwood ERP — Demo Script
 
-Step-by-step for getting the full stack — Postgres, the seven Spring Boot services, the ERP BFF, and the operational ERP SPA — up and ready to demo, plus the per-demo runbook.
+Step-by-step for getting the full stack — Postgres, Elasticsearch, the seven business Spring Boot services, search-service, the ERP BFF (+ the GraphQL BFF), and the operational ERP SPA — up and ready to demo, plus the per-demo runbook.
 
 The end-state: open `http://localhost:5174`, sign in through Keycloak as a persona (e.g. **sarah** / **sarah**), place a sales order, and watch it drive to completion across the **Sales Order detail** page and the **Inventory / Finance / Reporting** screens while saying "this is what we built" out loud.
 
@@ -17,7 +17,7 @@ Every event name, saga state, endpoint, and request body below is verified again
 | Docker | recent | `docker --version` |
 | Node.js | 20+ | `node --version` (Node 25 confirmed; Node 18 likely fine) |
 | npm | 10+ | bundled with Node |
-| Free ports | 5432, 5174, 8081–8087, 8089, 8090 | nothing else listening |
+| Free ports | 5432, 5174, 5601, 6379, 8081–8090, 8093, 9200 | nothing else listening |
 
 **Windows**: PowerShell is the assumed shell. If `npm` fails with `running scripts is disabled on this system`, use `npm.cmd` instead (the Vite shell scripts inside `node_modules/.bin` are unaffected).
 
@@ -26,19 +26,21 @@ Every event name, saga state, endpoint, and request body below is verified again
 ## One-time setup
 
 ```powershell
-# from repo root — Postgres 17 + Kafka 4.1.2 (KRaft) + Keycloak 26.
+# from repo root — Postgres 17 + Kafka 4.1.2 (KRaft) + Keycloak 26 + Elasticsearch 9.0.4 + Kibana 9.0.4 + Redis 7.
 # The -f docker-compose.seed.yml override pre-loads the demo fixtures (products, customers,
 # BOMs, GL chart, …) this script relies on; the base file alone comes up with an empty schema.
 docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d
-mvn install -DskipTests                             # builds all 11 Maven modules (incl. erp-web-ui-bff)
+mvn install -DskipTests                             # builds all 13 Maven modules (incl. erp-web-ui-bff, erp-graphql-bff, search-service)
 cd erp-web-ui ; npm.cmd install ; cd ..             # one-time install for the operational ERP SPA
 ```
 
-The repo is **11 Maven modules + the `erp-web-ui` SPA** (shared-kernel, shared, the seven services, and `erp-web-ui-bff`).
+The repo is **13 Maven modules + the `erp-web-ui` SPA** (shared-kernel, shared, the seven services, `erp-web-ui-bff`, `erp-graphql-bff`, and `search-service`).
 
 Postgres runs its init scripts once, on the first boot of a fresh data volume. The base `docker-compose.yml` mounts only the **schema baseline** (`config/postgresql/northwood_erp.sql` — per-service schemas, roles, grants, the fulfilment-saga `saga_state` CHECK constraint); the `docker-compose.seed.yml` override additionally mounts the **demo fixtures** (`config/postgresql/northwood_erp_seed.sql` — products, customers, suppliers, BOMs, GL chart, …). This walkthrough needs the fixtures (CUST-001, the SKUs, etc.), which is why the command above layers both files with `-f`. For an empty database you populate via events from zero, drop the override and run `docker compose up -d`. To start fresh later, repeat the seeded command after a wipe: `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d`.
 
 Keycloak loads the `northwood` realm from `config/keycloak/northwood-realm.json` on first boot — 13 roles + 13 demo users (one per role, `username == password`). Admin console at `http://localhost:8090/` (`admin` / `admin`). The ERP SPA authenticates real users via OIDC code flow against this realm — there is no shared-secret bypass.
+
+The same `docker compose` also brings up the read-architecture infra: **Elasticsearch 9.0.4** (port 9200, single-node, security off for dev — the store behind search-service's three read models), **Kibana 9.0.4** (port 5601, dashboards over the `audit-events` index), and **Redis 7** (port 6379, distributed BFF sessions + reporting cache-aside). None need seeding — Elasticsearch's indices backfill from the Kafka event log once search-service runs (`auto-offset-reset: earliest`), so they fill in as you drive the demos.
 
 ### The 13 demo personas
 
@@ -70,12 +72,12 @@ Every demo below assumes services are launched with `SPRING_PROFILES_ACTIVE=kafk
 
 ## Bringing the stack up
 
-You need **nine terminals** for a full demo: seven services + the ERP BFF + the SPA. IntelliJ run configurations (or `tmux split-windows`) help; the simplest path is nine PowerShell windows.
+You need **nine terminals** for the core demos (Demos 1–10): seven services + the ERP BFF + the SPA — plus **two more** (search-service + the GraphQL BFF) for the read-architecture demo (Demo 11), for **eleven** in all. IntelliJ run configurations (or `tmux split-windows`) help; the simplest path is one PowerShell window per row.
 
-**Set the Kafka profile in each service terminal before `mvn spring-boot:run`** — without it, services use the in-JVM bus and cross-service events go nowhere. The BFF and the SPA don't need a profile.
+**Set the Kafka profile in each service terminal before `mvn spring-boot:run`** — without it, services use the in-JVM bus and cross-service events go nowhere. search-service and the GraphQL BFF also need it (search-service is an event consumer; the GraphQL subscription rides the Kafka feed). The ERP web BFF and the SPA don't need a profile.
 
 ```powershell
-# Run this once per service terminal (terminals 1–7) before the mvn command:
+# Run this once per service terminal (terminals 1–7, plus 10 and 11) before the mvn command:
 $env:SPRING_PROFILES_ACTIVE = "kafka"
 ```
 
@@ -90,8 +92,12 @@ $env:SPRING_PROFILES_ACTIVE = "kafka"
 | 7 | reporting-service     | `mvn -pl reporting-service spring-boot:run`     | `kafka` | 8087 | `Started ReportingApplication` |
 | 8 | **erp-web-ui-bff**    | `mvn -pl erp-web-ui-bff spring-boot:run`        | (none)  | 8089 | `Started ErpBffApplication` |
 | 9 | erp-web-ui            | `cd erp-web-ui ; npm.cmd run dev`               | (none)  | 5174 | `Local: http://localhost:5174/` |
+| 10 | **search-service** *(Demo 11)*    | `mvn -pl search-service spring-boot:run`     | `kafka` | 8093 | `Started SearchApplication` |
+| 11 | **erp-graphql-bff** *(Demo 11)*   | `mvn -pl erp-graphql-bff spring-boot:run`    | `kafka` | 8088 | `Started ErpGraphqlApplication` |
 
 The **ERP BFF** sits in front of the seven services and gives the SPA a single origin (the fetch chain is `5174 → 8089 → backend service → postgres`). It also runs the OIDC code flow against Keycloak and holds the access token in a server-side session — no token reaches the browser. Without the BFF every `/api/*` call fails with `ECONNREFUSED` in the Vite proxy log. Start it after at least one read-side service (reporting is the minimum for most list pages) is up — it gracefully degrades to whichever services are reachable.
+
+**Terminals 10 and 11 are only needed for Demo 11** (read architecture). **search-service** (port 8093, no Postgres of its own) consumes every `*.events` topic and materializes the three Elasticsearch read models; run it under `SPRING_PROFILES_ACTIVE=kafka` or it sees no events and the indices stay empty. On a fresh stack it backfills from offset 0 — give it a few seconds after the business services have published before searching. The **erp-graphql-bff** (port 8088) serves **GraphiQL** at `http://localhost:8088/graphiql` (an interactive query IDE — the demo surface, no SPA needed); it runs the same OIDC code flow as the web BFF, so the first GraphiQL load redirects you through Keycloak. Both can come up last, after the business services are running.
 
 Each service takes ~10–15 s to boot. Bringing them all up takes ~2 minutes; you can start them in parallel. Kafka itself takes ~30 s after `docker compose up` to pass its healthcheck — wait for that before launching the services or the first publish will fail.
 
@@ -305,7 +311,7 @@ A tick after the click the order shows `status='cancelled'` with `cancelledAt` s
 
 1. **Sales** — `SalesOrder.requestCancellation` emits `sales.SalesOrderCancellationRequested`. The header is **not** flipped yet and the saga is untouched (a shipment could still win the race).
 2. **Inventory** consumes — claims cancellation on `sales_order_line_facts` (nothing shipped here, so it succeeds), releases the stock reservation (`stock_balance.reserved_quantity` decremented; reservation header status `'released'`), and acks `inventory.SalesOrderCancellationApplied`.
-3. **Sales** consumes that ack — `confirmCancellation` flips the header to `'cancelled'`. For this **to_stock** order nothing was order-pegged, so the ack carries no compensation legs and the saga advances from its active state **straight to `'compensated'`** (no `compensating` hop), emitting `sales.SalesOrderCompensated`. (A **to_order** order whose PO/WO was already committed instead parks at `compensating` and waits for those legs — see §4.1.2.)
+3. **Sales** consumes that ack — `confirmCancellation` flips the header to `'cancelled'`. For this **to_stock** order nothing was order-pegged, so the ack carries no compensation legs and the saga advances from its active state **straight to `'compensated'`** (no `compensating` hop), emitting `sales.SalesOrderCompensated`. (A **to_order** order whose PO/WO was already committed instead parks at `compensating` and waits for those legs — see Demo 4.1.2.)
 4. **Reporting** consumes `sales.SalesOrderCompensated` and flips `sales_order_360_view.order_status` to `'cancelled'`.
 
 Watch the Sales Order detail roll-up walk `stock_reservation_incomplete → compensated`; afterwards it shows `order_status='cancelled'`. (Had a shipment beaten the cancel, inventory would emit **no** ack — the cancel is silently dropped and the order ships instead.)
@@ -314,21 +320,21 @@ Once any line has shipped, the cancel is rejected with HTTP 409 — that path re
 
 ### 4.1.1 — Cancel a **paid** deposit order → automatic refund
 
-The §4.1 cancel above was an *unpaid* order — nothing had moved through the GL, so the cancel just releases the reservation. Now cancel an order where the customer has already paid up front, and finance unwinds the money too.
+The Demo 4.1 cancel above was an *unpaid* order — nothing had moved through the GL, so the cancel just releases the reservation. Now cancel an order where the customer has already paid up front, and finance unwinds the money too.
 
 Run Demo 3 (deposit/prepayment) partway: place a **deposit** order (e.g. `paymentTerms:"deposit"`, `depositPercent:50`), then pay the deposit invoice. The deposit settles the up-front gate and the order reserves, so the saga is now at `supply_secured` with **Cr 2110 Customer Deposits** holding the deposit amount — the customer's money is on the balance sheet.
 
-Cancel it (as sam, before shipment). On top of the §4.1 sales↔inventory compensation, **finance** refunds the money — but it waits for the **confirmed** terminal, not the cancel request: it consumes `sales.SalesOrderCompensated` (the cancel won the cancel-vs-ship race) and — seeing a paid prepayment/deposit invoice — posts the refund:
+Cancel it (as sam, before shipment). On top of the Demo 4.1 sales↔inventory compensation, **finance** refunds the money — but it waits for the **confirmed** terminal, not the cancel request: it consumes `sales.SalesOrderCompensated` (the cancel won the cancel-vs-ship race) and — seeing a paid prepayment/deposit invoice — posts the refund:
 
 - **Dr 2110 Customer Deposits / Cr 1000 Bank** for the paid amount (the exact inverse of the original receipt), and stamps `customer_invoice_header.refunded_at` (idempotent — a redelivered terminal can't refund twice).
 
-This is the fix for the subtle loss a naive refund-on-request would cause: if a shipment beat the cancel, **no** `SalesOrderCompensated` is emitted, so the deposit is *not* refunded (the order ships and the deposit is recognised as revenue instead). A system-rejected order refunds the same way off `sales.SalesOrderRejected`; a `compensation_failed` order (a supply leg couldn't be withdrawn — §4.1.2) still refunds the deposit off `sales.SalesOrderCompensationFailed`.
+This is the fix for the subtle loss a naive refund-on-request would cause: if a shipment beat the cancel, **no** `SalesOrderCompensated` is emitted, so the deposit is *not* refunded (the order ships and the deposit is recognised as revenue instead). A system-rejected order refunds the same way off `sales.SalesOrderRejected`; a `compensation_failed` order (a supply leg couldn't be withdrawn — Demo 4.1.2) still refunds the deposit off `sales.SalesOrderCompensationFailed`.
 
 **What the audience sees:** the Sales Order detail page shows a green **"refunded"** lozenge once the order is cancelled, with a Refund section linking to the journal. Open **Finance → Journal Entries** and find the `customer_refund` posting; 2110 Customer Deposits nets to **zero** across the deposit receipt + the refund. On-shipment and COD orders have nothing in 2110 before shipment, so cancelling them refunds nothing (finance no-ops).
 
 ### 4.1.2 — Cancel a **to_order** order → withdraw its committed PO / work order
 
-The §4.1 / §4.1.1 cancels were `to_stock` lines — inventory's reservation release was the whole undo. A **to_order** line is different: its shortage raised a *dedicated, order-pegged* purchase order (buy-to-order) or work order (make-to-order), and cancelling must roll that committed supply back rather than orphan it. This is the multi-leg compensation (REQ-SAL-061).
+The Demo 4.1 / 4.1.1 cancels were `to_stock` lines — inventory's reservation release was the whole undo. A **to_order** line is different: its shortage raised a *dedicated, order-pegged* purchase order (buy-to-order) or work order (make-to-order), and cancelling must roll that committed supply back rather than orphan it. This is the multi-leg compensation (REQ-SAL-061).
 
 Run Demo 10 (to_order) partway: place a `to_order` order — e.g. the buy-to-order carpet (`FG-CARPET-001`) or a make-to-order finished good — and let it reach `stock_reservation_incomplete` with its replenishment **dispatched** (a `sent` PO, or a `released` WO), but **before goods are received / production starts**. Then cancel it (as sam).
 
@@ -589,7 +595,7 @@ Then place an order (as Sarah) for the chair beyond on-hand. Same pegged flow as
 
 ### 10.4 — Cancel a pegged order (un-peg)
 
-`to_order` does **not** block cancel. Cancel the carpet order from 10.2 **as Sam** (any pre-shipment state). The compensation un-pegs: if the PO already **received** (peg reserved), inventory releases the reserve so the carpet returns to the free pool (it behaves as make-to-stock from there); if the PO is still **in flight** (`sent`, no goods yet), the peg is dropped **and the committed PO is withdrawn** — the multi-leg compensation in §4.1.2 (the saga parks at `compensating` until purchasing acks the PO cancellation), so the PO reads `cancelled` in **Purchasing → Purchase Orders** rather than being left orphaned. Re-check **Reporting → Available-to-Promise** — `reserved` drops back, `available` rises.
+`to_order` does **not** block cancel. Cancel the carpet order from 10.2 **as Sam** (any pre-shipment state). The compensation un-pegs: if the PO already **received** (peg reserved), inventory releases the reserve so the carpet returns to the free pool (it behaves as make-to-stock from there); if the PO is still **in flight** (`sent`, no goods yet), the peg is dropped **and the committed PO is withdrawn** — the multi-leg compensation in Demo 4.1.2 (the saga parks at `compensating` until purchasing acks the PO cancellation), so the PO reads `cancelled` in **Purchasing → Purchase Orders** rather than being left orphaned. Re-check **Reporting → Available-to-Promise** — `reserved` drops back, `available` rises.
 
 ### 10.5 — What this proves
 
@@ -600,6 +606,108 @@ Then place an order (as Sarah) for the chair beyond on-hand. Same pegged flow as
 | Pegged output is earmarked, not pooled | on completion `reserved` rises with `on_hand`; `available` (ATP) stays 0 |
 | Ships off the peg, no double-reserve | saga `stock_reservation_incomplete → supply_secured` with no second `StockReservationRequested` |
 | Cancel stays permitted | un-peg releases / drops the dedicated supply back to the pool |
+
+---
+
+## Demo 11 — Read architecture: search, GraphQL, live updates
+
+The read-side story. The write side (aggregates → outbox → Kafka) is unchanged; this demo shows **one event, three read-side reactions** — Elasticsearch re-indexes (search-service), the GraphQL BFF pushes it live, and reporting's Redis cache evicts — all off the same `*.events` log. The mantra: **ES finds, the owning service shows the fresh truth, GraphQL composes, Kafka keeps them in sync.**
+
+**Prerequisites for this demo:** terminals 1–8 (the seven services + the ERP BFF) plus **search-service** (8093) and **erp-graphql-bff** (8088), all under `SPRING_PROFILES_ACTIVE=kafka`. On a fresh stack, drive at least Demo 1 (register/price a product) and one sales order first so there are events for search-service to index — its indices backfill from the Kafka log, so they fill in as the business demos run.
+
+The surfaces for this demo are **not** the SPA: REST search lands on the BFF (`http://localhost:5174/api/search/...` via the SPA's origin, or the search endpoints directly on 8093), GraphQL lands on **GraphiQL** at `http://localhost:8088/graphiql`, and analytics lands on **Kibana** at `http://localhost:5601`.
+
+### 11.1 — Fuzzy product search + facets + autocomplete
+
+Hit search-service's product read model (read model A) — fuzzy `multi_match` over name/sku/description:
+
+```
+GET http://localhost:8093/api/search/products?q=labtop
+```
+
+The typo **labtop** still finds **Laptop** (`fuzziness: AUTO`). Add filters/facets — `&type=finished_good&status=active&minPrice=100&maxPrice=2000` — and the response carries `terms` bucket counts on `productType` / `status` plus a `salesPrice` range aggregation (the data a faceted filter UI needs). Autocomplete is the completion field:
+
+```
+GET http://localhost:8093/api/search/products/suggest?q=lap
+```
+
+returns name completions as you type.
+
+**What the audience sees:** a misspelt query returns the right SKU, ranked by relevance (name/sku boosted over description), with per-facet counts alongside — none of which the plain SQL `product` CRUD list could do.
+
+### 11.2 — Global one-box search across contexts
+
+The same projector mechanism, pointed at every entity-bearing context (read model B — one `entities` index with an `entityType` discriminator):
+
+```
+GET http://localhost:8093/api/search?q=acme
+```
+
+One fuzzy query returns **customers, sales orders, suppliers, purchase orders, customer invoices and products** in a single relevance-ranked list, with an `entityType` facet (counts per type) and an optional `&type=customer` filter. This is the read-optimized successor to the BFF's in-memory audit fan-out — one box, every bounded context.
+
+**What the audience sees:** typing one term surfaces hits from six different services in a single ranked list — the cross-context search a per-service REST API can't give you.
+
+### 11.3 — GraphQL find → hydrate (ES finds, the service shows fresh truth)
+
+Open **GraphiQL** at `http://localhost:8088/graphiql` (log in via Keycloak on first load). Paste the find-and-hydrate query: ES does the fuzzy match (read model B), and the **same query** hydrates each hit's *fresh* authoritative record from the owning service — including live `stock` / `atp`:
+
+```graphql
+query FindAndHydrate {
+  search(q: "labtop") {                 # ES fuzzy match (typo-tolerant) — read model B
+    totalHits
+    entityTypeFacets { key count }      # per-type counts
+    hits {
+      entityType title code score
+      product {                         # hydrated LIVE from product-service when entityType = product
+        name salesPrice status
+        stock { available }             #   inventory (DataLoader-batched)
+        atp   { availableQuantity stockStatus }   # reporting (DataLoader-batched)
+      }
+      salesOrder { orderNumber status totalAmount }   # when entityType = sales_order (live from sales)
+      customer   { name email status }                # when entityType = customer (live from sales)
+    }
+  }
+}
+```
+
+**What the audience sees:** ES ranking may lag (it's a projection), but `salesPrice` / `stock.available` / `atp` are **fresh** (hydrated from source) — find stale-tolerant, show fresh. Watch the GraphQL BFF log: one upstream call **per type**, not one per hit (DataLoader batching — the money slide).
+
+### 11.4 — Live subscription (watch one change ripple, over WebSocket)
+
+In a **second GraphiQL tab**, open the events subscription narrowed to just product events (runs over the WebSocket at `/graphql`):
+
+```graphql
+subscription WatchProducts {
+  events(aggregateType: "Product") {    # drop the arg to watch EVERY service's events
+    eventType sourceService aggregateId occurredAt
+  }
+}
+```
+
+Then in another tab (or the SPA, as **Emma**) change a product's sales price — Demo 1.2. The `product.SalesPriceChanged` event **streams into the subscription tab live** — and *the same event* also re-indexed the ES `products` doc and evicted reporting's Redis cache (the one event → three reactions backbone). Re-run the 11.3 search and the hydrated `salesPrice` shows the new value.
+
+**What the audience sees:** a price change in one tab appears in the subscription tab within a tick, and the search result's hydrated price updates on the next run — the live-push reaction of the shared event backbone, with no polling.
+
+### 11.5 — Audit analytics search + Kibana
+
+Read model C projects **every** `*.events` message into an `audit-events` index — full-text + time-range search with aggregations:
+
+```
+GET http://localhost:8093/api/search/audit?q=&service=sales&eventType=SalesOrderPlaced
+```
+
+returns newest-first hits with `terms` facets on `sourceService` / `eventType` / `aggregateType` (events-per-service / per-type counts). Open **Kibana** at `http://localhost:5601` and chart the same `audit-events` index over time — an events-per-service-per-day histogram — to show ES's analytics side, not just its search side.
+
+**What the audience sees:** the cross-service event timeline as a searchable, aggregatable analytics surface — the scalable successor to the in-memory audit fan-out.
+
+### 11.6 — Acceptance criteria for the read-architecture demo
+
+- A misspelt product query (`q=labtop`) returns the correct SKU; the response carries facet bucket counts + a price range agg.
+- The global one-box query (`q=acme`) returns hits from multiple contexts in one ranked list with an `entityType` facet.
+- The GraphiQL find→hydrate query returns ES-ranked hits whose `salesPrice` / `stock` / `atp` are hydrated fresh from the owning services; the BFF log shows one upstream call per type (batching), not one per hit.
+- A product price change streams into an open `events(aggregateType: "Product")` subscription within a tick, and the re-run search shows the new price (the indices are eventually consistent off the same log).
+- Kibana renders an events-per-service aggregation over the `audit-events` index.
+- Stop search-service mid-demo and restart it: it resumes from its own consumer-group offset and the indices stay consistent (disposable, rebuildable read models — drop an index and it backfills from offset 0).
 
 ---
 
@@ -621,7 +729,7 @@ Then place an order (as Sarah) for the chair beyond on-hand. Same pegged flow as
 | Service starts but logs `FIND_COORDINATOR` errors / consumer group never joins | Stale Kafka volume from before the single-broker replication-factor overrides were added. `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d`. The volume gets wiped, internal topics (`__consumer_offsets`, `__transaction_state`) get recreated with replication-factor=1. |
 | `kafka-console-consumer.sh --from-beginning` returns 0 messages even though publishes succeeded | Same root cause as above — the spawned consumer-group can't find its coordinator. Probe with `kafka-get-offsets.sh --topic <name>` first to confirm messages are actually there. |
 | Customer payment 400 with CHECK constraint error | Out-of-date Postgres volume from before the `2026-05-05-extend-fulfilment-saga-states.sql` migration. Either let Liquibase apply it on next sales-service boot, or wipe the volume: `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d`. |
-| Manufacturing-service fails to boot with `Unexpected formatting in formatted changelog ... line N` | A `--` comment line accidentally starts with a Liquibase keyword (`changeset`, `rollback`, etc.). See CLAUDE.md § Liquibase gotchas. |
+| Manufacturing-service fails to boot with `Unexpected formatting in formatted changelog ... line N` | A `--` comment line accidentally starts with a Liquibase keyword (`changeset`, `rollback`, etc.). See CLAUDE.md, Liquibase gotchas. |
 
 To reset and start fresh: `docker compose down -v ; docker compose -f docker-compose.yml -f docker-compose.seed.yml up -d` then re-bring up the services (with `SPRING_PROFILES_ACTIVE=kafka` per terminal) + the ERP BFF + the SPA.
 

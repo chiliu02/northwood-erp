@@ -17,7 +17,7 @@ _The operational ERP SPA — the Sales Orders list, served by the BFF from the r
 ```
 Northwood/
 ├── pom.xml                       Parent POM
-├── docker-compose.yml            Postgres 17 + Kafka 4.1.2 (KRaft, single broker) + Keycloak 26 + LGTM stack (Prometheus/Tempo/Loki/Grafana)
+├── docker-compose.yml            Postgres 17 + Kafka 4.1.2 (KRaft, single broker) + Keycloak 26 + Redis 7 + Elasticsearch 9 + Kibana + LGTM stack (Prometheus/Tempo/Loki/Grafana)
 ├── docker-compose.seed.yml       Override — layer on to also load the demo seed (config/postgresql/northwood_erp_seed.sql)
 ├── config/                       Baseline schema + roles/grants + seed (postgresql/northwood_erp{,_seed}.sql), Keycloak realm, guest front-door template + LGTM configs (prometheus/tempo/loki/promtail/grafana)
 │
@@ -36,9 +36,11 @@ Northwood/
 ├── purchasing-service/           POs, requisitions, supplier prices + purchase_to_pay_saga
 ├── finance-events/               Published event contracts (wire types + EVENT_TYPE)
 ├── finance-service/              AP/AR invoices, payments, journal entries (perpetual inventory)
-├── reporting-service/            Six read-side projections, inbox-only (no events module — consumes only)
+├── reporting-service/            Six read-side projections, inbox-only (no events module — consumes only); Redis cache-aside on the hot views
+├── search-service/               Elasticsearch read models — product / global / audit search, inbox-only (port 8093)
 │
 ├── erp-web-ui-bff/               BFF for the operational ERP SPA (port 8089)
+├── erp-graphql-bff/              GraphQL composition BFF — one typed graph + DataLoader + live subscriptions (port 8088)
 ├── erp-web-ui/                   React + Vite SPA — operational ERP (port 5174)
 │
 ├── test-harness/                 Acceptance-test DSL (`o2c` order-to-cash flows) + the in-JVM property/invariant suite — the CI concurrency tier (in the default reactor)
@@ -48,7 +50,7 @@ Northwood/
 └── docs/                         Architecture, conventions, messaging, sagas, observability, AWS, demo runbook
 ```
 
-18 Maven modules (17 in the default reactor + the profile-gated `load-test`) + the ERP SPA: the six `*-events` jars carry the published wire contracts; `test-harness` (CI tier) and `load-test` (`-Pload-test`, outside the default reactor) are the test tiers. Every Java service has full DDD layering (`domain` / `application` / `infrastructure` / `api`); all three Sagas drive end-to-end; reporting projects six cross-context views.
+20 Maven modules (19 in the default reactor + the profile-gated `load-test`) + the ERP SPA: the six `*-events` jars carry the published wire contracts; `test-harness` (CI tier) and `load-test` (`-Pload-test`, outside the default reactor) are the test tiers. Every Java service has full DDD layering (`domain` / `application` / `infrastructure` / `api`); all three Sagas drive end-to-end; reporting projects six cross-context views. A layered **read side** rides the same event log — a GraphQL composition BFF (`erp-graphql-bff`), Elasticsearch search (`search-service` — product / global / audit, full-text/fuzzy/facets), and Redis (BFF sessions + reporting cache-aside); see [`docs/read-architecture.md`](docs/read-architecture.md).
 
 ## Stack
 
@@ -57,6 +59,9 @@ Northwood/
 - **Liquibase** for migrations (manually wired — Spring Boot 4 doesn't ship the auto-config)
 - **Spring Data JDBC** (chosen over JPA for explicit aggregate boundaries)
 - **Kafka 4.1.2** (KRaft, single broker) — wire format JSON via Jackson 3
+- **Elasticsearch 9** (Spring Data Elasticsearch) — full-text / fuzzy / faceted search read models (`search-service`), projected from the same event log; **Kibana** for audit/event analytics
+- **Redis 7** — distributed BFF sessions (Spring Session) + reporting read-model cache-aside with event-driven eviction
+- **GraphQL** (Spring for GraphQL) — `erp-graphql-bff` stitches the REST services into one typed graph with DataLoader batching, a mutation, and live Kafka subscriptions
 - **Keycloak 26** + Spring Security — OIDC code flow for the ERP SPA (see [Demo credentials & secrets](#demo-credentials--secrets))
 - **Testcontainers** for the integration-test seam
 - **React 18 + Vite + Tailwind v4** for the ERP SPA; **TanStack Query** for data fetching
@@ -69,7 +74,7 @@ Northwood/
 |---|---|---|
 | JDK | 21 | All Java modules |
 | Maven | 3.9+ | Multi-module build |
-| Docker + Compose | recent | Postgres 17, Kafka 4.1.2, Keycloak 26, LGTM observability (Prometheus/Tempo/Loki/Grafana) |
+| Docker + Compose | recent | Postgres 17, Kafka 4.1.2, Keycloak 26, Redis 7, Elasticsearch 9 + Kibana, LGTM observability (Prometheus/Tempo/Loki/Grafana) |
 | Node.js + npm | 20+ | The React/Vite ERP SPA |
 
 Developed on Windows (PowerShell), but the build is OS-neutral — macOS and Linux work with the same Maven / npm / Docker commands; translate the PowerShell snippets below to your shell.

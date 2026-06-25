@@ -118,6 +118,21 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 | REQ-RPT-050 (Financial dashboard) | `JdbcFinancialDashboardProjectionIT`, `JdbcFinancialDashboardQueryPortIT` | ✅ |
 | REQ-RPT-060 (Replenishment history) | `ReplenishmentHistoryController` (`GET /api/replenishment-history?productId=&limit=`) + `JdbcReplenishmentHistoryProjection` / `JdbcReplenishmentHistoryQueryPort`, fed by the o2c shortage/replenishment DSL flows; SPA activity widget. No focused view-level assertion test. | ⚠️ shipped, thin test |
 
+## REQ-READ — Read architecture (search, GraphQL, caching)
+
+Read-side, event-derived views layered on the same Kafka `*.events` log (design: `docs/read-architecture.md`). Search ITs run on Testcontainers Elasticsearch 9.0.4 (`mvn -pl search-service verify`); idempotency is by ES document-id.
+
+| REQ | Covered by | Status |
+|---|---|---|
+| REQ-READ-001 (product catalog search — fuzzy / facets / autocomplete) | `ProductCatalogSearchIT` (searchable + fuzzy-typo `labtop`→Laptop, idempotent re-apply by doc-id, terms-facet counts) | ✅ |
+| REQ-READ-002 (global cross-service search) | `GlobalSearchIT` (cross-context `acme` match over the `entities` index, type filter + per-type facet) | ✅ |
+| REQ-READ-003 (audit / event analytics) | `AuditAnalyticsIT` (append + per-service facet, idempotent re-apply) | ✅ |
+| REQ-READ-010 (aggregated GraphQL read API + DataLoader) | `BatchLoadersTest` (per-type batching); schema↔resolver wiring validated at startup (the `erp-graphql-bff` context boots). Live GraphiQL flow needs the full stack (documented in `docs/graphql.md`, not automated) | ⚠️ unit + startup-wiring; e2e manual |
+| REQ-READ-011 (find → hydrate — ES finds, owning service shows fresh) | `BatchLoadersTest` (the `EntityHit.product`/`salesOrder`/`customer` live-hydration loaders); end-to-end find→hydrate exercised manually in GraphiQL | ⚠️ unit; e2e manual |
+| REQ-READ-012 (filterable live event subscription) | startup schema↔resolver wiring (`Subscription.events(aggregateType, eventType, sourceService)` + the `@KafkaListener` sink); live WebSocket push verified manually | ⚠️ wiring; e2e manual |
+| REQ-READ-020 (read-model cache-aside + after-commit eviction) | `ReportingCacheEvictorTest` (immediate vs after-commit eviction, whole-cache clear, missing-cache tolerance) | ✅ |
+| REQ-READ-021 (distributed BFF sessions — Redis Spring Session) | manual / operational verification (restart a BFF, user stays logged in); no automated test | ⚠️ operational |
+
 ## REQ-XBC — Cross-context flows
 
 | REQ | Covered by | Status |
@@ -148,6 +163,8 @@ Legend: ✅ covered · ⚠️ partial / verify · ❌ gap (not yet covered or no
 
 - **REQ-RPT-060** — Replenishment History view **is shipped** (the earlier "planned" was stale; shipped 2026-05-29). Open only as a *test* gap: the read view + projection are exercised by the o2c replenishment flows but have no focused view-level assertion. Low priority.
 - **REQ-MFG-060 / REQ-SAL-041** — **operator-facing** WO-cancel is still deferred. `WorkOrder.cancel()` now exists on the **compensation** path (a `released` order-pegged WO is withdrawn when its `to_order` sales line is cancelled — REQ-SAL-061; covered by `WorkOrderTest.Cancel` + `OrderToCashCompensateManufacturedLegDslTest`), so both requirements flipped from `(deferred)` to `(partially shipped)`. What remains: a manual cancel endpoint + the **in-progress** case (halt operations, write off WIP for a hard-cancel, or let-WIP-finish-then-scrap for a soft-cancel) — an in-progress WO is an un-compensatable leaf that refuses today. A make-to-stock (pool) WO has no sales-order binding, so it has no compensation trigger and stays uncancellable until the operator path lands.
+- **REQ-READ-010 / 011 / 012** — the GraphQL BFF is **shipped and unit-covered** (`BatchLoadersTest` + boot-time schema↔resolver wiring), but the *end-to-end* query / find→hydrate / live-subscription flows need the full running stack and are exercised **manually in GraphiQL** (`docs/graphql.md` → *Demo*), not by an automated test. The module deliberately defers the Spring-Boot-4 `@GraphQlTest` slice; add a `@GraphQlTest` (or a stack-up acceptance test) when the slice is adopted. Low priority.
+- **REQ-READ-021** — distributed BFF sessions (Redis Spring Session on both BFFs) are verified **operationally** (restart a BFF; the user stays logged in), not by an automated test. Low priority.
 - **REQ-FIN-061 / REQ-FIN-062** — **multi-currency is not implemented**; the system runs single-currency (AUD) only (REQ-FIN-060 is the live path). Cross-currency conversion + the `GET /api/exchange-rate` lookup are not delivered (low-priority — project memory), so this is a **feature gap, not a test gap**. If multi-currency is ever built, add a `CurrencyConverter` unit test (pass-through + cross-currency + inverse fallback) + a `JdbcCurrencyConverterIT` then.
 
 > The cancel-gate test (`SalesOrderControllerSecurityTest`) is the **representative** role-gate test; the other `@RequireXxx` meta-annotations share the same `@PreAuthorize` mechanism (and the realm-role → authority mapping is covered by `KeycloakRealmRoleConverterTest`). Per-endpoint gate tests can be added if a regression ever warrants it.

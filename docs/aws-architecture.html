@@ -61,7 +61,7 @@
 <body>
   <header>
     <h1>Northwood ERP — production AWS architecture <span style="color:#7aa116">(fully managed)</span></h1>
-    <div class="sub">Multi-AZ · ECS Fargate · Aurora PostgreSQL · Amazon MSK · Cognito (OIDC) · managed observability (AMP / AMG / X-Ray / CloudWatch). The demo variant lives in <a href="aws-deployment.html">aws-deployment.html</a>.</div>
+    <div class="sub">Multi-AZ · ECS Fargate · Aurora PostgreSQL · Amazon MSK · Amazon OpenSearch · ElastiCache for Redis · Cognito (OIDC) · managed observability (AMP / AMG / X-Ray / CloudWatch). The demo variant lives in <a href="aws-deployment.html">aws-deployment.html</a>.</div>
   </header>
 
   <main>
@@ -96,12 +96,14 @@
             <div class="lbl"><img src="aws-icons/g-subnet-prv.svg"/> Private app subnets — ECS Fargate (Service Connect)</div>
             <div class="row">
               <div class="res"><img src="aws-icons/fargate.svg"/><b>erp-web-ui-bff</b><span>Fargate task(s) · OIDC client</span></div>
+              <div class="res"><img src="aws-icons/fargate.svg"/><b>erp-graphql-bff</b><span>Fargate task(s) · GraphQL composition (8088)</span></div>
               <div class="res wide"><img src="aws-icons/ecs.svg"/><b>7 services — ECS Fargate</b><span>product · sales · inventory · manufacturing · purchasing · finance · reporting<br/>per-service desired count · Service Connect · resource servers (JWT)</span></div>
+              <div class="res"><img src="aws-icons/fargate.svg"/><b>search-service</b><span>Fargate task(s) · Elasticsearch read side (8093) · no Postgres</span></div>
               <div class="res"><img src="aws-icons/nat.svg"/><b>NAT Gateway</b><span>private egress (per AZ)</span></div>
             </div>
             <div class="azhint">tasks balanced across ≥2 AZs</div>
           </section>
-          <div class="arrow">JDBC (RDS Proxy) · Kafka (TLS/IAM)</div>
+          <div class="arrow">JDBC (RDS Proxy) · Kafka (TLS/IAM) · OpenSearch (HTTPS) · Redis (TLS)</div>
 
           <!-- Data -->
           <section class="subnet data">
@@ -110,6 +112,8 @@
               <div class="res"><img src="aws-icons/aurora.svg"/><b>Aurora PostgreSQL</b><span>Multi-AZ writer + reader · schema-per-service</span></div>
               <div class="res"><img src="aws-icons/rds.svg"/><b>RDS Proxy</b><span>connection pooling</span></div>
               <div class="res"><img src="aws-icons/msk.svg"/><b>Amazon MSK</b><span>managed Kafka (Serverless or provisioned)</span></div>
+              <div class="res"><img src="https://api.iconify.design/logos/opensearch.svg"/><b>Amazon OpenSearch</b><span>search store · search-service projections · OpenSearch Dashboards</span></div>
+              <div class="res"><img src="https://api.iconify.design/logos/aws-elasticache.svg"/><b>ElastiCache for Redis</b><span>BFF sessions (Spring Session) · reporting cache-aside</span></div>
             </div>
             <div class="azhint">replicated across ≥2 AZs</div>
           </section>
@@ -134,9 +138,11 @@
       <tr><th>Concern</th><th>Demo (self-hosted, EC2)</th><th>Production (AWS-managed)</th></tr>
       <tr><td>Database</td><td>PostgreSQL on EC2</td><td><b>Aurora PostgreSQL</b> Multi-AZ + <b>RDS Proxy</b>; schema-per-service today, DB-per-service later. Creds in Secrets Manager (auto-rotation).</td></tr>
       <tr><td>Event bus</td><td>Kafka (KRaft) on EC2</td><td><b>Amazon MSK</b> (Serverless or provisioned), TLS + <b>IAM</b> auth.</td></tr>
+      <tr><td>Search store</td><td>Elasticsearch (+ Kibana) on EC2</td><td><b>Amazon OpenSearch Service</b> — the <code>search-service</code> read side projects Kafka events into it; <b>OpenSearch Dashboards</b> replaces Kibana.</td></tr>
+      <tr><td>Cache / session</td><td>Redis on EC2</td><td><b>Amazon ElastiCache for Redis</b> — Spring Session store for both BFFs + reporting cache-aside; in-transit TLS.</td></tr>
       <tr><td>Identity / OAuth2</td><td>Keycloak on EC2</td><td><b>Amazon Cognito</b> user pool — OIDC IdP; BFF is the OIDC client, services verify JWTs; roles via <code>cognito:groups</code>.</td></tr>
       <tr><td>Observability</td><td>Tempo / Loki / Prometheus / Grafana (LGTM) on EC2</td><td><b>X-Ray</b> (traces, via ADOT) · <b>Amazon Managed Prometheus</b> (metrics) · <b>CloudWatch Logs</b> (logs) · <b>Amazon Managed Grafana</b> (dashboards over all three).</td></tr>
-      <tr><td>Compute</td><td>docker-compose on EC2</td><td><b>ECS Fargate</b> — per-service tasks, Service Connect, per-task IAM, autoscaling.</td></tr>
+      <tr><td>Compute</td><td>docker-compose on EC2</td><td><b>ECS Fargate</b> — per-service tasks (the 7 services plus <code>erp-web-ui-bff</code>, <code>erp-graphql-bff</code>, and <code>search-service</code>), Service Connect, per-task IAM, autoscaling.</td></tr>
       <tr><td>Edge / TLS</td><td>public IP, HTTP</td><td><b>ALB</b> + <b>ACM</b> (HTTPS) + <b>Route 53</b>; optional <b>CloudFront</b> + <b>WAF</b>.</td></tr>
       <tr><td>Egress / secrets</td><td>VPC endpoints, S3 env files</td><td><b>NAT Gateway</b> (per AZ) + <b>Secrets Manager</b>.</td></tr>
     </table>

@@ -122,8 +122,10 @@
               <div class="lbl"><img src="aws-icons/ec2.svg"/> EC2 · no public IP · docker-compose</div>
               <div class="row">
                 <div class="res wide"><img src="https://api.iconify.design/logos/spring-icon.svg"/><b>7 services</b><span>product 8081 · sales 8082 · inventory 8083 · manufacturing 8084<br/>purchasing 8085 · finance 8086 · reporting 8087</span></div>
+                <div class="res"><img src="https://api.iconify.design/logos/spring-icon.svg"/><b>search-service</b><span>:8093 · inbox-only Elasticsearch read side (no Postgres) · consumes Kafka events</span></div>
+                <div class="res"><img src="https://api.iconify.design/logos/spring-icon.svg"/><b>erp-graphql-bff</b><span>:8088 · GraphQL composition over the services + ES + Redis</span></div>
               </div>
-              <div class="xref">↑ JWT / JWKS → Keycloak (public subnet) &nbsp;·&nbsp; ↓ JDBC + Kafka → infra subnet</div>
+              <div class="xref">↑ JWT / JWKS → Keycloak (public subnet) &nbsp;·&nbsp; ↓ JDBC + Kafka + Elasticsearch + Redis → infra subnet</div>
             </div>
           </section>
 
@@ -137,6 +139,8 @@
               <div class="row">
                 <div class="res"><img src="https://api.iconify.design/logos/postgresql.svg"/><b>PostgreSQL</b><span>:5432</span></div>
                 <div class="res"><img src="https://api.iconify.design/simple-icons/apachekafka.svg"/><b>Kafka</b><span>:9092 · KRaft</span></div>
+                <div class="res"><img src="https://api.iconify.design/logos/elasticsearch.svg"/><b>Elasticsearch</b><span>:9200 · search store (+ Kibana :5601)</span></div>
+                <div class="res"><img src="https://api.iconify.design/logos/redis.svg"/><b>Redis</b><span>:6379 · BFF sessions + reporting cache-aside</span></div>
                 <div class="res"><img src="https://api.iconify.design/logos/grafana.svg"/><b>Observability (opt.)</b><span>Tempo · Loki · Grafana</span></div>
               </div>
             </div>
@@ -150,7 +154,7 @@
 
         <div class="regional-lbl">▼ egress via the NAT instance — regional AWS services</div>
         <div class="regional">
-          <div class="res"><img src="aws-icons/ecr.svg"/><b>ECR</b><span>×8 app images (3rd-party from Docker Hub/quay)</span></div>
+          <div class="res"><img src="aws-icons/ecr.svg"/><b>ECR</b><span>×10 app images incl. search-service + erp-graphql-bff (3rd-party from Docker Hub/quay)</span></div>
           <div class="res"><img src="aws-icons/s3.svg"/><b>S3 artifacts</b><span>db SQL · realm · env (passwords) · configs · SPA dist</span></div>
           <div class="res"><img src="aws-icons/ssm.svg"/><b>SSM Session Manager</b><span>shell + Grafana port-forward (all 3 EC2)</span></div>
         </div>
@@ -161,8 +165,8 @@
     <h2>The three tiers (stacked, 1 EC2 each)</h2>
     <ul>
       <li><b>Public subnet</b> — 1 EC2 (public IP), <code>web-sg</code> opens only <code>:443</code> + <code>:80</code>. <b>Caddy</b> is the single public entry: it terminates <b>HTTPS</b> (Let's Encrypt) for the ERP UI (<code>ui_hostname</code>) and Keycloak (<code>auth_hostname</code>) on <code>:443</code>, serves the ACME HTTP-01 challenge + http→https redirect on <code>:80</code>, and reverse-proxies cleartext to the containers behind it — all loopback-bound: the <b>operational ERP SPA</b> (nginx <code>:8090</code> serving <code>erp-web-ui</code>), <code>erp-web-ui-bff</code> (<code>:8089</code>), and Keycloak (<code>:8080</code>, here so the browser can reach it for OIDC). The guest <b>front door</b> is the first thing to open and is hosted <b>off the fleet on CloudFront + S3</b> (the friendly DNS name aliases to the distribution), so it stays reachable over HTTPS <b>even when the fleet is stopped</b> — its built-in "Demo hours" notice then explains the app is asleep. Its "Enter the ERP" link is baked from <code>ERP_URL</code> = <code>https://&lt;ui_hostname&gt;</code> — dead while the fleet is stopped, live once it's up. Caddy auto-renews the certs and persists them in a docker volume, so a stop/start reuses them. The SPA nginx reverse-proxies <code>/api</code>, <code>/oauth2</code>, <code>/login</code>, <code>/logout</code> to the BFF so the SPA's relative calls + the OIDC code flow run same-origin (no CORS); Caddy sets <code>X-Forwarded-Proto: https</code> and the BFF uses <code>server.forward-headers-strategy=framework</code>, so it builds the OIDC <code>redirect_uri</code> against the public <code>https://&lt;ui_hostname&gt;</code> origin.</li>
-      <li><b>Private subnet #1 (app)</b> — 1 EC2 (no public IP), <code>app-sg</code> allows only the web tier: the 7 services.</li>
-      <li><b>Private subnet #2 (infra)</b> — 1 EC2 (no public IP), <code>infra-sg</code> allows only the app tier: Postgres + Kafka (+ optional observability). Most-protected, two hops from the internet.</li>
+      <li><b>Private subnet #1 (app)</b> — 1 EC2 (no public IP), <code>app-sg</code> allows only the web tier: the 7 services, plus <b>search-service</b> (<code>:8093</code>, the inbox-only Elasticsearch read side — no Postgres of its own) and the <b>erp-graphql-bff</b> (<code>:8088</code>, GraphQL composition over the services + ES + Redis).</li>
+      <li><b>Private subnet #2 (infra)</b> — 1 EC2 (no public IP), <code>infra-sg</code> allows only the app tier: Postgres + Kafka + <b>Elasticsearch</b> (<code>:9200</code>, the search store, with Kibana <code>:5601</code>) + <b>Redis</b> (<code>:6379</code>, BFF sessions + reporting cache-aside) (+ optional observability). Most-protected, two hops from the internet.</li>
     </ul>
 
     <h2>Egress — a NAT instance (why, and the trade-off)</h2>
@@ -193,6 +197,7 @@
     <ul>
       <li>ALB, NAT Gateway, ECS/Fargate, Service Connect, Secrets Manager, CloudWatch — replaced by 3 EC2s running <code>docker-compose</code>, passwords/configs staged in the encrypted S3 bucket and pulled by <code>user-data</code>, logs to Loki. SSM-only shell (no SSH/bastion).</li>
       <li><b>HTTPS, but no HA.</b> All three surfaces are HTTPS with browser-trusted certs (CloudFront/ACM for the front door, on-box Caddy/Let's Encrypt for the ERP UI + Keycloak), anchored on a stable Elastic IP + Route 53. What's still demo-grade is availability: a single instance per tier and a single NAT instance — fine for a showcase, not HA. Production adds an ALB + multi-AZ — see <a href="aws-architecture.html">aws-architecture.html</a>.</li>
+      <li><b>Self-hosted stores, not managed.</b> The demo runs every backing store on the infra EC2 under <code>docker-compose</code>. The managed-service mapping for production is the same swap that takes Postgres → <b>Amazon RDS</b> and Kafka → <b>Amazon MSK</b>: <b>Elasticsearch → Amazon OpenSearch Service</b> (with <b>OpenSearch Dashboards</b> in place of Kibana) and <b>Redis → Amazon ElastiCache for Redis</b>. The two new compute units (search-service, erp-graphql-bff) deploy exactly like the existing services — additional containers on the app EC2 in the demo, or their own ECS Fargate tasks in the production variant — see <a href="aws-architecture.html">aws-architecture.html</a>.</li>
     </ul>
 
     <h2>Pause / resume (cost saver)</h2>
