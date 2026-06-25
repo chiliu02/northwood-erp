@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Test-only logback configuration. Takes precedence over the shared module's
+  logback-spring.xml whenever it's on the test classpath, so integration-test
+  JVMs get CONSOLE-only logging and never instantiate the LOKI appender.
+
+  Why this exists — the cross-context StatusManager trap:
+
+  The shared logback-spring.xml wires a Loki4jAppender pushing to
+  localhost:3100. No Loki runs during tests (the ITs start only Postgres +
+  Kafka containers), so the async pipeline's connection failures get recorded
+  as ERROR-level statuses on logback's LoggerContext — a per-JVM singleton that
+  outlives any one Spring context. When a second @SpringBootTest context boots
+  in the same surefire fork, Spring Boot re-initialises logging and
+  LogbackLoggingSystem.reportConfigurationErrorsIfNecessary scans the
+  StatusManager, finds those stale Loki ERROR statuses, and throws
+  "Logback configuration error detected" — failing the context load.
+
+  Symptom: each full-context IT passes alone but the 2nd+ @SpringBootTest in a
+  fork fail with "Failed to load ApplicationContext". A module trips this the
+  moment it boots more than one full context per surefire fork; this file is
+  kept identical across every service module so the trap never reappears.
+
+  CONSOLE pattern mirrors logback-spring.xml so test output is identical minus
+  the Loki shipping.
+-->
+<configuration>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %-40logger{40} [traceId=%X{traceId:-} spanId=%X{spanId:-}] -- %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+</configuration>

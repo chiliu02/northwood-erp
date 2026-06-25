@@ -3,9 +3,24 @@ spring:
     name: search-service
   profiles:
     default: dev
-  # Elasticsearch read models (docs/elasticsearch.md). search-service owns no
-  # Postgres — its indices are derived from the event log and rebuildable by
-  # replay, so there is no datasource / Liquibase here.
+  # search-service owns NO Postgres — its indices are derived from the event log
+  # and rebuildable by replay. But it depends on `shared` (for the Kafka consumer
+  # template + resource-server security), which brings spring-boot-starter-data-jdbc
+  # and registers JDBC-backed auto-configs. With no datasource those fail at boot
+  # ("Failed to determine a suitable driver class"), so disable every DB auto-config
+  # here — Boot's DataSource/Data-JDBC and shared's Liquibase / inbox / outbox /
+  # outbox-metrics / saga-invariants. (Audit is turned off via the property below;
+  # the outbox drainer is already off — it's gated on northwood.outbox.drain.enabled.)
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+      - org.springframework.boot.data.jdbc.autoconfigure.DataJdbcRepositoriesAutoConfiguration
+      - com.northwood.shared.infrastructure.db.LiquibaseConfig
+      - com.northwood.shared.infrastructure.inbox.jdbc.JdbcInboxAutoConfiguration
+      - com.northwood.shared.infrastructure.outbox.jdbc.JdbcOutboxAutoConfiguration
+      - com.northwood.shared.infrastructure.outbox.jdbc.OutboxMetricsAutoConfiguration
+      - com.northwood.shared.infrastructure.saga.SagaInvariantsAutoConfiguration
+  # Elasticsearch read models (docs/elasticsearch.md).
   elasticsearch:
     uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
   security:
@@ -38,6 +53,12 @@ management:
         otlp:
           endpoint: ${OTLP_ENDPOINT:http://localhost:4317}
           transport: grpc
+
+northwood:
+  audit:
+    # search-service has no outbox_message table for the shared AuditController to
+    # query (it's inbox-only, ES-backed). The BFF's audit aggregator skips a 404.
+    enabled: false
 
 logging:
   level:

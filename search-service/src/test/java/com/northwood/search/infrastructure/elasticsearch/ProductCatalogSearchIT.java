@@ -13,41 +13,16 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.elasticsearch.ElasticsearchContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Real-Elasticsearch test for the product catalog read model (read model A): a
  * {@code ProductCreated} projection produces a searchable doc, fuzzy search is
  * typo-tolerant, re-applying the same event stays idempotent (one doc), and the
- * terms facet returns bucket counts.
- *
- * <p>{@code webEnvironment = NONE} keeps this a non-web context, so the shared
- * resource-server security auto-config backs off (no Keycloak JWKS fetch at
- * startup) and the {@code kafka}-profile consumer stays inactive — the test
- * drives the projection + query port beans directly, the search-side analogue of
- * reporting's {@code Jdbc*ProjectionIT}s.
+ * terms facet returns bucket counts. Container + context config:
+ * {@link AbstractSearchElasticsearchIT}.
  */
-@Testcontainers
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
-class ProductCatalogSearchIT {
-
-    @Container
-    static final ElasticsearchContainer ELASTICSEARCH =
-        new ElasticsearchContainer(DockerImageName.parse("docker.elastic.co/elasticsearch/elasticsearch:9.0.4"))
-            .withEnv("xpack.security.enabled", "false")
-            .withEnv("discovery.type", "single-node");
-
-    @DynamicPropertySource
-    static void elasticsearchProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.elasticsearch.uris", () -> "http://" + ELASTICSEARCH.getHttpHostAddress());
-    }
+class ProductCatalogSearchIT extends AbstractSearchElasticsearchIT {
 
     @Autowired
     private ProductCatalogProjection products;

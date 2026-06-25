@@ -13,35 +13,16 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.elasticsearch.ElasticsearchContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Real-Elasticsearch test for the audit/event-analytics read model (read model
  * C): every event is appended to {@code audit-events}, search filters by service,
  * re-appending the same event id stays idempotent, and the {@code sourceService}
  * facet counts events per producer (the "events per service" aggregation).
+ * Container + context config: {@link AbstractSearchElasticsearchIT}.
  */
-@Testcontainers
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
-class AuditAnalyticsIT {
-
-    @Container
-    static final ElasticsearchContainer ELASTICSEARCH =
-        new ElasticsearchContainer(DockerImageName.parse("docker.elastic.co/elasticsearch/elasticsearch:9.0.4"))
-            .withEnv("xpack.security.enabled", "false")
-            .withEnv("discovery.type", "single-node");
-
-    @DynamicPropertySource
-    static void elasticsearchProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.elasticsearch.uris", () -> "http://" + ELASTICSEARCH.getHttpHostAddress());
-    }
+class AuditAnalyticsIT extends AbstractSearchElasticsearchIT {
 
     @Autowired
     private AuditEventProjection auditEvents;
