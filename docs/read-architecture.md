@@ -158,6 +158,23 @@ This is why the three reinforce each other: a **single invalidation/refresh stor
 consistent, because they share the trigger. Get the key-mapping right once (event → ES doc id, event → Redis
 cache key) and the whole read side stays coherent.
 
+### As built — the backbone is one trigger across three services (not one handler)
+
+The `onEvent(e)` pseudocode is *conceptual*: in Northwood the three reactions are deliberately in **three
+different services**, because **the only inter-service contract is the outbox/event log** (a single handler
+reaching into all three stores would violate schema-per-service). They "unify" by all consuming the **same Kafka
+`*.events` topics** — the shared trigger *is* the log. A single `product.SalesPriceChanged` already fans out to:
+
+| Reaction | Service | Where (as built) |
+|---|---|---|
+| ES re-index | `search-service` | `SalesPriceChangedHandler` (+ the read-model-B/C projectors) → upsert the `products` doc |
+| Redis evict | `reporting-service` | the `Jdbc*Projection` writers → `ReportingCacheEvictor` (after-commit) |
+| Live push | `erp-graphql-bff` | `EventSubscriptionController`'s `@KafkaListener` → `Subscription.events` sink |
+
+So step 5 doesn't *wire* the fan-out (it already runs from steps 2–4) — it makes it **usable and legible**: the
+live feed gains filters (watch just `aggregateType: "Product"`), and the search results gain live hydration (the
+flow below). Each reaction stays independently rebuildable/disposable per its own doc.
+
 ---
 
 ## Consistency model (the part to get right)
@@ -212,7 +229,13 @@ Each step is independently valuable and de-risks the next:
    cross-service search over one `entities` index), **C** (audit/event analytics over `audit-events` + Kibana);
    the BFF `/api/search` route wired; and the GraphQL `search(q, type)` field in `erp-graphql-bff` delegating to
    read model B. See `docs/elasticsearch.md`.
-5. **GraphQL subscriptions + cross-layer fan-out** — the final `event → ES + Redis + GraphQL` unification.
+5. **GraphQL subscriptions + cross-layer fan-out** ✅ *shipped* — two halves: **(A) find → hydrate** — the
+   GraphQL `search` hits now drill into the *fresh* authoritative record from the owning service
+   (`EntityHit.product`/`salesOrder`/`customer`, DataLoader-batched), so one query does ES-finds-stale-tolerant
+   → service-shows-fresh (the *combined request flow* below); **(B) filterable live feed + the unified backbone**
+   — `Subscription.events(aggregateType, eventType, sourceService)` narrows the live push, and the *one event →
+   three reactions* backbone is documented as-built below (the fan-out already runs; it spans three services by
+   design). Demo both in GraphiQL (`docs/graphql.md` → *Demo*).
 
 ---
 

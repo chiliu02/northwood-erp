@@ -8,6 +8,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
+import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.SubscriptionMapping;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Controller;
@@ -39,9 +40,26 @@ public class EventSubscriptionController {
         this.json = json;
     }
 
+    /**
+     * Live event feed, optionally narrowed by {@code aggregateType} /
+     * {@code eventType} / {@code sourceService} (each null → no filter on that
+     * facet). The filter is applied per-subscriber on the shared multicast sink,
+     * so "watch only product events" and "watch everything" can run side by side.
+     */
     @SubscriptionMapping
-    public Flux<DomainEvent> events() {
-        return sink.asFlux();
+    public Flux<DomainEvent> events(
+        @Argument String aggregateType,
+        @Argument String eventType,
+        @Argument String sourceService
+    ) {
+        return sink.asFlux().filter(event ->
+            matches(aggregateType, event.aggregateType())
+                && matches(eventType, event.eventType())
+                && matches(sourceService, event.sourceService()));
+    }
+
+    private static boolean matches(String filter, String value) {
+        return filter == null || filter.equals(value);
     }
 
     @KafkaListener(

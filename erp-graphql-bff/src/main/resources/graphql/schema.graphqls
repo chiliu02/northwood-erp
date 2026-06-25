@@ -119,6 +119,12 @@ type EntityHit {                         # one hit, any bounded context
   subtitle: String                       # email / counterparty / product type
   status: String
   score: Float                           # Elasticsearch relevance score
+  # Live drill-downs: ES finds the hit (stale-tolerant), these hydrate the FRESH
+  # authoritative record from the owning service. Non-null only for the matching
+  # entityType; product/customer are DataLoader-batched (one upstream call each).
+  product: Product                       # when entityType = product   -> product GET /api/products/{id} (+ live stock/atp)
+  salesOrder: SalesOrder                 # when entityType = sales_order -> sales GET /api/sales-orders/{id}
+  customer: Customer                     # when entityType = customer  -> sales GET /api/customers/{id}
 }
 
 type FacetBucket {
@@ -159,7 +165,10 @@ input PlaceOrderLineInput {
 }
 
 type Subscription {
-  events: DomainEvent!                   # live *.events Kafka feed
+  # Live *.events Kafka feed. Optional filters narrow the stream so a client can
+  # watch just what it cares about (e.g. only product events, or one aggregate
+  # type) — the same fan-out that drives the ES + Redis read-side reactions.
+  events(aggregateType: String, eventType: String, sourceService: String): DomainEvent!
 }
 type DomainEvent {
   eventId: ID!

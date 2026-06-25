@@ -254,7 +254,11 @@ Reuse `EventsAggregatorController`'s decode logic. A `@KafkaListener` on the `*.
 
 ```java
 @SubscriptionMapping
-public Flux<DomainEvent> events() { return sink.asFlux(); }
+public Flux<DomainEvent> events(@Argument String aggregateType,
+                                @Argument String eventType,
+                                @Argument String sourceService) {
+    return sink.asFlux().filter(/* keep only events matching the non-null filters */);
+}
 ```
 
 - Active only under `@Profile("kafka")` + `application-kafka.yml` (copy from the existing BFF; use a **distinct**
@@ -262,6 +266,63 @@ public Flux<DomainEvent> events() { return sink.asFlux(); }
   subscription field exists but never emits — note this in the demo.
 - Transport: enable WebSocket (`spring.graphql.websocket.path: /graphql`) so GraphiQL can run subscriptions;
   add `spring-boot-starter-websocket`.
+- **Filter args (read-architecture step 5 / read-model B):** `events(aggregateType, eventType, sourceService)`
+  narrows the multicast per-subscriber, so "watch only `Product` events" and "watch everything" run side by side
+  off the one Kafka feed — the live-push reaction of the *one event → ES + Redis + GraphQL* backbone.
+
+---
+
+## Demo (GraphiQL) — read-architecture step 5
+
+The UI for these is **GraphiQL**, the interactive IDE the BFF serves at
+**http://localhost:8088/graphiql** (queries over HTTP, subscriptions over the WebSocket at `/graphql`). No SPA
+is needed — GraphiQL *is* the demo surface. Run the stack with `SPRING_PROFILES_ACTIVE=kafka` (the subscription
+needs it) and the seed data up.
+
+### A — find → hydrate (one query, ES finds, the service shows fresh truth)
+
+Type a fuzzy term in one query; the ES global search (read model B) finds the hits, and the **same query**
+hydrates the *fresh* authoritative record per hit from the owning service — including live stock/ATP:
+
+```graphql
+query FindAndHydrate {
+  search(q: "labtop") {                 # ES fuzzy match (typo-tolerant) — read model B
+    totalHits
+    entityTypeFacets { key count }      # per-type counts
+    hits {
+      entityType title code score
+      product {                         # hydrated LIVE from product-service when entityType = product
+        name salesPrice status
+        stock { available }             #   inventory (DataLoader-batched)
+        atp   { availableQuantity stockStatus }   # reporting (DataLoader-batched)
+      }
+      salesOrder { orderNumber status totalAmount }   # when entityType = sales_order (live from sales)
+      customer   { name email status }                # when entityType = customer (live from sales)
+    }
+  }
+}
+```
+
+What to point out: search ranking may lag (ES is a projection), but `salesPrice` / `stock.available` / `atp`
+are **fresh** (hydrated from source); the BFF logs show one upstream call per type (DataLoader batching), not one
+per hit.
+
+### B — filterable live feed (watch one change ripple, over WebSocket)
+
+Open a subscription in one GraphiQL tab, narrowed to just product events:
+
+```graphql
+subscription WatchProducts {
+  events(aggregateType: "Product") {    # drop the arg to watch EVERY service's events
+    eventType sourceService aggregateId occurredAt
+  }
+}
+```
+
+Then in another tab (or the REST UI) change a product's price. The event streams in live — and *the same event*
+also re-indexed the ES `products` doc and evicted reporting's Redis cache (the *one event → three reactions*
+backbone, *As built* in `read-architecture.md`). Re-run query **A**'s search and the hydrated `salesPrice` shows
+the new value.
 
 ---
 
@@ -285,8 +346,9 @@ erp-graphql-bff/
     graphql/QueryController.java            # @QueryMapping salesOrders/salesOrder/products/product/customer/search
     graphql/ProductBatchController.java     # @BatchMapping Product.stock, Product.atp
     graphql/SalesOrderBatchController.java  # @BatchMapping SalesOrderLine.product, SalesOrder.customer
+    graphql/SearchHitController.java        # @BatchMapping EntityHit.product/customer, @SchemaMapping .salesOrder (read-arch step 5: hydrate ES hits)
     graphql/MutationController.java         # @MutationMapping placeOrder
-    graphql/EventSubscriptionController.java
+    graphql/EventSubscriptionController.java # @SubscriptionMapping events(filters)
     dto/                                    # mirrored view records (decoupled, like AuditRow):
                                             #   SalesOrderView, SalesOrderLineView, CustomerView,
                                             #   ProductView, StockItemView, AvailableToPromiseView,
