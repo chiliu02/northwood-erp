@@ -36,26 +36,7 @@ The services reach the containers through `localhost`; Prometheus reaches the se
 
 ### 1.2 AWS demo
 
-```
-                Internet
-                   │  :443 / :80
-   ┌───────────────▼──────────────────────────── public subnet 10.0.1.0/24 ┐
-   │  web EC2 10.0.1.10  (Elastic IP)                                      │
-   │    Caddy :443 ─┬─ <ui host>      → nginx :8090 (SPA) → erp-web-ui-bff :8089
-   │                ├─ <auth host>    → Keycloak :8080                     │
-   │                └─ <grafana host> → Grafana on the data box (read-only)│
-   │  NAT instance (t3.nano)                                               │
-   └───────────────┬───────────────────────────────────────────────────────┘
-   ┌───────────────▼──────────── private app subnet 10.0.2.0/24 ┐
-   │  app EC2 10.0.2.10 : the 7 services, :8081–8087            │
-   └───────────────┬────────────────────────────────────────────┘
-   ┌───────────────▼──────────── private data subnet 10.0.3.0/24 ┐
-   │  data EC2 10.0.3.10 : PostgreSQL, Kafka, Tempo, Loki,        │
-   │                       Prometheus, Grafana                    │
-   └──────────────────────────────────────────────────────────────┘
-   Outside the VPC: CloudFront + S3 (welcome page), ECR (app images),
-   Secrets Manager, S3 (artifacts, Terraform state), Route 53, EventBridge Scheduler.
-```
+![The AWS demo: a public subnet with the web box and the NAT instance, a private app subnet with the seven services, a private data subnet with PostgreSQL, Kafka and the telemetry stack, and the AWS services outside the VPC](images/aws-demo.svg)
 
 | Box | Type | Runs |
 |---|---|---|
@@ -68,7 +49,10 @@ Each box runs `docker run --restart unless-stopped` containers set up by its use
 The boxes have fixed private IPs, so every cross-box URL is known at plan time. Only the web box is
 public: `:443` for HTTPS and `:80` for the ACME challenge and the redirect. The app box accepts the
 service ports from the web box (and from the data box for scraping); the data box accepts `:5432` and
-`:9092` from the app box and the telemetry ports from both.
+`:9092` from the app box, the telemetry ports from the web and app boxes, and `:3000` from the web
+box. The private boxes reach the internet only through the NAT instance: the image registries, and
+Keycloak's public issuer on `:443`, which the services use to check tokens. S3 and ECR image layers go
+through the free S3 gateway endpoint instead.
 
 The welcome page is a static page in S3 behind CloudFront, so it stays up while the boxes are stopped.
 
