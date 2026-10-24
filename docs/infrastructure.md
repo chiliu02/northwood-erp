@@ -19,6 +19,8 @@ seven services; a private data box runs PostgreSQL, Kafka and the telemetry stac
 
 ### 1.1 Local
 
+![Local development: the services, search-service, both BFFs and the Vite dev server run on the host; Docker Compose runs PostgreSQL, Kafka, Redis, Elasticsearch, Kibana, Keycloak, the welcome page and the telemetry stack](images/local-compose.svg)
+
 | Runs in Docker Compose | Port | Runs on the host | Port |
 |---|---|---|---|
 | PostgreSQL 17 | 5432 | product · sales · inventory · manufacturing · purchasing · finance · reporting | 8081–8087 |

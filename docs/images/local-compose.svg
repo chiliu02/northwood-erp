@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800" width="1000" height="800" font-family="'Amazon Ember', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Northwood local topology</title>
+  <desc id="d">On the developer machine, the Spring services, search-service, both BFFs and the Vite dev server run as host processes. Docker Compose runs PostgreSQL, Kafka, Redis, Elasticsearch, Kibana, Keycloak, the welcome page and the telemetry stack. The host processes reach the containers on their published localhost ports; Prometheus reaches the host processes through host.docker.internal.</desc>
+  <style>
+    svg { --bg:#ffffff; --ink:#16191f; --muted:#545b64; --box:#ffffff; --pill:#f2f3f3; --pill-line:#aab7b8;
+          --host:#232f3e; --proc:#1d8102; --proc-fill:#f0f7ec; --dock:#1d63ed; --dock-fill:#eaf1fe;
+          --req:#16191f; --tel:#0073bb; }
+    @media (prefers-color-scheme: dark) {
+      svg { --bg:#0f1419; --ink:#e6edf3; --muted:#9aa7b4; --box:#161c23; --pill:#222b35; --pill-line:#4b5866;
+            --host:#c9d1d9; --proc:#6cc04a; --proc-fill:#15200f; --dock:#5b8cff; --dock-fill:#111c33;
+            --req:#e6edf3; --tel:#5eb4ff; }
+    }
+    .bg { fill:var(--bg); }
+    text { fill:var(--ink); font-size:12px; }
+    .muted { fill:var(--muted); font-size:10.5px; }
+    .h { font-weight:600; font-size:12.5px; }
+    .small { font-size:11px; }
+    .b { font-weight:600; font-size:11px; }
+    .c { text-anchor:middle; }
+    .r { text-anchor:end; }
+    .g-host { fill:none; stroke:var(--host); stroke-width:1.5; }
+    .g-proc { fill:var(--proc-fill); stroke:var(--proc); stroke-width:1.2; }
+    .g-dock { fill:var(--dock-fill); stroke:var(--dock); stroke-width:1.2; }
+    .pill { fill:var(--pill); stroke:var(--pill-line); stroke-width:1; }
+    .opt { stroke-dasharray:4 3; }
+    .req { fill:none; stroke:var(--req); stroke-width:1.6; }
+    .tel { fill:none; stroke:var(--tel); stroke-width:1.6; stroke-dasharray:2 3; }
+    .head-req { fill:var(--req); } .head-tel { fill:var(--tel); }
+  </style>
+  <defs>
+    <marker id="a-req" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-req" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="a-tel" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-tel" d="M0,0 L10,5 L0,10 z"/></marker>
+    <symbol id="i-host" viewBox="0 0 24 24"><rect width="24" height="24" fill="#232F3E"/><rect x="5" y="6" width="14" height="9.5" rx="1" fill="none" stroke="#FFFFFF" stroke-width="1.4"/><path d="M12,15.5 V18.5 M8.5,18.5 H15.5" stroke="#FFFFFF" stroke-width="1.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-term" viewBox="0 0 24 24"><rect width="24" height="24" fill="#1D8102"/><path d="M6,8 L10,12 L6,16 M12,16 H18" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <!-- Docker logo: Simple Icons (CC0) -->
+    <symbol id="i-docker" viewBox="0 0 24 24"><rect width="24" height="24" fill="#1D63ED"/><g transform="translate(3.6,3.6) scale(0.7)"><path fill="#FFFFFF" d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.082.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z"/></g></symbol>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1000" height="800"/>
+
+  <!-- Browser -->
+  <rect class="pill" x="40" y="12" width="920" height="36" rx="18"/>
+  <text class="h c" x="500" y="35">Browser · the developer</text>
+  <path class="req" d="M150,48 V138" marker-end="url(#a-req)"/>
+  <text class="muted" x="158" y="62">:5174</text>
+  <path class="req" d="M964,48 V408" marker-end="url(#a-req)"/>
+  <text class="muted r" x="956" y="62">UIs in Compose: welcome :8080 · Grafana :3000 · Kibana :5601 · Keycloak :8090</text>
+
+  <!-- developer machine -->
+  <rect class="g-host" x="12" y="68" width="976" height="688"/>
+  <use href="#i-host" x="12" y="68" width="24" height="24"/>
+  <text class="h" x="42" y="85">Developer machine · localhost</text>
+
+  <!-- host processes -->
+  <rect class="g-proc" x="28" y="100" width="944" height="252"/>
+  <use href="#i-term" x="28" y="100" width="24" height="24"/>
+  <text class="h" x="58" y="117" style="fill:var(--proc)">Host processes · mvn spring-boot:run, npm run dev</text>
+
+  <rect class="pill" x="60" y="140" width="160" height="40" rx="6"/>
+  <text class="b c" x="140" y="156">erp-web-ui</text><text class="muted c" x="140" y="171">Vite dev server :5174</text>
+  <rect class="pill" x="400" y="140" width="160" height="40" rx="6"/>
+  <text class="b c" x="480" y="156">erp-web-ui-bff</text><text class="muted c" x="480" y="171">:8089</text>
+  <rect class="pill" x="620" y="140" width="160" height="40" rx="6"/>
+  <text class="b c" x="700" y="156">erp-graphql-bff</text><text class="muted c" x="700" y="171">:8088</text>
+  <path class="req" d="M220,160 H398" marker-end="url(#a-req)"/>
+  <text class="muted c" x="310" y="154">/api, /oauth2, /login, /logout</text>
+
+  <!-- BFFs → services and search -->
+  <path class="req" d="M480,180 V236 M700,180 V236 M96,236 H866"/>
+  <g class="req">
+    <path class="req" d="M96,236 V276" marker-end="url(#a-req)"/>
+    <path class="req" d="M206,236 V276" marker-end="url(#a-req)"/>
+    <path class="req" d="M316,236 V276" marker-end="url(#a-req)"/>
+    <path class="req" d="M426,236 V276" marker-end="url(#a-req)"/>
+    <path class="req" d="M536,236 V276" marker-end="url(#a-req)"/>
+    <path class="req" d="M646,236 V276" marker-end="url(#a-req)"/>
+    <path class="req" d="M756,236 V276" marker-end="url(#a-req)"/>
+    <path class="req" d="M866,236 V276" marker-end="url(#a-req)"/>
+  </g>
+  <g>
+    <rect class="pill" x="44" y="278" width="104" height="44" rx="6"/><text class="b c" x="96" y="296">product</text><text class="muted c" x="96" y="312">:8081</text>
+    <rect class="pill" x="154" y="278" width="104" height="44" rx="6"/><text class="b c" x="206" y="296">sales</text><text class="muted c" x="206" y="312">:8082</text>
+    <rect class="pill" x="264" y="278" width="104" height="44" rx="6"/><text class="b c" x="316" y="296">inventory</text><text class="muted c" x="316" y="312">:8083</text>
+    <rect class="pill" x="374" y="278" width="104" height="44" rx="6"/><text class="b c" x="426" y="296">manufacturing</text><text class="muted c" x="426" y="312">:8084</text>
+    <rect class="pill" x="484" y="278" width="104" height="44" rx="6"/><text class="b c" x="536" y="296">purchasing</text><text class="muted c" x="536" y="312">:8085</text>
+    <rect class="pill" x="594" y="278" width="104" height="44" rx="6"/><text class="b c" x="646" y="296">finance</text><text class="muted c" x="646" y="312">:8086</text>
+    <rect class="pill" x="704" y="278" width="104" height="44" rx="6"/><text class="b c" x="756" y="296">reporting</text><text class="muted c" x="756" y="312">:8087</text>
+    <rect class="pill" x="814" y="278" width="104" height="44" rx="6"/><text class="b c" x="866" y="296">search-service</text><text class="muted c" x="866" y="312">:8093</text>
+  </g>
+  <text class="muted" x="44" y="341">REST: erp-web-ui-bff calls all eight; erp-graphql-bff calls product, sales, inventory, finance, reporting and search.</text>
+
+  <!-- host ↔ Compose -->
+  <path class="req" d="M300,352 V408" marker-end="url(#a-req)"/>
+  <text class="muted" x="308" y="385">localhost: the published ports</text>
+  <path class="tel" d="M796,466 V354" marker-end="url(#a-tel)"/>
+  <text class="muted r" x="788" y="380" style="fill:var(--tel)">Prometheus scrapes host.docker.internal</text>
+  <text class="muted r" x="788" y="393" style="fill:var(--tel)">:8081–8087 and :8089</text>
+
+  <!-- Docker Compose -->
+  <rect class="g-dock" x="28" y="410" width="944" height="330"/>
+  <use href="#i-docker" x="28" y="410" width="24" height="24"/>
+  <text class="h" x="58" y="427" style="fill:var(--dock)">Docker Compose · data in named volumes (northwood-*)</text>
+
+  <text class="h" x="44" y="455">Data and messaging</text>
+  <text class="h" x="396" y="455">Identity and front door</text>
+  <text class="h" x="636" y="455">Telemetry</text>
+
+  <g>
+    <rect class="pill" x="44" y="466" width="336" height="44" rx="6"/><text class="b" x="56" y="484">PostgreSQL 17 · :5432</text><text class="muted" x="56" y="500">the seven services, one schema each</text>
+    <rect class="pill" x="44" y="518" width="336" height="44" rx="6"/><text class="b" x="56" y="536">Kafka 4.1.2 · :9092</text><text class="muted" x="56" y="552">one KRaft node · the services, search-service, the BFFs</text>
+    <rect class="pill" x="44" y="570" width="336" height="44" rx="6"/><text class="b" x="56" y="588">Redis 7 · :6379</text><text class="muted" x="56" y="604">BFF sessions · reporting cache</text>
+    <rect class="pill" x="44" y="622" width="336" height="44" rx="6"/><text class="b" x="56" y="640">Elasticsearch 9.0.4 · :9200</text><text class="muted" x="56" y="656">search-service indices</text>
+    <rect class="pill" x="44" y="674" width="336" height="44" rx="6"/><text class="b" x="56" y="692">Kibana 9.0.4 · :5601</text><text class="muted" x="56" y="708">looks into Elasticsearch</text>
+
+    <rect class="pill" x="396" y="466" width="224" height="44" rx="6"/><text class="b" x="408" y="484">Keycloak 26.0 · :8090</text><text class="muted" x="408" y="500">start-dev · sign-in, token keys</text>
+    <rect class="pill" x="396" y="518" width="224" height="44" rx="6"/><text class="b" x="408" y="536">Welcome page · :8080</text><text class="muted" x="408" y="552">nginx · links to every UI</text>
+
+    <rect class="pill" x="636" y="466" width="320" height="44" rx="6"/><text class="b" x="648" y="484">Prometheus 3.0 · :9090</text><text class="muted" x="648" y="500">scrapes the host processes</text>
+    <rect class="pill" x="636" y="518" width="320" height="44" rx="6"/><text class="b" x="648" y="536">Tempo 2.7 · :4317/4318, :3200</text><text class="muted" x="648" y="552">OTLP traces from the host processes</text>
+    <rect class="pill" x="636" y="570" width="320" height="44" rx="6"/><text class="b" x="648" y="588">Loki 3.3 · :3100</text><text class="muted" x="648" y="604">logs pushed by the host processes</text>
+    <rect class="pill" x="636" y="622" width="320" height="44" rx="6"/><text class="b" x="648" y="640">Promtail 3.3</text><text class="muted" x="648" y="656">container logs from the Docker socket → Loki</text>
+    <rect class="pill" x="636" y="674" width="320" height="44" rx="6"/><text class="b" x="648" y="692">Grafana 11.3 · :3000</text><text class="muted" x="648" y="708">dashboards over Prometheus, Tempo, Loki</text>
+  </g>
+
+  <!-- legend -->
+  <g transform="translate(40,780)">
+    <path class="req" d="M0,0 H34" marker-end="url(#a-req)"/><text class="muted" x="42" y="4">request</text>
+    <path class="tel" d="M120,0 H154" marker-end="url(#a-tel)"/><text class="muted" x="162" y="4">scrape</text>
+  </g>
+</svg>
