@@ -1,682 +1,357 @@
-# Swapping infrastructure under the hexagonal seam — discussion notes
+# Northwood: the infrastructure
 
-> Captured 2026-05-22. A series of "can we replace infrastructure component X with only an
-> `infrastructure/`-package change?" architecture questions about Northwood, grounded in the
-> actual code. A reference artifact kept alongside the tracked `docs/` set.
+> **In short** — Northwood is deployed in two ways: on a developer machine, where Docker Compose runs
+> the backing services and each Spring service runs on the host; and on AWS, where Terraform builds a
+> three-box EC2 demo (web, app, data) behind a Caddy TLS edge. Both use one PostgreSQL database with a
+> schema per service, a single Kafka broker, and Keycloak. The demo is built for showing and
+> recovering, not for high availability.
 
-## The one idea that runs through all of it
-
-> **A port (interface) abstracts API *shape*, not runtime *guarantees*.**
->
-> - When a leak is *"the method differs per implementation,"* a port closes it completely.
-> - When a leak is *"the application relies on a property the runtime provides"* — atomicity,
->   locking, ordering, exactly-once, replay — **no interface can manufacture that property.** A
->   port can only *name it as a contract and require every adapter to supply it*, which works
->   only if they all can. Otherwise the application must depend on *less*.
-
-Hexagonal isolates the **API surface** of an adapter, not its **semantic model**. Swaps that stay
-inside the same semantic model are "infrastructure-only"; swaps that cross it leak into
-`application/`/`domain/`, because those layers carry ambient assumptions that no single package owns.
+**It builds on [`domain.md`](domain.md) and [`architecture.md`](architecture.md)**, cited as
+*domain n* and *architecture n*.
 
 ---
 
-## 1. Persistence: PostgreSQL → Cassandra
-
-**Verdict: No — not an infrastructure-only change.** The package boundaries mostly hold (you would
-not touch `api/`, DTOs, or most of `domain/`), but Cassandra removes guarantees that several
-load-bearing invariants quietly depend on, and those invariants live in `application/` and
-`domain/`, not `infrastructure/`. "Replace the JDBC URL" it is not — it's a re-platform, because the
-application and domain layers lean on the relational/ACID **guarantee bundle**, not just SQL syntax.
-
-### Before touching code: challenge and scope the mandate
-
-"Replace Postgres with Cassandra" is usually a proxy for a real problem, and the first engineering
-move is to name it:
-
-- **"We need to scale"** → the *ready-to-split* invariant + read replicas + an Elasticsearch
-  read-side for reporting solve that **without** abandoning ACID where it's
-  load-bearing (the ledger). Cassandra is for write-heavy, geo-distributed,
-  availability-over-consistency workloads with *known* query patterns — an ERP is almost the
-  photographic negative of that profile (relational, integrity-critical money, modest volume, ad-hoc
-  reporting).
-- **"Corporate standard, no exceptions"** → proceed below, but the most defensible position is still
-  **polyglot**: Cassandra for the high-volume snapshot/event data, a small SQL island for the general
-  ledger.
-
-Assuming a genuine total mandate, here is what happens.
-
-### What genuinely travels well (ports are clean)
-
-- **`api/` controllers, DTOs** — untouched; they depend only on `application/`.
-- **The port interfaces** — `SalesOrderRepository`, `*QueryPort`, `*Lookup`, `OutboxPort`,
-  `SagaPort`, `*Projection`. None mention SQL; you write `Cassandra*` adapters satisfying the same
-  contracts.
-- **Domain aggregates as POJOs** — in-memory invariant checks via `Assert` are storage-agnostic.
-- **Aggregate-root loads** — loading `sales_order_header` + its `sales_order_line` children maps
-  *naturally* to a single Cassandra partition. Aggregate boundary = partition is a genuinely good
-  fit.
-- **"No cross-schema FK; cross-context links are plain UUIDs maintained by event projection"** —
-  already storage-neutral; ports beautifully.
-
-### What leaks past `infrastructure/` (the consistency model)
-
-1. **The atomic outbox dual-write — the big one.** `JdbcSalesOrderRepository.save()` (`:67-78`)
-   writes the header, the lines, *and* drains `pullPendingEvents()` into the outbox — all in one
-   JDBC transaction opened by `@Transactional` in `SalesOrderService`. That "state change + its
-   event commit together or not at all" is a Postgres transaction. Cassandra has no cross-partition
-   ACID. Every fix is a *design* change: co-locate aggregate + outbox in one partition behind a
-   single-partition `BATCH` (constrains the data model), switch to Cassandra CDC instead of an
-   outbox, or accept dual-write risk. This is `docs/messaging.md`-level, not adapter-level.
-   And the polled drain itself — `SELECT … WHERE status='pending' ORDER BY sequence LIMIT 100 FOR
-   UPDATE SKIP LOCKED` — is an `ALLOW FILTERING` full-cluster scan in Cassandra (the canonical
-   anti-pattern), so `OutboxDrainer` / `OutboxPort` / `JdbcOutboxAdapter` are rewritten regardless
-   of which dual-write fix you pick.
-
-2. **Pessimistic claim via `FOR UPDATE SKIP LOCKED`.** Used in `JdbcOutboxAdapter` and all three
-   `Jdbc*SagaAdapter`s to let concurrent publishers/workers grab disjoint rows. Cassandra has no row
-   locks or `SKIP LOCKED` — move to LWT (Paxos) or a different claim scheme. Worse: the
-   `OutboxPort` / `SagaPort` Javadoc *prescribes* "Implementations should use
-   `FOR UPDATE SKIP LOCKED`" — the Postgres mechanism has already leaked up into the
-   application-layer interface contract. And the "find stuck / timed-out sagas" sweep is itself a
-   cross-partition scan with no natural partition key — it needs time-bucketed partitions or an
-   external index, not a plain `WHERE saga_state = … AND updated_at < …`.
-
-3. **Optimistic locking via `version` + `WHERE version = ?`.** Aggregates carry a `version`; updates
-   compare-and-set on it. Cassandra needs LWT `IF version = ?` (a per-write Paxos round,
-   single-partition only) — different semantics and cost.
-
-4. **Running totals kept transactionally consistent.** `stock_balance`, GL-account balance,
-   `customer_invoice_header.paid_amount`, plus the `set_updated_at()` / balance triggers
-   (`config/postgresql/northwood_erp.sql`). The "deltas get aggregates, **totals get projections**" rule assumes a
-   projection can read-modify-write a running sum *in the same transaction* as ingesting the delta.
-   Cassandra has no triggers, and `counter` columns are non-transactional and can't mix with
-   conditional logic. The double-entry "total never diverges from the facts" invariant needs a
-   different mechanism (recompute-from-log, or eventual reconciliation) — and that logic lives in
-   `application/inbox/` projections.
-
-5. **Constraint enforcement that today lives in the schema.** CHECK sets the `code()` enums
-   mirror, unique constraints, within-schema line→header FKs, `NOT NULL`. Cassandra enforces almost
-   none — validation the DB did silently migrates into `domain`/`application` code. Uniqueness (order
-   number, SKU) becomes an LWT `IF NOT EXISTS` write or a lookup-table-as-index, both with race/perf
-   caveats; the line→header FK goes unenforced (mitigated by the single-partition aggregate model).
-
-6. **Ad-hoc read queries.** The reporting `*QueryPort` projections do joins, `GROUP BY`, arbitrary
-   `WHERE`/`CASE`. Cassandra is query-first: one table per access pattern, no joins. Existing
-   interface methods may survive, but every multi-table read must be re-modeled as a denormalized
-   read table, and each new query shape forces a new table + projection writer. `reporting-service`
-   is the most affected.
-
-7. **Schema-per-service mechanics.** `search_path = <service>, shared`, per-service Postgres roles +
-   GRANTs, Liquibase changelogs → Cassandra keyspaces, different access control, CQL migration
-   tooling. Mostly config, but the "ready to split" *mechanism* changes wholesale and every
-   Liquibase changeset is a rewrite.
-
-### What the system becomes
-
-You don't get "the same ERP on Cassandra" — you get a different architecture:
-
-- **Event-sourcing-leaning** — totals are recomputed and the publish path is outbox-`BATCH` or CDC,
-  so the event/delta log becomes the de-facto source of truth rather than the relational tables.
-- **Application-enforced integrity** — uniqueness, referential integrity, and balance consistency
-  move out of the engine into code, defended by LWT and reconciliation jobs.
-- **Query-first read models** — every read is a pre-modeled table; flexibility comes from a separate
-  search store (Elasticsearch), not the database.
-- **No transactional safety net** — the guarantees that made whole bug classes impossible (a total
-  can't drift from its deltas; an event can't be lost relative to its state change) become things you
-  defend by design and monitoring.
-
-Several of the project's proudest invariants are casualties: the atomic outbox (gone or
-CDC-replaced), the double-entry "totals can't diverge from facts" guarantee (weakened unless you
-recompute), and the manual-Liquibase-per-service story (replaced by CQL migration tooling).
-
-### Honest verdict — effort, risk, phasing
-
-- **Effort/risk:** weeks-to-months, not a sprint, and the risk concentrates in **finance** — money
-  is exactly where losing ACID hurts most. Do the ledger last and most carefully; it may well justify
-  keeping a SQL island even under the mandate.
-- **If it must happen, phase it:** pilot one simple service end-to-end first (`product` — mostly
-  snapshot data) to prove the patterns (single-partition aggregate, CDC publish, LWT uniqueness,
-  recompute-on-read), then the high-volume operational services, then finance — with reconciliation
-  jobs and an Elasticsearch read-side standing in for everything Cassandra can't query.
-
-### Principle
-
-Postgres → another **SQL** store (MySQL, CockroachDB, H2-for-tests) is close to "infrastructure
-only." Postgres → Cassandra crosses the **consistency-model** boundary — and that boundary isn't
-drawn around any package; it's baked into the outbox pattern, the saga workers, the balance
-projections, and the constraint-mirroring enums.
-
----
-
-## 2. Messaging: Kafka → JMS (no XA)
-
-**Verdict: Much cleaner — essentially infrastructure-only, with one conditional leak (ordering).**
-This is by design: the team built a broker-neutral seam. `EventPublisher` and `InboxEnvelopeHandler`
-are `application/` ports, and `EventEnvelope` is a plain record carrying `aggregateId`, `eventType`,
-and the JSON payload — no Kafka types near it. `InboxEnvelopeHandler`'s Javadoc states the intent:
-*"Application code does not see Kafka."*
-
-### What stays put
-
-- **`api/`, `domain/`, and almost all of `application/`** — unchanged.
-- **The ports**: `EventPublisher.publish(EventEnvelope)`, `InboxEnvelopeHandler`, and the
-  `AbstractInboxHandler` boilerplate. Concrete handlers only implement `apply(payload, envelope)` —
-  they never touch `ConsumerRecord` or `@KafkaListener`.
-- **The inbox/outbox idempotency** (`InboxPort.alreadyProcessed`). Both Kafka and JMS are
-  at-least-once, so the "redeliver-on-exception + dedup = exactly-once application" guarantee in
-  `AbstractInboxHandler.handle()` travels untouched. This is what makes a broker swap safe at all.
-
-### The pure-infrastructure work
-
-Mirror `shared/.../infrastructure/messaging/kafka/`:
-
-- `JmsEventPublisher implements EventPublisher` — replaces `KafkaEventPublisher` (the *only*
-  producer-side Kafka dependency; topic + key are derived from the envelope).
-- A `JmsInboxDispatcher` with `@JmsListener` — replaces `KafkaInboxDispatcher`; `Message` →
-  `EventEnvelope` → fan out to handlers.
-- A `JmsMessagingAutoConfiguration` for the bus/dispatcher. The outbox-drain wiring is already
-  shared in `OutboxDrainAutoConfiguration` (parameterized by `northwood.service-name`), so there's
-  no per-service config to touch.
-
-### The one real leak: per-aggregate ordering
-
-`KafkaEventPublisher` keys by `aggregateId` so all events for one aggregate land on one partition
-**in order**, and a couple of `application/inbox` projections quietly depend on that:
-
-- `manufacturing/.../ProductReplenishmentProjection`: *"partition keys preserve per-product event
-  order on the bus, so latest-* wins."*
-- `SalesOrderFulfilmentSagaManager` has explicit *"cross-partition-safe gate"* logic.
-
-Plain JMS has **no partitioning**. A single queue + single consumer is FIFO but unscalable; multiple
-consumers lose order. The clean fix is broker **message grouping** (`JMSXGroupID = aggregateId` on
-ActiveMQ/Artemis), set in the publisher adapter (infrastructure). So:
-
-> **If the JMS broker supports message groups → infrastructure-only, ordering preserved.** If it
-> doesn't, the ordering-dependent projections need defensive version-guarding/reordering — and
-> *that* code is in `application/inbox/`.
-
-### Operational / topology, not code
-
-- **Fan-out**: map Kafka topics → JMS **topics with durable subscriptions**, not queues. A queue is
-  point-to-point — only one service would get each event, silently breaking multi-service
-  consumption.
-- **Replay gone**: Kafka retains the log (reset offsets, replay); JMS deletes on ack. No code
-  change, but any "replay from the bus" runbook capability disappears.
-- **DLT → DLQ**: `AbstractInboxHandler`'s Javadoc references `<topic>.dlt`; rewire to a JMS DLQ.
-- **Stale Javadoc**: several `application/`-layer comments name Kafka explicitly
-  (`PurchaseOrderTrackingProjection`: *"events arrive on independent kafka topics"*;
-  `ReorderPolicyChangedHandler`: *"Kafka @KafkaListener adapter once the kafka profile is wired
-  in"*). No compile dependency, but the abstraction is **leaky in documentation** — the application
-  layer doesn't import Kafka, yet it *knows* it's riding a partitioned log.
-
-### Cassandra vs JMS contrast
-
-| | Postgres → Cassandra | Kafka → JMS |
-|---|---|---|
-| Ports clean? | Yes (signatures) | Yes (signatures) |
-| What leaks | The **consistency model** — atomic outbox write, locking, totals, constraints — touching `application/` + `domain/` design | The **ordering guarantee** — into ~2 `application/inbox` projections, *and only if* the broker can't group by key |
-| Realistic blast radius | Redesign messaging, sagas, balances | New adapters in `infrastructure/messaging/jms/`; maybe touch 2 projections |
-
----
-
-## 3. Does JTA/XA make the outbox table redundant?
-
-Context: XA/2PC can enlist both a JDBC datasource and a JMS connection factory in one global
-transaction — the classic alternative to the outbox for the atomic dual-write.
-
-### Short answer
-
-- **For the current stack (Kafka): no — XA isn't even on the table.** Kafka does not implement
-  `XAResource`; it can't be enlisted in a JTA transaction. Kafka's own transactions (idempotent
-  producer + `transactional.id`) are Kafka-internal and can't be coordinated with a database commit.
-  So with Kafka the outbox does something XA *cannot do at all*.
-- **For the JMS world: technically yes, XA can subsume the outbox's primary job** (atomic
-  state+event) — but it's a redundancy you'd be unwise to cash in.
-
-### What XA would genuinely replace
-
-The outbox solves the dual-write problem: change DB state *and* emit the event atomically. XA solves
-the same problem differently — enlist JDBC + a JMS `XAConnectionFactory` in one global transaction,
-and a two-phase commit makes both happen or neither. On the atomic-dual-write axis alone, XA-over-JMS
-does make the outbox redundant.
-
-### Why it's a bad trade here — what the outbox buys that XA destroys
-
-1. **Temporal decoupling / availability — the big one.** `OutboxDrainer.drain()` runs on a
-   `@Scheduled` poll in a transaction *entirely separate* from the business write. The business
-   transaction (`JdbcSalesOrderRepository.save()` → insert header + lines + outbox row, one local
-   commit) succeeds **regardless of broker health**. If the bus is down, `bus.publish()` throws, the
-   row is marked `failed`, and *"failed rows pick up on the next tick if/when the publisher
-   recovers"* (`OutboxDrainer` lines 72-79). XA inverts this: both resources must be live at commit
-   time, so **broker down = your business write rolls back**. Order placement becomes hostage to
-   message-broker uptime.
-
-2. **2PC cost — latency and lock duration.** The business transaction is currently short and local.
-   Under XA it must stay open across the prepare phase, holding DB row locks while waiting on broker
-   network round-trips. Longer lock hold → more contention → lower throughput under load. The outbox
-   commits the DB fast and pushes broker I/O into the async `drain()`.
-
-3. **The in-doubt window doesn't vanish.** 2PC narrows the dual-write gap but converts it into a
-   *recovery* problem: a coordinator crash between prepare and commit leaves resources in-doubt,
-   requiring a durable transaction log and heuristic resolution. You trade "a row might sit
-   unpublished for a second" (benign, auto-retried) for "a global transaction might hang in-doubt and
-   need operator intervention."
-
-4. **Spring Boot 4 has no first-party JTA coordinator.** Just as Boot 4.0.5 dropped Liquibase
-   auto-config (hence the manual `LiquibaseConfig`), it carries no Atomikos/Bitronix support — both
-   were deprecated and removed in the Boot 3.x line. Adopting XA means hand-wiring a third-party
-   Narayana starter, XA drivers, and recovery-log config — real infrastructure not currently run.
-
-5. **You lose the replayable event log.** Moving Kafka→JMS already forfeits log replay. The outbox
-   *table* compensates — an inspectable, reconcilable record of every emitted event. XA leaves
-   nothing behind; the message is gone on delivery.
-
-6. **The "ready to split" invariant breaks under XA, not under the outbox.** The load-bearing rule is
-   schema-per-service, ready to become database-per-service with only an `application.yml` change.
-   Once services own separate databases, an XA transaction would have to span *multiple service DBs +
-   the broker* — even more untenable. The outbox keeps working unchanged across that split, because
-   each service's local transaction only ever touches its own DB.
-
-7. **You still can't delete the inbox.** XA fixes only the producer side. Consumers still face
-   at-least-once delivery, so `AbstractInboxHandler`'s `inbox.alreadyProcessed(...)` dedup stays
-   regardless. XA wouldn't even let you remove all the messaging-reliability machinery — just the
-   outbox half.
-
-### The honest framing
-
-XA and the outbox solve the *same* atomicity problem with opposite philosophies:
-
-- **XA** — one synchronous distributed transaction. Strong coupling: every resource must cooperate at
-  commit. Simpler to reason about *if* you're already in a JTA container, JMS-only, single DB, modest
-  throughput.
-- **Outbox** — one local transaction + asynchronous relay with retry. Decoupled, broker-agnostic
-  (works for Kafka *and* JMS), survives broker outages, leaves an audit log, scales past a single
-  database.
-
-So it's "redundant-with-tradeoffs," not "redundant-as-a-free-win." The outbox is the choice that
-survives this project's actual constraints (Kafka today, Boot 4, the future DB split). XA only looks
-redundant-making if you assume JMS-forever *and* accept re-adding a distributed-transaction
-coordinator — a deliberate step back from where the architecture landed.
-
----
-
-## 4. Messaging: Kafka → RabbitMQ
-
-**Verdict: Essentially the same as JMS — infrastructure-only in principle**, because the same
-broker-neutral seam (`EventPublisher` + `EventEnvelope`) doesn't care whether the other side is a
-partitioned log or a queue/exchange broker. RabbitMQ adds its own topology model and one sharp
-correctness gotcha.
-
-### What stays put
-
-Identical to JMS — `api/`, `domain/`, and almost all of `application/` untouched. The inbox dedup
-makes RabbitMQ's at-least-once redelivery safe exactly as it does Kafka's.
-
-### Topology mapping (RabbitMQ's AMQP model: publish to an **exchange** → **bindings** → **queues** → consumers)
-
-| Kafka concept (today) | RabbitMQ equivalent |
-|---|---|
-| Topic `<source-service>.events` | An **exchange** per source service (e.g. `product.events`) |
-| N consumer groups on one topic | N **durable queues**, each bound to the exchange (one per consuming service) — the clean fan-out analog |
-| Partition key = `aggregateId` | AMQP **routing key** — but routing keys route, they don't order (see below) |
-| `<topic>.dlt` dead-letter topic | **Dead-letter exchange (DLX)** + dead-letter queue |
-
-The work: `RabbitMqEventPublisher implements EventPublisher`, a `RabbitInboxDispatcher` with
-`@RabbitListener` (deserialize `Message` → `EventEnvelope`, fan out — the `KafkaInboxDispatcher`
-twin), a `RabbitMessagingAutoConfiguration`, and per-service binding config replacing
-`northwood.kafka.subscribe-topics`. All under `infrastructure/messaging/rabbit/`. Spring AMQP
-(`spring-boot-starter-amqp`) is mature on Boot 4.
-
-### The same conditional leak: per-aggregate ordering
-
-RabbitMQ orders messages only **within a single queue delivered to a single consumer**; no
-partition-by-key. To reproduce Kafka's per-`aggregateId` ordering:
-
-- the **consistent-hash exchange** plugin — hashes the routing key (`aggregateId`) to a fixed queue,
-  so all events for one aggregate land on one queue, ordered if that queue has **one consumer**; or
-- **RabbitMQ Streams** (3.9+), a Kafka-like append log with offsets — which also restores replay.
-
-Set in the adapter/topology → **infrastructure**. Same caveat as JMS: if you don't reproduce per-key
-ordering, the order-dependent projections need defensive version-guarding, and *that* is
-application-layer code.
-
-### The RabbitMQ-specific gotcha sharper than JMS: publisher confirms
-
-Outbox correctness depends on `OutboxDrainer.drain()` marking a row `published` **only after**
-`bus.publish()` returns successfully (lines 69-71). `KafkaEventPublisher` earns that with a
-synchronous `kafkaTemplate.send(...).join()`. RabbitMQ's default publish is **fire-and-forget** —
-`rabbitTemplate.convertAndSend(...)` returns before the broker has durably accepted anything. Ported
-naively, it reopens the *exact* dual-write gap the outbox exists to close: the row flips to
-`published`, the broker silently drops the message, the event is lost.
-
-So `RabbitMqEventPublisher.publish()` must:
-
-- enable **publisher confirms** (`publisher-confirm-type: correlated`) and **block on / verify** the
-  confirm before returning;
-- send with **persistent** delivery mode to **durable** exchanges/queues so messages survive a broker
-  restart.
-
-All in the adapter (infrastructure) — but easy to get subtly wrong, and unlike XA there's no
-transaction manager catching it for you.
-
-### Verdict
-
-Infrastructure-only in principle — two adapters + topology config under
-`infrastructure/messaging/rabbit/`. Two things to verify before calling it free:
-
-1. **Ordering** — reproduce per-`aggregateId` ordering at the broker (consistent-hash exchange +
-   one-consumer-per-queue, or Streams), or accept touching the order-dependent projections.
-2. **Publish durability** — wire publisher confirms so the outbox's "mark published only after the
-   broker accepts" invariant survives; otherwise you silently un-solve the dual-write problem.
-
-Classic queues lose Kafka's replay (the outbox table remains your event record), and a handful of
-`application/`-layer Javadocs still name Kafka and would go stale.
-
----
-
-## 5. Can a small refactor (one or two interfaces) cover the application leaks?
-
-The leaks split, and the reason they split is the unifying idea at the top: **interfaces abstract API
-shape, not runtime guarantees.**
-
-### Publish durability — yes, and it barely needs a refactor
-
-Not actually an application leak. `OutboxDrainer.drain()` already depends only on the existing
-`EventPublisher` port: it calls `bus.publish(envelope)` and treats a thrown exception as "mark
-failed, retry next tick." The durability requirement is a **contract on a port that already exists**,
-not a missing interface. The fix:
-
-1. Tighten the `EventPublisher.publish()` Javadoc contract: *"Returns normally only after the broker
-   has durably accepted the message; throws on any failure to do so."*
-2. Add one shared abstract conformance test (a TCK) that every adapter extends — Kafka satisfies it
-   via `.join()`, RabbitMQ via publisher confirms + persistent/durable, JMS via a
-   transacted/synchronous send.
-
-Zero new interfaces, zero application-logic change. The RabbitMQ "leak" was *a way to implement the
-adapter wrong*; a contract test pins it.
-
-### Ordering — an interface can't cover it; a small application change can
-
-No method signature differs — the application simply *assumes* events for one `aggregateId` arrive in
-emission order, and that assumption is satisfied (or not) by the broker at runtime. Two ways to
-resolve it, neither of which is "wrap it in an interface":
-
-**Route A — demand ordering in the port contract.** Declare `InboxEnvelopeHandler`'s contract as
-"per-`aggregateId` ordered delivery" and make every adapter honor it (Kafka: free via partition key;
-RabbitMQ: consistent-hash exchange + *one consumer per queue*; JMS: message groups). Application
-unchanged — but you've pushed a hard constraint onto infrastructure (single consumer per key-bucket
-caps parallelism; depends on a broker plugin/feature) and it *breaks the day a target broker can't
-honor it*. The obligation moved; it didn't disappear. Brittle for "swap to anything."
-
-**Route B — delete the assumption (recommended).** Make the order-dependent read models
-order-*insensitive*, so the application depends on no delivery guarantee and every broker becomes a
-truly infrastructure-only swap. The codebase already has the ingredient: `OutboxDrainer` maintains a
-monotonic per-service `sequence_number` (its polling cursor — *"never `created_at`"*). It just isn't
-propagated — `EventEnvelope` carries `occurredAt` but no sequence. So:
-
-- Surface that `sequence_number` on `EventEnvelope` as an ordering token (more robust than
-  timestamps; since the producer owns its aggregate, its own monotonic sequence is a reliable
-  "which is newer").
-- Change the ~2 "latest-wins" projections (`ProductReplenishmentProjection`, etc.) to apply
-  conditionally:
-
-```sql
-UPDATE ... SET ... , source_sequence = :seq
-WHERE product_id = :id AND source_sequence < :seq   -- ignore stale/out-of-order arrivals
+## 1. The deployment topology
+
+**Where does each part run? Locally, the backing services run in Docker and the Spring services run on
+the host. On AWS, a public web box runs the edge, the BFF and Keycloak; a private app box runs the
+seven services; a private data box runs PostgreSQL, Kafka and the telemetry stack.**
+
+### 1.1 Local
+
+| Runs in Docker Compose | Port | Runs on the host | Port |
+|---|---|---|---|
+| PostgreSQL 17 | 5432 | product · sales · inventory · manufacturing · purchasing · finance · reporting | 8081–8087 |
+| Kafka 4.1.2 (KRaft, one node) | 9092 | erp-graphql-bff | 8088 |
+| Keycloak 26.0 (`start-dev`) | 8090 | erp-web-ui-bff | 8089 |
+| Redis 7 | 6379 | search-service | 8093 |
+| Elasticsearch 9.0.4 (one node) | 9200 | erp-web-ui (Vite dev server) | 5174 |
+| Kibana 9.0.4 | 5601 | | |
+| Welcome page (nginx) | 8080 | | |
+| Prometheus · Tempo · Loki · Promtail · Grafana | 9090 · 3200/4317/4318 · 3100 · — · 3000 | | |
+
+The services reach the containers through `localhost`; Prometheus reaches the services through
+`host.docker.internal`. Each container keeps its data in a named volume (`northwood-pgdata`,
+`northwood-kafkadata`, …).
+
+### 1.2 AWS demo
+
+```
+                Internet
+                   │  :443 / :80
+   ┌───────────────▼──────────────────────────── public subnet 10.0.1.0/24 ┐
+   │  web EC2 10.0.1.10  (Elastic IP)                                      │
+   │    Caddy :443 ─┬─ <ui host>      → nginx :8090 (SPA) → erp-web-ui-bff :8089
+   │                ├─ <auth host>    → Keycloak :8080                     │
+   │                └─ <grafana host> → Grafana on the data box (read-only)│
+   │  NAT instance (t3.nano)                                               │
+   └───────────────┬───────────────────────────────────────────────────────┘
+   ┌───────────────▼──────────── private app subnet 10.0.2.0/24 ┐
+   │  app EC2 10.0.2.10 : the 7 services, :8081–8087            │
+   └───────────────┬────────────────────────────────────────────┘
+   ┌───────────────▼──────────── private data subnet 10.0.3.0/24 ┐
+   │  data EC2 10.0.3.10 : PostgreSQL, Kafka, Tempo, Loki,        │
+   │                       Prometheus, Grafana                    │
+   └──────────────────────────────────────────────────────────────┘
+   Outside the VPC: CloudFront + S3 (welcome page), ECR (app images),
+   Secrets Manager, S3 (artifacts, Terraform state), Route 53, EventBridge Scheduler.
 ```
 
-That converts "the broker must deliver in order" into "the consumer resolves order locally" —
-broker-independent, and more correct anyway (even Kafka reorders across partition rebalances and
-producer retries).
-
-This *is* an application-package change — and that's the point, not a failure of abstraction: you're
-**removing the application's dependence on a runtime guarantee**, which is inherently application
-work. No interface can hide an assumption; someone has to either keep providing it or stop making it.
-
-### Summary
-
-| Leak | Coverable by an interface? | The actual fix | Touches application? |
-|---|---|---|---|
-| Publish durability | It's already a port concern | Harden `EventPublisher` contract + conformance TCK | No |
-| Ordering | No — it's a guarantee, not a shape | Surface the outbox `sequence_number` on the envelope + highest-wins guards on ~2 projections | Yes, by design |
-
-A small refactor genuinely *can* make Kafka / JMS-without-XA / RabbitMQ all infrastructure-only swaps
-— but the two pieces live in different places by their nature: the durability gap closes with
-*contract* work (no new interface, no app change), and the ordering gap closes with a *small,
-one-time application change* that strips out a broker assumption. After both, the broker really is
-swappable in `infrastructure/` alone — but you got there by making the application depend on *less*,
-not by adding an interface that papers over the difference. Abstract the *shape* with a port; but
-*eliminate* (don't wrap) a guarantee you can't universally provide.
-
----
-
-## 6. Cassandra write-side, in depth — the CDC synthesis and a risk re-ranking
-
-§1's verdict left the atomic-outbox dual-write as "the big one, redesign-level." Pushing on *how*
-you'd actually build the write-side surfaces a cleaner construction than the "CDC **or** a sharded
-outbox" fork §1 implied — and, more usefully, it re-ranks which leaks actually hurt.
-
-### The synthesis: keep the outbox rows, change how they're relayed
-
-Co-locating event rows in the aggregate's partition gives atomicity (a single-partition `LOGGED
-BATCH` is atomic *and* isolated), but it kills the polled drain — finding pending rows across
-partitions is the `ALLOW FILTERING` full-cluster scan. The resolution isn't "outbox **or** CDC"; it's
-both at once:
-
-- Keep writing the event rows **inside the aggregate's partition**, in the same `BATCH` as header +
-  lines → atomicity preserved.
-- Mark that table `cdc=true` → the event rows are **relayed by Cassandra CDC**, not polled.
-
-You never run the `WHERE status='pending'` scan — the commitlog is the cursor. The outbox row stops
-being a *poll target* and becomes a *CDC source*. That's the idiomatic shape, and it's strictly
-better than either branch §1 named.
-
-### What CDC breaks — and why this codebase barely feels it
-
-Cassandra CDC is weaker than a polled outbox in two notorious ways:
-
-1. **At-least-once with duplicates** — CDC is per-node and commitlog-based; with RF=3 the same
-   mutation lands in three nodes' CDC logs, so the relay can emit an event up to three times.
-2. **No cross-node ordering** — each node's commitlog is locally ordered; a consumer merging three
-   logs has no global order.
-
-Both are *already* defended against, because they are also Kafka's properties:
-
-- **Duplicates** → `AbstractInboxHandler.inbox.alreadyProcessed(eventId)`. The three replica copies
-  carry the same event UUID (same mutation), so the inbox collapses them. The dedup machinery built
-  for Kafka's at-least-once delivery *is* the CDC dedup layer, for free.
-- **Reordering** → a highest-sequence-wins guard on the ~2
-  order-dependent projections + the Saga's existing cross-partition-safe gate make consumers
-  order-insensitive. CDC's missing ordering is the same gap the ordering fix closes for a broker swap.
-
-The outbox's "never lost" guarantee survives directly: the mutation hits the commitlog *before the
-write acks*, the commitlog is the durability point, CDC reads from it.
-
-### The residual cost that is genuinely new
-
-- **Operational weight** — a per-node CDC agent + a connector pipeline (DataStax CDC connector, or a
-  Debezium commitlog reader) to run, monitor, dedup, and reason about. Materially heavier and less
-  mature than Postgres logical replication. The real new burden.
-- **Latency** — CDC segments surface on commitlog flush/discard; publish lag is tunable but looser
-  than a fast `@Scheduled` drain.
-- **Loss of the inspectable outbox *table*** — today `outbox_message` is a queryable, reconcilable
-  "what's stuck?" record. CDC logs are transient; that ops affordance must be rebuilt (e.g. a
-  retained Kafka topic).
-
-### The reframe worth keeping: the scary leak is the recoverable one
-
-The naive ranking puts the atomic outbox at #1. Worked through, it inverts: **the outbox is the
-*most* recoverable leak**, because the inbox dedup and the highest-sequence-wins ordering fix already compensate for exactly what CDC
-loses. The leaks with *no* pre-built cushion are where the pain concentrates:
-
-- **Ad-hoc reporting reads** — joins / `GROUP BY` / arbitrary `WHERE` have no Cassandra
-  answer but "a table per query shape" or Elasticsearch. Nothing in the codebase
-  softens this.
-- **Schema-enforced constraints** — uniqueness, FK, CHECK, `NOT NULL` migrate into app
-  code with race/perf caveats and no safety net.
-
-So the sharper "what happens": the headline (atomic dual-write) is cushioned by machinery already
-present; the quiet leaks (reporting flexibility, integrity enforcement) — plus finance — are where it
-actually bites.
-
----
-
-## 7. Running totals on Cassandra — counters vs LWT vs recompute
-
-§1 leak #4 ("transactional running totals") deserves its own treatment, because it's where the
-codebase's defining invariant — *the total can never diverge from the sum of its facts*
-(`docs/architecture.md`'s Pacioli framing) — meets Cassandra most directly.
-
-### The core tension: there is no free transactional running total
-
-On Postgres, `stock_balance` / gl-account balance / `customer_invoice_header.paid_amount` stay
-correct for free: the read-modify-write of the total runs in the *same transaction* as recording the
-delta (or a synchronous trigger fires). Atomicity + isolation ⇒ no lost update, no divergence. On
-Cassandra the delta and the total live in *different partitions* (delta in the aggregate's partition;
-balance keyed by `product_id` / `gl_account_id`), and there is no cross-partition transaction. You
-must pick a mechanism; each fails differently.
-
-### The three options
-
-- **Counter columns — rejected.** Native increment, no read-before-write, but: dedicated table, no
-  conditional logic, can't sit in a batch with the inbox dedup marker, and — fatally — **not
-  idempotent**. A retried increment double-counts; a crash between the counter bump and the
-  "processed" marker double-applies on replay. Exactly the divergence double-entry exists to prevent.
-- **LWT materialized balance (single-partition Paxos).** Keep the balance row; update via `UPDATE …
-  SET qty=:new, last_seq=:seq WHERE key=:id IF last_seq=:readSeq`. Single-partition ⇒ LWT is legal;
-  conditioning on a monotonic `seq` makes it idempotent and order-insensitive, now
-  doubling as concurrency control. Correct — but it's optimistic CAS with re-read-on-conflict, and
-  **the hottest accounts are single rows**: a GL cash / AR-control / AP-control account hit by every
-  payment becomes one hot partition serialising the system through Paxos retry storms. The busiest
-  balances are precisely the ones you can't shard without destroying the "one balance" semantics.
-- **Recompute — snapshot + tail (the event-sourcing answer).** Don't store a mutable total; append
-  the deltas (append-only, zero contention) and define the balance as their sum, with periodic
-  snapshots so reads don't scan all history. Preserves the invariant *by construction*. Costs:
-  snapshotting machinery, eventual-consistency reads, wide-partition management (time-bucket the key,
-  roll old buckets into snapshots), and cross-account aggregation becomes scatter-gather → punted to
-  the reporting store.
-
-### Pick per balance, by contention profile
-
-- **`stock_balance` (per SKU)** and **`paid_amount` (per invoice)** — low contention per key → LWT
-  highest-wins fits cleanly.
-- **GL control accounts (cash, AR, AP)** — single hot rows → LWT melts down; recompute + snapshot is
-  the only contention-free answer, but now you're hand-building ledger snapshotting that Postgres
-  gives you with a partial index and a `SUM`.
-
-### Punchline
-
-Double-entry and Cassandra collide at the hottest point in the system. The whole reason a ledger
-keeps both a balance *and* a journal is to get a fast read *and* a reconcilable audit trail; Postgres
-gives both transactionally, Cassandra forces a choice between a fast-but-contended LWT total and a
-contention-free-but-slow recomputed one, with no transactional middle. The codebase is already
-philosophically fine with recompute ("deltas get aggregates, **totals get projections**" — the total
-is derived, not authoritative); Cassandra only changes the *mechanism* from eager-transactional to
-eager-LWT-or-lazy-recompute, and forces that choice hardest on the control accounts. Which is the
-strongest single argument for the **finance SQL-island**: not nostalgia for SQL, but that the
-busiest, most integrity-critical balances are exactly where "no free running total" hurts most.
-
----
-
-## 8. Is Cassandra the right store for the *events side*? — the event-sourcing reframe
-
-The sharpest version of the question: *forget the wholesale swap — leverage Cassandra only for its
-strengths (HA, fault tolerance, geo-distribution, write-heavy, multi-tenant) on the **events side**,
-the architecture cornerstone, and serve projections / queries from other stacks.* That reframe
-correctly banishes the §1 read-side leaks (balances, constraints, joins) to "other stacks." The
-remaining question is whether the events side *itself* is a good Cassandra fit — and the answer turns
-on what "the events side" actually is here.
-
-**Verdict: a good event-sourcing store in the abstract; a poor fit for *this* project's events
-side.**
-
-### The linchpin: this project is event-*driven*, not event-*sourced*
-
-`docs/architecture.md` is explicit about two things that pull against the reframe:
-
-- The cornerstone is **"Posting — the ink-and-stamp atomicity": the outbox-in-transaction.**
-  `aggregate.save()` writes the new **state** *and* the pending events in one `@Transactional`
-  boundary — event published AND state changed, or neither.
-- Aggregates are **state-stored** ("Spring Data JDBC, not JPA… so aggregate boundaries are
-  explicit"), loaded via `reconstitute(...)`, optimistic concurrency on a `version` column. The event
-  stream is **not** the system of record — the state row is. Only *projections* are reproducible by
-  replaying events; aggregates are never rebuilt from them.
-
-So the events side isn't an event store you read back to reconstitute aggregates; it's an **outbox +
-Kafka bus + inbox**, whose load-bearing property is that the event write is **atomically welded to
-the state write**. That welding makes the reframe impossible to execute as stated:
-
-- **Events → Cassandra, state + reads → Postgres:** the atomic dual-write now spans two stores, and
-  **Cassandra cannot enlist in a JTA/XA transaction** (no `XAResource` — see §3). The ink-and-stamp
-  atomicity dies — you'd destroy the cornerstone in the act of trying to leverage it.
-- **Events + state → Cassandra (co-located partition, single-partition `BATCH`):** atomicity survives
-  — but that's the full re-platform of §1/§6 (event-sourced aggregates, LWT concurrency, CDC relay,
-  recompute balances), not a targeted "events side" move.
-
-There is no middle path where Cassandra owns the events and Postgres keeps the aggregates: the
-transaction boundary forbids carving them apart. **The events side and the write model are one
-transaction by design.**
-
-### Kafka is already the HA, distributed, geo-replicable event log
-
-The properties wanted on the events side — HA, fault tolerance, geo-distribution, write-heavy
-throughput — describe **Kafka**, already in the stack: a distributed, partitioned, replicated commit
-log (cluster-linking / MirrorMaker for geo, log retained for replay, built for high write rates). So
-on the events side Cassandra is **redundant with Kafka** for propagation. The one thing a Cassandra
-event store uniquely adds over Kafka — *per-aggregate stream replay* ("all events for aggregate X, in
-order") — is exactly what a state-stored project never does. And Cassandra is conversely *bad* at
-"read all events across all streams in commit order" (cross-partition `ALLOW FILTERING`), which is
-what projections need — so canonical Cassandra event sourcing **pairs Cassandra with Kafka anyway**.
-You'd run both: more moving parts, no net simplification, for ERP volumes that tax neither.
-
-### The project already harvests event-sourcing's payoffs without being event-sourced
-
-- **Audit / temporal reconstruction** → `shared.audit_entry` (a meta-journal, full reconstruction).
-- **Replayable read models** → the inbox + projection design *is* the reconciliation guarantee ("any
-  projection must be reproducible by replaying its source events").
-- **Decoupled propagation + traceability** → outbox + event-classes-as-anchor.
-
-…all while keeping the **state-stored relational model and its integrity safety net** (CHECK sets the
-enums mirror, FKs, the `finance` ledger that must balance in currency) — precisely what the Pacioli
-discipline at the top of `architecture.md` leans on. True event sourcing would trade hard, in-engine
-integrity for replay-time enforcement: a downgrade for an integrity-critical ERP, finance worst of
-all.
-
-### Multi-tenancy is orthogonal
-
-Multi-tenancy is a data-isolation / deployment concern, not a reason to reach for Cassandra. The
-architecture already has a tenancy / scale story in the schema-per-service **"ready to split"**
-invariant (+ per-service scaling). Cassandra is a *scale* tool — justified by
-thousands of tenants, multi-region active-active, sustained write volume beyond Postgres + Kafka. ERP
-event volume doesn't approach that; reach for it when the load is real, not to acquire tenancy you
-can get structurally.
-
-### When it would flip to "yes"
-
-If Northwood committed to genuinely event-sourced aggregates *and* faced a load / tenancy profile
-that outgrows Postgres + Kafka (massive multi-tenant, multi-region active-active, very high sustained
-writes). That's a different product — and even then the `finance` ledger would stay relational.
-
-The instinct — split write-side from read-side, put the write-heavy log on a write-optimised store —
-is the right CQRS reflex. It lands on *no* here only because the write-optimised distributed log being
-described is the one already running (Kafka), and the events can't leave the aggregate's transaction
-without taking the aggregate with them.
-
----
-
-## Master summary
-
-| Swap | Infrastructure-only? | What leaks, and where |
+| Box | Type | Runs |
 |---|---|---|
-| Postgres → another SQL store | ~Yes | Dialect/migration tweaks only |
-| **Postgres → Cassandra** | **No** | Consistency model: atomic outbox write, `SKIP LOCKED` locking, optimistic `version`, transactional running totals, schema-enforced constraints, ad-hoc joins → `application/` + `domain/` redesign |
-| **Kafka → JMS (no XA)** | **Mostly** | Per-aggregate ordering, *iff* broker lacks message groups → ~2 `application/inbox` projections |
-| **Kafka → RabbitMQ** | **Mostly** | Same ordering leak (reproduce via consistent-hash exchange/Streams) + publisher-confirm durability in the adapter |
-| **JTA/XA instead of outbox** | n/a (not a swap) | Impossible for Kafka; for JMS subsumes the atomic write but loses temporal decoupling, replay, the split-ready invariant, and adds a 2PC coordinator |
-| **Refactor to close the leaks** | — | Durability = port-contract + TCK (no app change); ordering = ordering token on envelope + highest-wins guards (small, deliberate app change) |
-| **Cassandra as the *event store* (events side only, reads elsewhere)** | **No** | The events side is an outbox-in-transaction, not an event store — the event write is atomically welded to the state write. Carving events onto Cassandra either breaks the atomic-posting cornerstone (cross-store, no XA) or forces a full event-sourcing re-platform. The HA/geo/write-heavy log is already Kafka; a state-stored project never needs per-aggregate replay, and Cassandra needs Kafka anyway for global subscription. |
+| web | t3.small | Caddy, the SPA's nginx, `erp-web-ui-bff`, Keycloak |
+| app | t3.medium | the seven services, each in its own container |
+| data | t3.medium | PostgreSQL, Kafka, and (when `enable_observability`) Tempo, Loki, Prometheus, Grafana |
+| NAT | t3.nano | iptables masquerade for the private subnets |
 
-Sections §6–§8 go deeper: §6 the CDC write-side synthesis + a risk re-ranking (the atomic outbox is
-the *recoverable* leak; reporting reads + schema constraints are the painful ones), §7 running totals
-on Cassandra (counters rejected / LWT hot-account bottleneck / recompute — the finance SQL-island
-argument), §8 the event-sourcing reframe above.
+Each box runs `docker run --restart unless-stopped` containers set up by its user-data on first boot.
+The boxes have fixed private IPs, so every cross-box URL is known at plan time. Only the web box is
+public: `:443` for HTTPS and `:80` for the ACME challenge and the redirect. The app box accepts the
+service ports from the web box (and from the data box for scraping); the data box accepts `:5432` and
+`:9092` from the app box and the telemetry ports from both.
+
+The welcome page is a static page in S3 behind CloudFront, so it stays up while the boxes are stopped.
+
+---
+
+## 2. The runtime environment
+
+**What must the operator provide before the system works? A JDK, Maven, Docker and Node to build and
+run; the backing services at the versions below; and, for AWS, an account, a Route 53 zone and
+Terraform.**
+
+| Need | Version | Why that version |
+|---|---|---|
+| Java | 21 | The language level of every module. |
+| Maven | 3.9+ | The reactor build. |
+| Node.js / npm | current LTS | Builds `erp-web-ui`. |
+| Docker | with the `overlay2` image store | The local stack and the image build. A containerd image store pushes layers that the AWS hosts' Docker cannot pull (section 8). |
+| PostgreSQL | 17 | The baseline schema and the test containers use 17. |
+| Kafka | 4.1.2, KRaft | Matches the `kafka-clients` that Spring Boot 4.0.5 brings. |
+| Keycloak | 26.0 | Imports `config/keycloak/northwood-realm.json`. |
+| Redis | 7 | Sessions and the reporting cache. |
+| Elasticsearch | 9.0.x | Spring Data Elasticsearch 6.0.4 brings client 9.2.6; keep the server on the same major. |
+| Grafana · Prometheus · Tempo · Loki · Promtail | 11.3.1 · 3.0.1 · 2.7.0 · 3.3.0 · 3.3.0 | Tempo, Loki and Promtail move together. |
+
+**For AWS, also:** Terraform 1.10 or later; AWS CLI v2, signed in; an IAM principal allowed to manage
+VPC, EC2, ECR, Secrets Manager, IAM, S3, SSM, ACM, CloudFront, Route 53 and EventBridge Scheduler; a
+Route 53 public hosted zone (`dns_zone_name`) whose sub-domains become the UI, auth, Grafana and
+welcome-page names.
+
+**The services start in any order** once PostgreSQL, Kafka and Keycloak are up: nothing calls another
+service at start-up, and events wait in the outbox until their consumers run.
+
+---
+
+## 3. Configuration
+
+**What can the operator set, and what is the default? Environment variables for every address, secret
+and port; `northwood.*` properties for behaviour.** Every default suits the local stack. How the code
+reads them is *architecture 9*.
+
+### 3.1 Environment variables
+
+| Variable | Default | Sets |
+|---|---|---|
+| `SPRING_PROFILES_ACTIVE` | `dev` | `kafka` turns on publishing, consuming and the dead-letter redriver. **Every cross-service flow needs it.** |
+| `<SERVICE>_DB_URL` | `jdbc:postgresql://localhost:5432/northwood_erp?currentSchema=<svc>,shared` | The service's database. The one setting that changes when a schema moves to its own database. |
+| `<SERVICE>_DB_USER`, `<SERVICE>_DB_PASSWORD` | `postgres` / `postgres` | The login. On AWS: `<svc>_service` and its generated password. |
+| `<SERVICE>_PORT`, `SEARCH_PORT` | 8081–8087, 8093 | Listen port. The BFFs listen on 8089 and 8088. |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | The broker. |
+| `KEYCLOAK_ISSUER_URI` | `http://localhost:8090/realms/northwood` | The token issuer for every service and both BFFs. |
+| `KEYCLOAK_BFF_CLIENT_SECRET` | `northwood-bff-secret` | The BFFs' client secret. Must equal the secret in the realm file. |
+| `REDIS_HOST`, `REDIS_PORT` | `localhost`, `6379` | Sessions (BFFs) and cache (reporting). |
+| `ELASTICSEARCH_URIS` | `http://localhost:9200` | `search-service`'s cluster. |
+| `NORTHWOOD_BFF_TARGETS_<SERVICE>` | `http://localhost:<port>` | Where the BFF sends each route. |
+| `OTLP_ENDPOINT` | `http://localhost:4317` | Trace export (OTLP gRPC). |
+| `LOKI_URL` | `http://localhost:3100/loki/api/v1/push` | Log push. |
+| `NORTHWOOD_TRACING_SAMPLING` | `1.0` | Share of traces kept. `0.1` for a production-like run. |
+| `ERP_URL`, `GRAFANA_URL` | `http://localhost:8089`, `http://localhost:3000` | Links on the welcome page. |
+
+### 3.2 Behaviour properties
+
+| Property | Default | Sets |
+|---|---|---|
+| `northwood.service-name` | per service | The topic `<name>.events` and the event source. |
+| `northwood.outbox.drain.enabled` | `true` in `application-kafka.yml` of producers | Turns on the outbox drain and the topic declarations. |
+| `northwood.outbox.poll-interval` | `1000` ms | Drain cadence. |
+| `northwood.kafka.subscribe-topics` | per service | Topics the inbox listener reads. |
+| `northwood.kafka.topic.partitions` | `3` | Partitions of the service's topics. Raising it is safe; lowering it is ignored. |
+| `northwood.kafka.topic.replication-factor` | `1` | Replication of the service's topics. Raise it on a cluster of more than one broker. |
+| `northwood.kafka.listener.concurrency` | the partition count | Listener threads, capped at the partition count. |
+| `northwood.kafka.consumer.retry.initial-interval` / `multiplier` / `max-interval` / `max-elapsed-time` | `1000` ms / `2.0` / `30000` ms / `300000` ms | Back-off for transient consumer failures before dead-lettering. |
+| `northwood.kafka.dlt.redrive.enabled` | `true` in consumers | Turns on the redriver. |
+| `northwood.kafka.dlt.redrive.max-attempts` / `delay` / `concurrency` / `topic-pattern` | `5` / `10000` ms / `3` / `.+\.dlt` | Redrive limits. |
+| `northwood.inbox.dedup-strategy` | `advisory-lock` | The inbox check (*architecture 5.4*). |
+| `northwood.saga.poll-interval` / `lease-ttl-seconds` / `retry-backoff-seconds` | `1000` ms / `30` / `15` | Saga worker cadence, lease and retry. |
+| `northwood.purchasing.shortagePoAutoApprove` | `true` | Sends a replenishment purchase order with a known price at once (*domain 5.5*, rule 3). |
+| `northwood.finance.match.priceTolerancePercent` | `2.0` | The price tolerance of the three-way match (*domain 10*). |
+| `northwood.reporting.dashboard.currencies` / `balanceRefreshIntervalMs` | `AUD` / `60000` | The financial dashboard. |
+| `northwood.audit.enabled` | `true` (`false` in reporting and search) | The `/api/audit` endpoint. |
+| `northwood.liquibase.enabled` | `false` | Liquibase per service (section 6.3). |
+| `northwood.bff.web-ui-url` | `http://localhost:5174/` | Where the BFF sends the browser after sign-in. |
+
+### 3.3 Terraform variables (AWS)
+
+`region`, `name_prefix` (`northwood-demo`), `image_tag`, `dns_zone_name`, `ui_hostname`,
+`auth_hostname`, `grafana_hostname` (empty keeps Grafana private), `front_door_domain`, `acme_email`,
+`enable_observability` (`true`), `load_seed_data`, `enable_scheduler` (`true`), `start_cron`
+(`cron(30 8 ? * MON-FRI *)`), `stop_cron` (`cron(0 17 ? * MON-FRI *)`), `scheduler_timezone`
+(`Australia/Sydney`), `bff_client_secret` (must equal the realm file), `repo_root`. The modules also
+take `ami_id` / `nat_ami_id`; empty takes the latest Amazon Linux 2023 when a box is first created.
+
+---
+
+## 4. Security operations
+
+**How is the deployment kept safe, and who changes what? HTTPS at one edge, each service on its own
+database role, secrets generated and kept in Secrets Manager, and administration only over SSM. The
+local stack has no security of its own and must never be exposed.**
+
+### 4.1 TLS and certificates
+
+| Name | Certificate | Renewed by |
+|---|---|---|
+| UI, auth, Grafana hosts | Let's Encrypt, issued by Caddy on the web box (HTTP-01 on `:80`) | Caddy, automatically |
+| Welcome page | ACM, validated through Route 53, on CloudFront | ACM, automatically |
+
+Behind Caddy everything is plain HTTP on loopback or inside the VPC. The BFF runs with
+`server.forward-headers-strategy=framework` and Keycloak with `KC_PROXY_HEADERS=xforwarded`, so both
+build `https://` URLs from Caddy's forwarded headers. At import, the web box rewrites the realm's
+`localhost` redirect URIs and web origins to the UI host.
+
+### 4.2 Accounts, keys and secrets
+
+| Secret | Made by | Kept in | Rotated by |
+|---|---|---|---|
+| One password per `<svc>_service` database role | Terraform (`random_password`) | Secrets Manager `…/db/<svc>`; the services' env file in the private artifacts bucket | Re-apply with a new value, then replace the data and app boxes. |
+| PostgreSQL superuser password | Terraform | Secrets Manager `…/db/postgres-superuser` | As above. |
+| Keycloak admin password | Terraform | Secrets Manager `…/keycloak/admin` | As above, then replace the web box. |
+| BFF client secret | Fixed: `northwood-bff-secret` | Secrets Manager `…/keycloak/bff-client-secret` and the realm file | Change the realm file **and** the variable together. |
+
+- The baseline schema creates the service roles `NOLOGIN`. On AWS, an extra init script turns on
+  `LOGIN` with each generated password, so each service really connects as its own role. Locally,
+  every service connects as `postgres`.
+- **Terraform state holds these secrets in plain text**, so the state lives in a private, encrypted,
+  versioned S3 bucket made once by `terraform/bootstrap` (protected against destroy).
+- No box has an SSH key. Shells and the Grafana admin port are reached through SSM Session Manager.
+  The instance role may pull from the project's ECR repositories and read its artifacts bucket.
+
+### 4.3 Exposure
+
+- **AWS:** only Caddy is public. Grafana is public read-only (anonymous Viewer) through Caddy; admin is
+  an SSM port-forward to `:3000`. Kafka and PostgreSQL accept only the app box.
+- **Local:** Keycloak in dev mode over HTTP, Grafana with anonymous Admin, Elasticsearch with security
+  off, PostgreSQL `postgres/postgres`, Kafka with no authentication. Every port is bound on the host.
+  This is for one developer's machine only.
+- The realm has one demo user per role (*domain 3.8*), which is for showing, not for real use.
+
+---
+
+## 5. Non-functional requirements
+
+**What qualities must the system have, and how does it meet them? Correct under concurrency and
+redelivery, recoverable from any failure but the loss of PostgreSQL, observable end to end, and ready to
+split. It is not highly available.**
+
+| Quality | Requirement | How it is met |
+|---|---|---|
+| **No lost or doubled effect** | Every committed change is published at least once and applied exactly once by each handler. | Transactional outbox, publish-then-mark, inbox per handler (*architecture 5*). Tested against real Kafka and PostgreSQL. |
+| **Correct under concurrency** | Concurrent users and redelivered events never break an invariant of *domain 5*. | Optimistic locking, `SKIP LOCKED` claims, guarded atomic writes, database constraints. The Gatling load test runs 30 concurrent users through order-to-cash and checks the invariants afterwards. |
+| **Recovery** | Every failure except the loss of PostgreSQL without a backup recovers without losing data. | Section 7.3. |
+| **Scale out** | A service can run on more than one instance. | No state outside PostgreSQL; outbox and Saga claims use `SKIP LOCKED` and leases; sessions in Redis; listener threads up to the partition count. |
+| **Ready to split** | Moving a service to its own database changes one setting. | Schema per service, own role, own pool, no cross-schema key or query (*architecture 12.1*). |
+| **Observable** | One business transaction can be followed across services in traces, logs and metrics. | Section 7.1. |
+| **Availability** | None beyond restart. | One instance of everything. PostgreSQL and the Kafka broker are single points of failure. |
+| **Cost (AWS demo)** | Low enough to keep running. | Small boxes, a NAT instance, weekday schedule; stopped, it costs storage and the Elastic IP only. |
+
+---
+
+## 6. Build and release
+
+**How does a change reach a deployment? Maven builds and tests the reactor; Spring Boot buildpacks
+make one image per app; locally you run the jars, on AWS you push to ECR and replace the boxes. The
+schema is one baseline script.**
+
+### 6.1 Build and test
+
+```powershell
+mvn clean install -DskipTests     # build every module
+mvn test                          # domain, application, acceptance and shared tests; no Docker
+mvn verify                        # also the *IT tests on Testcontainers PostgreSQL 17 and Kafka; needs Docker
+cd erp-web-ui; npm ci; npm run build   # the SPA (npm run build is its type check)
+```
+
+- After changing any port interface, build the whole reactor: `test-harness` holds an in-memory double
+  of every port, and a single-module build does not see it break.
+- JaCoCo writes a report per module and an aggregate in `test-harness`. There is no coverage gate.
+- The load test (`load-test`) runs against a running stack with Gatling.
+
+### 6.2 Images and release (AWS)
+
+1. Once: `terraform/bootstrap` (state bucket), then `terraform apply -target=module.ecr` in
+   `terraform/envs/demo`.
+2. Every release: `terraform/build/build-and-push.ps1 -Tag <tag>` builds each image with
+   `spring-boot:build-image`, pushes it to ECR, and builds the SPA into `erp-web-ui/dist`.
+3. `terraform apply`, adding `-replace=module.compute.aws_instance.app` (and `.web`) to make the boxes
+   pull the new images. *Reason:* user-data runs only when a box is created, so a plain apply changes
+   nothing on a running box.
+
+The images are the seven services and `erp-web-ui-bff`. The SPA is staged to S3 and served by the web
+box's nginx.
+
+### 6.3 Schema lifecycle
+
+- `config/postgresql/northwood_erp.sql` holds the schema, roles and grants. PostgreSQL runs it once,
+  on the first boot of an empty volume. `config/postgresql/northwood_erp_seed.sql` (overlay
+  `docker-compose.seed.yml`, or `load_seed_data` on AWS) adds the demo data; it can be run again
+  safely.
+- Liquibase is off. **A schema change is made in the baseline script.** A running database that must
+  keep its data (the AWS demo) needs the same change applied by hand with `ALTER`, because the
+  baseline does not run again.
+- A Saga state added or removed in code must change in its table's `saga_state` CHECK in the same
+  release, or the service will not start (*architecture 6.4*).
+- To start clean locally: `docker compose down -v`, then `up -d`.
+
+---
+
+## 7. Operations
+
+**How is the running system watched and kept working? Through Grafana over traces, logs and metrics,
+a small set of known recovery steps, and starting and stopping the AWS boxes. There are no backups.**
+
+### 7.1 Telemetry
+
+| Signal | Path | Look at |
+|---|---|---|
+| Traces | Services push OTLP gRPC to Tempo (`OTLP_ENDPOINT`). | Grafana → Tempo. One Saga: `{ .northwood.saga_id = "<id>" }`; one order and its sub-Sagas: `{ .northwood.sales_order_id = "<id>" }`. |
+| Logs | Services push to Loki (`LOKI_URL`); Promtail ships the containers' logs. | Grafana → Loki, by `app` and by trace id. |
+| Metrics | Prometheus scrapes `/actuator/prometheus` every 15 s (services, web BFF). Kept 24 h. | `northwood-overview` dashboard; `northwood_outbox_pending`, `northwood_saga_count`, HTTP RED metrics. |
+
+### 7.2 Routine
+
+- **Local start:** `docker compose up -d` (add the seed overlay for demo data), then each service with
+  `SPRING_PROFILES_ACTIVE=kafka`.
+- **AWS pause:** `terraform/ops/stop.ps1` / `start.ps1 -Wait`, or the weekday schedule (08:30–17:00
+  Sydney, stopped all weekend). Stopping keeps the disks, the IPs and the images. Terraform sees no
+  drift.
+- **AWS teardown:** `terraform destroy` (the state bucket stays).
+
+### 7.3 Recovery
+
+| Failure | Class | Step |
+|---|---|---|
+| A service, container or box restarts | automatic | None: in-flight events are delivered again, Saga leases expire and are claimed. |
+| Kafka or PostgreSQL down, then back (data kept) | automatic | None: the outbox retries the broker for ever; consumers back off for up to 5 min. |
+| A record dead-lettered by a passing fault | automatic | None: the redriver applies it again. |
+| A record in `<topic>.dlt.parked` | manual | Find it (the redriver logs `ERROR … parked in …`), fix the cause, publish the record again onto its source topic. There is no tool for this. |
+| An outbox row that keeps failing | manual | `status = 'failed'`, read `last_error`; fix the cause, or correct or remove the row. |
+| A Saga that keeps failing | manual | Rising `retry_count` and `last_error` on the Saga row; fix the cause, or change the row by SQL. |
+| A malformed envelope (logged and skipped) | manual | Publish the event again from the producer's outbox. |
+| Kafka's volume lost | manual | Set the affected outbox rows from `published` to `pending`; the inbox absorbs the duplicates. |
+| A read model lost or wrong | manual | Elasticsearch: drop the index and replay. Reporting: clear the view and its `inbox_message` rows, then replay from the earliest offset. |
+| **PostgreSQL's volume lost** | **unrecoverable** | No backup exists. Start clean from the baseline and the seed. |
+
+---
+
+## 8. Why the less obvious operational choices are there
+
+| Choice | Reason |
+|---|---|
+| EC2 with `docker run`, not ECS or Fargate | The smallest thing that shows the whole system; the managed design is a separate, larger variant. |
+| A NAT instance, not a NAT Gateway | A gateway costs about USD 32 a month. The free S3 gateway endpoint still keeps image-layer traffic off the NAT. The NAT instance installs iptables before it uses it, because Amazon Linux 2023 has none. |
+| Keycloak public, behind Caddy | The browser must reach the issuer for the sign-in redirect; the services reach the same public issuer through the NAT, so no split issuer is needed. |
+| Fixed private IPs | Cross-box URLs are known at plan time, so there is no dependency cycle between boxes. |
+| `ignore_changes = [ami]` | A new AMI would replace the box, which on the data box destroys PostgreSQL and Kafka. Moving to a new AMI is a deliberate `-replace`. |
+| Fixed Kafka `CLUSTER_ID` | A re-created container can attach to the kept volume. |
+| Broker auto-create off (locally) | A misspelt topic fails loudly instead of becoming a stray one-partition topic. |
+| Single broker, replication 1 | Recovery after a restart is enough for a demo; the outbox makes even a lost broker recoverable. |
+| Welcome page on CloudFront and S3 | It explains the demo hours while the boxes are stopped. |
+| `overlay2`, not the containerd image store | Images pushed from a containerd store carry uncompressed layers that Docker 25 on Amazon Linux 2023 refuses ("layers from manifest don't match image configuration"), so no container starts. |
+| ECR login through a separate Docker config | `docker login` to ECR fails on some Docker Desktop versions; the build script writes a separate config and passes it to `docker push --config`. |
+| 100 % trace sampling | A demo is for looking at traces; production would use about 10 %. |
+| Scheduled and security spans off | They would fill Tempo with empty spans every second. |
+
+---
+
+## 9. Left out, and open
+
+**Left out:**
+- High availability: Multi-AZ PostgreSQL (or Aurora), a Kafka cluster, more than one instance per
+  service.
+- Backups and point-in-time recovery for PostgreSQL. Adding them would make the one unrecoverable row
+  of section 7.3 recoverable.
+- Alerting on parked records, failing outbox rows, stuck Sagas or error rates.
+- The managed AWS design (ECS Fargate, Aurora, MSK, Cognito, an ALB).
+
+**Open:**
+1. **The AWS demo runs no Redis, Elasticsearch, `search-service` or `erp-graphql-bff`.** The web BFF keeps
+   its sessions in Redis and routes `/api/search` to `search-service`, so sign-in and search on AWS
+   depend on parts the topology does not have. Add them to the data and app boxes, or change the BFF's
+   session store for AWS?
+2. **The AWS broker creates topics by itself** (`KAFKA_AUTO_CREATE_TOPICS_ENABLE=true`), unlike the local
+   one. Turn it off on AWS too?
+3. **Prometheus on AWS does not scrape the services** (it has no service discovery), so service metrics
+   are empty there. Add static targets, or push metrics over OTLP?
+4. **Local Prometheus does not scrape `erp-graphql-bff` (8088) or `search-service` (8093).** Add them?
+5. **There is no tool to replay parked dead-letter records.**

@@ -74,13 +74,15 @@ views of section 11, built from everyone else's events.
 | Manufacturing | Inventory | Customer/supplier, both ways | Raw-material reservation requests and completions. Inventory answers with reservation outcomes and shortages. |
 | Inventory, Purchasing | Finance | Customer/supplier | Goods receipts, shipments and stock adjustments become postings. Goods receipts and purchase orders anchor the three-way match. |
 | Sales | Finance | Customer/supplier | Up-front invoice requests, shipments and order terminals (for refunds). |
+| Purchasing | Manufacturing | Conformist | Supplier price changes, for the cost roll-up. |
 | Finance | Sales, Purchasing | Customer/supplier | Invoice created, payment received, supplier invoice approved or rejected, supplier paid. |
 | everyone | Reporting | Conformist | Every event, as published. |
 
 Three rules hold the map together:
 
-1. **Manufacturing and Purchasing never talk to each other.** A shortage in either one goes through
-   an Inventory replenishment request.
+1. **Manufacturing and Purchasing never ask each other for supply.** A shortage in either one goes
+   through an Inventory replenishment request. The one fact that crosses directly is reference
+   data: Manufacturing keeps supplier prices for the cost roll-up.
 2. **Sales never asks Manufacturing or Purchasing for anything.** It asks Inventory for stock and
    waits.
 3. **No subdomain reads another's records.** A fact crosses a boundary only as an event, and the
@@ -219,7 +221,7 @@ them. A shared term is listed once, under its owner.
 | **Purchase requisition** | noun | An internal request to buy, raised by hand (*manual*) or from a replenishment request (*stock replenishment*). | A purchase order. |
 | **Convert** | verb | To turn an approved purchase requisition into a purchase order. | |
 | **Purchase order** | noun | A supplier-facing order to buy. | A sales order or a work order. |
-| **Approve** | verb | (Of a buyer) to accept a draft purchase order, which sends it to the supplier. | |
+| **Approve** | verb | (Of a purchasing manager) to accept a draft purchase order, which sends it to the supplier. | |
 | **Three-way match** | noun | The check that a supplier invoice agrees with its purchase order line (price, within tolerance) and its goods receipt (quantity, exactly). | |
 | **Price tolerance** | noun | How far a supplier invoice price may differ from the purchase order price and still match. | |
 
@@ -248,17 +250,21 @@ them. A shared term is listed once, under its owner.
 
 | Role | Kind | May |
 |---|---|---|
-| **Sales clerk** | noun | Place and cancel sales orders; manage customers. |
-| **Warehouse operator** | noun | Post shipments and goods receipts; see stock. |
+| **Catalog manager** | noun | Register and change products: prices, standard cost, reorder policy, make-vs-buy, replenishment strategy, valuation class, planning time fence, active BOM, approved vendors; discontinue. |
+| **Sales clerk** | noun | Place sales orders; add, change and remove lines; manage customers. |
+| **Sales manager** | noun | Request cancellation of a sales order; change a line's price. |
+| **Warehouse clerk** | noun | Post shipments and goods receipts. |
 | **Warehouse manager** | noun | Post stock adjustments; release reservations by force. |
-| **Production planner** | noun | Prioritise work orders. |
-| **Production operator** | noun | Complete or skip operations. |
-| **Buyer** | noun | Raise purchase requisitions; approve and reject purchase orders; manage suppliers and their prices. |
-| **AP clerk** | noun | Record supplier invoices; approve or reject them by hand; post supplier payments. |
-| **AR clerk** | noun | Record customer payments; see invoices. |
-| **Accountant** | noun | Reverse journal entries; see the financial dashboard; edit standard cost. |
-| **Product administrator** | noun | Maintain products, BOMs, reorder policies and valuation classes. |
+| **Production planner** | noun | Author and activate BOMs; complete operations; prioritise work orders. |
+| **Production supervisor** | noun | Skip operations. |
+| **Purchasing clerk** | noun | Raise purchase requisitions. |
+| **Purchasing manager** | noun | Approve and reject purchase orders; manage suppliers and their prices. |
+| **Accountant** | noun | Record supplier invoices; record customer and supplier payments. |
+| **Finance manager** | noun | Approve or reject a supplier invoice that failed the three-way match; reverse journal entries. |
 | **Auditor** | noun | Read everything; change nothing. |
+
+Every role may read what its work needs. Running the identity provider itself is an operator task,
+not a domain role.
 
 ### 3.9 Spent words
 
@@ -298,7 +304,7 @@ only glossary words. Rules that select or are reused are also written as specifi
 
 ### 5.1 Product
 
-1. A product administrator registers a product with a SKU, name, product type and unit of measure.
+1. A catalog manager registers a product with a SKU, name, product type and unit of measure.
    The SKU is unique and never changes.
 2. Product type sets the defaults. Raw material: buy, raw-materials class. Semi-finished good: make,
    raw-materials class. Finished good: make, finished-goods class. Service: buy, no class. A product
@@ -315,7 +321,8 @@ only glossary words. Rules that select or are reused are also written as specifi
 ### 5.2 Sales
 
 1. A sales clerk places a sales order for one customer, with one or more lines. Quantities are
-   positive. Prices are zero or more and are copied from the sales price.
+   positive. Prices are zero or more and are copied from the sales price. Only a sales manager may
+   change a line's price after that.
 2. The customer's code and name, and the payment terms, are copied onto the sales order when it is
    placed. Later changes to the customer do not reach it.
 3. Deposit terms need a deposit percent; other terms must not have one.
@@ -326,7 +333,7 @@ only glossary words. Rules that select or are reused are also written as specifi
    line ships until it is paid.
 6. A sales order may be cancelled or amended (lines added, removed or changed) only while it is not
    at a terminal and **no line has shipped**. This rule reads the lines, never the order status.
-7. Cancellation has two phases. A sales clerk requests it. Inventory then decides between the
+7. Cancellation has two phases. A sales manager requests it. Inventory then decides between the
    cancellation and any shipment for the same order. Whichever comes first wins. If a shipment wins,
    the cancellation outcome is *cancellation rejected*.
 8. Requesting cancellation twice has the same effect as once.
@@ -375,20 +382,20 @@ only glossary words. Rules that select or are reused are also written as specifi
    materials.
 5. A parent work order's operations do not start until all its children are complete.
 6. Completed quantity plus scrapped quantity never exceeds planned quantity.
-7. A production operator completes or skips operations. A skipped operation is recorded and does not
-   block completion.
+7. A production planner completes operations. Only a production supervisor may skip one. A skipped
+   operation is recorded and does not block completion.
 8. When a parent completes, it consumes its children's output.
 9. A work order may be withdrawn (cancelled) only while it is released. Once in progress it refuses.
    Withdrawal happens only as a compensation leg today.
 
 ### 5.5 Purchasing
 
-1. A purchase requisition is manual or stock replenishment. A stock-replenishment requisition is
-   approved when it is raised. A manual one needs a buyer.
+1. A purchase requisition is manual (raised by a purchasing clerk) or stock replenishment (raised
+   from a replenishment request). Either kind is approved when it is raised.
 2. Converting a purchase requisition picks the preferred approved vendor and that supplier's
    price for the quantity.
 3. A purchase order from a replenishment, with a known price, is sent when it is made. A manual one
-   waits at draft for a buyer to approve or reject it.
+   waits at draft for a purchasing manager to approve or reject it.
 4. Received and invoiced quantities never exceed ordered quantity. Paid never exceeds invoiced, and
    invoiced never exceeds total.
 5. A purchase order may be withdrawn only while it is draft or sent. Once goods are received it
@@ -407,8 +414,8 @@ only glossary words. Rules that select or are reused are also written as specifi
 5. An invoice's paid amount is the total of its allocations, never set by hand.
 6. Up-front money goes to Customer Deposits, never Revenue. An up-front invoice posts nothing when it
    is raised. The money posts when it is paid, and moves to Revenue when the goods ship.
-7. A supplier invoice is approved when the three-way match holds. If it does not, it waits for an AP
-   clerk to approve or reject it by hand. A rejection is final.
+7. A supplier invoice is approved when the three-way match holds. If it does not, it waits for a
+   finance manager to approve or reject it by hand. A rejection is final.
 8. When a sales order ends without shipping (compensated, compensation failed, or rejected), any
    paid up-front money is refunded, once. Nothing else is reversed, because nothing was recognised.
    The refund follows the confirmed end of the order, never the cancellation request.
