@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700" width="1000" height="700" font-family="'Amazon Ember', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Placing a sales order</title>
+  <desc id="d">The SPA posts the order to erp-web-ui-bff, which forwards it to sales with the user's token. Sales checks the sales_clerk role and, in one transaction, saves the order, inserts the fulfilment Saga row at started and appends SalesOrderPlaced to its outbox, then returns 201. Everything after is asynchronous: the outbox drain publishes SalesOrderPlaced; the Saga worker appends StockReservationRequested; inventory reserves stock, raises a ReplenishmentRequest for a short line and publishes StockReserved; sales applies StockReserved to the Saga; reporting and search update their read models from the same events.</desc>
+  <style>
+    svg { --bg:#ffffff; --ink:#16191f; --muted:#545b64; --pill:#f2f3f3; --pill-line:#aab7b8; --life:#aab7b8;
+          --edge:#8c4fff; --svc:#ed7100; --svc-fill:#fff5eb; --inf:#1d63ed; --read:#3f8624; --tx:#ed7100;
+          --req:#16191f; --evt:#c45400; --note:#fffbe6; --note-line:#d9b800; }
+    @media (prefers-color-scheme: dark) {
+      svg { --bg:#0f1419; --ink:#e6edf3; --muted:#9aa7b4; --pill:#222b35; --pill-line:#4b5866; --life:#4b5866;
+            --edge:#b18cff; --svc:#ff9a3c; --svc-fill:#261a0d; --inf:#5b8cff; --read:#7cc45a; --tx:#ff9a3c;
+            --req:#e6edf3; --evt:#ff9a3c; --note:#26220f; --note-line:#a08a1a; }
+    }
+    .bg { fill:var(--bg); }
+    text { fill:var(--ink); font-size:12px; }
+    .muted { fill:var(--muted); font-size:10.5px; }
+    .h { font-weight:600; font-size:12.5px; }
+    .b { font-weight:600; font-size:11px; }
+    .n { font-weight:700; font-size:11px; }
+    .c { text-anchor:middle; }
+    .pill { fill:var(--pill); stroke:var(--pill-line); stroke-width:1.2; }
+    .life { stroke:var(--life); stroke-width:1.2; stroke-dasharray:4 4; }
+    .act { fill:var(--svc-fill); stroke:var(--svc); stroke-width:1.2; }
+    .tx { fill:none; stroke:var(--tx); stroke-width:1.2; stroke-dasharray:5 3; }
+    .note { fill:var(--note); stroke:var(--note-line); stroke-width:1; }
+    .req { fill:none; stroke:var(--req); stroke-width:1.5; }
+    .ret { fill:none; stroke:var(--req); stroke-width:1.2; stroke-dasharray:4 3; }
+    .evt { fill:none; stroke:var(--evt); stroke-width:1.6; stroke-dasharray:6 4; }
+    .sep { stroke:var(--muted); stroke-width:1; stroke-dasharray:2 4; }
+    .head-req { fill:var(--req); } .head-evt { fill:var(--evt); }
+  </style>
+  <defs>
+    <marker id="a-req" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-req" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="a-evt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-evt" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1000" height="700"/>
+
+  <!-- participants -->
+  <g>
+    <rect class="pill" x="30" y="16" width="120" height="44" rx="6" style="stroke:var(--edge)"/><text class="b c" x="90" y="35">erp-web-ui</text><text class="muted c" x="90" y="50">the SPA</text>
+    <rect class="pill" x="190" y="16" width="120" height="44" rx="6" style="stroke:var(--edge)"/><text class="b c" x="250" y="35">erp-web-ui-bff</text><text class="muted c" x="250" y="50">:8089</text>
+    <rect class="pill" x="370" y="16" width="120" height="44" rx="6" style="stroke:var(--svc)"/><text class="b c" x="430" y="35">sales</text><text class="muted c" x="430" y="50">:8082 · sales schema</text>
+    <rect class="pill" x="550" y="16" width="120" height="44" rx="6" style="stroke:var(--inf)"/><text class="b c" x="610" y="35">Kafka</text><text class="muted c" x="610" y="50">sales / inventory.events</text>
+    <rect class="pill" x="710" y="16" width="120" height="44" rx="6" style="stroke:var(--svc)"/><text class="b c" x="770" y="35">inventory</text><text class="muted c" x="770" y="50">:8083</text>
+    <rect class="pill" x="860" y="16" width="120" height="44" rx="6" style="stroke:var(--read)"/><text class="b c" x="920" y="35">reporting, search</text><text class="muted c" x="920" y="50">the read side</text>
+  </g>
+  <g>
+    <line class="life" x1="90" y1="60" x2="90" y2="660"/>
+    <line class="life" x1="250" y1="60" x2="250" y2="660"/>
+    <line class="life" x1="430" y1="60" x2="430" y2="660"/>
+    <line class="life" x1="610" y1="60" x2="610" y2="660"/>
+    <line class="life" x1="770" y1="60" x2="770" y2="660"/>
+    <line class="life" x1="920" y1="60" x2="920" y2="660"/>
+  </g>
+
+  <!-- synchronous part -->
+  <path class="req" d="M90,96 H248" marker-end="url(#a-req)"/>
+  <text class="n" x="98" y="90">1</text><text class="muted" x="110" y="90">POST the order</text>
+  <path class="req" d="M250,124 H424" marker-end="url(#a-req)"/>
+  <text class="muted" x="260" y="118">forward, with the user's token</text>
+
+  <rect class="act" x="424" y="124" width="12" height="136"/>
+  <rect class="note" x="444" y="132" width="150" height="34" rx="4"/>
+  <text class="n" x="452" y="146">2</text><text class="muted" x="464" y="146">role check: sales_clerk</text>
+  <text class="muted" x="452" y="160">SalesOrderService.placeOrder</text>
+  <rect class="tx" x="444" y="174" width="150" height="74" rx="4"/>
+  <text class="n" x="452" y="190">3</text><text class="b" x="464" y="190" style="fill:var(--tx)">one transaction</text>
+  <text class="muted" x="452" y="205">SalesOrder + lines</text>
+  <text class="muted" x="452" y="219">fulfilment Saga row: started</text>
+  <text class="muted" x="452" y="233">outbox: SalesOrderPlaced</text>
+
+  <path class="ret" d="M424,262 H252" marker-end="url(#a-req)"/>
+  <text class="muted" x="320" y="256">201 Created</text>
+  <path class="ret" d="M250,282 H92" marker-end="url(#a-req)"/>
+  <text class="muted" x="150" y="276">201 Created</text>
+
+  <!-- asynchronous part -->
+  <line class="sep" x1="20" y1="306" x2="980" y2="306"/>
+  <text class="muted" x="24" y="300">every step below is a new local transaction, started by an event; nothing waits for an answer</text>
+
+  <path class="evt" d="M436,338 H606" marker-end="url(#a-evt)"/>
+  <text class="n" x="444" y="332">4</text><text class="muted" x="456" y="332">drain: SalesOrderPlaced</text><text class="muted" x="456" y="352">key = order id</text>
+
+  <rect class="act" x="424" y="356" width="12" height="44"/>
+  <text class="n" x="300" y="372">5</text><text class="muted" x="312" y="372">Saga worker</text>
+  <text class="muted" x="300" y="386">claims the row</text>
+  <path class="evt" d="M436,390 H606" marker-end="url(#a-evt)"/>
+  <text class="muted" x="446" y="384">StockReservationRequested</text>
+
+  <path class="evt" d="M612,430 H764" marker-end="url(#a-evt)"/>
+  <text class="n" x="620" y="424">6</text><text class="muted" x="632" y="424">inbox: StockReservationRequested</text>
+  <rect class="act" x="764" y="430" width="12" height="86"/>
+  <rect class="tx" x="784" y="436" width="128" height="74" rx="4"/>
+  <text class="b" x="792" y="452" style="fill:var(--tx)">one transaction</text>
+  <text class="muted" x="792" y="467">reserve stock</text>
+  <text class="muted" x="792" y="481">ReplenishmentRequest</text>
+  <text class="muted" x="792" y="495">for a short line</text>
+  <path class="evt" d="M764,532 H614" marker-end="url(#a-evt)"/>
+  <text class="muted" x="624" y="526">StockReserved</text>
+
+  <path class="evt" d="M608,572 H438" marker-end="url(#a-evt)"/>
+  <text class="n" x="450" y="566">7</text><text class="muted" x="462" y="566">inbox: StockReserved → Saga</text>
+  <rect class="act" x="424" y="572" width="12" height="28"/>
+
+  <path class="evt" d="M612,626 H914" marker-end="url(#a-evt)"/>
+  <text class="muted" x="624" y="620">the same events</text><text class="muted" x="780" y="620">→ read models</text>
+
+  <!-- legend -->
+  <g transform="translate(40,684)">
+    <path class="req" d="M0,0 H34" marker-end="url(#a-req)"/><text class="muted" x="42" y="4">HTTP</text>
+    <path class="ret" d="M100,0 H134" marker-end="url(#a-req)"/><text class="muted" x="142" y="4">reply</text>
+    <path class="evt" d="M200,0 H234" marker-end="url(#a-evt)"/><text class="muted" x="242" y="4">event through Kafka</text>
+    <rect class="tx" x="380" y="-8" width="30" height="16" rx="3"/><text class="muted" x="418" y="4">one database transaction</text>
+  </g>
+</svg>

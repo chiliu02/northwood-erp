@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 670" width="1000" height="670" font-family="'Amazon Ember', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Northwood containers</title>
+  <desc id="d">The browser reaches the SPA and erp-web-ui-bff; API clients reach erp-graphql-bff or a service directly. Both BFFs call the services over REST with the user's token. Each of the six producing services writes its own PostgreSQL schema, outbox included, and its outbox drain publishes to its own Kafka topic. Every consumer reads the topics it subscribes to through its inbox. Reporting keeps its own schema; search-service keeps Elasticsearch indices. Keycloak signs users in and Redis holds sessions and the reporting cache.</desc>
+  <style>
+    svg { --bg:#ffffff; --ink:#16191f; --muted:#545b64; --pill:#f2f3f3; --pill-line:#aab7b8;
+          --edge:#8c4fff; --edge-fill:#f5f0ff; --svc:#ed7100; --svc-fill:#fff5eb; --inf:#1d63ed; --inf-fill:#eef3fe;
+          --band:#ffffff; --req:#16191f; --evt:#c45400; }
+    @media (prefers-color-scheme: dark) {
+      svg { --bg:#0f1419; --ink:#e6edf3; --muted:#9aa7b4; --pill:#222b35; --pill-line:#4b5866;
+            --edge:#b18cff; --edge-fill:#1a1430; --svc:#ff9a3c; --svc-fill:#261a0d; --inf:#5b8cff; --inf-fill:#111c33;
+            --band:#161c23; --req:#e6edf3; --evt:#ff9a3c; }
+    }
+    .bg { fill:var(--bg); }
+    text { fill:var(--ink); font-size:12px; }
+    .muted { fill:var(--muted); font-size:10.5px; }
+    .h { font-weight:600; font-size:12.5px; }
+    .b { font-weight:600; font-size:11px; }
+    .c { text-anchor:middle; }
+    .g-edge { fill:var(--edge-fill); stroke:var(--edge); stroke-width:1.2; }
+    .g-svc { fill:var(--svc-fill); stroke:var(--svc); stroke-width:1.2; }
+    .g-inf { fill:var(--inf-fill); stroke:var(--inf); stroke-width:1.2; }
+    .band { fill:var(--band); stroke:var(--pill-line); stroke-width:1; }
+    .pill { fill:var(--pill); stroke:var(--pill-line); stroke-width:1; }
+    .req { fill:none; stroke:var(--req); stroke-width:1.6; }
+    .evt { fill:none; stroke:var(--evt); stroke-width:1.6; stroke-dasharray:6 4; }
+    .head-req { fill:var(--req); } .head-evt { fill:var(--evt); }
+  </style>
+  <defs>
+    <marker id="a-req" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-req" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="a-evt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-evt" d="M0,0 L10,5 L0,10 z"/></marker>
+    <symbol id="i-edge" viewBox="0 0 24 24"><rect width="24" height="24" fill="#8C4FFF"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="#FFFFFF" stroke-width="1.4"/><path d="M5.5,12 H18.5 M12,5.5 C9,9 9,15 12,18.5 M12,5.5 C15,9 15,15 12,18.5" fill="none" stroke="#FFFFFF" stroke-width="1.2"/></symbol>
+    <symbol id="i-svc" viewBox="0 0 24 24"><rect width="24" height="24" fill="#ED7100"/><path d="M12,5 L18,8.5 V15.5 L12,19 L6,15.5 V8.5 Z" fill="none" stroke="#FFFFFF" stroke-width="1.4" stroke-linejoin="round"/></symbol>
+    <symbol id="i-inf" viewBox="0 0 24 24"><rect width="24" height="24" fill="#1D63ED"/><ellipse cx="12" cy="7.5" rx="5.5" ry="2" fill="none" stroke="#FFFFFF" stroke-width="1.3"/><path d="M6.5,7.5 V16.5 C6.5,17.6 9,18.5 12,18.5 C15,18.5 17.5,17.6 17.5,16.5 V7.5 M6.5,12 C6.5,13.1 9,14 12,14 C15,14 17.5,13.1 17.5,12" fill="none" stroke="#FFFFFF" stroke-width="1.3"/></symbol>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1000" height="670"/>
+
+  <!-- callers -->
+  <rect class="pill" x="34" y="12" width="200" height="40" rx="20"/>
+  <text class="h c" x="134" y="36">Browser</text>
+  <rect class="pill" x="560" y="12" width="400" height="40" rx="20"/>
+  <text class="h c" x="760" y="36">API clients · Swagger UI, GraphiQL, the load test</text>
+  <path class="req" d="M134,52 V106" marker-end="url(#a-req)"/>
+  <path class="req" d="M760,52 V106" marker-end="url(#a-req)"/>
+  <text class="muted" x="768" y="68">with a Keycloak token, or to a service directly</text>
+
+  <!-- edge -->
+  <rect class="g-edge" x="28" y="76" width="944" height="120"/>
+  <use href="#i-edge" x="28" y="76" width="24" height="24"/>
+  <text class="h" x="58" y="93" style="fill:var(--edge)">Edge · backends-for-frontends</text>
+  <rect class="pill" x="44" y="108" width="180" height="68" rx="6"/>
+  <text class="b c" x="134" y="132">erp-web-ui</text>
+  <text class="muted c" x="134" y="148">the React SPA</text>
+  <text class="muted c" x="134" y="162">relative paths only</text>
+  <rect class="pill" x="280" y="108" width="280" height="68" rx="6"/>
+  <text class="b c" x="420" y="128">erp-web-ui-bff :8089</text>
+  <text class="muted c" x="420" y="144">OIDC client · session in Redis · /api proxy</text>
+  <text class="muted c" x="420" y="158">/api/audit fan-out · /api/events (SSE from Kafka)</text>
+  <rect class="pill" x="620" y="108" width="280" height="68" rx="6"/>
+  <text class="b c" x="760" y="128">erp-graphql-bff :8088</text>
+  <text class="muted c" x="760" y="144">/graphql · DataLoader per type</text>
+  <text class="muted c" x="760" y="158">search, then hydrate · events subscription</text>
+  <path class="req" d="M224,142 H278" marker-end="url(#a-req)"/>
+  <path class="req" d="M420,176 V234" marker-end="url(#a-req)"/>
+  <path class="req" d="M760,176 V234" marker-end="url(#a-req)"/>
+  <text class="muted" x="428" y="216">REST, with the user's access token</text>
+
+  <!-- services -->
+  <rect class="g-svc" x="28" y="236" width="944" height="100"/>
+  <use href="#i-svc" x="28" y="236" width="24" height="24"/>
+  <text class="h" x="58" y="253" style="fill:var(--svc)">Services</text>
+  <text class="muted" x="44" y="282">six producers,</text>
+  <text class="muted" x="44" y="296">reporting and</text>
+  <text class="muted" x="44" y="310">search-service</text>
+  <g>
+    <rect class="pill" x="150" y="266" width="96" height="56" rx="6"/><text class="b c" x="198" y="288">product</text><text class="muted c" x="198" y="304">:8081</text>
+    <rect class="pill" x="252" y="266" width="96" height="56" rx="6"/><text class="b c" x="300" y="288">sales</text><text class="muted c" x="300" y="304">:8082</text>
+    <rect class="pill" x="354" y="266" width="96" height="56" rx="6"/><text class="b c" x="402" y="288">inventory</text><text class="muted c" x="402" y="304">:8083</text>
+    <rect class="pill" x="456" y="266" width="96" height="56" rx="6"/><text class="b c" x="504" y="288">manufacturing</text><text class="muted c" x="504" y="304">:8084</text>
+    <rect class="pill" x="558" y="266" width="96" height="56" rx="6"/><text class="b c" x="606" y="288">purchasing</text><text class="muted c" x="606" y="304">:8085</text>
+    <rect class="pill" x="660" y="266" width="96" height="56" rx="6"/><text class="b c" x="708" y="288">finance</text><text class="muted c" x="708" y="304">:8086</text>
+    <rect class="pill" x="762" y="266" width="96" height="56" rx="6"/><text class="b c" x="810" y="288">reporting</text><text class="muted c" x="810" y="304">:8087 · reads</text>
+    <rect class="pill" x="864" y="266" width="96" height="56" rx="6"/><text class="b c" x="912" y="288">search-service</text><text class="muted c" x="912" y="304">:8093 · reads</text>
+  </g>
+
+  <!-- infrastructure -->
+  <rect class="g-inf" x="28" y="376" width="944" height="240"/>
+  <use href="#i-inf" x="28" y="376" width="24" height="24"/>
+  <text class="h" x="58" y="393" style="fill:var(--inf)">Infrastructure</text>
+
+  <rect class="band" x="36" y="404" width="928" height="60" rx="6"/>
+  <text class="b" x="44" y="422">PostgreSQL 17</text>
+  <text class="muted" x="44" y="437">schema per service:</text>
+  <text class="muted" x="44" y="451">state + outbox, one tx</text>
+  <g>
+    <rect class="pill" x="150" y="420" width="96" height="28" rx="5"/><text class="muted c" x="198" y="438">product</text>
+    <rect class="pill" x="252" y="420" width="96" height="28" rx="5"/><text class="muted c" x="300" y="438">sales</text>
+    <rect class="pill" x="354" y="420" width="96" height="28" rx="5"/><text class="muted c" x="402" y="438">inventory</text>
+    <rect class="pill" x="456" y="420" width="96" height="28" rx="5"/><text class="muted c" x="504" y="438">manufacturing</text>
+    <rect class="pill" x="558" y="420" width="96" height="28" rx="5"/><text class="muted c" x="606" y="438">purchasing</text>
+    <rect class="pill" x="660" y="420" width="96" height="28" rx="5"/><text class="muted c" x="708" y="438">finance</text>
+    <rect class="pill" x="762" y="420" width="96" height="28" rx="5"/><text class="muted c" x="810" y="438">reporting</text>
+  </g>
+
+  <rect class="band" x="36" y="476" width="928" height="60" rx="6"/>
+  <text class="b" x="44" y="496">Kafka 4.1</text>
+  <text class="muted" x="44" y="511">topic per producer</text>
+  <text class="muted" x="44" y="525">+ .dlt, .dlt.parked</text>
+  <g>
+    <rect class="pill" x="150" y="492" width="96" height="28" rx="5"/><text class="muted c" x="198" y="510">product.events</text>
+    <rect class="pill" x="252" y="492" width="96" height="28" rx="5"/><text class="muted c" x="300" y="510">sales.events</text>
+    <rect class="pill" x="354" y="492" width="96" height="28" rx="5"/><text class="muted c" x="402" y="510">inventory.events</text>
+    <rect class="pill" x="456" y="492" width="96" height="28" rx="5"/><text class="muted c" x="504" y="510" style="font-size:9.5px">manufacturing.events</text>
+    <rect class="pill" x="558" y="492" width="96" height="28" rx="5"/><text class="muted c" x="606" y="510">purchasing.events</text>
+    <rect class="pill" x="660" y="492" width="96" height="28" rx="5"/><text class="muted c" x="708" y="510">finance.events</text>
+  </g>
+
+  <rect class="pill" x="44" y="552" width="290" height="48" rx="6"/>
+  <text class="b" x="56" y="572">Keycloak 26.0</text>
+  <text class="muted" x="56" y="588">sign-in for the BFFs · token keys for every service</text>
+  <rect class="pill" x="350" y="552" width="290" height="48" rx="6"/>
+  <text class="b" x="362" y="572">Redis 7</text>
+  <text class="muted" x="362" y="588">BFF sessions · reporting cache-aside</text>
+  <rect class="pill" x="656" y="552" width="300" height="48" rx="6"/>
+  <text class="b" x="668" y="572">Elasticsearch 9.0</text>
+  <text class="muted" x="668" y="588">search-service indices</text>
+
+  <!-- service → own schema -->
+  <g>
+    <path class="req" d="M198,322 V418" marker-end="url(#a-req)"/>
+    <path class="req" d="M300,322 V418" marker-end="url(#a-req)"/>
+    <path class="req" d="M402,322 V418" marker-end="url(#a-req)"/>
+    <path class="req" d="M504,322 V418" marker-end="url(#a-req)"/>
+    <path class="req" d="M606,322 V418" marker-end="url(#a-req)"/>
+    <path class="req" d="M708,322 V418" marker-end="url(#a-req)"/>
+    <path class="req" d="M810,322 V418" marker-end="url(#a-req)"/>
+    <path class="req" d="M912,322 V550" marker-end="url(#a-req)"/>
+  </g>
+
+  <!-- outbox drain → topic -->
+  <g>
+    <path class="evt" d="M198,448 V490" marker-end="url(#a-evt)"/>
+    <path class="evt" d="M300,448 V490" marker-end="url(#a-evt)"/>
+    <path class="evt" d="M402,448 V490" marker-end="url(#a-evt)"/>
+    <path class="evt" d="M504,448 V490" marker-end="url(#a-evt)"/>
+    <path class="evt" d="M606,448 V490" marker-end="url(#a-evt)"/>
+    <path class="evt" d="M708,448 V490" marker-end="url(#a-evt)"/>
+  </g>
+  <text class="muted" x="770" y="503" style="fill:var(--evt)">← outbox drain,</text>
+  <text class="muted" x="770" y="517" style="fill:var(--evt)">keyed by aggregate id</text>
+
+  <!-- topics → every consumer's inbox -->
+  <path class="evt" d="M36,506 H20 V294 H26" marker-end="url(#a-evt)"/>
+  <text class="muted" x="44" y="358" style="fill:var(--evt)">↑ inbox</text>
+
+  <!-- legend -->
+  <g transform="translate(40,644)">
+    <path class="req" d="M0,0 H34" marker-end="url(#a-req)"/><text class="muted" x="42" y="4">call or write</text>
+    <path class="evt" d="M140,0 H174" marker-end="url(#a-evt)"/><text class="muted" x="182" y="4">events: each consumer reads the topics it subscribes to; reporting, search-service and the BFFs read all six</text>
+  </g>
+</svg>

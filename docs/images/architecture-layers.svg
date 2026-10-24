@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 640" width="1000" height="640" font-family="'Amazon Ember', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">The four layers inside a service</title>
+  <desc id="d">Inside a service, api imports only application. Application holds the use cases, the application DTOs, the inbox handlers and projections, and the Saga steps, and declares the Port, QueryPort, Lookup, Projection and Writer interfaces. Domain sits inside application, holds the aggregates, values, events and Saga state machines, and declares the Repository interfaces. Infrastructure implements every port with a Jdbc class. Api must not import domain or infrastructure, and application must not import infrastructure. Application, domain and infrastructure use shared-kernel; the shared module supplies the messaging, Saga, security, error and audit machinery.</desc>
+  <style>
+    svg { --bg:#ffffff; --ink:#16191f; --muted:#545b64; --pill:#f2f3f3; --pill-line:#aab7b8; --chip:#ffffff;
+          --api:#8c4fff; --api-fill:#f5f0ff; --app:#ed7100; --app-fill:#fff5eb; --dom:#3f8624; --dom-fill:#eef7e8;
+          --inf:#1d63ed; --inf-fill:#eef3fe; --ker:#545b64; --ker-fill:#f2f3f3; --svc:#232f3e;
+          --req:#16191f; --no:#d13212; }
+    @media (prefers-color-scheme: dark) {
+      svg { --bg:#0f1419; --ink:#e6edf3; --muted:#9aa7b4; --pill:#222b35; --pill-line:#4b5866; --chip:#161c23;
+            --api:#b18cff; --api-fill:#1a1430; --app:#ff9a3c; --app-fill:#261a0d; --dom:#7cc45a; --dom-fill:#132110;
+            --inf:#5b8cff; --inf-fill:#111c33; --ker:#9aa7b4; --ker-fill:#1b222b; --svc:#c9d1d9;
+            --req:#e6edf3; --no:#ff6b5a; }
+    }
+    .bg { fill:var(--bg); }
+    text { fill:var(--ink); font-size:12px; }
+    .muted { fill:var(--muted); font-size:10.5px; }
+    .h { font-weight:600; font-size:12.5px; }
+    .b { font-weight:600; font-size:11px; }
+    .mono { font-family:ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size:10.5px; }
+    .c { text-anchor:middle; }
+    .g-svc { fill:none; stroke:var(--svc); stroke-width:1.5; }
+    .l-api { fill:var(--api-fill); stroke:var(--api); stroke-width:1.4; }
+    .l-app { fill:var(--app-fill); stroke:var(--app); stroke-width:1.4; }
+    .l-dom { fill:var(--dom-fill); stroke:var(--dom); stroke-width:1.4; }
+    .l-inf { fill:var(--inf-fill); stroke:var(--inf); stroke-width:1.4; }
+    .l-ker { fill:var(--ker-fill); stroke:var(--ker); stroke-width:1.2; }
+    .pill { fill:var(--pill); stroke:var(--pill-line); stroke-width:1; }
+    .chip { fill:var(--chip); stroke:var(--app); stroke-width:1.4; }
+    .chip-dom { fill:var(--chip); stroke:var(--dom); stroke-width:1.4; }
+    .req { fill:none; stroke:var(--req); stroke-width:1.6; }
+    .impl { fill:none; stroke:var(--inf); stroke-width:1.4; stroke-dasharray:5 3; }
+    .no { fill:none; stroke:var(--no); stroke-width:1.6; stroke-dasharray:4 3; }
+    .head-req { fill:var(--req); } .head-impl { fill:var(--chip); stroke:var(--inf); stroke-width:1.2; }
+  </style>
+  <defs>
+    <marker id="a-req" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-req" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="a-impl" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="10" markerHeight="10" orient="auto-start-reverse"><path class="head-impl" d="M1,1 L11,6 L1,11 z"/></marker>
+    <symbol id="i-svc" viewBox="0 0 24 24"><rect width="24" height="24" fill="#ED7100"/><path d="M12,5 L18,8.5 V15.5 L12,19 L6,15.5 V8.5 Z" fill="none" stroke="#FFFFFF" stroke-width="1.4" stroke-linejoin="round"/></symbol>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1000" height="640"/>
+
+  <!-- one service -->
+  <rect class="g-svc" x="12" y="12" width="976" height="432"/>
+  <use href="#i-svc" x="12" y="12" width="24" height="24"/>
+  <text class="h" x="42" y="29">One service · <tspan class="mono">&lt;service&gt;/src/main/java/com/northwood/&lt;context&gt;/</tspan></text>
+
+  <!-- api -->
+  <rect class="l-api" x="32" y="56" width="200" height="372" rx="6"/>
+  <text class="h" x="44" y="76" style="fill:var(--api)">api/</text>
+  <text class="muted" x="44" y="90">the driving side</text>
+  <rect class="pill" x="44" y="104" width="176" height="40" rx="6"/>
+  <text class="b" x="54" y="121">@RestController</text><text class="muted" x="54" y="136">role annotation per command</text>
+  <rect class="pill" x="44" y="150" width="176" height="40" rx="6"/>
+  <text class="b" x="54" y="167">api/dto</text><text class="muted" x="54" y="182">only when the wire shape differs</text>
+
+  <!-- application -->
+  <rect class="l-app" x="300" y="56" width="400" height="372" rx="6"/>
+  <text class="h" x="316" y="76" style="fill:var(--app)">application/</text>
+  <text class="muted" x="316" y="90">use cases · declares the ports on its edge</text>
+  <rect class="pill" x="316" y="104" width="244" height="36" rx="6"/>
+  <text class="b" x="326" y="120">use cases</text><text class="muted" x="326" y="133">*Service classes, one transaction each</text>
+  <rect class="pill" x="316" y="146" width="244" height="36" rx="6"/>
+  <text class="b" x="326" y="162">application/dto</text><text class="muted" x="326" y="175">*View, *Command: the wire format</text>
+  <rect class="pill" x="316" y="188" width="244" height="36" rx="6"/>
+  <text class="b" x="326" y="204">application/inbox</text><text class="muted" x="326" y="217">*Handler, *Projection</text>
+  <rect class="pill" x="316" y="230" width="244" height="36" rx="6"/>
+  <text class="b" x="326" y="246">application/saga</text><text class="muted" x="326" y="259">the Saga steps and emitters</text>
+
+  <!-- domain, inside application -->
+  <rect class="l-dom" x="316" y="282" width="284" height="132" rx="6"/>
+  <text class="h" x="328" y="301" style="fill:var(--dom)">domain/</text>
+  <text class="muted" x="328" y="315">pure: imports shared-kernel only</text>
+  <rect class="pill" x="328" y="324" width="200" height="36" rx="6"/>
+  <text class="b" x="338" y="340">aggregates, values, events</text><text class="muted" x="338" y="353">every invariant lives here</text>
+  <rect class="pill" x="328" y="368" width="200" height="36" rx="6"/>
+  <text class="b" x="338" y="384">domain/saga</text><text class="muted" x="338" y="397">the Saga state machines</text>
+
+  <!-- ports on the edges -->
+  <g class="mono">
+    <rect class="chip" x="640" y="104" width="120" height="28" rx="5"/><text class="mono c" x="700" y="122">*Port</text>
+    <rect class="chip" x="640" y="140" width="120" height="28" rx="5"/><text class="mono c" x="700" y="158">*QueryPort</text>
+    <rect class="chip" x="640" y="176" width="120" height="28" rx="5"/><text class="mono c" x="700" y="194">*Lookup</text>
+    <rect class="chip" x="640" y="212" width="120" height="28" rx="5"/><text class="mono c" x="700" y="230">*Projection</text>
+    <rect class="chip" x="640" y="248" width="120" height="28" rx="5"/><text class="mono c" x="700" y="266">*Writer</text>
+    <rect class="chip-dom" x="545" y="330" width="110" height="28" rx="5"/><text class="mono c" x="600" y="348">*Repository</text>
+  </g>
+
+  <!-- infrastructure -->
+  <rect class="l-inf" x="800" y="56" width="168" height="372" rx="6"/>
+  <text class="h" x="812" y="76" style="fill:var(--inf)">infrastructure/</text>
+  <text class="muted" x="812" y="90">the driven side</text>
+  <rect class="pill" x="812" y="290" width="144" height="36" rx="6"/>
+  <text class="b" x="822" y="306">persistence</text><text class="muted" x="822" y="319">Jdbc* for every port</text>
+  <rect class="pill" x="812" y="332" width="144" height="36" rx="6"/>
+  <text class="b" x="822" y="348">saga</text><text class="muted" x="822" y="361">Saga managers, workers</text>
+  <rect class="pill" x="812" y="374" width="144" height="36" rx="6"/>
+  <text class="b" x="822" y="390">messaging, metrics</text><text class="muted" x="822" y="403">cache, configuration</text>
+
+  <!-- implements -->
+  <g>
+    <path class="impl" d="M800,118 H762" marker-end="url(#a-impl)"/>
+    <path class="impl" d="M800,154 H762" marker-end="url(#a-impl)"/>
+    <path class="impl" d="M800,190 H762" marker-end="url(#a-impl)"/>
+    <path class="impl" d="M800,226 H762" marker-end="url(#a-impl)"/>
+    <path class="impl" d="M800,262 H762" marker-end="url(#a-impl)"/>
+    <path class="impl" d="M800,344 H780 V344 H657" marker-end="url(#a-impl)"/>
+  </g>
+  <text class="muted" x="812" y="122" style="fill:var(--inf)">Jdbc*Adapter</text>
+  <text class="muted" x="812" y="158" style="fill:var(--inf)">Jdbc*QueryPort</text>
+  <text class="muted" x="812" y="194" style="fill:var(--inf)">Jdbc*Lookup</text>
+  <text class="muted" x="812" y="230" style="fill:var(--inf)">Jdbc*Projection</text>
+  <text class="muted" x="812" y="266" style="fill:var(--inf)">Jdbc*Writer</text>
+
+  <!-- imports -->
+  <path class="req" d="M232,124 H298" marker-end="url(#a-req)"/>
+  <text class="muted c" x="265" y="117">imports</text>
+
+  <!-- forbidden -->
+  <path class="no" d="M232,380 H314"/>
+  <text class="h c" x="273" y="385" style="fill:var(--no)">✕</text>
+  <text class="muted" x="224" y="404" text-anchor="end" style="fill:var(--no)">no domain,</text>
+  <text class="muted" x="224" y="417" text-anchor="end" style="fill:var(--no)">no infrastructure</text>
+  <path class="no" d="M700,400 H798"/>
+  <text class="h c" x="749" y="405" style="fill:var(--no)">✕</text>
+  <text class="muted c" x="749" y="422" style="fill:var(--no)">no infrastructure</text>
+
+  <!-- kernels -->
+  <path class="req" d="M440,428 V466" marker-end="url(#a-req)"/>
+  <path class="req" d="M640,428 V466" marker-end="url(#a-req)"/>
+  <path class="req" d="M884,428 V466" marker-end="url(#a-req)"/>
+  <text class="muted" x="448" y="452">domain</text>
+  <text class="muted" x="648" y="452">application</text>
+  <text class="muted" x="892" y="452">infrastructure</text>
+
+  <rect class="l-ker" x="32" y="468" width="936" height="44" rx="6"/>
+  <text class="b" x="44" y="486">shared-kernel</text>
+  <text class="muted" x="44" y="502">Spring-free: Money, Quantity, Sku, Currencies, Assert, DomainEvent, SagaInstance</text>
+  <rect class="l-ker" x="32" y="520" width="936" height="58" rx="6"/>
+  <text class="b" x="44" y="538">shared</text>
+  <text class="muted" x="44" y="554">shared.application: ports, abstract inbox and Saga bases · shared.infrastructure: outbox drain, Kafka inbox dispatcher, auto-configuration</text>
+  <text class="muted" x="44" y="568">shared.api: audit controller, error advice, role annotations · the one infrastructure → api import is AuditAutoConfiguration</text>
+
+  <!-- legend -->
+  <g transform="translate(40,610)">
+    <path class="req" d="M0,0 H34" marker-end="url(#a-req)"/><text class="muted" x="42" y="4">may import</text>
+    <path class="impl" d="M130,0 H164" marker-end="url(#a-impl)"/><text class="muted" x="172" y="4">implements</text>
+    <path class="no" d="M260,0 H294"/><text class="muted" x="302" y="4" style="fill:var(--no)">must not import</text>
+    <text class="muted" x="420" y="4">Infrastructure may also import application and domain types directly.</text>
+  </g>
+</svg>

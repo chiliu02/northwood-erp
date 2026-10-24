@@ -43,6 +43,8 @@ Redis and Elasticsearch.**
 proxies those REST paths, a GraphQL backend-for-frontend, server-sent events for live activity, and
 one Kafka topic per producing service.** Every service also exposes OpenAPI and actuator endpoints.
 
+![The containers: the browser reaches the SPA and erp-web-ui-bff, API clients reach erp-graphql-bff or a service; the BFFs call the services over REST; each producer writes its own schema and outbox and publishes to its own topic; every consumer reads the topics it subscribes to](images/architecture-containers.svg)
+
 ### 2.1 REST, per service
 
 Each domain service publishes its resources under `/api/<resource>` (plural, kebab-case), with
@@ -117,6 +119,8 @@ dependency a jar turns a producer's breaking change into a consumer compile erro
 runtime deserialisation failure.
 
 ### 3.2 The four layers inside a service
+
+![The four layers: api imports only application; application declares the ports and holds domain; infrastructure implements every port; application, domain and infrastructure use shared-kernel](images/architecture-layers.svg)
 
 ```
 <service>/src/main/java/com/northwood/<context>/
@@ -196,6 +200,8 @@ transaction; everything after that is asynchronous.**
 
 ### 4.2 One command, end to end: placing a sales order
 
+![Placing a sales order: one synchronous transaction in sales, then a chain of event-driven transactions through Kafka, inventory and back to the Saga](images/architecture-place-order.svg)
+
 1. The SPA posts to the BFF, which forwards the request to `sales` with the user's token.
 2. `SalesOrderController` checks the role (`sales_clerk`) and calls `SalesOrderService.placeOrder`.
 3. In one transaction, the service builds the `SalesOrder` aggregate, inserts the fulfilment Saga row
@@ -220,6 +226,8 @@ another service to answer.
 transaction as its state change. A drain publishes them to Kafka, keyed by aggregate. Each consumer
 records what it has applied in an inbox table, so a redelivered event changes nothing.** The
 database, not Kafka, is the system of record.
+
+![Outbox, Kafka and inbox: the change and its outbox rows commit together; the drain publishes to the producer's topic keyed by aggregate id; each consumer handler dedups, applies and records in one transaction; failures retry, dead-letter, redrive and park](images/architecture-messaging.svg)
 
 ### 5.1 The outbox
 

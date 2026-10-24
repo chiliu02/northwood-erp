@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 590" width="1000" height="590" font-family="'Amazon Ember', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Outbox, Kafka and inbox</title>
+  <desc id="d">In the producer, a change and its outbox rows commit in one transaction. The outbox drain runs every second, reads pending or failed rows in sequence order, in batches of 100 with FOR UPDATE SKIP LOCKED, and sends each to the producer's topic keyed by aggregate id, marking it published on the broker's acknowledgement. In the consumer, one Kafka listener passes each envelope to every handler of its event type; each handler takes an advisory lock on the event id and handler name, skips if already recorded, applies the change and records it, in one transaction. A transient failure is retried with exponential back-off; a deterministic one goes to the dead-letter topic, from which the redriver re-applies the service's own records up to five times and parks the ones that still fail.</desc>
+  <style>
+    svg { --bg:#ffffff; --ink:#16191f; --muted:#545b64; --pill:#f2f3f3; --pill-line:#aab7b8; --lane:#ffffff;
+          --svc:#ed7100; --svc-fill:#fff5eb; --inf:#1d63ed; --inf-fill:#eef3fe; --tx:#ed7100;
+          --req:#16191f; --evt:#c45400; --bad:#d13212; }
+    @media (prefers-color-scheme: dark) {
+      svg { --bg:#0f1419; --ink:#e6edf3; --muted:#9aa7b4; --pill:#222b35; --pill-line:#4b5866; --lane:#161c23;
+            --svc:#ff9a3c; --svc-fill:#261a0d; --inf:#5b8cff; --inf-fill:#111c33; --tx:#ff9a3c;
+            --req:#e6edf3; --evt:#ff9a3c; --bad:#ff6b5a; }
+    }
+    .bg { fill:var(--bg); }
+    text { fill:var(--ink); font-size:12px; }
+    .muted { fill:var(--muted); font-size:10.5px; }
+    .h { font-weight:600; font-size:12.5px; }
+    .b { font-weight:600; font-size:11px; }
+    .n { font-weight:700; font-size:10.5px; }
+    .mono { font-family:ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size:10.5px; }
+    .c { text-anchor:middle; }
+    .g-svc { fill:var(--svc-fill); stroke:var(--svc); stroke-width:1.2; }
+    .g-inf { fill:var(--inf-fill); stroke:var(--inf); stroke-width:1.2; }
+    .pill { fill:var(--pill); stroke:var(--pill-line); stroke-width:1; }
+    .lane { fill:var(--lane); stroke:var(--pill-line); stroke-width:1; }
+    .tx { fill:none; stroke:var(--tx); stroke-width:1.2; stroke-dasharray:5 3; }
+    .req { fill:none; stroke:var(--req); stroke-width:1.5; }
+    .evt { fill:none; stroke:var(--evt); stroke-width:1.6; stroke-dasharray:6 4; }
+    .bad { fill:none; stroke:var(--bad); stroke-width:1.5; stroke-dasharray:3 3; }
+    .head-req { fill:var(--req); } .head-evt { fill:var(--evt); } .head-bad { fill:var(--bad); }
+  </style>
+  <defs>
+    <marker id="a-req" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-req" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="a-evt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-evt" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="a-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-bad" d="M0,0 L10,5 L0,10 z"/></marker>
+    <symbol id="i-svc" viewBox="0 0 24 24"><rect width="24" height="24" fill="#ED7100"/><path d="M12,5 L18,8.5 V15.5 L12,19 L6,15.5 V8.5 Z" fill="none" stroke="#FFFFFF" stroke-width="1.4" stroke-linejoin="round"/></symbol>
+    <symbol id="i-inf" viewBox="0 0 24 24"><rect width="24" height="24" fill="#1D63ED"/><ellipse cx="12" cy="7.5" rx="5.5" ry="2" fill="none" stroke="#FFFFFF" stroke-width="1.3"/><path d="M6.5,7.5 V16.5 C6.5,17.6 9,18.5 12,18.5 C15,18.5 17.5,17.6 17.5,16.5 V7.5 M6.5,12 C6.5,13.1 9,14 12,14 C15,14 17.5,13.1 17.5,12" fill="none" stroke="#FFFFFF" stroke-width="1.3"/></symbol>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1000" height="590"/>
+
+  <!-- producer -->
+  <rect class="g-svc" x="12" y="12" width="320" height="500"/>
+  <use href="#i-svc" x="12" y="12" width="24" height="24"/>
+  <text class="h" x="42" y="29" style="fill:var(--svc)">Producer service</text>
+
+  <rect class="pill" x="32" y="52" width="280" height="34" rx="6"/>
+  <text class="muted c" x="172" y="73">a use case, a Saga step or an inbox handler</text>
+  <path class="req" d="M172,86 V112" marker-end="url(#a-req)"/>
+
+  <rect class="tx" x="32" y="114" width="280" height="124" rx="6"/>
+  <text class="b" x="44" y="132" style="fill:var(--tx)">one transaction</text>
+  <rect class="pill" x="44" y="140" width="256" height="36" rx="6"/>
+  <text class="mono" x="54" y="156">repository.save(aggregate)</text>
+  <text class="muted" x="54" y="169">drains pendingEvents into the outbox</text>
+  <rect class="pill" x="44" y="190" width="110" height="36" rx="6"/>
+  <text class="b c" x="99" y="206">state rows</text><text class="muted c" x="99" y="219">the change</text>
+  <rect class="pill" x="166" y="190" width="134" height="36" rx="6"/>
+  <text class="mono c" x="233" y="206">outbox_message</text><text class="muted c" x="233" y="219">status pending</text>
+  <path class="req" d="M99,176 V188" marker-end="url(#a-req)"/>
+  <path class="req" d="M233,176 V188" marker-end="url(#a-req)"/>
+
+  <rect class="pill" x="32" y="294" width="280" height="96" rx="6"/>
+  <text class="b" x="44" y="313">OutboxDrainer · every 1 s</text>
+  <text class="muted" x="44" y="329">pending or failed rows, by sequence_number</text>
+  <text class="muted" x="44" y="343">batches of 100, FOR UPDATE SKIP LOCKED</text>
+  <text class="muted" x="44" y="357">broker ack → published</text>
+  <text class="muted" x="44" y="371">send fails → failed, tried again next tick</text>
+  <path class="req" d="M233,226 V292" marker-end="url(#a-req)"/>
+  <text class="muted" x="241" y="264">reads</text>
+
+  <rect class="pill" x="32" y="410" width="280" height="84" rx="6"/>
+  <text class="b" x="44" y="429">Traces across the hop</text>
+  <text class="muted" x="44" y="445">the row's headers keep the traceparent</text>
+  <text class="muted" x="44" y="459">the drain links it to its outbox.publish span</text>
+  <text class="muted" x="44" y="473">each hop is its own trace, linked to its cause</text>
+
+  <!-- Kafka -->
+  <rect class="g-inf" x="352" y="12" width="276" height="500"/>
+  <use href="#i-inf" x="352" y="12" width="24" height="24"/>
+  <text class="h" x="382" y="29" style="fill:var(--inf)">Kafka</text>
+
+  <rect class="pill" x="370" y="114" width="240" height="140" rx="6"/>
+  <text class="mono" x="382" y="134">&lt;service&gt;.events</text>
+  <rect class="lane" x="382" y="144" width="216" height="18" rx="3"/><text class="muted" x="390" y="157">partition: hash(aggregate id)</text>
+  <rect class="lane" x="382" y="166" width="216" height="18" rx="3"/><text class="muted" x="390" y="179">partition</text>
+  <rect class="lane" x="382" y="188" width="216" height="18" rx="3"/><text class="muted" x="390" y="201">partition</text>
+  <text class="muted" x="382" y="226">one aggregate's events keep their order</text>
+  <text class="muted" x="382" y="241">no order across aggregates or topics</text>
+
+  <rect class="pill" x="370" y="320" width="240" height="50" rx="6"/>
+  <text class="mono" x="382" y="340">&lt;service&gt;.events.dlt</text>
+  <text class="muted" x="382" y="356">keeps the key · any partition count</text>
+
+  <rect class="pill" x="370" y="430" width="240" height="50" rx="6"/>
+  <text class="mono" x="382" y="450">&lt;service&gt;.events.dlt.parked</text>
+  <text class="muted" x="382" y="466">nothing consumes it</text>
+
+  <!-- drain → topic -->
+  <path class="evt" d="M312,342 H340 V184 H368" marker-end="url(#a-evt)"/>
+  <text class="muted" x="372" y="100" style="fill:var(--evt)">send, key = aggregate id</text>
+
+  <!-- consumer -->
+  <rect class="g-svc" x="648" y="12" width="340" height="500"/>
+  <use href="#i-svc" x="648" y="12" width="24" height="24"/>
+  <text class="h" x="678" y="29" style="fill:var(--svc)">Consumer service</text>
+
+  <rect class="pill" x="668" y="52" width="300" height="66" rx="6"/>
+  <text class="b" x="680" y="70">KafkaInboxDispatcher</text>
+  <text class="muted" x="680" y="85">one @KafkaListener on northwood.kafka.subscribe-topics</text>
+  <text class="muted" x="680" y="99">event type with no handler → ignored</text>
+  <text class="muted" x="680" y="112">malformed envelope → logged, offset committed</text>
+  <path class="evt" d="M610,150 H630 V85 H666" marker-end="url(#a-evt)"/>
+
+  <rect class="tx" x="668" y="138" width="300" height="122" rx="6"/>
+  <text class="b" x="680" y="156" style="fill:var(--tx)">AbstractInboxHandler · one transaction each</text>
+  <text class="n" x="680" y="176">1</text><text class="muted" x="692" y="176">pg_advisory_xact_lock(eventId:handlerName)</text>
+  <text class="n" x="680" y="193">2</text><text class="muted" x="692" y="193">already in inbox_message? → done, nothing changes</text>
+  <text class="n" x="680" y="210">3</text><text class="muted" x="692" y="210">apply the change</text>
+  <text class="n" x="680" y="227">4</text><text class="muted" x="692" y="227">record (eventId, handlerName)</text>
+  <text class="muted" x="680" y="248">a throw rolls back 3 and 4 together</text>
+  <path class="req" d="M818,118 V136" marker-end="url(#a-req)"/>
+  <text class="muted" x="826" y="131">to each matching handler</text>
+
+  <rect class="pill" x="668" y="290" width="300" height="66" rx="6"/>
+  <text class="b" x="680" y="308">Listener error handler</text>
+  <text class="muted" x="680" y="324">transient → retried: 1 s, doubling to 30 s, at most 5 min</text>
+  <text class="muted" x="680" y="338">deterministic (payload, constraint, null)</text>
+  <text class="muted" x="680" y="351">→ dead-lettered on the first failure</text>
+  <path class="bad" d="M818,260 V288" marker-end="url(#a-bad)"/>
+  <text class="muted" x="826" y="278" style="fill:var(--bad)">throws</text>
+  <path class="bad" d="M668,340 H612" marker-end="url(#a-bad)"/>
+
+  <rect class="pill" x="668" y="400" width="300" height="80" rx="6"/>
+  <text class="b" x="680" y="418">DltRedriver</text>
+  <text class="muted" x="680" y="434">group &lt;service&gt;-dlt-redriver, reads every .dlt</text>
+  <text class="muted" x="680" y="448">re-applies only the records this service dead-lettered</text>
+  <text class="muted" x="680" y="462">up to 5 attempts, 10 s apart</text>
+  <text class="muted" x="680" y="475">catches every failure itself: no .dlt.dlt</text>
+  <path class="bad" d="M610,360 H632 V430 H666" marker-end="url(#a-bad)"/>
+  <path class="bad" d="M968,440 H980 V200 H970" marker-end="url(#a-bad)"/>
+  <text class="muted" x="900" y="386" style="fill:var(--bad)">re-apply ↑</text>
+  <path class="bad" d="M668,465 H612" marker-end="url(#a-bad)"/>
+  <text class="muted" x="382" y="498" style="fill:var(--bad)">still failing after 5 attempts → parked</text>
+
+  <!-- footer -->
+  <text class="muted" x="12" y="532">If Kafka loses records, set the outbox rows back from published to pending: they are sent again, and the inbox absorbs the duplicates.</text>
+
+  <!-- legend -->
+  <g transform="translate(14,566)">
+    <path class="req" d="M0,0 H34" marker-end="url(#a-req)"/><text class="muted" x="42" y="4">call or read</text>
+    <path class="evt" d="M130,0 H164" marker-end="url(#a-evt)"/><text class="muted" x="172" y="4">event record</text>
+    <path class="bad" d="M260,0 H294" marker-end="url(#a-bad)"/><text class="muted" x="302" y="4">failure path</text>
+    <rect class="tx" x="390" y="-8" width="30" height="16" rx="3"/><text class="muted" x="428" y="4">one database transaction</text>
+  </g>
+</svg>
