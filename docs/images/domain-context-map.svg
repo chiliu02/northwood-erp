@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800" width="1000" height="800" font-family="'Amazon Ember', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Northwood context map</title>
+  <desc id="d">Product is upstream of every subdomain as an open host with a published language; each keeps a product card. Sales and Inventory are customer and supplier, Sales the customer. Inventory and Manufacturing are customer and supplier both ways. Inventory asks Purchasing for replenishment. Purchasing is upstream of Manufacturing for supplier prices, as a conformist relationship. Inventory, Purchasing and Sales feed Finance, and Finance answers Sales and Purchasing. Reporting is not a subdomain and conforms to every event.</desc>
+  <style>
+    svg { --bg:#ffffff; --ink:#16191f; --muted:#545b64; --box:#ffffff;
+          --core:#ed7100; --core-fill:#fff5eb; --sup:#1d63ed; --sup-fill:#eef3fe; --gen:#545b64; --gen-fill:#f2f3f3;
+          --flow:#16191f; --conf:#8c4fff; --note:#fffbe6; --note-line:#d9b800; }
+    @media (prefers-color-scheme: dark) {
+      svg { --bg:#0f1419; --ink:#e6edf3; --muted:#9aa7b4; --box:#161c23;
+            --core:#ff9a3c; --core-fill:#261a0d; --sup:#5b8cff; --sup-fill:#111c33; --gen:#9aa7b4; --gen-fill:#1b222b;
+            --flow:#e6edf3; --conf:#b18cff; --note:#26220f; --note-line:#a08a1a; }
+    }
+    .bg { fill:var(--bg); }
+    text { fill:var(--ink); font-size:12px; }
+    .muted { fill:var(--muted); font-size:10.5px; }
+    .lbl { fill:var(--muted); font-size:10.5px; text-anchor:middle; }
+    .rel { fill:var(--muted); font-size:10px; font-style:italic; text-anchor:middle; }
+    .h { font-weight:600; font-size:14px; }
+    .b { font-weight:600; font-size:11px; }
+    .c { text-anchor:middle; }
+    .core { fill:var(--core-fill); stroke:var(--core); stroke-width:2.4; }
+    .sup { fill:var(--sup-fill); stroke:var(--sup); stroke-width:1.4; }
+    .gen { fill:var(--gen-fill); stroke:var(--gen); stroke-width:1.4; }
+    .rep { fill:none; stroke:var(--gen); stroke-width:1.4; stroke-dasharray:5 4; }
+    .note { fill:var(--note); stroke:var(--note-line); stroke-width:1; }
+    .flow { fill:none; stroke:var(--flow); stroke-width:1.6; }
+    .conf { fill:none; stroke:var(--conf); stroke-width:1.6; stroke-dasharray:6 4; }
+    .head-flow { fill:var(--flow); } .head-conf { fill:var(--conf); }
+    .k-core { fill:var(--core); } .k-sup { fill:var(--sup); } .k-gen { fill:var(--gen); }
+    .k-text { fill:#ffffff; font-size:10px; font-weight:600; text-anchor:middle; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-flow" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="a-conf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-conf" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1000" height="800"/>
+
+  <!-- Reporting (not a subdomain) -->
+  <rect class="rep" x="20" y="400" width="164" height="100" rx="8"/>
+  <text class="h" x="32" y="424">Reporting</text>
+  <text class="muted" x="32" y="442">not a subdomain:</text>
+  <text class="muted" x="32" y="456">no language of its own</text>
+  <text class="muted" x="32" y="470">conformist to every</text>
+  <text class="muted" x="32" y="484">event, as published</text>
+
+  <!-- Product -->
+  <rect class="gen" x="380" y="16" width="260" height="80" rx="8"/>
+  <text class="h" x="394" y="40">Product</text>
+  <rect class="k-gen" x="568" y="26" width="60" height="18" rx="9"/><text class="k-text" x="598" y="39">generic</text>
+  <text class="muted" x="394" y="60">What can we make, buy or sell,</text>
+  <text class="muted" x="394" y="74">and how is each item replenished?</text>
+
+  <!-- Sales -->
+  <rect class="sup" x="20" y="200" width="200" height="100" rx="8"/>
+  <text class="h" x="34" y="224">Sales</text>
+  <rect class="k-sup" x="136" y="210" width="74" height="18" rx="9"/><text class="k-text" x="173" y="223">supporting</text>
+  <text class="muted" x="34" y="246">What did the customer order,</text>
+  <text class="muted" x="34" y="260">and how far along is that order?</text>
+  <text class="muted" x="34" y="288">keeps a product card</text>
+
+  <!-- Inventory -->
+  <rect class="sup" x="400" y="200" width="220" height="100" rx="8"/>
+  <text class="h" x="414" y="224">Inventory</text>
+  <rect class="k-sup" x="536" y="210" width="74" height="18" rx="9"/><text class="k-text" x="573" y="223">supporting</text>
+  <text class="muted" x="414" y="246">What stock is where, what is reserved</text>
+  <text class="muted" x="414" y="260">against it, and what needs replenishing?</text>
+  <text class="muted" x="414" y="288">keeps a product card</text>
+
+  <!-- Manufacturing -->
+  <rect class="core" x="780" y="200" width="200" height="100" rx="8"/>
+  <text class="h" x="794" y="224">Manufacturing</text>
+  <rect class="k-core" x="924" y="210" width="46" height="18" rx="9"/><text class="k-text" x="947" y="223">core</text>
+  <text class="muted" x="794" y="246">How do we build a finished</text>
+  <text class="muted" x="794" y="260">good, what does it cost, and</text>
+  <text class="muted" x="794" y="274">is a build in progress?</text>
+  <text class="muted" x="794" y="290">keeps a product card</text>
+
+  <!-- Purchasing -->
+  <rect class="sup" x="780" y="400" width="200" height="100" rx="8"/>
+  <text class="h" x="794" y="424">Purchasing</text>
+  <rect class="k-sup" x="896" y="410" width="74" height="18" rx="9"/><text class="k-text" x="933" y="423">supporting</text>
+  <text class="muted" x="794" y="446">What must we buy, from whom,</text>
+  <text class="muted" x="794" y="460">at what price, and has it arrived?</text>
+  <text class="muted" x="794" y="488">keeps a product card</text>
+
+  <!-- Finance -->
+  <rect class="sup" x="400" y="600" width="220" height="100" rx="8"/>
+  <text class="h" x="414" y="624">Finance</text>
+  <rect class="k-sup" x="536" y="610" width="74" height="18" rx="9"/><text class="k-text" x="573" y="623">supporting</text>
+  <text class="muted" x="414" y="646">What do we owe, what are we owed,</text>
+  <text class="muted" x="414" y="660">and do the books balance?</text>
+  <text class="muted" x="414" y="688">keeps a product card</text>
+
+  <!-- Product → everyone -->
+  <path class="flow" d="M380,56 H120 V198" marker-end="url(#a)"/>
+  <path class="flow" d="M510,96 V198" marker-end="url(#a)"/>
+  <path class="flow" d="M640,56 H880 V198" marker-end="url(#a)"/>
+  <text class="rel" x="760" y="48">open host, published language</text>
+  <text class="lbl" x="760" y="74">the product master and every change</text>
+  <text class="lbl" x="760" y="88">(and to Purchasing and Finance)</text>
+
+  <!-- Sales ⇄ Inventory -->
+  <path class="flow" d="M222,250 H398" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="rel" x="310" y="232">customer/supplier</text>
+  <text class="lbl" x="310" y="244">→ reservation, cancellation</text>
+  <text class="lbl" x="310" y="266">← outcomes, acknowledgements</text>
+  <text class="rel" x="310" y="278">Sales is the customer</text>
+
+  <!-- Inventory ⇄ Manufacturing -->
+  <path class="flow" d="M622,250 H778" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="rel" x="700" y="220">customer/supplier, both ways</text>
+  <text class="lbl" x="700" y="232">→ replenishment, cancellation,</text>
+  <text class="lbl" x="700" y="244">raw-material outcomes</text>
+  <text class="lbl" x="700" y="266">← dispatched, applied,</text>
+  <text class="lbl" x="700" y="278">raw-material requests</text>
+
+  <!-- Inventory ⇄ Purchasing -->
+  <path class="flow" d="M580,300 V450 H778" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="rel" x="680" y="428">customer/supplier</text>
+  <text class="lbl" x="680" y="442">→ replenishment, cancellation</text>
+  <text class="lbl" x="680" y="466">← dispatched, undispatchable,</text>
+  <text class="lbl" x="680" y="478">cancellation applied</text>
+
+  <!-- Purchasing → Manufacturing (conformist) -->
+  <path class="conf" d="M880,400 V302" marker-end="url(#a-conf)"/>
+  <text class="muted" x="888" y="344" style="fill:var(--conf)">conformist:</text>
+  <text class="muted" x="888" y="357" style="fill:var(--conf)">supplier price changes,</text>
+  <text class="muted" x="888" y="370" style="fill:var(--conf)">for the cost roll-up</text>
+
+  <!-- Inventory → Finance -->
+  <path class="flow" d="M500,300 V598" marker-end="url(#a)"/>
+  <text class="rel" x="492" y="430" style="text-anchor:end">customer/supplier</text>
+  <text class="lbl" x="492" y="444" style="text-anchor:end">receipts, shipments,</text>
+  <text class="lbl" x="492" y="458" style="text-anchor:end">adjustments → postings</text>
+
+  <!-- Purchasing ⇄ Finance -->
+  <path class="flow" d="M880,500 V650 H622" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="lbl" x="750" y="642">→ purchase orders, for the match</text>
+  <text class="lbl" x="750" y="666">← supplier invoice approved,</text>
+  <text class="lbl" x="750" y="678">rejected · supplier paid</text>
+
+  <!-- Sales ⇄ Finance -->
+  <path class="flow" d="M200,300 V650 H398" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="lbl" x="300" y="642">→ up-front invoices, endings</text>
+  <text class="lbl" x="300" y="666">← invoice created,</text>
+  <text class="lbl" x="300" y="678">payment received</text>
+
+  <!-- rules -->
+  <rect class="note" x="20" y="716" width="960" height="66" rx="6"/>
+  <text class="b" x="32" y="734">Three rules hold the map together</text>
+  <text class="muted" x="32" y="750">1 · Manufacturing and Purchasing never ask each other for supply: a shortage in either goes through an Inventory replenishment request.</text>
+  <text class="muted" x="32" y="763">2 · Sales never asks Manufacturing or Purchasing for anything: it asks Inventory for stock and waits.</text>
+  <text class="muted" x="32" y="776">3 · No subdomain reads another's records: a fact crosses a boundary only as an event, and the receiver keeps its own copy.</text>
+</svg>

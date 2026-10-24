@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 320" width="1000" height="320" font-family="'Amazon Ember', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Work order Saga</title>
+  <desc id="d">A work order Saga starts when the work order is created and released, then requests its raw materials. If every material is reserved it waits for manufacturing to complete; if some are short it waits for the shortage to be covered and asks again. It ends completed, cancelled when the work order is withdrawn as a compensation leg, or failed.</desc>
+  <style>
+    svg { --bg:#ffffff; --ink:#16191f; --muted:#545b64; --act:#eef3fe; --act-line:#1d63ed; --wait:#fff5eb; --wait-line:#ed7100;
+          --term:#232f3e; --term-text:#ffffff; --line:#16191f; --note:#fffbe6; --note-line:#d9b800; }
+    @media (prefers-color-scheme: dark) {
+      svg { --bg:#0f1419; --ink:#e6edf3; --muted:#9aa7b4; --act:#111c33; --act-line:#5b8cff; --wait:#261a0d; --wait-line:#ff9a3c;
+            --term:#c9d1d9; --term-text:#0f1419; --line:#e6edf3; --note:#26220f; --note-line:#a08a1a; }
+    }
+    .bg { fill:var(--bg); }
+    text { fill:var(--ink); font-size:12px; }
+    .muted { fill:var(--muted); font-size:10.5px; }
+    .lbl { fill:var(--muted); font-size:10.5px; }
+    .b { font-weight:600; font-size:12px; }
+    .c { text-anchor:middle; }
+    .act { fill:var(--act); stroke:var(--act-line); stroke-width:1.4; }
+    .wait { fill:var(--wait); stroke:var(--wait-line); stroke-width:1.4; stroke-dasharray:5 3; }
+    .term { fill:var(--term); stroke:var(--term); stroke-width:1.4; }
+    .term-t { fill:var(--term-text); font-weight:600; font-size:12px; text-anchor:middle; }
+    .line { fill:none; stroke:var(--line); stroke-width:1.5; }
+    .dot { fill:var(--line); }
+    .note { fill:var(--note); stroke:var(--note-line); stroke-width:1; }
+    .head { fill:var(--line); }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1000" height="320"/>
+
+  <circle class="dot" cx="140" cy="20" r="6"/>
+  <path class="line" d="M140,26 V58" marker-end="url(#a)"/>
+  <rect class="act" x="40" y="60" width="200" height="40" rx="20"/><text class="b c" x="140" y="78">work order created</text><text class="muted c" x="140" y="92">the work order is released</text>
+  <rect class="wait" x="290" y="60" width="230" height="40" rx="20"/><text class="b c" x="405" y="78">raw-material reservation requested</text><text class="muted c" x="405" y="92">Inventory has been asked</text>
+  <rect class="wait" x="570" y="60" width="190" height="40" rx="20"/><text class="b c" x="665" y="78">raw materials reserved</text><text class="muted c" x="665" y="92">waits for manufacturing</text>
+  <rect class="term" x="810" y="60" width="160" height="40" rx="6"/><text class="term-t" x="890" y="85">completed</text>
+
+  <rect class="wait" x="290" y="190" width="230" height="40" rx="20"/><text class="b c" x="405" y="208">raw-material shortage</text><text class="muted c" x="405" y="222">waits until the shortage is covered</text>
+  <rect class="term" x="570" y="190" width="190" height="40" rx="6"/><text class="term-t" x="665" y="215">cancelled</text>
+  <rect class="term" x="810" y="190" width="160" height="40" rx="6"/><text class="term-t" x="890" y="215">failed</text>
+
+  <path class="line" d="M240,80 H288" marker-end="url(#a)"/>
+  <text class="lbl c" x="264" y="118">request</text>
+  <text class="lbl c" x="264" y="130">materials</text>
+  <path class="line" d="M520,80 H568" marker-end="url(#a)"/>
+  <text class="lbl c" x="544" y="118">all</text>
+  <text class="lbl c" x="544" y="130">reserved</text>
+  <path class="line" d="M760,80 H808" marker-end="url(#a)"/>
+  <text class="lbl c" x="784" y="118">manufacturing</text>
+  <text class="lbl c" x="784" y="130">completed</text>
+
+  <path class="line" d="M370,100 V188" marker-end="url(#a)"/>
+  <text class="lbl" x="300" y="150">some short</text>
+  <path class="line" d="M440,190 V102" marker-end="url(#a)"/>
+  <text class="lbl" x="448" y="150">covered: ask again</text>
+
+  <text class="muted c" x="665" y="248">withdrawn as a compensation leg,</text>
+  <text class="muted c" x="665" y="261">from any state before completion</text>
+  <text class="muted c" x="890" y="248">from any state: something broke</text>
+  <text class="muted c" x="890" y="261">that is not a business outcome</text>
+
+  <rect class="note" x="40" y="276" width="930" height="30" rx="6"/>
+  <text class="muted" x="52" y="295">The same for every work order, whether or not a sales order is behind it.</text>
+</svg>

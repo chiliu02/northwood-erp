@@ -66,6 +66,8 @@ views of section 11, built from everyone else's events.
 
 ### 2.2 Context map
 
+![The context map: Product upstream of every subdomain; Sales and Inventory, Inventory and Manufacturing, Inventory and Purchasing as customer and supplier; Purchasing to Manufacturing as conformist; Inventory, Purchasing and Sales feeding Finance; Reporting conforming to every event](images/domain-context-map.svg)
+
 | Upstream | Downstream | Relationship | What flows |
 |---|---|---|---|
 | Product | everyone | Open host, published language | The product master and every change to it. Each consumer keeps a **product card**. |
@@ -456,6 +458,8 @@ disagree with the facts that made it. Double-entry bookkeeping exists to prevent
 whole, reached only through its root, and refers to others only by identity.** Every aggregate has
 its own status, even when it has only one value today.
 
+![The eighteen aggregates by subdomain, each with its root, inner entities, the invariant it guards and the aggregates it refers to by identity; the three Sagas listed apart](images/domain-aggregates.svg)
+
 ### 6.1 Product
 
 **Product**: root `Product`.
@@ -484,6 +488,8 @@ its own status, even when it has only one value today.
   sets its order status.
 - *Guards:* sales rules 1–3 and 6–10. Reserved and shipped never exceed ordered.
 - *Refers to:* Customer, Product.
+
+![Sales order status: the fold of the line statuses from open to shipped, and the three terminals the fold never overrides](images/domain-order-status.svg)
 
 ### 6.3 Inventory
 
@@ -717,13 +723,22 @@ decides something. Shipping, invoicing and payment progress show on the lines an
 
 With no compensation legs, the Saga goes straight from the cancellation to *compensated*.
 
+![Sales-order fulfilment, forward flow: from started through the prepayment and release waits, stock reservation and its retry, to supply secured and completed, or rejected](images/domain-saga-fulfilment.svg)
+
+![Sales-order fulfilment, cancellation: from any state before the first shipment, Inventory decides between cancellation and shipment; a won cancellation is compensated at once or through compensating, which ends compensated or compensation failed](images/domain-saga-fulfilment-cancel.svg)
+
 **Work order** (`WorkOrderSaga`): `work order created → raw-material reservation requested →
-raw materials reserved | raw-material shortage → completed`, with terminals *failed* and *cancelled*.
+raw materials reserved → completed`. A *raw-material shortage* waits until the shortage is covered,
+then asks again. Terminals: *failed* and *cancelled*.
 It is the same for every work order, whether or not a sales order is behind it.
+
+![Work order Saga: created, raw materials requested, reserved or short and asked again, then completed; cancelled or failed as endings](images/domain-saga-work-order.svg)
 
 **Purchase-to-pay** (`PurchaseToPaySaga`): `started → purchase order approved → waiting for goods →
 goods received → supplier invoice approved → (supplier partially paid) → completed`, with terminals
 *failed* (the invoice was rejected) and *cancelled* (the purchase order was rejected or withdrawn).
+
+![Purchase-to-pay Saga: started, approved, waiting for goods, goods received, supplier invoice approved, partially paid, completed; cancelled when rejected or withdrawn, failed when the invoice is rejected](images/domain-saga-purchase-to-pay.svg)
 
 ---
 

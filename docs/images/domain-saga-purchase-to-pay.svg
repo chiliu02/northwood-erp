@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 420" width="1000" height="420" font-family="'Amazon Ember', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Purchase-to-pay Saga</title>
+  <desc id="d">A purchase-to-pay Saga starts with a draft purchase order. Approved, it waits for goods; fully received, it waits for the supplier invoice. An approved invoice leads to completed when fully paid, through supplier partially paid while payments arrive in parts. A rejected draft, or a purchase order withdrawn as a compensation leg before goods arrive, ends cancelled; a rejected supplier invoice ends failed.</desc>
+  <style>
+    svg { --bg:#ffffff; --ink:#16191f; --muted:#545b64; --act:#eef3fe; --act-line:#1d63ed; --wait:#fff5eb; --wait-line:#ed7100;
+          --term:#232f3e; --term-text:#ffffff; --line:#16191f; --note:#fffbe6; --note-line:#d9b800; }
+    @media (prefers-color-scheme: dark) {
+      svg { --bg:#0f1419; --ink:#e6edf3; --muted:#9aa7b4; --act:#111c33; --act-line:#5b8cff; --wait:#261a0d; --wait-line:#ff9a3c;
+            --term:#c9d1d9; --term-text:#0f1419; --line:#e6edf3; --note:#26220f; --note-line:#a08a1a; }
+    }
+    .bg { fill:var(--bg); }
+    text { fill:var(--ink); font-size:12px; }
+    .muted { fill:var(--muted); font-size:10.5px; }
+    .lbl { fill:var(--muted); font-size:10.5px; }
+    .b { font-weight:600; font-size:12px; }
+    .c { text-anchor:middle; }
+    .act { fill:var(--act); stroke:var(--act-line); stroke-width:1.4; }
+    .wait { fill:var(--wait); stroke:var(--wait-line); stroke-width:1.4; stroke-dasharray:5 3; }
+    .term { fill:var(--term); stroke:var(--term); stroke-width:1.4; }
+    .term-t { fill:var(--term-text); font-weight:600; font-size:12px; text-anchor:middle; }
+    .line { fill:none; stroke:var(--line); stroke-width:1.5; }
+    .dot { fill:var(--line); }
+    .head { fill:var(--line); }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1000" height="420"/>
+
+  <!-- row 1 -->
+  <circle class="dot" cx="130" cy="20" r="6"/>
+  <path class="line" d="M130,26 V58" marker-end="url(#a)"/>
+  <rect class="wait" x="40" y="60" width="180" height="40" rx="20"/><text class="b c" x="130" y="78">started</text><text class="muted c" x="130" y="92">a draft purchase order</text>
+  <rect class="act" x="270" y="60" width="200" height="40" rx="20"/><text class="b c" x="370" y="78">purchase order approved</text><text class="muted c" x="370" y="92">by a purchasing manager</text>
+  <rect class="wait" x="520" y="60" width="200" height="40" rx="20"/><text class="b c" x="620" y="78">waiting for goods</text><text class="muted c" x="620" y="92">sent to the supplier</text>
+  <rect class="wait" x="770" y="60" width="190" height="40" rx="20"/><text class="b c" x="865" y="78">goods received</text><text class="muted c" x="865" y="92">waits for the supplier invoice</text>
+
+  <!-- row 2 -->
+  <rect class="term" x="40" y="200" width="180" height="40" rx="6"/><text class="term-t" x="130" y="225">cancelled</text>
+  <rect class="term" x="270" y="200" width="200" height="40" rx="6"/><text class="term-t" x="370" y="225">completed</text>
+  <rect class="wait" x="520" y="200" width="200" height="40" rx="20"/><text class="b c" x="620" y="218">supplier partially paid</text><text class="muted c" x="620" y="232">waits for the rest</text>
+  <rect class="wait" x="770" y="200" width="190" height="40" rx="20"/><text class="b c" x="865" y="218">supplier invoice approved</text><text class="muted c" x="865" y="232">waits for payment</text>
+  <rect class="term" x="520" y="350" width="200" height="40" rx="6"/><text class="term-t" x="620" y="375">failed</text>
+
+  <!-- forward -->
+  <path class="line" d="M220,80 H268" marker-end="url(#a)"/>
+  <text class="lbl c" x="244" y="118">approved</text>
+  <path class="line" d="M470,80 H518" marker-end="url(#a)"/>
+  <text class="lbl c" x="494" y="118">sent</text>
+  <path class="line" d="M720,80 H768" marker-end="url(#a)"/>
+  <text class="lbl c" x="744" y="118">fully</text>
+  <text class="lbl c" x="744" y="130">received</text>
+  <path class="line" d="M865,100 V198" marker-end="url(#a)"/>
+  <text class="lbl" x="873" y="146">supplier invoice</text>
+  <text class="lbl" x="873" y="159">approved</text>
+
+  <path class="line" d="M770,220 H722" marker-end="url(#a)"/>
+  <text class="lbl c" x="746" y="213">part paid</text>
+  <path class="line" d="M520,220 H472" marker-end="url(#a)"/>
+  <text class="lbl c" x="496" y="258">fully paid</text>
+  <path class="line" d="M600,240 V272 H660 V242" marker-end="url(#a)"/>
+  <text class="lbl" x="668" y="268">another part paid</text>
+  <path class="line" d="M840,240 V300 H370 V242" marker-end="url(#a)"/>
+  <text class="lbl c" x="620" y="318">fully paid at once</text>
+
+  <!-- endings -->
+  <path class="line" d="M130,100 V198" marker-end="url(#a)"/>
+  <text class="lbl" x="138" y="146">draft rejected</text>
+  <text class="muted c" x="130" y="258">also from approved or waiting</text>
+  <text class="muted c" x="130" y="271">for goods, when the purchase order</text>
+  <text class="muted c" x="130" y="284">is withdrawn as a compensation leg</text>
+  <path class="line" d="M960,80 H984 V370 H722" marker-end="url(#a)"/>
+  <text class="lbl" x="740" y="362">supplier invoice rejected</text>
+  <text class="muted c" x="620" y="406">or from any state: something broke</text>
+</svg>

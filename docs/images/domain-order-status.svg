@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 300" width="1000" height="300" font-family="'Amazon Ember', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Sales order status</title>
+  <desc id="d">A sales order's status is the faithful fold of its line statuses on the scale open, partially reserved, reserved, partially shipped, shipped. Three terminals sit above the fold and are never overridden by it: completed, cancelled and rejected. Cancelling or amending reads the lines, never this status.</desc>
+  <style>
+    svg { --bg:#ffffff; --ink:#16191f; --muted:#545b64; --st:#eef3fe; --st-line:#1d63ed; --term:#232f3e; --term-text:#ffffff;
+          --line:#16191f; --note:#fffbe6; --note-line:#d9b800; }
+    @media (prefers-color-scheme: dark) {
+      svg { --bg:#0f1419; --ink:#e6edf3; --muted:#9aa7b4; --st:#111c33; --st-line:#5b8cff; --term:#c9d1d9; --term-text:#0f1419;
+            --line:#e6edf3; --note:#26220f; --note-line:#a08a1a; }
+    }
+    .bg { fill:var(--bg); }
+    text { fill:var(--ink); font-size:12px; }
+    .muted { fill:var(--muted); font-size:10.5px; }
+    .h { font-weight:600; font-size:13px; }
+    .b { font-weight:600; font-size:12px; }
+    .c { text-anchor:middle; }
+    .st { fill:var(--st); stroke:var(--st-line); stroke-width:1.4; }
+    .term { fill:var(--term); stroke:var(--term); stroke-width:1.4; }
+    .term-t { fill:var(--term-text); font-weight:600; font-size:12px; text-anchor:middle; }
+    .lt { fill:var(--muted); font-size:18px; text-anchor:middle; }
+    .line { fill:none; stroke:var(--line); stroke-width:1.2; stroke-dasharray:4 3; }
+    .note { fill:var(--note); stroke:var(--note-line); stroke-width:1; }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="1000" height="300"/>
+
+  <text class="h" x="40" y="28">Folded from the lines</text>
+  <text class="muted" x="200" y="28">each line has one of these statuses; the order's status is the faithful fold of its lines', on this scale</text>
+
+  <rect class="st" x="40" y="44" width="150" height="40" rx="20"/><text class="b c" x="115" y="69">open</text>
+  <text class="lt" x="212" y="70">⊏</text>
+  <rect class="st" x="234" y="44" width="150" height="40" rx="20"/><text class="b c" x="309" y="69">partially reserved</text>
+  <text class="lt" x="406" y="70">⊏</text>
+  <rect class="st" x="428" y="44" width="150" height="40" rx="20"/><text class="b c" x="503" y="69">reserved</text>
+  <text class="lt" x="600" y="70">⊏</text>
+  <rect class="st" x="622" y="44" width="150" height="40" rx="20"/><text class="b c" x="697" y="69">partially shipped</text>
+  <text class="lt" x="794" y="70">⊏</text>
+  <rect class="st" x="816" y="44" width="150" height="40" rx="20"/><text class="b c" x="891" y="69">shipped</text>
+
+  <path class="line" d="M40,108 H966"/>
+  <text class="muted" x="40" y="126">the terminals below are set on the order itself, and the fold never overrides them</text>
+
+  <text class="h" x="40" y="158">Terminals</text>
+  <rect class="term" x="40" y="170" width="150" height="40" rx="6"/><text class="term-t" x="115" y="195">completed</text>
+  <text class="muted" x="40" y="226">fully shipped and fully paid</text>
+  <rect class="term" x="234" y="170" width="150" height="40" rx="6"/><text class="term-t" x="309" y="195">cancelled</text>
+  <text class="muted" x="234" y="226">the cancellation won</text>
+  <rect class="term" x="428" y="170" width="150" height="40" rx="6"/><text class="term-t" x="503" y="195">rejected</text>
+  <text class="muted" x="428" y="226">a line cannot be supplied</text>
+
+  <rect class="note" x="622" y="150" width="344" height="88" rx="6"/>
+  <text class="b" x="634" y="170">Rules read the lines, not this status</text>
+  <text class="muted" x="634" y="188">A sales order may be cancelled or amended only while</text>
+  <text class="muted" x="634" y="202">it is not at a terminal and no line has shipped.</text>
+  <text class="muted" x="634" y="216">The status is a derived label; the sales order</text>
+  <text class="muted" x="634" y="230">is the only thing that sets it.</text>
+
+  <text class="muted" x="40" y="272">⊏ reads “comes before” on the scale.</text>
+</svg>

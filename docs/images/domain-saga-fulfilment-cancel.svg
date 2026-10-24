@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 480" width="1000" height="480" font-family="'Amazon Ember', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Sales-order fulfilment Saga, cancellation</title>
+  <desc id="d">From any state before the first shipment, a sales manager may request cancellation. Inventory decides between the cancellation and any shipment for the same order; whichever comes first wins. If the shipment wins, the cancellation is rejected and the order carries on. If the cancellation wins with no compensation legs, the Saga is compensated at once. With one or more legs, one per dispatched order-pegged request, it is compensating until every leg answers: compensated when every leg was undone, compensation failed when at least one refused.</desc>
+  <style>
+    svg { --bg:#ffffff; --ink:#16191f; --muted:#545b64; --act:#eef3fe; --act-line:#1d63ed; --wait:#fff5eb; --wait-line:#ed7100;
+          --term:#232f3e; --term-text:#ffffff; --line:#16191f; --grp:#f2f3f3; --grp-line:#545b64; --note:#fffbe6; --note-line:#d9b800; }
+    @media (prefers-color-scheme: dark) {
+      svg { --bg:#0f1419; --ink:#e6edf3; --muted:#9aa7b4; --act:#111c33; --act-line:#5b8cff; --wait:#261a0d; --wait-line:#ff9a3c;
+            --term:#c9d1d9; --term-text:#0f1419; --line:#e6edf3; --grp:#1b222b; --grp-line:#9aa7b4; --note:#26220f; --note-line:#a08a1a; }
+    }
+    .bg { fill:var(--bg); }
+    text { fill:var(--ink); font-size:12px; }
+    .muted { fill:var(--muted); font-size:10.5px; }
+    .lbl { fill:var(--muted); font-size:10.5px; }
+    .b { font-weight:600; font-size:12px; }
+    .c { text-anchor:middle; }
+    .grp { fill:var(--grp); stroke:var(--grp-line); stroke-width:1.2; stroke-dasharray:5 4; }
+    .act { fill:var(--act); stroke:var(--act-line); stroke-width:1.4; }
+    .wait { fill:var(--wait); stroke:var(--wait-line); stroke-width:1.4; stroke-dasharray:5 3; }
+    .chip { fill:var(--act); stroke:var(--act-line); stroke-width:1; }
+    .chip-w { fill:var(--wait); stroke:var(--wait-line); stroke-width:1; stroke-dasharray:4 3; }
+    .term { fill:var(--term); stroke:var(--term); stroke-width:1.4; }
+    .term-t { fill:var(--term-text); font-weight:600; font-size:12px; text-anchor:middle; }
+    .line { fill:none; stroke:var(--line); stroke-width:1.5; }
+    .note { fill:var(--note); stroke:var(--note-line); stroke-width:1; }
+    .head { fill:var(--line); }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1000" height="480"/>
+
+  <!-- any pre-shipment state -->
+  <rect class="grp" x="20" y="20" width="260" height="322" rx="10"/>
+  <text class="b" x="34" y="42">Any state before the first shipment</text>
+  <text class="muted" x="34" y="57">not at a terminal, and no line has shipped</text>
+  <rect class="chip" x="40" y="70" width="220" height="28" rx="14"/><text class="muted c" x="150" y="88">started</text>
+  <rect class="chip-w" x="40" y="108" width="220" height="28" rx="14"/><text class="muted c" x="150" y="126">awaiting release</text>
+  <rect class="chip-w" x="40" y="146" width="220" height="28" rx="14"/><text class="muted c" x="150" y="164">awaiting prepayment</text>
+  <rect class="chip" x="40" y="184" width="220" height="28" rx="14"/><text class="muted c" x="150" y="202">prepaid</text>
+  <rect class="chip" x="40" y="222" width="220" height="28" rx="14"/><text class="muted c" x="150" y="240">stock reservation requested</text>
+  <rect class="chip-w" x="40" y="260" width="220" height="28" rx="14"/><text class="muted c" x="150" y="278">stock reservation incomplete</text>
+  <rect class="chip-w" x="40" y="298" width="220" height="28" rx="14"/><text class="muted c" x="150" y="316">supply secured</text>
+
+  <!-- request -->
+  <path class="line" d="M280,200 H338" marker-end="url(#a)"/>
+  <rect class="act" x="340" y="172" width="190" height="56" rx="28"/>
+  <text class="b c" x="435" y="194">cancellation requested</text>
+  <text class="muted c" x="435" y="209">by a sales manager</text>
+  <text class="muted c" x="435" y="222">asking twice = asking once</text>
+
+  <!-- Inventory decides -->
+  <path class="line" d="M530,200 H578" marker-end="url(#a)"/>
+  <rect class="note" x="580" y="168" width="200" height="64" rx="6"/>
+  <text class="b" x="592" y="188">Inventory decides</text>
+  <text class="muted" x="592" y="204">cancellation or shipment for</text>
+  <text class="muted" x="592" y="218">the order: the first one wins</text>
+
+  <!-- shipment wins -->
+  <path class="line" d="M680,168 V112" marker-end="url(#a)"/>
+  <text class="lbl" x="688" y="148">shipment won</text>
+  <rect class="note" x="580" y="40" width="400" height="70" rx="6"/>
+  <text class="b" x="592" y="60">cancellation rejected</text>
+  <text class="muted" x="592" y="76">The order carries on toward shipment and completion.</text>
+  <text class="muted" x="592" y="90">After a shipment the order cannot be cancelled: undoing</text>
+  <text class="muted" x="592" y="103">a shipment is a return, which is left out.</text>
+
+  <!-- cancellation wins -->
+  <path class="line" d="M780,200 H818" marker-end="url(#a)"/>
+  <text class="lbl" x="788" y="148">cancellation won,</text>
+  <text class="lbl" x="788" y="161">one leg or more</text>
+  <rect class="wait" x="820" y="172" width="160" height="56" rx="28"/>
+  <text class="b c" x="900" y="194">compensating</text>
+  <text class="muted c" x="900" y="209">waits for each</text>
+  <text class="muted c" x="900" y="222">leg's answer</text>
+
+  <path class="line" d="M640,232 V338" marker-end="url(#a)"/>
+  <text class="lbl" x="648" y="290">cancellation won,</text>
+  <text class="lbl" x="648" y="303">no legs</text>
+  <rect class="term" x="560" y="340" width="200" height="40" rx="6"/><text class="term-t" x="660" y="365">compensated</text>
+  <path class="line" d="M860,228 V360 H762" marker-end="url(#a)"/>
+  <text class="lbl" x="770" y="352">every leg undone</text>
+  <path class="line" d="M940,228 V408" marker-end="url(#a)"/>
+  <text class="lbl" x="948" y="300" style="text-anchor:end" transform="translate(30,0)">a leg</text>
+  <text class="lbl" x="948" y="313" style="text-anchor:end" transform="translate(30,0)">refused</text>
+  <rect class="term" x="820" y="410" width="160" height="40" rx="6"/><text class="term-t" x="900" y="435">compensation failed</text>
+
+  <!-- notes -->
+  <rect class="note" x="20" y="380" width="520" height="80" rx="6"/>
+  <text class="b" x="32" y="398">Compensation legs</text>
+  <text class="muted" x="32" y="414">One leg per dispatched order-pegged replenishment request: a work order or a purchase order to withdraw.</text>
+  <text class="muted" x="32" y="428">Supply made to stock, requests not yet dispatched, and supply already received give no leg.</text>
+  <text class="muted" x="32" y="442">After compensation failed the order is still cancelled; someone must deal with the supply that remains.</text>
+</svg>
