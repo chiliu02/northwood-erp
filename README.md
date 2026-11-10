@@ -39,8 +39,8 @@ Northwood/
 ├── reporting-service/            Six read-side projections, inbox-only (no events module — consumes only); Redis cache-aside on the hot views
 ├── search-service/               Elasticsearch read models — product / global / audit search, inbox-only (port 8093)
 │
-├── erp-web-ui-bff/               BFF for the operational ERP SPA (port 8089)
 ├── erp-graphql-bff/              GraphQL composition BFF — one typed graph + DataLoader + live subscriptions (port 8088)
+├── erp-web-ui-bff/               BFF for the operational ERP SPA (port 8089)
 ├── erp-web-ui/                   React + Vite SPA — operational ERP (port 5174)
 │
 ├── test-harness/                 Acceptance-test DSL (`o2c` order-to-cash flows) + the in-JVM property/invariant suite — the CI concurrency tier (in the default reactor)

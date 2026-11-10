@@ -29,7 +29,7 @@ $ErrorActionPreference = 'Stop'
 
 # Repo root = grandparent of this script (.claude/hooks -> .claude -> repo).
 $repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-if (-not $OutDir) { $OutDir = Join-Path $repoRoot 't3\conversations' }
+if (-not $OutDir) { $OutDir = Join-Path $repoRoot '.backup\conversations' }
 
 # Hook mode: pull transcript_path from the JSON payload Claude Code writes to
 # stdin. This MUST NOT block. On Windows the hook is spawned via Git Bash and the

@@ -55,15 +55,11 @@ Thumbs.db
 
 # Claude Code — commit project-shared bits (commands/, skills/, agents/,
 # settings.json) but ignore per-developer session state below.
-.claude/projects/
-.claude/todos/
-.claude/shell-snapshots/
-.claude/statsig/
-.claude/*.log
-.claude/settings.local.json
+.claude/
 
 # Historical doc snapshots — repo-private working notes
 t3/
+.backup/conversations/
 
 # Backlog + changelog — repo-private working notes, kept local-only under docs/
 docs/dev-todo.md
