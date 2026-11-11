@@ -351,6 +351,9 @@ CREATE TABLE product.inbox_message_default
 -- ----------------------------------------------------------------------------
 GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA product TO product_service;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA product TO product_service;
+-- DELETE is withheld schema-wide (no hard deletes); granted per table only
+-- where the code replaces a set by delete-then-insert.
+GRANT DELETE ON product.approved_vendor TO product_service;
 
 -- ----------------------------------------------------------------------------
 -- PRODUCT: seed lives in config/postgresql/northwood_erp_seed.sql (SEED: PRODUCT section).
@@ -1236,6 +1239,9 @@ CREATE TABLE inventory.inbox_message_default PARTITION OF inventory.inbox_messag
 -- ----------------------------------------------------------------------------
 GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA inventory TO inventory_service;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA inventory TO inventory_service;
+-- DELETE is withheld schema-wide (no hard deletes); granted per table only
+-- where the code removes rows (reservation rollback).
+GRANT DELETE ON inventory.stock_reservation_header, inventory.stock_reservation_line TO inventory_service;
 
 -- ----------------------------------------------------------------------------
 -- INVENTORY: seed lives in config/postgresql/northwood_erp_seed.sql (SEED: INVENTORY section).
@@ -1714,6 +1720,10 @@ CREATE TABLE manufacturing.inbox_message_default PARTITION OF manufacturing.inbo
 -- ----------------------------------------------------------------------------
 GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA manufacturing TO manufacturing_service;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA manufacturing TO manufacturing_service;
+-- DELETE is withheld schema-wide (no hard deletes); granted per table only
+-- where the code removes rows (draft BOM line removal, approved-vendor
+-- projection replace-the-set).
+GRANT DELETE ON manufacturing.bom_line, manufacturing.product_approved_vendor TO manufacturing_service;
 
 -- ----------------------------------------------------------------------------
 -- MANUFACTURING: seed lives in config/postgresql/northwood_erp_seed.sql (SEED: MANUFACTURING section).
@@ -2096,6 +2106,9 @@ CREATE TABLE purchasing.inbox_message_default PARTITION OF purchasing.inbox_mess
 -- ----------------------------------------------------------------------------
 GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA purchasing TO purchasing_service;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA purchasing TO purchasing_service;
+-- DELETE is withheld schema-wide (no hard deletes); granted per table only
+-- where the code replaces a set by delete-then-insert.
+GRANT DELETE ON purchasing.product_approved_vendor TO purchasing_service;
 
 -- ----------------------------------------------------------------------------
 -- PURCHASING: seed lives in config/postgresql/northwood_erp_seed.sql (SEED: PURCHASING section).
